@@ -23,10 +23,19 @@ dotnet publish Launcher/src/DarkSign.Launcher -c Release -o "D:\The Dark sign\La
 The launcher treats the parent of its `Launcher` folder as the project root, finds each game's exe in the root's
 subfolders, and refuses to launch anything outside the root. Settings live in `launcher_settings.json` next to the exe.
 
-Each launch passes the save location to the game process as environment variables
-(`DKSIGN_SAVE_DIR`, `DKSIGN_SAVE_EXT`, `DKSIGN_PROFILE`, `DKSIGN_GAME`) for `dksign_saveredirect.dll` to read.
-Until that DLL sits next to a game's exe, the launcher blocks the launch so the game cannot write to the vanilla
-AppData saves. Set `"RequireSaveRedirect": false` in the settings file to override.
+## Save isolation
+
+- **Dark Souls Remastered, Dark Souls III, Elden Ring:** `SaveRedirect/` builds `dksign_saveredirect.dll`
+  (`make -C SaveRedirect`, needs mingw-w64). The launcher carries it inside its exe and installs it next to each
+  game exe as `dinput8.dll`, which those games load at start. It hooks the file APIs so the vanilla save folder
+  (`%APPDATA%\DarkSoulsIII`, `%APPDATA%\EldenRing`, `Documents\NBGI\DARK SOULS REMASTERED`) is served from
+  `DKSIGN_SAVE_DIR` with `.sl2` renamed to `.dksign`. Started by hand, the game still saves to
+  `TheDarkSign\Saves\Default`. Each run writes `dksign_saveredirect.log` into the save folder.
+- **Bloodborne (bbport):** the launcher sets bbport's own `BB_USER_DIR` to the profile's save folder and
+  `BB_GPU_USER_DIR` to `TheDarkSign\Cache\BB`. Its saves keep their PS4 file names, which the port needs.
+
+The launcher refuses to start a game when its redirect can't be put in place (for example another mod already
+uses `dinput8.dll`). Set `"RequireSaveRedirect": false` in the settings file to override.
 
 ### Updates
 

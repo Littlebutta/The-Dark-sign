@@ -164,15 +164,8 @@ public partial class MainWindow : Window
             return;
         }
 
-        if (!plan.SaveRedirectInstalled && _settings.RequireSaveRedirect)
-        {
-            MessageBox.Show(this,
-                $"{SaveIsolation.RedirectDllName} is not installed next to {Path.GetFileName(plan.ExePath)}.\n\n" +
-                "Without it the game would write its normal saves to AppData, which could touch your vanilla saves. " +
-                $"Set \"RequireSaveRedirect\": false in {LauncherSettings.FileName} only if you accept that.",
-                "Save redirect missing", MessageBoxButton.OK, MessageBoxImage.Warning);
+        if (!InstallSaveRedirect(row, plan))
             return;
-        }
 
         SaveIsolation.EnsureSaveDirectory(Root, _settings.GetActiveProfile().Name, plan.Game);
         if (plan.SteamAppIdFile is not null && !File.Exists(plan.SteamAppIdFile))
@@ -195,6 +188,38 @@ public partial class MainWindow : Window
         {
             MessageBox.Show(this, ex.Message, "Launch failed", MessageBoxButton.OK, MessageBoxImage.Error);
         }
+    }
+
+    /// <summary>Puts the redirect DLL in place, or explains why the game must not start.</summary>
+    private bool InstallSaveRedirect(GameRow row, LaunchPlan plan)
+    {
+        string problem;
+        try
+        {
+            var state = RedirectDll.Bytes is null
+                ? SaveRedirectInstaller.Check(plan.Game, plan.ExePath, null)
+                : SaveRedirectInstaller.Install(plan.Game, plan.ExePath, RedirectDll.Bytes, Root);
+            row.Refresh();
+            problem = state switch
+            {
+                RedirectState.Installed or RedirectState.Outdated => "",
+                RedirectState.Conflict =>
+                    $"Another mod already uses {SaveRedirectInstaller.ProxyPath(plan.ExePath)}, so the save redirect cannot load.",
+                _ => "This launcher build does not include the save-redirect DLL.",
+            };
+        }
+        catch (IOException ex)
+        {
+            problem = $"The save-redirect DLL could not be installed: {ex.Message}";
+        }
+
+        if (problem.Length == 0 || !_settings.RequireSaveRedirect)
+            return true;
+        MessageBox.Show(this,
+            problem + "\n\nWithout it the game would write its normal saves to AppData, which could touch your vanilla saves. " +
+            $"Set \"RequireSaveRedirect\": false in {LauncherSettings.FileName} only if you accept that.",
+            "Save redirect missing", MessageBoxButton.OK, MessageBoxImage.Warning);
+        return false;
     }
 
     private void OnProfileChanged(object sender, SelectionChangedEventArgs e)

@@ -76,7 +76,40 @@ public sealed class CoreTests : IDisposable
         Assert.Equal(".dksign", plan.Environment["DKSIGN_SAVE_EXT"]);
         Assert.Equal(plan.SaveDirectory, plan.Environment["DKSIGN_SAVE_DIR"]);
         Assert.Equal("374320", plan.Environment["SteamAppId"]);
-        Assert.False(plan.SaveRedirectInstalled);
+        Assert.False(plan.Environment.ContainsKey("BB_USER_DIR"));
+    }
+
+    [Fact]
+    public void Bloodborne_saves_go_to_the_profile_through_bbport_settings()
+    {
+        var exe = Touch("Bloodborne", "Play Bloodborne.exe");
+        var settings = new LauncherSettings { GameExePaths = { [GameId.Bloodborne] = exe } };
+
+        var plan = LaunchPlanner.Plan(settings, _root, GameId.Bloodborne);
+
+        Assert.Equal(Path.Combine(_root, "TheDarkSign", "Saves", "Default", "BB"), plan.Environment["BB_USER_DIR"]);
+        Assert.Equal(Path.Combine(_root, "TheDarkSign", "Cache", "BB"), plan.Environment["BB_GPU_USER_DIR"]);
+        Assert.Null(plan.SteamAppIdFile);
+    }
+
+    [Fact]
+    public void Redirect_dll_is_installed_as_dinput8_and_updated_but_never_replaces_another_mod()
+    {
+        var exe = Touch("DARK SOULS III", "Game", "DarkSoulsIII.exe");
+        var proxy = SaveRedirectInstaller.ProxyPath(exe);
+        byte[] v1 = [.. "MZ v1 DkSignSaveRedirectVersion"u8], v2 = [.. "MZ v2 DkSignSaveRedirectVersion"u8];
+
+        Assert.Equal(RedirectState.Missing, SaveRedirectInstaller.Check(GameId.DarkSouls3, exe, v1));
+        Assert.Equal(RedirectState.Installed, SaveRedirectInstaller.Install(GameId.DarkSouls3, exe, v1, _root));
+        Assert.Equal(RedirectState.Outdated, SaveRedirectInstaller.Check(GameId.DarkSouls3, exe, v2));
+        SaveRedirectInstaller.Install(GameId.DarkSouls3, exe, v2, _root);
+        Assert.Equal(v2, File.ReadAllBytes(proxy));
+
+        File.WriteAllBytes(proxy, [.. "MZ some other mod"u8]);
+        Assert.Equal(RedirectState.Conflict, SaveRedirectInstaller.Install(GameId.DarkSouls3, exe, v2, _root));
+        Assert.Equal("MZ some other mod"u8.ToArray(), File.ReadAllBytes(proxy));
+
+        Assert.Equal(RedirectState.Installed, SaveRedirectInstaller.Check(GameId.Bloodborne, exe, v2));
     }
 
     [Fact]

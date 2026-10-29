@@ -30,7 +30,12 @@ public sealed class GameRow(GameDefinition definition) : INotifyPropertyChanged
 
     public string Status => string.IsNullOrEmpty(ExePath) ? "Not found"
         : !File.Exists(ExePath) ? "Missing"
-        : SaveIsolation.IsRedirectInstalled(ExePath) ? "Ready" : "No save redirect";
+        : SaveRedirectInstaller.Check(Definition.Id, ExePath, RedirectDll.Bytes) switch
+        {
+            RedirectState.Conflict => "dinput8.dll in use",
+            RedirectState.Missing when RedirectDll.Bytes is null => "No save redirect",
+            _ => "Ready",
+        };
 
     public void Refresh() => Notify(nameof(Status));
 

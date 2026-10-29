@@ -7,7 +7,6 @@ public sealed record LaunchPlan(
     string Arguments,
     IReadOnlyDictionary<string, string> Environment,
     string SaveDirectory,
-    bool SaveRedirectInstalled,
     string? SteamAppIdFile);
 
 /// <summary>Turns settings into a validated launch plan. Starting the process is left to the UI.</summary>
@@ -35,6 +34,12 @@ public static class LaunchPlanner
             [SaveIsolation.GameVariable] = definition.ShortName,
         };
 
+        if (definition.SaveRedirect == SaveRedirectMethod.BbportUserDir)
+        {
+            env["BB_USER_DIR"] = saveDir;
+            env["BB_GPU_USER_DIR"] = SaveIsolation.CacheDirectory(root, game);
+        }
+
         // Launching the exe directly (not through Steam) needs the app id, or Steam restarts
         // the game from its own install folder, which would break isolation.
         string? appIdFile = null;
@@ -46,6 +51,6 @@ public static class LaunchPlanner
         }
 
         return new LaunchPlan(game, Path.GetFullPath(exe), workingDir, options.ExtraArguments.Trim(), env,
-            saveDir, SaveIsolation.IsRedirectInstalled(exe), appIdFile);
+            saveDir, appIdFile);
     }
 }

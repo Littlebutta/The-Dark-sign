@@ -27,9 +27,9 @@ public static class SaveIsolation
         return dir;
     }
 
-    /// <summary>True when the redirect DLL sits next to the game exe, where a DLL loader would pick it up.</summary>
-    public static bool IsRedirectInstalled(string exePath) =>
-        File.Exists(Path.Combine(Path.GetDirectoryName(exePath)!, RedirectDllName));
+    /// <summary>Shader caches stay out of the save folders and are shared by every profile.</summary>
+    public static string CacheDirectory(string root, GameId game) =>
+        Path.Combine(root, "TheDarkSign", "Cache", GameDefinition.Get(game).ShortName);
 
     public static string SanitizeFolderName(string name)
     {
