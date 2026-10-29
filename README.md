@@ -27,3 +27,11 @@ Each launch passes the save location to the game process as environment variable
 (`DKSIGN_SAVE_DIR`, `DKSIGN_SAVE_EXT`, `DKSIGN_PROFILE`, `DKSIGN_GAME`) for `dksign_saveredirect.dll` to read.
 Until that DLL sits next to a game's exe, the launcher blocks the launch so the game cannot write to the vanilla
 AppData saves. Set `"RequireSaveRedirect": false` in the settings file to override.
+
+### Updates
+
+On every start the launcher checks the repository's releases and replaces itself with a newer build.
+CI makes a release (`launcher-v1.0.<build>`) from every push to `main`. While the repository is private, the
+launcher needs a GitHub token to see them: create a fine-grained token with read-only **Contents** access to
+this repository only and put it in `launcher_settings.json` as `"GitHubToken"`. `"AutoUpdate": false` turns the
+check off.

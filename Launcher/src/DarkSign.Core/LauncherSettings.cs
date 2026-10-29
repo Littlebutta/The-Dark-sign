@@ -42,6 +42,15 @@ public sealed class LauncherSettings
     /// <summary>Refuse to launch a game whose saves would still go to AppData (no redirect DLL in place).</summary>
     public bool RequireSaveRedirect { get; set; } = true;
 
+    /// <summary>Check GitHub for a newer launcher on every start.</summary>
+    public bool AutoUpdate { get; set; } = true;
+
+    /// <summary>
+    /// A GitHub token with read access to the repository's contents. Needed while the repository
+    /// is private; leave empty for a public one.
+    /// </summary>
+    public string GitHubToken { get; set; } = "";
+
     public LaunchProfile GetActiveProfile()
     {
         var profile = Profiles.FirstOrDefault(p => p.Name == ActiveProfile);

@@ -1,6 +1,7 @@
 using System.Collections.ObjectModel;
 using System.Diagnostics;
 using System.IO;
+using System.Net.Http;
 using System.Windows;
 using System.Windows.Controls;
 using DarkSign.Core;
@@ -26,8 +27,41 @@ public partial class MainWindow : Window
             row.ExePath = _settings.GameExePaths.GetValueOrDefault(row.Definition.Id, "");
         RefreshProfiles();
 
-        if (_rows.All(r => string.IsNullOrEmpty(r.ExePath)))
+        // Games copied in after the last scan are picked up without pressing "Scan for games".
+        if (_rows.Any(r => string.IsNullOrEmpty(r.ExePath)))
             Scan();
+
+        Title = $"The Dark Sign  v{SelfUpdater.CurrentVersion.ToString(3)}";
+        Loaded += async (_, _) => await UpdateLauncherAsync();
+    }
+
+    private async Task UpdateLauncherAsync()
+    {
+        var exePath = Environment.ProcessPath;
+        if (exePath is null || !_settings.AutoUpdate)
+            return;
+        SelfUpdater.CleanUpPreviousUpdate(exePath);
+
+        try
+        {
+            var updater = new SelfUpdater(_settings.GitHubToken);
+            var update = await updater.CheckAsync(SelfUpdater.CurrentVersion);
+            if (update is null)
+                return;
+
+            StatusText.Text = $"Updating the launcher to v{update.Version.ToString(3)}…";
+            IsEnabled = false;
+            await updater.InstallAsync(update, exePath);
+            SelfUpdater.Restart(exePath);
+            Application.Current.Shutdown();
+        }
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or IOException or UnauthorizedAccessException)
+        {
+            IsEnabled = true;
+            StatusText.Text = string.IsNullOrWhiteSpace(_settings.GitHubToken) && ex.Message.Contains("404")
+                ? $"Update check skipped: the repository is private, so set \"GitHubToken\" in {LauncherSettings.FileName}."
+                : $"Update check failed: {ex.Message}";
+        }
     }
 
     private string Root => string.IsNullOrWhiteSpace(_settings.RootPath)

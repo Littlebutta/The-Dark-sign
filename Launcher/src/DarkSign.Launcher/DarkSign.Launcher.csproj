@@ -6,6 +6,8 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <AssemblyName>TheDarkSignLauncher</AssemblyName>
+    <!-- CI sets the real version (1.0.<build number>); local builds stay 1.0.0 so they update. -->
+    <Version>1.0.0</Version>
     <RootNamespace>DarkSign.Launcher</RootNamespace>
     <!-- Lets the project build on non-Windows CI; it still only runs on Windows. -->
     <EnableWindowsTargeting>true</EnableWindowsTargeting>

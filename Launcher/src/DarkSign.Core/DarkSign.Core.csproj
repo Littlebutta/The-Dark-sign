@@ -5,4 +5,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <RootNamespace>DarkSign.Core</RootNamespace>
   </PropertyGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="DarkSign.Core.Tests" />
+  </ItemGroup>
 </Project>

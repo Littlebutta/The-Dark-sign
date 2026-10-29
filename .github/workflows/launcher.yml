@@ -5,17 +5,29 @@ on:
     branches: [main]
   pull_request:
 
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: windows-latest
+    env:
+      VERSION: 1.0.${{ github.run_number }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: 8.0.x
       - run: dotnet test Launcher/DarkSign.sln -c Release
-      - run: dotnet publish Launcher/src/DarkSign.Launcher -c Release -o publish
+      - run: >
+          dotnet publish Launcher/src/DarkSign.Launcher -c Release -r win-x64 --self-contained false
+          -p:PublishSingleFile=true -p:DebugType=none -p:Version=${{ env.VERSION }} -o publish
       - uses: actions/upload-artifact@v4
         with:
           name: TheDarkSignLauncher
           path: publish
+      # Each build of main becomes the release the launcher updates itself from.
+      - if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: gh release create "launcher-v${{ env.VERSION }}" publish/TheDarkSignLauncher.exe --title "Launcher v${{ env.VERSION }}" --notes "Built from ${{ github.sha }}"
+        env:
+          GH_TOKEN: ${{ github.token }}
