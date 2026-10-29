@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>TheDarkSignLauncher</AssemblyName>
+    <RootNamespace>DarkSign.Launcher</RootNamespace>
+    <!-- Lets the project build on non-Windows CI; it still only runs on Windows. -->
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\DarkSign.Core\DarkSign.Core.csproj" />
+  </ItemGroup>
+</Project>
