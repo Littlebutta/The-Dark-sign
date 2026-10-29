@@ -25,7 +25,8 @@ public sealed class CoreTests : IDisposable
         var ds3 = Touch("DARK SOULS III", "Game", "DarkSoulsIII.exe");
         var er = Touch("Elden Ring", "Game", "eldenring.exe");
         Touch("Elden Ring", "Game", "start_protected_game.exe");
-        var bb = Touch("Bloodborne", "shadPS4.exe");
+        var bb = Touch("Bloodborne", "Play Bloodborne.exe");
+        Touch("Bloodborne", "Bloodborne.exe");
 
         var found = GameDetector.Scan(_root).ToDictionary(g => g.Id, g => g.ExePath);
 

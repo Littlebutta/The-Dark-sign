@@ -28,10 +28,10 @@ public sealed record GameDefinition(
             ["DarkSoulsIII.exe"],
             ["dark souls iii", "dark souls 3", "darksoulsiii", "darksouls3", "ds3"],
             374320, ".sl2"),
-        // Bloodborne has no native PC build; the exe depends on the framework in use.
-        // The list is checked in order, so the most specific names come first.
+        // The recomp's game exe is "Play Bloodborne.exe". Its "Bloodborne.exe" is only a settings
+        // launcher, so it is never picked. The list is checked in order, most specific first.
         new(GameId.Bloodborne, "Bloodborne", "BB",
-            ["Bloodborne.exe", "shadPS4.exe"],
+            ["Play Bloodborne.exe", "shadPS4.exe"],
             ["bloodborne", "bb"],
             null, ".sl2"),
         // eldenring.exe is launched directly; start_protected_game.exe (Easy Anti-Cheat) is never used.
