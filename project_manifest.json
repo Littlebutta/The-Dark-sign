@@ -16,8 +16,9 @@
         "profilesAndLaunchArgs": "done",
         "saveDirectorySettings": "done",
         "launcherUi": "done",
-        "saveRedirectDll": "built, untested in game",
+        "saveRedirectDll": "verified in DSR",
         "selfUpdate": "done",
+        "offlineOnly": "done (DLL Winsock block; bbport online off)",
         "graphicsProfiles": "todo"
       }
     },
@@ -28,6 +29,6 @@
   "contracts": {
     "saveRedirectEnv": ["DKSIGN_SAVE_DIR", "DKSIGN_SAVE_EXT", "DKSIGN_PROFILE", "DKSIGN_GAME"],
     "saveRedirectDll": "dksign_saveredirect.dll, installed as dinput8.dll next to the DSR/DS3/ER exe",
-    "bloodborneSaves": "BB_USER_DIR / BB_GPU_USER_DIR (bbport)"
+    "bloodborneSaves": "per-profile bbport settings.json copy via APPDATA (user_dir, online=false)"
   }
 }

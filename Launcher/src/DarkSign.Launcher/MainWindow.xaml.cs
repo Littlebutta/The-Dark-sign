@@ -167,7 +167,11 @@ public partial class MainWindow : Window
         if (!InstallSaveRedirect(row, plan))
             return;
 
-        SaveIsolation.EnsureSaveDirectory(Root, _settings.GetActiveProfile().Name, plan.Game);
+        var profileName = _settings.GetActiveProfile().Name;
+        SaveIsolation.EnsureSaveDirectory(Root, profileName, plan.Game);
+        if (GameDefinition.Get(plan.Game).SaveRedirect == SaveRedirectMethod.BbportUserDir)
+            BbportConfig.Prepare(Root, profileName, plan.SaveDirectory,
+                Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData));
         if (plan.SteamAppIdFile is not null && !File.Exists(plan.SteamAppIdFile))
             File.WriteAllText(plan.SteamAppIdFile, GameDefinition.Get(plan.Game).SteamAppId.ToString());
 

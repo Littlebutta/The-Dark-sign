@@ -38,6 +38,7 @@ public static class LaunchPlanner
         {
             env["BB_USER_DIR"] = saveDir;
             env["BB_GPU_USER_DIR"] = SaveIsolation.CacheDirectory(root, game);
+            env["APPDATA"] = BbportConfig.AppDataDirectory(root, profile.Name);
         }
 
         // Launching the exe directly (not through Steam) needs the app id, or Steam restarts

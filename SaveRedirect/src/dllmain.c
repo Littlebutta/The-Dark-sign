@@ -7,6 +7,7 @@
 #include <stdio.h>
 
 #include "MinHook.h"
+#include "offline.h"
 #include "redirect.h"
 
 static dks_config g_cfg;
@@ -323,8 +324,16 @@ static void init(void)
     hook("FindNextFileW", h_FindNextFileW, (LPVOID *)&o_FindNextFileW);
     hook("FindClose", h_FindClose, (LPVOID *)&o_FindClose);
     g_active = o_CreateFileW != NULL;
-    if (g_active)
-        return;
+    if (!g_active)
+        goto fail;
+
+    /* Single-player only: the game never reaches FromSoftware's servers. */
+    if (!dks_block_online(log_line)) {
+        MessageBoxW(NULL, L"The Dark Sign could not block this game's online connection, so it will close.",
+                    L"The Dark Sign", MB_ICONERROR);
+        TerminateProcess(GetCurrentProcess(), 1);
+    }
+    return;
 
 fail:
     /* Better no game than a game that writes over the vanilla saves. */

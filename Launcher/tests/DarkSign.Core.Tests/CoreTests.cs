@@ -90,6 +90,30 @@ public sealed class CoreTests : IDisposable
         Assert.Equal(Path.Combine(_root, "TheDarkSign", "Saves", "Default", "BB"), plan.Environment["BB_USER_DIR"]);
         Assert.Equal(Path.Combine(_root, "TheDarkSign", "Cache", "BB"), plan.Environment["BB_GPU_USER_DIR"]);
         Assert.Null(plan.SteamAppIdFile);
+        Assert.Equal(Path.Combine(_root, "TheDarkSign", "Config", "Default", "BB"), plan.Environment["APPDATA"]);
+    }
+
+    [Fact]
+    public void Bbport_settings_copy_keeps_player_setup_but_points_saves_at_profile_and_turns_online_off()
+    {
+        var playerAppData = Path.Combine(Path.GetDirectoryName(_root)!, "Roaming");
+        var playerFile = Path.Combine(playerAppData, "bbport-launcher", "settings.json");
+        Directory.CreateDirectory(Path.GetDirectoryName(playerFile)!);
+        File.WriteAllText(playerFile, """{ "game_dir": "D:/dump", "user_dir": "C:/old", "online": true }""");
+        var saveDir = SaveIsolation.SaveDirectory(_root, "Default", GameId.Bloodborne);
+
+        var appData = BbportConfig.Prepare(_root, "Default", saveDir, playerAppData);
+
+        var copy = System.Text.Json.Nodes.JsonNode.Parse(File.ReadAllText(Path.Combine(appData, "bbport-launcher", "settings.json")))!;
+        Assert.Equal("D:/dump", copy["game_dir"]!.GetValue<string>());
+        Assert.Equal(saveDir, copy["user_dir"]!.GetValue<string>());
+        Assert.False(copy["online"]!.GetValue<bool>());
+        Assert.Contains("C:/old", File.ReadAllText(playerFile));
+
+        // Later starts keep the profile's own copy, even if the player's file changes.
+        File.WriteAllText(playerFile, """{ "game_dir": "E:/other" }""");
+        BbportConfig.Prepare(_root, "Default", saveDir, playerAppData);
+        Assert.Contains("dump", File.ReadAllText(Path.Combine(appData, "bbport-launcher", "settings.json")));
     }
 
     [Fact]
