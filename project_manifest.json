@@ -22,13 +22,53 @@
         "graphicsProfiles": "todo"
       }
     },
-    "2": { "name": "Save State Serialization & Converter", "status": "todo" },
-    "3": { "name": "Parameter & Asset ID Mapping", "status": "todo" },
-    "4": { "name": "Progression-Safe Chaos & Randomizer", "status": "todo" }
+    "2": {
+      "name": "Save State Serialization & Converter",
+      "status": "todo"
+    },
+    "3": {
+      "name": "Parameter & Asset ID Mapping",
+      "status": "in-progress",
+      "modules": {
+        "porterFoundation": "done (archive reader, extract, inventory); ER Oodle 2.6 fix pending PC check",
+        "ds3Weapons": "todo",
+        "ds3ArmorRings": "todo",
+        "ds3Spells": "todo",
+        "greiratShops": "todo (placeholder merchant until Greirat is ported)",
+        "dsrItems": "todo (needs DSR reader)",
+        "bloodborneItems": "later"
+      }
+    },
+    "4": {
+      "name": "Progression-Safe Chaos & Randomizer",
+      "status": "todo",
+      "modules": {
+        "pilotEnemyAndBoss": "todo",
+        "allEnemiesAndBosses": "todo (DS3, then DSR, then Bloodborne, into Elden Ring)",
+        "randomizerToggle": "todo"
+      }
+    }
   },
   "contracts": {
-    "saveRedirectEnv": ["DKSIGN_SAVE_DIR", "DKSIGN_SAVE_EXT", "DKSIGN_PROFILE", "DKSIGN_GAME"],
+    "saveRedirectEnv": [
+      "DKSIGN_SAVE_DIR",
+      "DKSIGN_SAVE_EXT",
+      "DKSIGN_PROFILE",
+      "DKSIGN_GAME"
+    ],
     "saveRedirectDll": "dksign_saveredirect.dll, installed as dinput8.dll next to the DSR/DS3/ER exe",
-    "bloodborneSaves": "per-profile bbport settings.json copy via APPDATA (user_dir, online=false)"
+    "bloodborneSaves": "per-profile bbport settings.json copy via APPDATA (user_dir, online=false)",
+    "porter": {
+      "exe": "<root>\\\\TheDarkSign\\\\Tools\\\\Porter\\\\DarkSignPorter.exe",
+      "work": "<root>\\\\TheDarkSign\\\\Work",
+      "modOutput": "<root>\\TheDarkSign\\Mods\\ER",
+      "rules": "reads game folders only; writes only under TheDarkSign"
+    }
+  },
+  "decisions": {
+    "hostGame": "Elden Ring hosts everything; content comes from DS3 first, then DS1 Remastered, then Bloodborne",
+    "ds3ItemSource": "Greirat shop next to each Elden Ring merchant",
+    "duplicates": "items Elden Ring already has are skipped (Devin, 2026-10-30)",
+    "enemyScaling": "ported enemies scale to the area they replace"
   }
 }

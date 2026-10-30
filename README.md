@@ -51,3 +51,29 @@ On every start the launcher checks the repository's releases and replaces itself
 CI makes a release (`launcher-v1.0.<build>`) from every push to `main`. If the repository is ever made private
 again, put a read-only token in `launcher_settings.json` as `"GitHubToken"`. `"AutoUpdate": false` turns the check
 off.
+
+## Porter (Phase 3/4: content from the other games in Elden Ring)
+
+`Porter/` builds `DarkSignPorter.exe`, which reads Dark Souls III and Elden Ring straight from their packed
+archives and will build the Elden Ring content mod: items, enemies and bosses from Dark Souls III first, then Dark
+Souls Remastered and Bloodborne, with items Elden Ring already has skipped. It only reads the game folders; everything it writes goes to
+`TheDarkSign\Work` (and later `TheDarkSign\Mods\ER`). It lives in `TheDarkSign\Tools\Porter` and finds the
+project root from there, or takes `--root`.
+
+```
+git submodule update --init      # SoulsFormatsNEXT, pinned
+dotnet publish Porter/src/DarkSign.Porter -c Release -r win-x64 --self-contained false -o "D:\The Dark sign\TheDarkSign\Tools\Porter"
+
+DarkSignPorter scan                          # index every file in both games' archives
+DarkSignPorter extract DS3 /msg/engus/*      # copy files out, decompressed
+DarkSignPorter inventory                     # DS3 and Elden Ring weapons, armor, rings, spells, NPCs
+```
+
+Elden Ring's files are Oodle-compressed; the porter copies the game's `oo2core_6_win64.dll` into
+`TheDarkSign\Work\cache\oodle` and loads it from there (`Porter/src/SoulsFormats.Net8/OodleCompressor.cs` makes
+SoulsFormats accept Oodle 2.6). Building needs the .NET 10 SDK (SoulsFormatsNEXT uses C# 13); the exe still runs on the .NET 8 runtime.
+On first run the porter downloads the archive keys and file-name lists from
+[UXM Selective Unpack](https://github.com/Nordgaren/UXM-Selective-Unpack) and paramdefs from
+[Paramdex](https://github.com/soulsmods/Paramdex), both at pinned commits, into `TheDarkSign\Work\cache`.
+[SoulsFormatsNEXT](https://github.com/soulsmods/SoulsFormatsNEXT) is GPLv3, so a porter build shared with anyone
+else must come with its source.

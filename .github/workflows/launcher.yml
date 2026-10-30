@@ -48,3 +48,17 @@ jobs:
         run: gh release create "launcher-v${{ env.VERSION }}" publish/TheDarkSignLauncher.exe --title "Launcher v${{ env.VERSION }}" --notes "Built from ${{ github.sha }}"
         env:
           GH_TOKEN: ${{ github.token }}
+
+  porter:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+      # SoulsFormatsNEXT needs C# 13, so the porter builds with a newer SDK while still targeting net8.0.
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: |
+            8.0.x
+            10.0.x
+      - run: dotnet build Porter/src/DarkSign.Porter -c Release
