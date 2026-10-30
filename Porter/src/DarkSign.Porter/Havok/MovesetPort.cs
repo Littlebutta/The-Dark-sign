@@ -26,8 +26,8 @@ namespace DarkSign.Porter;
 /// </summary>
 public static partial class MovesetPort
 {
-    /// <summary>DS3 weapons (base row IDs) that get their own moveset. Friede's Great Scythe is the first.</summary>
-    public static readonly int[] Weapons = [10180000];
+    /// <summary>Limits the port to these DS3 weapons (base row IDs) when set; empty ports every weapon.</summary>
+    public static int[] Only = [];
 
     private const string AnimBinder = "/chr/c0000_a9x.anibnd.dcx";
 
@@ -41,7 +41,7 @@ public static partial class MovesetPort
     public static void Apply(PorterContext ctx, GameArchives erArchives, GameArchives ds3Archives, ParamStore er, ParamStore ds3,
         IReadOnlyList<WeaponPlan> plans)
     {
-        var ports = plans.Where(p => p.Status == "port" && Weapons.Contains(p.Ds3Id)).ToList();
+        var ports = plans.Where(p => p.Status == "port" && (Only.Length == 0 || Only.Contains(p.Ds3Id))).ToList();
         if (ports.Count == 0)
             return;
 
@@ -82,98 +82,130 @@ public static partial class MovesetPort
         // Param changes wait until every file is written, so a failure leaves the weapons on their template moveset.
         var pointWeapons = new List<Action>();
 
-        foreach (var plan in ports)
+        // Weapons that share a DS3 moveset (class and art section) and an Elden Ring template share one new category;
+        // each keeps its own DS3 attack data through its behaviour variation.
+        var groups = ports.GroupBy(p => (
+            Ds3Section: Convert.ToInt32(ds3Weapons[p.Ds3Id]!["wepmotionCategory"].Value),
+            Ds3ArtSection: Convert.ToInt32(ds3Weapons[p.Ds3Id]!["spAtkCategory"].Value),
+            TemplateSection: Convert.ToInt32(erWeapons[p.NewId!.Value]!["wepmotionCategory"].Value))).ToList();
+        // wepmotionCategory is one byte. Sections from 90 up keep their animations in c0000_a9x, where these go.
+        var freeSections = new Queue<int>(Enumerable.Range(90, 166).Reverse().Where(s => !usedSections.Contains(s)));
+        int portedGroups = 0, skippedGroups = 0;
+        Console.WriteLine($"moveset: {ports.Count} weapons in {groups.Count} DS3 movesets, {freeSections.Count} free motion categories");
+
+        foreach (var group in groups)
         {
-            var ds3Row = ds3Weapons[plan.Ds3Id]!;
-            int ds3Section = Convert.ToInt32(ds3Row["wepmotionCategory"].Value);
-            int ds3ArtSection = Convert.ToInt32(ds3Row["spAtkCategory"].Value);
-            int templateSection = Convert.ToInt32(erWeapons[plan.NewId!.Value]!["wepmotionCategory"].Value);
-            int section = Enumerable.Range(200, 56).First(s => !usedSections.Contains(s));
-            usedSections.Add(section);
-
-            // 1. Start the new category as a copy of the template's TAE.
-            var templateTaeFile = BinderLeaf(erMain, $"a{templateSection:D2}.tae")
-                ?? throw new FileNotFoundException($"Elden Ring has no a{templateSection:D2}.tae");
-            TAE.ValidateEventBank = false;
-            var templateTae = TAE.Read(templateTaeFile.Bytes);
-            var tae = TAE.Read(templateTaeFile.Bytes);
-            tae.ID = 2000 + section;
-            var erEventLengths = templateTae.Animations.SelectMany(a => a.Events).GroupBy(e => e.Type)
-                .ToDictionary(g => g.Key, g => g.First().GetParameterBytes(false).Length);
-            var ds3Taes = new[] { ds3ArtSection, ds3Section }.Where(s => s > 0)
-                .Select(s => (Section: s, Tae: BinderLeaf(ds3Main, $"a{s:D2}.tae") is { } f ? TAE.Read(f.Bytes) : null))
-                .Where(t => t.Tae is not null).ToList();
-
-            int converted = 0, copied = 0;
-            foreach (var anim in tae.Animations)
+            var (ds3Section, ds3ArtSection, templateSection) = group.Key;
+            var groupName = string.Join(", ", group.Select(p => p.Name).Take(3)) + (group.Count() > 3 ? $" +{group.Count() - 3}" : "");
+            if (freeSections.Count == 0)
             {
-                var erId = (int)anim.ID;
-                var templateName = $"a{templateSection:D3}_{erId:D6}";
-                var newName = $"a{section:D3}_{erId:D6}";
-                if (anim.AnimFileName is { } fileName)
-                    anim.AnimFileName = fileName.Replace(templateName, newName, StringComparison.OrdinalIgnoreCase);
-
-                var source = erToDs3.TryGetValue(erId, out var ds3Id) ? FindDs3(ds3Taes!, ds3Main, ds3Id) : null;
-                if (source is { } s && ds3Hkx.Read(s.HkxName) is { } ds3Bytes)
-                {
-                    var template = ErAnimFile(erArchives, templateName) ?? ErAnimFile(erArchives, "a000_000000")!;
-                    var (hkx, _) = AnimPort.Convert(ds3Bytes, ds3Skeleton, erSkeleton, template.Bytes, template.Compendium);
-                    AddFile(erAnims, newName + ".hkx", hkx);
-                    anim.MiniHeader = new TAE.Animation.AnimMiniHeader.Standard();
-                    anim.AnimFileName = newName + ".hkt";
-                    anim.Events = MergeEvents(s.Events, anim.Events, erEventLengths, attackPort, ds3Row, plan);
-                    converted++;
-                }
-                else if (anim.MiniHeader is TAE.Animation.AnimMiniHeader.Standard && ErAnimFile(erArchives, templateName) is { } original)
-                {
-                    AddFile(erAnims, newName + ".hkx", original.Bytes);
-                    copied++;
-                }
+                Console.WriteLine($"moveset: skipped {groupName}: no free motion category left");
+                skippedGroups++;
+                continue;
             }
-            AddFile(erMain, $"a{section}.tae", tae.Write(), templateTaeFile);
-
-            // 2. Register the category in every weapon selector: a clip per move, copied from the template's.
-            int registered = 0;
-            var internalIds = new Dictionary<string, short>();
-            foreach (var selector in selectors.Where(IsWeaponSelector))
+            // Taken even if the port fails below: its files may then hold part of the category.
+            int section = freeSections.Dequeue();
+            var started = DateTime.UtcNow;
+            try
             {
-                foreach (var clip in selector.m_generators.OfType<hkbClipGenerator>().ToList())
+                // 1. Start the new category as a copy of the template's TAE.
+                var templateTaeFile = BinderLeaf(erMain, $"a{templateSection:D2}.tae")
+                    ?? throw new FileNotFoundException($"Elden Ring has no a{templateSection:D2}.tae");
+                TAE.ValidateEventBank = false;
+                var templateTae = TAE.Read(templateTaeFile.Bytes);
+                var tae = TAE.Read(templateTaeFile.Bytes);
+                tae.ID = 2000 + section;
+                var erEventLengths = templateTae.Animations.SelectMany(a => a.Events).GroupBy(e => e.Type)
+                    .ToDictionary(g => g.Key, g => g.First().GetParameterBytes(false).Length);
+                var ds3Taes = new[] { ds3ArtSection, ds3Section }.Where(s => s > 0)
+                    .Select(s => (Section: s, Tae: BinderLeaf(ds3Main, $"a{s:D2}.tae") is { } f ? TAE.Read(f.Bytes) : null))
+                    .Where(t => t.Tae is not null).ToList();
+
+                int converted = 0, copied = 0;
+                foreach (var anim in tae.Animations)
                 {
-                    var m = AnimName().Match(clip.m_animationName ?? "");
-                    if (!m.Success || int.Parse(m.Groups[1].Value) != templateSection)
-                        continue;
-                    var name = $"a{section:D3}_{m.Groups[2].Value}";
-                    if (!internalIds.TryGetValue(name, out var internalId))
-                        internalIds[name] = internalId = checked((short)nextInternalId++);
-                    var copy = HavokGraph.ShallowCopy(clip);
-                    copy.m_animationName = name;
-                    copy.m_name = clip.m_name?.Replace(clip.m_animationName!, name, StringComparison.Ordinal);
-                    copy.m_animationInternalId = internalId;
-                    selector.m_generators.Add(copy);
-                    registered++;
+                    var erId = (int)anim.ID;
+                    var templateName = $"a{templateSection:D3}_{erId:D6}";
+                    var newName = $"a{section:D3}_{erId:D6}";
+                    if (anim.AnimFileName is { } fileName)
+                        anim.AnimFileName = fileName.Replace(templateName, newName, StringComparison.OrdinalIgnoreCase);
+
+                    var source = erToDs3.TryGetValue(erId, out var ds3Id) ? FindDs3(ds3Taes!, ds3Main, ds3Id) : null;
+                    if (source is { } s && ds3Hkx.Read(s.HkxName) is { } ds3Bytes)
+                    {
+                        var template = ErAnimFile(erArchives, templateName) ?? ErAnimFile(erArchives, "a000_000000")!;
+                        var (hkx, _) = AnimPort.Convert(ds3Bytes, ds3Skeleton, erSkeleton, template.Bytes, template.Compendium);
+                        AddFile(erAnims, newName + ".hkx", hkx);
+                        anim.MiniHeader = new TAE.Animation.AnimMiniHeader.Standard();
+                        anim.AnimFileName = newName + ".hkt";
+                        anim.Events = MergeEvents(s.Events, anim.Events, erEventLengths);
+                        converted++;
+                    }
+                    else if (anim.MiniHeader is TAE.Animation.AnimMiniHeader.Standard && ErAnimFile(erArchives, templateName) is { } original)
+                    {
+                        AddFile(erAnims, newName + ".hkx", original.Bytes);
+                        copied++;
+                    }
                 }
+                AddFile(erMain, $"a{section}.tae", tae.Write(), templateTaeFile);
+
+                // 2. Register the category in every weapon selector: a clip per move, copied from the template's.
+                int registered = 0;
+                var internalIds = new Dictionary<string, short>();
+                foreach (var selector in selectors.Where(IsWeaponSelector))
+                {
+                    foreach (var clip in selector.m_generators.OfType<hkbClipGenerator>().ToList())
+                    {
+                        var m = AnimName().Match(clip.m_animationName ?? "");
+                        if (!m.Success || int.Parse(m.Groups[1].Value) != templateSection)
+                            continue;
+                        var name = $"a{section:D3}_{m.Groups[2].Value}";
+                        if (!internalIds.TryGetValue(name, out var internalId))
+                            internalIds[name] = internalId = checked((short)nextInternalId++);
+                        var copy = HavokGraph.ShallowCopy(clip);
+                        copy.m_animationName = name;
+                        copy.m_name = clip.m_name?.Replace(clip.m_animationName!, name, StringComparison.Ordinal);
+                        copy.m_animationInternalId = internalId;
+                        selector.m_generators.Add(copy);
+                        registered++;
+                    }
+                }
+
+                Console.WriteLine($"moveset: {groupName} -> motion category {section} (from Elden Ring {templateSection}, DS3 {ds3Section}/{ds3ArtSection}): " +
+                                  $"{converted} DS3 animations, {copied} kept from Elden Ring, {registered} behaviour clips, {(DateTime.UtcNow - started).TotalSeconds:0}s");
             }
-
-            // 3. Point every row of the weapon at the new category and its DS3 attacks.
-            int ds3Variation = Convert.ToInt32(ds3Row["behaviorVariationId"].Value), newId = plan.NewId!.Value;
-            pointWeapons.Add(() =>
+            catch (Exception e) when (e is OverflowException or InvalidDataException or FileNotFoundException or KeyNotFoundException or InvalidCastException)
             {
-                int variation = attackPort.PortVariation(ds3Variation);
-                foreach (var row in erWeapons.Rows.Where(r => r.ID >= newId && r.ID < newId + 10000))
+                // No weapon points at the partly built category.
+                Console.WriteLine($"moveset: skipped {groupName}: {e.GetType().Name}: {e.Message}");
+                skippedGroups++;
+                continue;
+            }
+            portedGroups++;
+
+            // 3. Point every row of each weapon at the new category and its own DS3 attacks.
+            foreach (var plan in group)
+            {
+                int ds3Variation = Convert.ToInt32(ds3Weapons[plan.Ds3Id]!["behaviorVariationId"].Value), newId = plan.NewId!.Value;
+                pointWeapons.Add(() =>
                 {
-                    row["wepmotionCategory"].Value = Convert.ChangeType(section, row["wepmotionCategory"].Value!.GetType());
-                    if (variation > 0)
-                        row["behaviorVariationId"].Value = Convert.ChangeType(variation, row["behaviorVariationId"].Value!.GetType());
-                }
-                Console.WriteLine($"moveset: {plan.Name} -> motion category {section} (from Elden Ring {templateSection}, DS3 {ds3Section}/{ds3ArtSection}): " +
-                                  $"{converted} DS3 animations, {copied} kept from Elden Ring, {registered} behaviour clips, " +
-                                  $"attack variation {ds3Variation} -> {variation} ({attackPort.Summary})");
-            });
+                    int variation = attackPort.PortVariation(ds3Variation);
+                    foreach (var row in erWeapons.Rows.Where(r => r.ID >= newId && r.ID < newId + 10000))
+                    {
+                        row["wepmotionCategory"].Value = Convert.ChangeType(section, row["wepmotionCategory"].Value!.GetType());
+                        if (variation > 0)
+                            row["behaviorVariationId"].Value = Convert.ChangeType(variation, row["behaviorVariationId"].Value!.GetType());
+                    }
+                });
+            }
         }
 
         // Params first: a failure there must not leave behaviour and animation files for weapons that don't use them.
         foreach (var point in pointWeapons)
             point();
+        Console.WriteLine($"moveset: {portedGroups} movesets ported, {skippedGroups} skipped; attacks: {attackPort.Summary}");
+        if (portedGroups == 0)
+            return;
         using var output = new MemoryStream();
         new HavokBinarySerializer().Write(behavior, output);
         behaviorFile.Bytes = output.ToArray();
@@ -191,8 +223,7 @@ public static partial class MovesetPort
         or CustomManualSelectorGenerator.OffsetType.WeaponCategoryHandStyle;
 
     /// <summary>DS3's events for a move, with Elden Ring's sound and effect events moved to DS3's first hit.</summary>
-    private static List<TAE.Event> MergeEvents(List<TAE.Event> ds3Events, List<TAE.Event> erEvents, Dictionary<int, int> erLengths,
-        AttackParamPort attacks, PARAM.Row ds3Weapon, WeaponPlan plan)
+    private static List<TAE.Event> MergeEvents(List<TAE.Event> ds3Events, List<TAE.Event> erEvents, Dictionary<int, int> erLengths)
     {
         float ds3Hit = ds3Events.Where(e => e.Type == 1).Select(e => e.StartTime).DefaultIfEmpty(-1).Min();
         float erHit = erEvents.Where(e => e.Type == 1).Select(e => e.StartTime).DefaultIfEmpty(-1).Min();
@@ -319,6 +350,15 @@ public sealed class AttackParamPort(ParamStore er, ParamStore ds3)
 
     /// <summary>Copies a DS3 behaviour variation under a new Elden Ring variation ID and returns it (0 if DS3 has none).</summary>
     public int PortVariation(int ds3Variation)
+    {
+        if (_variations.TryGetValue(ds3Variation, out var done))
+            return done;
+        return _variations[ds3Variation] = PortNewVariation(ds3Variation);
+    }
+
+    private readonly Dictionary<int, int> _variations = new();
+
+    private int PortNewVariation(int ds3Variation)
     {
         var rows = _ds3Behavior.Rows.Where(r => Convert.ToInt32(r["variationId"].Value) == ds3Variation).ToList();
         if (ds3Variation <= 0 || rows.Count == 0)
