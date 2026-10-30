@@ -25,7 +25,7 @@ public static class MovesetExplore
             var report = new StringBuilder();
             var binders = archives.Entries.Where(e => e.Path is not null && e.Path.StartsWith("/chr/c0000", StringComparison.OrdinalIgnoreCase))
                 .OrderBy(e => e.Path).ToList();
-            report.AppendLine($"# {game}: {binders.Count} /chr/c0000* files");
+            report.AppendLine($"# {game.ShortName}: {binders.Count} /chr/c0000* files");
             foreach (var entry in binders)
                 report.AppendLine($"{entry.Path}\t{entry.Header.PaddedFileSize}");
 
@@ -60,9 +60,9 @@ public static class MovesetExplore
             }
             report.AppendLine($"\n# TAE event types (type=count): {string.Join(", ", eventTypes.Select(t => $"{t.Key}={t.Value}"))}");
 
-            var path = Path.Combine(reportDir, $"{game}.txt");
+            var path = Path.Combine(reportDir, $"{game.ShortName}.txt");
             File.WriteAllText(path, report.ToString());
-            Console.WriteLine($"{game}: {binders.Count} c0000 files, skeleton {bones?.Count ?? 0} bones, sample animation {(sampleDone ? "decoded" : "NOT decoded")}, {eventTypes.Count} TAE event types -> {path}");
+            Console.WriteLine($"{game.ShortName}: {binders.Count} c0000 files, skeleton {bones?.Count ?? 0} bones, sample animation {(sampleDone ? "decoded" : "NOT decoded")}, {eventTypes.Count} TAE event types -> {path}");
             if (game == PorterGame.DarkSouls3) ds3Bones = bones; else erBones = bones;
         }
 
