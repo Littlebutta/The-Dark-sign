@@ -5,7 +5,8 @@ namespace DarkSign.Porter;
 
 /// <summary>
 /// The list of every item the F1 test menu (TestMenu/, dksign_testmenu.dll) can give: Elden Ring's own items plus
-/// the ported ones, as "hex ID, kind, max upgrade, infusable, name" lines in Mods\ER\darksign_items.tsv.
+/// the ported ones, as "hex ID, kind, max upgrade, infusable, name, game" lines in Mods\ER\darksign_items.tsv. The game
+/// ("ER", "DS3") is where the item comes from, so the menu can list each game's items separately.
 /// </summary>
 public static class ItemList
 {
@@ -20,7 +21,8 @@ public static class ItemList
         ("EquipParamGem", "GemName", "AshOfWar", 0x80000000),
     ];
 
-    public static void Write(PorterContext ctx, ParamStore er, GameArchives erArchives, IReadOnlyDictionary<int, string> newWeaponNames)
+    public static void Write(PorterContext ctx, ParamStore er, GameArchives erArchives, IReadOnlyDictionary<int, string> newWeaponNames,
+        string newWeaponsGame = "DS3")
     {
         var reinforce = er.Get("ReinforceParamWeapon")!.Rows.Select(r => r.ID).ToHashSet();
         var lines = new List<string>();
@@ -49,7 +51,7 @@ public static class ItemList
                         maxUpgrade++;
                     infusable = ids.Contains(row.ID + 100);
                 }
-                lines.Add($"{(uint)row.ID | category:X}\t{kind}\t{maxUpgrade}\t{(infusable ? 1 : 0)}\t{Clean(name)}");
+                lines.Add($"{(uint)row.ID | category:X}\t{kind}\t{maxUpgrade}\t{(infusable ? 1 : 0)}\t{Clean(name)}\t{(kind == "Weapon" && newWeaponNames.ContainsKey(row.ID) ? newWeaponsGame : "ER")}");
             }
             Console.WriteLine($"item list: {lines.Count - before} {kind}");
         }

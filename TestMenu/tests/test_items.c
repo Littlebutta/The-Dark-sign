@@ -11,7 +11,9 @@ int main(void)
     DksItem item;
     CHECK(dks_parse_item_line("4C4B400\tWeapon\t25\t1\tAstora Straight Sword\r\n", &item));
     CHECK(item.id == 80000000u && strcmp(item.kind, "Weapon") == 0 && item.max_upgrade == 25 && item.infusable);
-    CHECK(strcmp(item.name, "Astora Straight Sword") == 0);
+    CHECK(strcmp(item.name, "Astora Straight Sword") == 0 && strcmp(item.game, "ER") == 0);
+    CHECK(dks_parse_item_line("4C4B400\tWeapon\t25\t1\tAstora Straight Sword\tDS3\n", &item));
+    CHECK(strcmp(item.name, "Astora Straight Sword") == 0 && strcmp(item.game, "DS3") == 0);
     CHECK(dks_item_give_id(&item, 1, 10) == 80000110u);  /* Heavy +10 */
     CHECK(dks_item_give_id(&item, 13, 99) == 80000025u); /* bad affinity -> Standard, upgrade clamped */
 

@@ -30,6 +30,9 @@ using GetDeviceStateFn = HRESULT(STDMETHODCALLTYPE *)(IDirectInputDevice8W *, DW
 using GetDeviceDataFn = HRESULT(STDMETHODCALLTYPE *)(IDirectInputDevice8W *, DWORD, LPDIDEVICEOBJECTDATA, LPDWORD, DWORD);
 using SetCursorPosFn = BOOL(WINAPI *)(int, int);
 using ClipCursorFn = BOOL(WINAPI *)(const RECT *);
+using GetCursorPosFn = BOOL(WINAPI *)(LPPOINT);
+using GetRawInputDataFn = UINT(WINAPI *)(HRAWINPUT, UINT, LPVOID, PUINT, UINT);
+using GetRawInputBufferFn = UINT(WINAPI *)(PRAWINPUT, PUINT, UINT);
 
 PresentFn o_present;
 Present1Fn o_present1;
@@ -39,6 +42,9 @@ GetDeviceStateFn o_get_state;
 GetDeviceDataFn o_get_data;
 SetCursorPosFn o_set_cursor_pos;
 ClipCursorFn o_clip_cursor;
+GetCursorPosFn o_get_cursor_pos;
+GetRawInputDataFn o_get_raw_input_data;
+GetRawInputBufferFn o_get_raw_input_buffer;
 
 struct Frame {
     ID3D12CommandAllocator *allocator = nullptr;
@@ -60,17 +66,22 @@ HWND g_hwnd;
 WNDPROC g_game_wndproc;
 volatile bool g_open;
 bool g_f1_was_down;
+POINT g_frozen_cursor;            // where the game sees the cursor while the menu is open
+thread_local bool t_in_overlay;   // the menu's own cursor reads see the real position
 
 // Menu state.
 DksItem *g_items;
 int g_item_count;
 std::vector<int> g_shown;
 char g_search[96];
-int g_kind_filter, g_selected = -1, g_quantity = 1, g_upgrade, g_affinity;
+int g_game_filter, g_kind_filter, g_selected = -1, g_quantity = 1, g_upgrade, g_affinity;
 int g_rune_amount = 1000000;
 std::string g_status = "Pick an item and press Give.";
 bool g_focus_search;
 
+// The item adder's modes: one per game the items come from.
+const char *const GAMES[] = {"ER", "DS3", ""};
+const char *const GAME_LABELS[] = {"Elden Ring", "Dark Souls III", "All games"};
 const char *const KINDS[] = {"All", "Weapon", "Armor", "Talisman", "Item", "AshOfWar"};
 const char *const KIND_LABELS[] = {"All", "Weapons", "Armor", "Talismans", "Items", "Ashes of War"};
 const char *const AFFINITIES[] = {"Standard", "Heavy", "Keen", "Quality", "Fire", "Flame Art", "Lightning",
@@ -80,7 +91,8 @@ void refilter()
 {
     g_shown.clear();
     for (int i = 0; i < g_item_count; i++)
-        if ((g_kind_filter == 0 || strcmp(g_items[i].kind, KINDS[g_kind_filter]) == 0) && dks_name_matches(g_items[i].name, g_search))
+        if ((!GAMES[g_game_filter][0] || strcmp(g_items[i].game, GAMES[g_game_filter]) == 0) &&
+            (g_kind_filter == 0 || strcmp(g_items[i].kind, KINDS[g_kind_filter]) == 0) && dks_name_matches(g_items[i].name, g_search))
             g_shown.push_back(i);
     if (g_selected >= 0 && std::find(g_shown.begin(), g_shown.end(), g_selected) == g_shown.end())
         g_selected = -1;
@@ -134,12 +146,24 @@ void draw_menu()
     if (!open)
         g_open = false;
 
+    bool changed = false;
+    if (ImGui::BeginTabBar("games")) {
+        for (int i = 0; i < IM_ARRAYSIZE(GAME_LABELS); i++)
+            if (ImGui::BeginTabItem(GAME_LABELS[i])) {
+                if (g_game_filter != i) {
+                    g_game_filter = i;
+                    changed = true;
+                }
+                ImGui::EndTabItem();
+            }
+        ImGui::EndTabBar();
+    }
     ImGui::SetNextItemWidth(-200);
     if (g_focus_search) {
         ImGui::SetKeyboardFocusHere();
         g_focus_search = false;
     }
-    bool changed = ImGui::InputTextWithHint("##search", "Search items...", g_search, sizeof g_search);
+    changed |= ImGui::InputTextWithHint("##search", "Search items...", g_search, sizeof g_search);
     ImGui::SameLine();
     ImGui::SetNextItemWidth(-1);
     changed |= ImGui::Combo("##kind", &g_kind_filter, KIND_LABELS, IM_ARRAYSIZE(KIND_LABELS));
@@ -160,8 +184,8 @@ void draw_menu()
                 if (ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left))
                     give_selected();
             }
-            ImGui::SameLine(ImGui::GetContentRegionAvail().x - 90);
-            ImGui::TextDisabled("%s", item.kind);
+            ImGui::SameLine(ImGui::GetContentRegionAvail().x - 130);
+            ImGui::TextDisabled(g_game_filter == 2 ? "%s  %s" : "%s", item.kind, item.game);
             ImGui::PopID();
         }
     }
@@ -214,6 +238,8 @@ void toggle()
         g_focus_search = true;
         if (o_clip_cursor)
             o_clip_cursor(nullptr); // the game locks the cursor to its window; free it while the menu is open
+        if (o_get_cursor_pos)
+            o_get_cursor_pos(&g_frozen_cursor);
     }
     ImGui::GetIO().MouseDrawCursor = g_open;
 }
@@ -255,6 +281,53 @@ HRESULT STDMETHODCALLTYPE h_get_data(IDirectInputDevice8W *self, DWORD size, LPD
 
 BOOL WINAPI h_set_cursor_pos(int x, int y) { return g_open ? TRUE : o_set_cursor_pos(x, y); }
 BOOL WINAPI h_clip_cursor(const RECT *rect) { return o_clip_cursor(g_open ? nullptr : rect); }
+
+// The game also turns cursor movement into camera movement, so while the menu is open it sees a cursor that
+// doesn't move.
+BOOL WINAPI h_get_cursor_pos(LPPOINT point)
+{
+    if (g_open && !t_in_overlay && point) {
+        *point = g_frozen_cursor;
+        return TRUE;
+    }
+    return o_get_cursor_pos(point);
+}
+
+// The game reads the mouse (camera) and keyboard as raw input. While the menu is open, mouse movement and buttons
+// are emptied out and every key reads as released, so the camera stays put and no key sticks down.
+void mute(RAWINPUT *input)
+{
+    if (input->header.dwType == RIM_TYPEMOUSE) {
+        input->data.mouse.lLastX = input->data.mouse.lLastY = 0;
+        input->data.mouse.usButtonFlags = 0;
+        input->data.mouse.usButtonData = 0;
+    } else if (input->header.dwType == RIM_TYPEKEYBOARD) {
+        input->data.keyboard.Flags |= RI_KEY_BREAK;
+        input->data.keyboard.Message = WM_KEYUP;
+    }
+}
+
+UINT WINAPI h_get_raw_input_data(HRAWINPUT handle, UINT command, LPVOID data, PUINT size, UINT header_size)
+{
+    UINT result = o_get_raw_input_data(handle, command, data, size, header_size);
+    if (g_open && command == RID_INPUT && data && result != (UINT)-1 && result >= sizeof(RAWINPUTHEADER))
+        mute((RAWINPUT *)data);
+    return result;
+}
+
+UINT WINAPI h_get_raw_input_buffer(PRAWINPUT data, PUINT size, UINT header_size)
+{
+    UINT count = o_get_raw_input_buffer(data, size, header_size);
+    if (g_open && data && count != (UINT)-1) {
+        RAWINPUT *input = data;
+        for (UINT i = 0; i < count; i++) {
+            mute(input);
+            // NEXTRAWINPUTBLOCK: entries are pointer-aligned.
+            input = (RAWINPUT *)(((ULONG_PTR)((BYTE *)input + input->header.dwSize) + sizeof(ULONG_PTR) - 1) & ~(sizeof(ULONG_PTR) - 1));
+        }
+    }
+    return count;
+}
 
 // ---- rendering ----
 
@@ -389,7 +462,9 @@ void render(IDXGISwapChain3 *swap_chain)
         return;
 
     ImGui_ImplDX12_NewFrame();
+    t_in_overlay = true;
     ImGui_ImplWin32_NewFrame();
+    t_in_overlay = false;
     ImGui::NewFrame();
     draw_menu();
     ImGui::Render();
@@ -509,6 +584,12 @@ void hook_input()
          (void **)&o_set_cursor_pos, "SetCursorPos");
     hook((void *)GetProcAddress(GetModuleHandleW(L"user32.dll"), "ClipCursor"), (void *)h_clip_cursor,
          (void **)&o_clip_cursor, "ClipCursor");
+    hook((void *)GetProcAddress(GetModuleHandleW(L"user32.dll"), "GetCursorPos"), (void *)h_get_cursor_pos,
+         (void **)&o_get_cursor_pos, "GetCursorPos");
+    hook((void *)GetProcAddress(GetModuleHandleW(L"user32.dll"), "GetRawInputData"), (void *)h_get_raw_input_data,
+         (void **)&o_get_raw_input_data, "GetRawInputData");
+    hook((void *)GetProcAddress(GetModuleHandleW(L"user32.dll"), "GetRawInputBuffer"), (void *)h_get_raw_input_buffer,
+         (void **)&o_get_raw_input_buffer, "GetRawInputBuffer");
 
     using CreateFn = HRESULT(WINAPI *)(HINSTANCE, DWORD, REFIID, LPVOID *, LPUNKNOWN);
     HMODULE dinput = LoadLibraryW(L"dinput8.dll");

@@ -23,7 +23,10 @@ int dks_parse_item_line(const char *line, DksItem *out)
     if (!(line = next_field(line, id, sizeof id)) || !(line = next_field(line, out->kind, sizeof out->kind)) ||
         !(line = next_field(line, upgrade, sizeof upgrade)) || !(line = next_field(line, infusable, sizeof infusable)))
         return 0;
-    next_field(line, out->name, sizeof out->name);
+    if ((line = next_field(line, out->name, sizeof out->name)))
+        next_field(line, out->game, sizeof out->game);
+    if (!out->game[0])
+        strcpy(out->game, "ER");
     char *end;
     out->id = (uint32_t)strtoul(id, &end, 16);
     if (*end || !id[0] || !out->name[0])
