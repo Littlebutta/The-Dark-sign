@@ -58,11 +58,15 @@ public sealed class ParamStore
         return param;
     }
 
-    /// <summary>Writes every param that was loaded back into the regulation binder.</summary>
-    public void SaveLoaded()
+    /// <summary>Writes every loaded param back into the regulation and saves it, encrypted, to a new file.</summary>
+    public void Save(string path)
     {
         foreach (var (name, param) in _params)
             _files[name].Bytes = param.Write();
+        if (_game == PorterGame.DarkSouls3)
+            RegulationDecryptor.EncryptDS3Regulation(path, Regulation);
+        else
+            RegulationDecryptor.EncryptERRegulation(path, Regulation);
     }
 
     // Binder names are Windows paths ("N:\\GR\\data\\Param\\param\\GameParam\\EquipParamWeapon.param") on every OS.

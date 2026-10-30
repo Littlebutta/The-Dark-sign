@@ -160,4 +160,33 @@ public sealed class CoreTests : IDisposable
         Assert.Equal("Chaos", loaded.GetActiveProfile().Name);
         Assert.Equal(_root, LauncherSettings.ResolveDefaultRoot(Path.Combine(_root, "Launcher", "bin", "Release")));
     }
+
+    [Fact]
+    public void Elden_ring_setup_writes_modengine_config_and_tracks_the_content_build()
+    {
+        var setup = new EldenRingSetup(_root);
+        var exe = Touch("ELDEN RING", "Game", "eldenring.exe");
+        var dll = setup.WriteDll(EldenRingSetup.TestMenuDllName, [1, 2, 3]);
+        Assert.StartsWith(Path.Combine(_root, "TheDarkSign", "Tools", "Dlls"), dll);
+
+        var config = File.ReadAllText(setup.WriteConfig([dll, @"D:\Quote""d\x.dll"]));
+        Assert.Contains($"\"{dll.Replace("\\", "\\\\")}\",", config);
+        Assert.Contains(@"""D:\\Quote\""d\\x.dll""", config);
+        Assert.Contains($"path = \"{setup.ModDir.Replace("\\", "\\\\")}\"", config);
+
+        Assert.True(setup.NeedsContentBuild("1.0.9"));
+        Touch("TheDarkSign", "Mods", "ER", "regulation.bin");
+        Touch("TheDarkSign", "Mods", "ER", "darksign_items.tsv");
+        setup.MarkContentBuilt("1.0.9");
+        Assert.False(setup.NeedsContentBuild("1.0.9"));
+        Assert.True(setup.NeedsContentBuild("1.0.10"));
+
+        var settings = new LauncherSettings { GameExePaths = { [GameId.EldenRing] = exe } };
+        var start = EldenRingSetup.LaunchInfo(LaunchPlanner.Plan(settings, _root, GameId.EldenRing),
+            Path.Combine(_root, "TheDarkSign", "Tools", "ModEngine2", "modengine2_launcher.exe"), setup.ConfigPath,
+            new Dictionary<string, string> { [EldenRingSetup.ItemsVariable] = setup.ItemsFile });
+        Assert.Equal(["-t", "er", "-c", setup.ConfigPath, "-p", exe], start.ArgumentList);
+        Assert.Equal(setup.ItemsFile, start.Environment[EldenRingSetup.ItemsVariable]);
+        Assert.Equal(".dksign", start.Environment[SaveIsolation.SaveExtVariable]);
+    }
 }

@@ -90,6 +90,13 @@ public sealed class GameArchives : IDisposable
         return DCX.Is(raw) ? DCX.Decompress(raw) : raw;
     }
 
+    /// <summary>The file's bytes without DCX compression, plus the compression to use when writing it back.</summary>
+    public (byte[] Bytes, DCX.CompressionInfo Compression) ReadWithCompression(string path)
+    {
+        var bytes = DCX.Decompress(ReadRaw(path), out var compression);
+        return (bytes, compression);
+    }
+
     public void Dispose()
     {
         foreach (var s in _bdts.Values)

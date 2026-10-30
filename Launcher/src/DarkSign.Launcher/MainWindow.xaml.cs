@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using System.ComponentModel;
 using System.Diagnostics;
 using System.IO;
 using System.Net.Http;
@@ -12,7 +13,9 @@ namespace DarkSign.Launcher;
 public partial class MainWindow : Window
 {
     private readonly string _settingsPath = Path.Combine(AppContext.BaseDirectory, LauncherSettings.FileName);
-    private readonly ObservableCollection<GameRow> _rows = new(GameDefinition.All.Select(d => new GameRow(d)));
+    // Elden Ring has its own panel (Play with the ported content); the list holds the other games.
+    private readonly ObservableCollection<GameRow> _rows =
+        new(GameDefinition.All.Where(d => d.Id != GameId.EldenRing).Select(d => new GameRow(d)));
     private readonly LauncherSettings _settings;
     private bool _loadingProfile;
 
@@ -26,10 +29,12 @@ public partial class MainWindow : Window
         foreach (var row in _rows)
             row.ExePath = _settings.GameExePaths.GetValueOrDefault(row.Definition.Id, "");
         RefreshProfiles();
+        TestMenuBox.IsChecked = _settings.TestMenu;
 
         // Games copied in after the last scan are picked up without pressing "Scan for games".
-        if (_rows.Any(r => string.IsNullOrEmpty(r.ExePath)))
+        if (_rows.Any(r => string.IsNullOrEmpty(r.ExePath)) || !_settings.GameExePaths.ContainsKey(GameId.EldenRing))
             Scan();
+        RefreshContentText();
 
         Title = $"The Dark Sign  v{SelfUpdater.CurrentVersion.ToString(3)}";
         Loaded += async (_, _) => await UpdateLauncherAsync();
@@ -72,8 +77,13 @@ public partial class MainWindow : Window
     {
         var found = GameDetector.Scan(Root);
         foreach (var game in found)
-            _rows.First(r => r.Definition.Id == game.Id).ExePath = game.ExePath;
-        StatusText.Text = $"Found {found.Count} of {_rows.Count} games in {Root}.";
+        {
+            if (game.Id == GameId.EldenRing)
+                _settings.GameExePaths[GameId.EldenRing] = game.ExePath;
+            else
+                _rows.First(r => r.Definition.Id == game.Id).ExePath = game.ExePath;
+        }
+        StatusText.Text = $"Found {found.Count} of {GameDefinition.All.Count} games in {Root}.";
         SaveSettings();
     }
 
@@ -123,7 +133,9 @@ public partial class MainWindow : Window
         RootBox.Text = Root;
         foreach (var row in _rows.Where(r => !PathGuard.IsInsideRoot(r.ExePath, Root)))
             row.ExePath = "";
+        _settings.GameExePaths.Remove(GameId.EldenRing);
         Scan();
+        RefreshContentText();
     }
 
     private void OnBrowseExe(object sender, RoutedEventArgs e)
@@ -224,6 +236,222 @@ public partial class MainWindow : Window
             $"Set \"RequireSaveRedirect\": false in {LauncherSettings.FileName} only if you accept that.",
             "Save redirect missing", MessageBoxButton.OK, MessageBoxImage.Warning);
         return false;
+    }
+
+    private void RefreshContentText()
+    {
+        var setup = new EldenRingSetup(Root);
+        ContentText.Text = !_settings.GameExePaths.ContainsKey(GameId.EldenRing)
+            ? $"Elden Ring was not found in {Root}."
+            : setup.ContentVersion is { } version
+                ? $"Dark Souls III weapons are ported (content build {version}). They're sold by Merchant Kalé."
+                : "The content isn't built yet. The first Play builds it from your game files, which takes a few minutes.";
+    }
+
+    private async void OnPlayEldenRing(object sender, RoutedEventArgs e) => await PlayEldenRingAsync(rebuild: false, launch: true);
+
+    private async void OnRebuildContent(object sender, RoutedEventArgs e) => await PlayEldenRingAsync(rebuild: true, launch: false);
+
+    /// <summary>
+    /// Gets everything ready and starts Elden Ring through ModEngine2: the porter builds the content mod when it is
+    /// missing or out of date, and ModEngine2 loads it with the save redirect and (optionally) the F1 test menu.
+    /// </summary>
+    private async Task PlayEldenRingAsync(bool rebuild, bool launch)
+    {
+        SaveSettings();
+        LaunchPlan plan;
+        try
+        {
+            plan = LaunchPlanner.Plan(_settings, Root, GameId.EldenRing);
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or FileNotFoundException or IsolationViolationException)
+        {
+            MessageBox.Show(this, ex.Message, "Cannot launch", MessageBoxButton.OK, MessageBoxImage.Error);
+            return;
+        }
+        if (RedirectDll.Bytes is null)
+        {
+            MessageBox.Show(this, "This launcher build does not include the save-redirect DLL, so Elden Ring would write over " +
+                "your normal saves. Use a released launcher build.", "Save redirect missing", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+        if (launch && Process.GetProcessesByName("eldenring").Length > 0)
+        {
+            StatusText.Text = "Elden Ring is already running.";
+            return;
+        }
+
+        var setup = new EldenRingSetup(Root);
+        SetBusy(true);
+        try
+        {
+            RemoveGameFolderProxy(plan.ExePath);
+            var modEngine = await EnsureModEngineAsync(setup);
+            var porterVersion = await EnsurePorterAsync(setup);
+            if (rebuild || setup.NeedsContentBuild(porterVersion))
+            {
+                if (!await BuildContentAsync(setup))
+                    return;
+                setup.MarkContentBuilt(porterVersion);
+            }
+            RefreshContentText();
+            if (!launch)
+            {
+                StatusText.Text = "Content rebuilt.";
+                return;
+            }
+
+            SaveIsolation.EnsureSaveDirectory(Root, _settings.GetActiveProfile().Name, GameId.EldenRing);
+            var dlls = new List<string> { setup.WriteDll(SaveIsolation.RedirectDllName, RedirectDll.Bytes) };
+            var env = new Dictionary<string, string>();
+            if (_settings.TestMenu && TestMenuDll.Bytes is not null)
+            {
+                dlls.Add(setup.WriteDll(EldenRingSetup.TestMenuDllName, TestMenuDll.Bytes));
+                env[EldenRingSetup.ItemsVariable] = setup.ItemsFile;
+            }
+            var config = setup.WriteConfig(dlls);
+            Process.Start(EldenRingSetup.LaunchInfo(plan, modEngine, config, env));
+            StatusText.Text = $"Launched Elden Ring. Saves: {plan.SaveDirectory}" + (env.Count > 0
+                ? ". Press F1 in game for the test menu (it shows over Borderless or Windowed mode)."
+                : ".");
+        }
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or IOException or InvalidDataException
+                                       or InvalidOperationException or UnauthorizedAccessException
+                                       or IsolationViolationException or Win32Exception)
+        {
+            MessageBox.Show(this, ex.Message, "Cannot start Elden Ring", MessageBoxButton.OK, MessageBoxImage.Error);
+            StatusText.Text = ex.Message;
+        }
+        finally
+        {
+            SetBusy(false);
+        }
+    }
+
+    private void SetBusy(bool busy)
+    {
+        PlayButton.IsEnabled = !busy;
+        RebuildButton.IsEnabled = !busy;
+        PlayButton.Content = busy ? "WORKING…" : "PLAY";
+    }
+
+    /// <summary>
+    /// Older launchers put the save redirect in the game folder as dinput8.dll. ModEngine2 now loads it, and two
+    /// copies would both hook the game, so our old copy is removed (never another mod's dinput8.dll).
+    /// </summary>
+    private void RemoveGameFolderProxy(string exePath)
+    {
+        var state = SaveRedirectInstaller.Check(GameId.EldenRing, exePath, null);
+        if (state is RedirectState.Installed or RedirectState.Outdated)
+        {
+            var proxy = SaveRedirectInstaller.ProxyPath(exePath);
+            PathGuard.EnsureInsideRoot(proxy, Root);
+            File.Delete(proxy);
+        }
+    }
+
+    private async Task<string> EnsureModEngineAsync(EldenRingSetup setup)
+    {
+        if (setup.FindModEngineLauncher() is { } existing)
+            return existing;
+        StatusText.Text = "Downloading ModEngine2…";
+        var zip = DownloadPath(Path.GetFileName(EldenRingSetup.ModEngineUrl));
+        using (var http = new HttpClient { Timeout = TimeSpan.FromMinutes(5) })
+        {
+            http.DefaultRequestHeaders.UserAgent.ParseAdd("TheDarkSignLauncher");
+            var bytes = await http.GetByteArrayAsync(EldenRingSetup.ModEngineUrl);
+            await File.WriteAllBytesAsync(zip, bytes);
+        }
+        setup.InstallModEngine(zip);
+        return setup.FindModEngineLauncher() ?? throw new InvalidOperationException("ModEngine2 was downloaded but its launcher is missing.");
+    }
+
+    /// <summary>Gets the porter released with this launcher version (falls back to an installed one).</summary>
+    private async Task<string> EnsurePorterAsync(EldenRingSetup setup)
+    {
+        var version = SelfUpdater.CurrentVersion.ToString(3);
+        if (setup.PorterVersion != version && version != "1.0.0")
+        {
+            StatusText.Text = "Downloading the porter…";
+            var zip = DownloadPath($"DarkSignPorter-{version}.zip");
+            using var http = new HttpClient { Timeout = TimeSpan.FromMinutes(5) };
+            if (await new SelfUpdater(_settings.GitHubToken, http).DownloadAssetAsync(SelfUpdater.TagPrefix + version, EldenRingSetup.PorterAsset, zip))
+                setup.InstallPorter(zip, version);
+        }
+        return setup.PorterVersion
+            ?? throw new InvalidOperationException($"The porter is missing from {setup.PorterDir} and could not be downloaded.");
+    }
+
+    /// <summary>Runs the porter, which builds TheDarkSign\Mods\ER from the game files. Output goes to a log file.</summary>
+    private async Task<bool> BuildContentAsync(EldenRingSetup setup)
+    {
+        Directory.CreateDirectory(setup.LogDir);
+        var log = Path.Combine(setup.LogDir, $"porter-{DateTime.Now:yyyyMMdd-HHmmss}.log");
+        StatusText.Text = "Building the Dark Souls III content from your game files (a few minutes)…";
+        var start = new ProcessStartInfo(setup.PorterExe)
+        {
+            UseShellExecute = false,
+            CreateNoWindow = true,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+        };
+        foreach (var arg in new[] { "--root", Root, "port-weapons" })
+            start.ArgumentList.Add(arg);
+
+        using var process = Process.Start(start)!;
+        await using var writer = new StreamWriter(log);
+        var last = new Queue<string>();
+        void OnLine(string? line)
+        {
+            if (line is null)
+                return;
+            lock (last)
+            {
+                writer.WriteLine(line);
+                last.Enqueue(line);
+                if (last.Count > 8)
+                    last.Dequeue();
+            }
+            Dispatcher.BeginInvoke(() => StatusText.Text = $"Building content: {line}");
+        }
+        process.OutputDataReceived += (_, e) => OnLine(e.Data);
+        process.ErrorDataReceived += (_, e) => OnLine(e.Data);
+        process.BeginOutputReadLine();
+        process.BeginErrorReadLine();
+        await process.WaitForExitAsync();
+        process.WaitForExit(); // flushes the output events
+
+        if (process.ExitCode == 0)
+            return true;
+        string tail;
+        lock (last)
+            tail = string.Join("\n", last);
+        MessageBox.Show(this, $"Building the content failed. The last lines were:\n\n{tail}\n\nFull log: {log}",
+            "Content build failed", MessageBoxButton.OK, MessageBoxImage.Error);
+        StatusText.Text = $"Content build failed; see {log}";
+        return false;
+    }
+
+    private string DownloadPath(string fileName)
+    {
+        var dir = Path.Combine(Root, "TheDarkSign", "Work", "downloads");
+        Directory.CreateDirectory(dir);
+        var path = Path.Combine(dir, fileName);
+        PathGuard.EnsureInsideRoot(path, Root);
+        return path;
+    }
+
+    private void OnTestMenuChanged(object sender, RoutedEventArgs e)
+    {
+        _settings.TestMenu = TestMenuBox.IsChecked == true;
+        _settings.Save(_settingsPath);
+    }
+
+    private void OnOpenModFolder(object sender, RoutedEventArgs e)
+    {
+        var dir = new EldenRingSetup(Root).ModDir;
+        Directory.CreateDirectory(dir);
+        Process.Start(new ProcessStartInfo("explorer.exe", $"\"{dir}\"") { UseShellExecute = true });
     }
 
     private void OnProfileChanged(object sender, SelectionChangedEventArgs e)

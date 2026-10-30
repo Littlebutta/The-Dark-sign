@@ -42,6 +42,9 @@ public sealed class LauncherSettings
     /// <summary>Refuse to launch a game whose saves would still go to AppData (no redirect DLL in place).</summary>
     public bool RequireSaveRedirect { get; set; } = true;
 
+    /// <summary>Load the F1 test menu (give any item, set runes) when playing Elden Ring.</summary>
+    public bool TestMenu { get; set; } = true;
+
     /// <summary>Check GitHub for a newer launcher on every start.</summary>
     public bool AutoUpdate { get; set; } = true;
 
