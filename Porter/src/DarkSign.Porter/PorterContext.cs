@@ -49,8 +49,23 @@ public sealed class PorterContext
     public GameArchives OpenArchives(PorterGame game)
     {
         if (game == PorterGame.EldenRing)
-            SoulsFormats.Oodle.SearchPaths.Add(GameDir(game)); // Elden Ring's DCX files need its oo2core DLL
+            AddOodle(GameDir(game));
         return GameArchives.Open(game, GameDir(game), Data);
+    }
+
+    // Elden Ring's DCX files are Oodle-compressed, and the game ships the only copy of oo2core on the PC. It is
+    // copied (never moved) into the work cache and loaded from there, next to the game folder as a fallback.
+    private void AddOodle(string gameDir)
+    {
+        var source = Directory.EnumerateFiles(gameDir, "oo2core_*_win64.dll").FirstOrDefault();
+        if (source is not null)
+        {
+            var target = WorkPath("cache", "oodle", Path.GetFileName(source));
+            if (!File.Exists(target))
+                File.Copy(source, target);
+            SoulsFormats.Oodle.SearchPaths.Add(Path.GetDirectoryName(target)!);
+        }
+        SoulsFormats.Oodle.SearchPaths.Add(gameDir);
     }
 
     public ParamStore LoadParams(PorterGame game) => ParamStore.Load(game, GameDir(game), Data);

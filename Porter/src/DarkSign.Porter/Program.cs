@@ -36,7 +36,12 @@ try
 }
 catch (Exception ex)
 {
-    return Fail($"error: {ex.Message}");
+    // Inner exceptions carry the real cause (e.g. why each Oodle DLL candidate failed to load).
+    IEnumerable<Exception> inner = ex.InnerException is AggregateException nested
+        ? nested.Flatten().InnerExceptions
+        : ex.InnerException is { } one ? [one] : [];
+    return Fail(string.Join(Environment.NewLine,
+        new[] { $"error: {ex.Message}" }.Concat(inner.Select(e => $"  {e.GetType().Name}: {e.Message}"))));
 }
 
 static int Fail(string message)
