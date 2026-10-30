@@ -139,9 +139,25 @@ public static class Commands
 
         var path = ctx.ModPath("regulation.bin");
         erStore.Save(path);
+        File.WriteAllText(ctx.ModPath("README.txt"), ModReadme);
         Console.WriteLine($"mod: {Path.GetDirectoryName(path)}");
         return 0;
     }
+
+    private const string ModReadme = """
+        The Dark Sign: Elden Ring content mod (generated, do not hand-edit)
+
+        Built by `DarkSignPorter port-weapons` from the Dark Souls III and Elden Ring game files on this PC.
+        Re-running it rebuilds everything here from scratch; nothing in the game folders is changed.
+        ModEngine2 loads this folder over the game (TheDarkSign\Tools\ModEngine2, config_darksign_er.toml).
+
+          regulation.bin                     Elden Ring params plus the ported DS3 weapons (IDs 80000000+)
+                                             and a new shop lineup (130000+) for Merchant Kalé
+          msg\engus\item_dlc02.msgbnd.dcx    names and descriptions of the ported weapons
+          script\talk\*.talkesdbnd.dcx       Kalé's talk scripts, opening the new shop lineup
+          parts\wp_a_9NNN(_l).partsbnd.dcx    ported weapon models (and low-detail versions)
+          material\allmaterial_dlc02...       materials for the ported models
+        """;
 
     private static void PortWeaponModels(PorterContext ctx, GameArchives er, GameArchives ds3, List<WeaponPlan> plans,
         PARAM ds3Weapons, PARAM erWeapons)

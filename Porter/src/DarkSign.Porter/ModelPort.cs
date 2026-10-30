@@ -12,8 +12,11 @@ public static class ModelPort
 {
     public sealed record ConvertedModel(BND4 Binder, DCX.CompressionInfo Compression, List<NewMaterial> Materials);
 
-    /// <summary>A material the converted model needs: a copy of a template MATBIN pointed at the new textures.</summary>
-    public sealed record NewMaterial(string TemplateMatbin, string NewMatbin, string TextureBase);
+    /// <summary>
+    /// A material the converted model needs: a copy of a template MATBIN pointed at the textures (TPF names) the
+    /// DS3 material used.
+    /// </summary>
+    public sealed record NewMaterial(string TemplateMatbin, string NewMatbin, string Albedo, string Normal, string Metallic);
 
     public static string PartsPath(int modelId, bool lod = false) =>
         $"/parts/wp_a_{modelId:D4}{(lod ? "_l" : "")}.partsbnd.dcx";
@@ -42,7 +45,7 @@ public static class ModelPort
             {
                 var flver = FLVER2.Read(file.Bytes);
                 var stem = Path.GetFileNameWithoutExtension(leaf);
-                ConvertFlver(flver, templateFlver, stem, materials);
+                ConvertFlver(flver, templateFlver, stem, oldTag, newTag, materials);
                 files.Add(new BinderFile(file.Flags, file.ID, folder + leaf, flver.Write()));
             }
             else if (TPF.Is(file.Bytes))
@@ -56,7 +59,8 @@ public static class ModelPort
         return new ConvertedModel(template, compression, materials);
     }
 
-    private static void ConvertFlver(FLVER2 flver, FLVER2 template, string stem, List<NewMaterial> materials)
+    private static void ConvertFlver(FLVER2 flver, FLVER2 template, string stem, string oldTag, string newTag,
+        List<NewMaterial> materials)
     {
         var bboxMin = flver.Header.BoundingBoxMin;
         var bboxMax = flver.Header.BoundingBoxMax;
@@ -80,15 +84,28 @@ public static class ModelPort
         for (int i = 0; i < flver.Materials.Count; i++)
         {
             var m = flver.Materials[i];
-            var suffix = flver.Materials.Count > 1 ? $"_{i}" : "";
+            // "_mat1", not "_1": a second material must not share a name with a model's "_1" part.
+            var suffix = flver.Materials.Count > 1 ? $"_mat{i}" : "";
             var newMatbin = templateMatbin.Replace(TagIn(templateMatbin), stem + suffix);
+
+            // The textures this DS3 material really uses (often the main model's, even on a "_1" part).
+            string? Ds3Texture(string param) => m.Textures.FirstOrDefault(t => t.ParamName == param && t.Path.Length > 0) is { } t
+                ? TextureName(Path.GetFileNameWithoutExtension(ItemText.Leaf(t.Path)), oldTag, newTag)
+                : null;
+            var albedo = Ds3Texture("g_DiffuseTexture") ?? stem + "_a";
+            var normal = Ds3Texture("g_BumpmapTexture") ?? stem + "_n";
+            var specular = Ds3Texture("g_SpecularTexture");
+            var metallic = specular is not null && specular.EndsWith("_r", StringComparison.OrdinalIgnoreCase)
+                ? specular[..^2] + "_m"
+                : stem + "_m";
+
             m.Name = stem + suffix;
             m.MTD = templateMaterial.MTD.Replace(TagIn(templateMatbin), stem + suffix);
             m.GXIndex = 0;
             m.Textures = templateMaterial.Textures
                 .Select(t => new FLVER2.Texture(t.ParamName, "", t.TilingScale, t.TilingTypeU, t.TilingTypeV, t.Unk14, t.Unk18, t.Unk1C))
                 .ToList();
-            materials.Add(new NewMaterial(templateMatbin, newMatbin, stem));
+            materials.Add(new NewMaterial(templateMatbin, newMatbin, albedo, normal, metallic));
         }
 
         // Elden Ring vertices carry one tangent; DS3's second tangent (and its layout member) is dropped.
@@ -98,24 +115,30 @@ public static class ModelPort
             if (vertex.Tangents.Count > 1)
                 vertex.Tangents.RemoveRange(1, vertex.Tangents.Count - 1);
 
-        // Elden Ring's weapon shader reads VertexColor1; some DS3 layouts have none, so add it as opaque white.
+        // Elden Ring's weapon shader reads VertexColor1; some DS3 layouts have none. Meshes can share layouts, so
+        // first add the member once to the first layout of each color-less mesh, then pad the colors of every
+        // vertex whose layouts now carry more color members than it has.
+        var changed = new HashSet<FLVER2.BufferLayout>();
         foreach (var mesh in flver.Meshes)
         {
             var layouts = mesh.VertexBuffers.Select(b => flver.BufferLayouts[b.LayoutIndex]).ToList();
-            if (layouts.Any(l => l.Any(m => m.Semantic == FLVER.LayoutSemantic.VertexColor)))
+            if (layouts.Count == 0 || layouts.Any(l => l.Any(m => m.Semantic == FLVER.LayoutSemantic.VertexColor)))
                 continue;
-            foreach (var layout in layouts.Distinct())
-            {
-                int uv = layout.FindIndex(m => m.Semantic == FLVER.LayoutSemantic.UV);
-                layout.Insert(uv < 0 ? layout.Count : uv,
-                    new FLVER.LayoutMember(FLVER.LayoutType.UByte4Norm, FLVER.LayoutSemantic.VertexColor, 1));
-            }
+            var first = layouts[0];
+            int uv = first.FindIndex(m => m.Semantic == FLVER.LayoutSemantic.UV);
+            first.Insert(uv < 0 ? first.Count : uv,
+                new FLVER.LayoutMember(FLVER.LayoutType.UByte4Norm, FLVER.LayoutSemantic.VertexColor, 1));
+            changed.Add(first);
+        }
+        foreach (var mesh in flver.Meshes)
+        {
+            var layouts = mesh.VertexBuffers.Select(b => flver.BufferLayouts[b.LayoutIndex]).ToList();
+            if (!layouts.Any(changed.Contains))
+                continue;
+            int colors = layouts.Sum(l => l.Count(m => m.Semantic == FLVER.LayoutSemantic.VertexColor));
             foreach (var vertex in mesh.Vertices)
-            {
-                // The layout's color member has index 1, so colors[0] is a placeholder for index 0.
-                while (vertex.Colors.Count < 2)
+                while (vertex.Colors.Count < colors)
                     vertex.Colors.Add(new FLVER.VertexColor(1f, 1f, 1f, 1f));
-            }
         }
     }
 
@@ -137,16 +160,24 @@ public static class ModelPort
         var added = new List<TPF.Texture>();
         foreach (var t in tpf.Textures)
         {
-            t.Name = t.Name.Replace(oldTag, newTag, StringComparison.OrdinalIgnoreCase);
-            // DS3 LOD textures end in the LOD mark ("WP_A_9000_a_l"); the converted LOD materials name them by the
-            // LOD model's stem ("WP_A_9000_L" + "_a"), so move the mark in front of the map letter.
-            if (t.Name.Length > 4 && t.Name.EndsWith("_l", StringComparison.OrdinalIgnoreCase) && t.Name[^4] == '_')
-                t.Name = t.Name[..^4] + "_L" + t.Name[^4..^2];
+            t.Name = TextureName(t.Name, oldTag, newTag);
             if (t.Name.EndsWith("_r", StringComparison.OrdinalIgnoreCase))
                 added.Add(new TPF.Texture(t.Name[..^2] + "_m", 103, 0, BlackBc4Dds(), TPF.TPFPlatform.PC));
         }
         tpf.Textures.AddRange(added);
         return tpf;
+    }
+
+    /// <summary>
+    /// A DS3 texture name under the new model: "WP_A_0201_a" -> "WP_A_9020_a". DS3 LOD textures end in the LOD mark
+    /// ("WP_A_0201_a_l"); it moves in front of the map letter ("WP_A_9020_L_a") to match the LOD model's stem.
+    /// </summary>
+    public static string TextureName(string ds3Name, string oldTag, string newTag)
+    {
+        var name = ds3Name.Replace(oldTag, newTag, StringComparison.OrdinalIgnoreCase);
+        if (name.Length > 4 && name.EndsWith("_l", StringComparison.OrdinalIgnoreCase) && name[^4] == '_')
+            name = name[..^4] + "_L" + name[^4..^2];
+        return name;
     }
 
     /// <summary>A 4x4, single-mip BC4 DDS that decodes to all zero (black).</summary>
@@ -202,10 +233,15 @@ public static class ModelPort
             var templateTag = TagIn(m.TemplateMatbin);
             foreach (var sampler in matbin.Samplers.Where(smp => smp.Path.Contains(templateTag, StringComparison.OrdinalIgnoreCase)))
             {
+                var texture = sampler.Type.Contains("Albedo", StringComparison.OrdinalIgnoreCase) ? m.Albedo
+                    : sampler.Type.Contains("Normal", StringComparison.OrdinalIgnoreCase) ? m.Normal
+                    : sampler.Type.Contains("Metallic", StringComparison.OrdinalIgnoreCase) ? m.Metallic
+                    : null;
+                if (texture is null)
+                    continue;
                 var leaf = ItemText.Leaf(sampler.Path);
-                var suffix = Path.GetFileNameWithoutExtension(leaf)[^2..]; // _a, _n, _m
-                var folder = sampler.Path[..^leaf.Length].Replace(templateTag, ModelTag(m.TextureBase), StringComparison.OrdinalIgnoreCase);
-                sampler.Path = folder + m.TextureBase + suffix + Path.GetExtension(leaf);
+                var folder = sampler.Path[..^leaf.Length].Replace(templateTag, ModelTag(texture), StringComparison.OrdinalIgnoreCase);
+                sampler.Path = folder + texture + Path.GetExtension(leaf);
             }
             matbin.SourcePath = matbin.SourcePath.Replace(templateTag, TagIn(m.NewMatbin), StringComparison.OrdinalIgnoreCase);
             var name = templateFile.Name.Replace(m.TemplateMatbin, m.NewMatbin, StringComparison.OrdinalIgnoreCase);
