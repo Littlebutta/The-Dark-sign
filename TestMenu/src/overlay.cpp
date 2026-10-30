@@ -74,11 +74,14 @@ DksItem *g_items;
 int g_item_count;
 std::vector<int> g_shown;
 char g_search[96];
-int g_kind_filter, g_selected = -1, g_quantity = 1, g_upgrade, g_affinity;
+int g_game_filter, g_kind_filter, g_selected = -1, g_quantity = 1, g_upgrade, g_affinity;
 int g_rune_amount = 1000000;
 std::string g_status = "Pick an item and press Give.";
 bool g_focus_search;
 
+// The item adder's modes: one per game the items come from.
+const char *const GAMES[] = {"ER", "DS3", ""};
+const char *const GAME_LABELS[] = {"Elden Ring", "Dark Souls III", "All games"};
 const char *const KINDS[] = {"All", "Weapon", "Armor", "Talisman", "Item", "AshOfWar"};
 const char *const KIND_LABELS[] = {"All", "Weapons", "Armor", "Talismans", "Items", "Ashes of War"};
 const char *const AFFINITIES[] = {"Standard", "Heavy", "Keen", "Quality", "Fire", "Flame Art", "Lightning",
@@ -88,7 +91,8 @@ void refilter()
 {
     g_shown.clear();
     for (int i = 0; i < g_item_count; i++)
-        if ((g_kind_filter == 0 || strcmp(g_items[i].kind, KINDS[g_kind_filter]) == 0) && dks_name_matches(g_items[i].name, g_search))
+        if ((!GAMES[g_game_filter][0] || strcmp(g_items[i].game, GAMES[g_game_filter]) == 0) &&
+            (g_kind_filter == 0 || strcmp(g_items[i].kind, KINDS[g_kind_filter]) == 0) && dks_name_matches(g_items[i].name, g_search))
             g_shown.push_back(i);
     if (g_selected >= 0 && std::find(g_shown.begin(), g_shown.end(), g_selected) == g_shown.end())
         g_selected = -1;
@@ -142,12 +146,24 @@ void draw_menu()
     if (!open)
         g_open = false;
 
+    bool changed = false;
+    if (ImGui::BeginTabBar("games")) {
+        for (int i = 0; i < IM_ARRAYSIZE(GAME_LABELS); i++)
+            if (ImGui::BeginTabItem(GAME_LABELS[i])) {
+                if (g_game_filter != i) {
+                    g_game_filter = i;
+                    changed = true;
+                }
+                ImGui::EndTabItem();
+            }
+        ImGui::EndTabBar();
+    }
     ImGui::SetNextItemWidth(-200);
     if (g_focus_search) {
         ImGui::SetKeyboardFocusHere();
         g_focus_search = false;
     }
-    bool changed = ImGui::InputTextWithHint("##search", "Search items...", g_search, sizeof g_search);
+    changed |= ImGui::InputTextWithHint("##search", "Search items...", g_search, sizeof g_search);
     ImGui::SameLine();
     ImGui::SetNextItemWidth(-1);
     changed |= ImGui::Combo("##kind", &g_kind_filter, KIND_LABELS, IM_ARRAYSIZE(KIND_LABELS));
@@ -168,8 +184,8 @@ void draw_menu()
                 if (ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left))
                     give_selected();
             }
-            ImGui::SameLine(ImGui::GetContentRegionAvail().x - 90);
-            ImGui::TextDisabled("%s", item.kind);
+            ImGui::SameLine(ImGui::GetContentRegionAvail().x - 130);
+            ImGui::TextDisabled(g_game_filter == 2 ? "%s  %s" : "%s", item.kind, item.game);
             ImGui::PopID();
         }
     }

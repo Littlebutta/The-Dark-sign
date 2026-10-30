@@ -28,9 +28,11 @@ typedef struct {
     int max_upgrade;     /* weapons: highest +N, others 0 */
     int infusable;       /* weapons that take affinities (Heavy, Keen, ...) */
     char name[DKS_NAME_MAX]; /* UTF-8 */
+    char game[8];        /* where it comes from: "ER", "DS3" (later "DSR", "BB") */
 } DksItem;
 
-/* One line of items_er.tsv: "<hex id>\t<kind>\t<max upgrade>\t<infusable 0|1>\t<name>". Returns 1 if valid. */
+/* One line of darksign_items.tsv: "<hex id>\t<kind>\t<max upgrade>\t<infusable 0|1>\t<name>[\t<game>]".
+   The game defaults to "ER". Returns 1 if valid. */
 int dks_parse_item_line(const char *line, DksItem *out);
 
 /* The ID to give: a weapon's base ID plus affinity (0-12, x100) and upgrade level, both clamped to what it allows. */
