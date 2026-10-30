@@ -23,6 +23,23 @@ dotnet publish Launcher/src/DarkSign.Launcher -c Release -o "D:\The Dark sign\La
 The launcher treats the parent of its `Launcher` folder as the project root, finds each game's exe in the root's
 subfolders, and refuses to launch anything outside the root. Settings live in `launcher_settings.json` next to the exe.
 
+### Playing Elden Ring with The Dark Sign
+
+The Elden Ring panel's **Play** button does everything:
+
+1. Gets ModEngine2 2.1.0 (downloaded once, hash-checked, into `TheDarkSign\Tools\ModEngine2`) and the porter
+   released with this launcher (`DarkSignPorter.zip`, into `TheDarkSign\Tools\Porter`).
+2. Builds the content mod in `TheDarkSign\Mods\ER` with `DarkSignPorter port-weapons` when it is missing or was
+   built by another porter version (**Rebuild content** forces it). The log goes to `TheDarkSign\Work\logs`.
+3. Starts the game through ModEngine2 with the save redirect and, if ticked, the F1 test menu injected
+   (`external_dlls`). Saves go to `TheDarkSign\Saves\<profile>\ER`, offline. The game folder is not written.
+
+**F1 test menu** (`TestMenu/`, `dksign_testmenu.dll`): F1 in game opens a window to search every item (Elden Ring's
+and the ported ones, from `Mods\ER\darksign_items.tsv`) and give it with a quantity, upgrade level and affinity, and to
+add or set runes. It shows over the game in Borderless or Windowed display mode. It finds the game's item-give
+function and rune counter by the byte patterns [Erd-Tools](https://github.com/Nordgaren/Erd-Tools) uses; if a game
+update moves them, the buttons say so instead of crashing. It is a testing aid for offline play only.
+
 ## Save isolation
 
 - **Dark Souls Remastered, Dark Souls III, Elden Ring:** `SaveRedirect/` builds `dksign_saveredirect.dll`
@@ -57,7 +74,7 @@ off.
 `Porter/` builds `DarkSignPorter.exe`, which reads Dark Souls III and Elden Ring straight from their packed
 archives and will build the Elden Ring content mod: items, enemies and bosses from Dark Souls III first, then Dark
 Souls Remastered and Bloodborne, with items Elden Ring already has skipped. It only reads the game folders; everything it writes goes to
-`TheDarkSign\Work` (and later `TheDarkSign\Mods\ER`). It lives in `TheDarkSign\Tools\Porter` and finds the
+`TheDarkSign\Work` and `TheDarkSign\Mods\ER`. It lives in `TheDarkSign\Tools\Porter` and finds the
 project root from there, or takes `--root`.
 
 ```

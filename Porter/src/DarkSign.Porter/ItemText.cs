@@ -14,6 +14,10 @@ public static class ItemText
         ["WeaponName"] = ["武器名", "WeaponName"],
         ["WeaponInfo"] = ["武器説明", "WeaponInfo"],
         ["WeaponCaption"] = ["武器うんちく", "WeaponCaption"],
+        ["ProtectorName"] = ["防具名", "ProtectorName"],
+        ["AccessoryName"] = ["アクセサリ名", "AccessoryName"],
+        ["GoodsName"] = ["アイテム名", "GoodsName"],
+        ["GemName"] = ["GemName"],
     };
 
     private static readonly Dictionary<PorterGame, string[]> ItemBinders = new()

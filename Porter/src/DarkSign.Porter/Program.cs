@@ -14,6 +14,7 @@ const string Usage = """
       matbin-info <name filter>                show Elden Ring material definitions
       weapons-plan                 decide which DS3 weapons to port and as which Elden Ring class
       port-weapons                 build the weapon rows into TheDarkSign\Mods\ER\regulation.bin
+      item-list                    write the test menu's item list (Elden Ring items only)
     """;
 
 var argList = args.ToList();
@@ -43,6 +44,7 @@ try
         "fmg-list" when argList.Count == 3 => Explore.FmgList(ctx, PorterGame.Parse(argList[1]), argList[2]),
         "flver-info" when argList.Count == 3 => Explore.FlverInfo(ctx, PorterGame.Parse(argList[1]), argList[2]),
         "port-weapons" => Commands.PortWeapons(ctx),
+        "item-list" => Commands.ItemListOnly(ctx),
         "weapons-plan" => Commands.WeaponsPlan(ctx).Count > 0 ? 0 : 1,
         "matbin-info" when argList.Count == 2 => Explore.MatbinInfo(ctx, argList[1]),
         "shops" when argList.Count == 2 => Explore.Shops(ctx, PorterGame.Parse(argList[1])),

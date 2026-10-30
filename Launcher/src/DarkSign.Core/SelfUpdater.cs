@@ -75,6 +75,36 @@ public sealed class SelfUpdater(string? token, HttpClient? http = null)
         File.Move(newPath, exePath);
     }
 
+    /// <summary>
+    /// Downloads a file attached to the release tagged <paramref name="tag"/> (e.g. the porter that was built with
+    /// this launcher). Returns false when the release or the file does not exist.
+    /// </summary>
+    public async Task<bool> DownloadAssetAsync(string tag, string assetName, string destPath, CancellationToken ct = default)
+    {
+        string? assetUrl;
+        using (var request = NewRequest($"https://api.github.com/repos/{Repository}/releases/tags/{tag}", "application/vnd.github+json"))
+        using (var response = await _http.SendAsync(request, ct))
+        {
+            if (!response.IsSuccessStatusCode)
+                return false;
+            using var json = JsonDocument.Parse(await response.Content.ReadAsStringAsync(ct));
+            assetUrl = json.RootElement.GetProperty("assets").EnumerateArray()
+                .Where(a => a.GetProperty("name").GetString() == assetName)
+                .Select(a => a.GetProperty("url").GetString())
+                .FirstOrDefault();
+        }
+        if (assetUrl is null)
+            return false;
+
+        using var download = NewRequest(assetUrl, "application/octet-stream");
+        using var file = await _http.SendAsync(download, HttpCompletionOption.ResponseHeadersRead, ct);
+        file.EnsureSuccessStatusCode();
+        await using (var output = File.Create(destPath + ".part"))
+            await file.Content.CopyToAsync(output, ct);
+        File.Move(destPath + ".part", destPath, overwrite: true);
+        return true;
+    }
+
     public static void CleanUpPreviousUpdate(string exePath)
     {
         try { File.Delete(exePath + ".old"); }

@@ -133,12 +133,13 @@ public static class Commands
 
         using var erArchives = ctx.OpenArchives(PorterGame.EldenRing);
         using var ds3Archives = ctx.OpenArchives(PorterGame.DarkSouls3);
-        WeaponText.Write(ctx, erArchives, ds3Archives, plans, erWeapons);
+        var newNames = WeaponText.Write(ctx, erArchives, ds3Archives, plans, erWeapons);
         ShopPort.Write(ctx, erArchives, erStore.Get("ShopLineupParam")!, ds3, plans);
         PortWeaponModels(ctx, erArchives, ds3Archives, plans, ds3, erWeapons);
 
         var path = ctx.ModPath("regulation.bin");
         erStore.Save(path);
+        ItemList.Write(ctx, erStore, erArchives, newNames);
         File.WriteAllText(ctx.ModPath("README.txt"), ModReadme);
         Console.WriteLine($"mod: {Path.GetDirectoryName(path)}");
         return 0;
@@ -157,7 +158,16 @@ public static class Commands
           script\talk\*.talkesdbnd.dcx       Kalé's talk scripts, opening the new shop lineup
           parts\wp_a_9NNN(_l).partsbnd.dcx    ported weapon models (and low-detail versions)
           material\allmaterial_dlc02...       materials for the ported models
+          darksign_items.tsv                 every item the F1 test menu can give (not a game file)
         """;
+
+    /// <summary>Writes the test menu's item list from Elden Ring alone, for when no content has been ported.</summary>
+    public static int ItemListOnly(PorterContext ctx)
+    {
+        using var er = ctx.OpenArchives(PorterGame.EldenRing);
+        ItemList.Write(ctx, ctx.LoadParams(PorterGame.EldenRing), er, new Dictionary<int, string>());
+        return 0;
+    }
 
     private static void PortWeaponModels(PorterContext ctx, GameArchives er, GameArchives ds3, List<WeaponPlan> plans,
         PARAM ds3Weapons, PARAM erWeapons)
