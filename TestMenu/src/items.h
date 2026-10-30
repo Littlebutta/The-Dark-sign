@@ -50,6 +50,14 @@ int dks_parse_pattern(const char *text, DksPattern *out);
 /* Offset of the first match in data, or -1. */
 long long dks_find_pattern(const uint8_t *data, size_t size, const DksPattern *p);
 
+/* Elden Ring's eight attributes, in the order the game stores them. */
+#define DKS_ATTRIBUTES 8
+#define DKS_ATTRIBUTE_MAX 99
+
+/* The character level that goes with a set of attributes: every class starts with attributes summing to its level
+   plus 79, and each level adds one point. Values are clamped to 1-99 first. */
+int dks_level_for(const int attributes[DKS_ATTRIBUTES]);
+
 /* Case-insensitive ASCII substring test, so "long sw" finds "Longsword". */
 int dks_name_matches(const char *name, const char *query);
 

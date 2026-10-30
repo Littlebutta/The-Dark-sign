@@ -38,6 +38,13 @@ int main(void)
     CHECK(dks_name_matches("Longsword", ""));
     CHECK(!dks_name_matches("Longsword", "katana"));
 
+    int vagabond[DKS_ATTRIBUTES] = {15, 10, 11, 14, 13, 9, 9, 7};
+    CHECK(dks_level_for(vagabond) == 9);
+    int maxed[DKS_ATTRIBUTES] = {99, 99, 99, 99, 99, 99, 99, 99};
+    CHECK(dks_level_for(maxed) == 713);
+    int wild[DKS_ATTRIBUTES] = {0, 150, 5, 5, 5, 5, 5, 5};
+    CHECK(dks_level_for(wild) == 1 + 99 + 30 - 79);
+
     if (failures)
         return 1;
     printf("test_items: all passed\n");
