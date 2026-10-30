@@ -96,6 +96,18 @@ public static class Commands
         yield return ("npcs", "NpcParam", r => r.ID > 0);
     }
 
+    /// <summary>Prints chosen fields of a param as TSV (all rows, or rows whose ID is in [min, max]).</summary>
+    public static int DumpParam(PorterContext ctx, PorterGame game, string paramName, IReadOnlyList<string> fields)
+    {
+        var param = ctx.LoadParams(game).Get(paramName)
+            ?? throw new ArgumentException($"{game.ShortName} has no param {paramName}.");
+        var columns = fields.Count > 0 ? fields : param.AppliedParamdef.Fields.Select(f => f.InternalName).ToList();
+        Console.WriteLine("id\tname\t" + string.Join('\t', columns));
+        foreach (var row in param.Rows)
+            Console.WriteLine($"{row.ID}\t{row.Name}\t" + string.Join('\t', columns.Select(c => row[c]?.Value?.ToString() ?? "")));
+        return 0;
+    }
+
     private static bool Matches(string path, string pattern)
     {
         var p = pattern.Replace('\\', '/');
