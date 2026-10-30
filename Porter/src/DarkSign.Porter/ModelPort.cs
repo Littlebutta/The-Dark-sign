@@ -89,12 +89,14 @@ public static class ModelPort
             var newMatbin = templateMatbin.Replace(TagIn(templateMatbin), stem + suffix);
 
             // The textures this DS3 material really uses (often the main model's, even on a "_1" part).
-            string? Ds3Texture(string param) => m.Textures.FirstOrDefault(t => t.ParamName == param && t.Path.Length > 0) is { } t
+            // Plain materials name slots g_DiffuseTexture etc.; emissive (_em) ones use SAT_..._AlbedoMap_0 etc.
+            string? Ds3Texture(string classic, string sat) => m.Textures.FirstOrDefault(t => t.Path.Length > 0
+                    && (t.ParamName == classic || t.ParamName.EndsWith(sat, StringComparison.Ordinal))) is { } t
                 ? TextureName(Path.GetFileNameWithoutExtension(ItemText.Leaf(t.Path)), oldTag, newTag)
                 : null;
-            var albedo = Ds3Texture("g_DiffuseTexture") ?? stem + "_a";
-            var normal = Ds3Texture("g_BumpmapTexture") ?? stem + "_n";
-            var specular = Ds3Texture("g_SpecularTexture");
+            var albedo = Ds3Texture("g_DiffuseTexture", "_AlbedoMap_0") ?? stem + "_a";
+            var normal = Ds3Texture("g_BumpmapTexture", "_NormalMap_0") ?? stem + "_n";
+            var specular = Ds3Texture("g_SpecularTexture", "_ReflectanceMap_0");
             var metallic = specular is not null && specular.EndsWith("_r", StringComparison.OrdinalIgnoreCase)
                 ? specular[..^2] + "_m"
                 : stem + "_m";
