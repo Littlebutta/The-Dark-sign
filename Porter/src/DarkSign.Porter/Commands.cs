@@ -46,6 +46,8 @@ public static class Commands
             File.WriteAllBytes(outPath, bytes);
             Console.WriteLine(outPath);
         }
+        foreach (var p in patterns.Where(p => !matches.Any(e => Matches(e.Path!, p))))
+            Console.Error.WriteLine($"not found in the {game.ShortName} archives: {p}");
         Console.WriteLine($"{matches.Count} files extracted.");
         return matches.Count > 0 ? 0 : 1;
     }
