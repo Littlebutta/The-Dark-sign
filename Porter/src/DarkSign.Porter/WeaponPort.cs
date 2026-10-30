@@ -18,6 +18,10 @@ public static class WeaponPort
     public const int FirstNewId = 80_000_000;
     // New weapon models are wp_a_9000 and up; Elden Ring's weapon models stop well below that.
     public const int FirstNewModelId = 9000;
+    // Ported icons are 41000 and up; Elden Ring's own icon IDs stop at 40824.
+    public const int FirstNewIconId = 41000;
+
+    public static int NewIconId(WeaponPlan plan) => FirstNewIconId + plan.NewModelId!.Value - FirstNewModelId;
 
     // DS3 motion categories Elden Ring files under a different number.
     private static readonly Dictionary<int, int> MotionRemap = new() { [49] = 21 /* torch */ };
@@ -124,6 +128,7 @@ public static class WeaponPort
                 }
 
                 row["equipModelId"].Value = (ushort)plan.NewModelId!.Value;
+                Set(row, "iconId", NewIconId(plan));
                 row["sortId"].Value = 9_000_000 + plan.NewModelId.Value - FirstNewModelId;
                 row["originEquipWep"].Value = plan.NewId.Value; // upgrades and affinities stay within the new weapon
                 Set(row, "sellValue", Convert.ToDouble(source["sellValue"].Value));

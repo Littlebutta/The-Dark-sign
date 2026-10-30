@@ -136,6 +136,8 @@ public static class Commands
         var newNames = WeaponText.Write(ctx, erArchives, ds3Archives, plans, erWeapons);
         ShopPort.Write(ctx, erArchives, erStore.Get("ShopLineupParam")!, ds3, plans);
         PortWeaponModels(ctx, erArchives, ds3Archives, plans, ds3, erWeapons);
+        IconPort.Write(ctx, erArchives, ds3Archives, plans.Where(p => p.Status == "port")
+            .Select(p => new IconPort.Entry(Convert.ToInt32(ds3[p.Ds3Id]!["iconId"].Value), WeaponPort.NewIconId(p))).ToList());
 
         var path = ctx.ModPath("regulation.bin");
         erStore.Save(path);
@@ -158,6 +160,7 @@ public static class Commands
           script\talk\*.talkesdbnd.dcx       Kalé's talk scripts, opening the new shop lineup
           parts\wp_a_9NNN(_l).partsbnd.dcx    ported weapon models (and low-detail versions)
           material\allmaterial_dlc02...       materials for the ported models
+          menu\hi|low\01_common.*, 00_solo.*  the ported weapons' DS3 icons (sheet SB_Icon_DS3, IDs 41000+)
           darksign_items.tsv                 every item the F1 test menu can give (not a game file)
         """;
 
