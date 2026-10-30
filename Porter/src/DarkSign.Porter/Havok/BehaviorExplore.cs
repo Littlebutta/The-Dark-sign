@@ -124,3 +124,88 @@ public static class TaeDump
         return 1;
     }
 }
+
+/// <summary>
+/// anim-id-map: pairs DS3 and Elden Ring player animation IDs by the name of the behaviour selector that plays them
+/// (e.g. AttackRightLight1_CMSG plays 030000 in both). Elden Ring's behaviour is read with HKLib. DS3's (Havok 2014) is
+/// read as a string table: a packfile stores each selector's name just before the names of the clips under it, so
+/// every aXXX_YYYYYY clip name is credited to the selector name that precedes it.
+/// </summary>
+public static partial class AnimIdMap
+{
+    [GeneratedRegex(@"^a\d{3}_(\d{6})")]
+    private static partial Regex ClipId();
+
+    public static int Run(PorterContext ctx)
+    {
+        var ds3 = Ds3Selectors(ctx);
+        var er = ErSelectors(ctx);
+        var text = new StringBuilder("selector\tDS3 ids\tElden Ring ids\n");
+        foreach (var name in ds3.Keys.Union(er.Keys).OrderBy(n => n, StringComparer.Ordinal))
+            text.AppendLine($"{name}\t{Ids(ds3, name)}\t{Ids(er, name)}");
+        var path = ctx.WorkPath("reports", "explore", "movesets", "anim-id-map.tsv");
+        File.WriteAllText(path, text.ToString());
+        Console.WriteLine($"{ds3.Count} DS3 selectors, {er.Count} Elden Ring selectors, {ds3.Keys.Intersect(er.Keys).Count()} in both -> {path}");
+        return 0;
+    }
+
+    private static string Ids(Dictionary<string, SortedSet<int>> map, string name) =>
+        map.TryGetValue(name, out var ids) ? string.Join(" ", ids) : "";
+
+    private static Dictionary<string, SortedSet<int>> Ds3Selectors(PorterContext ctx)
+    {
+        using var archives = ctx.OpenArchives(PorterGame.DarkSouls3);
+        var bnd = BND4.Read(archives.Read("/chr/c0000.behbnd.dcx"));
+        var behavior = bnd.Files.Where(f => f.Name.EndsWith(".hkx", StringComparison.OrdinalIgnoreCase)).MaxBy(f => f.Bytes.Length)!;
+        var map = new Dictionary<string, SortedSet<int>>();
+        string? current = null;
+        foreach (var s in Strings(behavior.Bytes))
+        {
+            if (s.EndsWith("_CMSG", StringComparison.Ordinal) || s.Contains("_CMSG0", StringComparison.Ordinal))
+                current = s;
+            else if (current is not null && ClipId().Match(s) is { Success: true } m)
+            {
+                if (!map.TryGetValue(current, out var ids))
+                    map[current] = ids = [];
+                ids.Add(int.Parse(m.Groups[1].Value));
+            }
+        }
+        return map;
+    }
+
+    private static Dictionary<string, SortedSet<int>> ErSelectors(PorterContext ctx)
+    {
+        using var archives = ctx.OpenArchives(PorterGame.EldenRing);
+        var bnd = BND4.Read(archives.Read("/chr/c0000.behbnd.dcx"));
+        var behavior = bnd.Files.Where(f => f.Name.EndsWith(".hkx", StringComparison.OrdinalIgnoreCase)).MaxBy(f => f.Bytes.Length)!;
+        var map = new Dictionary<string, SortedSet<int>>();
+        foreach (var selector in new HavokBinarySerializer().ReadAllObjects(new MemoryStream(behavior.Bytes)).OfType<CustomManualSelectorGenerator>())
+        {
+            var name = selector.m_name ?? "";
+            if (!map.TryGetValue(name, out var ids))
+                map[name] = ids = [];
+            foreach (var clip in selector.m_generators.OfType<hkbClipGenerator>())
+                if (ClipId().Match(clip.m_animationName ?? "") is { Success: true } m)
+                    ids.Add(int.Parse(m.Groups[1].Value));
+        }
+        return map;
+    }
+
+    /// <summary>Printable ASCII runs of 4+ characters, in file order.</summary>
+    private static IEnumerable<string> Strings(byte[] data)
+    {
+        int start = -1;
+        for (int i = 0; i <= data.Length; i++)
+        {
+            bool printable = i < data.Length && data[i] >= 0x20 && data[i] < 0x7F;
+            if (printable && start < 0)
+                start = i;
+            else if (!printable && start >= 0)
+            {
+                if (i - start >= 4)
+                    yield return Encoding.ASCII.GetString(data, start, i - start);
+                start = -1;
+            }
+        }
+    }
+}
