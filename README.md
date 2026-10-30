@@ -96,4 +96,4 @@ On first run the porter downloads the archive keys and file-name lists from
 [UXM Selective Unpack](https://github.com/Nordgaren/UXM-Selective-Unpack) and paramdefs from
 [Paramdex](https://github.com/soulsmods/Paramdex), both at pinned commits, into `TheDarkSign\Work\cache`.
 [SoulsFormatsNEXT](https://github.com/soulsmods/SoulsFormatsNEXT) is GPLv3, so a porter build shared with anyone
-else must come with its source.
+else must come with its source. Icons are scaled with [BCnEncoder.Net](https://github.com/Nominom/BCnEncoder.NET) (MIT).
