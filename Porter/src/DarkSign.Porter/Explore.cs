@@ -77,7 +77,9 @@ public static class Explore
                         continue;
                     var a = EsdExpr.ReadInt(cmd.Arguments[0]);
                     var b = EsdExpr.ReadInt(cmd.Arguments[1]);
-                    if (a is int start && b is int end && end >= start && end - start < 1000 && shopIds.Contains(start))
+                    // Bank 6 commands and tiny ranges also take pairs like (1000, 1000); real shops start at 100000.
+                    if (cmd.CommandBank != 6 && a is int start && b is int end && start >= 100000 && end >= start
+                        && end - start < 1000 && shopIds.Contains(start))
                         found.Add($"cmd {cmd.CommandBank}:{cmd.CommandID} ({start}, {end})");
                 }
                 foreach (var f in found)
@@ -86,6 +88,32 @@ public static class Explore
         }
         return 0;
     }
+
+    /// <summary>Prints the shader, parameters and samplers of every MATBIN whose name contains a filter.</summary>
+    public static int MatbinInfo(PorterContext ctx, string filter)
+    {
+        using var archives = ctx.OpenArchives(PorterGame.EldenRing);
+        foreach (var binder in MaterialBinders)
+        {
+            var bnd = BND4.Read(archives.Read(binder));
+            foreach (var file in bnd.Files.Where(f => f.Name.Contains(filter, StringComparison.OrdinalIgnoreCase)))
+            {
+                var m = MATBIN.Read(file.Bytes);
+                Console.WriteLine($"{Leaf(binder)} #{file.ID} {file.Name}");
+                Console.WriteLine($"  shader={m.ShaderPath} source={m.SourcePath} key={m.Key}");
+                foreach (var p in m.Params)
+                    Console.WriteLine($"  param {p.Name} ({p.Type}) = {FormatValue(p.Value)}");
+                foreach (var smp in m.Samplers)
+                    Console.WriteLine($"  sampler {smp.Type} = {smp.Path}");
+            }
+        }
+        return 0;
+    }
+
+    public static readonly string[] MaterialBinders =
+        ["/material/allmaterial.matbinbnd.dcx", "/material/allmaterial_dlc01.matbinbnd.dcx", "/material/allmaterial_dlc02.matbinbnd.dcx"];
+
+    private static string FormatValue(object v) => v is Array a ? "[" + string.Join(", ", a.Cast<object>()) + "]" : v?.ToString() ?? "";
 
     public static IEnumerable<ESD.CommandCall> AllCommands(ESD esd)
     {

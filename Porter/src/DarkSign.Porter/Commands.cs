@@ -127,11 +127,18 @@ public static class Commands
         var plans = WeaponsPlan(ctx);
         var ds3 = ctx.LoadParams(PorterGame.DarkSouls3).Get("EquipParamWeapon")!;
         var erStore = ctx.LoadParams(PorterGame.EldenRing);
-        var added = WeaponPort.Apply(plans, ds3, erStore.Get("EquipParamWeapon")!);
+        var erWeapons = erStore.Get("EquipParamWeapon")!;
+        var added = WeaponPort.Apply(plans, ds3, erWeapons);
+        Console.WriteLine($"added {added} weapon rows ({plans.Count(p => p.Status == "port")} weapons with their affinities)");
+
+        using var erArchives = ctx.OpenArchives(PorterGame.EldenRing);
+        using var ds3Archives = ctx.OpenArchives(PorterGame.DarkSouls3);
+        WeaponText.Write(ctx, erArchives, ds3Archives, plans, erWeapons);
+        ShopPort.Write(ctx, erArchives, erStore.Get("ShopLineupParam")!, ds3, plans);
+
         var path = ctx.ModPath("regulation.bin");
         erStore.Save(path);
-        Console.WriteLine($"added {added} weapon rows ({plans.Count(p => p.Status == "port")} weapons with their affinities)");
-        Console.WriteLine($"regulation: {path}");
+        Console.WriteLine($"mod: {Path.GetDirectoryName(path)}");
         return 0;
     }
 
