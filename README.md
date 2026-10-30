@@ -52,11 +52,12 @@ CI makes a release (`launcher-v1.0.<build>`) from every push to `main`. If the r
 again, put a read-only token in `launcher_settings.json` as `"GitHubToken"`. `"AutoUpdate": false` turns the check
 off.
 
-## Porter (Phase 3/4: Dark Souls III content in Elden Ring)
+## Porter (Phase 3/4: Elden Ring and Dark Souls content in Dark Souls III)
 
 `Porter/` builds `DarkSignPorter.exe`, which reads Dark Souls III and Elden Ring straight from their packed
-archives and will build the Elden Ring content mod. It only reads the game folders; everything it writes goes to
-`TheDarkSign\Work` (and later `TheDarkSign\Mods\ER`). It lives in `TheDarkSign\Tools\Porter` and finds the
+archives and will build the Dark Souls III content mod: Elden Ring and Dark Souls Remastered items, enemies and
+bosses, with items DS3 already has skipped. It only reads the game folders; everything it writes goes to
+`TheDarkSign\Work` (and later `TheDarkSign\Mods\DS3`). It lives in `TheDarkSign\Tools\Porter` and finds the
 project root from there, or takes `--root`.
 
 ```
@@ -68,7 +69,9 @@ DarkSignPorter extract DS3 /msg/engus/*      # copy files out, decompressed
 DarkSignPorter inventory                     # DS3 and Elden Ring weapons, armor, rings, spells, NPCs
 ```
 
-Building needs the .NET 10 SDK (SoulsFormatsNEXT uses C# 13); the exe still runs on the .NET 8 runtime.
+Elden Ring's files are Oodle-compressed; the porter copies the game's `oo2core_6_win64.dll` into
+`TheDarkSign\Work\cache\oodle` and loads it from there (`Porter/src/SoulsFormats.Net8/OodleCompressor.cs` makes
+SoulsFormats accept Oodle 2.6). Building needs the .NET 10 SDK (SoulsFormatsNEXT uses C# 13); the exe still runs on the .NET 8 runtime.
 On first run the porter downloads the archive keys and file-name lists from
 [UXM Selective Unpack](https://github.com/Nordgaren/UXM-Selective-Unpack) and paramdefs from
 [Paramdex](https://github.com/soulsmods/Paramdex), both at pinned commits, into `TheDarkSign\Work\cache`.

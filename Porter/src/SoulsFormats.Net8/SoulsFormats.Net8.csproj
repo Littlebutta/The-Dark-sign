@@ -14,8 +14,9 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <Compile Include="..\..\third_party\SoulsFormatsNEXT\SoulsFormats\**\*.cs" Exclude="..\..\third_party\SoulsFormatsNEXT\SoulsFormats\obj\**;..\..\third_party\SoulsFormatsNEXT\SoulsFormats\bin\**" />
-    <EmbeddedResource Include="..\..\third_party\SoulsFormatsNEXT\SoulsFormats\**\*.xml" Exclude="..\..\third_party\SoulsFormatsNEXT\SoulsFormats\obj\**;..\..\third_party\SoulsFormatsNEXT\SoulsFormats\bin\**" />
+    <Compile Include="..\..\third_party\SoulsFormatsNEXT\SoulsFormats\**\*.cs" Exclude="..\..\third_party\SoulsFormatsNEXT\SoulsFormats\obj\**;..\..\third_party\SoulsFormatsNEXT\SoulsFormats\bin\**;..\..\third_party\SoulsFormatsNEXT\SoulsFormats\Utilities\Compression\Oodle\OodleCompressor.cs" />
+    <Compile Include="OodleCompressor.cs" />
+    <EmbeddedResource Include="..\..\third_party\SoulsFormatsNEXT\SoulsFormats\**\*.xml" Exclude="..\..\third_party\SoulsFormatsNEXT\SoulsFormats\obj\**;..\..\third_party\SoulsFormatsNEXT\SoulsFormats\bin\**;..\..\third_party\SoulsFormatsNEXT\SoulsFormats\Utilities\Compression\Oodle\OodleCompressor.cs" />
   </ItemGroup>
 
   <ItemGroup>

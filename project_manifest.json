@@ -30,11 +30,13 @@
       "name": "Parameter & Asset ID Mapping",
       "status": "in-progress",
       "modules": {
-        "porterFoundation": "done (archive reader, extract, inventory)",
-        "ds3Weapons": "todo",
-        "ds3ArmorRings": "todo",
-        "ds3Spells": "todo",
-        "greiratShops": "todo (placeholder merchant until Greirat is ported)"
+        "porterFoundation": "done (archive reader, extract, inventory); ER Oodle 2.6 fix pending PC check",
+        "dsrSupport": "todo (read DSR's DATA folder)",
+        "erWeapons": "todo",
+        "erArmorRings": "todo",
+        "erSpells": "todo",
+        "dsrItems": "todo",
+        "merchantShop": "todo"
       }
     },
     "4": {
@@ -42,8 +44,9 @@
       "status": "todo",
       "modules": {
         "pilotEnemyAndBoss": "todo",
-        "allEnemiesAndBosses": "todo",
-        "randomizerToggle": "todo"
+        "allEnemiesAndBosses": "todo (ER and DSR into DS3)",
+        "randomizerToggle": "todo",
+        "bloodborne": "later, after DS3 host is done"
       }
     }
   },
@@ -59,12 +62,13 @@
     "porter": {
       "exe": "<root>\\\\TheDarkSign\\\\Tools\\\\Porter\\\\DarkSignPorter.exe",
       "work": "<root>\\\\TheDarkSign\\\\Work",
-      "modOutput": "<root>\\\\TheDarkSign\\\\Mods\\\\ER",
+      "modOutput": "<root>\\TheDarkSign\\Mods\\DS3",
       "rules": "reads game folders only; writes only under TheDarkSign"
     }
   },
   "decisions": {
-    "ds3ItemSource": "Greirat shop next to each Elden Ring merchant",
+    "hostGame": "Dark Souls III (pivot 2026-10-30): items, enemies and bosses from Elden Ring and DSR are ported into DS3; Bloodborne after",
+    "duplicates": "items DS3 already has are skipped",
     "enemyScaling": "ported enemies scale to the area they replace"
   }
 }
