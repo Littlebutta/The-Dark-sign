@@ -105,3 +105,11 @@ int dks_name_matches(const char *name, const char *query)
     }
     return 0;
 }
+
+int dks_level_for(const int attributes[DKS_ATTRIBUTES])
+{
+    int sum = 0;
+    for (int i = 0; i < DKS_ATTRIBUTES; i++)
+        sum += attributes[i] < 1 ? 1 : attributes[i] > DKS_ATTRIBUTE_MAX ? DKS_ATTRIBUTE_MAX : attributes[i];
+    return sum - 79 < 1 ? 1 : sum - 79;
+}

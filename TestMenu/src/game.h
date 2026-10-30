@@ -30,6 +30,13 @@ DksResult dks_give_item(uint32_t id, int quantity);
 long long dks_get_runes(void);
 DksResult dks_set_runes(long long runes);
 
+/* The character's attributes (Vigor, Mind, Endurance, Strength, Dexterity, Intelligence, Faith, Arcane) and level. */
+DksResult dks_get_attributes(int attributes[DKS_ATTRIBUTES], int *level);
+
+/* Sets the attributes (clamped to 1-99) and the level that goes with them. Refuses with DKS_NOT_FOUND if the
+   numbers read from the game don't add up to its level, which would mean the offsets are wrong for this version. */
+DksResult dks_set_attributes(const int attributes[DKS_ATTRIBUTES]);
+
 #ifdef __cplusplus
 }
 #endif

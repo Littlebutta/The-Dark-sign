@@ -76,6 +76,9 @@ std::vector<int> g_shown;
 char g_search[96];
 int g_game_filter, g_kind_filter, g_selected = -1, g_quantity = 1, g_upgrade, g_affinity;
 int g_rune_amount = 1000000;
+const char *const ATTRIBUTE_NAMES[DKS_ATTRIBUTES] = {"Vigor", "Mind", "Endurance", "Strength", "Dexterity", "Intelligence", "Faith", "Arcane"};
+int g_attributes[DKS_ATTRIBUTES];
+bool g_attributes_loaded; // g_attributes holds the character's values (or the user's edits of them)
 std::string g_status = "Pick an item and press Give.";
 bool g_focus_search;
 
@@ -131,6 +134,54 @@ void change_runes(bool add)
     long long held = dks_get_runes();
     DksResult r = dks_set_runes(add ? std::max(held, 0LL) + g_rune_amount : g_rune_amount);
     g_status = r == DKS_OK ? "Runes updated." : result_text(r);
+}
+
+void load_attributes()
+{
+    int level;
+    g_attributes_loaded = dks_get_attributes(g_attributes, &level) == DKS_OK;
+}
+
+void apply_attributes()
+{
+    DksResult r = dks_set_attributes(g_attributes);
+    if (r != DKS_OK) {
+        g_status = result_text(r);
+        return;
+    }
+    char text[120];
+    snprintf(text, sizeof text, "Now level %d. Max HP, FP and stamina catch up after resting at a Site of Grace.", dks_level_for(g_attributes));
+    g_status = text;
+}
+
+void draw_attributes()
+{
+    if (!g_attributes_loaded)
+        load_attributes();
+    if (!g_attributes_loaded) {
+        ImGui::TextDisabled("Load a character to change its level.");
+        return;
+    }
+    int current[DKS_ATTRIBUTES], level = 0;
+    bool known = dks_get_attributes(current, &level) == DKS_OK;
+    ImGui::Text("Level %d now, %d with these attributes", known ? level : 0, dks_level_for(g_attributes));
+    for (int i = 0; i < DKS_ATTRIBUTES; i++) {
+        if (i % 2)
+            ImGui::SameLine(ImGui::GetContentRegionAvail().x * 0.5f + ImGui::GetStyle().WindowPadding.x);
+        ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x * (i % 2 ? 0.55f : 0.27f));
+        ImGui::SliderInt(ATTRIBUTE_NAMES[i], &g_attributes[i], 1, DKS_ATTRIBUTE_MAX);
+    }
+    for (int preset : {40, 60, 80, 99}) {
+        char label[24];
+        snprintf(label, sizeof label, "All %d", preset);
+        if (ImGui::Button(label))
+            std::fill(std::begin(g_attributes), std::end(g_attributes), preset);
+        ImGui::SameLine();
+    }
+    if (ImGui::Button("Reset to character"))
+        load_attributes();
+    if (ImGui::Button("Apply level and attributes", ImVec2(-1, 0)))
+        apply_attributes();
 }
 
 void draw_menu()
@@ -224,6 +275,12 @@ void draw_menu()
     ImGui::SameLine();
     if (ImGui::Button("Set runes"))
         change_runes(false);
+
+    ImGui::Separator();
+    if (ImGui::CollapsingHeader("Level and attributes"))
+        draw_attributes();
+    else
+        g_attributes_loaded = false; // re-read the character next time the section opens
 
     ImGui::Separator();
     ImGui::TextWrapped("%s", g_status.c_str());
@@ -632,7 +689,7 @@ bool is_elden_ring()
 } // namespace
 
 /* Lets the launcher recognise this DLL. */
-extern "C" __declspec(dllexport) const char *DkSignTestMenuVersion(void) { return "dksign_testmenu 2"; }
+extern "C" __declspec(dllexport) const char *DkSignTestMenuVersion(void) { return "dksign_testmenu 3"; }
 
 BOOL WINAPI DllMain(HINSTANCE inst, DWORD reason, LPVOID)
 {

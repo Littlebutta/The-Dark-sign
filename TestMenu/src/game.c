@@ -11,6 +11,8 @@
 #define ITEM_GIVE_OFFSET (-0x52)
 #define PLAYER_GAME_DATA 0x8 /* GameDataMan -> PlayerGameData */
 #define HELD_RUNES 0x6C      /* PlayerGameData -> runes held */
+#define ATTRIBUTES 0x3C      /* PlayerGameData -> Vigor, then the other seven attributes as int32 */
+#define LEVEL 0x68           /* PlayerGameData -> character level */
 #define MAX_RUNES 999999999LL
 
 typedef void (*ItemGive)(void *map_item_man, void *entries, void *header, int unk);
@@ -183,5 +185,49 @@ DksResult dks_set_runes(long long runes)
         runes = MAX_RUNES;
     *(uint32_t *)(pgd + HELD_RUNES) = (uint32_t)runes;
     dks_log("runes: %lld", runes);
+    return DKS_OK;
+}
+
+/* The attributes and level as the game holds them; 0 when no character is loaded or they don't add up. */
+static uintptr_t read_attributes(int attributes[DKS_ATTRIBUTES], int *level)
+{
+    dks_scan_game();
+    uintptr_t pgd = player_game_data();
+    int32_t block[(LEVEL + 4 - ATTRIBUTES) / 4];
+    SIZE_T got = 0;
+    if (!pgd || !ReadProcessMemory(GetCurrentProcess(), (LPCVOID)(pgd + ATTRIBUTES), block, sizeof block, &got) || got != sizeof block)
+        return 0;
+    for (int i = 0; i < DKS_ATTRIBUTES; i++)
+        attributes[i] = block[i];
+    *level = block[(LEVEL - ATTRIBUTES) / 4];
+    return pgd;
+}
+
+DksResult dks_get_attributes(int attributes[DKS_ATTRIBUTES], int *level)
+{
+    if (!g_game_data_man_slot && (dks_scan_game(), !g_game_data_man_slot))
+        return DKS_NOT_FOUND;
+    return read_attributes(attributes, level) ? DKS_OK : DKS_NOT_LOADED;
+}
+
+DksResult dks_set_attributes(const int attributes[DKS_ATTRIBUTES])
+{
+    int current[DKS_ATTRIBUTES], level;
+    if (!g_game_data_man_slot && (dks_scan_game(), !g_game_data_man_slot))
+        return DKS_NOT_FOUND;
+    uintptr_t pgd = read_attributes(current, &level);
+    if (!pgd)
+        return DKS_NOT_LOADED;
+    if (dks_level_for(current) != level) {
+        dks_log("attributes: refused, level %d but attributes %d %d %d %d %d %d %d %d", level, current[0], current[1],
+                current[2], current[3], current[4], current[5], current[6], current[7]);
+        return DKS_NOT_FOUND;
+    }
+    for (int i = 0; i < DKS_ATTRIBUTES; i++) {
+        int v = attributes[i] < 1 ? 1 : attributes[i] > DKS_ATTRIBUTE_MAX ? DKS_ATTRIBUTE_MAX : attributes[i];
+        *(int32_t *)(pgd + ATTRIBUTES + 4 * i) = v;
+    }
+    *(int32_t *)(pgd + LEVEL) = dks_level_for(attributes);
+    dks_log("attributes: level %d -> %d", level, dks_level_for(attributes));
     return DKS_OK;
 }
