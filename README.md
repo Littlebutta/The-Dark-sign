@@ -52,12 +52,12 @@ CI makes a release (`launcher-v1.0.<build>`) from every push to `main`. If the r
 again, put a read-only token in `launcher_settings.json` as `"GitHubToken"`. `"AutoUpdate": false` turns the check
 off.
 
-## Porter (Phase 3/4: Elden Ring and Dark Souls content in Dark Souls III)
+## Porter (Phase 3/4: content from the other games in Elden Ring)
 
 `Porter/` builds `DarkSignPorter.exe`, which reads Dark Souls III and Elden Ring straight from their packed
-archives and will build the Dark Souls III content mod: Elden Ring and Dark Souls Remastered items, enemies and
-bosses, with items DS3 already has skipped. It only reads the game folders; everything it writes goes to
-`TheDarkSign\Work` (and later `TheDarkSign\Mods\DS3`). It lives in `TheDarkSign\Tools\Porter` and finds the
+archives and will build the Elden Ring content mod: items, enemies and bosses from Dark Souls III first, then Dark
+Souls Remastered and Bloodborne, with items Elden Ring already has skipped. It only reads the game folders; everything it writes goes to
+`TheDarkSign\Work` (and later `TheDarkSign\Mods\ER`). It lives in `TheDarkSign\Tools\Porter` and finds the
 project root from there, or takes `--root`.
 
 ```
