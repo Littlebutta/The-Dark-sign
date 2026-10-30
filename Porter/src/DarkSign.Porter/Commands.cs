@@ -125,7 +125,8 @@ public static class Commands
     public static int PortWeapons(PorterContext ctx)
     {
         var plans = WeaponsPlan(ctx);
-        var ds3 = ctx.LoadParams(PorterGame.DarkSouls3).Get("EquipParamWeapon")!;
+        var ds3Store = ctx.LoadParams(PorterGame.DarkSouls3);
+        var ds3 = ds3Store.Get("EquipParamWeapon")!;
         var erStore = ctx.LoadParams(PorterGame.EldenRing);
         var erWeapons = erStore.Get("EquipParamWeapon")!;
         var added = WeaponPort.Apply(plans, ds3, erWeapons);
@@ -138,6 +139,16 @@ public static class Commands
         PortWeaponModels(ctx, erArchives, ds3Archives, plans, ds3, erWeapons);
         IconPort.Write(ctx, erArchives, ds3Archives, plans.Where(p => p.Status == "port")
             .Select(p => new IconPort.Entry(Convert.ToInt32(ds3[p.Ds3Id]!["iconId"].Value), WeaponPort.NewIconId(p))).ToList());
+        try
+        {
+            MovesetPort.Apply(ctx, erArchives, ds3Archives, erStore, ds3Store, plans);
+        }
+        catch (Exception e)
+        {
+            // Weapons keep their template movesets; the rest of the content still builds.
+            Console.WriteLine($"moveset: failed, weapons keep Elden Ring movesets ({e.GetType().Name}: {e.Message})");
+            Console.WriteLine(e.StackTrace);
+        }
 
         var path = ctx.ModPath("regulation.bin");
         erStore.Save(path);

@@ -152,7 +152,7 @@ public static partial class AnimIdMap
     private static string Ids(Dictionary<string, SortedSet<int>> map, string name) =>
         map.TryGetValue(name, out var ids) ? string.Join(" ", ids) : "";
 
-    private static Dictionary<string, SortedSet<int>> Ds3Selectors(PorterContext ctx)
+    internal static Dictionary<string, SortedSet<int>> Ds3Selectors(PorterContext ctx)
     {
         using var archives = ctx.OpenArchives(PorterGame.DarkSouls3);
         var bnd = BND4.Read(archives.Read("/chr/c0000.behbnd.dcx"));
@@ -173,7 +173,7 @@ public static partial class AnimIdMap
         return map;
     }
 
-    private static Dictionary<string, SortedSet<int>> ErSelectors(PorterContext ctx)
+    internal static Dictionary<string, SortedSet<int>> ErSelectors(PorterContext ctx)
     {
         using var archives = ctx.OpenArchives(PorterGame.EldenRing);
         var bnd = BND4.Read(archives.Read("/chr/c0000.behbnd.dcx"));

@@ -154,13 +154,18 @@ public static class AnimTest
 {
     public static int Run(PorterContext ctx, IReadOnlyList<string> args)
     {
-        var chrDir = Path.GetDirectoryName(ctx.ModPath("chr", "x"))!;
+        // The binder anim-test wrote is recorded here, so undo removes only that (port-weapons writes others).
+        var marker = ctx.ModPath("chr", "anim-test.txt");
         if (args.Count == 1 && args[0].Equals("undo", StringComparison.OrdinalIgnoreCase))
         {
-            foreach (var file in Directory.GetFiles(chrDir, "c0000*.anibnd.dcx"))
+            if (File.Exists(marker))
             {
-                File.Delete(file);
-                Console.WriteLine($"removed {file}");
+                foreach (var file in File.ReadAllLines(marker).Where(File.Exists))
+                {
+                    File.Delete(file);
+                    Console.WriteLine($"removed {file} (run port-weapons again if it held ported movesets)");
+                }
+                File.Delete(marker);
             }
             return 0;
         }
@@ -189,6 +194,7 @@ public static class AnimTest
         var compression = erArchives.ReadWithCompression(erPath).Compression;
         var output = ctx.ModPath("chr", ItemText.Leaf(erPath));
         File.WriteAllBytes(output, DCX.Compress(erBnd.Write(), compression));
+        File.AppendAllLines(marker, [output]);
         Console.WriteLine($"{ds3Name} -> {erName}: {summary}; read back as {check.GetType().Name}, {check.m_numberOfTransformTracks} tracks");
         Console.WriteLine($"wrote {output} (remove with: anim-test undo)");
         return 0;
