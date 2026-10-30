@@ -171,15 +171,20 @@ public static partial class MovesetPort
             });
         }
 
+        // Params first: a failure there must not leave behaviour and animation files for weapons that don't use them.
+        foreach (var point in pointWeapons)
+            point();
         using var output = new MemoryStream();
         new HavokBinarySerializer().Write(behavior, output);
         behaviorFile.Bytes = output.ToArray();
         File.WriteAllBytes(ctx.ModPath("chr", "c0000.behbnd.dcx"), DCX.Compress(behbnd.Write(), behbndCompression));
         File.WriteAllBytes(ctx.ModPath("chr", "c0000.anibnd.dcx"), DCX.Compress(erMain.Write(), erMainCompression));
         File.WriteAllBytes(ctx.ModPath("chr", ItemText.Leaf(AnimBinder)), DCX.Compress(erAnims.Write(), erAnimsCompression));
-        foreach (var point in pointWeapons)
-            point();
     }
+
+    /// <summary>The player files Apply writes; removed when a port fails so the game loads Elden Ring's own.</summary>
+    public static IEnumerable<string> OutputFiles(PorterContext ctx) =>
+        new[] { "c0000.behbnd.dcx", "c0000.anibnd.dcx", ItemText.Leaf(AnimBinder) }.Select(f => ctx.ModPath("chr", f));
 
     private static bool IsWeaponSelector(CustomManualSelectorGenerator s) => s.m_offsetType is
         CustomManualSelectorGenerator.OffsetType.WeaponCategoryRight or CustomManualSelectorGenerator.OffsetType.WeaponCategoryLeft
@@ -352,8 +357,9 @@ public sealed class AttackParamPort(ParamStore er, ParamStore ds3)
 
     private static PARAM.Row CopyByName(PARAM.Row from, PARAM.Row to)
     {
-        var fields = from.Cells.ToDictionary(c => c.Def.InternalName, c => c.Value, StringComparer.Ordinal);
-        foreach (var cell in to.Cells)
+        // Only names a paramdef uses once: unnamed padding fields share names like "0x81".
+        var fields = Unique(from).ToDictionary(c => c.Def.InternalName, c => c.Value, StringComparer.Ordinal);
+        foreach (var cell in Unique(to))
         {
             if (!fields.TryGetValue(cell.Def.InternalName, out var value) || value is null || cell.Value is null)
                 continue;
@@ -368,6 +374,9 @@ public sealed class AttackParamPort(ParamStore er, ParamStore ds3)
         }
         return to;
     }
+
+    private static IEnumerable<PARAM.Cell> Unique(PARAM.Row row) =>
+        row.Cells.GroupBy(c => c.Def.InternalName, StringComparer.Ordinal).Where(g => g.Count() == 1).Select(g => g.Single());
 }
 
 /// <summary>Walks an HKLib object graph (public fields, lists) and copies objects.</summary>

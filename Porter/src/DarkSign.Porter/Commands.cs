@@ -148,6 +148,8 @@ public static class Commands
             // Weapons keep their template movesets; the rest of the content still builds.
             Console.WriteLine($"moveset: failed, weapons keep Elden Ring movesets ({e.GetType().Name}: {e.Message})");
             Console.WriteLine(e.StackTrace);
+            foreach (var file in MovesetPort.OutputFiles(ctx).Where(File.Exists))
+                File.Delete(file);
         }
 
         var path = ctx.ModPath("regulation.bin");
