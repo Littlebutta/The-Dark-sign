@@ -9,6 +9,10 @@
 #define DKS_NAME_MAX 96
 #define DKS_PATTERN_MAX 64
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 /* Elden Ring item categories, as the high bits of an item ID. */
 enum {
     DKS_CAT_WEAPON = 0x00000000u,
@@ -46,5 +50,9 @@ long long dks_find_pattern(const uint8_t *data, size_t size, const DksPattern *p
 
 /* Case-insensitive ASCII substring test, so "long sw" finds "Longsword". */
 int dks_name_matches(const char *name, const char *query);
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif

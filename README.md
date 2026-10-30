@@ -34,11 +34,14 @@ The Elden Ring panel's **Play** button does everything:
 3. Starts the game through ModEngine2 with the save redirect and, if ticked, the F1 test menu injected
    (`external_dlls`). Saves go to `TheDarkSign\Saves\<profile>\ER`, offline. The game folder is not written.
 
-**F1 test menu** (`TestMenu/`, `dksign_testmenu.dll`): F1 in game opens a window to search every item (Elden Ring's
-and the ported ones, from `Mods\ER\darksign_items.tsv`) and give it with a quantity, upgrade level and affinity, and to
-add or set runes. It shows over the game in Borderless or Windowed display mode. It finds the game's item-give
-function and rune counter by the byte patterns [Erd-Tools](https://github.com/Nordgaren/Erd-Tools) uses; if a game
-update moves them, the buttons say so instead of crashing. It is a testing aid for offline play only.
+**F1 test menu** (`TestMenu/`, `dksign_testmenu.dll`): an overlay drawn inside the game with
+[Dear ImGui](https://github.com/ocornut/imgui) (MIT, vendored in `TestMenu/third_party/imgui`) on a hook of the game's
+DirectX 12 swap chain, the way ReShade draws its menu. F1 shows it: search every item (Elden Ring's and the ported
+ones, from `Mods\ER\darksign_items.tsv`), give it with a quantity, upgrade level and affinity, and add or set runes.
+While it is open the game's keyboard and mouse input and its cursor lock are held back. It finds the game's
+item-give function and rune counter by the byte patterns [Erd-Tools](https://github.com/Nordgaren/Erd-Tools) uses;
+if a game update moves them, the menu says so instead of crashing. It is a testing aid for offline play only.
+Its log is `dksign_testmenu.log` in the profile's save folder.
 
 ## Save isolation
 
