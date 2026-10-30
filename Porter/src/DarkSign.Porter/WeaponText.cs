@@ -11,7 +11,8 @@ public static class WeaponText
     private const string Binder = "/msg/engus/item_dlc02.msgbnd.dcx";
     private const int WeaponNameDlc02 = 410, WeaponCaptionDlc02 = 412;
 
-    public static void Write(PorterContext ctx, GameArchives er, GameArchives ds3, IEnumerable<WeaponPlan> plans,
+    /// <summary>Writes the text and returns the new names by weapon ID.</summary>
+    public static Dictionary<int, string> Write(PorterContext ctx, GameArchives er, GameArchives ds3, IEnumerable<WeaponPlan> plans,
         PARAM erWeapons)
     {
         var erNames = ItemText.Load(er, "WeaponName");
@@ -23,6 +24,7 @@ public static class WeaponText
         var nameFile = bnd.Files.Single(f => f.ID == WeaponNameDlc02);
         var captionFile = bnd.Files.Single(f => f.ID == WeaponCaptionDlc02);
         var names = FMG.Read(nameFile.Bytes);
+        var added = new Dictionary<int, string>();
         var captions = FMG.Read(captionFile.Bytes);
 
         foreach (var plan in plans.Where(p => p.Status == "port"))
@@ -39,6 +41,7 @@ public static class WeaponText
                     ? pattern.Replace(templateName, plan.Name)
                     : plan.Name;
                 names.Entries.Add(new FMG.Entry(plan.NewId.Value + offset, name));
+                added[plan.NewId.Value + offset] = name;
                 if (caption is not null)
                     captions.Entries.Add(new FMG.Entry(plan.NewId.Value + offset, caption));
             }
@@ -47,5 +50,6 @@ public static class WeaponText
         nameFile.Bytes = names.Write();
         captionFile.Bytes = captions.Write();
         File.WriteAllBytes(ctx.ModPath("msg", "engus", "item_dlc02.msgbnd.dcx"), DCX.Compress(bnd.Write(), compression));
+        return added;
     }
 }

@@ -13,16 +13,22 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - run: sudo apt-get update -q && sudo apt-get install -y -q gcc-mingw-w64-x86-64
+      - run: sudo apt-get update -q && sudo apt-get install -y -q gcc-mingw-w64-x86-64 g++-mingw-w64-x86-64
       - run: make -C SaveRedirect test
       - run: make -C SaveRedirect
+      - run: make -C TestMenu test
+      - run: make -C TestMenu
       - uses: actions/upload-artifact@v4
         with:
           name: dksign_saveredirect
           path: SaveRedirect/build/dksign_saveredirect.dll
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dksign_testmenu
+          path: TestMenu/build/dksign_testmenu.dll
 
   build:
-    needs: save-redirect
+    needs: [save-redirect, porter]
     runs-on: windows-latest
     env:
       VERSION: 1.0.${{ github.run_number }}
@@ -35,6 +41,14 @@ jobs:
         with:
           name: dksign_saveredirect
           path: SaveRedirect/build
+      - uses: actions/download-artifact@v4
+        with:
+          name: dksign_testmenu
+          path: TestMenu/build
+      - uses: actions/download-artifact@v4
+        with:
+          name: DarkSignPorter
+          path: porter
       - run: dotnet test Launcher/DarkSign.sln -c Release
       - run: >
           dotnet publish Launcher/src/DarkSign.Launcher -c Release -r win-x64 --self-contained false
@@ -45,7 +59,7 @@ jobs:
           path: publish
       # Each build of main becomes the release the launcher updates itself from.
       - if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-        run: gh release create "launcher-v${{ env.VERSION }}" publish/TheDarkSignLauncher.exe --title "Launcher v${{ env.VERSION }}" --notes "Built from ${{ github.sha }}"
+        run: gh release create "launcher-v${{ env.VERSION }}" publish/TheDarkSignLauncher.exe porter/DarkSignPorter.zip --title "Launcher v${{ env.VERSION }}" --notes "Built from ${{ github.sha }}"
         env:
           GH_TOKEN: ${{ github.token }}
 
@@ -61,4 +75,10 @@ jobs:
           dotnet-version: |
             8.0.x
             10.0.x
-      - run: dotnet build Porter/src/DarkSign.Porter -c Release
+      # The launcher downloads this zip from the release it was built with and runs it to build the content mod.
+      - run: dotnet publish Porter/src/DarkSign.Porter -c Release -r win-x64 --self-contained false -o porter-publish
+      - run: Compress-Archive -Path porter-publish/* -DestinationPath DarkSignPorter.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: DarkSignPorter
+          path: DarkSignPorter.zip
