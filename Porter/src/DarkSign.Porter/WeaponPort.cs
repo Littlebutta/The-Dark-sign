@@ -18,8 +18,9 @@ public static class WeaponPort
     public const int FirstNewId = 80_000_000;
     // New weapon models are wp_a_9000 and up; Elden Ring's weapon models stop well below that.
     public const int FirstNewModelId = 9000;
-    // Ported icons are 41000 and up; Elden Ring's own icon IDs stop at 40824.
-    public const int FirstNewIconId = 41000;
+    // Ported icons are 50000 and up. Elden Ring's item sheets stop at 40824, but character creation uses 41000-41603
+    // (04_050_chrmake_icongrid.gfx), and icon IDs are 16-bit, so they must stay below 65536.
+    public const int FirstNewIconId = 50000;
 
     public static int NewIconId(WeaponPlan plan) => FirstNewIconId + plan.NewModelId!.Value - FirstNewModelId;
 

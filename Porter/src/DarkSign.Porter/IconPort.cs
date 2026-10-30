@@ -1,4 +1,7 @@
 using System.Text;
+using BCnEncoder.Decoder;
+using BCnEncoder.Encoder;
+using BCnEncoder.Shared;
 using SoulsFormats;
 
 namespace DarkSign.Porter;
@@ -8,13 +11,15 @@ namespace DarkSign.Porter;
 /// (/menu/knowledge/menu_knowledge_NNNNN.tpf.dcx). Elden Ring shows two images per item: a small inventory icon cut
 /// from a sprite sheet (SB_Icon_* textures in menu/{hi,low}/01_common.tpf.dcx, positioned by .layout files in
 /// 01_common.sblytbnd.dcx), and a large one (MENU_Knowledge_NNNNN in menu/{hi,low}/00_solo.tpfbhd/.tpfbdt).
-/// The DS3 images go into a new sheet, SB_Icon_DS3, with its own layout, and into 00_solo under the new icon IDs.
-/// BC7 blocks are copied as they are, so no image is re-encoded.
+/// The large images go into 00_solo as they are. For the inventory icons the DS3 images are scaled down to 160x160,
+/// the size of Elden Ring's own, and packed into new sheets (SB_Icon_DS3_00, ...) no bigger than the game's own
+/// (4096x2048), each with its own layout.
 /// </summary>
 public static class IconPort
 {
-    private const string Sheet = "SB_Icon_DS3";
-    private const int Icon = 512, Columns = 16, BlockBytes = 16;
+    private const string SheetPrefix = "SB_Icon_DS3_";
+    private const int Source = 512, Icon = 160, SheetWidth = 4096, MaxSheetHeight = 2048;
+    private const int Columns = SheetWidth / Icon, RowsPerSheet = MaxSheetHeight / Icon, PerSheet = Columns * RowsPerSheet;
     private const int Bc7 = 98; // DXGI_FORMAT_BC7_UNORM
     private const byte TpfBc7 = 102;
 
@@ -34,17 +39,19 @@ public static class IconPort
                 images.Add((entry.NewIconId, dds));
         }
 
-        var (sheet, positions) = BuildSheet(images);
+        var sheets = BuildSheets(images);
         foreach (var quality in new[] { "hi", "low" })
         {
-            AddSheet(ctx, er, quality, sheet);
-            AddLayout(ctx, er, quality, positions);
+            AddSheets(ctx, er, quality, sheets);
+            AddLayouts(ctx, er, quality, sheets);
             AddKnowledge(ctx, er, quality, images);
         }
-        Console.WriteLine($"icons: {images.Count} added" + (missing.Count > 0 ? $", {missing.Count} DS3 icons not found ({string.Join(", ", missing.Take(10))})" : ""));
+        Console.WriteLine($"icons: {images.Count} added on {sheets.Count} sheet(s)" + (missing.Count > 0 ? $", {missing.Count} DS3 icons not found ({string.Join(", ", missing.Take(10))})" : ""));
     }
 
-    /// <summary>The DS3 icon's DDS, if it is a 512x512 single-mip BC7 image as expected.</summary>
+    private sealed record Sheet(string Name, byte[] Dds, Dictionary<int, (int X, int Y)> Positions);
+
+    /// <summary>The DS3 icon's DDS, if it is a 512x512 BC7 image as expected.</summary>
     private static byte[]? Ds3Icon(GameArchives ds3, int iconId)
     {
         var path = $"/menu/knowledge/menu_knowledge_{iconId:D5}.tpf.dcx";
@@ -54,44 +61,88 @@ public static class IconPort
         if (texture is null)
             return null;
         var (width, height, format) = DdsInfo(texture.Bytes);
-        return width == Icon && height == Icon && format == Bc7 ? texture.Bytes : null;
+        return width == Source && height == Source && format == Bc7 ? texture.Bytes : null;
     }
 
-    /// <summary>Lays the icons out 16 to a row in one BC7 texture and returns where each one went.</summary>
-    private static (byte[] Dds, Dictionary<int, (int X, int Y)> Positions) BuildSheet(List<(int NewIconId, byte[] Dds)> images)
+    /// <summary>Scales each icon to 160x160 and lays them out 25 to a row, 300 to a sheet, BC7 like the game's own.</summary>
+    private static List<Sheet> BuildSheets(List<(int NewIconId, byte[] Dds)> images)
     {
-        int rows = Math.Max(1, (images.Count + Columns - 1) / Columns);
-        int width = Columns * Icon, height = rows * Icon;
-        int sheetBlocksPerRow = width / 4, iconBlocksPerRow = Icon / 4;
-        var data = new byte[sheetBlocksPerRow * (height / 4) * BlockBytes];
-        var positions = new Dictionary<int, (int, int)>();
-        for (int i = 0; i < images.Count; i++)
+        var sheets = new List<Sheet>();
+        var decoder = new BcDecoder();
+        var encoder = new BcEncoder(CompressionFormat.Bc7);
+        encoder.OutputOptions.GenerateMipMaps = false;
+        encoder.OutputOptions.Quality = CompressionQuality.Balanced;
+        for (int first = 0; first < Math.Max(1, images.Count); first += PerSheet)
         {
-            int col = i % Columns, row = i / Columns;
-            var source = images[i].Dds.AsSpan(DdsDataOffset);
-            for (int by = 0; by < iconBlocksPerRow; by++)
+            var batch = images.Skip(first).Take(PerSheet).ToList();
+            int rows = Math.Max(1, (batch.Count + Columns - 1) / Columns);
+            int height = 256;
+            while (height < rows * Icon)
+                height *= 2;
+            var rgba = new byte[SheetWidth * height * 4];
+            var positions = new Dictionary<int, (int, int)>();
+            for (int i = 0; i < batch.Count; i++)
             {
-                var from = source.Slice(by * iconBlocksPerRow * BlockBytes, iconBlocksPerRow * BlockBytes);
-                int to = ((row * iconBlocksPerRow + by) * sheetBlocksPerRow + col * iconBlocksPerRow) * BlockBytes;
-                from.CopyTo(data.AsSpan(to));
+                int x = i % Columns * Icon, y = i / Columns * Icon;
+                var pixels = decoder.DecodeRaw(batch[i].Dds[DdsDataOffset..], Source, Source, CompressionFormat.Bc7);
+                var small = Downscale(pixels, Source, Icon);
+                for (int row = 0; row < Icon; row++)
+                    small.AsSpan(row * Icon * 4, Icon * 4).CopyTo(rgba.AsSpan(((y + row) * SheetWidth + x) * 4));
+                positions[batch[i].NewIconId] = (x, y);
             }
-            positions[images[i].NewIconId] = (col * Icon, row * Icon);
+            var data = encoder.EncodeToRawBytes(rgba, SheetWidth, height, PixelFormat.Rgba32, 0, out _, out _);
+            sheets.Add(new Sheet($"{SheetPrefix}{sheets.Count:D2}", Dds(SheetWidth, height, Bc7, data), positions));
         }
-        return (Dds(width, height, Bc7, data), positions);
+        return sheets;
     }
 
-    private static void AddSheet(PorterContext ctx, GameArchives er, string quality, byte[] sheet)
+    /// <summary>Area-averaged downscale of a square RGBA image, weighting colour by alpha so edges don't darken.</summary>
+    internal static byte[] Downscale(ColorRgba32[] pixels, int from, int to)
+    {
+        var result = new byte[to * to * 4];
+        double scale = (double)from / to;
+        for (int dy = 0; dy < to; dy++)
+        for (int dx = 0; dx < to; dx++)
+        {
+            double r = 0, g = 0, b = 0, a = 0, weight = 0;
+            double y0 = dy * scale, y1 = y0 + scale, x0 = dx * scale, x1 = x0 + scale;
+            for (int sy = (int)y0; sy < Math.Min(from, (int)Math.Ceiling(y1)); sy++)
+            {
+                double wy = Math.Min(sy + 1, y1) - Math.Max(sy, y0);
+                for (int sx = (int)x0; sx < Math.Min(from, (int)Math.Ceiling(x1)); sx++)
+                {
+                    double w = wy * (Math.Min(sx + 1, x1) - Math.Max(sx, x0));
+                    var p = pixels[sy * from + sx];
+                    double pa = p.a / 255.0;
+                    r += p.r * pa * w; g += p.g * pa * w; b += p.b * pa * w; a += pa * w;
+                    weight += w;
+                }
+            }
+            int o = (dy * to + dx) * 4;
+            if (a > 0)
+            {
+                result[o] = (byte)Math.Round(Math.Clamp(r / a, 0, 255));
+                result[o + 1] = (byte)Math.Round(Math.Clamp(g / a, 0, 255));
+                result[o + 2] = (byte)Math.Round(Math.Clamp(b / a, 0, 255));
+            }
+            result[o + 3] = (byte)Math.Round(Math.Clamp(a / weight * 255, 0, 255));
+        }
+        return result;
+    }
+
+    private static void AddSheets(PorterContext ctx, GameArchives er, string quality, List<Sheet> sheets)
     {
         var path = $"/menu/{quality}/01_common.tpf.dcx";
         var (bytes, compression) = er.ReadWithCompression(path);
         var tpf = TPF.Read(bytes);
-        tpf.Textures.RemoveAll(t => t.Name == Sheet);
-        tpf.Textures.Add(new TPF.Texture(Sheet, TpfBc7, 0, sheet, TPF.TPFPlatform.PC));
+        tpf.Textures.RemoveAll(t => t.Name.StartsWith(SheetPrefix, StringComparison.Ordinal));
+        foreach (var sheet in sheets)
+            tpf.Textures.Add(new TPF.Texture(sheet.Name, TpfBc7, 0, sheet.Dds, TPF.TPFPlatform.PC));
         File.WriteAllBytes(ctx.ModPath("menu", quality, "01_common.tpf.dcx"), DCX.Compress(tpf.Write(), compression));
     }
 
-    /// <summary>Adds SB_Icon_DS3.layout, written like Elden Ring's own SB_Icon_00.layout.</summary>
-    private static void AddLayout(PorterContext ctx, GameArchives er, string quality, Dictionary<int, (int X, int Y)> positions)
+    /// <summary>Adds a layout per sheet, written like Elden Ring's own SB_Icon_00.layout.</summary>
+    private static void AddLayouts(PorterContext ctx, GameArchives er, string quality, List<Sheet> sheets)
     {
         var path = $"/menu/{quality}/01_common.sblytbnd.dcx";
         var (bytes, compression) = er.ReadWithCompression(path);
@@ -100,19 +151,21 @@ public static class IconPort
         var templateText = Encoding.UTF8.GetString(template.Bytes);
         var newline = templateText.Contains("\r\n") ? "\r\n" : "\n";
         var bom = template.Bytes.AsSpan().StartsWith(Encoding.UTF8.Preamble);
+        var folder = template.Name[..^"SB_Icon_00.layout".Length];
+        bnd.Files.RemoveAll(f => ItemText.Leaf(f.Name).StartsWith(SheetPrefix, StringComparison.Ordinal));
 
-        var text = new StringBuilder();
-        text.Append($"<TextureAtlas imagePath=\"{Sheet}.png\">{newline}");
-        foreach (var (iconId, (x, y)) in positions.OrderBy(p => p.Key))
-            text.Append($"\t<SubTexture name=\"MENU_ItemIcon_{iconId:D5}.png\" x=\"{x}\" y=\"{y}\" width=\"{Icon}\" height=\"{Icon}\" half=\"0\"/>{newline}");
-        text.Append($"</TextureAtlas>{newline}");
-        var layout = Encoding.UTF8.GetBytes(text.ToString());
-        if (bom)
-            layout = [.. Encoding.UTF8.Preamble, .. layout];
-
-        var name = template.Name[..^"SB_Icon_00.layout".Length] + Sheet + ".layout";
-        bnd.Files.RemoveAll(f => f.Name == name);
-        bnd.Files.Add(new BinderFile(template.Flags, bnd.Files.Max(f => f.ID) + 1, name, layout));
+        foreach (var sheet in sheets)
+        {
+            var text = new StringBuilder();
+            text.Append($"<TextureAtlas imagePath=\"{sheet.Name}.png\">{newline}");
+            foreach (var (iconId, (x, y)) in sheet.Positions.OrderBy(p => p.Key))
+                text.Append($"\t<SubTexture name=\"MENU_ItemIcon_{iconId:D5}.png\" x=\"{x}\" y=\"{y}\" width=\"{Icon}\" height=\"{Icon}\" half=\"0\"/>{newline}");
+            text.Append($"</TextureAtlas>{newline}");
+            var layout = Encoding.UTF8.GetBytes(text.ToString());
+            if (bom)
+                layout = [.. Encoding.UTF8.Preamble, .. layout];
+            bnd.Files.Add(new BinderFile(template.Flags, bnd.Files.Max(f => f.ID) + 1, folder + sheet.Name + ".layout", layout));
+        }
         File.WriteAllBytes(ctx.ModPath("menu", quality, "01_common.sblytbnd.dcx"), DCX.Compress(bnd.Write(), compression));
     }
 
