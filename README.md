@@ -96,4 +96,6 @@ On first run the porter downloads the archive keys and file-name lists from
 [UXM Selective Unpack](https://github.com/Nordgaren/UXM-Selective-Unpack) and paramdefs from
 [Paramdex](https://github.com/soulsmods/Paramdex), both at pinned commits, into `TheDarkSign\Work\cache`.
 [SoulsFormatsNEXT](https://github.com/soulsmods/SoulsFormatsNEXT) is GPLv3, so a porter build shared with anyone
-else must come with its source. Icons are scaled with [BCnEncoder.Net](https://github.com/Nominom/BCnEncoder.NET) (MIT).
+else must come with its source. Icons are scaled with [BCnEncoder.Net](https://github.com/Nominom/BCnEncoder.NET) (MIT). Animations are read and written with
+[HKLib](https://github.com/The12thAvenger/HKLib) (MIT, pinned submodule) for Elden Ring and a reader copied from
+[SoulsAssetPipeline](https://github.com/Meowmaritus/SoulsAssetPipeline) (GPL-3.0, `Porter/third_party/SoulsAssetPipeline-HKX`) for Dark Souls III.

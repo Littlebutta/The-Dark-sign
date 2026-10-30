@@ -11,6 +11,7 @@ const string Usage = """
       fmg-list <DS3|ER> <msgbnd path>          list the text files in a msgbnd
       flver-info <DS3|ER> <binder path>        summarize the models and textures in a binder
       shops <DS3|ER>                           list talk-script commands that open shops
+      explore-movesets                         report both games' player animations, TAE events and skeletons
       matbin-info <name filter>                show Elden Ring material definitions
       weapons-plan                 decide which DS3 weapons to port and as which Elden Ring class
       port-weapons                 build the weapon rows into TheDarkSign\Mods\ER\regulation.bin
@@ -48,6 +49,7 @@ try
         "weapons-plan" => Commands.WeaponsPlan(ctx).Count > 0 ? 0 : 1,
         "matbin-info" when argList.Count == 2 => Explore.MatbinInfo(ctx, argList[1]),
         "shops" when argList.Count == 2 => Explore.Shops(ctx, PorterGame.Parse(argList[1])),
+        "explore-movesets" => MovesetExplore.Run(ctx),
         _ => Fail(Usage),
     };
 }
