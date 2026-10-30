@@ -197,7 +197,7 @@ void draw_menu()
     if (!open)
         g_open = false;
 
-    bool changed = false;
+    bool changed = false, levels = false;
     if (ImGui::BeginTabBar("games")) {
         for (int i = 0; i < IM_ARRAYSIZE(GAME_LABELS); i++)
             if (ImGui::BeginTabItem(GAME_LABELS[i])) {
@@ -207,8 +207,20 @@ void draw_menu()
                 }
                 ImGui::EndTabItem();
             }
+        if (ImGui::BeginTabItem("Level and attributes")) {
+            levels = true;
+            ImGui::EndTabItem();
+        }
         ImGui::EndTabBar();
     }
+    if (levels) {
+        draw_attributes();
+        ImGui::Separator();
+        ImGui::TextWrapped("%s", g_status.c_str());
+        ImGui::End();
+        return;
+    }
+    g_attributes_loaded = false; // re-read the character next time the tab opens
     ImGui::SetNextItemWidth(-200);
     if (g_focus_search) {
         ImGui::SetKeyboardFocusHere();
@@ -275,12 +287,6 @@ void draw_menu()
     ImGui::SameLine();
     if (ImGui::Button("Set runes"))
         change_runes(false);
-
-    ImGui::Separator();
-    if (ImGui::CollapsingHeader("Level and attributes"))
-        draw_attributes();
-    else
-        g_attributes_loaded = false; // re-read the character next time the section opens
 
     ImGui::Separator();
     ImGui::TextWrapped("%s", g_status.c_str());
@@ -689,7 +695,7 @@ bool is_elden_ring()
 } // namespace
 
 /* Lets the launcher recognise this DLL. */
-extern "C" __declspec(dllexport) const char *DkSignTestMenuVersion(void) { return "dksign_testmenu 3"; }
+extern "C" __declspec(dllexport) const char *DkSignTestMenuVersion(void) { return "dksign_testmenu 4"; }
 
 BOOL WINAPI DllMain(HINSTANCE inst, DWORD reason, LPVOID)
 {
