@@ -1,0 +1,29 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>TheDarkSignLauncher</AssemblyName>
+    <!-- CI sets the real version (1.0.<build number>); local builds stay 1.0.0 so they update. -->
+    <Version>1.0.0</Version>
+    <RootNamespace>DarkSign.Launcher</RootNamespace>
+    <!-- Lets the project build on non-Windows CI; it still only runs on Windows. -->
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
+  </PropertyGroup>
+  <!-- The save-redirect DLL (built from SaveRedirect/ with make) ships inside the exe, so a
+       launcher update also updates the DLL in each game folder. -->
+  <PropertyGroup>
+    <RedirectDll>$(MSBuildThisFileDirectory)..\..\..\SaveRedirect\build\dksign_saveredirect.dll</RedirectDll>
+  </PropertyGroup>
+  <ItemGroup Condition="Exists('$(RedirectDll)')">
+    <EmbeddedResource Include="$(RedirectDll)" LogicalName="dksign_saveredirect.dll" />
+  </ItemGroup>
+  <Target Name="RequireRedirectDll" BeforeTargets="Build" Condition="'$(RequireRedirectDll)' == 'true' And !Exists('$(RedirectDll)')">
+    <Error Text="SaveRedirect/build/dksign_saveredirect.dll is missing: build it with make first." />
+  </Target>
+  <ItemGroup>
+    <ProjectReference Include="..\DarkSign.Core\DarkSign.Core.csproj" />
+  </ItemGroup>
+</Project>

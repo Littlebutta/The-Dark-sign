@@ -1,0 +1,34 @@
+{
+  "project": "The Dark Sign",
+  "blueprintVersion": "5.0",
+  "rootLayout": {
+    "root": "D:\\The Dark sign",
+    "launcher": "<root>\\Launcher",
+    "games": "<root>\\<one folder per game>",
+    "saves": "<root>\\TheDarkSign\\Saves\\<profile>\\<DSR|DS3|BB|ER>\\*.dksign"
+  },
+  "phases": {
+    "1": {
+      "name": "Launcher & Save Isolation",
+      "status": "in-progress",
+      "modules": {
+        "gameDetection": "done",
+        "profilesAndLaunchArgs": "done",
+        "saveDirectorySettings": "done",
+        "launcherUi": "done",
+        "saveRedirectDll": "verified in DSR",
+        "selfUpdate": "done",
+        "offlineOnly": "done (DLL Winsock block; bbport online off)",
+        "graphicsProfiles": "todo"
+      }
+    },
+    "2": { "name": "Save State Serialization & Converter", "status": "todo" },
+    "3": { "name": "Parameter & Asset ID Mapping", "status": "todo" },
+    "4": { "name": "Progression-Safe Chaos & Randomizer", "status": "todo" }
+  },
+  "contracts": {
+    "saveRedirectEnv": ["DKSIGN_SAVE_DIR", "DKSIGN_SAVE_EXT", "DKSIGN_PROFILE", "DKSIGN_GAME"],
+    "saveRedirectDll": "dksign_saveredirect.dll, installed as dinput8.dll next to the DSR/DS3/ER exe",
+    "bloodborneSaves": "per-profile bbport settings.json copy via APPDATA (user_dir, online=false)"
+  }
+}
