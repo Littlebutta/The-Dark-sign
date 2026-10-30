@@ -37,6 +37,15 @@ public sealed class PorterContext
         Path.GetDirectoryName(_games.FirstOrDefault(g => g.Id == game.Id)?.ExePath)
         ?? throw new DirectoryNotFoundException($"{game.ShortName} was not found under {Root}.");
 
+    /// <summary>A path in the Elden Ring mod folder (TheDarkSign\Mods\ER), created if needed.</summary>
+    public string ModPath(params string[] parts)
+    {
+        var path = Path.Combine([Root, "TheDarkSign", "Mods", "ER", .. parts]);
+        PathGuard.EnsureInsideRoot(path, Root);
+        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+        return path;
+    }
+
     /// <summary>A path under the work folder, created if needed. Nothing is ever written outside it.</summary>
     public string WorkPath(params string[] parts)
     {

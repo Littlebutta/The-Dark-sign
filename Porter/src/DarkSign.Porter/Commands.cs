@@ -96,6 +96,45 @@ public static class Commands
         yield return ("npcs", "NpcParam", r => r.ID > 0);
     }
 
+    /// <summary>Decides which DS3 weapons to port and how; writes Work\reports\weapons-plan.json.</summary>
+    public static List<WeaponPlan> WeaponsPlan(PorterContext ctx)
+    {
+        var ds3Params = ctx.LoadParams(PorterGame.DarkSouls3).Get("EquipParamWeapon")!;
+        var erParams = ctx.LoadParams(PorterGame.EldenRing).Get("EquipParamWeapon")!;
+        Dictionary<int, string> ds3Names, erNames;
+        using (var a = ctx.OpenArchives(PorterGame.DarkSouls3))
+            ds3Names = ItemText.LoadNamesOrRowNames(a, ds3Params);
+        using (var a = ctx.OpenArchives(PorterGame.EldenRing))
+            erNames = ItemText.LoadNamesOrRowNames(a, erParams);
+
+        var plans = WeaponPort.Plan(ds3Params, erParams, ds3Names, erNames);
+        var path = ctx.WorkPath("reports", "weapons-plan.json");
+        File.WriteAllText(path, JsonSerializer.Serialize(plans, new JsonSerializerOptions { WriteIndented = true }));
+        foreach (var g in plans.GroupBy(p => p.Status.Split(':')[0] == "port" ? "port" : p.Status))
+            Console.WriteLine($"{g.Count(),4}  {g.Key}");
+        foreach (var g in plans.Where(p => p.Status == "port").GroupBy(p => p.TemplateName))
+            Console.WriteLine($"      as {g.Key}: {string.Join(", ", g.Select(p => p.Name))}");
+        Console.WriteLine($"plan: {path}");
+        return plans;
+    }
+
+    /// <summary>
+    /// Builds the weapon part of the Elden Ring mod: new EquipParamWeapon rows in Mods\ER\regulation.bin.
+    /// Every run starts again from the game's own regulation, so it can be re-run safely.
+    /// </summary>
+    public static int PortWeapons(PorterContext ctx)
+    {
+        var plans = WeaponsPlan(ctx);
+        var ds3 = ctx.LoadParams(PorterGame.DarkSouls3).Get("EquipParamWeapon")!;
+        var erStore = ctx.LoadParams(PorterGame.EldenRing);
+        var added = WeaponPort.Apply(plans, ds3, erStore.Get("EquipParamWeapon")!);
+        var path = ctx.ModPath("regulation.bin");
+        erStore.Save(path);
+        Console.WriteLine($"added {added} weapon rows ({plans.Count(p => p.Status == "port")} weapons with their affinities)");
+        Console.WriteLine($"regulation: {path}");
+        return 0;
+    }
+
     /// <summary>Prints chosen fields of a param as TSV (all rows, or rows whose ID is in [min, max]).</summary>
     public static int DumpParam(PorterContext ctx, PorterGame game, string paramName, IReadOnlyList<string> fields)
     {
