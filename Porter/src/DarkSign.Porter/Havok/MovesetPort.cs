@@ -281,7 +281,10 @@ public static partial class MovesetPort
         int id = ext.Equals(".tae", StringComparison.OrdinalIgnoreCase) && int.TryParse(leaf[1..^4], out var s) && !ids.Contains(like.ID - like.ID % 1000 + s)
             ? like.ID - like.ID % 1000 + s
             : bnd.Files.Max(f => f.ID) + 1;
-        bnd.Files.Add(new BinderFile(like.Flags, id, folder + leaf, bytes));
+        // The game expects a binder's files in ID order: an a208.tae appended after #9999999 hung loading.
+        var file = new BinderFile(like.Flags, id, folder + leaf, bytes);
+        int at = bnd.Files.FindIndex(f => f.ID > id);
+        bnd.Files.Insert(at < 0 ? bnd.Files.Count : at, file);
     }
 
     /// <summary>Reads DS3 player animation files by name from whichever c0000 anim binder holds them.</summary>
