@@ -82,6 +82,7 @@ public static class ModelPort
             var m = flver.Materials[i];
             var suffix = flver.Materials.Count > 1 ? $"_{i}" : "";
             var newMatbin = templateMatbin.Replace(TagIn(templateMatbin), stem + suffix);
+            m.Name = stem + suffix;
             m.MTD = templateMaterial.MTD.Replace(TagIn(templateMatbin), stem + suffix);
             m.GXIndex = 0;
             m.Textures = templateMaterial.Textures
@@ -96,6 +97,26 @@ public static class ModelPort
         foreach (var vertex in flver.Meshes.SelectMany(m => m.Vertices))
             if (vertex.Tangents.Count > 1)
                 vertex.Tangents.RemoveRange(1, vertex.Tangents.Count - 1);
+
+        // Elden Ring's weapon shader reads VertexColor1; some DS3 layouts have none, so add it as opaque white.
+        foreach (var mesh in flver.Meshes)
+        {
+            var layouts = mesh.VertexBuffers.Select(b => flver.BufferLayouts[b.LayoutIndex]).ToList();
+            if (layouts.Any(l => l.Any(m => m.Semantic == FLVER.LayoutSemantic.VertexColor)))
+                continue;
+            foreach (var layout in layouts.Distinct())
+            {
+                int uv = layout.FindIndex(m => m.Semantic == FLVER.LayoutSemantic.UV);
+                layout.Insert(uv < 0 ? layout.Count : uv,
+                    new FLVER.LayoutMember(FLVER.LayoutType.UByte4Norm, FLVER.LayoutSemantic.VertexColor, 1));
+            }
+            foreach (var vertex in mesh.Vertices)
+            {
+                // The layout's color member has index 1, so colors[0] is a placeholder for index 0.
+                while (vertex.Colors.Count < 2)
+                    vertex.Colors.Add(new FLVER.VertexColor(1f, 1f, 1f, 1f));
+            }
+        }
     }
 
     private static List<FLVER2.SkeletonSet.Bone> SkeletonFromNodes(FLVER2 flver) =>
@@ -117,6 +138,10 @@ public static class ModelPort
         foreach (var t in tpf.Textures)
         {
             t.Name = t.Name.Replace(oldTag, newTag, StringComparison.OrdinalIgnoreCase);
+            // DS3 LOD textures end in the LOD mark ("WP_A_9000_a_l"); the converted LOD materials name them by the
+            // LOD model's stem ("WP_A_9000_L" + "_a"), so move the mark in front of the map letter.
+            if (t.Name.Length > 4 && t.Name.EndsWith("_l", StringComparison.OrdinalIgnoreCase) && t.Name[^4] == '_')
+                t.Name = t.Name[..^4] + "_L" + t.Name[^4..^2];
             if (t.Name.EndsWith("_r", StringComparison.OrdinalIgnoreCase))
                 added.Add(new TPF.Texture(t.Name[..^2] + "_m", 103, 0, BlackBc4Dds(), TPF.TPFPlatform.PC));
         }
@@ -179,7 +204,8 @@ public static class ModelPort
             {
                 var leaf = ItemText.Leaf(sampler.Path);
                 var suffix = Path.GetFileNameWithoutExtension(leaf)[^2..]; // _a, _n, _m
-                sampler.Path = sampler.Path[..^leaf.Length] + m.TextureBase + suffix + Path.GetExtension(leaf);
+                var folder = sampler.Path[..^leaf.Length].Replace(templateTag, ModelTag(m.TextureBase), StringComparison.OrdinalIgnoreCase);
+                sampler.Path = folder + m.TextureBase + suffix + Path.GetExtension(leaf);
             }
             matbin.SourcePath = matbin.SourcePath.Replace(templateTag, TagIn(m.NewMatbin), StringComparison.OrdinalIgnoreCase);
             var name = templateFile.Name.Replace(m.TemplateMatbin, m.NewMatbin, StringComparison.OrdinalIgnoreCase);
@@ -192,6 +218,9 @@ public static class ModelPort
 
     // "N:\GR\...\matxml\P[WP_A_0200]_Metal.matxml" -> "P[WP_A_0200]_Metal"
     public static string MatbinName(string mtd) => Path.GetFileNameWithoutExtension(ItemText.Leaf(mtd));
+
+    // "WP_A_9000_1_L" -> "WP_A_9000"
+    private static string ModelTag(string stem) => stem.Length >= 9 ? stem[..9] : stem;
 
     // The model tag inside a material name: "P[WP_A_0200]_Metal" -> "WP_A_0200".
     private static string TagIn(string matbin)
