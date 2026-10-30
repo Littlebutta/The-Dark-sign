@@ -13,6 +13,8 @@ const string Usage = """
       shops <DS3|ER>                           list talk-script commands that open shops
       explore-movesets                         report both games' player animations, TAE events and skeletons
       anim-test <DS3 anim> [ER anim] | undo    try one DS3 animation in place of an Elden Ring one (mod folder only)
+      explore-behavior [section...]            report how Elden Ring's player behaviour selects weapon animations
+      tae-dump <DS3|ER> <section>              list every event of a section's TAE with raw parameters
       matbin-info <name filter>                show Elden Ring material definitions
       weapons-plan                 decide which DS3 weapons to port and as which Elden Ring class
       port-weapons                 build the weapon rows into TheDarkSign\Mods\ER\regulation.bin
@@ -52,6 +54,8 @@ try
         "shops" when argList.Count == 2 => Explore.Shops(ctx, PorterGame.Parse(argList[1])),
         "explore-movesets" => MovesetExplore.Run(ctx),
         "anim-test" => AnimTest.Run(ctx, argList[1..]),
+        "explore-behavior" => BehaviorExplore.Run(ctx, argList[1..]),
+        "tae-dump" when argList.Count == 3 => TaeDump.Run(ctx, PorterGame.Parse(argList[1]), int.Parse(argList[2])),
         _ => Fail(Usage),
     };
 }
