@@ -209,3 +209,39 @@ public static partial class AnimIdMap
         }
     }
 }
+
+/// <summary>
+/// behavior-roundtrip: reads Elden Ring's player behaviour with HKLib and writes it back unchanged to
+/// Work\scratch\behavior-roundtrip, so the game can be tried with it alone. If that hangs too, the round trip is at fault,
+/// not the clips a moveset port adds.
+/// </summary>
+public static class BehaviorRoundTrip
+{
+    public static int Run(PorterContext ctx)
+    {
+        using var archives = ctx.OpenArchives(PorterGame.EldenRing);
+        var (bytes, compression) = archives.ReadWithCompression("/chr/c0000.behbnd.dcx");
+        var bnd = BND4.Read(bytes);
+        var file = bnd.Files.Where(f => f.Name.EndsWith(".hkx", StringComparison.OrdinalIgnoreCase)).MaxBy(f => f.Bytes.Length)!;
+        var before = new HavokBinarySerializer().ReadAllObjects(new MemoryStream(file.Bytes)).ToList();
+        var root = (hkRootLevelContainer)new HavokBinarySerializer().Read(new MemoryStream(file.Bytes));
+        using var output = new MemoryStream();
+        new HavokBinarySerializer().Write(root, output);
+        var original = file.Bytes.Length;
+        file.Bytes = output.ToArray();
+        var after = new HavokBinarySerializer().ReadAllObjects(new MemoryStream(file.Bytes)).ToList();
+
+        Console.WriteLine($"behaviour {original} -> {file.Bytes.Length} bytes, objects {before.Count} -> {after.Count}");
+        foreach (var type in before.GroupBy(o => o.GetType().Name).Select(g => (g.Key, Before: g.Count()))
+                     .GroupJoin(after.GroupBy(o => o.GetType().Name), t => t.Key, g => g.Key, (t, g) => (t.Key, t.Before, After: g.SingleOrDefault()?.Count() ?? 0))
+                     .Where(t => t.Before != t.After))
+            Console.WriteLine($"  {type.Key}: {type.Before} -> {type.After}");
+
+        var dir = ctx.WorkPath("scratch", "behavior-roundtrip");
+        Directory.CreateDirectory(dir);
+        var path = Path.Combine(dir, "c0000.behbnd.dcx");
+        File.WriteAllBytes(path, DCX.Compress(bnd.Write(), compression));
+        Console.WriteLine($"-> {path}");
+        return 0;
+    }
+}
