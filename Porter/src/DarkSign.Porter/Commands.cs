@@ -169,7 +169,11 @@ public static class Commands
             }
             catch (Exception ex)
             {
-                failed.Add($"{plan.Name} (wp_a_{ds3Model:D4}): {ex.Message}");
+                // SoulsFormats' writer can mask the real error with "Not all reservations filled"; report the root.
+                var root = ex;
+                while (root.InnerException is not null)
+                    root = root.InnerException;
+                failed.Add($"{plan.Name} (wp_a_{ds3Model:D4}): {root.GetType().Name}: {root.Message}");
             }
         }
         ModelPort.WriteMaterials(ctx, er, materials);

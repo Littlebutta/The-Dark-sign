@@ -64,6 +64,14 @@ public static class ModelPort
         flver.Header.BoundingBoxMin = bboxMin;
         flver.Header.BoundingBoxMax = bboxMax;
 
+        // FLVER 0x20017+ stores a skeleton set, which DS3 models (0x20014) lack. Elden Ring weapons use one bone
+        // per node with the node's own hierarchy, in both the base and the full skeleton.
+        flver.Skeletons = new FLVER2.SkeletonSet
+        {
+            BaseSkeleton = SkeletonFromNodes(flver),
+            AllSkeletons = SkeletonFromNodes(flver),
+        };
+
         // One GX list from the template (Elden Ring's single GX00 v102 entry) for every material.
         flver.GXLists = [template.GXLists[0]];
 
@@ -89,6 +97,15 @@ public static class ModelPort
             if (vertex.Tangents.Count > 1)
                 vertex.Tangents.RemoveRange(1, vertex.Tangents.Count - 1);
     }
+
+    private static List<FLVER2.SkeletonSet.Bone> SkeletonFromNodes(FLVER2 flver) =>
+        flver.Nodes.Select((n, i) => new FLVER2.SkeletonSet.Bone(i)
+        {
+            ParentIndex = n.ParentIndex,
+            FirstChildIndex = n.FirstChildIndex,
+            NextSiblingIndex = n.NextSiblingIndex,
+            PreviousSiblingIndex = n.PreviousSiblingIndex,
+        }).ToList();
 
     /// <summary>
     /// Renames textures to the new model and adds a flat, non-metallic _m map for each _r map, since Elden Ring's
