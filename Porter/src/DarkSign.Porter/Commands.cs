@@ -135,11 +135,47 @@ public static class Commands
         using var ds3Archives = ctx.OpenArchives(PorterGame.DarkSouls3);
         WeaponText.Write(ctx, erArchives, ds3Archives, plans, erWeapons);
         ShopPort.Write(ctx, erArchives, erStore.Get("ShopLineupParam")!, ds3, plans);
+        PortWeaponModels(ctx, erArchives, ds3Archives, plans, ds3, erWeapons);
 
         var path = ctx.ModPath("regulation.bin");
         erStore.Save(path);
         Console.WriteLine($"mod: {Path.GetDirectoryName(path)}");
         return 0;
+    }
+
+    private static void PortWeaponModels(PorterContext ctx, GameArchives er, GameArchives ds3, List<WeaponPlan> plans,
+        PARAM ds3Weapons, PARAM erWeapons)
+    {
+        var materials = new List<ModelPort.NewMaterial>();
+        int converted = 0;
+        var failed = new List<string>();
+        foreach (var plan in plans.Where(p => p.Status == "port"))
+        {
+            int ds3Model = Convert.ToInt32(ds3Weapons[plan.Ds3Id]!["equipModelId"].Value);
+            int templateModel = Convert.ToInt32(erWeapons[plan.TemplateId!.Value]!["equipModelId"].Value);
+            try
+            {
+                foreach (var lod in new[] { false, true })
+                {
+                    var model = ModelPort.Convert(ds3, er, ds3Model, templateModel, plan.NewModelId!.Value, lod);
+                    if (model is null)
+                        continue;
+                    var path = ctx.ModPath(["parts", ModelPort.PartsPath(plan.NewModelId.Value, lod)[7..]]);
+                    File.WriteAllBytes(path, DCX.Compress(model.Binder.Write(), model.Compression));
+                    materials.AddRange(model.Materials);
+                    if (!lod)
+                        converted++;
+                }
+            }
+            catch (Exception ex)
+            {
+                failed.Add($"{plan.Name} (wp_a_{ds3Model:D4}): {ex.Message}");
+            }
+        }
+        ModelPort.WriteMaterials(ctx, er, materials);
+        Console.WriteLine($"models: {converted} converted, {failed.Count} failed");
+        foreach (var f in failed)
+            Console.WriteLine($"  failed: {f}");
     }
 
     /// <summary>Prints chosen fields of a param as TSV (all rows, or rows whose ID is in [min, max]).</summary>

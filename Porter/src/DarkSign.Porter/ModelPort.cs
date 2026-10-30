@@ -10,7 +10,7 @@ namespace DarkSign.Porter;
 /// </summary>
 public static class ModelPort
 {
-    public sealed record ConvertedModel(BND4 Binder, List<NewMaterial> Materials);
+    public sealed record ConvertedModel(BND4 Binder, DCX.CompressionInfo Compression, List<NewMaterial> Materials);
 
     /// <summary>A material the converted model needs: a copy of a template MATBIN pointed at the new textures.</summary>
     public sealed record NewMaterial(string TemplateMatbin, string NewMatbin, string TextureBase);
@@ -26,7 +26,8 @@ public static class ModelPort
             return null;
 
         var source = BND4.Read(ds3.Read(ds3Path));
-        var template = BND4.Read(er.Read(erPath));
+        var (templateBytes, compression) = er.ReadWithCompression(erPath);
+        var template = BND4.Read(templateBytes);
         var templateFlver = template.Files.Where(f => FLVER2.Is(f.Bytes)).Select(f => FLVER2.Read(f.Bytes)).First();
         var templateFlverName = template.Files.First(f => FLVER2.Is(f.Bytes)).Name;
         string oldTag = $"WP_A_{ds3Model:D4}", tmplTag = $"WP_A_{templateModel:D4}", newTag = $"WP_A_{newModel:D4}";
@@ -52,7 +53,7 @@ public static class ModelPort
         }
 
         template.Files = files;
-        return new ConvertedModel(template, materials);
+        return new ConvertedModel(template, compression, materials);
     }
 
     private static void ConvertFlver(FLVER2 flver, FLVER2 template, string stem, List<NewMaterial> materials)
@@ -128,6 +129,48 @@ public static class ModelPort
         w.Write(0); w.Write(1); w.Write(0);    // misc, array size, misc2
         w.Write(new byte[8]);                  // the block: both endpoints 0
         return ms.ToArray();
+    }
+
+    /// <summary>
+    /// Adds a MATBIN for each new material to Elden Ring's DLC02 material binder: a copy of the template weapon's
+    /// MATBIN whose own-texture samplers (albedo, normal, metallic) point at the new model's textures. Shared detail
+    /// textures (parts\tex\AAT100_*) are kept.
+    /// </summary>
+    public static void WriteMaterials(PorterContext ctx, GameArchives er, IEnumerable<NewMaterial> materials)
+    {
+        // Every template MATBIN, by name, from all three binders.
+        var templates = new Dictionary<string, BinderFile>(StringComparer.OrdinalIgnoreCase);
+        foreach (var binder in Explore.MaterialBinders)
+            foreach (var f in BND4.Read(er.Read(binder)).Files)
+                templates.TryAdd(Path.GetFileNameWithoutExtension(ItemText.Leaf(f.Name)), f);
+
+        const string Target = "/material/allmaterial_dlc02.matbinbnd.dcx";
+        var (bytes, compression) = er.ReadWithCompression(Target);
+        var bnd = BND4.Read(bytes);
+        int nextId = bnd.Files.Max(f => f.ID) + 1;
+        int added = 0;
+        foreach (var m in materials.DistinctBy(m => m.NewMatbin, StringComparer.OrdinalIgnoreCase))
+        {
+            if (!templates.TryGetValue(m.TemplateMatbin, out var templateFile))
+            {
+                Console.Error.WriteLine($"warning: no MATBIN {m.TemplateMatbin}; {m.NewMatbin} will render untextured");
+                continue;
+            }
+            var matbin = MATBIN.Read(templateFile.Bytes);
+            var templateTag = TagIn(m.TemplateMatbin);
+            foreach (var sampler in matbin.Samplers.Where(smp => smp.Path.Contains(templateTag, StringComparison.OrdinalIgnoreCase)))
+            {
+                var leaf = ItemText.Leaf(sampler.Path);
+                var suffix = Path.GetFileNameWithoutExtension(leaf)[^2..]; // _a, _n, _m
+                sampler.Path = sampler.Path[..^leaf.Length] + m.TextureBase + suffix + Path.GetExtension(leaf);
+            }
+            matbin.SourcePath = matbin.SourcePath.Replace(templateTag, TagIn(m.NewMatbin), StringComparison.OrdinalIgnoreCase);
+            var name = templateFile.Name.Replace(m.TemplateMatbin, m.NewMatbin, StringComparison.OrdinalIgnoreCase);
+            bnd.Files.Add(new BinderFile(templateFile.Flags, nextId++, name, matbin.Write()));
+            added++;
+        }
+        File.WriteAllBytes(ctx.ModPath(["material", ItemText.Leaf(Target)]), DCX.Compress(bnd.Write(), compression));
+        Console.WriteLine($"materials: {added} added to {ItemText.Leaf(Target)}");
     }
 
     // "N:\GR\...\matxml\P[WP_A_0200]_Metal.matxml" -> "P[WP_A_0200]_Metal"
