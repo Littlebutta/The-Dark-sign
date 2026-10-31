@@ -116,7 +116,10 @@ public static partial class MovesetPort
         // wepmotionCategory is one byte, so sections 90-255 go straight into the weapon rows (from 90 up the animations
         // live in c0000_a9x, where these go). Sections 256-999 need the mod DLL: it reads them from
         // motion-categories.txt and gives them to the game in place of the row's byte. Animation names allow 3 digits.
-        var freeSections = new Queue<int>(Enumerable.Range(90, 166).Reverse().Concat(Enumerable.Range(256, 744))
+        // They are off unless DARKSIGN_WIDE_MOTION=1: builds with sections above 255 crashed Elden Ring 2.7.2 at
+        // startup (access violation at +0x1EBCEF9), and the DLL's hook didn't find its code either.
+        var wide = Environment.GetEnvironmentVariable("DARKSIGN_WIDE_MOTION") == "1" ? Enumerable.Range(256, 744) : [];
+        var freeSections = new Queue<int>(Enumerable.Range(90, 166).Reverse().Concat(wide)
             .Where(s => !usedSections.Contains(s)));
         var wideCategories = new SortedDictionary<int, int>();
         // Too few categories for every DS3 moveset, so they are handed out in this order: Friede's (Devin's first pick),
