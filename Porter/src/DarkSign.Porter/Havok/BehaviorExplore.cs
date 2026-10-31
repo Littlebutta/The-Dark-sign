@@ -96,12 +96,13 @@ public static class TaeDump
     public static int Run(PorterContext ctx, PorterGame game, int section)
     {
         using var archives = ctx.OpenArchives(game);
-        var leaf = $"a{section:D2}.tae";
+        string[] leaves = [$"a{section:D2}.tae", $"a{section:D3}.tae"]; // DS3 names a38.tae, Elden Ring a050.tae
+        var leaf = leaves[0];
         foreach (var entry in archives.Entries.Where(e => e.Path is not null && e.Path.StartsWith("/chr/c0000", StringComparison.OrdinalIgnoreCase)
                      && e.Path.EndsWith(".anibnd.dcx", StringComparison.OrdinalIgnoreCase)).OrderBy(e => e.Path))
         {
             var bnd = BND4.Read(archives.Read(entry.Path!));
-            var file = bnd.Files.FirstOrDefault(f => ItemText.Leaf(f.Name).Equals(leaf, StringComparison.OrdinalIgnoreCase));
+            var file = bnd.Files.FirstOrDefault(f => leaves.Contains(ItemText.Leaf(f.Name), StringComparer.OrdinalIgnoreCase));
             if (file is null)
                 continue;
             TAE.ValidateEventBank = false;
