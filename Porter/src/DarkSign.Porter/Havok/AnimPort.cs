@@ -90,10 +90,13 @@ public static class AnimPort
             mapped++;
         }
 
+        // Spline files bind only the bones DS3 animates, as Elden Ring's own animations do (most bind 42 of 150);
+        // the other bones keep the reference pose.
+        var bound = spline ? Enumerable.Range(0, erBones).Where(b => ds3TrackOf[b] >= 0).ToArray() : Enumerable.Range(0, erBones).ToArray();
         hkaAnimation animation = spline
-            ? SplineTranscode.Build(source, ds3TrackOf, offsets, er.ReferencePose)
+            ? SplineTranscode.Build(source, bound.Select(b => ds3TrackOf[b]).ToArray(), bound.Select(b => offsets[b]).ToArray(), bound.Select(b => er.ReferencePose[b]).ToList())
             : Interleaved(source, tracks, frames, ds3TrackOf, offsets, er);
-        animation.m_annotationTracks = er.Names.Select(n => new hkaAnnotationTrack { m_trackName = n }).ToList();
+        animation.m_annotationTracks = bound.Select(b => new hkaAnnotationTrack { m_trackName = er.Names[b] }).ToList();
         if (refFrame is not null)
             animation.m_extractedMotion = new hkaDefaultAnimatedReferenceFrame
             {
@@ -109,7 +112,7 @@ public static class AnimPort
         container.m_animations.Add(animation);
         var erBinding = container.m_bindings.First()!;
         erBinding.m_animation = animation;
-        erBinding.m_transformTrackToBoneIndices = Enumerable.Range(0, erBones).Select(i => (short)i).ToList();
+        erBinding.m_transformTrackToBoneIndices = bound.Select(b => (short)b).ToList();
         erBinding.m_floatTrackToFloatSlotIndices = [];
         erBinding.m_partitionIndices = [];
 

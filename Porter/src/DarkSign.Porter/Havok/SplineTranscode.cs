@@ -61,8 +61,8 @@ public static class SplineTranscode
             PadFrom(output, blockStart, 4);
             foreach (var body in bodies)
                 output.AddRange(body); // every body is a multiple of 4 bytes, so each track starts 4-aligned
+            floatBlockOffsets.Add((uint)(output.Count - blockStart)); // as Elden Ring's: where transform data ends, before padding
             PadFrom(output, 0, 16);
-            floatBlockOffsets.Add((uint)(output.Count - blockStart));
         }
 
         return new hkaSplineCompressedAnimation
@@ -322,22 +322,25 @@ public static class AnimSplineCheck
                 {
                     var (spline, _) = AnimPort.Convert(file.Bytes, ds3Skeleton, erSkeleton, template.Bytes, erCompendium, spline: true);
                     var (flat, _) = AnimPort.Convert(file.Bytes, ds3Skeleton, erSkeleton, template.Bytes, erCompendium, spline: false);
-                    var s = (hkaSplineCompressedAnimation)AnimPort.Container((hkRootLevelContainer)AnimPort.ReadEr(spline, erCompendium)).m_animations.First()!;
+                    var sc = AnimPort.Container((hkRootLevelContainer)AnimPort.ReadEr(spline, erCompendium));
+                    var s = (hkaSplineCompressedAnimation)sc.m_animations.First()!;
+                    var boneOf = sc.m_bindings.First()!.m_transformTrackToBoneIndices;
                     var u = (hkaInterleavedUncompressedAnimation)AnimPort.Container((hkRootLevelContainer)AnimPort.ReadEr(flat, erCompendium)).m_animations.First()!;
                     var samples = SplineTranscode.Sample(s);
-                    int bones = s.m_numberOfTransformTracks;
-                    if (samples.Count != u.m_transforms.Count)
-                        throw new InvalidDataException($"{samples.Count} samples vs {u.m_transforms.Count}");
+                    int tracks = s.m_numberOfTransformTracks, bones = u.m_numberOfTransformTracks;
+                    if (boneOf.Count != tracks || samples.Count != tracks * (u.m_transforms.Count / bones))
+                        throw new InvalidDataException($"{samples.Count} samples of {tracks} tracks vs {u.m_transforms.Count} of {bones}");
                     for (int i = 0; i < samples.Count; i++)
                     {
-                        var want = u.m_transforms[i];
+                        int frame = i / tracks, bone = boneOf[i % tracks];
+                        var want = u.m_transforms[frame * bones + bone];
                         var got = samples[i];
                         float pos = Vector3.Distance(got.Translation, new Vector3(want.m_translation.X, want.m_translation.Y, want.m_translation.Z));
                         var q = Quaternion.Normalize(got.Rotation);
                         float dot = MathF.Min(1, MathF.Abs(Quaternion.Dot(q, want.m_rotation)));
                         float rot = 2 * MathF.Acos(dot) * 180 / MathF.PI;
-                        if (pos > worstPos) { worstPos = pos; worstPosName = $"{name} bone {erSkeleton.Names[i % bones]} frame {i / bones}"; }
-                        if (rot > worstRot) { worstRot = rot; worstRotName = $"{name} bone {erSkeleton.Names[i % bones]} frame {i / bones}"; }
+                        if (pos > worstPos) { worstPos = pos; worstPosName = $"{name} bone {erSkeleton.Names[bone]} frame {frame}"; }
+                        if (rot > worstRot) { worstRot = rot; worstRotName = $"{name} bone {erSkeleton.Names[bone]} frame {frame}"; }
                     }
                     splineBytes += spline.Length;
                     interleavedBytes += flat.Length;
