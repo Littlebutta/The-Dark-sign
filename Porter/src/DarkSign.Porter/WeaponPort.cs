@@ -27,6 +27,20 @@ public static class WeaponPort
     // DS3 motion categories Elden Ring files under a different number.
     private static readonly Dictionary<int, int> MotionRemap = new() { [49] = 21 /* torch */ };
 
+    // DS3's params file some weapon types together that Elden Ring keeps apart: its reapers share the halberds'
+    // category, curved greatswords the curved swords', claws the fists'. DS3's own menus (and its wikis) name the
+    // type, so these weapons go to the Elden Ring class of that name instead.
+    private static readonly Dictionary<string, int> TypeByName = new(StringComparer.OrdinalIgnoreCase)
+    {
+        // Reapers -> Elden Ring Reaper (motion 50)
+        ["Great Scythe"] = 50, ["Friede's Great Scythe"] = 50, ["Pontiff Knight Great Scythe"] = 50, ["Great Corvian Scythe"] = 50,
+        // Curved Greatswords -> Elden Ring Curved Greatsword (motion 40)
+        ["Carthus Curved Greatsword"] = 40, ["Exile Greatsword"] = 40, ["Old Wolf Curved Sword"] = 40,
+        ["Harald Curved Greatsword"] = 40, ["Murakumo"] = 40,
+        // Claws -> Elden Ring Claw (motion 22)
+        ["Claw"] = 22, ["Manikin Claws"] = 22, ["Crow Talons"] = 22,
+    };
+
     // DS3 field -> Elden Ring field, for stats that carry over as-is (same meaning, same units).
     private static readonly (string Ds3, string Er)[] StatFields =
     [
@@ -85,7 +99,7 @@ public static class WeaponPort
                 continue;
             }
 
-            var erMotion = MotionRemap.GetValueOrDefault(motion, motion);
+            var erMotion = TypeByName.TryGetValue(name.Replace('\u2019', '\''), out var typed) ? typed : MotionRemap.GetValueOrDefault(motion, motion);
             var template = PickTemplate(templates, erMotion, row);
             if (template is null)
             {
