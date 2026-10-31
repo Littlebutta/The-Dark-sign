@@ -13,7 +13,7 @@ CFLAGS = -O2 -Wall -Wextra -Wno-unused-parameter -Wno-cast-function-type $(INCLU
 CXXFLAGS = -O2 -std=c++17 -Wall -Wno-unused-parameter -Wno-cast-function-type $(INCLUDES)
 LDFLAGS = -shared -static -s
 LIBS = -ld3d12 -ldxgi -ld3dcompiler -ldxguid -luser32 -lgdi32 -ldwmapi
-C_SRC = src/game.c src/items.c $(MH)/src/buffer.c $(MH)/src/hook.c $(MH)/src/trampoline.c $(MH)/src/hde/hde64.c
+C_SRC = src/game.c src/items.c src/motion.c $(MH)/src/buffer.c $(MH)/src/hook.c $(MH)/src/trampoline.c $(MH)/src/hde/hde64.c
 CXX_SRC = src/overlay.cpp $(IMGUI)/imgui.cpp $(IMGUI)/imgui_draw.cpp $(IMGUI)/imgui_tables.cpp $(IMGUI)/imgui_widgets.cpp \
           $(IMGUI)/backends/imgui_impl_dx12.cpp $(IMGUI)/backends/imgui_impl_win32.cpp
 OBJ = $(patsubst %.c,build/obj/%.o,$(notdir $(C_SRC))) $(patsubst %.cpp,build/obj/%.o,$(notdir $(CXX_SRC)))
@@ -22,10 +22,10 @@ VPATH = src $(MH)/src $(MH)/src/hde $(IMGUI) $(IMGUI)/backends
 build/dksign_testmenu.dll: $(OBJ)
 	$(CXX) -o $@ $(OBJ) $(LDFLAGS) $(LIBS)
 
-build/obj/%.o: %.c src/items.h src/game.h | build/obj
+build/obj/%.o: %.c src/items.h src/game.h src/motion.h | build/obj
 	$(CC) $(CFLAGS) -c -o $@ $<
 
-build/obj/%.o: %.cpp src/items.h src/game.h | build/obj
+build/obj/%.o: %.cpp src/items.h src/game.h src/motion.h | build/obj
 	$(CXX) $(CXXFLAGS) -c -o $@ $<
 
 build/obj/imgui_impl_dx12.o: imgui_impl_dx12.cpp src/mingw_compat.h | build/obj

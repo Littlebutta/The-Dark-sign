@@ -1,3 +1,6 @@
 [submodule "Porter/third_party/SoulsFormatsNEXT"]
 	path = Porter/third_party/SoulsFormatsNEXT
 	url = https://github.com/soulsmods/SoulsFormatsNEXT
+[submodule "Porter/third_party/HKLib"]
+	path = Porter/third_party/HKLib
+	url = https://github.com/The12thAvenger/HKLib.git

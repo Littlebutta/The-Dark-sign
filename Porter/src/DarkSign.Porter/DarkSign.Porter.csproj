@@ -5,17 +5,24 @@
     <TargetFramework>net8.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
+    <LangVersion>13</LangVersion>
     <AssemblyName>DarkSignPorter</AssemblyName>
     <RootNamespace>DarkSign.Porter</RootNamespace>
   </PropertyGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\SoulsFormats.Net8\SoulsFormats.Net8.csproj" />
+    <ProjectReference Include="..\..\third_party\HKLib\HKLib.Serialization\HKLib.Serialization.csproj" />
     <ProjectReference Include="..\..\..\Launcher\src\DarkSign.Core\DarkSign.Core.csproj" />
   </ItemGroup>
 
   <ItemGroup>
     <PackageReference Include="BCnEncoder.Net" Version="2.1.0" />
+  </ItemGroup>
+
+  <!-- DS3's Havok 2014 packfile reader and spline decompressor, from SoulsAssetPipeline (GPL-3.0). -->
+  <ItemGroup>
+    <Compile Include="..\..\third_party\SoulsAssetPipeline-HKX\*.cs" Link="SoulsAssetPipeline\%(Filename)%(Extension)" />
   </ItemGroup>
 
 </Project>

@@ -20,6 +20,9 @@ void dks_open_log(void);
 /* Items from the launcher's list (DKSIGN_ITEMS); returns the count. */
 int dks_load_items(DksItem **out);
 
+/* First match of a byte pattern ("48 8B ? ...") in the game's image, or 0. */
+uintptr_t dks_find_in_game(const char *pattern_text);
+
 /* Looks up the game addresses once; later calls return straight away. */
 void dks_scan_game(void);
 
