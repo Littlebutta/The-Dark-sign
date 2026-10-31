@@ -129,6 +129,21 @@ public static partial class MovesetPort
             .Distinct().Take(freeSections.Count).ToHashSet();
         var groups = ports.GroupBy(p => order.Contains(Key(p, true)) ? Key(p, true) : Key(p, false))
             .OrderByDescending(g => g.Any(p => p.Ds3Id == 10180000)).ThenByDescending(g => g.Count()).ToList();
+        // DS3's effects: every effect the DS3 sections of these movesets spawn is converted under a new ID first.
+        var ds3EffectFiles = FxrPort.Ds3Index(ds3Archives);
+        var effectEvents = EffectEvents.Find(ds3Main, erMain, ds3EffectFiles);
+        var wantedEffects = groups.Where(g => order.Contains(g.Key)).SelectMany(g => new[] { g.Key.Ds3Section, g.Key.Ds3ArtSection })
+            .Distinct().Where(s => s > 0).Select(Ds3Tae).Where(t => t is not null)
+            .SelectMany(t => effectEvents.Ids(t!.Animations.SelectMany(a => a.Events))).ToHashSet();
+        FxrPort.Result effects;
+        try { effects = FxrPort.Apply(ctx, erArchives, ds3EffectFiles, wantedEffects); }
+        catch (Exception e) when (e is not OutOfMemoryException)
+        {
+            // Moves keep Elden Ring's effect events.
+            Console.WriteLine($"effects: failed, moves keep Elden Ring effects ({e.GetType().Name}: {e.Message})");
+            effects = new FxrPort.Result();
+        }
+
         int portedGroups = 0, skippedGroups = 0;
         Console.WriteLine($"moveset: {ports.Count} weapons in {own.Count} DS3 movesets ({classes.Count} by class alone), " +
                           $"{freeSections.Count} free motion categories; {groups.Count(g => order.Contains(g.Key))} to build");
@@ -178,7 +193,7 @@ public static partial class MovesetPort
                         AddFile(erAnims, newName + ".hkx", hkx);
                         anim.MiniHeader = new TAE.Animation.AnimMiniHeader.Standard();
                         anim.AnimFileName = newName + ".hkt";
-                        anim.Events = MergeEvents(s.Events, anim.Events, erEventLengths);
+                        anim.Events = MergeEvents(s.Events, anim.Events, erEventLengths, effectEvents, effects);
                         converted++;
                     }
                     else if (anim.MiniHeader is TAE.Animation.AnimMiniHeader.Standard && ErAnimFile(erArchives, templateName) is { } original)
@@ -274,11 +289,23 @@ public static partial class MovesetPort
         or CustomManualSelectorGenerator.OffsetType.WeaponCategoryHandStyle;
 
     /// <summary>DS3's events for a move, with Elden Ring's sound and effect events moved to DS3's first hit.</summary>
-    private static List<TAE.Event> MergeEvents(List<TAE.Event> ds3Events, List<TAE.Event> erEvents, Dictionary<int, int> erLengths)
+    private static List<TAE.Event> MergeEvents(List<TAE.Event> ds3Events, List<TAE.Event> erEvents, Dictionary<int, int> erLengths,
+        EffectEvents effectEvents, FxrPort.Result effects)
     {
         var merged = new List<TAE.Event>();
+        // Effect types this move now spawns DS3's own effects with; Elden Ring's of those types are dropped.
+        var ds3Effects = new HashSet<int>();
         foreach (var e in ds3Events)
         {
+            if (effectEvents.IsEffect(e.Type))
+            {
+                if (effectEvents.Convert(e, effects) is { } converted)
+                {
+                    merged.Add(new TAE.Event(e.StartTime, e.EndTime, e.Type, e.Unk04, converted, false));
+                    ds3Effects.Add(e.Type);
+                }
+                continue;
+            }
             var bytes = e.GetParameterBytes(false);
             if (EldenRingOnlyTypes.Contains(e.Type) || !erLengths.TryGetValue(e.Type, out var length) || length != bytes.Length)
                 continue;
@@ -289,7 +316,7 @@ public static partial class MovesetPort
         // evenly when the two games swing a different number of times, so later swings keep their own whooshes.
         var ds3Hits = HitStarts(ds3Events);
         var erHits = HitStarts(erEvents);
-        var kept = erEvents.Where(e => EldenRingOnlyTypes.Contains(e.Type)).ToList();
+        var kept = erEvents.Where(e => EldenRingOnlyTypes.Contains(e.Type) && !ds3Effects.Contains(e.Type)).ToList();
         int Pair(int erHit) => erHits.Count == 1 ? 0 : (int)Math.Round(erHit * (ds3Hits.Count - 1) / (double)(erHits.Count - 1));
         var pairedDs3 = new HashSet<int>();
         foreach (var e in kept)
