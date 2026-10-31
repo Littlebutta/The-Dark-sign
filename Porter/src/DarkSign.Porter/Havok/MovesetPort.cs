@@ -82,12 +82,23 @@ public static partial class MovesetPort
         // Param changes wait until every file is written, so a failure leaves the weapons on their template moveset.
         var pointWeapons = new List<Action>();
 
-        // Weapons that share a DS3 moveset (class and art section) and an Elden Ring template share one new category;
-        // each keeps its own DS3 attack data through its behaviour variation.
-        var groups = ports.GroupBy(p => (
-            Ds3Section: Convert.ToInt32(ds3Weapons[p.Ds3Id]!["wepmotionCategory"].Value),
-            Ds3ArtSection: Convert.ToInt32(ds3Weapons[p.Ds3Id]!["spAtkCategory"].Value),
-            TemplateSection: Convert.ToInt32(erWeapons[p.NewId!.Value]!["wepmotionCategory"].Value))).ToList();
+        // Weapons that share a DS3 moveset and an Elden Ring template share one new category; each keeps its own DS3
+        // attack data through its behaviour variation. A weapon's art section only splits the moveset when it replaces
+        // moves of its class (Friede's a232 has its own two-handed attacks); most hold just the art's own moves.
+        var mappedDs3 = erToDs3.Values.ToHashSet();
+        var overridesClass = new Dictionary<int, bool>();
+        bool Overrides(int art) => art > 0 && (overridesClass.TryGetValue(art, out var o) ? o : overridesClass[art] =
+            BinderLeaf(ds3Main, $"a{art:D2}.tae") is { } f && TAE.Read(f.Bytes).Animations.Any(a => mappedDs3.Contains((int)a.ID)));
+        TAE.ValidateEventBank = false;
+        var groups = ports.GroupBy(p =>
+            {
+                int art = Convert.ToInt32(ds3Weapons[p.Ds3Id]!["spAtkCategory"].Value);
+                return (Ds3Section: Convert.ToInt32(ds3Weapons[p.Ds3Id]!["wepmotionCategory"].Value),
+                    Ds3ArtSection: Overrides(art) ? art : 0,
+                    TemplateSection: Convert.ToInt32(erWeapons[p.NewId!.Value]!["wepmotionCategory"].Value));
+            })
+            // When categories run out, the movesets most weapons use go first; Devin's first pick, Friede's, leads.
+            .OrderByDescending(g => g.Any(p => p.Ds3Id == 10180000)).ThenByDescending(g => g.Count()).ToList();
         // wepmotionCategory is one byte. Sections from 90 up keep their animations in c0000_a9x, where these go.
         var freeSections = new Queue<int>(Enumerable.Range(90, 166).Reverse().Where(s => !usedSections.Contains(s)));
         int portedGroups = 0, skippedGroups = 0;
