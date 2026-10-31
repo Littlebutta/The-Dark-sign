@@ -29,17 +29,20 @@ public sealed class EffectEvents
             var bytes = group.Select(e => e.GetParameterBytes(false)).ToList();
             int best = -1;
             double bestShare = 0;
+            var shares = new List<string>();
             for (int field = 0; field < 4; field++)
             {
-                var values = bytes.Where(b => b.Length >= 4 * field + 4).Select(b => BitConverter.ToInt32(b, 4 * field)).Where(v => v >= 1000).ToList();
-                if (values.Count < 10 || values.Count < bytes.Count / 2)
+                var values = bytes.Where(b => b.Length >= 4 * field + 4).Select(b => BitConverter.ToInt32(b, 4 * field)).Where(v => v > 0).ToList();
+                if (values.Count < 10 || values.Count < bytes.Count / 3)
                     continue;
                 double share = values.Count(ds3.Has) / (double)values.Count;
+                shares.Add($"f{field}={share:P0}/{values.Count}");
                 if (share > bestShare)
                     (best, bestShare) = (field, share);
             }
-            if (best >= 0 && bestShare >= 0.9)
+            if (best >= 0 && bestShare >= 0.75)
                 fx._field[group.Key] = best;
+            Console.WriteLine($"effects: DS3 type {group.Key}: {bytes.Count} events, FXR IDs by field {string.Join(" ", shares)}");
         }
         foreach (var group in AllEvents(erMain).Where(e => fx._field.ContainsKey(e.Type)).GroupBy(e => e.Type))
             fx._erSample[group.Key] = group.Select(e => e.GetParameterBytes(false)).GroupBy(System.Convert.ToHexString)
