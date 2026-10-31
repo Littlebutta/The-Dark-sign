@@ -53,8 +53,10 @@ public static class ModCheck
                     var h => h?.GetType().Name ?? "none",
                 };
                 Log($"  anim {anim.ID}: {head}, file '{anim.AnimFileName}', {anim.Events.Count} events");
-                foreach (var e in anim.Events.Where(e => e.Type is not (128 or 129 or 96 or 112 or 116 or 119 or 120 or 133 or 139 or 224)).OrderBy(e => e.StartTime).Take(25))
-                    Log($"    type {e.Type} {e.StartTime:0.###}-{e.EndTime:0.###} {Convert.ToHexString(e.GetParameterBytes(false))}");
+                // Every event, sounds and effects included, with its event group (ungrouped events don't play).
+                foreach (var e in anim.Events.OrderBy(e => e.StartTime))
+                    Log($"    type {e.Type} {e.StartTime:0.###}-{e.EndTime:0.###} {Convert.ToHexString(e.GetParameterBytes(false))}" +
+                        (e.Group is null ? " NO GROUP" : $" group {e.Group.GroupType}"));
             }
         }
 
