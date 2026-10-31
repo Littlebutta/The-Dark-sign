@@ -243,7 +243,7 @@ public static partial class MovesetPort
                         AddFile(erAnims, newName + ".hkx", hkx);
                         anim.MiniHeader = new TAE.Animation.AnimMiniHeader.Standard();
                         anim.AnimFileName = newName + ".hkt";
-                        anim.Events = MergeEvents(s.Events, anim.Events, erEventLengths, effectEvents, effects, soundPort);
+                        anim.Events = MergeEvents(s.Events, anim.Events, erEventLengths, effectEvents, effects, soundPort, AnimPort.Duration(ds3Bytes));
                         converted++;
                     }
                     else if (anim.MiniHeader is TAE.Animation.AnimMiniHeader.Standard && ErAnimFile(erArchives, templateName) is { } original)
@@ -358,25 +358,30 @@ public static partial class MovesetPort
 
     /// <summary>DS3's events for a move, with Elden Ring's sound and effect events moved to DS3's first hit.</summary>
     private static List<TAE.Event> MergeEvents(List<TAE.Event> ds3Events, List<TAE.Event> erEvents, Dictionary<int, int> erLengths,
-        EffectEvents effectEvents, FxrPort.Result effects, SoundEvents sounds)
+        EffectEvents effectEvents, FxrPort.Result effects, SoundEvents sounds, float ds3Duration)
     {
         var merged = new List<TAE.Event>();
+        // Elden Ring files events in event groups (one per type), and its TAE skips events outside them: ported
+        // sounds and effects never played. A converted or copied DS3 event joins the group Elden Ring's event of its
+        // type is in, in this move (sounds: 128, else 129); with no such group it isn't added.
+        var groupOf = erEvents.Where(e => e.Group is not null).GroupBy(e => e.Type).ToDictionary(g => g.Key, g => g.First().Group);
         // Effect types this move now spawns DS3's own effects with; Elden Ring's of those types are dropped.
         var ds3Effects = new HashSet<int>();
         bool ds3Sounds = false;
         foreach (var e in ds3Events)
         {
-            if (Ds3SoundEvents && sounds.Convert(e) is { } sound)
+            if (Ds3SoundEvents && (groupOf.GetValueOrDefault(128) ?? groupOf.GetValueOrDefault(129)) is { } soundGroup && sounds.Convert(e) is { } sound)
             {
+                sound.Group = soundGroup;
                 merged.Add(sound);
                 ds3Sounds = true;
                 continue;
             }
             if (Ds3EffectEvents && effectEvents.IsEffect(e.Type))
             {
-                if (effectEvents.Convert(e, effects) is { } converted)
+                if (groupOf.TryGetValue(e.Type, out var effectGroup) && effectEvents.Convert(e, effects) is { } converted)
                 {
-                    merged.Add(new TAE.Event(e.StartTime, e.EndTime, e.Type, e.Unk04, converted, false));
+                    merged.Add(new TAE.Event(e.StartTime, e.EndTime, e.Type, e.Unk04, converted, false) { Group = effectGroup });
                     ds3Effects.Add(e.Type);
                 }
                 continue;
@@ -384,7 +389,9 @@ public static partial class MovesetPort
             var bytes = e.GetParameterBytes(false);
             if (ErOwned(e.Type) || !erLengths.TryGetValue(e.Type, out var length) || length != bytes.Length)
                 continue;
-            merged.Add(new TAE.Event(e.StartTime, e.EndTime, e.Type, e.Unk04, (byte[])bytes.Clone(), false));
+            if (!groupOf.TryGetValue(e.Type, out var group))
+                continue;
+            merged.Add(new TAE.Event(e.StartTime, e.EndTime, e.Type, e.Unk04, (byte[])bytes.Clone(), false) { Group = group });
         }
 
         // Each kept Elden Ring event follows the hit it belongs to (the nearest one): hits are paired in order, spread
@@ -403,12 +410,26 @@ public static partial class MovesetPort
         int Pair(int erHit) => erHits.Count == 1 ? 0 : (int)Math.Round(erHit * (ds3Hits.Count - 1) / (double)(erHits.Count - 1));
         var pairedDs3 = new HashSet<int>();
         // Behaviour windows are stretched, not shifted: anchors at the start, each paired hit, and the end.
-        var anchors = new List<(float Er, float Ds3)> { (0, 0) };
+        var candidates = new List<(float Er, float Ds3)>();
         for (int h = 0; h < erHits.Count && ds3Hits.Count > 0; h++)
-            anchors.Add((erHits[h], ds3Hits[Pair(h)]));
-        float erEnd = erEvents.Select(e => e.EndTime).DefaultIfEmpty(0).Max(), ds3End = ds3Events.Select(e => e.EndTime).DefaultIfEmpty(0).Max();
-        if (erEnd > anchors[^1].Er && ds3End > anchors[^1].Ds3)
-            anchors.Add((erEnd, ds3End));
+            candidates.Add((erHits[h], ds3Hits[Pair(h)]));
+        // JumpTable windows both games share (the recovery cancels: 4, 103, 107, ...) open where each game's move
+        // can end, so they anchor the stretch too; without them Elden Ring's quick chain window opened while the
+        // slower DS3 swing was still recovering.
+        var ds3Jt = ds3Events.Where(e => e.Type == 0 && e.GetParameterBytes(false).Length >= 4)
+            .GroupBy(e => BitConverter.ToInt32(e.GetParameterBytes(false), 0)).ToDictionary(g => g.Key, g => g.Min(e => e.StartTime));
+        foreach (var g in erEvents.Where(e => e.Type == 0 && e.GetParameterBytes(false).Length >= 4)
+                     .GroupBy(e => BitConverter.ToInt32(e.GetParameterBytes(false), 0)))
+            if (ds3Jt.TryGetValue(g.Key, out var ds3Start) && g.Min(e => e.StartTime) is var erStart && erStart > 0.05f && ds3Start > 0.05f)
+                candidates.Add((erStart, ds3Start));
+        // The DS3 end is the animation's own length: its events can stop well before it (Friede's R1 ended at 0.625 s).
+        float erEnd = erEvents.Select(e => e.EndTime).DefaultIfEmpty(0).Max(), ds3End = Math.Max(ds3Duration, ds3Events.Select(e => e.EndTime).DefaultIfEmpty(0).Max());
+        candidates.Add((erEnd, ds3End));
+        // Keep the anchors in order on both timelines; one that would run backwards is dropped.
+        var anchors = new List<(float Er, float Ds3)> { (0, 0) };
+        foreach (var c in candidates.OrderBy(c => c.Er).ThenBy(c => c.Ds3))
+            if (c.Er > anchors[^1].Er + 0.001f && c.Ds3 > anchors[^1].Ds3 + 0.001f)
+                anchors.Add(c);
         float Warp(float t)
         {
             for (int i = 1; i < anchors.Count; i++)
