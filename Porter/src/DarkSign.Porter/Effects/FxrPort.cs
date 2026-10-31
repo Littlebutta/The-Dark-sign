@@ -51,6 +51,14 @@ public static partial class FxrPort
         var erBinders = ErBinders(erArchives);
         var erIds = erBinders.SelectMany(b => b.Bnd.Files).Select(f => (Ext(f.Name), LeafId(f.Name))).ToHashSet();
         var failed = new HashSet<int>();
+        var reasons = new Dictionary<string, List<int>>();
+        void Fail(int id, string reason)
+        {
+            failed.Add(id);
+            if (!reasons.TryGetValue(reason, out var list))
+                reasons[reason] = list = [];
+            list.Add(id);
+        }
 
         // 1. Follow references from the wanted effects, recording what each one needs.
         var effects = new Dictionary<int, (byte[] Bytes, FxrScript.Info Info)>();
@@ -60,16 +68,21 @@ public static partial class FxrPort
                 continue;
             if (!ds3.Fxr.TryGetValue(id, out var file) || id >= IdBase / 9 || erIds.Contains((".fxr", IdBase + id)))
             {
-                failed.Add(id);
+                Fail(id, "no DS3 file");
                 continue;
             }
             FxrScript.Info info;
             try { info = js.Inspect(file.File.Bytes); }
-            catch (Exception e) { failed.Add(id); Console.WriteLine($"effects: can't read DS3 f{id:D9}: {Short(e)}"); continue; }
+            catch (Exception e) { Fail(id, "unreadable"); Console.WriteLine($"effects: can't read DS3 f{id:D9}: {Short(e)}"); continue; }
             // DS3 effect models use DS3 materials (MTD) that Elden Ring doesn't have, so effects with models wait.
-            if (info.Models.Any(m => m > 0) || info.Anibnds.Any(m => m > 0) || info.Textures.Any(t => t > 0 && !ds3.Resources.ContainsKey((Kind.Texture, t))))
+            if (info.Models.Any(m => m > 0) || info.Anibnds.Any(m => m > 0))
             {
-                failed.Add(id);
+                Fail(id, "uses models");
+                continue;
+            }
+            if (info.Textures.FirstOrDefault(t => t > 0 && !ds3.Resources.ContainsKey((Kind.Texture, t))) is var missing and > 0)
+            {
+                Fail(id, $"texture s{missing} missing");
                 continue;
             }
             effects[id] = (file.File.Bytes, info);
@@ -98,7 +111,7 @@ public static partial class FxrPort
         foreach (var (id, (bytes, _)) in effects.OrderBy(e => e.Key))
         {
             try { converted[id] = js.Convert(bytes, IdBase + id, mapJson); }
-            catch (Exception e) { failed.Add(id); Console.WriteLine($"effects: can't convert DS3 f{id:D9}: {Short(e)}"); }
+            catch (Exception e) { Fail(id, "conversion failed"); Console.WriteLine($"effects: can't convert DS3 f{id:D9}: {Short(e)}"); }
         }
         foreach (var id in failed)
             effects.Remove(id);
@@ -126,6 +139,8 @@ public static partial class FxrPort
             var path = ctx.ModPath(b.Path.TrimStart('/').Split('/'));
             File.WriteAllBytes(path, DCX.Compress(b.Bnd.Write(), b.Compression));
         }
+        foreach (var (reason, ids) in reasons)
+            Console.WriteLine($"effects: left out ({reason}): {ids.Count}, e.g. {string.Join(" ", ids.Take(6))}");
         Console.WriteLine($"effects: {result.Effects.Count} DS3 effects ported ({string.Join(", ", added.Select(a => $"{a.Value} {a.Key}"))}), " +
                           $"{failed.Count} left out (missing, with models, or unconvertible)");
         return result;
