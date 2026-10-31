@@ -36,7 +36,7 @@ public static class SoundPort
         if (todo.Count == 0)
             return result;
 
-        var (bankBytes, _) = erArchives.ReadWithCompression(Bank);
+        var bankBytes = erArchives.Read(Bank); // not DCX-compressed
         var bank = WwiseBank.Read(bankBytes);
         // The template: the first Elden Ring player sound in the bank whose event plays a Sound through a Play action.
         var template = templateIds.Select(id => bank.Chain(FxSoundExplore.Fnv1($"Play_c{id:D9}"))).FirstOrDefault(c => c is not null)
