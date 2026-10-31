@@ -124,23 +124,33 @@ public static class Commands
     /// </summary>
     public static int PortWeapons(PorterContext ctx)
     {
+        using var total = Timing.Stage("port-weapons total");
         var plans = WeaponsPlan(ctx);
+        var paramsTime = Timing.Stage("params");
         var ds3Store = ctx.LoadParams(PorterGame.DarkSouls3);
         var ds3 = ds3Store.Get("EquipParamWeapon")!;
         var erStore = ctx.LoadParams(PorterGame.EldenRing);
         var erWeapons = erStore.Get("EquipParamWeapon")!;
         var added = WeaponPort.Apply(plans, ds3, erWeapons);
+        paramsTime.Dispose();
         Console.WriteLine($"added {added} weapon rows ({plans.Count(p => p.Status == "port")} weapons with their affinities)");
 
         using var erArchives = ctx.OpenArchives(PorterGame.EldenRing);
         using var ds3Archives = ctx.OpenArchives(PorterGame.DarkSouls3);
-        var newNames = WeaponText.Write(ctx, erArchives, ds3Archives, plans, erWeapons);
-        ShopPort.Write(ctx, erArchives, erStore.Get("ShopLineupParam")!, ds3, plans);
-        PortWeaponModels(ctx, erArchives, ds3Archives, plans, ds3, erWeapons);
-        IconPort.Write(ctx, erArchives, ds3Archives, plans.Where(p => p.Status == "port")
-            .Select(p => new IconPort.Entry(Convert.ToInt32(ds3[p.Ds3Id]!["iconId"].Value), WeaponPort.NewIconId(p))).ToList());
+        Dictionary<int, string> newNames;
+        using (Timing.Stage("text and shop"))
+        {
+            newNames = WeaponText.Write(ctx, erArchives, ds3Archives, plans, erWeapons);
+            ShopPort.Write(ctx, erArchives, erStore.Get("ShopLineupParam")!, ds3, plans);
+        }
+        using (Timing.Stage("models"))
+            PortWeaponModels(ctx, erArchives, ds3Archives, plans, ds3, erWeapons);
+        using (Timing.Stage("icons"))
+            IconPort.Write(ctx, erArchives, ds3Archives, plans.Where(p => p.Status == "port")
+                .Select(p => new IconPort.Entry(Convert.ToInt32(ds3[p.Ds3Id]!["iconId"].Value), WeaponPort.NewIconId(p))).ToList());
         try
         {
+            using var _ = Timing.Stage("movesets, effects and sounds");
             MovesetPort.Apply(ctx, erArchives, ds3Archives, erStore, ds3Store, plans);
         }
         catch (Exception e)
@@ -153,8 +163,11 @@ public static class Commands
         }
 
         var path = ctx.ModPath("regulation.bin");
-        erStore.Save(path);
-        ItemList.Write(ctx, erStore, erArchives, newNames);
+        using (Timing.Stage("regulation and item list"))
+        {
+            erStore.Save(path);
+            ItemList.Write(ctx, erStore, erArchives, newNames);
+        }
         File.WriteAllText(ctx.ModPath("README.txt"), ModReadme);
         Console.WriteLine($"mod: {Path.GetDirectoryName(path)}");
         return 0;

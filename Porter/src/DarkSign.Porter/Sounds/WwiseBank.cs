@@ -22,7 +22,10 @@ public sealed class WwiseBank
 
     private readonly List<(string Tag, byte[] Body)> _sections = [];
     private readonly List<HircObject> _objects = [];
-    private readonly SortedDictionary<uint, byte[]> _media = [];
+    private readonly Dictionary<uint, byte[]> _media = [];
+    private readonly List<(uint Id, int Offset, int Size)> _index = [];
+    private readonly List<(uint Id, byte[] Bytes)> _added = [];
+    private byte[] _data = [];
     private readonly Dictionary<uint, HircObject> _byId = [];
 
     public int Version { get; private set; }
@@ -59,15 +62,23 @@ public sealed class WwiseBank
             }
             bank._sections.Add((tag, body));
         }
+        bank._data = data ?? [];
         if (didx is not null && data is not null)
             for (int i = 0; i + 12 <= didx.Length; i += 12)
             {
                 uint id = BitConverter.ToUInt32(didx, i);
                 int offset = BitConverter.ToInt32(didx, i + 4), size = BitConverter.ToInt32(didx, i + 8);
-                bank._media[id] = data[offset..(offset + size)];
+                bank._index.Add((id, offset, size));
+                bank._media.TryAdd(id, data[offset..(offset + size)]);
             }
         return bank;
     }
+
+    public IReadOnlyList<HircObject> Objects => _objects;
+    public int MediaCount => _media.Count;
+    /// <summary>Whether the original media index is sorted by ID.</summary>
+    public bool MediaSorted => _index.Zip(_index.Skip(1)).All(p => p.First.Id < p.Second.Id);
+    public (uint Id, byte[] Bytes)? FirstMedia() => _index.Count > 0 ? (_index[0].Id, _media[_index[0].Id]) : null;
 
     public bool Has(uint id) => _byId.ContainsKey(id) || _media.ContainsKey(id);
 
@@ -120,7 +131,8 @@ public sealed class WwiseBank
             _objects.Add(obj);
             _byId[obj.Id] = obj;
         }
-        _media[mediaId] = wem;
+        if (_media.TryAdd(mediaId, wem))
+            _added.Add((mediaId, wem));
     }
 
     public byte[] Write()
@@ -138,17 +150,26 @@ public sealed class WwiseBank
             if (wroteMedia || _media.Count == 0)
                 return;
             wroteMedia = true;
-            // Media sorted by ID, each aligned to 16 bytes in DATA.
-            var index = new MemoryStream();
+            // The original DATA stays byte for byte; new media is appended, each aligned to 16 bytes. The index keeps
+            // the original's order, with new entries sorted in by ID when the original's is sorted.
             var data = new MemoryStream();
-            foreach (var (id, bytes) in _media)
+            data.Write(_data);
+            var entries = new List<(uint Id, int Offset, int Size)>(_index);
+            foreach (var (id, bytes) in _added)
             {
                 while (data.Length % 16 != 0)
                     data.WriteByte(0);
-                index.Write(BitConverter.GetBytes(id));
-                index.Write(BitConverter.GetBytes((int)data.Length));
-                index.Write(BitConverter.GetBytes(bytes.Length));
+                entries.Add((id, (int)data.Length, bytes.Length));
                 data.Write(bytes);
+            }
+            if (MediaSorted)
+                entries = [.. entries.OrderBy(e => e.Id)];
+            var index = new MemoryStream();
+            foreach (var (id, offset, size) in entries)
+            {
+                index.Write(BitConverter.GetBytes(id));
+                index.Write(BitConverter.GetBytes(offset));
+                index.Write(BitConverter.GetBytes(size));
             }
             Section("DIDX", index.ToArray());
             Section("DATA", data.ToArray());
@@ -221,7 +242,8 @@ public sealed class WwiseBank
         U16(16);
         U16(6);
         U16(16);
-        U32(channels == 1 ? 0x4 : 0x3);
+        // Wwise keeps an AkChannelConfig here: channel count, config type 1 (standard), speaker mask.
+        U32(channels | (1 << 8) | ((channels == 1 ? 0x4 : 0x3) << 12));
         w.Write("data"u8);
         U32(data.Length);
         w.Write(data);

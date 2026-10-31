@@ -17,6 +17,7 @@ const string Usage = """
       behavior-roundtrip                       write Elden Ring's player behaviour back unchanged, to test the round trip
       tae-dump <DS3|ER> <section>              list every event of a section's TAE with raw parameters
       anim-id-map                              pair DS3 and Elden Ring animation IDs by behaviour selector name
+      check-sound-bank                         check Elden Ring's main sound bank round-trips and how it stores media
       explore-fx-sound                         report both games' effect and sound files and the TAE events that use them
       matbin-info <name filter>                show Elden Ring material definitions
       weapons-plan                 decide which DS3 weapons to port and as which Elden Ring class
@@ -61,6 +62,7 @@ try
         "anim-id-map" => AnimIdMap.Run(ctx),
         "behavior-roundtrip" => BehaviorRoundTrip.Run(ctx),
         "explore-fx-sound" => FxSoundExplore.Run(ctx),
+        "check-sound-bank" => SoundBankCheck.Run(ctx),
         "tae-dump" when argList.Count == 3 => TaeDump.Run(ctx, PorterGame.Parse(argList[1]), int.Parse(argList[2])),
         _ => Fail(Usage),
     };

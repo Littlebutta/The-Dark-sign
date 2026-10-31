@@ -130,6 +130,7 @@ public static partial class MovesetPort
         var groups = ports.GroupBy(p => order.Contains(Key(p, true)) ? Key(p, true) : Key(p, false))
             .OrderByDescending(g => g.Any(p => p.Ds3Id == 10180000)).ThenByDescending(g => g.Count()).ToList();
         // DS3's effects: every effect the DS3 sections of these movesets spawn is converted under a new ID first.
+        var effectsTime = Timing.Stage("effects");
         var ds3EffectFiles = FxrPort.Ds3Index(ds3Archives);
         var effectEvents = EffectEvents.Find(ds3Main, erMain, ds3EffectFiles);
         var wantedEffects = groups.Where(g => order.Contains(g.Key)).SelectMany(g => new[] { g.Key.Ds3Section, g.Key.Ds3ArtSection })
@@ -143,8 +144,10 @@ public static partial class MovesetPort
             Console.WriteLine($"effects: failed, moves keep Elden Ring effects ({e.GetType().Name}: {e.Message})");
             effects = new FxrPort.Result();
         }
+        effectsTime.Dispose();
 
         // DS3's sounds, the same way: every character and effect sound the sections play, under new IDs.
+        var soundsTime = Timing.Stage("sounds");
         var ds3SectionEvents = groups.Where(g => order.Contains(g.Key)).SelectMany(g => new[] { g.Key.Ds3Section, g.Key.Ds3ArtSection })
             .Distinct().Where(s => s > 0).Select(Ds3Tae).Where(t => t is not null).SelectMany(t => t!.Animations.SelectMany(a => a.Events)).ToList();
         var erMainEvents = erMain.Files.Where(f => f.Name.EndsWith(".tae", StringComparison.OrdinalIgnoreCase))
@@ -165,6 +168,7 @@ public static partial class MovesetPort
             Console.WriteLine($"sounds: failed, moves keep Elden Ring sounds ({e.GetType().Name}: {e.Message})");
             sounds = new SoundPort.Result();
         }
+        soundsTime.Dispose();
         var soundPort = new SoundEvents(sounds, soundSample);
 
         int portedGroups = 0, skippedGroups = 0;
@@ -297,9 +301,12 @@ public static partial class MovesetPort
         using var output = new MemoryStream();
         new HavokBinarySerializer().Write(behavior, output);
         behaviorFile.Bytes = output.ToArray();
-        File.WriteAllBytes(ctx.ModPath("chr", "c0000.behbnd.dcx"), DCX.Compress(behbnd.Write(), behbndCompression));
-        File.WriteAllBytes(ctx.ModPath("chr", "c0000.anibnd.dcx"), DCX.Compress(erMain.Write(), erMainCompression));
-        File.WriteAllBytes(ctx.ModPath("chr", ItemText.Leaf(AnimBinder)), DCX.Compress(erAnims.Write(), erAnimsCompression));
+        using (Timing.Stage("moveset files"))
+        {
+            File.WriteAllBytes(ctx.ModPath("chr", "c0000.behbnd.dcx"), DCX.Compress(behbnd.Write(), behbndCompression));
+            File.WriteAllBytes(ctx.ModPath("chr", "c0000.anibnd.dcx"), DCX.Compress(erMain.Write(), erMainCompression));
+            File.WriteAllBytes(ctx.ModPath("chr", ItemText.Leaf(AnimBinder)), DCX.Compress(erAnims.Write(), erAnimsCompression));
+        }
     }
 
     /// <summary>The player files Apply writes; removed when a port fails so the game loads Elden Ring's own.</summary>
