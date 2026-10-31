@@ -292,6 +292,7 @@ public static partial class MovesetPort
         // Params first: a failure there must not leave behaviour and animation files for weapons that don't use them.
         foreach (var point in pointWeapons)
             point();
+        Console.WriteLine($"moveset: event switches: DS3 effect events {Ds3EffectEvents}, DS3 sound events {Ds3SoundEvents}, swing align {SwingAlign}");
         Console.WriteLine($"moveset: {portedGroups} movesets ported, {skippedGroups} skipped; attacks: {attackPort.Summary}; " +
                           $"{wideCategories.Count} weapons on categories above 255 (mod DLL)");
         var table = ctx.ModPath(WideTable);
@@ -334,13 +335,13 @@ public static partial class MovesetPort
         bool ds3Sounds = false;
         foreach (var e in ds3Events)
         {
-            if (sounds.Convert(e) is { } sound)
+            if (Ds3SoundEvents && sounds.Convert(e) is { } sound)
             {
                 merged.Add(sound);
                 ds3Sounds = true;
                 continue;
             }
-            if (effectEvents.IsEffect(e.Type))
+            if (Ds3EffectEvents && effectEvents.IsEffect(e.Type))
             {
                 if (effectEvents.Convert(e, effects) is { } converted)
                 {
@@ -359,6 +360,12 @@ public static partial class MovesetPort
         // evenly when the two games swing a different number of times, so later swings keep their own whooshes.
         var ds3Hits = HitStarts(ds3Events);
         var erHits = HitStarts(erEvents);
+        if (!SwingAlign)
+        {
+            // As first ported: every kept event moves with the first hit.
+            ds3Hits = [.. ds3Hits.Take(1)];
+            erHits = [.. erHits.Take(1)];
+        }
         // A move that plays DS3's own character and effect sounds drops Elden Ring's (footsteps and the rest stay).
         var kept = erEvents.Where(e => EldenRingOnlyTypes.Contains(e.Type) && !ds3Effects.Contains(e.Type)
                                        && !(ds3Sounds && SoundPort.Sound(e) is { } s && SoundPort.Letter(s.Kind) is not null)).ToList();
@@ -403,6 +410,11 @@ public static partial class MovesetPort
             return new TAE.Event(e.StartTime, e.EndTime, 128, e.Unk04, bytes, false);
         }
     }
+
+    // Switches for finding which part of the event port Elden Ring rejects; all on unless set to 0.
+    private static readonly bool Ds3EffectEvents = Environment.GetEnvironmentVariable("DARKSIGN_DS3_EFFECT_EVENTS") != "0";
+    private static readonly bool Ds3SoundEvents = Environment.GetEnvironmentVariable("DARKSIGN_DS3_SOUND_EVENTS") != "0";
+    private static readonly bool SwingAlign = Environment.GetEnvironmentVariable("DARKSIGN_SWING_ALIGN") != "0";
 
     // Sound events repeated for extra DS3 swings.
     private static readonly HashSet<int> SwingTypes = [128, 129];
