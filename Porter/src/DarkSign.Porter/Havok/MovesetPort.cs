@@ -64,6 +64,10 @@ public static partial class MovesetPort
         var erMain = BND4.Read(erMainBytes);
         var (erAnimsBytes, erAnimsCompression) = erArchives.ReadWithCompression(AnimBinder);
         var erAnims = BND4.Read(erAnimsBytes);
+        var hkxFiles = erAnims.Files.Where(f => AnimName().IsMatch(ItemText.Leaf(f.Name))).ToList();
+        int byRule = hkxFiles.Count(f => AnimName().Match(ItemText.Leaf(f.Name)) is var m
+            && f.ID == 1_000_000_000L + int.Parse(m.Groups[1].Value) * 1_000_000L + int.Parse(m.Groups[2].Value));
+        Console.WriteLine($"moveset: {byRule} of {hkxFiles.Count} Elden Ring animations have ID 1e9 + section*1e6 + animation");
         var (behbndBytes, behbndCompression) = erArchives.ReadWithCompression("/chr/c0000.behbnd.dcx");
         var behbnd = BND4.Read(behbndBytes);
         var behaviorFile = behbnd.Files.Where(f => f.Name.EndsWith(".hkx", StringComparison.OrdinalIgnoreCase)).MaxBy(f => f.Bytes.Length)!;
@@ -526,7 +530,13 @@ public static partial class MovesetPort
         var ids = bnd.Files.Where(f => f.Name.EndsWith(ext, StringComparison.OrdinalIgnoreCase)).Select(f => f.ID).ToHashSet();
         int id = ext.Equals(".tae", StringComparison.OrdinalIgnoreCase) && int.TryParse(leaf[1..^4], out var s) && !ids.Contains(like.ID - like.ID % 1000 + s)
             ? like.ID - like.ID % 1000 + s
-            : bnd.Files.Max(f => f.ID) + 1;
+            // Animations: Elden Ring's IDs are 1,000,000,000 + section * 1,000,000 + animation (a090_030500 is
+            // 1090030500), and the game finds them by that ID: under a made-up ID they never played.
+            : ext.Equals(".hkx", StringComparison.OrdinalIgnoreCase) && AnimName().Match(leaf) is { Success: true } a
+              && 1_000_000_000L + int.Parse(a.Groups[1].Value) * 1_000_000L + int.Parse(a.Groups[2].Value) is var animId and <= int.MaxValue
+              && !ids.Contains((int)animId)
+                ? (int)animId
+                : bnd.Files.Max(f => f.ID) + 1;
         // The game expects a binder's files in ID order: an a208.tae appended after #9999999 hung loading.
         var file = new BinderFile(like.Flags, id, folder + leaf, bytes);
         int at = bnd.Files.FindIndex(f => f.ID > id);
