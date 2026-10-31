@@ -144,6 +144,29 @@ public static partial class MovesetPort
             effects = new FxrPort.Result();
         }
 
+        // DS3's sounds, the same way: every character and effect sound the sections play, under new IDs.
+        var ds3SectionEvents = groups.Where(g => order.Contains(g.Key)).SelectMany(g => new[] { g.Key.Ds3Section, g.Key.Ds3ArtSection })
+            .Distinct().Where(s => s > 0).Select(Ds3Tae).Where(t => t is not null).SelectMany(t => t!.Animations.SelectMany(a => a.Events)).ToList();
+        var erMainEvents = erMain.Files.Where(f => f.Name.EndsWith(".tae", StringComparison.OrdinalIgnoreCase))
+            .SelectMany(f => { try { return TAE.Read(f.Bytes).Animations.SelectMany(a => a.Events).ToList(); } catch (Exception) { return []; } }).ToList();
+        var soundSample = erMainEvents.Where(e => e.Type == 128).Select(e => e.GetParameterBytes(false))
+            .GroupBy(Convert.ToHexString).MaxBy(g => g.Count())?.First();
+        var templateSounds = erMainEvents.Select(SoundPort.Sound).Where(s => s is { Kind: 1 }).GroupBy(s => s!.Value.Id)
+            .OrderByDescending(g => g.Count()).Select(g => g.Key).Take(50).ToList();
+        SoundPort.Result sounds;
+        try
+        {
+            sounds = soundSample is null ? new SoundPort.Result()
+                : SoundPort.Apply(ctx, erArchives, ds3Archives, ds3SectionEvents.Select(SoundPort.Sound).OfType<(int, int)>(), templateSounds);
+        }
+        catch (Exception e) when (e is not OutOfMemoryException)
+        {
+            // Moves keep Elden Ring's sounds.
+            Console.WriteLine($"sounds: failed, moves keep Elden Ring sounds ({e.GetType().Name}: {e.Message})");
+            sounds = new SoundPort.Result();
+        }
+        var soundPort = new SoundEvents(sounds, soundSample);
+
         int portedGroups = 0, skippedGroups = 0;
         Console.WriteLine($"moveset: {ports.Count} weapons in {own.Count} DS3 movesets ({classes.Count} by class alone), " +
                           $"{freeSections.Count} free motion categories; {groups.Count(g => order.Contains(g.Key))} to build");
@@ -193,7 +216,7 @@ public static partial class MovesetPort
                         AddFile(erAnims, newName + ".hkx", hkx);
                         anim.MiniHeader = new TAE.Animation.AnimMiniHeader.Standard();
                         anim.AnimFileName = newName + ".hkt";
-                        anim.Events = MergeEvents(s.Events, anim.Events, erEventLengths, effectEvents, effects);
+                        anim.Events = MergeEvents(s.Events, anim.Events, erEventLengths, effectEvents, effects, soundPort);
                         converted++;
                     }
                     else if (anim.MiniHeader is TAE.Animation.AnimMiniHeader.Standard && ErAnimFile(erArchives, templateName) is { } original)
@@ -290,13 +313,20 @@ public static partial class MovesetPort
 
     /// <summary>DS3's events for a move, with Elden Ring's sound and effect events moved to DS3's first hit.</summary>
     private static List<TAE.Event> MergeEvents(List<TAE.Event> ds3Events, List<TAE.Event> erEvents, Dictionary<int, int> erLengths,
-        EffectEvents effectEvents, FxrPort.Result effects)
+        EffectEvents effectEvents, FxrPort.Result effects, SoundEvents sounds)
     {
         var merged = new List<TAE.Event>();
         // Effect types this move now spawns DS3's own effects with; Elden Ring's of those types are dropped.
         var ds3Effects = new HashSet<int>();
+        bool ds3Sounds = false;
         foreach (var e in ds3Events)
         {
+            if (sounds.Convert(e) is { } sound)
+            {
+                merged.Add(sound);
+                ds3Sounds = true;
+                continue;
+            }
             if (effectEvents.IsEffect(e.Type))
             {
                 if (effectEvents.Convert(e, effects) is { } converted)
@@ -316,7 +346,9 @@ public static partial class MovesetPort
         // evenly when the two games swing a different number of times, so later swings keep their own whooshes.
         var ds3Hits = HitStarts(ds3Events);
         var erHits = HitStarts(erEvents);
-        var kept = erEvents.Where(e => EldenRingOnlyTypes.Contains(e.Type) && !ds3Effects.Contains(e.Type)).ToList();
+        // A move that plays DS3's own character and effect sounds drops Elden Ring's (footsteps and the rest stay).
+        var kept = erEvents.Where(e => EldenRingOnlyTypes.Contains(e.Type) && !ds3Effects.Contains(e.Type)
+                                       && !(ds3Sounds && SoundPort.Sound(e) is { } s && SoundPort.Letter(s.Kind) is not null)).ToList();
         int Pair(int erHit) => erHits.Count == 1 ? 0 : (int)Math.Round(erHit * (ds3Hits.Count - 1) / (double)(erHits.Count - 1));
         var pairedDs3 = new HashSet<int>();
         foreach (var e in kept)
@@ -343,6 +375,20 @@ public static partial class MovesetPort
                     merged.Add(Shifted(e, ds3Hits[d] - erHits[source]));
             }
         return merged.OrderBy(e => e.StartTime).ToList();
+    }
+
+    /// <summary>DS3 sound events as Elden Ring PlaySound (128) events for the ported sounds.</summary>
+    private sealed class SoundEvents(SoundPort.Result sounds, byte[]? sample)
+    {
+        public TAE.Event? Convert(TAE.Event e)
+        {
+            if (sample is null || SoundPort.Sound(e) is not { } s || SoundPort.Letter(s.Kind) is null || sounds.Map(s.Kind, s.Id) is not { } id)
+                return null;
+            var bytes = (byte[])sample.Clone();
+            BitConverter.GetBytes(s.Kind).CopyTo(bytes, 0);
+            BitConverter.GetBytes(id).CopyTo(bytes, 4);
+            return new TAE.Event(e.StartTime, e.EndTime, 128, e.Unk04, bytes, false);
+        }
     }
 
     // Sound events repeated for extra DS3 swings.
