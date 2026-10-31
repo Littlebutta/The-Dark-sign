@@ -222,10 +222,17 @@ public static partial class FxrPort
     private static void Add(List<ErBinder> binders, string ext, string leaf, byte[] bytes, Dictionary<string, int> added)
     {
         var binder = binders.MaxBy(b => b.Bnd.Files.Count(f => f.Name.EndsWith(ext, StringComparison.OrdinalIgnoreCase)))!;
-        var like = binder.Bnd.Files.LastOrDefault(f => f.Name.EndsWith(ext, StringComparison.OrdinalIgnoreCase)) ?? binder.Bnd.Files.Last();
+        var files = binder.Bnd.Files;
+        int last = files.FindLastIndex(f => f.Name.EndsWith(ext, StringComparison.OrdinalIgnoreCase));
+        var like = last >= 0 ? files[last] : files.Last();
         var folder = like.Name[..^ItemText.Leaf(like.Name).Length];
-        // Files stay in ID order (the game expects it); new ones go after the last.
-        binder.Bnd.Files.Add(new BinderFile(like.Flags, binder.Bnd.Files.Max(f => f.ID) + 1, folder + leaf, bytes));
+        // Each kind of file has its own ID range and run in the binder (.fxr from 0, .tpf from 100000, .flver 200000,
+        // .anibnd 300000, .ffxreslist 400000, where list 400000 + n belongs to effect n). A new file goes right after
+        // the last of its kind with the next ID; appending everything after the lists crashed Elden Ring at startup.
+        int id = last >= 0 ? like.ID + 1 : files.Max(f => f.ID) + 1;
+        if (files.Any(f => f.ID == id))
+            throw new InvalidDataException($"no free ID after {like.Name} in {binder.Path}");
+        files.Insert(last >= 0 ? last + 1 : files.Count, new BinderFile(like.Flags, id, folder + leaf, bytes));
         binder.Changed = true;
         added[ext] = added.GetValueOrDefault(ext) + 1;
     }
