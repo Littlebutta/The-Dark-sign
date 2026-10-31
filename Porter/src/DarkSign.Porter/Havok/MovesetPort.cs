@@ -18,7 +18,7 @@ namespace DarkSign.Porter;
 /// (anim-id-map), taking the weapon's own art section first (e.g. Friede's a232) and then its class (a038);</item>
 /// <item>builds that move's events from DS3's (hits, cancel windows, stamina, ...) where the two games use the same
 /// event layout, keeping Elden Ring's sound and effect events (DS3's sound and effect IDs don't exist in Elden Ring),
-/// moved to DS3's hit timing;</item>
+/// each moved to the timing of the DS3 hit it pairs with;</item>
 /// <item>ports the DS3 attack rows (BehaviorParam_PC and AtkParam_Pc) the hits point at, under a new behaviour
 /// variation, and points the weapon at the new category and variation.</item>
 /// </list>
@@ -276,9 +276,6 @@ public static partial class MovesetPort
     /// <summary>DS3's events for a move, with Elden Ring's sound and effect events moved to DS3's first hit.</summary>
     private static List<TAE.Event> MergeEvents(List<TAE.Event> ds3Events, List<TAE.Event> erEvents, Dictionary<int, int> erLengths)
     {
-        float ds3Hit = ds3Events.Where(e => e.Type == 1).Select(e => e.StartTime).DefaultIfEmpty(-1).Min();
-        float erHit = erEvents.Where(e => e.Type == 1).Select(e => e.StartTime).DefaultIfEmpty(-1).Min();
-        float shift = ds3Hit >= 0 && erHit >= 0 ? ds3Hit - erHit : 0;
         var merged = new List<TAE.Event>();
         foreach (var e in ds3Events)
         {
@@ -287,11 +284,59 @@ public static partial class MovesetPort
                 continue;
             merged.Add(new TAE.Event(e.StartTime, e.EndTime, e.Type, e.Unk04, (byte[])bytes.Clone(), false));
         }
-        foreach (var e in erEvents.Where(e => EldenRingOnlyTypes.Contains(e.Type)))
-            merged.Add(new TAE.Event(Math.Max(0, e.StartTime + shift), Math.Max(0, e.EndTime + shift), e.Type, e.Unk04,
-                (byte[])e.GetParameterBytes(false).Clone(), false) { Group = e.Group });
+
+        // Each kept Elden Ring event follows the hit it belongs to (the nearest one): hits are paired in order, spread
+        // evenly when the two games swing a different number of times, so later swings keep their own whooshes.
+        var ds3Hits = HitStarts(ds3Events);
+        var erHits = HitStarts(erEvents);
+        var kept = erEvents.Where(e => EldenRingOnlyTypes.Contains(e.Type)).ToList();
+        int Pair(int erHit) => erHits.Count == 1 ? 0 : (int)Math.Round(erHit * (ds3Hits.Count - 1) / (double)(erHits.Count - 1));
+        var pairedDs3 = new HashSet<int>();
+        foreach (var e in kept)
+        {
+            float shift = 0;
+            if (ds3Hits.Count > 0 && erHits.Count > 0)
+            {
+                int hit = NearestHit(erHits, e.StartTime), target = Pair(hit);
+                pairedDs3.Add(target);
+                shift = ds3Hits[target] - erHits[hit];
+            }
+            merged.Add(Shifted(e, shift));
+        }
+
+        // DS3 swings with no Elden Ring hit of their own (e.g. a 3-hit combo on a 2-hit template) repeat the
+        // swing sounds of the nearest paired hit.
+        if (erHits.Count > 0)
+            for (int d = 0; d < ds3Hits.Count; d++)
+            {
+                if (pairedDs3.Contains(d))
+                    continue;
+                int source = Enumerable.Range(0, erHits.Count).MinBy(h => Math.Abs(Pair(h) - d));
+                foreach (var e in kept.Where(e => SwingTypes.Contains(e.Type) && NearestHit(erHits, e.StartTime) == source))
+                    merged.Add(Shifted(e, ds3Hits[d] - erHits[source]));
+            }
         return merged.OrderBy(e => e.StartTime).ToList();
     }
+
+    // Sound events repeated for extra DS3 swings.
+    private static readonly HashSet<int> SwingTypes = [128, 129];
+
+    // Start of each swing: hit windows starting within 0.1 s of the previous one are the same swing (several hitboxes).
+    private static List<float> HitStarts(List<TAE.Event> events)
+    {
+        var starts = new List<float>();
+        foreach (var t in events.Where(e => e.Type == 1).Select(e => e.StartTime).Order())
+            if (starts.Count == 0 || t - starts[^1] > 0.1f)
+                starts.Add(t);
+        return starts;
+    }
+
+    private static int NearestHit(List<float> hits, float time) =>
+        Enumerable.Range(0, hits.Count).MinBy(h => Math.Abs(hits[h] - time));
+
+    private static TAE.Event Shifted(TAE.Event e, float shift) =>
+        new(Math.Max(0, e.StartTime + shift), Math.Max(0, e.EndTime + shift), e.Type, e.Unk04,
+            (byte[])e.GetParameterBytes(false).Clone(), false) { Group = e.Group };
 
     private sealed record Ds3Move(string HkxName, List<TAE.Event> Events);
 
