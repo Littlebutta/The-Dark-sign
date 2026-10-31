@@ -245,3 +245,33 @@ public static class BehaviorRoundTrip
         return 0;
     }
 }
+
+/// <summary>
+/// chr-roundtrip: Elden Ring's own player binders (c0000.anibnd, c0000_a9x.anibnd, c0000.behbnd) written two ways for
+/// trying in game in place of a moveset build: Work\scratch\chr-roundtrip\raw holds the game's files exactly as
+/// stored, Work\scratch\chr-roundtrip\bnd the same binders read and written back by SoulsFormats with no changes.
+/// If raw hangs, overriding the player's files hangs whatever they hold; if only bnd hangs, the writing is at fault.
+/// </summary>
+public static class ChrRoundTrip
+{
+    public static int Run(PorterContext ctx)
+    {
+        using var archives = ctx.OpenArchives(PorterGame.EldenRing);
+        foreach (var path in new[] { "/chr/c0000.anibnd.dcx", "/chr/c0000_a9x.anibnd.dcx", "/chr/c0000.behbnd.dcx" })
+        {
+            var leaf = path[(path.LastIndexOf('/') + 1)..];
+            var raw = archives.ReadRaw(path);
+            var rawDir = ctx.WorkPath("scratch", "chr-roundtrip", "raw", "chr");
+            Directory.CreateDirectory(rawDir);
+            File.WriteAllBytes(Path.Combine(rawDir, leaf), raw);
+
+            var (bytes, compression) = archives.ReadWithCompression(path);
+            var written = BND4.Read(bytes).Write();
+            var bndDir = ctx.WorkPath("scratch", "chr-roundtrip", "bnd", "chr");
+            Directory.CreateDirectory(bndDir);
+            File.WriteAllBytes(Path.Combine(bndDir, leaf), DCX.Compress(written, compression));
+            Console.WriteLine($"{leaf}: raw {raw.Length} bytes; binder {bytes.Length} -> {written.Length} bytes, same {bytes.AsSpan().SequenceEqual(written)}");
+        }
+        return 0;
+    }
+}
