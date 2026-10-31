@@ -131,11 +131,32 @@ public static class FxSoundExplore
         {
             var files = archives.Entries.Where(e => e.Path?.StartsWith("/sound/") == true).Select(e => (e.Path!, (Func<byte[]>)(() => archives.Read(e.Path!))))
                 .Concat(LooseFiles(ctx.GameDir(PorterGame.DarkSouls3), "sound")).ToList();
-            foreach (var (path, read) in files.Where(f => f.Item1.EndsWith(".fsb", StringComparison.OrdinalIgnoreCase)).OrderBy(f => f.Item1).Take(40))
+            var sampleFiles = new Dictionary<string, string>();
+            foreach (var (path, read) in files.Where(f => f.Item1.EndsWith(".fsb", StringComparison.OrdinalIgnoreCase)).OrderBy(f => f.Item1))
             {
-                try { report.AppendLine($"  {path}: {Fsb5Summary(read())}"); }
+                try
+                {
+                    var bytes = read();
+                    var name = Path.GetFileName(path);
+                    if (name.Contains("c0000") || name.Contains("main") || name.Contains("weapon", StringComparison.OrdinalIgnoreCase))
+                        report.AppendLine($"  {path}: {Fsb5Summary(bytes)}");
+                    foreach (var sample in Fsb5Names(bytes))
+                        sampleFiles.TryAdd(sample, name);
+                }
                 catch (Exception e) { report.AppendLine($"  {path}: {e.Message}"); }
             }
+            report.AppendLine($"  {sampleFiles.Count} distinct sample names in all FSBs");
+            // DS3's own weapon sound events: which (kind, ID) have samples, and under which letter and file.
+            report.AppendLine("  DS3 player TAE sound events by kind: distinct IDs, IDs with a sample named <letter><ID:D9>, letters and files");
+            foreach (var type in new[] { 128, 129, 130, 131, 132, 137 })
+                foreach (var kind in (events[PorterGame.DarkSouls3].GetValueOrDefault(type) ?? []).Where(b => b.Length >= 8)
+                             .GroupBy(b => BitConverter.ToInt32(b, 0)).OrderBy(g => g.Key))
+                {
+                    var ids = kind.Select(b => BitConverter.ToInt32(b, 4)).Distinct().ToList();
+                    var found = ids.SelectMany(id => "acfgmopsvxb".Select(l => $"{l}{id:D9}")).Where(sampleFiles.ContainsKey).ToList();
+                    report.AppendLine($"    {type} kind {kind.Key}: {ids.Count} IDs (e.g. {string.Join(" ", ids.Take(5))}), {found.Count} with samples, " +
+                                      $"letters {string.Join("", found.Select(f => f[0]).Distinct())}, files {string.Join(" ", found.Select(f => sampleFiles[f]).Distinct().Take(6))}");
+                }
             foreach (var (path, read) in files.Where(f => f.Item1.EndsWith(".fev", StringComparison.OrdinalIgnoreCase)).OrderBy(f => f.Item1).Take(5))
             {
                 var bytes = read();
@@ -150,7 +171,15 @@ public static class FxSoundExplore
         var banks = new List<(string Path, int Version, Dictionary<int, int> Types, long Size, bool Media)>();
         using (var archives = ctx.OpenArchives(PorterGame.EldenRing))
         {
-            var files = archives.Entries.Where(e => e.Path?.StartsWith("/sd/") == true && e.Path.EndsWith(".bnk")).Select(e => (e.Path!, (Func<byte[]>)(() => archives.Read(e.Path!))))
+            var sd = archives.Entries.Where(e => e.Archive.StartsWith("sd", StringComparison.OrdinalIgnoreCase)).ToList();
+            report.AppendLine($"  sd archives: {sd.Count} files, {sd.Count(e => e.Path is not null)} named, {sd.Sum(e => (long)e.Header.PaddedFileSize) / 1048576} MB");
+            foreach (var g in sd.Where(e => e.Path is not null).GroupBy(e => Path.GetDirectoryName(e.Path!)!.Replace('\\', '/') + " *" + Ext(e.Path!)).OrderBy(g => g.Key).Take(40))
+                report.AppendLine($"    {g.Key}: {g.Count()} files, e.g. {string.Join(" ", g.Take(5).Select(e => Path.GetFileName(e.Path!)))}");
+            var candidates = new[] { "cs_main", "cs_smain", "cs_c0000", "cs_sfx", "vc_main", "init", "cs_main_dlc02" }
+                .SelectMany(n => new[] { "/", "/sd/", "/sd/enus/", "/enus/" }.Select(pre => pre + n + ".bnk")).Where(archives.Contains).ToList();
+            report.AppendLine($"  bank names found by hash: {string.Join(" ", candidates)}");
+            var files = sd.Where(e => e.Path?.EndsWith(".bnk", StringComparison.OrdinalIgnoreCase) == true).Select(e => e.Path!).Concat(candidates).Distinct()
+                .Select(path => (path, (Func<byte[]>)(() => archives.Read(path))))
                 .Concat(LooseFiles(erDir, "sd").Where(f => f.Item1.EndsWith(".bnk", StringComparison.OrdinalIgnoreCase)));
             foreach (var (path, read) in files)
             {
@@ -162,6 +191,19 @@ public static class FxSoundExplore
                 }
                 catch (Exception e) { report.AppendLine($"  {path}: {e.Message}"); }
             }
+            // Unnamed files: their first bytes tell banks (BKHD) from streamed media (RIFF).
+            var magics = new SortedDictionary<string, int>();
+            foreach (var e in sd.Where(e => e.Path is null && e.Header.PaddedFileSize < 64 << 20).Take(400))
+            {
+                try
+                {
+                    var bytes = archives.ReadRaw(e);
+                    var magic = bytes.Length >= 4 ? Encoding.ASCII.GetString(bytes, 0, 4) : "?";
+                    magics[magic] = magics.GetValueOrDefault(magic) + 1;
+                }
+                catch (Exception) { magics["error"] = magics.GetValueOrDefault("error") + 1; }
+            }
+            report.AppendLine($"  first 400 unnamed sd files by magic: {string.Join(" ", magics.Select(m => $"{m.Key}={m.Value}"))}");
         }
         report.AppendLine($"  {banks.Count} banks, versions {string.Join(",", banks.Select(b => b.Version).Distinct())}, {eventIds.Count} events");
         foreach (var b in banks.OrderByDescending(b => b.Types.GetValueOrDefault(4)).Take(12))
@@ -219,6 +261,21 @@ public static class FxSoundExplore
             names.Add(Encoding.ASCII.GetString(bytes, start, end - start));
         }
         return $"{bytes.Length / 1024} KB, FSB5 v{version} at {at}, {samples} samples, codec {mode}, names e.g. {string.Join(" ", names)}";
+    }
+
+    private static IEnumerable<string> Fsb5Names(byte[] bytes)
+    {
+        if (bytes.Length < 0x3C || Encoding.ASCII.GetString(bytes, 0, 4) != "FSB5")
+            yield break;
+        int version = BitConverter.ToInt32(bytes, 4), samples = BitConverter.ToInt32(bytes, 8);
+        int headerSize = BitConverter.ToInt32(bytes, 12), nameSize = BitConverter.ToInt32(bytes, 16);
+        int nameTable = (version == 0 ? 0x40 : 0x3C) + headerSize;
+        for (int i = 0; i < samples && nameSize > 0; i++)
+        {
+            int start = nameTable + BitConverter.ToInt32(bytes, nameTable + 4 * i), end = start;
+            while (end < bytes.Length && bytes[end] != 0) end++;
+            yield return Encoding.ASCII.GetString(bytes, start, end - start);
+        }
     }
 
     private static (int Version, Dictionary<int, int> Types, bool Media) ReadBank(byte[] bytes, HashSet<uint> eventIds)
