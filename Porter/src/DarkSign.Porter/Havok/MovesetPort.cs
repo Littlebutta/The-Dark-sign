@@ -85,16 +85,30 @@ public static partial class MovesetPort
         // Weapons that share a DS3 moveset and an Elden Ring template share one new category; each keeps its own DS3
         // attack data through its behaviour variation. A weapon's art section only splits the moveset when it replaces
         // moves of its class (Friede's a232 has its own two-handed attacks); most hold just the art's own moves.
-        var mappedDs3 = erToDs3.Values.ToHashSet();
-        var overridesClass = new Dictionary<int, bool>();
-        bool Overrides(int art) => art > 0 && (overridesClass.TryGetValue(art, out var o) ? o : overridesClass[art] =
-            BinderLeaf(ds3Main, $"a{art:D2}.tae") is { } f && TAE.Read(f.Bytes).Animations.Any(a => mappedDs3.Contains((int)a.ID)));
+        // Many art TAEs list class moves too, but only as imports of the class's own animations; those don't count.
+        var mappedDs3 = erToDs3.Values.Distinct().ToList();
         TAE.ValidateEventBank = false;
+        var ds3TaeCache = new Dictionary<int, TAE?>();
+        TAE? Ds3Tae(int section) => ds3TaeCache.TryGetValue(section, out var t) ? t
+            : ds3TaeCache[section] = BinderLeaf(ds3Main, $"a{section:D2}.tae") is { } f ? TAE.Read(f.Bytes) : null;
+        var overridesClass = new Dictionary<(int, int), bool>();
+        bool Overrides(int cls, int art)
+        {
+            if (art <= 0 || Ds3Tae(art) is not { } artTae)
+                return false;
+            if (overridesClass.TryGetValue((cls, art), out var known))
+                return known;
+            var classOnly = new List<(int, TAE?)> { (cls, Ds3Tae(cls)) }.Where(t => t.Item2 is not null).ToList();
+            var withArt = new List<(int, TAE?)> { (art, artTae) }.Concat(classOnly).ToList();
+            return overridesClass[(cls, art)] = mappedDs3.Where(id => artTae.Animations.Any(a => a.ID == id))
+                .Any(id => FindDs3(withArt, ds3Main, id)?.HkxName != FindDs3(classOnly, ds3Main, id)?.HkxName);
+        }
         var groups = ports.GroupBy(p =>
             {
+                int cls = Convert.ToInt32(ds3Weapons[p.Ds3Id]!["wepmotionCategory"].Value);
                 int art = Convert.ToInt32(ds3Weapons[p.Ds3Id]!["spAtkCategory"].Value);
-                return (Ds3Section: Convert.ToInt32(ds3Weapons[p.Ds3Id]!["wepmotionCategory"].Value),
-                    Ds3ArtSection: Overrides(art) ? art : 0,
+                return (Ds3Section: cls,
+                    Ds3ArtSection: Overrides(cls, art) ? art : 0,
                     TemplateSection: Convert.ToInt32(erWeapons[p.NewId!.Value]!["wepmotionCategory"].Value));
             })
             // When categories run out, the movesets most weapons use go first; Devin's first pick, Friede's, leads.
