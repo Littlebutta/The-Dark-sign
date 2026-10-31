@@ -37,9 +37,15 @@ public static partial class MovesetPort
     /// <summary>Weapons whose motion category doesn't fit the row's byte, for the mod DLL (Mods\ER\motion-categories.txt).</summary>
     public const string WideTable = "motion-categories.txt";
 
+    // Event types that drive the behaviour (when a combo can continue, when the move can be cancelled, charging):
+    // JumpTable (0) IDs mean different things in the two games (Elden Ring's R1 chain window is JumpTable 115, which
+    // DS3 doesn't have, and DS3's full-length 108 isn't Elden Ring's), so a DS3 move copied with DS3's never chained.
+    // These come from the Elden Ring template, stretched onto the DS3 move's timeline between matching hits.
+    private static readonly HashSet<int> BehaviourTypes = [0, 67, 608, 800];
+    private static readonly bool Ds3JumpTables = Environment.GetEnvironmentVariable("DARKSIGN_DS3_JUMPTABLES") == "1";
     // Event types Elden Ring keeps from its own template animation: sounds, effects and other references to IDs that
     // DS3 numbers differently. Every other type comes from DS3 when both games lay it out the same.
-    private static readonly HashSet<int> EldenRingOnlyTypes = [96, 112, 128, 129, 133, 139, 224, 792, 907];
+    private static readonly HashSet<int> EldenRingOnlyTypes = [96, 112, 128, 129, 133, 139, 224, 792, 907, .. BehaviourTypes];
 
     [GeneratedRegex(@"^a(\d{3})_(\d{6})")]
     private static partial Regex AnimName();
@@ -376,7 +382,7 @@ public static partial class MovesetPort
                 continue;
             }
             var bytes = e.GetParameterBytes(false);
-            if (EldenRingOnlyTypes.Contains(e.Type) || !erLengths.TryGetValue(e.Type, out var length) || length != bytes.Length)
+            if (ErOwned(e.Type) || !erLengths.TryGetValue(e.Type, out var length) || length != bytes.Length)
                 continue;
             merged.Add(new TAE.Event(e.StartTime, e.EndTime, e.Type, e.Unk04, (byte[])bytes.Clone(), false));
         }
@@ -392,11 +398,32 @@ public static partial class MovesetPort
             erHits = [.. erHits.Take(1)];
         }
         // A move that plays DS3's own character and effect sounds drops Elden Ring's (footsteps and the rest stay).
-        var kept = erEvents.Where(e => EldenRingOnlyTypes.Contains(e.Type) && !ds3Effects.Contains(e.Type)
+        var kept = erEvents.Where(e => ErOwned(e.Type) && !ds3Effects.Contains(e.Type)
                                        && !(ds3Sounds && SoundPort.Sound(e) is { } s && SoundPort.Letter(s.Kind) is not null)).ToList();
         int Pair(int erHit) => erHits.Count == 1 ? 0 : (int)Math.Round(erHit * (ds3Hits.Count - 1) / (double)(erHits.Count - 1));
         var pairedDs3 = new HashSet<int>();
-        foreach (var e in kept)
+        // Behaviour windows are stretched, not shifted: anchors at the start, each paired hit, and the end.
+        var anchors = new List<(float Er, float Ds3)> { (0, 0) };
+        for (int h = 0; h < erHits.Count && ds3Hits.Count > 0; h++)
+            anchors.Add((erHits[h], ds3Hits[Pair(h)]));
+        float erEnd = erEvents.Select(e => e.EndTime).DefaultIfEmpty(0).Max(), ds3End = ds3Events.Select(e => e.EndTime).DefaultIfEmpty(0).Max();
+        if (erEnd > anchors[^1].Er && ds3End > anchors[^1].Ds3)
+            anchors.Add((erEnd, ds3End));
+        float Warp(float t)
+        {
+            for (int i = 1; i < anchors.Count; i++)
+                if (t <= anchors[i].Er || i == anchors.Count - 1)
+                {
+                    var (a, b) = (anchors[i - 1], anchors[i]);
+                    float span = b.Er - a.Er;
+                    return Math.Max(0, span <= 0 ? a.Ds3 + (t - a.Er) : a.Ds3 + (t - a.Er) * (b.Ds3 - a.Ds3) / span);
+                }
+            return t;
+        }
+        foreach (var e in kept.Where(e => BehaviourTypes.Contains(e.Type) && !Ds3JumpTables))
+            merged.Add(new TAE.Event(Warp(e.StartTime), Math.Max(Warp(e.StartTime), Warp(e.EndTime)), e.Type, e.Unk04,
+                (byte[])e.GetParameterBytes(false).Clone(), false) { Group = e.Group });
+        foreach (var e in kept.Where(e => !BehaviourTypes.Contains(e.Type) || Ds3JumpTables))
         {
             float shift = 0;
             if (ds3Hits.Count > 0 && erHits.Count > 0)
@@ -456,6 +483,8 @@ public static partial class MovesetPort
 
     private static int NearestHit(List<float> hits, float time) =>
         Enumerable.Range(0, hits.Count).MinBy(h => Math.Abs(hits[h] - time));
+
+    private static bool ErOwned(int type) => EldenRingOnlyTypes.Contains(type) && !(Ds3JumpTables && BehaviourTypes.Contains(type));
 
     private static TAE.Event Shifted(TAE.Event e, float shift) =>
         new(Math.Max(0, e.StartTime + shift), Math.Max(0, e.EndTime + shift), e.Type, e.Unk04,
