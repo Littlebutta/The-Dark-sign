@@ -12,6 +12,7 @@ namespace DarkSign.Porter;
 public static class SoundPort
 {
     public const int IdBase = 900_000_000;
+    private static readonly bool StreamSounds = Environment.GetEnvironmentVariable("DARKSIGN_STREAM_SOUNDS") == "1";
     private const string Bank = "/enus/cs_main.bnk";
 
     public sealed class Result
@@ -69,16 +70,20 @@ public static class SoundPort
             var wem = WwiseBank.PcmWem(pcm, sample.Channels, sample.Rate);
             uint soundId = UnusedId(bank, $"darksign_sound_{letter}{id}"), actionId = UnusedId(bank, $"darksign_action_{letter}{id}");
             uint mediaId = UnusedId(bank, $"darksign_media_{letter}{id}");
-            // Streamed like Elden Ring's longer sounds, so the bank keeps its size: /wem/<first two digits>/<ID>.wem.
-            var mediaName = mediaId.ToString();
-            File.WriteAllBytes(ctx.ModPath("sd", "wem", mediaName[..2], mediaName + ".wem"), wem);
-            bank.AddSound(template, eventId, soundId, actionId, mediaId, wem, streamed: true);
+            // Embedded in the bank like nearly all of Elden Ring's own sounds (17,018 embedded, 3 streamed): the
+            // streamed loose wems (sd\wem\NN\<ID>.wem) stayed silent in game. DARKSIGN_STREAM_SOUNDS=1 streams them.
+            if (StreamSounds)
+            {
+                var mediaName = mediaId.ToString();
+                File.WriteAllBytes(ctx.ModPath("sd", "wem", mediaName[..2], mediaName + ".wem"), wem);
+            }
+            bank.AddSound(template, eventId, soundId, actionId, mediaId, wem, streamed: StreamSounds);
             result.Add(kind, id);
             bytes += wem.Length;
         }
         if (result.Count > 0)
             File.WriteAllBytes(ctx.ModPath(["sd", .. Bank.TrimStart('/').Split('/')]), bank.Write());
-        Console.WriteLine($"sounds: {result.Count} DS3 sounds ported ({bytes / 1024} KB of PCM in sd/wem, {bank.ChildrenAdded} added to their parent) " +
+        Console.WriteLine($"sounds: {result.Count} DS3 sounds ported ({bytes / 1024} KB of PCM {(StreamSounds ? "streamed from sd/wem" : "embedded")}, {bank.ChildrenAdded} added to their parent) " +
                           $"into sd{Bank}; left out: " +
                           (reasons.Count == 0 ? "none" : string.Join(", ", reasons.Select(r => $"{r.Value} {r.Key}"))));
         return result;
