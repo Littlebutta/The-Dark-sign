@@ -31,6 +31,9 @@ public static partial class MovesetPort
 
     private const string AnimBinder = "/chr/c0000_a9x.anibnd.dcx";
 
+    /// <summary>Weapons whose motion category doesn't fit the row's byte, for the mod DLL (Mods\ER\motion-categories.txt).</summary>
+    public const string WideTable = "motion-categories.txt";
+
     // Event types Elden Ring keeps from its own template animation: sounds, effects and other references to IDs that
     // DS3 numbers differently. Every other type comes from DS3 when both games lay it out the same.
     private static readonly HashSet<int> EldenRingOnlyTypes = [96, 112, 128, 129, 133, 139, 224, 792, 907];
@@ -109,8 +112,12 @@ public static partial class MovesetPort
             int art = Convert.ToInt32(ds3Weapons[p.Ds3Id]!["spAtkCategory"].Value);
             return (cls, withArt && Overrides(cls, art) ? art : 0, Convert.ToInt32(erWeapons[p.NewId!.Value]!["wepmotionCategory"].Value));
         }
-        // wepmotionCategory is one byte. Sections from 90 up keep their animations in c0000_a9x, where these go.
-        var freeSections = new Queue<int>(Enumerable.Range(90, 166).Reverse().Where(s => !usedSections.Contains(s)));
+        // wepmotionCategory is one byte, so sections 90-255 go straight into the weapon rows (from 90 up the animations
+        // live in c0000_a9x, where these go). Sections 256-999 need the mod DLL: it reads them from
+        // motion-categories.txt and gives them to the game in place of the row's byte. Animation names allow 3 digits.
+        var freeSections = new Queue<int>(Enumerable.Range(90, 166).Reverse().Concat(Enumerable.Range(256, 744))
+            .Where(s => !usedSections.Contains(s)));
+        var wideCategories = new SortedDictionary<int, int>();
         // Too few categories for every DS3 moveset, so they are handed out in this order: Friede's (Devin's first pick),
         // then each DS3 class's own moveset, then the weapons with their own moves, most shared first. A weapon whose
         // own moveset doesn't fit gets its class's: DS3's moves for its class, without the ones its art replaces.
@@ -223,9 +230,12 @@ public static partial class MovesetPort
                 pointWeapons.Add(() =>
                 {
                     int variation = attackPort.PortVariation(ds3Variation);
+                    if (section > byte.MaxValue)
+                        wideCategories[newId] = section; // the row keeps its template's category for the DLL to replace
                     foreach (var row in erWeapons.Rows.Where(r => r.ID >= newId && r.ID < newId + 10000))
                     {
-                        row["wepmotionCategory"].Value = Convert.ChangeType(section, row["wepmotionCategory"].Value!.GetType());
+                        if (section <= byte.MaxValue)
+                            row["wepmotionCategory"].Value = Convert.ChangeType(section, row["wepmotionCategory"].Value!.GetType());
                         if (variation > 0)
                             row["behaviorVariationId"].Value = Convert.ChangeType(variation, row["behaviorVariationId"].Value!.GetType());
                     }
@@ -236,7 +246,14 @@ public static partial class MovesetPort
         // Params first: a failure there must not leave behaviour and animation files for weapons that don't use them.
         foreach (var point in pointWeapons)
             point();
-        Console.WriteLine($"moveset: {portedGroups} movesets ported, {skippedGroups} skipped; attacks: {attackPort.Summary}");
+        Console.WriteLine($"moveset: {portedGroups} movesets ported, {skippedGroups} skipped; attacks: {attackPort.Summary}; " +
+                          $"{wideCategories.Count} weapons on categories above 255 (mod DLL)");
+        var table = ctx.ModPath(WideTable);
+        if (wideCategories.Count > 0)
+            File.WriteAllLines(table, new[] { "# weapon base row\tmotion category, read by dksign_testmenu.dll" }
+                .Concat(wideCategories.Select(e => $"{e.Key}\t{e.Value}")));
+        else
+            File.Delete(table);
         if (portedGroups == 0)
             return;
         using var output = new MemoryStream();
@@ -249,7 +266,8 @@ public static partial class MovesetPort
 
     /// <summary>The player files Apply writes; removed when a port fails so the game loads Elden Ring's own.</summary>
     public static IEnumerable<string> OutputFiles(PorterContext ctx) =>
-        new[] { "c0000.behbnd.dcx", "c0000.anibnd.dcx", ItemText.Leaf(AnimBinder) }.Select(f => ctx.ModPath("chr", f));
+        new[] { "c0000.behbnd.dcx", "c0000.anibnd.dcx", ItemText.Leaf(AnimBinder) }.Select(f => ctx.ModPath("chr", f))
+            .Append(ctx.ModPath(WideTable));
 
     private static bool IsWeaponSelector(CustomManualSelectorGenerator s) => s.m_offsetType is
         CustomManualSelectorGenerator.OffsetType.WeaponCategoryRight or CustomManualSelectorGenerator.OffsetType.WeaponCategoryLeft

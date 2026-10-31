@@ -88,7 +88,7 @@ static int read_ptr(uintptr_t addr, uintptr_t *out)
 
 /* Scans every readable region of the game's image. The regions are found through their allocation base rather
    than the PE header, which the game's protection may have altered in memory. */
-static uintptr_t find_in_game(const char *pattern_text)
+uintptr_t dks_find_in_game(const char *pattern_text)
 {
     DksPattern pattern;
     if (!dks_parse_pattern(pattern_text, &pattern))
@@ -123,9 +123,9 @@ void dks_scan_game(void)
         return;
     g_scanned = 1;
     uintptr_t base = (uintptr_t)GetModuleHandleW(NULL);
-    g_game_data_man_slot = rip_target(find_in_game(PAT_GAME_DATA_MAN));
-    g_map_item_man_slot = rip_target(find_in_game(PAT_MAP_ITEM_MAN));
-    uintptr_t give = find_in_game(PAT_ITEM_GIVE);
+    g_game_data_man_slot = rip_target(dks_find_in_game(PAT_GAME_DATA_MAN));
+    g_map_item_man_slot = rip_target(dks_find_in_game(PAT_MAP_ITEM_MAN));
+    uintptr_t give = dks_find_in_game(PAT_ITEM_GIVE);
     g_item_give = give ? (ItemGive)(give + ITEM_GIVE_OFFSET) : NULL;
     dks_log("scan: base %p, GameDataMan +%llx, MapItemMan +%llx, ItemGive +%llx", (void *)base,
             g_game_data_man_slot ? (unsigned long long)(g_game_data_man_slot - base) : 0ULL,

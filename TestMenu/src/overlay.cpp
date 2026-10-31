@@ -17,6 +17,7 @@
 #include "backends/imgui_impl_dx12.h"
 #include "backends/imgui_impl_win32.h"
 #include "game.h"
+#include "motion.h"
 
 extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND, UINT, WPARAM, LPARAM);
 
@@ -677,6 +678,7 @@ DWORD WINAPI start(LPVOID)
         dks_log("overlay: MinHook failed to start");
         return 0;
     }
+    dks_motion_init();
     if (!hook_dx12())
         return 0;
     hook_input();
