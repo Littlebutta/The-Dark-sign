@@ -37,7 +37,9 @@ The Elden Ring panel's **Play** button does everything:
 **F1 test menu** (`TestMenu/`, `dksign_testmenu.dll`): an overlay drawn inside the game with
 [Dear ImGui](https://github.com/ocornut/imgui) (MIT, vendored in `TestMenu/third_party/imgui`) on a hook of the game's
 DirectX 12 swap chain, the way ReShade draws its menu. F1 shows it: search every item (Elden Ring's and the ported
-ones, from `Mods\ER\darksign_items.tsv`), give it with a quantity, upgrade level and affinity, and add or set runes.
+ones, from `Mods\ER\darksign_items.tsv`), give it with a quantity, upgrade level and affinity, add or set runes, and set the eight attributes (the
+level follows from them) to meet a weapon's requirements. Attribute changes are refused if the game's numbers don't add
+up to its level, which would mean a game update moved them.
 While it is open the game's keyboard and mouse input and its cursor lock are held back. It finds the game's
 item-give function and rune counter by the byte patterns [Erd-Tools](https://github.com/Nordgaren/Erd-Tools) uses;
 if a game update moves them, the menu says so instead of crashing. It is a testing aid for offline play only.
