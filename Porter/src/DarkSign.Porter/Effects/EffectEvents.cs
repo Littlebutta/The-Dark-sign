@@ -5,7 +5,7 @@ namespace DarkSign.Porter;
 /// <summary>
 /// The TAE events that spawn effects, and where their FXR IDs are. Both games number these types the same (the
 /// SpawnFFX family, 95-121), but which parameters hold IDs is read from the data: the fields whose values are mostly
-/// DS3 FXR IDs and typically 1000 or more (small values such as slots and dummy polys also match low FXR IDs). A
+/// DS3 FXR IDs and typically 200 or more (small values such as slots and dummy polys also match low FXR IDs). A
 /// type can carry several (blade trails, 120). A ported DS3 event gets its effects' new Elden Ring IDs and Elden
 /// Ring's parameter length (extra bytes copied from Elden Ring's most common event of that type). Any other DS3 event
 /// of these types is dropped, as its DS3 IDs would name unrelated Elden Ring effects.
@@ -36,7 +36,7 @@ public sealed class EffectEvents
                 double share = values.Count(ds3.Has) / (double)values.Count;
                 int median = values[values.Count / 2];
                 shares.Add($"f{field}={share:P0}/{values.Count}/median {median}");
-                if (share >= 0.75 && median >= 1000)
+                if (share >= 0.75 && median >= 200)
                     fields.Add(field);
             }
             fx._candidates.Add(group.Key);
