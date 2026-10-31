@@ -53,10 +53,43 @@ public static class ModCheck
                     var h => h?.GetType().Name ?? "none",
                 };
                 Log($"  anim {anim.ID}: {head}, file '{anim.AnimFileName}', {anim.Events.Count} events");
-                foreach (var e in anim.Events.Where(e => e.Type is not (128 or 129 or 96 or 112 or 116 or 119 or 120 or 133 or 139 or 224)).OrderBy(e => e.StartTime).Take(25))
-                    Log($"    type {e.Type} {e.StartTime:0.###}-{e.EndTime:0.###} {Convert.ToHexString(e.GetParameterBytes(false))}");
+                // Every event, sounds and effects included, with its event group (ungrouped events don't play).
+                foreach (var e in anim.Events.OrderBy(e => e.StartTime))
+                    Log($"    type {e.Type} {e.StartTime:0.###}-{e.EndTime:0.###} {Convert.ToHexString(e.GetParameterBytes(false))}" +
+                        (e.Group is null ? " NO GROUP" : $" group {e.Group.GroupType}"));
             }
         }
+
+        // 2b. Where each sound event's Wwise event leads in the mod's bank: Play_<letter><ID:D9> -> action -> Sound ->
+        // media (embedded, or streamed from sd\wem\NN\<media>.wem).
+        var bankPath = ctx.ModPath("sd", "enus", "cs_main.bnk");
+        if (taeFile is not null && File.Exists(bankPath))
+        {
+            var bank = WwiseBank.Read(File.ReadAllBytes(bankPath));
+            Log($"mod sound bank {bankPath}: {bank.Objects.Count} objects, {bank.MediaCount} embedded media");
+            var seen = new HashSet<(int, int)>();
+            var wemRoot = Path.GetDirectoryName(ctx.ModPath("sd", "wem", "_"))!; // read only; ModPath creates folders
+            foreach (var e in TAE.Read(taeFile.Bytes).Animations.Where(a => a.ID is 30000 or 30010 or 30020 or 30500).SelectMany(a => a.Events))
+            {
+                if (SoundPort.Sound(e) is not { } s || !seen.Add(s))
+                    continue;
+                var letter = SoundPort.Letter(s.Kind);
+                if (letter is null) { Log($"  sound kind {s.Kind} id {s.Id}: kind not looked up"); continue; }
+                var name = $"Play_{letter}{s.Id:D9}";
+                if (bank.Chain(FxSoundExplore.Fnv1(name)) is not { } chain)
+                {
+                    Log($"  {name} (type {e.Type}): {(bank.Has(FxSoundExplore.Fnv1(name)) ? "event without a Play->Sound chain" : "NOT IN BANK")}");
+                    continue;
+                }
+                var d = chain.Sound.Data;
+                uint plugin = BitConverter.ToUInt32(d, 4), media = BitConverter.ToUInt32(d, 9);
+                var wem = Path.Combine(wemRoot, media.ToString()[..2], media + ".wem");
+                Log($"  {name} (type {e.Type}): sound {chain.Sound.Id} plugin 0x{plugin:X8} stream {d[8]} media {media} size {BitConverter.ToUInt32(d, 13)}" +
+                    (d[8] != 0 ? (File.Exists(wem) ? $", mod wem {new FileInfo(wem).Length} b" : ", no mod wem (vanilla stream?)") : ", embedded"));
+            }
+        }
+        else
+            Log($"no mod sound bank at {bankPath}");
 
         // 3. The section's animations in the anim binder.
         var anims = BND4.Read(DCX.Decompress(File.ReadAllBytes(ctx.ModPath("chr", "c0000_a9x.anibnd.dcx"))));
