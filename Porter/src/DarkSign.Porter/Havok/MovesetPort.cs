@@ -330,22 +330,27 @@ public static partial class MovesetPort
         EffectEvents effectEvents, FxrPort.Result effects, SoundEvents sounds)
     {
         var merged = new List<TAE.Event>();
+        // Elden Ring files its effect and sound events in event groups, and an ungrouped one hung loading before the
+        // title screen. A converted DS3 event joins the group Elden Ring's event of its type is in, in this move (sounds: 128, else 129); with
+        // no such event here it isn't added (Elden Ring's events stay).
+        var groupOf = erEvents.Where(e => e.Group is not null).GroupBy(e => e.Type).ToDictionary(g => g.Key, g => g.First().Group);
         // Effect types this move now spawns DS3's own effects with; Elden Ring's of those types are dropped.
         var ds3Effects = new HashSet<int>();
         bool ds3Sounds = false;
         foreach (var e in ds3Events)
         {
-            if (Ds3SoundEvents && sounds.Convert(e) is { } sound)
+            if (Ds3SoundEvents && (groupOf.GetValueOrDefault(128) ?? groupOf.GetValueOrDefault(129)) is { } soundGroup && sounds.Convert(e) is { } sound)
             {
+                sound.Group = soundGroup;
                 merged.Add(sound);
                 ds3Sounds = true;
                 continue;
             }
             if (Ds3EffectEvents && effectEvents.IsEffect(e.Type))
             {
-                if (effectEvents.Convert(e, effects) is { } converted)
+                if (groupOf.TryGetValue(e.Type, out var effectGroup) && effectEvents.Convert(e, effects) is { } converted)
                 {
-                    merged.Add(new TAE.Event(e.StartTime, e.EndTime, e.Type, e.Unk04, converted, false));
+                    merged.Add(new TAE.Event(e.StartTime, e.EndTime, e.Type, e.Unk04, converted, false) { Group = effectGroup });
                     ds3Effects.Add(e.Type);
                 }
                 continue;
