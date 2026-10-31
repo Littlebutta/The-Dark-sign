@@ -31,6 +31,9 @@ public static partial class MovesetPort
 
     private const string AnimBinder = "/chr/c0000_a9x.anibnd.dcx";
 
+    /// <summary>DARKSIGN_COPY_ER_ANIMS=1 copies the template's own animations under the new category, as before, instead of importing them.</summary>
+    private static readonly bool CopyErAnims = Environment.GetEnvironmentVariable("DARKSIGN_COPY_ER_ANIMS") == "1";
+
     /// <summary>Weapons whose motion category doesn't fit the row's byte, for the mod DLL (Mods\ER\motion-categories.txt).</summary>
     public const string WideTable = "motion-categories.txt";
 
@@ -208,6 +211,12 @@ public static partial class MovesetPort
                     .Where(t => t.Tae is not null).ToList();
 
                 int converted = 0, copied = 0;
+                // Elden Ring's own imports show the ID scheme (section * 1,000,000 + ID) and the unknown field.
+                var imports = tae.Animations.Select(a => (Anim: a, Import: a.MiniHeader as TAE.Animation.AnimMiniHeader.ImportOtherAnim))
+                    .Where(x => x.Import is not null).ToList();
+                int importUnknown = imports.FirstOrDefault().Import?.Unknown ?? -1;
+                foreach (var (a, imp) in imports.Take(1))
+                    Console.WriteLine($"moveset: template import example: a{templateSection:D3}_{a.ID:D6} imports {imp!.ImportFromAnimID} (file {a.AnimFileName}, unknown {imp.Unknown})");
                 foreach (var anim in tae.Animations)
                 {
                     var erId = (int)anim.ID;
@@ -229,7 +238,19 @@ public static partial class MovesetPort
                     }
                     else if (anim.MiniHeader is TAE.Animation.AnimMiniHeader.Standard && ErAnimFile(erArchives, templateName) is { } original)
                     {
-                        AddFile(erAnims, newName + ".hkx", original.Bytes);
+                        if (CopyErAnims)
+                            AddFile(erAnims, newName + ".hkx", original.Bytes);
+                        else
+                        {
+                            // Elden Ring's own move: import the template's animation (motion and events), as Elden
+                            // Ring's own categories do, instead of a copy. 4,087 copies made the binder 4 times vanilla.
+                            anim.MiniHeader = new TAE.Animation.AnimMiniHeader.ImportOtherAnim
+                            {
+                                ImportFromAnimID = templateSection * 1_000_000 + erId,
+                                Unknown = importUnknown,
+                            };
+                            anim.AnimFileName = templateName + ".hkt";
+                        }
                         copied++;
                     }
                 }
@@ -258,7 +279,7 @@ public static partial class MovesetPort
                 }
 
                 Console.WriteLine($"moveset: {groupName} -> motion category {section} (from Elden Ring {templateSection}, DS3 {ds3Section}/{ds3ArtSection}): " +
-                                  $"{converted} DS3 animations, {copied} kept from Elden Ring, {registered} behaviour clips, {(DateTime.UtcNow - started).TotalSeconds:0}s");
+                                  $"{converted} DS3 animations, {copied} kept from Elden Ring ({(CopyErAnims ? "copied" : "imported")}), {registered} behaviour clips, {(DateTime.UtcNow - started).TotalSeconds:0}s");
             }
             catch (Exception e) when (e is OverflowException or InvalidDataException or FileNotFoundException or KeyNotFoundException or InvalidCastException)
             {
