@@ -32,6 +32,8 @@ static int wide_category(int weapon_id)
 
 static unsigned char h_cache_update(int *cache, void *equip)
 {
+    if (!equip) /* the original returns at once then, without touching the cache */
+        return o_cache_update(cache, equip);
     int before[3] = {cache[0], cache[1], cache[2]};
     o_cache_update(cache, equip);
     for (int hand = 0; hand < 2; hand++) {
