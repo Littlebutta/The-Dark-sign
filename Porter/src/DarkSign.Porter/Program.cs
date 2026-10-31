@@ -20,6 +20,7 @@ const string Usage = """
       chr-roundtrip                            write Elden Ring's player binders unchanged (raw, and re-written) to try in game
       binder-diff <file a> <file b>            compare two binder files on disk (compression, files, TAE events)
       check-sound-bank                         check Elden Ring's main sound bank round-trips and how it stores media
+      sound-probe [undo]                       point the ported sounds at an Elden Ring swing in the built bank (one-launch test)
       explore-fx-sound                         report both games' effect and sound files and the TAE events that use them
       matbin-info <name filter>                show Elden Ring material definitions
       weapons-plan                 decide which DS3 weapons to port and as which Elden Ring class
@@ -67,6 +68,7 @@ try
         "behavior-roundtrip" => BehaviorRoundTrip.Run(ctx),
         "explore-fx-sound" => FxSoundExplore.Run(ctx),
         "check-sound-bank" => SoundBankCheck.Run(ctx),
+        "sound-probe" => SoundProbe.Run(ctx, argList[1..]),
         "chr-roundtrip" => ChrRoundTrip.Run(ctx),
         "binder-diff" when argList.Count == 3 => BinderDiff.Run(argList[1], argList[2]),
         "tae-dump" when argList.Count == 3 => TaeDump.Run(ctx, PorterGame.Parse(argList[1]), int.Parse(argList[2])),

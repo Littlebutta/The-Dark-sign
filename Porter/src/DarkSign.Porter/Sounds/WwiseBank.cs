@@ -80,6 +80,9 @@ public sealed class WwiseBank
     public bool MediaSorted => _index.Zip(_index.Skip(1)).All(p => p.First.Id < p.Second.Id);
     public (uint Id, byte[] Bytes)? FirstMedia() => _index.Count > 0 ? (_index[0].Id, _media[_index[0].Id]) : null;
 
+    /// <summary>Embedded media by ID, or null when it isn't in this bank.</summary>
+    public byte[]? Media(uint id) => _media.GetValueOrDefault(id);
+
     public bool Has(uint id) => _byId.ContainsKey(id) || _media.ContainsKey(id);
 
     public HircObject? Get(uint id) => _byId.GetValueOrDefault(id);
