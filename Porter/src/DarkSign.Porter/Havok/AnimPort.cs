@@ -50,17 +50,21 @@ public static class AnimPort
     /// Builds an Elden Ring animation file from a DS3 one. <paramref name="erTemplate"/> is any Elden Ring player
     /// animation file; its container layout is kept and its animation replaced.
     /// </summary>
-    public static (byte[] Hkx, string Summary) Convert(byte[] ds3Hkx, Ds3Skeleton ds3, ErSkeleton er, byte[] erTemplate, byte[]? compendium)
+    /// <summary>Writes spline-compressed animations (see <see cref="SplineTranscode"/>); DARKSIGN_ANIM_INTERLEAVED=1 writes the old uncompressed ones.</summary>
+    public static bool Spline = Environment.GetEnvironmentVariable("DARKSIGN_ANIM_INTERLEAVED") != "1";
+
+    public static (byte[] Hkx, string Summary) Convert(byte[] ds3Hkx, Ds3Skeleton ds3, ErSkeleton er, byte[] erTemplate, byte[]? compendium) =>
+        Convert(ds3Hkx, ds3, er, erTemplate, compendium, Spline);
+
+    public static (byte[] Hkx, string Summary) Convert(byte[] ds3Hkx, Ds3Skeleton ds3, ErSkeleton er, byte[] erTemplate, byte[]? compendium, bool spline)
     {
         var hkx = HKX.Read(ds3Hkx, HKX.HKXVariation.HKXDS3, false);
-        var spline = hkx.DataSection.Objects.OfType<HKX.HKASplineCompressedAnimation>().FirstOrDefault()
+        var source = hkx.DataSection.Objects.OfType<HKX.HKASplineCompressedAnimation>().FirstOrDefault()
             ?? throw new InvalidDataException("the DS3 file has no spline-compressed animation");
         var binding = hkx.DataSection.Objects.OfType<HKX.HKAAnimationBinding>().FirstOrDefault();
         var refFrame = hkx.DataSection.Objects.OfType<HKX.HKADefaultAnimatedReferenceFrame>().FirstOrDefault();
 
-        int tracks = spline.TransformTrackCount, frames = spline.FrameCount;
-        var samples = SplineCompressedAnimation.ReadSplCmpAnimBytesAndSampleToUncomp(
-            spline.Data.GetArrayData().Elements.Select(b => b.data).ToArray(), tracks, spline.BlockCount, frames, spline.FramesPerBlock);
+        int tracks = source.TransformTrackCount, frames = source.FrameCount;
 
         // DS3 track -> DS3 bone (an empty binding means track i is bone i).
         var trackBone = binding is not null && binding.TransformTrackToBoneIndices.Size > 0
@@ -74,41 +78,22 @@ public static class AnimPort
             .ToDictionary(g => g.Key, g => g.First().i, StringComparer.OrdinalIgnoreCase);
 
         int erBones = er.Names.Count, mapped = 0;
-        var transforms = new List<hkQsTransform>(frames * erBones);
-        for (int f = 0; f < frames; f++)
-            for (int b = 0; b < erBones; b++)
-            {
-                var erRef = er.ReferencePose[b];
-                if (ds3TrackByName.TryGetValue(er.Names[b], out var t))
-                {
-                    var s = samples[f * tracks + t];
-                    var ds3Ref = ds3.ReferencePose[ds3BoneByName[er.Names[b]]];
-                    var offset = new Vector3(erRef.m_translation.X, erRef.m_translation.Y, erRef.m_translation.Z) - ds3Ref.Translation;
-                    var position = s.Translation + offset;
-                    transforms.Add(new hkQsTransform
-                    {
-                        m_translation = new Vector4(position, 0),
-                        m_rotation = Quaternion.Normalize(s.Rotation),
-                        m_scale = new Vector4(s.Scale, 0),
-                    });
-                    if (f == 0)
-                        mapped++;
-                }
-                else
-                {
-                    transforms.Add(new hkQsTransform { m_translation = erRef.m_translation, m_rotation = erRef.m_rotation, m_scale = erRef.m_scale });
-                }
-            }
-
-        var animation = new hkaInterleavedUncompressedAnimation
+        var ds3TrackOf = new int[erBones];
+        var offsets = new Vector3[erBones];
+        for (int b = 0; b < erBones; b++)
         {
-            m_type = hkaAnimation.AnimationType.HK_INTERLEAVED_ANIMATION,
-            m_duration = spline.Duration,
-            m_numberOfTransformTracks = erBones,
-            m_numberOfFloatTracks = 0,
-            m_transforms = transforms,
-            m_annotationTracks = er.Names.Select(n => new hkaAnnotationTrack { m_trackName = n }).ToList(),
-        };
+            ds3TrackOf[b] = ds3TrackByName.TryGetValue(er.Names[b], out var t) ? t : -1;
+            if (ds3TrackOf[b] < 0)
+                continue;
+            var erRef = er.ReferencePose[b].m_translation;
+            offsets[b] = new Vector3(erRef.X, erRef.Y, erRef.Z) - ds3.ReferencePose[ds3BoneByName[er.Names[b]]].Translation;
+            mapped++;
+        }
+
+        hkaAnimation animation = spline
+            ? SplineTranscode.Build(source, ds3TrackOf, offsets, er.ReferencePose)
+            : Interleaved(source, tracks, frames, ds3TrackOf, offsets, er);
+        animation.m_annotationTracks = er.Names.Select(n => new hkaAnnotationTrack { m_trackName = n }).ToList();
         if (refFrame is not null)
             animation.m_extractedMotion = new hkaDefaultAnimatedReferenceFrame
             {
@@ -130,8 +115,40 @@ public static class AnimPort
 
         using var output = new MemoryStream();
         new HavokBinarySerializer().Write(root, output);
-        var summary = $"{spline.Duration:0.###}s, {frames} frames, {mapped} of {erBones} bones from DS3, root motion {(refFrame is null ? "none" : $"{refFrame.ReferenceFrameSamples.Size} samples")}";
+        var summary = $"{source.Duration:0.###}s, {frames} frames, {mapped} of {erBones} bones from DS3, root motion {(refFrame is null ? "none" : $"{refFrame.ReferenceFrameSamples.Size} samples")}";
         return (output.ToArray(), summary);
+    }
+
+    private static hkaInterleavedUncompressedAnimation Interleaved(HKX.HKASplineCompressedAnimation source, int tracks, int frames, int[] ds3TrackOf, Vector3[] offsets, ErSkeleton er)
+    {
+        var samples = SplineCompressedAnimation.ReadSplCmpAnimBytesAndSampleToUncomp(source.GetData(), tracks, source.BlockCount, frames, source.FramesPerBlock);
+        int erBones = er.Names.Count;
+        var transforms = new List<hkQsTransform>(frames * erBones);
+        for (int f = 0; f < frames; f++)
+            for (int b = 0; b < erBones; b++)
+            {
+                var erRef = er.ReferencePose[b];
+                if (ds3TrackOf[b] is var t and >= 0)
+                {
+                    var s = samples[f * tracks + t];
+                    transforms.Add(new hkQsTransform
+                    {
+                        m_translation = new Vector4(s.Translation + offsets[b], 0),
+                        m_rotation = Quaternion.Normalize(s.Rotation),
+                        m_scale = new Vector4(s.Scale, 0),
+                    });
+                }
+                else
+                    transforms.Add(new hkQsTransform { m_translation = erRef.m_translation, m_rotation = erRef.m_rotation, m_scale = erRef.m_scale });
+            }
+        return new hkaInterleavedUncompressedAnimation
+        {
+            m_type = hkaAnimation.AnimationType.HK_INTERLEAVED_ANIMATION,
+            m_duration = source.Duration,
+            m_numberOfTransformTracks = erBones,
+            m_numberOfFloatTracks = 0,
+            m_transforms = transforms,
+        };
     }
 
     internal static hkaAnimationContainer Container(hkRootLevelContainer root) =>
