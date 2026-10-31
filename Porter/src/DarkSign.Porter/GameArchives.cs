@@ -94,8 +94,16 @@ public sealed class GameArchives : IDisposable
     public (byte[] Bytes, DCX.CompressionInfo Compression) ReadWithCompression(string path)
     {
         var bytes = DCX.Decompress(ReadRaw(path), out var compression);
-        return (bytes, compression);
+        return (bytes, ForMod(compression));
     }
+
+    // Elden Ring's files are Kraken at level 6 or more (Optimal), which compresses at a few MB/s and made the large
+    // mod binders take minutes each. Level 4 (Normal) is many times faster, a little bigger, and the game decompresses
+    // it the same way.
+    private static DCX.CompressionInfo ForMod(DCX.CompressionInfo compression) =>
+        compression is DCX.DcxKrakCompressionInfo { CompressionLevel: > 4 } krak
+            ? new DCX.DcxKrakCompressionInfo(4, krak.OodleCompressorType)
+            : compression;
 
     public void Dispose()
     {

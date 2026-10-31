@@ -33,6 +33,9 @@ public static class SoundPort
     {
         var result = new Result();
         var todo = wanted.Where(w => Letter(w.Kind) is not null && w.Id > 0 && w.Id < 100_000_000).Distinct().ToList();
+        var wemDir = ctx.ModPath("sd", "wem");
+        if (Directory.Exists(wemDir))
+            Directory.Delete(wemDir, true);
         if (todo.Count == 0)
             return result;
 
@@ -66,13 +69,17 @@ public static class SoundPort
             var wem = WwiseBank.PcmWem(pcm, sample.Channels, sample.Rate);
             uint soundId = UnusedId(bank, $"darksign_sound_{letter}{id}"), actionId = UnusedId(bank, $"darksign_action_{letter}{id}");
             uint mediaId = UnusedId(bank, $"darksign_media_{letter}{id}");
-            bank.AddSound(template, eventId, soundId, actionId, mediaId, wem);
+            // Streamed like Elden Ring's longer sounds, so the bank keeps its size: /wem/<first two digits>/<ID>.wem.
+            var mediaName = mediaId.ToString();
+            File.WriteAllBytes(ctx.ModPath("sd", "wem", mediaName[..2], mediaName + ".wem"), wem);
+            bank.AddSound(template, eventId, soundId, actionId, mediaId, wem, streamed: true);
             result.Add(kind, id);
             bytes += wem.Length;
         }
         if (result.Count > 0)
             File.WriteAllBytes(ctx.ModPath(["sd", .. Bank.TrimStart('/').Split('/')]), bank.Write());
-        Console.WriteLine($"sounds: {result.Count} DS3 sounds ported ({bytes / 1024} KB of PCM) into sd{Bank}; left out: " +
+        Console.WriteLine($"sounds: {result.Count} DS3 sounds ported ({bytes / 1024} KB of PCM in sd/wem, {bank.ChildrenAdded} added to their parent) " +
+                          $"into sd{Bank}; left out: " +
                           (reasons.Count == 0 ? "none" : string.Join(", ", reasons.Select(r => $"{r.Value} {r.Key}"))));
         return result;
     }

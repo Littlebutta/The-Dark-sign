@@ -56,12 +56,13 @@ public static partial class MovesetPort
             if (ds3Ids.Count == 1 && erSelectors.TryGetValue(name, out var erIds) && erIds.Count == 1)
                 erToDs3.TryAdd(erIds.First(), ds3Ids.First());
 
-        var erMain = BND4.Read(erArchives.Read("/chr/c0000.anibnd.dcx"));
-        var erMainCompression = erArchives.ReadWithCompression("/chr/c0000.anibnd.dcx").Compression;
-        var erAnims = BND4.Read(erArchives.Read(AnimBinder));
-        var erAnimsCompression = erArchives.ReadWithCompression(AnimBinder).Compression;
-        var behbnd = BND4.Read(erArchives.Read("/chr/c0000.behbnd.dcx"));
-        var behbndCompression = erArchives.ReadWithCompression("/chr/c0000.behbnd.dcx").Compression;
+        // Each binder is read once (decompressing the large animation binder took a while).
+        var (erMainBytes, erMainCompression) = erArchives.ReadWithCompression("/chr/c0000.anibnd.dcx");
+        var erMain = BND4.Read(erMainBytes);
+        var (erAnimsBytes, erAnimsCompression) = erArchives.ReadWithCompression(AnimBinder);
+        var erAnims = BND4.Read(erAnimsBytes);
+        var (behbndBytes, behbndCompression) = erArchives.ReadWithCompression("/chr/c0000.behbnd.dcx");
+        var behbnd = BND4.Read(behbndBytes);
         var behaviorFile = behbnd.Files.Where(f => f.Name.EndsWith(".hkx", StringComparison.OrdinalIgnoreCase)).MaxBy(f => f.Bytes.Length)!;
         var behavior = (hkRootLevelContainer)new HavokBinarySerializer().Read(new MemoryStream(behaviorFile.Bytes));
         var graph = HavokGraph.All(behavior);
@@ -303,9 +304,11 @@ public static partial class MovesetPort
         behaviorFile.Bytes = output.ToArray();
         using (Timing.Stage("moveset files"))
         {
-            File.WriteAllBytes(ctx.ModPath("chr", "c0000.behbnd.dcx"), DCX.Compress(behbnd.Write(), behbndCompression));
-            File.WriteAllBytes(ctx.ModPath("chr", "c0000.anibnd.dcx"), DCX.Compress(erMain.Write(), erMainCompression));
-            File.WriteAllBytes(ctx.ModPath("chr", ItemText.Leaf(AnimBinder)), DCX.Compress(erAnims.Write(), erAnimsCompression));
+            // Compressed side by side: each binder is independent.
+            Parallel.Invoke(
+                () => File.WriteAllBytes(ctx.ModPath("chr", "c0000.behbnd.dcx"), DCX.Compress(behbnd.Write(), behbndCompression)),
+                () => File.WriteAllBytes(ctx.ModPath("chr", "c0000.anibnd.dcx"), DCX.Compress(erMain.Write(), erMainCompression)),
+                () => File.WriteAllBytes(ctx.ModPath("chr", ItemText.Leaf(AnimBinder)), DCX.Compress(erAnims.Write(), erAnimsCompression)));
         }
     }
 

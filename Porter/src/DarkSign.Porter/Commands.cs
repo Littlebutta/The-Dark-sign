@@ -187,6 +187,8 @@ public static class Commands
           parts\wp_a_9NNN(_l).partsbnd.dcx    ported weapon models (and low-detail versions)
           material\allmaterial_dlc02...       materials for the ported models
           menu\hi|low\01_common.*, 00_solo.*  the ported weapons' DS3 icons (sheet SB_Icon_DS3, IDs 41000+)
+          sfx\sfxbnd_commoneffects...       Elden Ring's common effects plus the ported DS3 ones (IDs 900000000+)
+          sd\enus\cs_main.bnk, sd\wem\     Elden Ring's main sound bank plus events for the DS3 sounds, and their audio
           darksign_items.tsv                 every item the F1 test menu can give (not a game file)
         """;
 

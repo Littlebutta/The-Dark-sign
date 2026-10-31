@@ -104,15 +104,17 @@ public sealed class WwiseBank
         return null;
     }
 
-    /// <summary>Adds an event that plays new embedded PCM media, cloned from a template chain.</summary>
+    /// <summary>Adds an event that plays new PCM media, cloned from a template chain. Streamed media stays out of
+    /// the bank (the game reads it from /wem/NN/&lt;media ID&gt;.wem), so the bank only grows by the new objects;
+    /// otherwise the media is embedded. The new Sound is also added to its parent's child list.</summary>
     public void AddSound((HircObject Event, HircObject Action, HircObject Sound) template, uint eventId, uint soundId, uint actionId,
-        uint mediaId, byte[] wem)
+        uint mediaId, byte[] wem, bool streamed)
     {
-        // Sound: ID, then AkBankSourceData: plugin (PCM), stream type (embedded in the bank), media ID and size.
+        // Sound: ID, then AkBankSourceData: plugin (PCM), stream type (0 in the bank, 2 streamed), media ID and size.
         var sound = (byte[])template.Sound.Data.Clone();
         BitConverter.GetBytes(soundId).CopyTo(sound, 0);
         BitConverter.GetBytes(0x00010001u).CopyTo(sound, 4);
-        sound[8] = 0;
+        sound[8] = streamed ? (byte)2 : (byte)0;
         BitConverter.GetBytes(mediaId).CopyTo(sound, 9);
         BitConverter.GetBytes(wem.Length).CopyTo(sound, 13);
         sound[17] &= unchecked((byte)~0x02); // not prefetched
@@ -126,13 +128,52 @@ public sealed class WwiseBank
         if (byteCount) { ev[4] = 1; BitConverter.GetBytes(actionId).CopyTo(ev, 5); }
         else { BitConverter.GetBytes(1).CopyTo(ev, 4); BitConverter.GetBytes(actionId).CopyTo(ev, 8); }
 
+        AddChild(template.Sound, soundId);
         foreach (var obj in new[] { new HircObject(SoundType, soundId, sound), new HircObject(ActionType, actionId, action), new HircObject(EventType, eventId, ev) })
         {
             _objects.Add(obj);
             _byId[obj.Id] = obj;
         }
-        if (_media.TryAdd(mediaId, wem))
+        if (!streamed && _media.TryAdd(mediaId, wem))
             _added.Add((mediaId, wem));
+    }
+
+    /// <summary>How many new Sounds were added to their parent container's child list.</summary>
+    public int ChildrenAdded { get; private set; }
+
+    // Containers list their children as a count and IDs sorted ascending; the new ID goes into the list holding the
+    // sibling, in order.
+    private void AddChild(HircObject sibling, uint child)
+    {
+        var parent = ParentOf(sibling);
+        if (parent is null)
+            return;
+        var d = parent.Data;
+        for (int p = 4; p + 8 <= d.Length; p++)
+        {
+            int count = BitConverter.ToInt32(d, p);
+            if (count < 1 || count > 4096 || p + 4 + 4 * count > d.Length)
+                continue;
+            var ids = Enumerable.Range(0, count).Select(i => BitConverter.ToUInt32(d, p + 4 + 4 * i)).ToList();
+            if (!ids.Contains(sibling.Id) || !ids.Zip(ids.Skip(1)).All(x => x.First < x.Second) || !ids.All(_byId.ContainsKey))
+                continue;
+            int at = ids.Count(id => id < child);
+            parent.Data = [.. d.AsSpan(0, p), .. BitConverter.GetBytes(count + 1), .. d.AsSpan(p + 4, 4 * at), .. BitConverter.GetBytes(child),
+                .. d.AsSpan(p + 4 + 4 * at)];
+            ChildrenAdded++;
+            return;
+        }
+    }
+
+    private const byte RanSeqCntrType = 5, SwitchCntrType = 6, ActorMixerType = 7, LayerCntrType = 9;
+
+    private HircObject? ParentOf(HircObject sound)
+    {
+        var d = sound.Data;
+        for (int p = 18; p + 4 <= Math.Min(d.Length, 64); p++)
+            if (Get(BitConverter.ToUInt32(d, p)) is { Type: RanSeqCntrType or SwitchCntrType or ActorMixerType or LayerCntrType } parent)
+                return parent;
+        return null;
     }
 
     public byte[] Write()
