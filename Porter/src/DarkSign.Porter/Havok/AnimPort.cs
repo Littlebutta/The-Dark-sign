@@ -154,6 +154,10 @@ public static class AnimPort
         };
     }
 
+    /// <summary>A DS3 animation file's length in seconds.</summary>
+    public static float Duration(byte[] ds3Hkx) =>
+        HKX.Read(ds3Hkx, HKX.HKXVariation.HKXDS3, false).DataSection.Objects.OfType<HKX.HKASplineCompressedAnimation>().FirstOrDefault()?.Duration ?? 0;
+
     internal static hkaAnimationContainer Container(hkRootLevelContainer root) =>
         root.m_namedVariants.Select(v => v.m_variant).OfType<hkaAnimationContainer>().First();
 
