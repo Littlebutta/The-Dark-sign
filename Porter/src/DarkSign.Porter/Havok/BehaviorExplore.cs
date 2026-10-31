@@ -271,6 +271,22 @@ public static class ChrRoundTrip
             Directory.CreateDirectory(bndDir);
             File.WriteAllBytes(Path.Combine(bndDir, leaf), DCX.Compress(written, compression));
             Console.WriteLine($"{leaf}: raw {raw.Length} bytes; binder {bytes.Length} -> {written.Length} bytes, same {bytes.AsSpan().SequenceEqual(written)}");
+
+            // The behaviour graph re-serialized by HKLib with no changes, as the moveset port writes it.
+            if (leaf == "c0000.behbnd.dcx")
+            {
+                var behbnd = BND4.Read(bytes);
+                var file = behbnd.Files.Where(f => f.Name.EndsWith(".hkx", StringComparison.OrdinalIgnoreCase)).MaxBy(f => f.Bytes.Length)!;
+                var root = new HavokBinarySerializer().Read(new MemoryStream(file.Bytes));
+                using var output = new MemoryStream();
+                new HavokBinarySerializer().Write(root, output);
+                var hkx = output.ToArray();
+                Console.WriteLine($"{leaf}: behaviour {file.Name} {file.Bytes.Length} -> {hkx.Length} bytes via HKLib, same {file.Bytes.AsSpan().SequenceEqual(hkx)}");
+                file.Bytes = hkx;
+                var hkxDir = ctx.WorkPath("scratch", "chr-roundtrip", "hkx", "chr");
+                Directory.CreateDirectory(hkxDir);
+                File.WriteAllBytes(Path.Combine(hkxDir, leaf), DCX.Compress(behbnd.Write(), compression));
+            }
         }
         return 0;
     }
