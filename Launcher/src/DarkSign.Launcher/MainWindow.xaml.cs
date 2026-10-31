@@ -385,6 +385,17 @@ public partial class MainWindow : Window
     /// <summary>Runs the porter, which builds TheDarkSign\Mods\ER from the game files. Output goes to a log file.</summary>
     private async Task<bool> BuildContentAsync(EldenRingSetup setup)
     {
+        // A running game keeps the mod files open, so the build would fail halfway through.
+        while (Process.GetProcessesByName("eldenring").Length > 0)
+        {
+            if (MessageBox.Show(this, "Elden Ring is still running, and it keeps the mod files open, so the content can't be rebuilt.\n\n" +
+                    "Close the game completely (check Task Manager if its window is already gone), then press OK.",
+                    "Close Elden Ring first", MessageBoxButton.OKCancel, MessageBoxImage.Warning) != MessageBoxResult.OK)
+            {
+                StatusText.Text = "Rebuild cancelled: Elden Ring is still running.";
+                return false;
+            }
+        }
         Directory.CreateDirectory(setup.LogDir);
         var log = Path.Combine(setup.LogDir, $"porter-{DateTime.Now:yyyyMMdd-HHmmss}.log");
         StatusText.Text = "Building the Dark Souls III content from your game files (a few minutes)…";
