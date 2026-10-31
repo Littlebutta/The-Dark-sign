@@ -103,26 +103,34 @@ public static partial class MovesetPort
             return overridesClass[(cls, art)] = mappedDs3.Where(id => artTae.Animations.Any(a => a.ID == id))
                 .Any(id => FindDs3(withArt, ds3Main, id)?.HkxName != FindDs3(classOnly, ds3Main, id)?.HkxName);
         }
-        var groups = ports.GroupBy(p =>
-            {
-                int cls = Convert.ToInt32(ds3Weapons[p.Ds3Id]!["wepmotionCategory"].Value);
-                int art = Convert.ToInt32(ds3Weapons[p.Ds3Id]!["spAtkCategory"].Value);
-                return (Ds3Section: cls,
-                    Ds3ArtSection: Overrides(cls, art) ? art : 0,
-                    TemplateSection: Convert.ToInt32(erWeapons[p.NewId!.Value]!["wepmotionCategory"].Value));
-            })
-            // When categories run out, the movesets most weapons use go first; Devin's first pick, Friede's, leads.
-            .OrderByDescending(g => g.Any(p => p.Ds3Id == 10180000)).ThenByDescending(g => g.Count()).ToList();
+        (int Ds3Section, int Ds3ArtSection, int TemplateSection) Key(WeaponPlan p, bool withArt)
+        {
+            int cls = Convert.ToInt32(ds3Weapons[p.Ds3Id]!["wepmotionCategory"].Value);
+            int art = Convert.ToInt32(ds3Weapons[p.Ds3Id]!["spAtkCategory"].Value);
+            return (cls, withArt && Overrides(cls, art) ? art : 0, Convert.ToInt32(erWeapons[p.NewId!.Value]!["wepmotionCategory"].Value));
+        }
         // wepmotionCategory is one byte. Sections from 90 up keep their animations in c0000_a9x, where these go.
         var freeSections = new Queue<int>(Enumerable.Range(90, 166).Reverse().Where(s => !usedSections.Contains(s)));
+        // Too few categories for every DS3 moveset, so they are handed out in this order: Friede's (Devin's first pick),
+        // then each DS3 class's own moveset, then the weapons with their own moves, most shared first. A weapon whose
+        // own moveset doesn't fit gets its class's: DS3's moves for its class, without the ones its art replaces.
+        var own = ports.GroupBy(p => Key(p, true)).ToList();
+        var classes = ports.GroupBy(p => Key(p, false)).ToList();
+        var order = own.Where(g => g.Any(p => p.Ds3Id == 10180000)).Select(g => g.Key)
+            .Concat(classes.OrderByDescending(g => g.Count()).Select(g => g.Key))
+            .Concat(own.Where(g => g.Key.Ds3ArtSection != 0).OrderByDescending(g => g.Count()).Select(g => g.Key))
+            .Distinct().Take(freeSections.Count).ToHashSet();
+        var groups = ports.GroupBy(p => order.Contains(Key(p, true)) ? Key(p, true) : Key(p, false))
+            .OrderByDescending(g => g.Any(p => p.Ds3Id == 10180000)).ThenByDescending(g => g.Count()).ToList();
         int portedGroups = 0, skippedGroups = 0;
-        Console.WriteLine($"moveset: {ports.Count} weapons in {groups.Count} DS3 movesets, {freeSections.Count} free motion categories");
+        Console.WriteLine($"moveset: {ports.Count} weapons in {own.Count} DS3 movesets ({classes.Count} by class alone), " +
+                          $"{freeSections.Count} free motion categories; {groups.Count(g => order.Contains(g.Key))} to build");
 
         foreach (var group in groups)
         {
             var (ds3Section, ds3ArtSection, templateSection) = group.Key;
             var groupName = string.Join(", ", group.Select(p => p.Name).Take(3)) + (group.Count() > 3 ? $" +{group.Count() - 3}" : "");
-            if (freeSections.Count == 0)
+            if (!order.Contains(group.Key) || freeSections.Count == 0)
             {
                 Console.WriteLine($"moveset: skipped {groupName}: no free motion category left");
                 skippedGroups++;
