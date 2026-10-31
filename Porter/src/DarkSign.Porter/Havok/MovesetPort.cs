@@ -236,7 +236,11 @@ public static partial class MovesetPort
                         anim.AnimFileName = fileName.Replace(templateName, newName, StringComparison.OrdinalIgnoreCase);
 
                     var source = erToDs3.TryGetValue(erId, out var ds3Id) ? FindDs3(ds3Taes!, ds3Main, ds3Id) : null;
-                    if (source is { } s && ds3Hkx.Read(s.HkxName) is { } ds3Bytes)
+                    var ds3File = source is { } found ? ds3Hkx.Read(found.HkxName) : null;
+                    if (group.Any(p => p.Ds3Id == 10180000) && erToDs3.ContainsKey(erId))
+                        Console.WriteLine($"moveset: Friede's {erId} <- DS3 {ds3Id}: " +
+                                          (source is null ? "not in its DS3 sections" : ds3File is null ? $"{source.HkxName} NOT FOUND" : $"{source.HkxName}, {source.Events.Count} events"));
+                    if (source is { } s && ds3File is { } ds3Bytes)
                     {
                         var template = ErAnimFile(erArchives, templateName) ?? ErAnimFile(erArchives, "a000_000000")!;
                         var (hkx, _) = AnimPort.Convert(ds3Bytes, ds3Skeleton, erSkeleton, template.Bytes, template.Compendium);
@@ -368,9 +372,13 @@ public static partial class MovesetPort
         // Effect types this move now spawns DS3's own effects with; Elden Ring's of those types are dropped.
         var ds3Effects = new HashSet<int>();
         bool ds3Sounds = false;
+        // Elden Ring plays a weapon's swing sounds with PlaySound at a dummy poly (129: kind, ID, dummy poly 100, ...),
+        // not with 128: the ported sounds use the move's own 129 character sound as their layout when it has one.
+        var erSwing = erEvents.FirstOrDefault(e => e.Type == 129 && e.Group is not null && SoundPort.Sound(e) is { Kind: 1 });
         foreach (var e in ds3Events)
         {
-            if (Ds3SoundEvents && (groupOf.GetValueOrDefault(128) ?? groupOf.GetValueOrDefault(129)) is { } soundGroup && sounds.Convert(e) is { } sound)
+            if (Ds3SoundEvents && sounds.Convert(e, erSwing) is { } sound
+                && (erSwing?.Group ?? groupOf.GetValueOrDefault(128) ?? groupOf.GetValueOrDefault(129)) is { } soundGroup)
             {
                 sound.Group = soundGroup;
                 merged.Add(sound);
@@ -441,9 +449,24 @@ public static partial class MovesetPort
                 }
             return t;
         }
+        // The charge window (67) names the same charge in both games (100280 for a heavy attack): where DS3's move has
+        // one with the same ID it keeps DS3's own timing, so holding R2 charges where the DS3 swing winds up.
+        static int? FirstInt(TAE.Event e) => e.GetParameterBytes(false) is { Length: >= 4 } b ? BitConverter.ToInt32(b, 0) : null;
+        var ds3Charge = ds3Events.Where(e => e.Type == 67 && FirstInt(e) is not null).GroupBy(e => FirstInt(e)!.Value)
+            .ToDictionary(g => g.Key, g => g.OrderBy(e => e.StartTime).ToList());
+        var chargeUsed = new HashSet<int>();
         foreach (var e in kept.Where(e => BehaviourTypes.Contains(e.Type) && !Ds3JumpTables))
+        {
+            if (e.Type == 67 && FirstInt(e) is { } charge && ds3Charge.TryGetValue(charge, out var own))
+            {
+                if (chargeUsed.Add(charge))
+                    foreach (var d in own)
+                        merged.Add(new TAE.Event(d.StartTime, d.EndTime, 67, e.Unk04, (byte[])e.GetParameterBytes(false).Clone(), false) { Group = e.Group });
+                continue;
+            }
             merged.Add(new TAE.Event(Warp(e.StartTime), Math.Max(Warp(e.StartTime), Warp(e.EndTime)), e.Type, e.Unk04,
                 (byte[])e.GetParameterBytes(false).Clone(), false) { Group = e.Group });
+        }
         foreach (var e in kept.Where(e => !BehaviourTypes.Contains(e.Type) || Ds3JumpTables))
         {
             float shift = 0;
@@ -470,17 +493,19 @@ public static partial class MovesetPort
         return merged.OrderBy(e => e.StartTime).ToList();
     }
 
-    /// <summary>DS3 sound events as Elden Ring PlaySound (128) events for the ported sounds.</summary>
+    /// <summary>DS3 sound events as Elden Ring PlaySound events for the ported sounds: in the layout of the move's
+    /// own swing sound (129) when it has one, else of Elden Ring's most common 128.</summary>
     private sealed class SoundEvents(SoundPort.Result sounds, byte[]? sample)
     {
-        public TAE.Event? Convert(TAE.Event e)
+        public TAE.Event? Convert(TAE.Event e, TAE.Event? erSwing)
         {
-            if (sample is null || SoundPort.Sound(e) is not { } s || SoundPort.Letter(s.Kind) is null || sounds.Map(s.Kind, s.Id) is not { } id)
+            var layout = erSwing?.GetParameterBytes(false) ?? sample;
+            if (layout is null || SoundPort.Sound(e) is not { } s || SoundPort.Letter(s.Kind) is null || sounds.Map(s.Kind, s.Id) is not { } id)
                 return null;
-            var bytes = (byte[])sample.Clone();
+            var bytes = (byte[])layout.Clone();
             BitConverter.GetBytes(s.Kind).CopyTo(bytes, 0);
             BitConverter.GetBytes(id).CopyTo(bytes, 4);
-            return new TAE.Event(e.StartTime, e.EndTime, 128, e.Unk04, bytes, false);
+            return new TAE.Event(e.StartTime, e.EndTime, erSwing?.Type ?? 128, e.Unk04, bytes, false);
         }
     }
 

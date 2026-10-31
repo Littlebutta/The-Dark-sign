@@ -44,7 +44,9 @@ public static class ModCheck
         {
             var tae = TAE.Read(taeFile.Bytes);
             Log($"  a{section:D3}.tae id {taeFile.ID}, TAE id {tae.ID}, {tae.Animations.Count} animations, format {tae.Format}");
-            foreach (var anim in tae.Animations.Where(a => a.ID is 30000 or 30010 or 30020 or 30500 or 32000 or 32010).Take(6))
+            Log($"  own (DS3) animations: {string.Join(" ", tae.Animations.Where(a => a.MiniHeader is TAE.Animation.AnimMiniHeader.Standard).Select(a => a.ID))}");
+            Log($"  imports: {string.Join(" ", tae.Animations.Where(a => a.MiniHeader is TAE.Animation.AnimMiniHeader.ImportOtherAnim).Select(a => a.ID))}");
+            foreach (var anim in tae.Animations.Where(a => a.ID is 30000 or 30010 or 30020 or 30500 or 30501 or 30505 or 32000 or 32010 or 32500))
             {
                 var head = anim.MiniHeader switch
                 {
