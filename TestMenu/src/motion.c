@@ -5,6 +5,7 @@
 #include <windows.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include "MinHook.h"
 #include "game.h"
 #include "motion.h"
@@ -74,7 +75,10 @@ void dks_motion_init(void)
         return;
     }
     void *update = (void *)dks_find_in_game(PAT_MOTION_CACHE_UPDATE);
-    g_weapon_id_of = (WeaponIdOf)dks_find_in_game(PAT_WEAPON_ID_OF);
+    uintptr_t getter = dks_find_in_game(PAT_MOTION_GETTER);
+    uintptr_t id_of = getter ? getter - WEAPON_ID_OF_BEFORE_GETTER : 0;
+    if (id_of && memcmp((void *)id_of, WEAPON_ID_OF_START, sizeof WEAPON_ID_OF_START - 1) == 0)
+        g_weapon_id_of = (WeaponIdOf)id_of;
     if (!update || !g_weapon_id_of) {
         dks_log("motion: game code not found; %d weapons keep their template movesets", g_wide_count);
         return;
