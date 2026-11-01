@@ -33,6 +33,25 @@ public static class SoundProbe
         if (target.Chain is not { } vanilla) { Console.Error.WriteLine("no Elden Ring swing sound found"); return 1; }
         Console.WriteLine($"probe target: Play_c{target.Id:D9} -> sound {vanilla.Sound.Id}");
 
+        if (args.Count == 1 && args[0].Equals("all", StringComparison.OrdinalIgnoreCase))
+        {
+            // Does the game load this bank at all? Every Play action in it plays the whoosh: footsteps, swings, rolls
+            // all sound the same in game if it does, and nothing changes if it doesn't.
+            int plays = 0;
+            foreach (var action in bank.Objects.Where(o => o.Type == WwiseBank.ActionType && o.Data.Length >= 10
+                         && BitConverter.ToUInt16(o.Data, 4) == 0x0403 && o.Id != vanilla.Action.Id))
+            {
+                var data = (byte[])action.Data.Clone();
+                BitConverter.GetBytes(vanilla.Sound.Id).CopyTo(data, 6);
+                action.Data = data;
+                plays++;
+            }
+            File.Copy(bankPath, backup);
+            File.WriteAllBytes(bankPath, bank.Write());
+            Console.WriteLine($"{plays} Play actions now play Play_c{target.Id:D9}'s sound; wrote {bankPath} (undo with: sound-probe undo)");
+            return 0;
+        }
+
         int found = 0;
         foreach (var letter in new[] { 'c', 's' })
             for (int id = 0; id < 100_000; id++)
