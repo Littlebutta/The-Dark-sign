@@ -7,8 +7,9 @@ namespace DarkSign.Core;
 
 /// <summary>
 /// What "Play Elden Ring" needs besides the game itself: the content mod the porter builds from Dark Souls III,
-/// ModEngine2 to load it, and the DLLs ModEngine2 injects (save redirect, F1 test menu). Everything lives under
-/// &lt;root&gt;\TheDarkSign; the game folder is never written.
+/// me3 to load it, and the DLLs me3 loads (save redirect, F1 test menu). Everything lives under
+/// &lt;root&gt;\TheDarkSign (me3 keeps its own logs in %LOCALAPPDATA%); the game folder is never written.
+/// me3 replaced ModEngine2 on 2026-11-01: ModEngine2 2.1.0 never loads modded sound banks (sd\...), me3 does.
 /// </summary>
 public sealed class EldenRingSetup(string root)
 {
@@ -20,6 +21,10 @@ public sealed class EldenRingSetup(string root)
         "https://github.com/soulsmods/ModEngine2/releases/download/release-2.1.0/ModEngine-2.1.0.0-win64.zip";
     public const string ModEngineSha256 = "8A5952453A8E3851247ED6A9DD8926CA638CF6135AA96C90298B63F15D8900EF";
 
+    /// <summary>me3 (garyttierney/me3, MIT/Apache-2.0), the portable Windows build.</summary>
+    public const string Me3Url = "https://github.com/garyttierney/me3/releases/download/v0.13.0/me3-windows-amd64.zip";
+    public const string Me3Sha256 = "A8B693C574106F20532AB1E8B58B2452F37370679B938A884FE75F87F9B68C2B";
+
     public string Root { get; } = root;
     public string ToolsDir => Path.Combine(Root, "TheDarkSign", "Tools");
     public string ModDir => Path.Combine(Root, "TheDarkSign", "Mods", "ER");
@@ -27,6 +32,8 @@ public sealed class EldenRingSetup(string root)
     public string BuildStampFile => Path.Combine(ModDir, "darksign_build.txt");
     public string ModEngineDir => Path.Combine(ToolsDir, "ModEngine2");
     public string ConfigPath => Path.Combine(ModEngineDir, "config_darksign_launcher.toml");
+    public string Me3Dir => Path.Combine(ToolsDir, "me3");
+    public string ProfilePath => Path.Combine(Me3Dir, "darksign-er.me3");
     public string DllDir => Path.Combine(ToolsDir, "Dlls");
     public string PorterDir => Path.Combine(ToolsDir, "Porter");
     public string PorterExe => Path.Combine(PorterDir, "DarkSignPorter.exe");
@@ -35,6 +42,10 @@ public sealed class EldenRingSetup(string root)
 
     public string? FindModEngineLauncher() => Directory.Exists(ModEngineDir)
         ? Directory.EnumerateFiles(ModEngineDir, "modengine2_launcher.exe", SearchOption.AllDirectories).FirstOrDefault()
+        : null;
+
+    public string? FindMe3() => Directory.Exists(Me3Dir)
+        ? Directory.EnumerateFiles(Me3Dir, "me3.exe", SearchOption.AllDirectories).FirstOrDefault()
         : null;
 
     /// <summary>The release the installed porter came from, "local" for a hand-built one, or null if none.</summary>
@@ -60,6 +71,63 @@ public sealed class EldenRingSetup(string root)
                 throw new InvalidDataException($"The ModEngine2 download does not match the expected file (SHA-256 {hash}).");
         }
         ZipFile.ExtractToDirectory(zipPath, Guard(ModEngineDir), overwriteFiles: true);
+    }
+
+    /// <summary>Unpacks me3's portable release zip into TheDarkSign\Tools\me3 after checking its hash.</summary>
+    public void InstallMe3(string zipPath)
+    {
+        using (var stream = File.OpenRead(zipPath))
+        {
+            var hash = Convert.ToHexString(SHA256.HashData(stream));
+            if (!hash.Equals(Me3Sha256, StringComparison.OrdinalIgnoreCase))
+                throw new InvalidDataException($"The me3 download does not match the expected file (SHA-256 {hash}).");
+        }
+        ZipFile.ExtractToDirectory(zipPath, Guard(Me3Dir), overwriteFiles: true);
+    }
+
+    /// <summary>Writes the me3 profile: the content mod folder as a package, and our DLLs as natives.</summary>
+    public string WriteProfile(IEnumerable<string> dlls)
+    {
+        Directory.CreateDirectory(Guard(Me3Dir));
+        File.WriteAllText(ProfilePath, Me3Profile(ModDir, dlls));
+        return ProfilePath;
+    }
+
+    public static string Me3Profile(string modDir, IEnumerable<string> dlls)
+    {
+        var text = new StringBuilder();
+        text.AppendLine("# Written by The Dark Sign launcher on every launch; edits here are overwritten.");
+        text.AppendLine("profileVersion = \"v1\"");
+        text.AppendLine();
+        text.AppendLine("[[supports]]");
+        text.AppendLine("game = \"eldenring\"");
+        text.AppendLine();
+        text.AppendLine("[[packages]]");
+        text.AppendLine("id = \"darksign\"");
+        text.AppendLine($"path = {Toml(modDir)}");
+        foreach (var dll in dlls)
+        {
+            text.AppendLine();
+            text.AppendLine("[[natives]]");
+            text.AppendLine($"path = {Toml(dll)}");
+        }
+        return text.ToString();
+    }
+
+    /// <summary>Starts me3, which starts the game (offline, no EAC) with the mod and DLLs loaded and our environment set.</summary>
+    public static ProcessStartInfo Me3LaunchInfo(LaunchPlan plan, string me3Exe, string profile,
+        IReadOnlyDictionary<string, string> extraEnvironment)
+    {
+        var start = new ProcessStartInfo(me3Exe)
+        {
+            WorkingDirectory = Path.GetDirectoryName(me3Exe)!,
+            UseShellExecute = false,
+        };
+        foreach (var arg in new[] { "launch", "-g", "eldenring", "-e", plan.ExePath, "-p", profile })
+            start.ArgumentList.Add(arg);
+        foreach (var (key, value) in plan.Environment.Concat(extraEnvironment))
+            start.Environment[key] = value;
+        return start;
     }
 
     /// <summary>Replaces the porter with the one from <paramref name="zipPath"/>.</summary>

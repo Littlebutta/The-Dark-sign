@@ -75,7 +75,7 @@ public static class SoundPort
             if (StreamSounds)
             {
                 var mediaName = mediaId.ToString();
-                File.WriteAllBytes(ctx.ModPath("sd", "wem", mediaName[..2], mediaName + ".wem"), wem);
+                File.WriteAllBytes(ctx.ModPath("wem", mediaName[..2], mediaName + ".wem"), wem); // me3 looks for wem\NN\<id>.wem
             }
             bank.AddSound(template, eventId, soundId, actionId, mediaId, wem, streamed: StreamSounds);
             result.Add(kind, id);
