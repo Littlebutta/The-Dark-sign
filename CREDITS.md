@@ -15,6 +15,9 @@ or take ideas from is listed here with its author and license. New entries go in
 | [UXM Selective Unpack](https://github.com/Nordgaren/UXM-Selective-Unpack) | Nordgaren | see repo | Archive keys and file-name lists, downloaded at a pinned commit |
 | [NVorbis](https://github.com/NVorbis/NVorbis) | Andrew Ward and contributors | MIT | Decoding DS3's Vorbis sounds |
 | [Jint](https://github.com/sebastienros/jint) | Sébastien Ros | BSD-2-Clause | Running fxr.js inside the porter |
+| [ZstdNet](https://github.com/skbkontur/ZstdNet) | SKB Kontur | BSD-3-Clause | Zstandard (DCX) compression |
+| [BouncyCastle](https://github.com/bcgit/bc-csharp) | Legion of the Bouncy Castle | MIT | Decrypting regulation files |
+| [DrSwizzler](https://www.nuget.org/packages/DrSwizzler) | see package | see package | Texture swizzling (SoulsFormats dependency) |
 | [BCnEncoder.NET](https://github.com/Nominom/BCnEncoder.NET) | Nominom | MIT/Unlicense | Encoding icon textures |
 
 ## Tools the launcher runs
