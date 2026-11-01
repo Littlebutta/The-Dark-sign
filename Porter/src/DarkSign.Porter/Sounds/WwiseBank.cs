@@ -114,7 +114,13 @@ public sealed class WwiseBank
         uint mediaId, byte[] wem, bool streamed)
     {
         // Sound: ID, then AkBankSourceData: plugin (PCM), stream type (0 in the bank, 2 streamed), media ID and size.
-        var sound = (byte[])template.Sound.Data.Clone();
+        // A source-plugin template (e.g. Wwise Silence, plugin type 2) carries a u32 parameter size and its parameters
+        // after that; a codec Sound has neither, and leaving them in makes Wwise reject the whole bank.
+        var sound = template.Sound.Data;
+        if ((BitConverter.ToUInt32(sound, 4) & 0xF) == 2)
+            sound = [.. sound.AsSpan(0, 18), .. sound.AsSpan(22 + BitConverter.ToInt32(sound, 18))];
+        else
+            sound = (byte[])sound.Clone();
         BitConverter.GetBytes(soundId).CopyTo(sound, 0);
         BitConverter.GetBytes(0x00010001u).CopyTo(sound, 4);
         sound[8] = streamed ? (byte)2 : (byte)0;
@@ -131,10 +137,18 @@ public sealed class WwiseBank
         if (byteCount) { ev[4] = 1; BitConverter.GetBytes(actionId).CopyTo(ev, 5); }
         else { BitConverter.GetBytes(1).CopyTo(ev, 4); BitConverter.GetBytes(actionId).CopyTo(ev, 8); }
 
-        AddChild(template.Sound, soundId);
-        foreach (var obj in new[] { new HircObject(SoundType, soundId, sound), new HircObject(ActionType, actionId, action), new HircObject(EventType, eventId, ev) })
+        // Wwise loads the hierarchy children first: a container listing a child that comes after it fails the whole
+        // bank. So a Sound added to its parent's list goes right before the parent; the rest go at the end.
+        var parent = AddChild(template.Sound, soundId);
+        var newSound = new HircObject(SoundType, soundId, sound);
+        if (parent is not null)
+            _objects.Insert(_objects.IndexOf(parent), newSound);
+        else
+            _objects.Add(newSound);
+        foreach (var obj in new[] { newSound, new HircObject(ActionType, actionId, action), new HircObject(EventType, eventId, ev) })
         {
-            _objects.Add(obj);
+            if (obj != newSound)
+                _objects.Add(obj);
             _byId[obj.Id] = obj;
         }
         if (!streamed && _media.TryAdd(mediaId, wem))
@@ -145,12 +159,12 @@ public sealed class WwiseBank
     public int ChildrenAdded { get; private set; }
 
     // Containers list their children as a count and IDs sorted ascending; the new ID goes into the list holding the
-    // sibling, in order.
-    private void AddChild(HircObject sibling, uint child)
+    // sibling, in order. Returns the parent when the child was added to it.
+    private HircObject? AddChild(HircObject sibling, uint child)
     {
         var parent = ParentOf(sibling);
         if (parent is null)
-            return;
+            return null;
         var d = parent.Data;
         for (int p = 4; p + 8 <= d.Length; p++)
         {
@@ -164,8 +178,9 @@ public sealed class WwiseBank
             parent.Data = [.. d.AsSpan(0, p), .. BitConverter.GetBytes(count + 1), .. d.AsSpan(p + 4, 4 * at), .. BitConverter.GetBytes(child),
                 .. d.AsSpan(p + 4 + 4 * at)];
             ChildrenAdded++;
-            return;
+            return parent;
         }
+        return null;
     }
 
     private const byte RanSeqCntrType = 5, SwitchCntrType = 6, ActorMixerType = 7, LayerCntrType = 9;
