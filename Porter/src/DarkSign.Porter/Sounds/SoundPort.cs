@@ -34,9 +34,10 @@ public static class SoundPort
     {
         var result = new Result();
         var todo = wanted.Where(w => Letter(w.Kind) is not null && w.Id > 0 && w.Id < 100_000_000).Distinct().ToList();
-        var wemDir = ctx.ModPath("sd", "wem");
-        if (Directory.Exists(wemDir))
-            Directory.Delete(wemDir, true);
+        // Old streamed wems: sd\wem (ModEngine-era builds) and wem (me3's layout).
+        foreach (var wemDir in new[] { ctx.ModPath("sd", "wem"), ctx.ModPath("wem") })
+            if (Directory.Exists(wemDir))
+                Directory.Delete(wemDir, true);
         if (todo.Count == 0)
             return result;
 
