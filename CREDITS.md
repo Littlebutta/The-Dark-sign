@@ -3,6 +3,9 @@
 The Dark Sign builds on the work of the FromSoftware modding community. Everything we copy, bundle, download
 or take ideas from is listed here with its author and license. New entries go in with the change that uses them.
 
+Dark Souls III and Elden Ring are © FromSoftware / Bandai Namco. The porter reads them only from the owner's own
+install, and no game files are distributed.
+
 ## Code and data the porter uses
 
 | Work | Author | License | How we use it |
@@ -18,6 +21,8 @@ or take ideas from is listed here with its author and license. New entries go in
 | [ZstdNet](https://github.com/skbkontur/ZstdNet) | SKB Kontur | BSD-3-Clause | Zstandard (DCX) compression |
 | [BouncyCastle](https://github.com/bcgit/bc-csharp) | Legion of the Bouncy Castle | MIT | Decrypting regulation files |
 | [DrSwizzler](https://www.nuget.org/packages/DrSwizzler) | see package | see package | Texture swizzling (SoulsFormats dependency) |
+| [Acornima](https://github.com/adams85/acornima) | Adam Simon | BSD-3-Clause | JavaScript parser Jint depends on |
+| [Microsoft.Toolkit.HighPerformance](https://github.com/CommunityToolkit/dotnet) | .NET Foundation | MIT | Buffer helpers bundled with the porter |
 | [BCnEncoder.NET](https://github.com/Nominom/BCnEncoder.NET) | Nominom | MIT/Unlicense | Encoding icon textures |
 
 ## Tools the launcher runs
@@ -25,7 +30,7 @@ or take ideas from is listed here with its author and license. New entries go in
 | Work | Author | License | How we use it |
 |---|---|---|---|
 | [ModEngine2](https://github.com/soulsmods/ModEngine2) | soulsmods | MIT | Loads the mod folder into the game |
-| [me3](https://github.com/garyttierney/me3) | Gary Tierney and contributors | MIT / Apache-2.0 | Mod loader that also loads modded Wwise sound banks (being tested as ModEngine2's replacement, 2026-11-01) |
+| [me3](https://github.com/garyttierney/me3) | Gary Tierney and contributors | MIT / Apache-2.0 | Mod loader that also loads modded Wwise sound banks (v0.13.0, being tested as ModEngine2's replacement, 2026-11-01); we follow its sd/ and wem/ path rules |
 
 ## Knowledge and inspiration
 
