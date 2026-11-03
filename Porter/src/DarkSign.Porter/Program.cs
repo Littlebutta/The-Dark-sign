@@ -26,6 +26,7 @@ const string Usage = """
       weapons-plan                 decide which DS3 weapons to port and as which Elden Ring class
       port-weapons                 build the weapon rows into TheDarkSign\Mods\ER\regulation.bin
       item-list                    write the test menu's item list (Elden Ring items only)
+      chr-survey <DS3|ER> <chr id>...  report an enemy's files, binders, AI scripts and params (enemy port step 1)
     """;
 
 var argList = args.ToList();
@@ -71,6 +72,7 @@ try
         "sound-probe" => SoundProbe.Run(ctx, argList[1..]),
         "chr-roundtrip" => ChrRoundTrip.Run(ctx),
         "binder-diff" when argList.Count == 3 => BinderDiff.Run(argList[1], argList[2]),
+        "chr-survey" when argList.Count >= 3 => ChrSurvey.Run(ctx, PorterGame.Parse(argList[1]), argList[2..]),
         "tae-dump" when argList.Count == 3 => TaeDump.Run(ctx, PorterGame.Parse(argList[1]), int.Parse(argList[2])),
         _ => Fail(Usage),
     };
