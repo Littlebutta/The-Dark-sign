@@ -218,6 +218,10 @@ public static partial class MovesetPort
                 tae.ID = 2000 + section;
                 var erEventLengths = templateTae.Animations.SelectMany(a => a.Events).GroupBy(e => e.Type)
                     .ToDictionary(g => g.Key, g => g.First().GetParameterBytes(false).Length);
+                // An event group of each type anywhere in the template's TAE, for DS3 events whose type this move's
+                // Elden Ring template doesn't use (they were dropped: e.g. a DS3 move with an extra effect or model event).
+                var templateGroups = templateTae.Animations.SelectMany(a => a.Events).Where(e => e.Group is not null)
+                    .GroupBy(e => e.Type).ToDictionary(g => g.Key, g => g.First().Group!);
                 var ds3Taes = new[] { ds3ArtSection, ds3Section }.Where(s => s > 0)
                     .Select(s => (Section: s, Tae: BinderLeaf(ds3Main, $"a{s:D2}.tae") is { } f ? TAE.Read(f.Bytes) : null))
                     .Where(t => t.Tae is not null).ToList();
@@ -249,7 +253,7 @@ public static partial class MovesetPort
                         AddFile(erAnims, newName + ".hkx", hkx);
                         anim.MiniHeader = new TAE.Animation.AnimMiniHeader.Standard();
                         anim.AnimFileName = newName + ".hkt";
-                        anim.Events = MergeEvents(s.Events, anim.Events, erEventLengths, effectEvents, effects, soundPort, AnimPort.Duration(ds3Bytes));
+                        anim.Events = MergeEvents(s.Events, anim, templateGroups, erEventLengths, effectEvents, effects, soundPort, AnimPort.Duration(ds3Bytes));
                         converted++;
                     }
                     else if (anim.MiniHeader is TAE.Animation.AnimMiniHeader.Standard && ErAnimFile(erArchives, templateName) is { } original)
@@ -388,14 +392,28 @@ public static partial class MovesetPort
         or CustomManualSelectorGenerator.OffsetType.WeaponCategoryHandStyle;
 
     /// <summary>DS3's events for a move, with Elden Ring's sound and effect events moved to DS3's first hit.</summary>
-    private static List<TAE.Event> MergeEvents(List<TAE.Event> ds3Events, List<TAE.Event> erEvents, Dictionary<int, int> erLengths,
-        EffectEvents effectEvents, FxrPort.Result effects, SoundEvents sounds, float ds3Duration)
+    private static List<TAE.Event> MergeEvents(List<TAE.Event> ds3Events, TAE.Animation anim, Dictionary<int, TAE.EventGroup> templateGroups,
+        Dictionary<int, int> erLengths, EffectEvents effectEvents, FxrPort.Result effects, SoundEvents sounds, float ds3Duration)
     {
+        var erEvents = anim.Events;
         var merged = new List<TAE.Event>();
         // Elden Ring files events in event groups (one per type), and its TAE skips events outside them: ported
         // sounds and effects never played. A converted or copied DS3 event joins the group Elden Ring's event of its
-        // type is in, in this move (sounds: 128, else 129); with no such group it isn't added.
+        // type is in, in this move (sounds: 128, else 129). A type this move has no group for gets a copy of the
+        // group another move of the template uses for it; a type the template never uses isn't added.
         var groupOf = erEvents.Where(e => e.Group is not null).GroupBy(e => e.Type).ToDictionary(g => g.Key, g => g.First().Group);
+        anim.EventGroups ??= [];
+        bool TryGroup(int type, out TAE.EventGroup? group)
+        {
+            if (groupOf.TryGetValue(type, out group))
+                return true;
+            if (!AddGroups || !templateGroups.TryGetValue(type, out var proto))
+                return false;
+            group = proto.GetClone();
+            anim.EventGroups.Add(group);
+            groupOf[type] = group;
+            return true;
+        }
         // Effect types this move now spawns DS3's own effects with; Elden Ring's of those types are dropped.
         var ds3Effects = new HashSet<int>();
         bool ds3Sounds = false;
@@ -414,7 +432,7 @@ public static partial class MovesetPort
             }
             if (Ds3EffectEvents && effectEvents.IsEffect(e.Type))
             {
-                if (groupOf.TryGetValue(e.Type, out var effectGroup) && effectEvents.Convert(e, effects) is { } converted)
+                if (effectEvents.Convert(e, effects) is { } converted && TryGroup(e.Type, out var effectGroup))
                 {
                     merged.Add(new TAE.Event(e.StartTime, e.EndTime, e.Type, e.Unk04, converted, false) { Group = effectGroup });
                     ds3Effects.Add(e.Type);
@@ -424,7 +442,7 @@ public static partial class MovesetPort
             var bytes = e.GetParameterBytes(false);
             if (ErOwned(e.Type) || !erLengths.TryGetValue(e.Type, out var length) || length != bytes.Length)
                 continue;
-            if (!groupOf.TryGetValue(e.Type, out var group))
+            if (!TryGroup(e.Type, out var group))
                 continue;
             merged.Add(new TAE.Event(e.StartTime, e.EndTime, e.Type, e.Unk04, (byte[])bytes.Clone(), false) { Group = group });
         }
@@ -540,6 +558,7 @@ public static partial class MovesetPort
     private static readonly bool Ds3EffectEvents = Environment.GetEnvironmentVariable("DARKSIGN_DS3_EFFECT_EVENTS") != "0";
     private static readonly bool Ds3SoundEvents = Environment.GetEnvironmentVariable("DARKSIGN_DS3_SOUND_EVENTS") != "0";
     private static readonly bool SwingAlign = Environment.GetEnvironmentVariable("DARKSIGN_SWING_ALIGN") != "0";
+    private static readonly bool AddGroups = Environment.GetEnvironmentVariable("DARKSIGN_ADD_EVENT_GROUPS") != "0";
 
     // Sound events repeated for extra DS3 swings.
     private static readonly HashSet<int> SwingTypes = [128, 129];

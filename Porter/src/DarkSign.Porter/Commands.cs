@@ -145,6 +145,15 @@ public static class Commands
         }
         using (Timing.Stage("models"))
             PortWeaponModels(ctx, erArchives, ds3Archives, plans, ds3, erWeapons);
+        try
+        {
+            using var _ = Timing.Stage("model positions");
+            AbsorpPort.Apply(erArchives, ds3Archives, erStore, ds3Store, plans);
+        }
+        catch (Exception e) when (e is not OutOfMemoryException)
+        {
+            Console.WriteLine($"absorp: failed, weapons keep their template's model positions ({e.GetType().Name}: {e.Message})");
+        }
         using (Timing.Stage("icons"))
             IconPort.Write(ctx, erArchives, ds3Archives, plans.Where(p => p.Status == "port")
                 .Select(p => new IconPort.Entry(Convert.ToInt32(ds3[p.Ds3Id]!["iconId"].Value), WeaponPort.NewIconId(p))).ToList());
@@ -170,6 +179,16 @@ public static class Commands
         }
         File.WriteAllText(ctx.ModPath("README.txt"), ModReadme);
         Console.WriteLine($"mod: {Path.GetDirectoryName(path)}");
+        // Offline checks of what was just built; problems are reported, the build still counts.
+        try
+        {
+            using var _ = Timing.Stage("validate");
+            ModValidate.Run(ctx);
+        }
+        catch (Exception e) when (e is not OutOfMemoryException)
+        {
+            Console.WriteLine($"validate: could not run ({e.GetType().Name}: {e.Message})");
+        }
         return 0;
     }
 
@@ -178,7 +197,7 @@ public static class Commands
 
         Built by `DarkSignPorter port-weapons` from the Dark Souls III and Elden Ring game files on this PC.
         Re-running it rebuilds everything here from scratch; nothing in the game folders is changed.
-        ModEngine2 loads this folder over the game (TheDarkSign\Tools\ModEngine2, config_darksign_er.toml).
+        me3 loads this folder over the game (TheDarkSign\Tools\me3, darksign-er.me3).
 
           regulation.bin                     Elden Ring params plus the ported DS3 weapons (IDs 80000000+)
                                              and a new shop lineup (130000+) for Merchant Kalé
