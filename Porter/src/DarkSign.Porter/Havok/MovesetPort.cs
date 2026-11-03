@@ -131,7 +131,9 @@ public static partial class MovesetPort
         // motion-categories.txt and gives them to the game in place of the row's byte. Animation names allow 3 digits.
         // They are off unless DARKSIGN_WIDE_MOTION=1: builds with sections above 255 crashed Elden Ring 2.7.2 at
         // startup (access violation at +0x1EBCEF9), and the DLL's hook didn't find its code either.
-        var wide = Environment.GetEnvironmentVariable("DARKSIGN_WIDE_MOTION") == "1" ? Enumerable.Range(256, 744) : [];
+        // With spAtkcategory (u16) there is no byte ceiling, but weapon movesets stay in 70-399 (400+ are spells and arts).
+        var wide = Environment.GetEnvironmentVariable("DARKSIGN_WIDE_MOTION") == "1"
+            ? Enumerable.Range(256, UseWeaponMotionCategory ? 744 : 144) : [];
         var freeSections = new Queue<int>(Enumerable.Range(90, 166).Reverse().Concat(wide)
             .Where(s => !usedSections.Contains(s)));
         var wideCategories = new SortedDictionary<int, int>();
@@ -311,15 +313,10 @@ public static partial class MovesetPort
                 pointWeapons.Add(() =>
                 {
                     int variation = attackPort.PortVariation(ds3Variation);
-                    if (section > byte.MaxValue)
+                    if (UseWeaponMotionCategory && section > byte.MaxValue)
                         wideCategories[newId] = section; // the row keeps its template's category for the DLL to replace
                     foreach (var row in erWeapons.Rows.Where(r => r.ID >= newId && r.ID < newId + 10000))
-                    {
-                        if (section <= byte.MaxValue)
-                            row["wepmotionCategory"].Value = Convert.ChangeType(section, row["wepmotionCategory"].Value!.GetType());
-                        if (variation > 0)
-                            row["behaviorVariationId"].Value = Convert.ChangeType(variation, row["behaviorVariationId"].Value!.GetType());
-                    }
+                        PointRow(row, section, variation, sounds.Count > 0);
                 });
             }
         }
@@ -349,6 +346,36 @@ public static partial class MovesetPort
                 () => File.WriteAllBytes(ctx.ModPath("chr", "c0000.anibnd.dcx"), DCX.Compress(erMain.Write(), erMainCompression)),
                 () => File.WriteAllBytes(ctx.ModPath("chr", ItemText.Leaf(AnimBinder)), DCX.Compress(erAnims.Write(), erAnimsCompression)));
         }
+    }
+
+    /// <summary>
+    /// DARKSIGN_MOVESET_FIELD=wmc puts the new section in wepmotionCategory, as builds up to 1.0.1xx did. By default it
+    /// goes in spAtkcategory ("Special Motion Category"), the way Elden Ring's own unique movesets and the community's
+    /// custom movesets do it (Themyys, Introduction to Moveset Modding): every animation in that section overrides the
+    /// weapon motion category's. With the section only in wepmotionCategory, the template's own special section (e.g.
+    /// a weapon's unique heavies) still overrode the ported DS3 moves, so R2 kept looking like Elden Ring. The row
+    /// keeps its template's wepmotionCategory, which Elden Ring also uses for class rules (powerstance, guard, ...).
+    /// </summary>
+    public static readonly bool UseWeaponMotionCategory =
+        string.Equals(Environment.GetEnvironmentVariable("DARKSIGN_MOVESET_FIELD"), "wmc", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>Points one EquipParamWeapon row at its ported section and DS3 attack variation.</summary>
+    public static void PointRow(PARAM.Row row, int section, int variation, bool ds3Sounds)
+    {
+        if (UseWeaponMotionCategory)
+        {
+            if (section <= byte.MaxValue)
+                row["wepmotionCategory"].Value = Convert.ChangeType(section, row["wepmotionCategory"].Value!.GetType());
+        }
+        else
+            row["spAtkcategory"].Value = Convert.ChangeType(section, row["spAtkcategory"].Value!.GetType());
+        if (variation > 0)
+            row["behaviorVariationId"].Value = Convert.ChangeType(variation, row["behaviorVariationId"].Value!.GetType());
+        // Elden Ring adds wepSeIdOffset (0-99) to a weapon's sound IDs so one TAE serves weapons with different
+        // whooshes. The ported events are named after the exact DS3 sound (Play_c9xxxxxxxx), so any offset copied from
+        // the template makes the game ask for an event that isn't in the bank, and the swing stays silent.
+        if (ds3Sounds)
+            row["wepSeIdOffset"].Value = Convert.ChangeType(0, row["wepSeIdOffset"].Value!.GetType());
     }
 
     /// <summary>The player files Apply writes; removed when a port fails so the game loads Elden Ring's own.</summary>

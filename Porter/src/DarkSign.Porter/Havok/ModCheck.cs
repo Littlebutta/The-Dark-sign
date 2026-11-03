@@ -30,7 +30,11 @@ public static class ModCheck
         }
         var fields = new[] { "wepType", "wepmotionCategory", "spAtkcategory", "behaviorVariationId", "weaponCategory", "equipModelId", "residentSpEffectId" };
         Log($"row {weaponId} '{row.Name}': " + string.Join(", ", fields.Where(f => row[f] is not null).Select(f => $"{f} {row[f].Value}")));
-        int section = Convert.ToInt32(row["wepmotionCategory"].Value);
+        // The ported moveset is in spAtkcategory (the special motion category) unless the build used DARKSIGN_MOVESET_FIELD=wmc.
+        int special = Convert.ToInt32(row["spAtkcategory"].Value), section = Convert.ToInt32(row["wepmotionCategory"].Value);
+        if (!MovesetPort.UseWeaponMotionCategory && special > 0)
+            section = special;
+        Log($"  sound offset (wepSeIdOffset) {row["wepSeIdOffset"].Value}; looking at section a{section:D3}");
 
         // 2. The section's TAE in the mod's c0000.anibnd.
         TAE.ValidateEventBank = false;
