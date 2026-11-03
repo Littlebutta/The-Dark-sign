@@ -28,12 +28,18 @@ public static partial class FxrPort
     {
         public Dictionary<int, int> Effects { get; } = [];
         public List<string> Failed { get; } = [];
+        /// <summary>DS3 sound IDs (type s) the ported effects play, renamed to SoundPort.IdBase + ID in them.</summary>
+        public HashSet<int> Sounds { get; } = [];
 
         /// <summary>The Elden Ring ID for a DS3 effect, or null when it wasn't ported.</summary>
         public int? Map(int ds3Id) => Effects.TryGetValue(ds3Id, out var id) ? id : null;
     }
 
-    internal enum Kind { Texture = 0, Model = 1, Anibnd = 2 }
+    internal enum Kind { Texture = 0, Model = 1, Anibnd = 2, Sound = 3 }
+
+    private static readonly bool PortFxrSounds = Environment.GetEnvironmentVariable("DARKSIGN_FXR_SOUNDS") != "0";
+
+    private static IEnumerable<int> FxrSounds(IEnumerable<int> ids) => ids.Where(id => id is > 0 and < 100_000_000).Distinct();
 
     internal sealed record Ds3File(BinderFile File, string Binder);
 
@@ -104,6 +110,10 @@ public static partial class FxrPort
         {
             ["sfx"] = effects.Keys.ToDictionary(id => id.ToString(), id => IdBase + id),
             [((int)Kind.Texture).ToString()] = textures.ToDictionary(t => t.Key.ToString(), t => t.Value),
+            // DS3 effect sounds are DS3 s-sounds: they play the ported copy (SoundPort, same ID base). Unmapped they
+            // played whatever Elden Ring sound has that number. DARKSIGN_FXR_SOUNDS=0 leaves them as they were.
+            [((int)Kind.Sound).ToString()] = PortFxrSounds ? FxrSounds(effects.Values.SelectMany(e => e.Info.Sounds))
+                .ToDictionary(id => id.ToString(), id => SoundPort.IdBase + id) : [],
         });
 
         // 3. Convert every effect; a failed one takes the effects that reference it out too.
@@ -122,6 +132,8 @@ public static partial class FxrPort
         foreach (var id in effects.Keys.Order())
         {
             result.Effects[id] = IdBase + id;
+            if (PortFxrSounds)
+                result.Sounds.UnionWith(FxrSounds(effects[id].Info.Sounds));
             Add(erBinders, ".fxr", $"f{IdBase + id:D9}.fxr", converted[id], added);
             AddResourceList(erBinders, IdBase + id, effects[id].Info.Textures.Where(textures.ContainsKey).Select(t => textures[t]), added);
         }
