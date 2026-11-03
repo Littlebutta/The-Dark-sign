@@ -189,4 +189,28 @@ public sealed class CoreTests : IDisposable
         Assert.Equal(setup.ItemsFile, start.Environment[EldenRingSetup.ItemsVariable]);
         Assert.Equal(".dksign", start.Environment[SaveIsolation.SaveExtVariable]);
     }
+
+    [Fact]
+    public void Elden_ring_setup_writes_the_me3_profile_and_launches_through_me3()
+    {
+        var setup = new EldenRingSetup(_root);
+        var exe = Touch("ELDEN RING", "Game", "eldenring.exe");
+        var dll = setup.WriteDll(EldenRingSetup.TestMenuDllName, [1, 2, 3]);
+
+        var profile = File.ReadAllText(setup.WriteProfile([dll]));
+        Assert.StartsWith(Path.Combine(_root, "TheDarkSign", "Tools", "me3"), setup.ProfilePath);
+        Assert.Contains("profileVersion = \"v1\"", profile);
+        Assert.Contains("game = \"eldenring\"", profile);
+        Assert.Contains($"path = \"{setup.ModDir.Replace("\\", "\\\\")}\"", profile);
+        Assert.Contains("[[natives]]", profile);
+        Assert.Contains($"path = \"{dll.Replace("\\", "\\\\")}\"", profile);
+
+        var settings = new LauncherSettings { GameExePaths = { [GameId.EldenRing] = exe } };
+        var me3 = Path.Combine(_root, "TheDarkSign", "Tools", "me3", "bin", "me3.exe");
+        var start = EldenRingSetup.Me3LaunchInfo(LaunchPlanner.Plan(settings, _root, GameId.EldenRing), me3, setup.ProfilePath,
+            new Dictionary<string, string> { [EldenRingSetup.ItemsVariable] = setup.ItemsFile });
+        Assert.Equal(["launch", "-g", "eldenring", "-e", exe, "-p", setup.ProfilePath], start.ArgumentList);
+        Assert.Equal(".dksign", start.Environment[SaveIsolation.SaveExtVariable]);
+        Assert.Equal(setup.ItemsFile, start.Environment[EldenRingSetup.ItemsVariable]);
+    }
 }

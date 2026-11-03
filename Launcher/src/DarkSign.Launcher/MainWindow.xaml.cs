@@ -253,8 +253,8 @@ public partial class MainWindow : Window
     private async void OnRebuildContent(object sender, RoutedEventArgs e) => await PlayEldenRingAsync(rebuild: true, launch: false);
 
     /// <summary>
-    /// Gets everything ready and starts Elden Ring through ModEngine2: the porter builds the content mod when it is
-    /// missing or out of date, and ModEngine2 loads it with the save redirect and (optionally) the F1 test menu.
+    /// Gets everything ready and starts Elden Ring through me3: the porter builds the content mod when it is
+    /// missing or out of date, and me3 loads it (sound banks included) with the save redirect and (optionally) the F1 test menu.
     /// </summary>
     private async Task PlayEldenRingAsync(bool rebuild, bool launch)
     {
@@ -286,7 +286,7 @@ public partial class MainWindow : Window
         try
         {
             RemoveGameFolderProxy(plan.ExePath);
-            var modEngine = await EnsureModEngineAsync(setup);
+            var me3 = await EnsureMe3Async(setup);
             var porterVersion = await EnsurePorterAsync(setup);
             if (rebuild || setup.NeedsContentBuild(porterVersion))
             {
@@ -309,8 +309,8 @@ public partial class MainWindow : Window
                 dlls.Add(setup.WriteDll(EldenRingSetup.TestMenuDllName, TestMenuDll.Bytes));
                 env[EldenRingSetup.ItemsVariable] = setup.ItemsFile;
             }
-            var config = setup.WriteConfig(dlls);
-            Process.Start(EldenRingSetup.LaunchInfo(plan, modEngine, config, env));
+            var profile = setup.WriteProfile(dlls);
+            Process.Start(EldenRingSetup.Me3LaunchInfo(plan, me3, profile, env));
             StatusText.Text = $"Launched Elden Ring. Saves: {plan.SaveDirectory}" + (env.Count > 0
                 ? ". Press F1 in game for the test menu (it shows over Borderless or Windowed mode)."
                 : ".");
@@ -348,6 +348,22 @@ public partial class MainWindow : Window
             PathGuard.EnsureInsideRoot(proxy, Root);
             File.Delete(proxy);
         }
+    }
+
+    private async Task<string> EnsureMe3Async(EldenRingSetup setup)
+    {
+        if (setup.FindMe3() is { } existing)
+            return existing;
+        StatusText.Text = "Downloading me3…";
+        var zip = DownloadPath(Path.GetFileName(EldenRingSetup.Me3Url));
+        using (var http = new HttpClient { Timeout = TimeSpan.FromMinutes(5) })
+        {
+            http.DefaultRequestHeaders.UserAgent.ParseAdd("TheDarkSignLauncher");
+            var bytes = await http.GetByteArrayAsync(EldenRingSetup.Me3Url);
+            await File.WriteAllBytesAsync(zip, bytes);
+        }
+        setup.InstallMe3(zip);
+        return setup.FindMe3() ?? throw new InvalidOperationException("me3 was downloaded but me3.exe is missing.");
     }
 
     private async Task<string> EnsureModEngineAsync(EldenRingSetup setup)
