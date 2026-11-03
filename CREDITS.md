@@ -40,3 +40,15 @@ install, and no game files are distributed.
 | [Nexus forum: Sound modding tools](https://forums.nexusmods.com/topic/13484154-sound-modding-tools) | Elden Ring sound-bank workflow and loader requirements |
 | [me3 source](https://github.com/garyttierney/me3) (crates/mod-host-assets/src/wwise.rs) | How me3 maps sd:/ banks and .wem streams to a mod package |
 | Fextralife DS3 wiki and community weapon guides | Correct weapon types for DS3 weapons (e.g. Friede's Great Scythe is a reaper) |
+| [Themyys: Introduction to Moveset Modding](https://docs.google.com/document/d/1quFnkKMRAx5mApbB7LRDPByYZyz6J2-7dFtUwk-NQpM) | TAE section ranges, Special Motion Category (`spAtkcategory`) for custom movesets, SwordArtsParam and hks for arts, jump attacks bound to TimeActEditor_10 (docs/benchmarks/weapon-port-benchmark.md) |
+| [Themyys and Challenger Andy: Soundbank Editing](https://docs.google.com/document/d/1lNov-a0DwnMY2yZywH3hFYzuoDfndofguvZmAnLDo-U) | Copying Wwise Event, Action, container, Sound and .wem objects into cs_main in parent order |
+| [Soulsmodding wiki tutorial index](http://soulsmodding.wikidot.com/tutorial:main) | Index of moveset, behaviour, sound, FXR and porting tutorials (Rainer, Kmstr, Igor, F Wang, Challenger Andy, JeNoVaViRuS, Chocotavo, WrathfulMantis) |
+| [ERClipGeneratorTool](https://github.com/The12thAvenger/ERClipGeneratorTool) (The12thAvenger, MIT) | Confirms one clip generator per new animation, internal ID max+1, under the selector for its animation ID |
+| [EldenRingHKS](https://github.com/ividyon/EldenRingHKS) (ividyon) | Decompiled c0000.hks used by moveset and weapon-art mods |
+| [Yonder](https://github.com/ndahn/yonder) (ndahn, GPL-3.0) | Successor to er_soundbank_helper; sound hierarchy transfer and wav/wem conversion |
+| [Player Animation Repositories](https://www.nexusmods.com/eldenring/mods/3027) (Blubber; packed by Themyys, ol51609, HaVeNII7; Friede/Bloodborne sets via Mayhem) | DS3 player and Sister Friede animations retargeted to the ER player, a visual reference for our conversion |
+| [Romano's DS3/Sekiro weapon moveset pack](https://www.nexusmods.com/eldenring/mods/9319) | New DS3 weapons with original movesets and sounds; credits ERSoundBankLoader and Blubber's repositories |
+| Nexus articles [228](https://www.nexusmods.com/eldenring/articles/228) and [789](https://www.nexusmods.com/eldenring/articles/789) | Merging TAE mods; new TAE binder entries must be in ID order |
+| [Weapon Catalysts](https://www.nexusmods.com/eldenring/mods/7222) (nikonikoneko) | Weapon behaviour changed in hks by special motion category |
+| [Ringed Knight Set](https://www.nexusmods.com/eldenring/mods/1061) (KRDCD), [Armor of Thorns](https://www.nexusmods.com/eldenring/mods/3115) (Noctis) | Earlier DS3 armor/weapon ports, done by replacing vanilla parts |
+| Nexus mods [6384](https://www.nexusmods.com/eldenring/mods/6384) and [6340](https://www.nexusmods.com/eldenring/mods/6340) | Ship vswarte's (chainfailure) ModEngine2 fork that loads sound banks |
