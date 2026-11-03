@@ -179,7 +179,8 @@ public static partial class MovesetPort
         try
         {
             sounds = soundSample is null ? new SoundPort.Result()
-                : SoundPort.Apply(ctx, erArchives, ds3Archives, ds3SectionEvents.Select(SoundPort.Sound).OfType<(int, int)>(), templateSounds);
+                : SoundPort.Apply(ctx, erArchives, ds3Archives, ds3SectionEvents.Select(SoundPort.Sound).OfType<(int, int)>()
+                    .Concat(effects.Sounds.Select(id => (5, id))), templateSounds); // 5: s-sounds, the ones effects play
         }
         catch (Exception e) when (e is not OutOfMemoryException)
         {
