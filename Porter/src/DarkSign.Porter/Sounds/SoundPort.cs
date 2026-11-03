@@ -34,9 +34,11 @@ public static class SoundPort
     {
         var result = new Result();
         var todo = wanted.Where(w => Letter(w.Kind) is not null && w.Id > 0 && w.Id < 100_000_000).Distinct().ToList();
-        var wemDir = ctx.ModPath("sd", "wem");
-        if (Directory.Exists(wemDir))
-            Directory.Delete(wemDir, true);
+        // Streamed wems live in sd\wem\NN: me3 looks a wem up as sd/wem/<id>.wem, then sd/wem/<first two digits>/<id>.wem
+        // (garyttierney/me3 crates/mod-host-assets/src/wwise.rs). Mods\ER\wem is from a build that put them outside sd.
+        foreach (var wemDir in new[] { ctx.ModPath("sd", "wem"), ctx.ModPath("wem") })
+            if (Directory.Exists(wemDir))
+                Directory.Delete(wemDir, true);
         if (todo.Count == 0)
             return result;
 
@@ -75,7 +77,7 @@ public static class SoundPort
             if (StreamSounds)
             {
                 var mediaName = mediaId.ToString();
-                File.WriteAllBytes(ctx.ModPath("sd", "wem", mediaName[..2], mediaName + ".wem"), wem);
+                File.WriteAllBytes(ctx.ModPath("sd", "wem", mediaName[..2], mediaName + ".wem"), wem); // me3: sd/wem/NN/<id>.wem
             }
             bank.AddSound(template, eventId, soundId, actionId, mediaId, wem, streamed: StreamSounds);
             result.Add(kind, id);
