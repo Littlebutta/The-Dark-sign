@@ -15,6 +15,7 @@ after `port-weapons`. If it fails, the weapons still load and the game starts; t
 | Map pieces | `map/m40_00_00_00/m40_00_00_00_NNNNNN.mapbnd.dcx` | `map/m45/m45_00_00_00/...`; materials become cloned Elden Ring map matbins (`DKS_40_00_00_00_NNNN`) in `allmaterial_dlc01` | `Maps/MapModelPort.cs` |
 | Textures | `map/m40/m40_000N.tpfbhd/.tpfbdt` | added to `map/m45/m45_0000.tpfbhd/.tpfbdt`, plus a flat metallic map | `Maps/MapTextures.cs` |
 | Collision | `h40_00_00_00.hkxbhd` (Havok 2014 packfile) | `h45_00_00_00.hkxbhd` (Havok 2018 XML tagfile, same compressed-mesh tree); every triangle is checked after conversion | `Maps/CollisionPort.cs`, `Maps/MapCollisions.cs` |
+| Navmesh | `map/m40_00_00_00/m40_00_00_00.nvmhktbnd.dcx` (Havok AI 2014) | `map/m45/m45_00_00_00/m45_00_00_00.nvmhktbnd.dcx` (Havok AI 2018 tagfiles); faces, edges, cluster graph and AABB tree copied as-is, costs hkHalf → float | `Maps/NavmeshPort.cs`, `Maps/MapNavmesh.cs` |
 | Map events | DS3's map script | the slot's own script is replaced with an empty one | `Maps/RunEvents.cs` |
 | Run start/leave | | two events in `common.emevd` wait for flags the F1 menu sets, then use the game's WarpPlayer | `Maps/RunEvents.cs`, `TestMenu/src/overlay.cpp` |
 
@@ -59,10 +60,11 @@ Flags are in the block of the empty sea tile m60_39_29 (1039290000+), the way Jo
 3. Does the game accept collision as XML tagfiles inside the binder (JortPob says yes), or does it need binary?
 4. Is the simd tree needed (`--simd` keeps DS3's)?
 5. Do the cloned map materials draw the DS3 textures correctly (opaque, alpha, two-layer)?
+6. Does Elden Ring need anything besides the .nvmhktbnd for a navmesh (an MSB entry or an .nva file)? `map-survey` lists every file type in both map folders.
 
 ## Next stages
 
-1. Navmesh (enemies need it to walk): generate per map, as NavMeshStudio does with Recast.
+1. Navmesh: converted since PR #44. If Elden Ring rejects converted navmeshes, fall back to generating them, as NavMeshStudio does with Recast.
 2. Enemies, objects, items and bonfires from the MSB, with the enemy porter ("Bring Midir and Friede into Elden Ring").
 3. DS3 map events (doors, elevators, fog walls, boss arenas) converted to Elden Ring EMEVD.
 4. More slots for the remaining DS3 maps.
