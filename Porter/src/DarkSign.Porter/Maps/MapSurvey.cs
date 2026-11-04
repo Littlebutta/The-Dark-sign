@@ -36,6 +36,7 @@ public static class MapSurvey
             Section(r, "ER host collision template", () => CollisionTemplate(er, slot.Er));
             Section(r, "ER host map materials", () => HostMaterials(er, slot.Er));
             Section(r, "Event scripts", () => Events(er, slot.Er));
+            Section(r, "Objects (doors, levers, chests) -> Elden Ring assets", () => Objects(ds3, er, slot.Ds3, slot.Host));
         }
 
         Section(r, "Cutscenes (remo)", () => Cutscenes(ds3, er, MapSlots.All.Where(s => only.Count == 0 || only.Contains(s.Ds3.ToString()))
@@ -244,6 +245,71 @@ public static class MapSurvey
                 var head = string.Concat(bytes.Take(16).Select(b => b is >= 32 and < 127 ? (char)b : '.'));
                 yield return $"  *{group.Key}: {group.Count()} (e.g. {ItemText.Leaf(first.Name)}, {bytes.Length} bytes, starts \"{head}\")";
             }
+        }
+    }
+
+    /// <summary>
+    /// What the object port will have to convert: the DS3 map's object parts and their objbnd contents, and Elden
+    /// Ring's side (asset parts in the host MSB, a sample geombnd/geomhkxbnd, free asset groups for new assets).
+    /// </summary>
+    private static IEnumerable<string> Objects(GameArchives ds3, GameArchives er, MapId ds3Id, MapId host)
+    {
+        var msb = MSB3.Read(ds3.Read(MapPorter.MsbPath(ds3Id)));
+        var models = msb.Parts.Objects.GroupBy(o => o.ModelName).OrderByDescending(g => g.Count()).ToList();
+        yield return $"DS3: {msb.Parts.Objects.Count} object parts, {models.Count} models, {msb.Parts.Objects.Count(o => o.EntityID > 0)} with entity IDs; "
+                     + $"most used: {string.Join(", ", models.Take(8).Select(g => $"{g.Key} x{g.Count()}"))}";
+        var objFiles = ds3.Entries.Where(e => e.Path is not null && e.Path.StartsWith("/obj/", StringComparison.OrdinalIgnoreCase)).Select(e => e.Path!).ToList();
+        yield return $"DS3: {objFiles.Count} named files under /obj/ (e.g. {string.Join(", ", objFiles.Take(4).Select(ItemText.Leaf))})";
+        foreach (var model in models.Where(g => g.Any(o => o.EntityID > 0)).Take(2).Concat(models.Take(1)).Select(g => g.Key).Distinct())
+        {
+            var path = objFiles.FirstOrDefault(f => ItemText.Leaf(f).StartsWith(model + ".", StringComparison.OrdinalIgnoreCase));
+            if (path is null)
+            {
+                yield return $"  {model}: no objbnd found";
+                continue;
+            }
+            yield return $"  {model}: {path}";
+            foreach (var line in BinderContents(ds3.Read(path)))
+                yield return "    " + line;
+        }
+
+        var hostMsb = MSBE.Read(er.Read(MapPorter.MsbPath(host)));
+        yield return $"ER host {host}: {hostMsb.Parts.Assets.Count} asset parts (e.g. {string.Join(", ", hostMsb.Parts.Assets.Take(4).Select(a => a.ModelName))})";
+        var aeg = er.Entries.Where(e => e.Path is not null && e.Path.StartsWith("/asset/aeg/", StringComparison.OrdinalIgnoreCase)).Select(e => e.Path!).ToList();
+        yield return $"ER: {aeg.Count} named files under /asset/aeg/";
+        var used = aeg.Select(p => ItemText.Leaf(p)).Where(l => l.Length >= 6 && l.StartsWith("aeg")).Select(l => l[3..6]).ToHashSet();
+        yield return $"ER: free asset groups 800-999: {string.Join(", ", Enumerable.Range(800, 200).Where(g => !used.Contains(g.ToString("D3"))).Take(20))}";
+        var sample = hostMsb.Parts.Assets.Select(a => a.ModelName).FirstOrDefault() ?? "AEG099_001";
+        var group = sample.Length >= 6 ? sample[..6].ToLowerInvariant() : "aeg099";
+        foreach (var suffix in new[] { ".geombnd.dcx", "_l.geomhkxbnd.dcx", "_h.geomhkxbnd.dcx", ".anibnd.dcx" })
+        {
+            var path = $"/asset/aeg/{group}/{sample.ToLowerInvariant()}{suffix}";
+            if (!er.Contains(path))
+            {
+                yield return $"  {path}: not found";
+                continue;
+            }
+            yield return $"  {path}:";
+            foreach (var line in BinderContents(er.Read(path)))
+                yield return "    " + line;
+        }
+    }
+
+    private static IEnumerable<string> BinderContents(byte[] bytes)
+    {
+        var bnd = BND4.Is(bytes) ? BND4.Read(bytes) : null;
+        if (bnd is null)
+        {
+            yield return "not a BND4";
+            yield break;
+        }
+        yield return $"BND4 {bnd.Version}, {bnd.Files.Count} files";
+        foreach (var f in bnd.Files.Take(12))
+        {
+            var data = DCX.Is(f.Bytes) ? DCX.Decompress(f.Bytes) : f.Bytes;
+            var head = string.Concat(data.Take(16).Select(b => b is >= 32 and < 127 ? (char)b : '.'));
+            var extra = FLVER2.Is(data) ? $", FLVER {FLVER2.Read(data).Meshes.Count} meshes" : "";
+            yield return $"{f.ID} {f.Name} ({data.Length} bytes, starts \"{head}\"{extra})";
         }
     }
 
