@@ -16,6 +16,9 @@ public sealed class LaunchProfile
     public Dictionary<GameId, GameLaunchOptions> Games { get; set; } = [];
     /// <summary>This profile's cross-game randomizer (null or disabled = the normal game).</summary>
     public RandomizerSettings? Randomizer { get; set; }
+    /// <summary>A friend's co-op code: while set, this profile loads that friend's randomized world so the two can
+    /// play together (see <see cref="RandomizerCoop"/>). Its own <see cref="Randomizer"/> seed is kept for later.</summary>
+    public string? JoinCode { get; set; }
 
     public GameLaunchOptions For(GameId id)
     {

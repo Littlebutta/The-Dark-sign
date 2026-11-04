@@ -13,6 +13,8 @@ public sealed record EntranceLink(string From, string FromText, string FromArea,
 public sealed class RandoPlan
 {
     public int Version { get; set; } = 1;
+    /// <summary>A hash of everything below: two PCs with the same WorldId have the same world (co-op check).</summary>
+    public string? WorldId { get; set; }
     public long Seed { get; set; }
     public int Attempt { get; set; }
     public RandomizerOptions Options { get; set; } = new();
@@ -35,6 +37,14 @@ public sealed class RandoPlan
 
     public string ToJson() => JsonSerializer.Serialize(this, Json);
     public static RandoPlan FromJson(string json) => JsonSerializer.Deserialize<RandoPlan>(json, Json)!;
+
+    /// <summary>Sets <see cref="WorldId"/>: the first 8 hex digits of the SHA-256 of the plan without it.</summary>
+    public string Seal()
+    {
+        WorldId = null;
+        var hash = System.Security.Cryptography.SHA256.HashData(Encoding.UTF8.GetBytes(ToJson().Replace("\r\n", "\n")));
+        return WorldId = Convert.ToHexString(hash)[..8];
+    }
 }
 
 /// <summary>
@@ -174,12 +184,12 @@ public static class Generator
     {
         string AreaText(string id) => world.Areas.TryGetValue(id, out var a) ? $"{a.Text} ({(a.Game == SourceGame.DS3 ? "DS3" : "ER")})" : id;
         var sb = new StringBuilder();
-        sb.AppendLine($"The Dark Sign cross-game randomizer, seed {plan.Seed} (attempt {plan.Attempt})");
+        sb.AppendLine($"The Dark Sign cross-game randomizer, seed {plan.Seed} (attempt {plan.Attempt})" + (plan.WorldId is null ? "" : $", world ID {plan.WorldId}"));
         sb.AppendLine($"Goal: {string.Join(" and ", plan.Goal.Select(AreaText))}");
         foreach (var n in plan.Notes) sb.AppendLine("Note: " + n);
         sb.AppendLine();
         sb.AppendLine("== Key items ==");
-        foreach (var (loc, content) in plan.Items.Where(kv => kv.Value.StartsWith("key:")).OrderBy(kv => kv.Value))
+        foreach (var (loc, content) in plan.Items.Where(kv => kv.Value.StartsWith("key:")).OrderBy(kv => kv.Value, StringComparer.Ordinal))
         {
             var l = world.Locations.First(x => x.Id == loc);
             var key = world.KeyItems[content[4..]];

@@ -185,6 +185,73 @@ public class RandomizerTests
     }
 
     [Fact]
+    public void SameWorldOnAnyPcWhateverItsLanguage()
+    {
+        // Co-op partners build the host's world on their own PCs, so the result must not depend on the PC's culture.
+        var o = new RandomizerOptions { Seed = 777 };
+        string Make()
+        {
+            var plan = Generator.Generate(LoadWorld(o.Clone()), o.Clone());
+            plan.Seal();
+            return plan.ToJson();
+        }
+        var saved = System.Globalization.CultureInfo.CurrentCulture;
+        string expected;
+        try
+        {
+            System.Globalization.CultureInfo.CurrentCulture = System.Globalization.CultureInfo.InvariantCulture;
+            expected = Make();
+            foreach (var name in new[] { "tr-TR", "de-DE", "ja-JP", "ar-SA" })
+            {
+                System.Globalization.CultureInfo.CurrentCulture = new System.Globalization.CultureInfo(name);
+                Assert.Equal(expected, Make());
+            }
+        }
+        finally { System.Globalization.CultureInfo.CurrentCulture = saved; }
+    }
+
+    [Fact]
+    public void WorldIdChangesWithTheWorld()
+    {
+        var o = new RandomizerOptions { Seed = 31337 };
+        var a = Generator.Generate(LoadWorld(o), o);
+        var id = a.Seal();
+        Assert.Matches("^[0-9A-F]{8}$", id);
+        Assert.Equal(id, RandoPlan.FromJson(a.ToJson()).Seal());
+        var b = Generator.Generate(LoadWorld(o.Clone()), o.Clone());
+        Assert.Equal(id, b.Seal());
+        b.Notes.Add("changed");
+        Assert.NotEqual(id, b.Seal());
+    }
+
+    [Fact]
+    public void FriendsCoopCodeMakesTheHostsWorld()
+    {
+        var host = new DarkSign.Core.RandomizerSettings
+        {
+            Enabled = true, Seed = 418_902_337_115, Enemies = false, Dlc = false, Goal = "SoulOfCinder", CrossGameFogs = 0.3,
+        };
+        var code = DarkSign.Core.RandomizerCoop.Encode(host);
+        _out.WriteLine(code);
+        // Read out loud or retyped: lower case, spaces, O for 0 and l for 1 still work.
+        var typed = code.ToLowerInvariant().Replace("-", " ").Replace('0', 'o').Replace('1', 'l');
+        var friend = DarkSign.Core.RandomizerCoop.Decode(typed);
+        Assert.NotNull(friend);
+        var root = Path.Combine(Path.GetTempPath(), "dksign-rando-test-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        try
+        {
+            var mine = RandomizerOptions.FromJson(File.ReadAllText(host.WriteOptions(root, "Host")));
+            var theirs = RandomizerOptions.FromJson(File.ReadAllText(friend!.WriteOptions(root, DarkSign.Core.RandomizerCoop.GuestWorldName(code))));
+            var a = Generator.Generate(LoadWorld(mine), mine);
+            var b = Generator.Generate(LoadWorld(theirs), theirs);
+            Assert.Equal(a.Seal(), b.Seal());
+            Assert.Equal(a.ToJson(), b.ToJson());
+        }
+        finally { Directory.Delete(root, true); }
+    }
+
+    [Fact]
     public void LauncherSettingsReachTheRandomizer()
     {
         var root = Path.Combine(Path.GetTempPath(), "dksign-rando-test-" + Guid.NewGuid().ToString("N"));

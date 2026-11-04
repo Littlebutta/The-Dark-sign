@@ -75,6 +75,27 @@ three ported DS3 maps a seed needs on average fewer than one reroll; with all of
   before a character is chosen. "New randomized character" therefore makes a new profile. A later DLL stage could
   pick the world when a character loads, so characters in the same save could differ too.
 
+### Playing together (Seamless Co-op)
+
+Every player keeps their own seed. Both games read the world from files at boot and Seamless Co-op needs the same
+files on every PC in a session, so playing together means everyone loads the host's world for that launch:
+
+- **Co-op code.** The randomizer dialog shows the profile's code (`RandomizerCoop.Encode`: version, toggles, goal,
+  cross-game ratios, the 64-bit seed and a checksum byte, as 23 Crockford base32 characters such as
+  `0K3F-9QXA-…`). Lower case, spaces, O for 0 and I/L for 1 are accepted.
+- **Joining.** A friend pastes the code under "Friend's co-op code". The profile's `JoinCode` is set, and
+  `RandomizerCoop.ActiveWorld` makes that profile load the world `Co-op <code>` (its own folder under
+  `TheDarkSign\Randomizer`, made once, reused next time) instead of its own. The friend's own seed, character and
+  saves are untouched; "Back to my world" clears the code.
+- **Same code, same world.** The randomizer is deterministic across processes and cultures (string sorts are
+  ordinal, collections are enumerated in insertion order, JSON line endings are normalized before hashing). The
+  porter seals each plan with a `WorldId` (8 hex digits of the plan's SHA-256), and the launcher folds it into the
+  **mod code** (`RandomizerCoop.CheckCode`). Everyone in the same world on the same build sees the same mod code; a
+  different launcher version (different ported maps) or a different world shows a different one.
+- Tests: `SameWorldOnAnyPcWhateverItsLanguage`, `FriendsCoopCodeMakesTheHostsWorld`, `RandomizerCoopTests`.
+- Later: a DLL could exchange the world code over the Seamless session and swap worlds without pasting a code. When
+  the apply stage writes `Mods\ER-Rando\<world>`, the mod code must also hash that folder's `regulation.bin`.
+
 ## Stages
 
 1. **Done (this PR): logic, data, solver, preview.** The launcher's Randomizer button makes a checked plan and a

@@ -33,7 +33,7 @@ Dark Souls III is only read as source data. Its Seamless mod only needs to keep 
 - **Deterministic builds.** Never put timestamps, random numbers or hash-set ordering into anything that lands in `regulation.bin`, `.emevd`, `.msb` or the TAEs. Same inputs must give the same bytes.
 - **Param and flag ranges.** Seamless adds its own items at runtime. Keep our rows in our own high blocks (weapons 8xxxxxxx, ActionButton 74000000+, flags 10392xxxxx) and never reuse vanilla multiplayer items, such as the Furlcalling Finger or the effigy goods.
 - **Never touch the game folder.** Seamless lives there in the player's own install.
-- **Randomizer (next thread).** Seamless's guide notes that randomizers can fail to merge with map-editing mods. The randomizer must write into our own build, in one deterministic pass seeded by a shared seed, so both players get the same mod code.
+- **Randomizer (next thread).** Seamless's guide notes that randomizers can fail to merge with map-editing mods. The randomizer must write into our own build, in one deterministic pass seeded by a shared seed, so both players get the same mod code. Done as co-op codes: everyone keeps their own seed, and friends paste the host's code to load the host's world for that session; the mod code then includes the world (see `docs/randomizer/randomizer-plan.md`, "Playing together").
 
 ## Sources
 

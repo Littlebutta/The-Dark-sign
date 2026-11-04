@@ -67,12 +67,14 @@ public static class RandomizeCommand
             throw new InvalidOperationException($"The plan failed its own check: {problem}");
 
         plan.Notes.Insert(0, "Preview: this plan isn't applied to the game yet (stage 1 of the randomizer).");
+        // Co-op partners compare this (the launcher folds it into the mod code): same ID, same world.
+        plan.Seal();
         File.WriteAllText(Path.Combine(dir, "plan.json"), plan.ToJson(), new UTF8Encoding(false));
         File.WriteAllText(Path.Combine(dir, "spoiler.txt"), Generator.Spoiler(world, plan), new UTF8Encoding(false));
         Console.WriteLine($"randomize: seed {plan.Seed} is finishable (checked after {plan.Attempt + 1} tries): " +
             $"{plan.Entrances.Count / 2} fog walls linked ({plan.Entrances.Count(e => e.CrossGame) / 2} cross games), " +
             $"{plan.Items.Count(i => i.Value.StartsWith("key:"))} key items placed, {plan.Bosses.Count} bosses moved");
-        Console.WriteLine($"randomize: plan and spoiler log in {dir}");
+        Console.WriteLine($"randomize: world ID {plan.WorldId}; plan and spoiler log in {dir}");
         return 0;
     }
 
