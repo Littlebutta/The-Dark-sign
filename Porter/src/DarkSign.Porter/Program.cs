@@ -3,7 +3,10 @@ using DarkSign.Porter;
 // DarkSign.Porter: reads Dark Souls III and Elden Ring straight from their packed archives and builds
 // the Elden Ring content mod. It only reads the game folders; everything it writes goes to TheDarkSign\Work.
 const string Usage = """
-    Usage: DarkSignPorter [--root <project root>] <command>
+    Usage: DarkSignPorter [--root <data folder>] [--game <DSR|DS3|BB|ER>=<exe>]... <command>
+      --root    the folder that holds TheDarkSign (mod, tools, work files); found from the porter's own folder if left out
+      --game    where a game is, e.g. --game ER="C:\Steam\steamapps\common\ELDEN RING\Game\eldenring.exe"; the
+                game folder is only read. Games not given are searched for in the root's subfolders.
       scan                         index every file in both games' archives
       extract <DS3|ER> <path>...   copy files out (decompressed); a path ending in * matches a prefix
       inventory                    list DS3 weapons, armor, rings, spells and NPCs, and Elden Ring's
@@ -32,7 +35,7 @@ const string Usage = """
       map-survey [map ids]         report both games' map files for the ported slots (layouts, binders, textures, events)
       event-coverage <ds3.emedf.json> <er.emedf.json>  which DS3 event instructions convert to Elden Ring, and how
       map-validate                 read back the ported maps in the mod folder and check them (port-maps runs this too)
-      port-maps [map ids] [--ds3-groups] [--binary-collision] [--simd]
+      port-maps [map ids] [--ds3-groups] [--binary-collision] [--simd] [--after-pid <port-weapons pid>]
                                    port the DS3 maps that have an Elden Ring slot, and the F1 menu's DS3 run events
     """;
 
@@ -43,6 +46,18 @@ if (rootAt >= 0 && rootAt + 1 < argList.Count)
 {
     root = argList[rootAt + 1];
     argList.RemoveRange(rootAt, 2);
+}
+var gameExes = new Dictionary<DarkSign.Core.GameId, string>();
+for (int at; (at = argList.IndexOf("--game")) >= 0;)
+{
+    if (at + 1 >= argList.Count || argList[at + 1].Split('=', 2) is not [var name, var exe]
+        || DarkSign.Core.GameDefinition.All.FirstOrDefault(g => g.ShortName.Equals(name, StringComparison.OrdinalIgnoreCase)) is not { } game)
+    {
+        Console.Error.WriteLine("--game needs <DSR|DS3|BB|ER>=<path to the game's exe>");
+        return 1;
+    }
+    gameExes[game.Id] = exe.Trim('"');
+    argList.RemoveRange(at, 2);
 }
 if (argList.Count == 0)
 {
@@ -57,7 +72,7 @@ try
         return DarkSign.Porter.Maps.MapSelfTest.Run();
     if (argList[0].Equals("event-coverage", StringComparison.OrdinalIgnoreCase) && argList.Count == 3)
         return DarkSign.Porter.Maps.EventPort.CoverageReport(argList[1], argList[2]);
-    var ctx = new PorterContext(PorterContext.FindRoot(root));
+    var ctx = new PorterContext(PorterContext.FindRoot(root), gameExes);
     return argList[0].ToLowerInvariant() switch
     {
         "scan" => Commands.Scan(ctx),

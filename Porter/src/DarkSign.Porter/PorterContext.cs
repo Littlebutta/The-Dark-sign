@@ -2,7 +2,10 @@ using DarkSign.Core;
 
 namespace DarkSign.Porter;
 
-/// <summary>Where the project root, the games and the porter's work folder are.</summary>
+/// <summary>
+/// Where the data folder (root), the games and the porter's work folder are. The games can be anywhere (a player's
+/// own Steam installs, passed with --game); they are only read. Everything written goes under the root.
+/// </summary>
 public sealed class PorterContext
 {
     public string Root { get; }
@@ -10,12 +13,18 @@ public sealed class PorterContext
     public ExternalData Data { get; }
     private readonly IReadOnlyList<DetectedGame> _games;
 
-    public PorterContext(string root)
+    public PorterContext(string root, IReadOnlyDictionary<GameId, string>? gameExes = null)
     {
         Root = Path.GetFullPath(root);
         WorkDir = Path.Combine(Root, "TheDarkSign", "Work");
         Data = new ExternalData(Path.Combine(WorkDir, "cache"));
-        _games = GameDetector.Scan(Root);
+        var given = (gameExes ?? new Dictionary<GameId, string>())
+            .Where(g => File.Exists(g.Value))
+            .Select(g => new DetectedGame(g.Key, Path.GetFullPath(g.Value)))
+            .ToList();
+        foreach (var missing in (gameExes ?? new Dictionary<GameId, string>()).Where(g => !File.Exists(g.Value)))
+            Console.WriteLine($"warning: --game {GameDefinition.Get(missing.Key).ShortName}: {missing.Value} does not exist; searching {Root} instead");
+        _games = given.Concat(GameDetector.Scan(Root).Where(s => given.All(g => g.Id != s.Id))).ToList();
     }
 
     /// <summary>
@@ -35,7 +44,8 @@ public sealed class PorterContext
 
     public string GameDir(PorterGame game) =>
         Path.GetDirectoryName(_games.FirstOrDefault(g => g.Id == game.Id)?.ExePath)
-        ?? throw new DirectoryNotFoundException($"{game.ShortName} was not found under {Root}.");
+        ?? throw new DirectoryNotFoundException(
+            $"{game.ShortName} was not found under {Root}; pass --game {game.ShortName}=<path to its exe> (the launcher does this).");
 
     /// <summary>A path in the Elden Ring mod folder (TheDarkSign\Mods\ER), created if needed.</summary>
     public string ModPath(params string[] parts)
@@ -67,14 +77,24 @@ public sealed class PorterContext
     private void AddOodle(string gameDir)
     {
         var source = Directory.EnumerateFiles(gameDir, "oo2core_*_win64.dll").FirstOrDefault();
-        if (source is not null)
+        lock (SoulsFormats.Oodle.SearchPaths)
         {
-            var target = WorkPath("cache", "oodle", Path.GetFileName(source));
-            if (!File.Exists(target))
-                File.Copy(source, target);
-            SoulsFormats.Oodle.SearchPaths.Add(Path.GetDirectoryName(target)!);
+            if (source is not null)
+            {
+                var target = WorkPath("cache", "oodle", Path.GetFileName(source));
+                // Two porter processes (port-weapons and port-maps run side by side) may both copy it the first time:
+                // each copies to its own temporary name, and whoever is second keeps the first one's copy.
+                if (!File.Exists(target))
+                {
+                    var tmp = $"{target}.{Environment.ProcessId}.part";
+                    File.Copy(source, tmp, overwrite: true);
+                    try { File.Move(tmp, target, overwrite: false); }
+                    catch (IOException) when (File.Exists(target)) { File.Delete(tmp); }
+                }
+                SoulsFormats.Oodle.SearchPaths.Add(Path.GetDirectoryName(target)!);
+            }
+            SoulsFormats.Oodle.SearchPaths.Add(gameDir);
         }
-        SoulsFormats.Oodle.SearchPaths.Add(gameDir);
     }
 
     public ParamStore LoadParams(PorterGame game) => ParamStore.Load(game, GameDir(game), Data);

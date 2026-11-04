@@ -148,7 +148,79 @@ public sealed class CoreTests : IDisposable
     }
 
     [Fact]
-    public void Settings_round_trip_and_default_root_is_parent_of_Launcher_folder()
+    public void Plan_allows_any_install_when_the_game_folder_is_only_read()
+    {
+        var outside = Path.Combine(Path.GetDirectoryName(_root)!, "Steam", "steamapps", "common", "ELDEN RING", "Game", "eldenring.exe");
+        Directory.CreateDirectory(Path.GetDirectoryName(outside)!);
+        File.WriteAllText(outside, "");
+        var settings = new LauncherSettings { GameExePaths = { [GameId.EldenRing] = outside } };
+
+        var plan = LaunchPlanner.Plan(settings, _root, GameId.EldenRing, gameFolderReadOnly: true);
+
+        Assert.Equal(outside, plan.ExePath);
+        Assert.Null(plan.SteamAppIdFile); // nothing is written next to the player's own install
+        Assert.Equal(Path.Combine(_root, "TheDarkSign", "Saves", "Default", "ER"), plan.SaveDirectory);
+    }
+
+    [Fact]
+    public void Finds_steam_installs_and_games_in_a_picked_folder()
+    {
+        var vdf = """
+            "libraryfolders"
+            {
+                "0" { "path"  "C:\\Program Files (x86)\\Steam" "label" "" }
+                "1" { "path"  "E:\\SteamLibrary" }
+            }
+            """;
+        Assert.Equal([@"C:\Program Files (x86)\Steam", @"E:\SteamLibrary"], SteamLibraries.ParseLibraryFolders(vdf));
+
+        var common = Path.Combine(Path.GetDirectoryName(_root)!, "steamapps", "common");
+        var er = Path.Combine(common, "ELDEN RING", "Game", "eldenring.exe");
+        var ds3 = Path.Combine(common, "DARK SOULS III", "Game", "DarkSoulsIII.exe");
+        foreach (var exe in new[] { er, ds3 })
+        {
+            Directory.CreateDirectory(Path.GetDirectoryName(exe)!);
+            File.WriteAllText(exe, "");
+        }
+        var inRoot = Touch("DARK SOULS III", "Game", "DarkSoulsIII.exe");
+
+        var found = GameDetector.ScanAll(_root, [common]).ToDictionary(g => g.Id, g => g.ExePath);
+
+        Assert.Equal(er, found[GameId.EldenRing]);
+        Assert.Equal(inRoot, found[GameId.DarkSouls3]); // the root wins over Steam
+        Assert.Equal(er, GameDetector.FindIn(GameId.EldenRing, Path.Combine(common, "ELDEN RING")));
+        Assert.Null(GameDetector.FindIn(GameId.EldenRing, Path.Combine(common, "DARK SOULS III")));
+    }
+
+    [Fact]
+    public void Uninstall_removes_the_data_folder_and_our_dlls_but_keeps_saves_unless_asked()
+    {
+        Touch("TheDarkSign", "Mods", "ER", "regulation.bin");
+        Touch("TheDarkSign", "Tools", "me3", "me3.exe");
+        var save = Touch("TheDarkSign", "Saves", "Default", "ER", "ER0000.dksign");
+        var exe = Touch("DARK SOULS III", "Game", "DarkSoulsIII.exe");
+        var ours = SaveRedirectInstaller.ProxyPath(exe);
+        File.WriteAllText(ours, "xx DkSignSaveRedirectVersion xx");
+        var otherExe = Touch("Dark Souls Remastered", "DarkSoulsRemastered.exe");
+        var theirs = SaveRedirectInstaller.ProxyPath(otherExe);
+        File.WriteAllText(theirs, "someone else's mod");
+
+        var plan = Uninstaller.MakePlan(_root, [exe, otherExe], deleteSaves: false);
+        Assert.Empty(Uninstaller.Run(_root, plan));
+
+        Assert.False(Directory.Exists(Path.Combine(_root, "TheDarkSign", "Mods")));
+        Assert.False(Directory.Exists(Path.Combine(_root, "TheDarkSign", "Tools")));
+        Assert.True(File.Exists(save));
+        Assert.False(File.Exists(ours));
+        Assert.True(File.Exists(theirs));
+        Assert.True(File.Exists(exe));
+
+        Assert.Empty(Uninstaller.Run(_root, Uninstaller.MakePlan(_root, [exe], deleteSaves: true)));
+        Assert.False(Directory.Exists(Path.Combine(_root, "TheDarkSign")));
+    }
+
+    [Fact]
+    public void Settings_round_trip_and_default_root_is_parent_of_Launcher_folder_else_the_launchers_own()
     {
         var path = Path.Combine(_root, LauncherSettings.FileName);
         var settings = new LauncherSettings { ActiveProfile = "Chaos" };
@@ -159,6 +231,8 @@ public sealed class CoreTests : IDisposable
 
         Assert.Equal("Chaos", loaded.GetActiveProfile().Name);
         Assert.Equal(_root, LauncherSettings.ResolveDefaultRoot(Path.Combine(_root, "Launcher", "bin", "Release")));
+        var unzipped = Path.Combine(_root, "Downloads", "TheDarkSign");
+        Assert.Equal(unzipped, LauncherSettings.ResolveDefaultRoot(unzipped + Path.DirectorySeparatorChar));
     }
 
     [Fact]

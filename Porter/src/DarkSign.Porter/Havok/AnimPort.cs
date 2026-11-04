@@ -53,6 +53,9 @@ public static class AnimPort
     /// <summary>Writes spline-compressed animations (see <see cref="SplineTranscode"/>); DARKSIGN_ANIM_INTERLEAVED=1 writes the old uncompressed ones.</summary>
     public static bool Spline = Environment.GetEnvironmentVariable("DARKSIGN_ANIM_INTERLEAVED") != "1";
 
+    /// <summary>Held around every use of HKLib's serializer (see <see cref="Convert(byte[], Ds3Skeleton, ErSkeleton, byte[], byte[], bool)"/>).</summary>
+    public static readonly object HavokLock = new();
+
     public static (byte[] Hkx, string Summary) Convert(byte[] ds3Hkx, Ds3Skeleton ds3, ErSkeleton er, byte[] erTemplate, byte[]? compendium) =>
         Convert(ds3Hkx, ds3, er, erTemplate, compendium, Spline);
 
@@ -106,18 +109,22 @@ public static class AnimPort
                 m_referenceFrameSamples = Enumerable.Range(0, (int)refFrame.ReferenceFrameSamples.Size).Select(i => refFrame.ReferenceFrameSamples[i].Vector).ToList(),
             };
 
-        var root = (hkRootLevelContainer)ReadEr(erTemplate, compendium);
-        var container = Container(root);
-        container.m_animations.Clear();
-        container.m_animations.Add(animation);
-        var erBinding = container.m_bindings.First()!;
-        erBinding.m_animation = animation;
-        erBinding.m_transformTrackToBoneIndices = bound.Select(b => (short)b).ToList();
-        erBinding.m_floatTrackToFloatSlotIndices = [];
-        erBinding.m_partitionIndices = [];
-
+        // HKLib's serializer keeps type caches in unsynchronised static dictionaries, so reading the template and
+        // writing the result happen one thread at a time; the transcode above, the slow part, runs on every core.
         using var output = new MemoryStream();
-        new HavokBinarySerializer().Write(root, output);
+        lock (HavokLock)
+        {
+            var root = (hkRootLevelContainer)ReadEr(erTemplate, compendium);
+            var container = Container(root);
+            container.m_animations.Clear();
+            container.m_animations.Add(animation);
+            var erBinding = container.m_bindings.First()!;
+            erBinding.m_animation = animation;
+            erBinding.m_transformTrackToBoneIndices = bound.Select(b => (short)b).ToList();
+            erBinding.m_floatTrackToFloatSlotIndices = [];
+            erBinding.m_partitionIndices = [];
+            new HavokBinarySerializer().Write(root, output);
+        }
         var summary = $"{source.Duration:0.###}s, {frames} frames, {mapped} of {erBones} bones from DS3, root motion {(refFrame is null ? "none" : $"{refFrame.ReferenceFrameSamples.Size} samples")}";
         return (output.ToArray(), summary);
     }

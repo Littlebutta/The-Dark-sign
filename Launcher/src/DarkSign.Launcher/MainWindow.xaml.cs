@@ -13,9 +13,9 @@ namespace DarkSign.Launcher;
 public partial class MainWindow : Window
 {
     private readonly string _settingsPath = Path.Combine(AppContext.BaseDirectory, LauncherSettings.FileName);
-    // Elden Ring has its own panel (Play with the ported content); the list holds the other games.
-    private readonly ObservableCollection<GameRow> _rows =
-        new(GameDefinition.All.Where(d => d.Id != GameId.EldenRing).Select(d => new GameRow(d)));
+    // Every game has a row, so each player can point the launcher at their own installs. Elden Ring is played with
+    // the panel's PLAY button (with the ported content); the others can be launched from the list.
+    private readonly ObservableCollection<GameRow> _rows;
     private readonly LauncherSettings _settings;
     private bool _loadingProfile;
 
@@ -23,6 +23,7 @@ public partial class MainWindow : Window
     {
         InitializeComponent();
         _settings = LauncherSettings.Load(_settingsPath);
+        _rows = new(GameDefinition.All.Select(d => new GameRow(d, () => Root)));
         GameGrid.ItemsSource = _rows;
 
         RootBox.Text = Root;
@@ -31,9 +32,9 @@ public partial class MainWindow : Window
         RefreshProfiles();
         TestMenuBox.IsChecked = _settings.TestMenu;
 
-        // Games copied in after the last scan are picked up without pressing "Scan for games".
-        if (_rows.Any(r => string.IsNullOrEmpty(r.ExePath)) || !_settings.GameExePaths.ContainsKey(GameId.EldenRing))
-            Scan();
+        // Games installed or copied in since the last start are picked up without pressing "Find my games".
+        if (_rows.Any(r => !File.Exists(r.ExePath)))
+            Scan(replaceFound: false);
         RefreshContentText();
 
         Title = $"The Dark Sign  v{SelfUpdater.CurrentVersion.ToString(3)}";
@@ -73,18 +74,26 @@ public partial class MainWindow : Window
         ? LauncherSettings.ResolveDefaultRoot(AppContext.BaseDirectory)
         : _settings.RootPath;
 
-    private void Scan()
+    /// <summary>
+    /// Looks for the games in the data folder, then in every Steam library. <paramref name="replaceFound"/> false keeps
+    /// paths the player already set that still exist (only missing games are filled in).
+    /// </summary>
+    private void Scan(bool replaceFound)
     {
-        var found = GameDetector.Scan(Root);
+        var found = GameDetector.ScanAll(Root, SteamLibraries.CommonFolders());
         foreach (var game in found)
         {
-            if (game.Id == GameId.EldenRing)
-                _settings.GameExePaths[GameId.EldenRing] = game.ExePath;
-            else
-                _rows.First(r => r.Definition.Id == game.Id).ExePath = game.ExePath;
+            var row = _rows.First(r => r.Definition.Id == game.Id);
+            if (replaceFound || !File.Exists(row.ExePath))
+                row.ExePath = game.ExePath;
         }
-        StatusText.Text = $"Found {found.Count} of {GameDefinition.All.Count} games in {Root}.";
+        var missing = _rows.Where(r => !File.Exists(r.ExePath)).Select(r => r.DisplayName).ToList();
+        StatusText.Text = missing.Count == 0
+            ? "Found all four games."
+            : $"Found {GameDefinition.All.Count - missing.Count} of {GameDefinition.All.Count} games. Not found: {string.Join(", ", missing)}. " +
+              "Use Browse… to point at your own install.";
         SaveSettings();
+        RefreshContentText();
     }
 
     private void RefreshProfiles()
@@ -122,42 +131,58 @@ public partial class MainWindow : Window
         _settings.Save(_settingsPath);
     }
 
-    private void OnScan(object sender, RoutedEventArgs e) => Scan();
+    private void OnScan(object sender, RoutedEventArgs e) => Scan(replaceFound: true);
 
     private void OnChangeRoot(object sender, RoutedEventArgs e)
     {
-        var dialog = new OpenFolderDialog { Title = "Select The Dark Sign project folder", InitialDirectory = Root };
+        var dialog = new OpenFolderDialog
+        {
+            Title = "Select the data folder (the mod, its tools and your Dark Sign saves go in a TheDarkSign folder inside it)",
+            InitialDirectory = Root,
+        };
         if (dialog.ShowDialog(this) != true)
             return;
         _settings.RootPath = dialog.FolderName;
         RootBox.Text = Root;
-        foreach (var row in _rows.Where(r => !PathGuard.IsInsideRoot(r.ExePath, Root)))
-            row.ExePath = "";
-        _settings.GameExePaths.Remove(GameId.EldenRing);
-        Scan();
-        RefreshContentText();
+        // Game paths stay as they are (they may be anywhere); missing ones are looked for in the new folder.
+        foreach (var row in _rows)
+            row.Refresh();
+        Scan(replaceFound: false);
     }
 
     private void OnBrowseExe(object sender, RoutedEventArgs e)
     {
         var row = (GameRow)((FrameworkElement)sender).DataContext;
-        var dialog = new OpenFileDialog
+        var exeName = row.Definition.ExeNames[0];
+        var dialog = new OpenFolderDialog
         {
-            Title = $"Select the {row.DisplayName} exe",
-            Filter = "Executables (*.exe)|*.exe",
-            InitialDirectory = Root,
+            Title = $"Select your {row.DisplayName} folder (the one with {exeName}, or the folder above it)",
+            InitialDirectory = File.Exists(row.ExePath) ? Path.GetDirectoryName(row.ExePath) : Root,
         };
         if (dialog.ShowDialog(this) != true)
             return;
-        if (!PathGuard.IsInsideRoot(dialog.FileName, Root))
+        // The player's own install can be anywhere (e.g. their Steam library); it is only read.
+        var exe = GameDetector.FindIn(row.Definition.Id, dialog.FolderName);
+        if (exe is null)
         {
-            MessageBox.Show(this, $"Only games inside {Root} can be used. Vanilla installs stay untouched.",
-                "Outside project folder", MessageBoxButton.OK, MessageBoxImage.Warning);
+            MessageBox.Show(this, $"{exeName} is not in {dialog.FolderName} or the folders below it.\n\n" +
+                    $"For Steam, pick steamapps\\common\\{SteamFolderHint(row.Definition.Id)}.",
+                "Game not found", MessageBoxButton.OK, MessageBoxImage.Warning);
             return;
         }
-        row.ExePath = dialog.FileName;
+        row.ExePath = exe;
         SaveSettings();
+        RefreshContentText();
+        StatusText.Text = $"{row.DisplayName}: {exe}";
     }
+
+    private static string SteamFolderHint(GameId id) => id switch
+    {
+        GameId.EldenRing => "ELDEN RING",
+        GameId.DarkSouls3 => "DARK SOULS III",
+        GameId.DarkSoulsRemastered => "DARK SOULS REMASTERED",
+        _ => "<game>",
+    };
 
     private void OnLaunch(object sender, RoutedEventArgs e)
     {
@@ -241,8 +266,14 @@ public partial class MainWindow : Window
     private void RefreshContentText()
     {
         var setup = new EldenRingSetup(Root);
-        ContentText.Text = !_settings.GameExePaths.ContainsKey(GameId.EldenRing)
-            ? $"Elden Ring was not found in {Root}."
+        var missing = new[] { GameId.EldenRing, GameId.DarkSouls3 }
+            .Where(id => !File.Exists(_settings.GameExePaths.GetValueOrDefault(id, "")))
+            .Select(id => GameDefinition.Get(id).DisplayName).ToList();
+        ContentText.Text = missing.Count > 0 && setup.ContentVersion is null
+            ? $"To build the mod from your own game files, point the launcher at {string.Join(" and ", missing)} " +
+              "in the list below (Browse…, or Find my games for Steam installs)."
+            : !File.Exists(_settings.GameExePaths.GetValueOrDefault(GameId.EldenRing, ""))
+            ? "Elden Ring was not found: point the launcher at it in the list below (Browse…)."
             : setup.ContentVersion is { } version
                 ? $"Dark Souls III weapons are ported (content build {version}). They're sold by Merchant Kalé."
                 : "The content isn't built yet. The first Play builds it from your game files, which takes a few minutes.";
@@ -262,7 +293,8 @@ public partial class MainWindow : Window
         LaunchPlan plan;
         try
         {
-            plan = LaunchPlanner.Plan(_settings, Root, GameId.EldenRing);
+            // me3 loads the mod and DLLs at launch, so nothing is written into the Elden Ring folder: any install works.
+            plan = LaunchPlanner.Plan(_settings, Root, GameId.EldenRing, gameFolderReadOnly: true);
         }
         catch (Exception ex) when (ex is InvalidOperationException or FileNotFoundException or IsolationViolationException)
         {
@@ -290,6 +322,13 @@ public partial class MainWindow : Window
             var porterVersion = await EnsurePorterAsync(setup);
             if (rebuild || setup.NeedsContentBuild(porterVersion))
             {
+                if (!File.Exists(_settings.GameExePaths.GetValueOrDefault(GameId.DarkSouls3, "")))
+                {
+                    MessageBox.Show(this, "The mod is built from your own Dark Souls III files, and Dark Souls III wasn't found.\n\n" +
+                        "Point the launcher at your Dark Souls III install in the list (Browse…), then press PLAY again.",
+                        "Dark Souls III needed", MessageBoxButton.OK, MessageBoxImage.Information);
+                    return;
+                }
                 if (!await BuildContentAsync(setup))
                     return;
                 setup.MarkContentBuilt(porterVersion);
@@ -332,6 +371,7 @@ public partial class MainWindow : Window
     {
         PlayButton.IsEnabled = !busy;
         RebuildButton.IsEnabled = !busy;
+        UninstallButton.IsEnabled = !busy;
         PlayButton.Content = busy ? "WORKING…" : "PLAY";
     }
 
@@ -341,13 +381,13 @@ public partial class MainWindow : Window
     /// </summary>
     private void RemoveGameFolderProxy(string exePath)
     {
+        // Only copies inside the data folder ever got one; a player's own install is never written.
+        var proxy = SaveRedirectInstaller.ProxyPath(exePath);
+        if (!PathGuard.IsInsideRoot(proxy, Root))
+            return;
         var state = SaveRedirectInstaller.Check(GameId.EldenRing, exePath, null);
         if (state is RedirectState.Installed or RedirectState.Outdated)
-        {
-            var proxy = SaveRedirectInstaller.ProxyPath(exePath);
-            PathGuard.EnsureInsideRoot(proxy, Root);
             File.Delete(proxy);
-        }
     }
 
     private async Task<string> EnsureMe3Async(EldenRingSetup setup)
@@ -398,7 +438,11 @@ public partial class MainWindow : Window
             ?? throw new InvalidOperationException($"The porter is missing from {setup.PorterDir} and could not be downloaded.");
     }
 
-    /// <summary>Runs the porter, which builds TheDarkSign\Mods\ER from the game files. Output goes to a log file.</summary>
+    /// <summary>
+    /// Runs the porter, which builds TheDarkSign\Mods\ER from the player's own game files. port-weapons and port-maps run
+    /// side by side as two processes (each on its own cores); port-maps waits for port-weapons only for its last step,
+    /// which edits the regulation.bin port-weapons writes. Each has its own log file.
+    /// </summary>
     private async Task<bool> BuildContentAsync(EldenRingSetup setup)
     {
         // A running game keeps the mod files open, so the build would fail halfway through.
@@ -413,22 +457,34 @@ public partial class MainWindow : Window
             }
         }
         Directory.CreateDirectory(setup.LogDir);
-        StatusText.Text = "Building the Dark Souls III content from your game files (a few minutes)…";
-        var (ok, tail, log) = await RunPorterAsync(setup, "port-weapons", "Building content");
-        if (!ok)
+        var started = Stopwatch.StartNew();
+        var progress = new BuildProgress(this);
+        var weapons = StartPorter(setup, "port-weapons", [], line => progress.Update("weapons", line));
+        // The DS3 maps (F1 menu, "DS3 run" tab) are a test feature: if they fail, the weapons still work, so the game
+        // starts anyway and the log says what went wrong.
+        PorterRun? maps = null;
+        try
         {
-            MessageBox.Show(this, $"Building the content failed. The last lines were:\n\n{tail}\n\nFull log: {log}",
+            maps = StartPorter(setup, "port-maps", ["--after-pid", weapons.Pid.ToString()], line => progress.Update("maps", line));
+        }
+        catch (Exception ex) when (ex is Win32Exception or InvalidOperationException or IOException)
+        {
+            progress.Update("maps", $"could not start: {ex.Message}");
+        }
+
+        var weaponsResult = await weapons.Completion;
+        var mapsResult = maps is null ? (Ok: false, Tail: "", Log: "") : await maps.Completion;
+        if (!weaponsResult.Ok)
+        {
+            MessageBox.Show(this, $"Building the content failed. The last lines were:\n\n{weaponsResult.Tail}\n\nFull log: {weaponsResult.Log}",
                 "Content build failed", MessageBoxButton.OK, MessageBoxImage.Error);
-            StatusText.Text = $"Content build failed; see {log}";
+            StatusText.Text = $"Content build failed; see {weaponsResult.Log}";
             return false;
         }
 
-        // The ported DS3 maps (F1 menu, "DS3 run" tab) are a test feature: if they fail, the weapons still work, so
-        // the game starts anyway and the log says what went wrong.
-        StatusText.Text = "Porting the Dark Souls III maps…";
-        var maps = await RunPorterAsync(setup, "port-maps", "Porting maps");
-        if (!maps.Ok)
-            StatusText.Text = $"The DS3 maps could not be ported (the rest of the content is fine); see {maps.Log}";
+        StatusText.Text = $"Content built in {started.Elapsed.TotalMinutes:0.0} min.";
+        if (!mapsResult.Ok)
+            StatusText.Text = $"The DS3 maps could not be ported (the rest of the content is fine); see {mapsResult.Log}";
         else
         {
             // port-maps reads its output back and checks it; show the verdict so a broken map is known before launch.
@@ -442,8 +498,31 @@ public partial class MainWindow : Window
         return true;
     }
 
-    /// <summary>Runs one porter command, with its output in its own log file and on the status line.</summary>
-    private async Task<(bool Ok, string Tail, string Log)> RunPorterAsync(EldenRingSetup setup, string command, string status)
+    /// <summary>Shows the latest line of each porter process on the status line.</summary>
+    private sealed class BuildProgress(MainWindow window)
+    {
+        private readonly Dictionary<string, string> _latest = new();
+
+        public void Update(string part, string line)
+        {
+            lock (_latest)
+                _latest[part] = line.Length > 90 ? line[..90] + "…" : line;
+            window.Dispatcher.BeginInvoke(() =>
+            {
+                lock (_latest)
+                    window.StatusText.Text = "Building from your game files: " +
+                                             string.Join("   |   ", _latest.Select(p => $"{p.Key}: {p.Value}"));
+            });
+        }
+    }
+
+    private sealed record PorterRun(int Pid, Task<(bool Ok, string Tail, string Log)> Completion);
+
+    /// <summary>
+    /// Starts one porter command, with its output in its own log file. The player's game paths go with it, so their
+    /// installs can be anywhere (they are only read).
+    /// </summary>
+    private PorterRun StartPorter(EldenRingSetup setup, string command, IReadOnlyList<string> extraArgs, Action<string> onLine)
     {
         var log = Path.Combine(setup.LogDir, $"porter-{command}-{DateTime.Now:yyyyMMdd-HHmmss}.log");
         var start = new ProcessStartInfo(setup.PorterExe)
@@ -453,36 +532,52 @@ public partial class MainWindow : Window
             RedirectStandardOutput = true,
             RedirectStandardError = true,
         };
-        foreach (var arg in new[] { "--root", Root, command })
+        start.ArgumentList.Add("--root");
+        start.ArgumentList.Add(Root);
+        foreach (var (id, exe) in _settings.GameExePaths.Where(g => File.Exists(g.Value)))
+        {
+            start.ArgumentList.Add("--game");
+            start.ArgumentList.Add($"{GameDefinition.Get(id).ShortName}={exe}");
+        }
+        start.ArgumentList.Add(command);
+        foreach (var arg in extraArgs)
             start.ArgumentList.Add(arg);
 
-        using var process = Process.Start(start)!;
-        await using var writer = new StreamWriter(log);
-        var last = new Queue<string>();
-        void OnLine(string? line)
-        {
-            if (line is null)
-                return;
-            lock (last)
-            {
-                writer.WriteLine(line);
-                last.Enqueue(line);
-                if (last.Count > 8)
-                    last.Dequeue();
-            }
-            Dispatcher.BeginInvoke(() => StatusText.Text = $"{status}: {line}");
-        }
-        process.OutputDataReceived += (_, e) => OnLine(e.Data);
-        process.ErrorDataReceived += (_, e) => OnLine(e.Data);
-        process.BeginOutputReadLine();
-        process.BeginErrorReadLine();
-        await process.WaitForExitAsync();
-        process.WaitForExit(); // flushes the output events
+        var process = Process.Start(start)!;
+        return new PorterRun(process.Id, WaitForPorterAsync(process, log, onLine));
+    }
 
-        string tail;
-        lock (last)
-            tail = string.Join("\n", last);
-        return (process.ExitCode == 0, tail, log);
+    private static async Task<(bool Ok, string Tail, string Log)> WaitForPorterAsync(Process process, string log, Action<string> onLine)
+    {
+        using (process)
+        {
+            await using var writer = new StreamWriter(log);
+            var last = new Queue<string>();
+            void OnLine(string? line)
+            {
+                if (line is null)
+                    return;
+                lock (last)
+                {
+                    writer.WriteLine(line);
+                    last.Enqueue(line);
+                    if (last.Count > 8)
+                        last.Dequeue();
+                }
+                onLine(line);
+            }
+            process.OutputDataReceived += (_, e) => OnLine(e.Data);
+            process.ErrorDataReceived += (_, e) => OnLine(e.Data);
+            process.BeginOutputReadLine();
+            process.BeginErrorReadLine();
+            await process.WaitForExitAsync();
+            process.WaitForExit(); // flushes the output events
+
+            string tail;
+            lock (last)
+                tail = string.Join("\n", last);
+            return (process.ExitCode == 0, tail, log);
+        }
     }
 
     private string DownloadPath(string fileName)
@@ -505,6 +600,53 @@ public partial class MainWindow : Window
         var dir = new EldenRingSetup(Root).ModDir;
         Directory.CreateDirectory(dir);
         Process.Start(new ProcessStartInfo("explorer.exe", $"\"{dir}\"") { UseShellExecute = true });
+    }
+
+    /// <summary>
+    /// Removes The Dark Sign: the built mod, me3, the porter, downloads, logs and caches (all in the data folder's
+    /// TheDarkSign folder), and the launcher's save-redirect DLLs in game copies inside the data folder. Game installs
+    /// are never modded in place, so nothing else needs undoing. Saves are kept unless the player says otherwise.
+    /// </summary>
+    private void OnUninstall(object sender, RoutedEventArgs e)
+    {
+        if (Process.GetProcessesByName("eldenring").Length > 0 || Process.GetProcessesByName("DarkSignPorter").Length > 0)
+        {
+            MessageBox.Show(this, "Close Elden Ring and wait for any content build to finish first: they keep the mod files open.",
+                "Uninstall", MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+        var data = Path.Combine(Root, Uninstaller.DataFolderName);
+        var answer = MessageBox.Show(this,
+            $"Uninstall The Dark Sign from this PC?\n\nThis deletes the mod and everything the launcher downloaded or built in\n{data}\n" +
+            "and the launcher's save-redirect DLLs in game copies inside the data folder. Your game installs are not changed: " +
+            "Elden Ring starts exactly as before.\n\n" +
+            "Keep your Dark Sign saves?\n  Yes: uninstall and keep the saves (TheDarkSign\\Saves)\n  No: uninstall and delete the saves too\n  Cancel: do nothing",
+            "Uninstall The Dark Sign", MessageBoxButton.YesNoCancel, MessageBoxImage.Question, MessageBoxResult.Cancel);
+        if (answer == MessageBoxResult.Cancel)
+            return;
+        var deleteSaves = answer == MessageBoxResult.No;
+        if (deleteSaves && MessageBox.Show(this, "Delete every Dark Sign save, for every profile? This can't be undone.",
+                "Delete saves", MessageBoxButton.YesNo, MessageBoxImage.Warning, MessageBoxResult.No) != MessageBoxResult.Yes)
+            return;
+
+        var plan = Uninstaller.MakePlan(Root, _rows.Select(r => r.ExePath), deleteSaves);
+        var failed = Uninstaller.Run(Root, plan);
+        foreach (var row in _rows)
+            row.Refresh();
+        RefreshContentText();
+        var launcherDir = Path.GetDirectoryName(Environment.ProcessPath ?? AppContext.BaseDirectory)!;
+        if (failed.Count > 0)
+        {
+            MessageBox.Show(this, "Some files could not be removed (close any program using them and press Uninstall again):\n\n" +
+                                  string.Join("\n", failed.Take(10)), "Uninstall", MessageBoxButton.OK, MessageBoxImage.Warning);
+            StatusText.Text = $"Uninstall left {failed.Count} item(s) behind.";
+            return;
+        }
+        StatusText.Text = "The Dark Sign is uninstalled" + (deleteSaves ? "." : $"; your saves are still in {SaveIsolation.SavesRoot(Root)}.");
+        MessageBox.Show(this,
+            "The Dark Sign is uninstalled. " + (deleteSaves ? "" : $"Your saves were kept in {SaveIsolation.SavesRoot(Root)}. ") +
+            $"\n\nTo remove the launcher too, close it and delete its folder:\n{launcherDir}\n\nPressing PLAY again reinstalls everything.",
+            "Uninstall", MessageBoxButton.OK, MessageBoxImage.Information);
     }
 
     private void OnProfileChanged(object sender, SelectionChangedEventArgs e)
