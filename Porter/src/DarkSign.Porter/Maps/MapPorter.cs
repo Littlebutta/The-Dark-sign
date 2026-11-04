@@ -21,16 +21,24 @@ public static class MapPorter
         public bool BinaryCollision { get; set; }
         public bool KeepSimdTree { get; set; }
 
+        /// <summary>
+        /// --after-pid: the port-weapons process started alongside this one. The events step edits the regulation.bin
+        /// port-weapons writes, so it waits for that process to finish; everything before it runs side by side.
+        /// </summary>
+        public int AfterPid { get; set; }
+
         public static Options Parse(IEnumerable<string> args)
         {
             var o = new Options();
-            foreach (var a in args)
-                switch (a.ToLowerInvariant())
+            var list = args.ToList();
+            for (int i = 0; i < list.Count; i++)
+                switch (list[i].ToLowerInvariant())
                 {
                     case "--ds3-groups": o.Ds3Groups = true; break;
                     case "--binary-collision": o.BinaryCollision = true; break;
                     case "--simd": o.KeepSimdTree = true; break;
-                    default: o.Only.Add(MapId.Parse(a).ToString()); break;
+                    case "--after-pid" when i + 1 < list.Count && int.TryParse(list[i + 1], out var pid): o.AfterPid = pid; i++; break;
+                    default: o.Only.Add(MapId.Parse(list[i]).ToString()); break;
                 }
             return o;
         }
@@ -76,6 +84,7 @@ public static class MapPorter
 
         // Event scripts last: they need every ported map, to send warps and IDs to the right slot. A failure leaves
         // the empty scripts written with each map.
+        WaitForWeapons(options.AfterPid);
         if (ported.Count > 0)
             Step(report, "events", () => MapEvents.Port(ctx, ds3, er, ported.Select(p => p.Slot).ToList()));
 
@@ -104,6 +113,33 @@ public static class MapPorter
         Console.WriteLine(report.ToString());
         Console.WriteLine($"port-maps: {ported.Count} map(s) ported in {(DateTime.Now - started).TotalSeconds:F0} s; report {log}");
         return ported.Count > 0 ? 0 : 1;
+    }
+
+    /// <summary>Waits for the port-weapons process (see <see cref="Options.AfterPid"/>) to finish writing regulation.bin.</summary>
+    private static void WaitForWeapons(int pid)
+    {
+        if (pid <= 0)
+            return;
+        try
+        {
+            using var weapons = System.Diagnostics.Process.GetProcessById(pid);
+            // A finished process's ID can be reused; only another porter is waited for.
+            if (!weapons.HasExited && weapons.ProcessName.Contains("DarkSignPorter", StringComparison.OrdinalIgnoreCase))
+            {
+                Console.WriteLine("port-maps: maps done; waiting for port-weapons to finish regulation.bin before the events step");
+                // Never forever: after an hour the events step runs on whatever regulation is there, as it would alone.
+                if (!weapons.WaitForExit(TimeSpan.FromHours(1)))
+                    Console.WriteLine("port-maps: port-weapons is still running after an hour; continuing");
+            }
+        }
+        catch (ArgumentException)
+        {
+            // Already finished (no process with that ID).
+        }
+        catch (InvalidOperationException)
+        {
+            // Exited between the lookup and the wait.
+        }
     }
 
     private static void Step(StringBuilder report, string name, Func<string> step)

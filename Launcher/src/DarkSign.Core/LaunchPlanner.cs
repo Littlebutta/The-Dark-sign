@@ -12,13 +12,21 @@ public sealed record LaunchPlan(
 /// <summary>Turns settings into a validated launch plan. Starting the process is left to the UI.</summary>
 public static class LaunchPlanner
 {
-    public static LaunchPlan Plan(LauncherSettings settings, string root, GameId game)
+    /// <summary>
+    /// <paramref name="gameFolderReadOnly"/>: the launch writes nothing into the game folder (Elden Ring through me3,
+    /// which injects the save redirect itself), so the game may be any install, e.g. the player's own Steam copy.
+    /// Otherwise the exe must be inside the root, because the save-redirect DLL and steam_appid.txt go next to it.
+    /// </summary>
+    public static LaunchPlan Plan(LauncherSettings settings, string root, GameId game, bool gameFolderReadOnly = false)
     {
         if (!settings.GameExePaths.TryGetValue(game, out var exe) || string.IsNullOrWhiteSpace(exe))
             throw new InvalidOperationException($"No exe is set for {GameDefinition.Get(game).DisplayName}.");
         if (!File.Exists(exe))
             throw new FileNotFoundException("Game exe not found.", exe);
-        PathGuard.EnsureInsideRoot(exe, root);
+        if (!gameFolderReadOnly && !PathGuard.IsInsideRoot(exe, root))
+            throw new IsolationViolationException(
+                $"{GameDefinition.Get(game).DisplayName} is outside the data folder '{root}'. Its files are only read to build the " +
+                "Elden Ring mod; to launch it from here, put a copy of the game inside the data folder.");
 
         var definition = GameDefinition.Get(game);
         var profile = settings.GetActiveProfile();
@@ -48,7 +56,8 @@ public static class LaunchPlanner
         {
             env["SteamAppId"] = appId.ToString();
             env["SteamGameId"] = appId.ToString();
-            appIdFile = Path.Combine(workingDir, "steam_appid.txt");
+            if (!gameFolderReadOnly)
+                appIdFile = Path.Combine(workingDir, "steam_appid.txt");
         }
 
         return new LaunchPlan(game, Path.GetFullPath(exe), workingDir, options.ExtraArguments.Trim(), env,

@@ -55,13 +55,23 @@ public sealed class ExternalData(string cacheDir)
         using var response = Http.GetAsync(url).GetAwaiter().GetResult();
         if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
         {
-            File.WriteAllText(missing, url);
+            try { File.WriteAllText(missing, url); }
+            catch (IOException) { /* another porter process wrote it */ }
             return null;
         }
         response.EnsureSuccessStatusCode();
-        var tmp = path + ".part";
+        // port-weapons and port-maps run side by side, so on a first build both may fetch the same file: each writes its
+        // own temporary file, and if the other process already put the file in place, that one is kept.
+        var tmp = $"{path}.{Environment.ProcessId}.{Environment.CurrentManagedThreadId}.part";
         File.WriteAllBytes(tmp, response.Content.ReadAsByteArrayAsync().GetAwaiter().GetResult());
-        File.Move(tmp, path, overwrite: true);
+        try
+        {
+            File.Move(tmp, path, overwrite: false);
+        }
+        catch (IOException) when (File.Exists(path))
+        {
+            File.Delete(tmp);
+        }
         return path;
     }
 }

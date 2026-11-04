@@ -234,23 +234,54 @@ public static partial class MovesetPort
                 int importUnknown = imports.FirstOrDefault().Import?.Unknown ?? -1;
                 foreach (var (a, imp) in imports.Take(1))
                     Console.WriteLine($"moveset: template import example: a{templateSection:D3}_{a.ID:D6} imports {imp!.ImportFromAnimID} (file {a.AnimFileName}, unknown {imp.Unknown})");
-                foreach (var anim in tae.Animations)
+                // First pass, in order: find each move's DS3 source and Elden Ring template (lookups fill shared caches).
+                var anims = tae.Animations.ToList();
+                var jobs = new (Ds3Move? Source, byte[]? Ds3Bytes, ErAnim? Template)[anims.Count];
+                for (int i = 0; i < anims.Count; i++)
                 {
+                    var erId = (int)anims[i].ID;
+                    var source = erToDs3.TryGetValue(erId, out var ds3Id) ? FindDs3(ds3Taes!, ds3Main, ds3Id) : null;
+                    var ds3File = source is { } found ? ds3Hkx.Read(found.HkxName) : null;
+                    if (group.Any(p => p.Ds3Id == 10180000) && erToDs3.ContainsKey(erId))
+                        Console.WriteLine($"moveset: Friede's {erId} <- DS3 {ds3Id}: " +
+                                          (source is null ? "not in its DS3 sections" : ds3File is null ? $"{source.HkxName} NOT FOUND" : $"{source.HkxName}, {source.Events.Count} events"));
+                    var template = source is not null && ds3File is not null
+                        ? ErAnimFile(erArchives, $"a{templateSection:D3}_{erId:D6}") ?? ErAnimFile(erArchives, "a000_000000")!
+                        : null;
+                    jobs[i] = (source, ds3File, template);
+                }
+                // Second pass: the animation conversions, on every core. A failure is kept and thrown in order below,
+                // so a bad animation skips this moveset exactly as it did when the conversions ran one by one.
+                var convertedHkx = new (byte[]? Hkx, Exception? Error)[anims.Count];
+                Parallel.For(0, anims.Count, Parallelism.Options, i =>
+                {
+                    if (jobs[i] is not { Ds3Bytes: { } bytes, Template: { } template })
+                        return;
+                    try
+                    {
+                        convertedHkx[i] = (AnimPort.Convert(bytes, ds3Skeleton, erSkeleton, template.Bytes, template.Compendium).Hkx, null);
+                    }
+                    catch (Exception e)
+                    {
+                        convertedHkx[i] = (null, e);
+                    }
+                });
+
+                for (int i = 0; i < anims.Count; i++)
+                {
+                    var anim = anims[i];
                     var erId = (int)anim.ID;
                     var templateName = $"a{templateSection:D3}_{erId:D6}";
                     var newName = $"a{section:D3}_{erId:D6}";
                     if (anim.AnimFileName is { } fileName)
                         anim.AnimFileName = fileName.Replace(templateName, newName, StringComparison.OrdinalIgnoreCase);
 
-                    var source = erToDs3.TryGetValue(erId, out var ds3Id) ? FindDs3(ds3Taes!, ds3Main, ds3Id) : null;
-                    var ds3File = source is { } found ? ds3Hkx.Read(found.HkxName) : null;
-                    if (group.Any(p => p.Ds3Id == 10180000) && erToDs3.ContainsKey(erId))
-                        Console.WriteLine($"moveset: Friede's {erId} <- DS3 {ds3Id}: " +
-                                          (source is null ? "not in its DS3 sections" : ds3File is null ? $"{source.HkxName} NOT FOUND" : $"{source.HkxName}, {source.Events.Count} events"));
-                    if (source is { } s && ds3File is { } ds3Bytes)
+                    if (jobs[i] is { Source: { } s, Ds3Bytes: { } ds3Bytes })
                     {
-                        var template = ErAnimFile(erArchives, templateName) ?? ErAnimFile(erArchives, "a000_000000")!;
-                        var (hkx, _) = AnimPort.Convert(ds3Bytes, ds3Skeleton, erSkeleton, template.Bytes, template.Compendium);
+                        if (convertedHkx[i].Error is { } error)
+                            System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(error).Throw();
+                        var hkx = convertedHkx[i].Hkx
+                                  ?? throw new InvalidDataException($"no Elden Ring animation to use as the template for {newName}");
                         AddFile(erAnims, newName + ".hkx", hkx);
                         anim.MiniHeader = new TAE.Animation.AnimMiniHeader.Standard();
                         anim.AnimFileName = newName + ".hkt";

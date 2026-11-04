@@ -11,7 +11,11 @@ public static class GameDetector
     private static readonly HashSet<string> IgnoredFolders =
         new(StringComparer.OrdinalIgnoreCase) { "Launcher", "TheDarkSign" };
 
-    public static IReadOnlyList<DetectedGame> Scan(string root)
+    public static IReadOnlyList<DetectedGame> Scan(string root) => Scan(root, namedFoldersOnly: false);
+
+    /// <param name="namedFoldersOnly">Only look inside folders named for the game (a Steam library holds hundreds of
+    /// other games, whose folders are skipped).</param>
+    private static IReadOnlyList<DetectedGame> Scan(string root, bool namedFoldersOnly)
     {
         if (!Directory.Exists(root))
             return [];
@@ -28,6 +32,8 @@ public static class GameDetector
             var ordered = gameFolders.OrderByDescending(d => MatchesHint(game, Path.GetFileName(d)));
             foreach (var folder in ordered)
             {
+                if (namedFoldersOnly && !MatchesHint(game, Path.GetFileName(folder)))
+                    break; // the named folders come first, so the rest are other games
                 var exe = FindExe(folder, game.ExeNames, MaxDepth);
                 if (exe is null)
                     continue;
@@ -38,6 +44,42 @@ public static class GameDetector
             }
         }
         return results;
+    }
+
+    /// <summary>
+    /// Games in the project root first, then in each Steam library ("steamapps\common"), for the ones still missing.
+    /// </summary>
+    public static IReadOnlyList<DetectedGame> ScanAll(string root, IEnumerable<string> extraFolders)
+    {
+        var results = Scan(root).ToList();
+        foreach (var folder in extraFolders)
+        {
+            if (results.Count == GameDefinition.All.Count)
+                break;
+            foreach (var game in SafeScan(folder))
+                if (results.All(r => r.Id != game.Id))
+                    results.Add(game);
+        }
+        return results;
+    }
+
+    /// <summary>
+    /// The game's exe in a folder the player picked: the folder itself or up to two levels below it
+    /// (e.g. "ELDEN RING" or "ELDEN RING\Game"). Null if it isn't there.
+    /// </summary>
+    public static string? FindIn(GameId id, string folder)
+    {
+        if (!Directory.Exists(folder))
+            return null;
+        var game = GameDefinition.Get(id);
+        // The game-specific exe only: a generic one (an emulator) in a folder the player picked is still accepted.
+        return FindExe(folder, game.ExeNames, MaxDepth);
+    }
+
+    private static IReadOnlyList<DetectedGame> SafeScan(string folder)
+    {
+        try { return Scan(folder, namedFoldersOnly: true); }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException) { return []; }
     }
 
     internal static bool MatchesHint(GameDefinition game, string folderName)

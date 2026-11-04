@@ -143,6 +143,17 @@ public static class Commands
             newNames = WeaponText.Write(ctx, erArchives, ds3Archives, plans, erWeapons);
             ShopPort.Write(ctx, erArchives, erStore.Get("ShopLineupParam")!, ds3, plans);
         }
+        // The icons only read the archives and write the menu files, which nothing else touches, so they are built on
+        // other cores while the models, model positions and movesets are ported here.
+        var iconEntries = plans.Where(p => p.Status == "port")
+            .Select(p => new IconPort.Entry(Convert.ToInt32(ds3[p.Ds3Id]!["iconId"].Value), WeaponPort.NewIconId(p))).ToList();
+        var icons = Task.Run(() =>
+        {
+            using var _ = Timing.Stage("icons (side by side)");
+            IconPort.Write(ctx, erArchives, ds3Archives, iconEntries);
+        });
+        if (Parallelism.Serial)
+            icons.GetAwaiter().GetResult();
         using (Timing.Stage("models"))
             PortWeaponModels(ctx, erArchives, ds3Archives, plans, ds3, erWeapons);
         try
@@ -154,9 +165,6 @@ public static class Commands
         {
             Console.WriteLine($"absorp: failed, weapons keep their template's model positions ({e.GetType().Name}: {e.Message})");
         }
-        using (Timing.Stage("icons"))
-            IconPort.Write(ctx, erArchives, ds3Archives, plans.Where(p => p.Status == "port")
-                .Select(p => new IconPort.Entry(Convert.ToInt32(ds3[p.Ds3Id]!["iconId"].Value), WeaponPort.NewIconId(p))).ToList());
         try
         {
             using var _ = Timing.Stage("movesets, effects and sounds");
@@ -170,6 +178,9 @@ public static class Commands
             foreach (var file in MovesetPort.OutputFiles(ctx).Where(File.Exists))
                 File.Delete(file);
         }
+
+        using (Timing.Stage("waiting for icons"))
+            icons.GetAwaiter().GetResult(); // an icon failure fails the build, as before
 
         var path = ctx.ModPath("regulation.bin");
         using (Timing.Stage("regulation and item list"))
@@ -222,13 +233,19 @@ public static class Commands
     private static void PortWeaponModels(PorterContext ctx, GameArchives er, GameArchives ds3, List<WeaponPlan> plans,
         PARAM ds3Weapons, PARAM erWeapons)
     {
-        var materials = new List<ModelPort.NewMaterial>();
-        int converted = 0;
-        var failed = new List<string>();
-        foreach (var plan in plans.Where(p => p.Status == "port"))
+        // Each weapon's model is independent (its own binder in, its own file out), so they convert on every core.
+        // Results are kept per weapon and merged in plan order, so the materials list is the same on every run.
+        var ported = plans.Where(p => p.Status == "port").ToList();
+        var models = ported.Select(plan => (
+            Ds3Model: Convert.ToInt32(ds3Weapons[plan.Ds3Id]!["equipModelId"].Value),
+            TemplateModel: Convert.ToInt32(erWeapons[plan.TemplateId!.Value]!["equipModelId"].Value))).ToList();
+        var results = new (List<ModelPort.NewMaterial> Materials, bool Converted, string? Failure)[ported.Count];
+        Parallel.For(0, ported.Count, Parallelism.Options, i =>
         {
-            int ds3Model = Convert.ToInt32(ds3Weapons[plan.Ds3Id]!["equipModelId"].Value);
-            int templateModel = Convert.ToInt32(erWeapons[plan.TemplateId!.Value]!["equipModelId"].Value);
+            var plan = ported[i];
+            var (ds3Model, templateModel) = models[i];
+            var mine = new List<ModelPort.NewMaterial>();
+            bool done = false;
             try
             {
                 foreach (var lod in new[] { false, true })
@@ -238,10 +255,11 @@ public static class Commands
                         continue;
                     var path = ctx.ModPath(["parts", ModelPort.PartsPath(plan.NewModelId.Value, lod)[7..]]);
                     File.WriteAllBytes(path, DCX.Compress(model.Binder.Write(), model.Compression));
-                    materials.AddRange(model.Materials);
+                    mine.AddRange(model.Materials);
                     if (!lod)
-                        converted++;
+                        done = true;
                 }
+                results[i] = (mine, done, null);
             }
             catch (Exception ex)
             {
@@ -249,9 +267,12 @@ public static class Commands
                 var root = ex;
                 while (root.InnerException is not null)
                     root = root.InnerException;
-                failed.Add($"{plan.Name} (wp_a_{ds3Model:D4}): {root.GetType().Name}: {root.Message}");
+                results[i] = ([], false, $"{plan.Name} (wp_a_{ds3Model:D4}): {root.GetType().Name}: {root.Message}");
             }
-        }
+        });
+        var materials = results.SelectMany(r => r.Materials).ToList();
+        int converted = results.Count(r => r.Converted);
+        var failed = results.Where(r => r.Failure is not null).Select(r => r.Failure!).ToList();
         ModelPort.WriteMaterials(ctx, er, materials);
         Console.WriteLine($"models: {converted} converted, {failed.Count} failed");
         foreach (var f in failed)

@@ -8,6 +8,12 @@
     <LangVersion>13</LangVersion>
     <AssemblyName>DarkSignPorter</AssemblyName>
     <RootNamespace>DarkSign.Porter</RootNamespace>
+    <!-- The build is allocation-heavy and runs loops on every core: server GC collects on every core too, and DATAS
+         (adaptation mode 1) keeps its heap sizes modest, since port-weapons and port-maps run side by side. -->
+    <ServerGarbageCollection>true</ServerGarbageCollection>
+    <ConcurrentGarbageCollection>true</ConcurrentGarbageCollection>
+    <GarbageCollectionAdaptationMode>1</GarbageCollectionAdaptationMode>
+    <TieredPGO>true</TieredPGO>
   </PropertyGroup>
 
   <ItemGroup>

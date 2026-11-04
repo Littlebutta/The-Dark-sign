@@ -28,24 +28,27 @@ public static class IconPort
 
     public static void Write(PorterContext ctx, GameArchives er, GameArchives ds3, IReadOnlyList<Entry> entries)
     {
+        // Read and decompressed on every core; kept in the entries' order.
+        var found = new byte[]?[entries.Count];
+        Parallel.For(0, entries.Count, Parallelism.Options, i => found[i] = Ds3Icon(ds3, entries[i].Ds3IconId));
         var images = new List<(int NewIconId, byte[] Dds)>();
         var missing = new List<int>();
-        foreach (var entry in entries)
+        for (int i = 0; i < entries.Count; i++)
         {
-            var dds = Ds3Icon(ds3, entry.Ds3IconId);
-            if (dds is null)
-                missing.Add(entry.Ds3IconId);
+            if (found[i] is { } dds)
+                images.Add((entries[i].NewIconId, dds));
             else
-                images.Add((entry.NewIconId, dds));
+                missing.Add(entries[i].Ds3IconId);
         }
 
         var sheets = BuildSheets(images);
-        foreach (var quality in new[] { "hi", "low" })
+        // The two menu qualities write different files: side by side.
+        Parallel.ForEach(new[] { "hi", "low" }, Parallelism.Options, quality =>
         {
             AddSheets(ctx, er, quality, sheets);
             AddLayouts(ctx, er, quality, sheets);
             AddKnowledge(ctx, er, quality, images);
-        }
+        });
         Console.WriteLine($"icons: {images.Count} added on {sheets.Count} sheet(s)" + (missing.Count > 0 ? $", {missing.Count} DS3 icons not found ({string.Join(", ", missing.Take(10))})" : ""));
     }
 
@@ -68,7 +71,6 @@ public static class IconPort
     private static List<Sheet> BuildSheets(List<(int NewIconId, byte[] Dds)> images)
     {
         var sheets = new List<Sheet>();
-        var decoder = new BcDecoder();
         var encoder = new BcEncoder(CompressionFormat.Bc7);
         encoder.OutputOptions.GenerateMipMaps = false;
         encoder.OutputOptions.Quality = CompressionQuality.Balanced;
@@ -82,14 +84,17 @@ public static class IconPort
             var rgba = new byte[SheetWidth * height * 4];
             var positions = new Dictionary<int, (int, int)>();
             for (int i = 0; i < batch.Count; i++)
+                positions[batch[i].NewIconId] = (i % Columns * Icon, i / Columns * Icon);
+            // Each icon is decoded and scaled on its own core into its own cell of the sheet.
+            Parallel.For(0, batch.Count, Parallelism.Options, () => new BcDecoder(), (i, _, decoder) =>
             {
                 int x = i % Columns * Icon, y = i / Columns * Icon;
                 var pixels = decoder.DecodeRaw(batch[i].Dds[DdsDataOffset..], Source, Source, CompressionFormat.Bc7);
                 var small = Downscale(pixels, Source, Icon);
                 for (int row = 0; row < Icon; row++)
                     small.AsSpan(row * Icon * 4, Icon * 4).CopyTo(rgba.AsSpan(((y + row) * SheetWidth + x) * 4));
-                positions[batch[i].NewIconId] = (x, y);
-            }
+                return decoder;
+            }, _ => { });
             var data = encoder.EncodeToRawBytes(rgba, SheetWidth, height, PixelFormat.Rgba32, 0, out _, out _);
             sheets.Add(new Sheet($"{SheetPrefix}{sheets.Count:D2}", Dds(SheetWidth, height, Bc7, data), positions));
         }
@@ -179,14 +184,19 @@ public static class IconPort
         var folder = template.Name[..^ItemText.Leaf(template.Name).Length];
         int nextId = bxf.Files.Max(f => f.ID) + 1;
 
-        foreach (var (iconId, dds) in images)
+        // Each image is its own compressed TPF: compressed on every core, then added in order.
+        var packed = new byte[images.Count][];
+        Parallel.For(0, images.Count, Parallelism.Options, i =>
         {
-            var name = $"MENU_Knowledge_{iconId:D5}";
             var tpf = new TPF { Platform = templateTpf.Platform, Encoding = templateTpf.Encoding, Flag2 = templateTpf.Flag2 };
-            tpf.Textures.Add(new TPF.Texture(name, TpfBc7, 0, dds, TPF.TPFPlatform.PC));
-            var fileName = folder + name + ".tpf.dcx";
+            tpf.Textures.Add(new TPF.Texture($"MENU_Knowledge_{images[i].NewIconId:D5}", TpfBc7, 0, images[i].Dds, TPF.TPFPlatform.PC));
+            packed[i] = DCX.Compress(tpf.Write(), compression);
+        });
+        for (int i = 0; i < images.Count; i++)
+        {
+            var fileName = folder + $"MENU_Knowledge_{images[i].NewIconId:D5}" + ".tpf.dcx";
             bxf.Files.RemoveAll(f => f.Name == fileName);
-            bxf.Files.Add(new BinderFile(template.Flags, nextId++, fileName, DCX.Compress(tpf.Write(), compression)));
+            bxf.Files.Add(new BinderFile(template.Flags, nextId++, fileName, packed[i]));
         }
         bxf.Write(ctx.ModPath("menu", quality, "00_solo.tpfbhd"), ctx.ModPath("menu", quality, "00_solo.tpfbdt"));
     }

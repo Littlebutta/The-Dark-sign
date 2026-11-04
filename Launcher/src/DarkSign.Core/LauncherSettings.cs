@@ -77,8 +77,9 @@ public sealed class LauncherSettings
     public void Save(string path) => File.WriteAllText(path, JsonSerializer.Serialize(this, JsonOptions));
 
     /// <summary>
-    /// The launcher lives in "&lt;root&gt;\Launcher\...", so the root is the parent of the nearest
-    /// ancestor folder named "Launcher". Falls back to the parent of <paramref name="launcherDir"/>.
+    /// In the original layout the launcher lives in "&lt;root&gt;\Launcher\...", so the root is the parent of the nearest
+    /// ancestor folder named "Launcher". Otherwise (a player who unzipped the launcher into any folder) the launcher's
+    /// own folder is the root: the mod, tools and saves go in a "TheDarkSign" folder next to the exe.
     /// </summary>
     public static string ResolveDefaultRoot(string launcherDir)
     {
@@ -87,6 +88,6 @@ public sealed class LauncherSettings
             if (string.Equals(dir.Name, "Launcher", StringComparison.OrdinalIgnoreCase) && dir.Parent is not null)
                 return dir.Parent.FullName;
         }
-        return Directory.GetParent(Path.GetFullPath(launcherDir))?.FullName ?? launcherDir;
+        return Path.GetFullPath(launcherDir).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
     }
 }

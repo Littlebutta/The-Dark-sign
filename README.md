@@ -3,7 +3,23 @@
 Private, single-player cross-game overhaul for Dark Souls Remastered, Dark Souls III, Bloodborne and Elden Ring.
 `project_manifest.json` tracks what is built.
 
-## Folder layout
+## For players: install, play, uninstall
+
+The Dark Sign ships no game files. Each player builds the mod on their own PC from their own copies of the games.
+
+1. Install the [.NET 8 Desktop Runtime](https://dotnet.microsoft.com/download/dotnet/8.0) (x64) if you don't have it.
+2. Download `TheDarkSignLauncher.exe` from the [latest release](https://github.com/Littlebutta/The-Dark-sign/releases/latest)
+   and put it in an empty folder, e.g. `C:\Games\TheDarkSign`. That folder is the **data folder**: the built mod, its
+   tools and your Dark Sign saves go in a `TheDarkSign` folder inside it.
+3. Start it. It finds Elden Ring and Dark Souls III in your Steam libraries by itself; otherwise press **Browse…** on
+   each game's row and pick its install folder. The games can be anywhere: they are only read, never changed.
+4. Press **PLAY**. The first time, it downloads me3 and the porter and builds the mod from your game files (a few
+   minutes, on every core). Elden Ring then starts offline with the mod and its own saves; your normal Elden Ring saves
+   and installs are not touched. Starting Elden Ring from Steam still gives you the unmodded game.
+5. **Uninstall…** (in the Elden Ring panel) deletes the mod and everything the launcher downloaded or built. You choose
+   whether to keep your Dark Sign saves. Then delete the launcher's folder to remove the launcher too.
+
+## Folder layout (Devin's development PC)
 
 ```
 D:\The Dark sign\
@@ -80,7 +96,13 @@ off.
 archives and will build the Elden Ring content mod: items, enemies and bosses from Dark Souls III first, then Dark
 Souls Remastered and Bloodborne, with items Elden Ring already has skipped. It only reads the game folders; everything it writes goes to
 `TheDarkSign\Work` and `TheDarkSign\Mods\ER`. It lives in `TheDarkSign\Tools\Porter` and finds the
-project root from there, or takes `--root`.
+project root from there, or takes `--root`. Games are looked for in the root's subfolders unless given with
+`--game ER=<exe> --game DS3=<exe>` (the launcher passes the player's own installs this way).
+
+The build uses every core: the launcher runs `port-weapons` and `port-maps` side by side (port-maps waits for
+port-weapons, via `--after-pid`, only before its events step, which edits the regulation.bin port-weapons writes), and
+inside port-weapons the weapon models, icons and animation conversions run in parallel. `DARKSIGN_THREADS=1` runs
+every loop one item at a time, to rule threading out when a build looks wrong.
 
 ```
 git submodule update --init      # SoulsFormatsNEXT, pinned

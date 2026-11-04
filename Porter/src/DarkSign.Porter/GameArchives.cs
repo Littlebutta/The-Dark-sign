@@ -71,14 +71,23 @@ public sealed class GameArchives : IDisposable
         return ReadRaw(entry);
     }
 
+    // Reads (seek + read + AES decryption with SoulsFormats' shared AES object) happen one at a time; decompressing
+    // and parsing what was read, the slow part, runs in parallel on the callers' threads.
+    private static readonly object ReadLock = new();
+
+    /// <remarks>Safe to call from several threads.</remarks>
     public byte[] ReadRaw(ArchiveEntry entry)
     {
-        if (!_bdts.TryGetValue(entry.Archive, out var bdt))
+        byte[] bytes;
+        lock (ReadLock)
         {
-            bdt = File.OpenRead(System.IO.Path.Combine(GameDir, entry.Archive + ".bdt"));
-            _bdts[entry.Archive] = bdt;
+            if (!_bdts.TryGetValue(entry.Archive, out var bdt))
+            {
+                bdt = File.OpenRead(System.IO.Path.Combine(GameDir, entry.Archive + ".bdt"));
+                _bdts[entry.Archive] = bdt;
+            }
+            bytes = entry.Header.ReadFile(bdt);
         }
-        var bytes = entry.Header.ReadFile(bdt);
         var size = entry.Header.UnpaddedFileSize;
         return size > 0 && size < bytes.Length ? bytes[..(int)size] : bytes;
     }
@@ -99,9 +108,12 @@ public sealed class GameArchives : IDisposable
 
     public void Dispose()
     {
-        foreach (var s in _bdts.Values)
-            s.Dispose();
-        _bdts.Clear();
+        lock (ReadLock)
+        {
+            foreach (var s in _bdts.Values)
+                s.Dispose();
+            _bdts.Clear();
+        }
     }
 
     private static Dictionary<ulong, string> LoadDictionary(string file, PorterGame game)
