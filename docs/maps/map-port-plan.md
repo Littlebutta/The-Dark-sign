@@ -74,8 +74,13 @@ Both games run the same event system, and DarkScript3 documents every instructio
   that doesn't is skipped until cutscenes are ported.
 - The report (`port-maps` log) counts events kept, instructions converted and the most common misses.
 
-Not converted yet: DS3's "IF Action Button" family (doors, levers, fog walls; Elden Ring uses ActionButtonParam rows),
-sound and BGM instructions, map ceremonies and world tendency.
+- DS3's "IF Action Button" conditions (doors, levers, chests, elevators, boss fog) become "IF Action Button in Area".
+  Each distinct prompt gets an ActionButtonParam row (74000000+) in the mod's regulation, copied from row 6000 the way
+  JortPob does, with DS3's dummy poly, reach and angle. The prompt text is Elden Ring's when the words match ("Open"),
+  otherwise DS3's words are added to `menu_dlc02`'s ActionButtonText (74000000+). `Maps/ActionButtons.cs`.
+
+Not converted yet: sound and BGM instructions, map ceremonies and world tendency. Doors and levers only work once the
+DS3 objects themselves are ported (the next stage); until then the events wait for assets that aren't there.
 
 ## Open questions (answered by the first `map-survey` and in-game test)
 
