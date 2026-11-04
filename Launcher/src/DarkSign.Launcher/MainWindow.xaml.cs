@@ -429,6 +429,16 @@ public partial class MainWindow : Window
         var maps = await RunPorterAsync(setup, "port-maps", "Porting maps");
         if (!maps.Ok)
             StatusText.Text = $"The DS3 maps could not be ported (the rest of the content is fine); see {maps.Log}";
+        else
+        {
+            // port-maps reads its output back and checks it; show the verdict so a broken map is known before launch.
+            var check = Path.Combine(Root, "TheDarkSign", "Mods", "ER", "darksign_maps_check.txt");
+            var verdict = File.Exists(check)
+                ? File.ReadLines(check).LastOrDefault(l => l.StartsWith("map-validate:", StringComparison.Ordinal))
+                : null;
+            if (verdict is not null && !verdict.Contains(" 0 FAIL", StringComparison.Ordinal))
+                StatusText.Text = $"DS3 maps ported with problems ({verdict["map-validate:".Length..].Trim()}); see {check}";
+        }
         return true;
     }
 

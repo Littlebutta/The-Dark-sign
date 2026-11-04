@@ -138,6 +138,9 @@ struct PortedMap {
 std::vector<PortedMap> g_maps;
 bool g_maps_loaded;
 std::string g_run_status = "Starts a Dark Souls III run inside Elden Ring.";
+std::string g_map_check;        // "0 FAIL, 2 WARN" from darksign_maps_check.txt
+uint32_t g_pending_flag = 0;    // the request flag last set, until the event clears it
+ULONGLONG g_pending_since = 0;
 
 void load_maps()
 {
@@ -149,6 +152,18 @@ void load_maps()
     wchar_t *slash = wcsrchr(path, L'\\');
     if (!slash || (size_t)(slash - path) + 20 >= MAX_PATH)
         return;
+    // The porter's read-back check of the ported maps: its last line is "map-validate: N FAIL, M WARN".
+    wcscpy(slash + 1, L"darksign_maps_check.txt");
+    if (FILE *c = _wfopen(path, L"rb")) {
+        char line[512];
+        while (fgets(line, sizeof line, c))
+            if (strncmp(line, "map-validate:", 13) == 0) {
+                line[strcspn(line, "\r\n")] = 0;
+                g_map_check = line + 14;
+            }
+        fclose(c);
+        dks_log("maps: porter check: %s", g_map_check.c_str());
+    }
     wcscpy(slash + 1, L"darksign_maps.tsv");
     FILE *f = _wfopen(path, L"rb");
     if (!f)
@@ -175,6 +190,9 @@ void request_flag(uint32_t flag, const char *done)
         return;
     }
     g_run_status = done;
+    g_pending_flag = flag;
+    g_pending_since = GetTickCount64();
+    dks_log("ds3 run: set request flag %u", flag);
     g_open = false; // hand the game its input back for the warp
 }
 
@@ -211,6 +229,27 @@ void draw_ds3_run()
     ImGui::EndDisabled();
     ImGui::Separator();
     ImGui::TextWrapped("%s", g_run_status.c_str());
+
+    // Diagnostics for the first tests: did the event script pick up the request, and what did the porter's check say?
+    if (g_pending_flag) {
+        int still = dks_get_event_flag(g_pending_flag);
+        ULONGLONG waited = GetTickCount64() - g_pending_since;
+        if (still == 0) {
+            dks_log("ds3 run: request flag %u cleared by the event after %llu ms", g_pending_flag, waited);
+            g_pending_flag = 0;
+        } else if (still == 1 && waited > 5000) {
+            ImGui::TextColored(ImVec4(1.0f, 0.6f, 0.3f, 1.0f), "The run event hasn't picked up the request after %llu s.", waited / 1000);
+            ImGui::TextWrapped("The mod's event script (event\\common.emevd.dcx) is probably not loaded, or was built for another game version. "
+                               "Send TheDarkSign\\Mods\\ER\\darksign_maps_check.txt and the test menu log.");
+            static bool logged = false;
+            if (!logged) {
+                dks_log("ds3 run: request flag %u still set after %llu ms; common.emevd events not running?", g_pending_flag, waited);
+                logged = true;
+            }
+        }
+    }
+    if (!g_map_check.empty())
+        ImGui::TextDisabled("Porter check of the ported maps: %s", g_map_check.c_str());
 }
 
 void change_runes(bool add)

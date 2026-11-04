@@ -30,6 +30,7 @@ const string Usage = """
       chr-survey <DS3|ER> <chr id>...  report an enemy's files, binders, AI scripts and params (enemy port step 1)
       map-selftest                 offline checks of the map porter (no game files needed)
       map-survey [map ids]         report both games' map files for the ported slots (layouts, binders, textures, events)
+      map-validate                 read back the ported maps in the mod folder and check them (port-maps runs this too)
       port-maps [map ids] [--ds3-groups] [--binary-collision] [--simd]
                                    port the DS3 maps that have an Elden Ring slot, and the F1 menu's DS3 run events
     """;
@@ -67,6 +68,7 @@ try
         "validate-mod" => ModValidate.Run(ctx),
         "port-maps" => DarkSign.Porter.Maps.MapPorter.Run(ctx, argList[1..]),
         "map-survey" => DarkSign.Porter.Maps.MapSurvey.Run(ctx, argList[1..]),
+        "map-validate" => DarkSign.Porter.Maps.MapValidate.Run(ctx),
         "item-list" => Commands.ItemListOnly(ctx),
         "weapons-plan" => Commands.WeaponsPlan(ctx).Count > 0 ? 0 : 1,
         "matbin-info" when argList.Count == 2 => Explore.MatbinInfo(ctx, argList[1]),
