@@ -5,7 +5,7 @@ namespace DarkSign.Porter.Maps;
 
 /// <summary>
 /// `port-maps`: ports every Dark Souls III map that has an Elden Ring slot (<see cref="MapSlots"/>) into the mod
-/// folder in one run: layout (MSB), map piece models, their textures and materials, collision, and an empty event
+/// folder in one run: layout (MSB), map piece models, their textures and materials, collision, navmesh, and an empty event
 /// script for the slot. It then adds the "DS3 run" events to common.emevd and writes darksign_maps.tsv, which the F1
 /// menu reads. Everything is read from the games' archives and written under TheDarkSign\Mods\ER.
 ///
@@ -166,6 +166,16 @@ public static class MapPorter
         }
         foreach (var name in missingCollisions)
             report.AppendLine($"  collision {name}: left out (no converted file)");
+
+        // Navmesh, so enemies placed in the map can walk. A failure only leaves them standing.
+        try
+        {
+            report.AppendLine("  " + MapNavmesh.Port(ctx, ds3, er, ds3Id, erId, options));
+        }
+        catch (Exception ex)
+        {
+            report.AppendLine($"  navmesh: FAILED: {ex.Message}");
+        }
 
         // Drop what has no model, then write the layout.
         var msb = layout.Msb;
