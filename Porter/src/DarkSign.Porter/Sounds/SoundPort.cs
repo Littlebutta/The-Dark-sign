@@ -47,7 +47,13 @@ public static class SoundPort
         // The template: the first Elden Ring player sound in the bank whose event plays a Sound through a Play action.
         var template = templateIds.Select(id => bank.Chain(FxSoundExplore.Fnv1($"Play_c{id:D9}"))).FirstOrDefault(c => c is not null)
                        ?? throw new InvalidDataException($"no template sound found in {Bank}");
-        Console.WriteLine($"sounds: {Bank} version {bank.Version}, template event {template.Event.Id}, sound {template.Sound.Id}");
+        Console.WriteLine($"sounds: {Bank} version {bank.Version}, template event {template.Event.Id}, sound {template.Sound.Id}; {Tuning(bank, template.Sound)}");
+
+        // How well the node reader knows this bank (Spellforge reads every node of the game's banks to its exact size;
+        // a type that falls short here means the new layout falls back to the older one for it).
+        Console.WriteLine("sounds: nodes read exactly: " + string.Join(", ", bank.Objects
+            .Where(o => o.Type is WwiseBank.SoundType or WwiseBank.RanSeqCntrType or WwiseBank.SwitchCntrType or WwiseBank.ActorMixerType or WwiseBank.LayerCntrType)
+            .GroupBy(o => o.Type).OrderBy(g => g.Key).Select(g => $"type {g.Key} {g.Count(o => WwiseNode.Read(o) is not null)}/{g.Count()}")));
 
         var names = todo.SelectMany(w => new[] { "", "b", "c", "d", "e", "f", "g", "h" }.Select(v => $"{Letter(w.Kind)}{w.Id:D9}{v}")).ToHashSet();
         var samples = Ds3Samples(ctx, ds3Archives, names);
@@ -71,7 +77,7 @@ public static class SoundPort
             }
             var wem = WwiseBank.PcmWem(pcm, sample.Channels, sample.Rate);
             uint soundId = UnusedId(bank, $"darksign_sound_{letter}{id}"), actionId = UnusedId(bank, $"darksign_action_{letter}{id}");
-            uint mediaId = UnusedId(bank, $"darksign_media_{letter}{id}");
+            uint mediaId = UnusedId(bank, $"darksign_media_{letter}{id}"), containerId = UnusedId(bank, $"darksign_container_{letter}{id}");
             // Embedded in the bank like nearly all of Elden Ring's own sounds (17,018 embedded, 3 streamed): the
             // streamed loose wems (sd\wem\NN\<ID>.wem) stayed silent in game. DARKSIGN_STREAM_SOUNDS=1 streams them.
             if (StreamSounds)
@@ -79,16 +85,33 @@ public static class SoundPort
                 var mediaName = mediaId.ToString();
                 File.WriteAllBytes(ctx.ModPath("sd", "wem", mediaName[..2], mediaName + ".wem"), wem); // me3: sd/wem/NN/<id>.wem
             }
-            bank.AddSound(template, eventId, soundId, actionId, mediaId, wem, streamed: StreamSounds);
+            bank.AddSound(template, eventId, soundId, actionId, containerId, mediaId, wem, streamed: StreamSounds);
             result.Add(kind, id);
             bytes += wem.Length;
         }
         if (result.Count > 0)
             File.WriteAllBytes(ctx.ModPath(["sd", .. Bank.TrimStart('/').Split('/')]), bank.Write());
-        Console.WriteLine($"sounds: {result.Count} DS3 sounds ported ({bytes / 1024} KB of PCM {(StreamSounds ? "streamed from sd/wem" : "embedded")}, {bank.ChildrenAdded} added to their parent) " +
+        Console.WriteLine($"sounds: {result.Count} DS3 sounds ported ({bytes / 1024} KB of PCM {(StreamSounds ? "streamed from sd/wem" : "embedded")}, {bank.OwnContainerCount} in a container of their own, {bank.ChildrenAdded} added to their parent) " +
                           $"into sd{Bank}; left out: " +
                           (reasons.Count == 0 ? "none" : string.Join(", ", reasons.Select(r => $"{r.Value} {r.Key}"))));
         return result;
+    }
+
+    // The template's volume, pitch and filters up its parents (they add up in Wwise), for the log: the port keeps the
+    // volume and leaves pitch and filters out of the new sounds.
+    private static string Tuning(WwiseBank bank, WwiseBank.HircObject sound)
+    {
+        var parts = new List<string>();
+        var obj = sound;
+        for (int depth = 0; depth < 8 && WwiseNode.Read(obj) is { } node; depth++)
+        {
+            string P(byte id, string unit) => node.Props.TryGetValue(id, out var v) ? $" {WwiseNode.AsFloat(v):0.#}{unit}" : "";
+            parts.Add($"{obj.Type}:{obj.Id}{P(WwiseNode.PropVolume, " dB")}{P(WwiseNode.PropPitch, " cents")}{P(WwiseNode.PropLowPass, " lpf")}{P(WwiseNode.PropHighPass, " hpf")}");
+            if (bank.Get(node.Parent(obj.Data)) is not { } up)
+                break;
+            obj = up;
+        }
+        return parts.Count == 0 ? "template nodes not readable (older layout used)" : "template chain " + string.Join(" < ", parts);
     }
 
     private static uint UnusedId(WwiseBank bank, string name)

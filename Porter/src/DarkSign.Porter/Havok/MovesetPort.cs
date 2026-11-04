@@ -582,6 +582,17 @@ public static partial class MovesetPort
             var bytes = (byte[])layout.Clone();
             BitConverter.GetBytes(s.Kind).CopyTo(bytes, 0);
             BitConverter.GetBytes(id).CopyTo(bytes, 4);
+            // Wwise_PlaySound_BySlot (129; Smithbox's ER TAE defs): the template swing's StateInfo, its override sound
+            // (+20 type, +24 ID) and its SoundIDOffsetType (+28; 2 adds the weapon's wepSeIdOffset) all belong to the
+            // Elden Ring whoosh. The community's copied sound events clear StateInfo; the override is set to the
+            // ported sound itself so either ID the game picks is ours, and -1 means no weapon offset.
+            if ((erSwing?.Type ?? 128) == 129 && bytes.Length >= 32)
+            {
+                BitConverter.GetBytes((short)0).CopyTo(bytes, 16);
+                BitConverter.GetBytes(s.Kind).CopyTo(bytes, 20);
+                BitConverter.GetBytes(id).CopyTo(bytes, 24);
+                bytes[28] = unchecked((byte)-1);
+            }
             return new TAE.Event(e.StartTime, e.EndTime, erSwing?.Type ?? 128, e.Unk04, bytes, false);
         }
     }
