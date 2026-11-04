@@ -30,6 +30,12 @@ public sealed class EventPort
 
     public Report Stats { get; } = new();
 
+    /// <summary>Where DS3 action button prompts get their ActionButtonParam rows; without it they don't convert.</summary>
+    public ActionButtons? Buttons { get; init; }
+
+    // DS3's "IF Action Button" family (all start Result Condition Group, Target Entity Type, Target Entity ID, ...).
+    private static readonly HashSet<int> ActionButtonIds = [5, 13, 18, 19];
+
     public sealed class Report
     {
         public int Events, EventsDropped, Instructions, Converted, NoOps;
@@ -424,6 +430,8 @@ public sealed class EventPort
             }
             return (new EMEVD.Instruction(2000, ins.ID, data), null);
         }
+        if (ins.Bank == 3 && ActionButtonIds.Contains(ins.ID))
+            return ActionButton(ins);
         // Same layout in both games and nothing to move (waits, labels, condition groups, plain flow).
         var map = MappingFor(ins.Bank, ins.ID);
         if (map is null)
@@ -472,6 +480,36 @@ public sealed class EventPort
             Emedf.Write(output, arg, value);
         }
         return (new EMEVD.Instruction(to.Bank, to.Id, output), map);
+    }
+
+    /// <summary>
+    /// DS3 "IF Action Button ..." -> Elden Ring "IF Action Button in Area" with an ActionButtonParam row that holds
+    /// the prompt's shape and text. The condition group and target entity carry over (and so do parameters for them).
+    /// </summary>
+    private (EMEVD.Instruction?, Mapping?) ActionButton(EMEVD.Instruction ins)
+    {
+        var from = _ds3.Get(ins.Bank, ins.ID);
+        var to = _er.Get(3, 24);
+        if (Buttons is null || from is null || to is null || to.Args.Count < 3)
+            return (null, null);
+        Emedf.Arg? Find(string name) => from.Args.FirstOrDefault(a => a.Name.Equals(name, StringComparison.OrdinalIgnoreCase));
+        long Value(string name, long fallback) => Find(name) is { } a ? Emedf.Read(ins.ArgData, a) : fallback;
+        float Float(string name, float fallback) => Find(name) is { } a ? BitConverter.Int32BitsToSingle((int)Emedf.Read(ins.ArgData, a)) : fallback;
+
+        var button = new ActionButtons.Button(
+            (int)Value("Dummypoly ID", -1), Float("Reaction Distance", 1.5f), (int)MathF.Round(Float("Reaction Angle (deg)", 180f)),
+            (int)Value("Help Message ID", -1), from.Name.Contains("Boss", StringComparison.OrdinalIgnoreCase));
+        var row = Buttons.RowFor(button);
+        var group = from.Args.ToList().FindIndex(a => a.Name == "Result Condition Group");
+        var entity = from.Args.ToList().FindIndex(a => a.Name == "Target Entity ID");
+        if (group < 0 || entity < 0)
+            return (null, null);
+        var output = Emedf.Defaults(to);
+        Emedf.Write(output, to.Args[0], Emedf.Read(ins.ArgData, from.Args[group]));
+        Emedf.Write(output, to.Args[1], row);
+        Emedf.Write(output, to.Args[2], Move(Emedf.Read(ins.ArgData, from.Args[entity]), Kind.Entity));
+        return (new EMEVD.Instruction(to.Bank, to.Id, output),
+            new Mapping(from, to, [group, -1, entity], [Kind.Other, Kind.Other, Kind.Entity], false));
     }
 
     /// <summary>`event-coverage [ds3.emedf.json er.emedf.json]`: which DS3 instructions convert, and to what.</summary>

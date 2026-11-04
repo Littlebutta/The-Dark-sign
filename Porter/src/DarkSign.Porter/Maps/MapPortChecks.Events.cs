@@ -13,6 +13,7 @@ public static partial class MapPortChecks
         yield return ("event port: event parameters follow their argument and values passed in move by kind", EventParameters);
         yield return ("event port: DS3 common events are ported once, under saved IDs, with Elden Ring's slot argument", EventCommon);
         yield return ("event port: flag ranges stay consecutive and the flag table reads back the same", EventFlagTable);
+        yield return ("event port: DS3 action buttons become IF Action Button in Area with one ActionButtonParam row per prompt", EventActionButtons);
     }
 
     // Made-up definitions in DarkScript3's format, shaped like the real ones where it matters.
@@ -23,6 +24,11 @@ public static partial class MapPortChecks
           { "name": "Result Condition Group", "type": 3 }, { "name": "Desired Flag State", "type": 0 },
           { "name": "Target Event Flag Type", "type": 0 }, { "name": "Target Event Flag ID", "type": 2 } ] },
         { "name": "IF Steam Disconnected", "index": 38, "args": [ { "name": "Result Condition Group", "type": 3 } ] },
+        { "name": "IF Action Button", "index": 5, "args": [
+          { "name": "Result Condition Group", "type": 3 }, { "name": "Target Entity Type", "type": 5 },
+          { "name": "Target Entity ID", "type": 5 }, { "name": "Reaction Angle (deg)", "type": 6 },
+          { "name": "Dummypoly ID", "type": 4 }, { "name": "Reaction Distance", "type": 6 },
+          { "name": "Help Message ID", "type": 5 }, { "name": "Reaction Type", "type": 0 }, { "name": "Pad ID", "type": 5 } ] },
         { "name": "IF Batch Event Flags", "index": 1, "args": [
           { "name": "Result Condition Group", "type": 3 }, { "name": "Desired Flag State", "type": 0 },
           { "name": "Target Event Flag Type", "type": 0 }, { "name": "Starting Target Event Flag ID", "type": 2 },
@@ -51,6 +57,9 @@ public static partial class MapPortChecks
           { "name": "Result Condition Group", "type": 3 }, { "name": "Desired Flag State", "type": 0 },
           { "name": "Target Event Flag Type", "type": 0 }, { "name": "Starting Target Event Flag ID", "type": 2 },
           { "name": "Ending Target Event Flag ID", "type": 2 } ] },
+        { "name": "IF Action Button in Area", "index": 24, "args": [
+          { "name": "Result Condition Group", "type": 3 }, { "name": "Action Button Parameter ID", "type": 5, "default": -1 },
+          { "name": "Target Entity ID", "type": 2 } ] },
       ] },
       { "index": 2003, "instrs": [
         { "name": "Set Event Flag", "index": 66, "args": [
@@ -262,5 +271,42 @@ public static partial class MapPortChecks
         {
             File.Delete(path);
         }
+    }
+
+    private static void EventActionButtons()
+    {
+        var er = Emedf.Parse(ErDefs);
+        // A lever twice with the same prompt, and a door with another: two rows. The second lever's entity is a parameter.
+        var ds3 = new EMEVD(EMEVD.Game.DarkSouls3);
+        var e = new EMEVD.Event(14000400, EMEVD.Event.RestBehaviorType.Default);
+        e.Instructions.Add(Ins(3, 5, (sbyte)0, 1, 4001100, 60f, (short)100, 1.5f, 10010400, (byte)0, 0));
+        e.Instructions.Add(Ins(3, 5, (sbyte)-1, 1, 0, 60f, (short)100, 1.5f, 10010400, (byte)0, 0));
+        e.Instructions.Add(Ins(3, 5, (sbyte)1, 1, 4001200, 180f, (short)-1, 2f, 10010401, (byte)0, 0));
+        e.Parameters.Add(new EMEVD.Parameter(1, 8, 0, 4)); // Target Entity ID is at byte 8 (after the s8 group and the s32 type)
+        ds3.Events.Add(e);
+
+        var taken = new HashSet<int> { ActionButtons.FirstRow };
+        var buttons = new ActionButtons(taken.Contains);
+        var port = new EventPort(Emedf.Parse(Ds3Defs), er, [(Ds3Id, ErId)], new FlagMap()) { Buttons = buttons };
+        port.Learn(ds3);
+        var result = port.Convert(ds3, EMEVD.Game.Sekiro, MoveToSlot);
+        Expect(result.Events.Count == 1, "the event with action buttons was left out");
+        var ins = result.Events[0].Instructions;
+        Expect(ins.All(i => i.Bank == 3 && i.ID == 24), "not every action button became IF Action Button in Area");
+        Expect(Arg(ins[0], "Target Entity ID", er) == 45001100, $"button entity {Arg(ins[0], "Target Entity ID", er)}, expected 45001100");
+        Expect(Arg(ins[1], "Result Condition Group", er) == -1, "condition group lost");
+        long row0 = Arg(ins[0], "Action Button Parameter ID", er), row1 = Arg(ins[1], "Action Button Parameter ID", er),
+            row2 = Arg(ins[2], "Action Button Parameter ID", er);
+        Expect(row0 == row1 && row0 != row2, "the same prompt should share one row and another prompt get its own");
+        Expect(row0 == ActionButtons.FirstRow + 1, $"row {row0} doesn't skip an ID Elden Ring already uses");
+        Expect(buttons.Rows.Count == 2 && buttons.Rows.Keys.Any(b => b.DummyPoly == 100 && b.Angle == 60 && b.Distance == 1.5f && b.HelpMessage == 10010400),
+            "the prompt's shape wasn't read from the DS3 instruction");
+        var p = result.Events[0].Parameters;
+        var entityArg = er.Get(3, 24)!.Args[2];
+        Expect(p.Count == 1 && p[0].InstructionIndex == 1 && p[0].TargetStartByte == entityArg.Offset, "the entity parameter didn't follow its argument");
+
+        // Without rows to point at, the event is left out as before.
+        var without = NewEventPort().Convert(ds3, EMEVD.Game.Sekiro, MoveToSlot);
+        Expect(without.Events.Count == 0, "action buttons converted with nowhere to put their rows");
     }
 }

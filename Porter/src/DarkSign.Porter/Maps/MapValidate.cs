@@ -88,6 +88,7 @@ public static class MapValidate
         foreach (var (_, erId) in listed)
             ValidateMapScript(ctx, er, report, erId);
         ValidateCommonFunc(ctx, er, report);
+        ValidateActionButtons(ctx, report, listed.Select(l => (MapId?)l.Er).Append(null).ToList());
         return report;
     }
 
@@ -392,6 +393,43 @@ public static class MapValidate
         catch (Exception ex)
         {
             report.Fail($"common_func.emevd doesn't read back: {ex.Message}");
+        }
+    }
+
+    /// <summary>Every ActionButtonParam row a ported script points at is in the mod's regulation.</summary>
+    public static void ValidateActionButtons(PorterContext ctx, Report report, IReadOnlyList<MapId?> maps)
+    {
+        var used = new HashSet<int>();
+        foreach (var id in maps)
+        {
+            var path = ctx.ModPath(MapPorter.ModParts(id is { } m ? MapEvents.ScriptPath(m) : MapEvents.CommonFunc));
+            if (!File.Exists(path))
+                continue;
+            try
+            {
+                foreach (var ins in EMEVD.Read(DCX.Decompress(File.ReadAllBytes(path))).Events.SelectMany(e => e.Instructions))
+                    if (ins.Bank == 3 && ins.ID == 24 && ins.ArgData.Length >= 8 && ActionButtons.IsOurs(BitConverter.ToInt32(ins.ArgData, 4)))
+                        used.Add(BitConverter.ToInt32(ins.ArgData, 4));
+            }
+            catch
+            {
+                // reported by the script checks
+            }
+        }
+        if (used.Count == 0)
+            return;
+        try
+        {
+            var param = ActionButtons.LoadRegulation(ctx).Get("ActionButtonParam");
+            var missing = used.Where(r => param?[r] is null).Select(r => r.ToString()).ToList();
+            if (missing.Count > 0)
+                report.Fail($"ported scripts use {missing.Count} ActionButtonParam rows the regulation doesn't have: {Sample(missing)}");
+            else
+                report.Ok($"action buttons: all {used.Count} ActionButtonParam rows the ported scripts use are in the regulation");
+        }
+        catch (Exception ex)
+        {
+            report.Fail($"action buttons: can't read the mod's ActionButtonParam: {ex.Message}");
         }
     }
 
