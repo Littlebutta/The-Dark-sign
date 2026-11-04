@@ -247,6 +247,9 @@ public static partial class ModValidate
         catch (Exception e) { r.Error($"sd\\enus\\cs_main.bnk does not read back: {e.GetType().Name}: {e.Message}"); return; }
         foreach (var dup in bank.Objects.GroupBy(o => o.Id).Where(g => g.Count() > 1).Take(5))
             r.Error($"cs_main.bnk: HIRC ID {dup.Key} is used by {dup.Count()} objects (Wwise rejects the bank)");
+        var index = new Dictionary<uint, int>();
+        for (int i = 0; i < bank.Objects.Count; i++)
+            index.TryAdd(bank.Objects[i].Id, i);
         int ok = 0;
         foreach (var s in sounds.Distinct())
         {
@@ -271,10 +274,35 @@ public static partial class ModValidate
                 r.Error($"{name}: Sound {chain.Sound.Id} embeds media {media}, which the bank doesn't hold");
             else if (stream != 0 && !File.Exists(wem) && bank.Media(media) is null)
                 r.Error($"{name}: Sound {chain.Sound.Id} streams media {media}, but sd\\wem\\{media.ToString()[..2]}\\{media}.wem is missing");
+            else if (HierarchyProblem(bank, index, chain.Sound) is { } problem)
+                r.Error($"{name}: {problem} (Wwise drops a bank whose children don't come before their parents or aren't listed by them)");
             else
                 ok++;
         }
         r.Info($"sounds: {ok} ported sound events reach their audio");
+    }
+
+    // Up a ported Sound's parents to the first actor-mixer: each parent must come after its child in the bank and
+    // list it among its children (the community's rule for adding sounds; see WwiseBank.AddSound).
+    private static string? HierarchyProblem(WwiseBank bank, Dictionary<uint, int> index, WwiseBank.HircObject sound)
+    {
+        var obj = sound;
+        for (int depth = 0; depth < 8; depth++)
+        {
+            if (WwiseNode.Read(obj) is not { } node)
+                return null; // not readable exactly: nothing to say
+            uint parentId = node.Parent(obj.Data);
+            if (parentId == 0 || bank.Get(parentId) is not { } parent || WwiseNode.Read(parent) is not { } parentNode)
+                return null;
+            if (index[parentId] < index[obj.Id])
+                return $"node {obj.Id} comes after its parent {parentId}";
+            if (parentNode.ChildrenAt >= 0 && !parentNode.Children.Contains(obj.Id))
+                return $"node {obj.Id}'s parent {parentId} doesn't list it";
+            if (parent.Type == WwiseBank.ActorMixerType)
+                return null;
+            obj = parent;
+        }
+        return null;
     }
 
     private static void CheckEffects(Report r, string modDir, List<(int Section, int Animation, int Id)> effects)

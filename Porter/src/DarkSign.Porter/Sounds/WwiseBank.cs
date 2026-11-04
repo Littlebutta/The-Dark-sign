@@ -109,9 +109,17 @@ public sealed class WwiseBank
 
     /// <summary>Adds an event that plays new PCM media, cloned from a template chain. Streamed media stays out of
     /// the bank (the game reads it from /wem/NN/&lt;media ID&gt;.wem), so the bank only grows by the new objects;
-    /// otherwise the media is embedded. The new Sound is also added to its parent's child list.</summary>
+    /// otherwise the media is embedded.
+    /// <para>The new objects are laid out the way the community's sound tools add a sound (Yonder's "simple sound",
+    /// ndahn's er_soundbank_helper, Spellforge's copy into cs_main): Event -> Play action -> a random container of
+    /// its own -> the Sound, with the container hung under the template's actor-mixer (so it keeps the weapon
+    /// sounds' bus, attenuation and 3D settings) and listed by it, children before parents in the hierarchy.
+    /// The template's pitch and low/high-pass filters are left out: Elden Ring's swing whoosh container is tuned
+    /// for its own sample (about -2,200 cents with both filters), which buried a DS3 sample under it.
+    /// When the template's nodes can't be read exactly, the older layout is used (the Sound under the template's
+    /// own container, played directly).</para></summary>
     public void AddSound((HircObject Event, HircObject Action, HircObject Sound) template, uint eventId, uint soundId, uint actionId,
-        uint mediaId, byte[] wem, bool streamed)
+        uint containerId, uint mediaId, byte[] wem, bool streamed)
     {
         // Sound: ID, then AkBankSourceData: plugin (PCM), stream type (0 in the bank, 2 streamed), media ID and size.
         // A source-plugin template (e.g. Wwise Silence, plugin type 2) carries a u32 parameter size and its parameters
@@ -127,9 +135,21 @@ public sealed class WwiseBank
         BitConverter.GetBytes(mediaId).CopyTo(sound, 9);
         BitConverter.GetBytes(wem.Length).CopyTo(sound, 13);
         sound[17] &= unchecked((byte)~0x02); // not prefetched
+        if (OwnContainers && WwiseNode.Read(new HircObject(SoundType, soundId, sound)) is { } soundNode)
+            sound = soundNode.WithoutProps(sound, Retuned);
+
+        uint target = soundId;
+        HircObject? insertBefore = null, newContainer = null;
+        if (OwnContainers && ContainerFor(template.Sound, sound, soundId, containerId) is { } own)
+        {
+            (newContainer, insertBefore, sound) = own;
+            target = containerId;
+            OwnContainerCount++;
+        }
+
         var action = (byte[])template.Action.Data.Clone();
         BitConverter.GetBytes(actionId).CopyTo(action, 0);
-        BitConverter.GetBytes(soundId).CopyTo(action, 6);
+        BitConverter.GetBytes(target).CopyTo(action, 6);
         // Event: ID and an action list of one, in the template's count format (u8 in newer banks, u32 before).
         bool byteCount = template.Event.Data.Length == 5 + 4 * template.Event.Data[4];
         var ev = byteCount ? new byte[9] : new byte[12];
@@ -137,22 +157,89 @@ public sealed class WwiseBank
         if (byteCount) { ev[4] = 1; BitConverter.GetBytes(actionId).CopyTo(ev, 5); }
         else { BitConverter.GetBytes(1).CopyTo(ev, 4); BitConverter.GetBytes(actionId).CopyTo(ev, 8); }
 
-        // Wwise loads the hierarchy children first: a container listing a child that comes after it fails the whole
-        // bank. So a Sound added to its parent's list goes right before the parent; the rest go at the end.
-        var parent = AddChild(template.Sound, soundId);
         var newSound = new HircObject(SoundType, soundId, sound);
-        if (parent is not null)
-            _objects.Insert(_objects.IndexOf(parent), newSound);
-        else
-            _objects.Add(newSound);
-        foreach (var obj in new[] { newSound, new HircObject(ActionType, actionId, action), new HircObject(EventType, eventId, ev) })
+        if (newContainer is not null)
         {
-            if (obj != newSound)
-                _objects.Add(obj);
+            // Wwise loads the hierarchy children first: Sound, then its container, then the actor-mixer listing it.
+            int at = _objects.IndexOf(insertBefore!);
+            _objects.Insert(at, newContainer);
+            _objects.Insert(at, newSound);
+            _byId[newContainer.Id] = newContainer;
+        }
+        else
+        {
+            // A Sound added to its parent's list goes right before the parent; the rest go at the end.
+            var parent = AddChild(template.Sound, soundId);
+            if (parent is not null)
+                _objects.Insert(_objects.IndexOf(parent), newSound);
+            else
+                _objects.Add(newSound);
+        }
+        _byId[soundId] = newSound;
+        foreach (var obj in new[] { new HircObject(ActionType, actionId, action), new HircObject(EventType, eventId, ev) })
+        {
+            _objects.Add(obj);
             _byId[obj.Id] = obj;
         }
         if (!streamed && _media.TryAdd(mediaId, wem))
             _added.Add((mediaId, wem));
+    }
+
+    /// <summary>DARKSIGN_SOUND_CONTAINERS=0 goes back to the older layout (the Sound under Elden Ring's own container).</summary>
+    public static readonly bool OwnContainers = Environment.GetEnvironmentVariable("DARKSIGN_SOUND_CONTAINERS") != "0";
+
+    private static readonly byte[] Retuned = [WwiseNode.PropPitch, WwiseNode.PropLowPass, WwiseNode.PropHighPass];
+
+    /// <summary>How many new sounds got a container of their own.</summary>
+    public int OwnContainerCount { get; private set; }
+
+    // A random container of its own for a new Sound: a copy of the template Sound's container (its volume and
+    // playback settings, without pitch and filters) holding just the new Sound, under the nearest actor-mixer above
+    // it, which lists it. Returns the container, the actor-mixer (the container goes right before it) and the Sound
+    // data with its parent set to the container; null when the template isn't laid out that way.
+    private (HircObject Container, HircObject Mixer, byte[] Sound)? ContainerFor(HircObject templateSound, byte[] sound, uint soundId, uint containerId)
+    {
+        if (WwiseNode.Read(new HircObject(SoundType, soundId, sound)) is not { } soundNode
+            || Get(soundNode.Parent(sound)) is not { Type: RanSeqCntrType } container
+            || WwiseNode.Read(container) is not { PlaylistAt: >= 0 } containerNode)
+            return null;
+        // Up to the nearest actor-mixer (a container can sit under a switch or layer container first).
+        HircObject? mixer = null;
+        WwiseNode? mixerNode = null;
+        var node = containerNode;
+        var obj = container;
+        for (int depth = 0; depth < 8 && mixer is null; depth++)
+        {
+            if (Get(node.Parent(obj.Data)) is not { } up || WwiseNode.Read(up) is not { } upNode)
+                return null;
+            if (up.Type == ActorMixerType && upNode.ChildrenAt >= 0)
+                (mixer, mixerNode) = (up, upNode);
+            (obj, node) = (up, upNode);
+        }
+        if (mixer is null || mixerNode is null)
+            return null;
+
+        var data = containerNode.WithoutProps(container.Data, Retuned);
+        if (WwiseNode.Read(new HircObject(RanSeqCntrType, containerId, data)) is not { PlaylistAt: >= 0 } copy)
+            return null;
+        int weight = containerNode.Playlist.Count > 0 ? containerNode.Playlist[0].Weight : 50000;
+        BitConverter.GetBytes(containerId).CopyTo(data, 0);
+        BitConverter.GetBytes(mixer.Id).CopyTo(data, copy.ParentAt);
+        BitConverter.GetBytes((ushort)0).CopyTo(data, copy.AvoidRepeatAt); // one child: nothing to avoid
+        data = [.. data.AsSpan(0, copy.ChildrenAt), .. BitConverter.GetBytes(1), .. BitConverter.GetBytes(soundId),
+            .. BitConverter.GetBytes((ushort)1), .. BitConverter.GetBytes(soundId), .. BitConverter.GetBytes(weight)];
+
+        // The actor-mixer lists its children sorted by ID (every game bank does), at the end of its data.
+        var kids = mixerNode.Children.Append(containerId).Distinct().Order().ToList();
+        var list = new MemoryStream();
+        list.Write(BitConverter.GetBytes(kids.Count));
+        foreach (var k in kids) list.Write(BitConverter.GetBytes(k));
+        mixer.Data = [.. mixer.Data.AsSpan(0, mixerNode.ChildrenAt), .. list.ToArray(), .. mixer.Data.AsSpan(mixerNode.ChildrenAt + 4 + 4 * mixerNode.Children.Count)];
+        ChildrenAdded++;
+
+        var newSound = (byte[])sound.Clone();
+        BitConverter.GetBytes(containerId).CopyTo(newSound, soundNode.ParentAt);
+        return (new HircObject(RanSeqCntrType, containerId, data), mixer, newSound);
     }
 
     /// <summary>How many new Sounds were added to their parent container's child list.</summary>
@@ -183,7 +270,7 @@ public sealed class WwiseBank
         return null;
     }
 
-    private const byte RanSeqCntrType = 5, SwitchCntrType = 6, ActorMixerType = 7, LayerCntrType = 9;
+    public const byte RanSeqCntrType = 5, SwitchCntrType = 6, ActorMixerType = 7, LayerCntrType = 9;
 
     private HircObject? ParentOf(HircObject sound)
     {
