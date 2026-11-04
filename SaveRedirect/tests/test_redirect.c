@@ -29,6 +29,10 @@ int main(void)
     CHECK(dks_redirect(&c, L"\\\\?\\c:/users/dev/appdata/roaming/darksoulsiii/x/DS30000.SL2.bak", out, DKS_MAX_PATH));
     CHECK(wcscmp(out, L"D:\\The Dark sign\\TheDarkSign\\Saves\\Default\\DS3\\x\\DS30000.dksign.bak") == 0);
 
+    /* Seamless Co-op's own save (ER0000.co2 / DS30000.co2) still lands in the isolated folder, keeping its name. */
+    CHECK(dks_redirect(&c, L"C:\\Users\\Dev\\AppData\\Roaming\\DarkSoulsIII\\x\\DS30000.co2", out, DKS_MAX_PATH));
+    CHECK(wcscmp(out, L"D:\\The Dark sign\\TheDarkSign\\Saves\\Default\\DS3\\x\\DS30000.co2") == 0);
+
     /* The folder itself, and a non-save file inside it keep their names. */
     CHECK(dks_redirect(&c, L"C:\\Users\\Dev\\AppData\\Roaming\\DarkSoulsIII", out, DKS_MAX_PATH));
     CHECK(wcscmp(out, L"D:\\The Dark sign\\TheDarkSign\\Saves\\Default\\DS3") == 0);

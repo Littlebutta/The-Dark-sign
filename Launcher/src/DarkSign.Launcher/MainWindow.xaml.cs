@@ -31,6 +31,7 @@ public partial class MainWindow : Window
             row.ExePath = _settings.GameExePaths.GetValueOrDefault(row.Definition.Id, "");
         RefreshProfiles();
         TestMenuBox.IsChecked = _settings.TestMenu;
+        SeamlessBox.IsChecked = _settings.SeamlessCoop;
 
         // Games installed or copied in since the last start are picked up without pressing "Find my games".
         if (_rows.Any(r => !File.Exists(r.ExePath)))
@@ -275,7 +276,8 @@ public partial class MainWindow : Window
             : !File.Exists(_settings.GameExePaths.GetValueOrDefault(GameId.EldenRing, ""))
             ? "Elden Ring was not found: point the launcher at it in the list below (Browse…)."
             : setup.ContentVersion is { } version
-                ? $"Dark Souls III weapons are ported (content build {version}). They're sold by Merchant Kalé."
+                ? $"Dark Souls III weapons are ported (content build {version}). They're sold by Merchant Kalé." +
+                  (SeamlessCoop.Fingerprint(setup.ModDir) is { } code ? $" Mod code {code}: co-op partners need the same code." : "")
                 : "The content isn't built yet. The first Play builds it from your game files, which takes a few minutes.";
     }
 
@@ -348,11 +350,22 @@ public partial class MainWindow : Window
                 dlls.Add(setup.WriteDll(EldenRingSetup.TestMenuDllName, TestMenuDll.Bytes));
                 env[EldenRingSetup.ItemsVariable] = setup.ItemsFile;
             }
-            var profile = setup.WriteProfile(dlls);
+            string? seamless = null;
+            if (_settings.SeamlessCoop)
+            {
+                if (SeamlessCoop.Problem(_settings.SeamlessCoopDll) is { } problem)
+                    throw new InvalidOperationException("Seamless Co-op is on, but " + char.ToLower(problem[0]) + problem[1..] +
+                                                        " Untick Seamless Co-op to play alone.");
+                seamless = _settings.SeamlessCoopDll;
+                env[SeamlessCoop.CoopVariable] = "1";
+            }
+            var profile = setup.WriteProfile(SeamlessCoop.Natives(seamless, dlls));
             Process.Start(EldenRingSetup.Me3LaunchInfo(plan, me3, profile, env));
-            StatusText.Text = $"Launched Elden Ring. Saves: {plan.SaveDirectory}" + (env.Count > 0
-                ? ". Press F1 in game for the test menu (it shows over Borderless or Windowed mode)."
-                : ".");
+            StatusText.Text = $"Launched Elden Ring. Saves: {plan.SaveDirectory}" +
+                (seamless is not null ? $". Seamless Co-op is on (mod code {SeamlessCoop.Fingerprint(setup.ModDir) ?? "?"})" : "") +
+                (env.ContainsKey(EldenRingSetup.ItemsVariable)
+                    ? ". Press F1 in game for the test menu (it shows over Borderless or Windowed mode)."
+                    : ".");
         }
         catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or IOException or InvalidDataException
                                        or InvalidOperationException or UnauthorizedAccessException
@@ -592,6 +605,29 @@ public partial class MainWindow : Window
     private void OnTestMenuChanged(object sender, RoutedEventArgs e)
     {
         _settings.TestMenu = TestMenuBox.IsChecked == true;
+        _settings.Save(_settingsPath);
+    }
+
+    private void OnSeamlessChanged(object sender, RoutedEventArgs e)
+    {
+        var on = SeamlessBox.IsChecked == true;
+        if (on && SeamlessCoop.Problem(_settings.SeamlessCoopDll) is not null)
+        {
+            var dialog = new Microsoft.Win32.OpenFileDialog
+            {
+                Title = "Choose ersc.dll from your Seamless Co-op download (the SeamlessCoop folder)",
+                Filter = "Seamless Co-op|ersc.dll",
+            };
+            if (dialog.ShowDialog(this) != true || SeamlessCoop.Problem(dialog.FileName) is { } problem)
+            {
+                SeamlessBox.IsChecked = false;
+                return;
+            }
+            _settings.SeamlessCoopDll = dialog.FileName;
+        }
+        if (on && SeamlessCoop.Password(_settings.SeamlessCoopDll).Length == 0)
+            StatusText.Text = $"Set a co-op password in {SeamlessCoop.SettingsName} next to ersc.dll; everyone in the session needs the same one.";
+        _settings.SeamlessCoop = on;
         _settings.Save(_settingsPath);
     }
 

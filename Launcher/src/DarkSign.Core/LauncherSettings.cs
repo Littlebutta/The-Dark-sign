@@ -45,6 +45,12 @@ public sealed class LauncherSettings
     /// <summary>Load the F1 test menu (give any item, set runes) when playing Elden Ring.</summary>
     public bool TestMenu { get; set; } = true;
 
+    /// <summary>Load Seamless Co-op (the player's own ersc.dll, <see cref="SeamlessCoopDll"/>) when playing Elden Ring.</summary>
+    public bool SeamlessCoop { get; set; }
+
+    /// <summary>Full path of ersc.dll from the player's own Seamless Co-op download. Never copied or shipped.</summary>
+    public string SeamlessCoopDll { get; set; } = "";
+
     /// <summary>Check GitHub for a newer launcher on every start.</summary>
     public bool AutoUpdate { get; set; } = true;
 

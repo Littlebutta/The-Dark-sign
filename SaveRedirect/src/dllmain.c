@@ -287,6 +287,30 @@ static void make_dirs(const wchar_t *path)
     CreateDirectoryW(buf, NULL);
 }
 
+/* Seamless Co-op (LukeYui) installed next to the game exe: its launcher (ds3sc_launcher.exe /
+   ersc_launcher.exe) or its SeamlessCoop folder. */
+static int seamless_installed(const wchar_t *exe)
+{
+    static const wchar_t *const names[] = { L"ds3sc_launcher.exe", L"ersc_launcher.exe", L"SeamlessCoop" };
+    wchar_t dir[DKS_MAX_PATH], probe[DKS_MAX_PATH];
+    wcsncpy(dir, exe, DKS_MAX_PATH - 1);
+    dir[DKS_MAX_PATH - 1] = 0;
+    dirname_inplace(dir);
+    for (size_t i = 0; i < sizeof names / sizeof names[0]; i++) {
+        _snwprintf(probe, DKS_MAX_PATH, L"%ls\\%ls", dir, names[i]);
+        if (GetFileAttributesW(probe) != INVALID_FILE_ATTRIBUTES)
+            return 1;
+    }
+    return 0;
+}
+
+static int env_on(const wchar_t *name)
+{
+    wchar_t value[8];
+    DWORD n = GetEnvironmentVariableW(name, value, 8);
+    return n > 0 && n < 8 && value[0] == L'1';
+}
+
 static void init(void)
 {
     wchar_t exe[DKS_MAX_PATH];
@@ -294,6 +318,11 @@ static void init(void)
     const wchar_t *game = dks_game_from_exe(exe);
     if (!game)
         return; /* loaded by some other program: only act as dinput8 */
+
+    /* Started by hand (not by our launcher) in a game folder that has Seamless Co-op: that is the
+       player's own Seamless run with its own .co2 saves, so stay out of its way (dinput8 only). */
+    if (GetEnvironmentVariableW(L"DKSIGN_SAVE_DIR", NULL, 0) == 0 && seamless_installed(exe))
+        return;
 
     if (!GetEnvironmentVariableW(L"DKSIGN_SAVE_DIR", g_cfg.save_dir, DKS_MAX_PATH) && !default_save_dir(game, g_cfg.save_dir))
         goto fail;
@@ -326,6 +355,14 @@ static void init(void)
     g_active = o_CreateFileW != NULL;
     if (!g_active)
         goto fail;
+
+    /* Co-op mode (the launcher sets DKSIGN_COOP=1 when Seamless Co-op is loaded): Seamless talks to the
+       other players through Steam's networking inside this process, so sockets stay open. FromSoftware's
+       servers stay off through me3's offline start (start_online = false) and Seamless itself. */
+    if (env_on(L"DKSIGN_COOP")) {
+        log_line(L"offline: co-op mode, sockets left open for Seamless Co-op");
+        return;
+    }
 
     /* Single-player only: the game never reaches FromSoftware's servers. */
     if (!dks_block_online(log_line)) {

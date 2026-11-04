@@ -287,4 +287,37 @@ public sealed class CoreTests : IDisposable
         Assert.Equal(".dksign", start.Environment[SaveIsolation.SaveExtVariable]);
         Assert.Equal(setup.ItemsFile, start.Environment[EldenRingSetup.ItemsVariable]);
     }
+
+    [Fact]
+    public void Seamless_coop_is_loaded_first_from_the_players_own_dll_and_reads_its_password()
+    {
+        var setup = new EldenRingSetup(_root);
+        var ersc = Touch("Downloads", "SeamlessCoop", "ersc.dll");
+        File.WriteAllText(Path.Combine(Path.GetDirectoryName(ersc)!, SeamlessCoop.SettingsName),
+            "[GAMEPLAY]\nallow_invaders = 1\n\n[PASSWORD]\ncooppassword = ashen one\n\n[SAVE]\nsave_file_extension = co2\n");
+        Assert.Null(SeamlessCoop.Problem(ersc));
+        Assert.NotNull(SeamlessCoop.Problem(""));
+        Assert.NotNull(SeamlessCoop.Problem(Touch("Downloads", "SeamlessCoop", "other.dll")));
+        Assert.Equal("ashen one", SeamlessCoop.Password(ersc));
+
+        var ours = setup.WriteDll(SaveIsolation.RedirectDllName, [1]);
+        var profile = File.ReadAllText(setup.WriteProfile(SeamlessCoop.Natives(ersc, [ours])));
+        var esc = (string p) => p.Replace("\\", "\\\\");
+        Assert.True(profile.IndexOf(esc(ersc), StringComparison.Ordinal) < profile.IndexOf(esc(ours), StringComparison.Ordinal));
+        Assert.Equal(new[] { ours }, SeamlessCoop.Natives(null, [ours]));
+    }
+
+    [Fact]
+    public void Mod_code_is_the_same_for_the_same_regulation_and_missing_before_a_build()
+    {
+        var setup = new EldenRingSetup(_root);
+        Assert.Null(SeamlessCoop.Fingerprint(setup.ModDir));
+        Directory.CreateDirectory(setup.ModDir);
+        File.WriteAllBytes(Path.Combine(setup.ModDir, "regulation.bin"), [1, 2, 3]);
+        var code = SeamlessCoop.Fingerprint(setup.ModDir);
+        Assert.Equal(8, code!.Length);
+        Assert.Equal(code, SeamlessCoop.Fingerprint(setup.ModDir));
+        File.WriteAllBytes(Path.Combine(setup.ModDir, "regulation.bin"), [1, 2, 4]);
+        Assert.NotEqual(code, SeamlessCoop.Fingerprint(setup.ModDir));
+    }
 }
