@@ -101,11 +101,12 @@ public static class MsbPort
     }
 
     /// <summary>
-    /// The DS3 player part the run starts at: one whose entity ID ends in 990-999 (DS3's convention for a map's
-    /// arrival points), else the first.
+    /// The DS3 player part the run starts at: one whose map-local entity number is 990-999 (arrival points), else
+    /// the first with an entity ID, else the first.
     /// </summary>
     public static MSB3.Part.Player? ChooseStart(MSB3 ds3, MapId ds3Id) =>
-        ds3.Parts.Players.FirstOrDefault(p => p.EntityID >= ds3Id.EntityBase + 990 && p.EntityID < ds3Id.EntityBase + 1000)
+        ds3.Parts.Players.FirstOrDefault(p => ds3Id.OwnsDs3Id(p.EntityID) && (p.EntityID - ds3Id.Ds3EntityBase) is >= 990 and < 1000)
+        ?? ds3.Parts.Players.FirstOrDefault(p => p.EntityID > 0)
         ?? ds3.Parts.Players.FirstOrDefault();
 
     private static void CopyCommon(MSB3.Part src, MSBE.Part part, MapId ds3Id, MapId erId)

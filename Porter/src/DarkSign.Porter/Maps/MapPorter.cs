@@ -74,10 +74,16 @@ public static class MapPorter
         if (materials.Count > 0)
             Step(report, "materials", () => WriteMaterials(ctx, er, materials));
 
-        WriteMapList(ctx, ported.Select(p => p.Slot));
-        var startMap = ported.FirstOrDefault(p => p.Slot.Ds3 == MapId.Parse("m40_00_00_00"));
+        // Event scripts last: they need every ported map, to send warps and IDs to the right slot. A failure leaves
+        // the empty scripts written with each map.
+        if (ported.Count > 0)
+            Step(report, "events", () => MapEvents.Port(ctx, ds3, er, ported.Select(p => p.Slot).ToList()));
+
+        var warps = ported.Select((p, i) => new RunEvents.Warp(p.Slot.Er, (uint)p.StartEntity, i)).ToList();
+        WriteMapList(ctx, ported.Select(p => p.Slot), warps);
+        var startMap = ported.FirstOrDefault(p => p.Slot.Ds3 == MapId.Parse("m40_00_00_00") && !p.Slot.Probe);
         if (startMap.Slot is not null)
-            report.AppendLine(AddRunEvents(ctx, er, startMap.Slot.Er, (uint)startMap.StartEntity));
+            Step(report, "run events", () => AddRunEvents(ctx, er, startMap.Slot.Er, (uint)startMap.StartEntity, warps));
         else
             report.AppendLine("run events: not added (Firelink Shrine / Cemetery of Ash was not ported)");
 
@@ -118,8 +124,14 @@ public static class MapPorter
         MapTextures textures, List<BinderFile> materials, StringBuilder report)
     {
         var (ds3Id, erId) = (slot.Ds3, slot.Er);
+        // A map ID Elden Ring doesn't ship takes its formats and template parts from the slot's template map.
+        var hostId = er.Contains(MsbPath(erId)) ? erId : slot.Host;
+        if (slot.Probe && hostId == erId)
+            throw new InvalidDataException($"{erId} already exists in Elden Ring, so it can't test new map IDs");
+        if (hostId != erId)
+            report.AppendLine($"  {erId} is a new map ID; formats come from {hostId}");
         var ds3Msb = MSB3.Read(ds3.Read(MsbPath(ds3Id)));
-        var (hostBytes, msbCompression) = er.ReadWithCompression(MsbPath(erId));
+        var (hostBytes, msbCompression) = er.ReadWithCompression(MsbPath(hostId));
         var host = MSBE.Read(hostBytes);
 
         var layout = MsbPort.Convert(ds3Msb, host, ds3Id, erId, new MsbPort.Options { AllVisible = !options.Ds3Groups });
@@ -129,12 +141,12 @@ public static class MapPorter
 
         // Models.
         var hostPieceBinders = host.Models.MapPieces
-            .Select(m => ErMapBndPath(erId, ModelNumber(m.Name)))
+            .Select(m => ErMapBndPath(hostId, ModelNumber(m.Name)))
             .Where(er.Contains)
             .Take(8)
             .ToList();
         if (hostPieceBinders.Count == 0)
-            throw new InvalidDataException($"no map piece binder of {erId} found to use as a template");
+            throw new InvalidDataException($"no map piece binder of {hostId} found to use as a template");
         var (hostBndBytes, bndCompression) = er.ReadWithCompression(hostPieceBinders[0]);
         var hostBnd = BND4.Read(hostBndBytes);
         var hostFlvers = hostPieceBinders.SelectMany(p => BND4.Read(er.Read(p)).Files)
@@ -151,7 +163,7 @@ public static class MapPorter
             {
                 if (!ds3.Contains(source))
                     throw new FileNotFoundException(source);
-                var binder = models.ConvertBinder(BND4.Read(ds3.Read(source)), hostBnd, ds3Id, erId, number);
+                var binder = models.ConvertBinder(BND4.Read(ds3.Read(source)), hostBnd, ds3Id, erId, number, hostId);
                 File.WriteAllBytes(ctx.ModPath(ModParts(ErMapBndPath(erId, number))), DCX.Compress(binder.Write(), bndCompression));
             }
             catch (Exception ex)
@@ -170,7 +182,7 @@ public static class MapPorter
         var collisionModels = layout.Msb.Models.Collisions.Select(m => m.Name).ToHashSet(StringComparer.OrdinalIgnoreCase);
         foreach (var kind in new[] { "h", "l" })
         {
-            var result = MapCollisions.Port(ctx, ds3, er, ds3Id, erId, kind, options);
+            var result = MapCollisions.Port(ctx, ds3, er, ds3Id, erId, kind, options, hostId);
             report.AppendLine($"  collision {kind}: {result.Summary}");
             if (kind == "h")
                 foreach (var name in collisionModels.Where(n => !result.Ported.Contains(ModelNumber(n))))
@@ -182,7 +194,7 @@ public static class MapPorter
         // Navmesh, so enemies placed in the map can walk. A failure only leaves them standing.
         try
         {
-            report.AppendLine("  " + MapNavmesh.Port(ctx, ds3, er, ds3Id, erId, options));
+            report.AppendLine("  " + MapNavmesh.Port(ctx, ds3, er, ds3Id, erId, options, hostId));
         }
         catch (Exception ex)
         {
@@ -199,11 +211,13 @@ public static class MapPorter
         report.AppendLine($"  written: {msb.Parts.MapPieces.Count} map pieces, {msb.Parts.Collisions.Count} collisions, {msb.Parts.Players.Count} player points");
 
         // The slot's own event script would run colosseum events; replace it with an empty one.
+        // A new map ID gets one too, in the template's format.
         var eventPath = $"/event/{erId}.emevd.dcx";
-        if (er.Contains(eventPath))
+        var hostEventPath = $"/event/{hostId}.emevd.dcx";
+        if (er.Contains(hostEventPath))
         {
-            var vanilla = EMEVD.Read(er.Read(eventPath));
-            var (_, eventCompression) = er.ReadWithCompression(eventPath);
+            var vanilla = EMEVD.Read(er.Read(hostEventPath));
+            var (_, eventCompression) = er.ReadWithCompression(hostEventPath);
             File.WriteAllBytes(ctx.ModPath(ModParts(eventPath)), DCX.Compress(RunEvents.EmptyMapScript(vanilla).Write(), eventCompression));
         }
 
@@ -251,14 +265,14 @@ public static class MapPorter
     }
 
     /// <summary>darksign_maps.tsv: one line per ported map, read by the F1 menu's "DS3 run" tab.</summary>
-    private static void WriteMapList(PorterContext ctx, IEnumerable<MapSlots.Slot> slots)
+    private static void WriteMapList(PorterContext ctx, IEnumerable<MapSlots.Slot> slots, IReadOnlyList<RunEvents.Warp> warps)
     {
-        var lines = new List<string> { "# DS3 map\tElden Ring slot\tname (written by DarkSignPorter port-maps)" };
-        lines.AddRange(slots.Select(s => $"{s.Ds3}\t{s.Er}\t{s.Name}"));
+        var lines = new List<string> { "# DS3 map\tElden Ring slot\tname\twarp request flag (written by DarkSignPorter port-maps)" };
+        lines.AddRange(slots.Select((s, i) => $"{s.Ds3}\t{s.Er}\t{s.Name}\t{RunEvents.WarpRequestFlag(warps[i].Index)}"));
         File.WriteAllLines(ctx.ModPath("darksign_maps.tsv"), lines);
     }
 
-    private static string AddRunEvents(PorterContext ctx, GameArchives er, MapId host, uint startEntity)
+    private static string AddRunEvents(PorterContext ctx, GameArchives er, MapId host, uint startEntity, IReadOnlyList<RunEvents.Warp> warps)
     {
         const string Common = "/event/common.emevd.dcx";
         var modCommon = ctx.ModPath(ModParts(Common));
@@ -271,7 +285,9 @@ public static class MapPorter
         var back = RunEvents.FindReturnPoint(scripts)
                    ?? throw new InvalidDataException("no WarpPlayer target found in Elden Ring's event scripts to return to");
         RunEvents.AddTo(common, host, startEntity, back);
+        RunEvents.AddWarps(common, warps);
         File.WriteAllBytes(modCommon, DCX.Compress(common.Write(), compression));
-        return $"run events: start warps to {host} entity {startEntity}; leave warps to {back.Map} entity {back.EntityId}";
+        return $"run events: start warps to {host} entity {startEntity}; leave warps to {back.Map} entity {back.EntityId}; "
+               + $"{warps.Count} per-map warps ({string.Join(", ", warps.Select(w => $"{w.Map} flag {RunEvents.WarpRequestFlag(w.Index)}"))})";
     }
 }

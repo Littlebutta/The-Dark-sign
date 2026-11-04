@@ -27,6 +27,14 @@ public static class RunEvents
     public const uint StartEventId = FlagBlock + 1100;
     public const uint LeaveEventId = FlagBlock + 1101;
 
+    /// <summary>Per-map warps (F1 menu, one button per ported map): request flag 2200+i, event 1200+i.</summary>
+    public const int MaxWarps = 100;
+    public static uint WarpRequestFlag(int index) => FlagBlock + 2200 + (uint)index;
+    public static uint WarpEventId(int index) => FlagBlock + 1200 + (uint)index;
+    private static bool IsWarpEvent(long id) => id >= FlagBlock + 1200 && id < FlagBlock + 1200 + MaxWarps;
+
+    public sealed record Warp(MapId Map, uint EntityId, int Index);
+
     private const byte On = 1, Off = 0, EventFlagType = 0, EndRestart = 1;
 
     // Instruction layouts from DarkScript3's er-common.emedf.json. Built through Make, because SoulsFormats'
@@ -35,7 +43,7 @@ public static class RunEvents
     public static EMEVD.Instruction Make(int bank, int id, params object[] args) => new(bank, id, args);
     private static EMEVD.Instruction WaitForFlag(uint flag) => Make(1003, 0, On, EventFlagType, flag);
     private static EMEVD.Instruction SetFlag(uint flag, byte state) => Make(2003, 66, EventFlagType, flag, state);
-    private static EMEVD.Instruction Warp(MapId map, uint entity) =>
+    private static EMEVD.Instruction WarpPlayer(MapId map, uint entity) =>
         Make(2003, 14, (byte)map.Area, (byte)map.Block, (byte)map.Region, (byte)map.Index, entity, -1);
     private static EMEVD.Instruction WaitSeconds(float seconds) => Make(1001, 0, seconds);
     private static EMEVD.Instruction EndAndRestart() => Make(1000, 4, EndRestart);
@@ -56,7 +64,7 @@ public static class RunEvents
         start.Instructions.Add(WaitForFlag(StartDs3Request));
         start.Instructions.Add(SetFlag(StartDs3Request, Off));
         start.Instructions.Add(SetFlag(Ds3RunActive, On));
-        start.Instructions.Add(Warp(host, startEntity));
+        start.Instructions.Add(WarpPlayer(host, startEntity));
         start.Instructions.Add(WaitSeconds(1));
         start.Instructions.Add(EndAndRestart());
 
@@ -64,7 +72,7 @@ public static class RunEvents
         leave.Instructions.Add(WaitForFlag(LeaveDs3Request));
         leave.Instructions.Add(SetFlag(LeaveDs3Request, Off));
         leave.Instructions.Add(SetFlag(Ds3RunActive, Off));
-        leave.Instructions.Add(Warp(back.Map, back.EntityId));
+        leave.Instructions.Add(WarpPlayer(back.Map, back.EntityId));
         leave.Instructions.Add(WaitSeconds(1));
         leave.Instructions.Add(EndAndRestart());
 
@@ -83,7 +91,37 @@ public static class RunEvents
 
     private static bool IsOurInit(EMEVD.Instruction i) =>
         i.Bank == 2000 && i.ID == 0 && i.ArgData.Length >= 8
-        && BitConverter.ToUInt32(i.ArgData, 4) is StartEventId or LeaveEventId;
+        && (BitConverter.ToUInt32(i.ArgData, 4) is StartEventId or LeaveEventId || IsWarpEvent(BitConverter.ToUInt32(i.ArgData, 4)));
+
+    /// <summary>
+    /// Adds (or replaces) one warp event per ported map: it waits for the map's request flag, turns the run on and
+    /// warps to the map's start point. Lets each slot be tested on its own from the F1 menu.
+    /// </summary>
+    public static void AddWarps(EMEVD common, IEnumerable<Warp> warps)
+    {
+        common.Events.RemoveAll(e => IsWarpEvent(e.ID));
+        var constructor = common.Events.FirstOrDefault(e => e.ID == 0);
+        if (constructor is null)
+        {
+            constructor = new EMEVD.Event(0, EMEVD.Event.RestBehaviorType.Default);
+            common.Events.Insert(0, constructor);
+        }
+        constructor.Instructions.RemoveAll(i => i.Bank == 2000 && i.ID == 0 && i.ArgData.Length >= 8 && IsWarpEvent(BitConverter.ToUInt32(i.ArgData, 4)));
+        foreach (var w in warps)
+        {
+            if (w.Index < 0 || w.Index >= MaxWarps)
+                throw new ArgumentOutOfRangeException(nameof(warps), $"warp index {w.Index}");
+            var e = new EMEVD.Event(WarpEventId(w.Index), EMEVD.Event.RestBehaviorType.Default);
+            e.Instructions.Add(WaitForFlag(WarpRequestFlag(w.Index)));
+            e.Instructions.Add(SetFlag(WarpRequestFlag(w.Index), Off));
+            e.Instructions.Add(SetFlag(Ds3RunActive, On));
+            e.Instructions.Add(WarpPlayer(w.Map, w.EntityId));
+            e.Instructions.Add(WaitSeconds(1));
+            e.Instructions.Add(EndAndRestart());
+            common.Events.Add(e);
+            constructor.Instructions.Add(InitializeEvent(0, WarpEventId(w.Index)));
+        }
+    }
 
     /// <summary>
     /// Where "Leave DS3 run" sends the player: the first WarpPlayer target into Roundtable Hold (m11_10) found in

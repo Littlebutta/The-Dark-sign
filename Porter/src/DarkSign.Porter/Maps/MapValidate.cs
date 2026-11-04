@@ -85,6 +85,9 @@ public static class MapValidate
             ValidateMap(ctx, er, report, erId, matbins, textures);
         }
         ValidateEvents(ctx, er, report, listed.Select(l => l.Er).FirstOrDefault());
+        foreach (var (_, erId) in listed)
+            ValidateMapScript(ctx, er, report, erId);
+        ValidateCommonFunc(ctx, er, report);
         return report;
     }
 
@@ -334,6 +337,61 @@ public static class MapValidate
                 yield return $"material {i} uses GX list {m.GXIndex} of {flver.GXLists.Count}";
             if (string.IsNullOrEmpty(m.MTD))
                 yield return $"material {i} has no MATBIN path";
+        }
+    }
+
+    /// <summary>A slot's ported event script: reads back, has its constructors and keeps the link to common_func.</summary>
+    public static void ValidateMapScript(PorterContext ctx, GameArchives er, Report report, MapId erId)
+    {
+        var archivePath = MapEvents.ScriptPath(erId);
+        var path = ctx.ModPath(MapPorter.ModParts(archivePath));
+        if (!File.Exists(path))
+        {
+            report.Warn($"{erId}: no event script written; the slot's own Elden Ring events will run");
+            return;
+        }
+        try
+        {
+            var script = EMEVD.Read(DCX.Decompress(File.ReadAllBytes(path)));
+            if (script.Events.All(e => e.ID != 0))
+                report.Fail($"{erId}: event script has no constructor (event 0)");
+            var dupes = script.Events.GroupBy(e => e.ID).Where(g => g.Count() > 1).Select(g => g.Key.ToString()).ToList();
+            if (dupes.Count > 0)
+                report.Fail($"{erId}: event script has duplicate event IDs: {Sample(dupes)}");
+            var commonCalls = script.Events.SelectMany(e => e.Instructions).Count(i => i.Bank == 2000 && i.ID == 6);
+            if (commonCalls > 0 && script.LinkedFileOffsets.Count == 0)
+                report.Fail($"{erId}: event script starts {commonCalls} common events but doesn't link common_func");
+            if (er.Contains(archivePath) && EMEVD.Read(er.Read(archivePath)).Format != script.Format)
+                report.Fail($"{erId}: event script format {script.Format} differs from Elden Ring's");
+            report.Ok($"{erId}: event script reads back ({script.Events.Count} events)");
+        }
+        catch (Exception ex)
+        {
+            report.Fail($"{erId}: event script doesn't read back: {ex.Message}");
+        }
+    }
+
+    /// <summary>common_func.emevd with the ported DS3 common events: reads back and keeps every Elden Ring event.</summary>
+    public static void ValidateCommonFunc(PorterContext ctx, GameArchives er, Report report)
+    {
+        var path = ctx.ModPath(MapPorter.ModParts(MapEvents.CommonFunc));
+        if (!File.Exists(path))
+            return;
+        try
+        {
+            var common = EMEVD.Read(DCX.Decompress(File.ReadAllBytes(path)));
+            if (er.Contains(MapEvents.CommonFunc))
+            {
+                var vanilla = EMEVD.Read(er.Read(MapEvents.CommonFunc));
+                var missing = vanilla.Events.Select(e => e.ID).Except(common.Events.Select(e => e.ID)).ToList();
+                if (missing.Count > 0)
+                    report.Fail($"common_func.emevd lost {missing.Count} of Elden Ring's own events: {Sample(missing.Select(m => m.ToString()))}");
+            }
+            report.Ok($"common_func.emevd: {common.Events.Count(e => FlagMap.IsEventSlot(e.ID))} ported DS3 common events");
+        }
+        catch (Exception ex)
+        {
+            report.Fail($"common_func.emevd doesn't read back: {ex.Message}");
         }
     }
 

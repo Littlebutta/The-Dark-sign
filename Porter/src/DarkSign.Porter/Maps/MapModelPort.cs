@@ -106,7 +106,7 @@ public sealed class MapModelPort
     }
 
     /// <summary>Converts every FLVER in a DS3 mapbnd; the binder layout comes from the host's template binder.</summary>
-    public BND4 ConvertBinder(BND4 ds3, BND4 hostTemplate, MapId ds3Id, MapId erId, string modelNumber)
+    public BND4 ConvertBinder(BND4 ds3, BND4 hostTemplate, MapId ds3Id, MapId erId, string modelNumber, MapId? hostId = null)
     {
         var templateFile = hostTemplate.Files.First(f => FLVER2.Is(f.Bytes));
         var templateLeaf = ItemText.Leaf(templateFile.Name);
@@ -115,6 +115,8 @@ public sealed class MapModelPort
         var newStem = $"{erId}_{modelNumber}";
         // The folder can itself name the template model ("...\m45_00_00_00_000100\sib\").
         folder = folder.Replace(templateStem, newStem, StringComparison.OrdinalIgnoreCase);
+        if (hostId is { } host && host != erId)
+            folder = folder.Replace(host.ToString(), erId.ToString(), StringComparison.OrdinalIgnoreCase);
 
         var files = new List<BinderFile>();
         foreach (var file in ds3.Files.Where(f => FLVER2.Is(f.Bytes)))

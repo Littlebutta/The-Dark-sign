@@ -134,6 +134,7 @@ void give_selected()
 // "DS3 map<TAB>Elden Ring slot<TAB>name". Read once, when the DS3 run tab first opens.
 struct PortedMap {
     std::string ds3, er, name;
+    uint32_t warp_flag;  // 0 in lists written before per-map warps
 };
 std::vector<PortedMap> g_maps;
 bool g_maps_loaded;
@@ -175,8 +176,14 @@ void load_maps()
         char *tab2 = tab1 ? strchr(tab1 + 1, '\t') : nullptr;
         if (!tab1 || !tab2 || line[0] == '#')
             continue;
+        char *tab3 = strchr(tab2 + 1, '\t');
+        uint32_t warp = 0;
+        if (tab3) {
+            *tab3 = 0;
+            warp = (uint32_t)strtoul(tab3 + 1, nullptr, 10);
+        }
         *tab1 = *tab2 = 0;
-        g_maps.push_back({line, tab1 + 1, tab2 + 1});
+        g_maps.push_back({line, tab1 + 1, tab2 + 1, warp});
     }
     fclose(f);
     dks_log("maps: %d ported", (int)g_maps.size());
@@ -209,14 +216,23 @@ void draw_ds3_run()
 
     const PortedMap *start = nullptr;
     for (const PortedMap &m : g_maps)
-        if (m.ds3 == "m40_00_00_00")
+        if (m.ds3 == "m40_00_00_00" && !start)
             start = &m;
     if (g_maps.empty())
         ImGui::TextWrapped("No Dark Souls III maps are ported yet. Press Rebuild content in the launcher, then restart the game.");
     else {
         ImGui::TextUnformatted("Ported Dark Souls III maps:");
         for (const PortedMap &m : g_maps)
+        {
             ImGui::BulletText("%s  (%s, in Elden Ring's %s slot)", m.name.c_str(), m.ds3.c_str(), m.er.c_str());
+            if (m.warp_flag) {
+                ImGui::SameLine();
+                ImGui::PushID(m.er.c_str());
+                if (ImGui::SmallButton("Warp here"))
+                    request_flag(m.warp_flag, "Warping...");
+                ImGui::PopID();
+            }
+        }
     }
     ImGui::Spacing();
     ImGui::BeginDisabled(!start);

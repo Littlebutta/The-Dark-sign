@@ -18,6 +18,8 @@ public static partial class MapPortChecks
         yield return ("layout: DS3 group masks are copied by position when asked", LayoutGroups);
         yield return ("events: run events have DarkScript3's Elden Ring layouts and survive a write", RunEventLayout);
         yield return ("events: adding the run events twice leaves one copy", RunEventsIdempotent);
+        yield return ("events: one warp event per ported map, started from the constructor, replaced on a rerun", PerMapWarps);
+        yield return ("slots: the new-map-ID test slot uses a template map and doesn't hijack the real m40 slot", ProbeSlot);
         yield return ("events: the return point prefers a Roundtable Hold warp", ReturnPoint);
         yield return ("names: collision and texture binder entries", Names);
         yield return ("navmesh: DS3 Havok AI 2014 -> Elden Ring 2018 keeps faces, edges, graph and tree (XML)", () => Navmesh(xml: true));
@@ -38,9 +40,12 @@ public static partial class MapPortChecks
     {
         var id = MapId.Parse("m40_00_00_00");
         Expect(id.ToString() == "m40_00_00_00" && id.Digits == "40_00_00_00" && id.AreaFolder == "m40", $"names: {id}");
-        Expect(id.EntityBase == 40_000_000, $"entity base {id.EntityBase}");
-        Expect(id.MoveEntity(40001234, ErId) == 45001234, "entity move");
-        Expect(id.MoveEntity(31001234, ErId) == 31001234, "another map's entity must stay");
+        Expect(id.EntityBase == 40_000_000 && id.Ds3EntityBase == 4_000_000 && id.Ds3FlagBase == 14_000_000, $"entity base {id.EntityBase}");
+        Expect(id.MoveEntity(4000800, ErId) == 45000800, "DS3 entity move (7 digits)");
+        Expect(id.MoveEntity(14000800, ErId) == 45000800, "DS3 flag/event move (1AABLLLL)");
+        Expect(id.MoveEntity(40001234, ErId) == 45001234, "8-digit move");
+        Expect(id.MoveEntity(3000800, ErId) == 3000800 && id.MoveEntity(13000800, ErId) == 13000800, "another map's IDs must stay");
+        Expect(MapId.Parse("m30_01_00_00").Ds3EntityBase == 3_010_000, "block digit");
         Expect(id.MoveEntity(0, ErId) == 0 && id.MoveEntity(-1, ErId) == -1, "unset entity must stay");
         Expect(MapSlots.ForDs3(id)?.Er == ErId, "m40 slot");
         Expect(MapPorter.ErMapBndPath(ErId, "000100") == "/map/m45/m45_00_00_00/m45_00_00_00_000100.mapbnd.dcx", "ER mapbnd path");
@@ -55,14 +60,14 @@ public static partial class MapPortChecks
         msb.Models.MapPieces.Add(new MSB3.Model.MapPiece { Name = "m000100" });
         msb.Models.Collisions.Add(new MSB3.Model.Collision { Name = "h000100" });
         msb.Models.Players.Add(new MSB3.Model.Player { Name = "c0000" });
-        var piece = new MSB3.Part.MapPiece { Name = "m000100_0000", ModelName = "m000100", Position = new Vector3(1, 2, 3), EntityID = 40000100 };
+        var piece = new MSB3.Part.MapPiece { Name = "m000100_0000", ModelName = "m000100", Position = new Vector3(1, 2, 3), EntityID = 4000100 };
         piece.DrawGroups[0] = 0x11;
         piece.DispGroups[0] = 0x22;
         piece.BackreadGroups[0] = 0x33;
         msb.Parts.MapPieces.Add(piece);
         msb.Parts.Collisions.Add(new MSB3.Part.Collision { Name = "h000100_0000", ModelName = "h000100", HitFilterID = 8, Rotation = new Vector3(0, 90, 0) });
-        msb.Parts.Players.Add(new MSB3.Part.Player { Name = "c0000_0000", ModelName = "c0000", EntityID = 40000500 });
-        msb.Parts.Players.Add(new MSB3.Part.Player { Name = "c0000_0001", ModelName = "c0000", EntityID = 40000990, Position = new Vector3(7, 8, 9) });
+        msb.Parts.Players.Add(new MSB3.Part.Player { Name = "c0000_0000", ModelName = "c0000", EntityID = 4000500 });
+        msb.Parts.Players.Add(new MSB3.Part.Player { Name = "c0000_0001", ModelName = "c0000", EntityID = 4000990, Position = new Vector3(7, 8, 9) });
         return msb;
     }
 
@@ -398,5 +403,32 @@ public static partial class MapPortChecks
         var wrongHost = SyntheticCommon();
         RunEvents.AddTo(wrongHost, MapId.Parse("m45_01_00_00"), 45010990, Back);
         Expect(MapValidate.CheckRunEvents(wrongHost, ErId).Any(i => i.Contains("warps to")), "wrong warp target not reported");
+    }
+
+    private static void PerMapWarps()
+    {
+        var common = SyntheticCommon();
+        RunEvents.Warp[] warps = [new(ErId, 45000990, 0), new(MapId.Parse("m50_00_00_00"), 50000990, 1)];
+        RunEvents.AddWarps(common, warps);
+        RunEvents.AddWarps(common, warps);
+        common = EMEVD.Read(common.Write());
+        var events = common.Events.Where(e => e.ID == RunEvents.WarpEventId(0) || e.ID == RunEvents.WarpEventId(1)).ToList();
+        Expect(events.Count == 2, $"{events.Count} warp events");
+        var warp = events[1].Instructions.Single(i => i.Bank == 2003 && i.ID == 14);
+        Expect(warp.ArgData[0] == 50 && BitConverter.ToUInt32(warp.ArgData, 4) == 50000990 && warp.Layer is null, "second warp target");
+        var wait = events[1].Instructions[0];
+        Expect(BitConverter.ToUInt32(wait.ArgData, 4) == RunEvents.WarpRequestFlag(1), "waits on its own request flag");
+        var inits = common.Events.Single(e => e.ID == 0).Instructions.Count(i => i.Bank == 2000 && BitConverter.ToUInt32(i.ArgData, 4) >= RunEvents.WarpEventId(0));
+        Expect(inits == 2, $"{inits} constructor inits");
+        Expect(RunEvents.WarpRequestFlag(0) / 10000 == RunEvents.FlagBlock / 10000 && RunEvents.WarpRequestFlag(0) % 10000 is >= 2000 and < 3000,
+            "request flags must be in the block's temporary range");
+    }
+
+    private static void ProbeSlot()
+    {
+        var probe = MapSlots.All.Single(s => s.Probe);
+        Expect(probe.Host == ErId && probe.Er != ErId, $"probe host {probe.Host}");
+        Expect(MapSlots.ForDs3(Ds3Id)?.Er == ErId, "ForDs3 must return the real slot");
+        Expect(MapSlots.All.Select(s => s.Er).Distinct().Count() == MapSlots.All.Count, "slots must not share an Elden Ring map");
     }
 }
