@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Havok 2014-2016 packfile classes (Dark Souls III collision and navmesh), copied from Smithbox (MIT, see LICENSE and COMMIT). -->
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <LangVersion>12</LangVersion>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <Nullable>disable</Nullable>
+    <NoWarn>$(NoWarn);CS0108;CS0114;CS8632;CS0168;CS0219;CS0162</NoWarn>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\SoulsFormats.Net8\SoulsFormats.Net8.csproj" />
+  </ItemGroup>
+</Project>

@@ -13,6 +13,7 @@
   <ItemGroup>
     <ProjectReference Include="..\SoulsFormats.Net8\SoulsFormats.Net8.csproj" />
     <ProjectReference Include="..\..\third_party\HKLib\HKLib.Serialization\HKLib.Serialization.csproj" />
+    <ProjectReference Include="..\..\third_party\HKX2\HKX2.csproj" />
     <ProjectReference Include="..\..\..\Launcher\src\DarkSign.Core\DarkSign.Core.csproj" />
   </ItemGroup>
 

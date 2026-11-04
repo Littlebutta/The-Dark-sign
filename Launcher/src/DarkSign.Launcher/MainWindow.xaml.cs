@@ -413,8 +413,29 @@ public partial class MainWindow : Window
             }
         }
         Directory.CreateDirectory(setup.LogDir);
-        var log = Path.Combine(setup.LogDir, $"porter-{DateTime.Now:yyyyMMdd-HHmmss}.log");
         StatusText.Text = "Building the Dark Souls III content from your game files (a few minutes)…";
+        var (ok, tail, log) = await RunPorterAsync(setup, "port-weapons", "Building content");
+        if (!ok)
+        {
+            MessageBox.Show(this, $"Building the content failed. The last lines were:\n\n{tail}\n\nFull log: {log}",
+                "Content build failed", MessageBoxButton.OK, MessageBoxImage.Error);
+            StatusText.Text = $"Content build failed; see {log}";
+            return false;
+        }
+
+        // The ported DS3 maps (F1 menu, "DS3 run" tab) are a test feature: if they fail, the weapons still work, so
+        // the game starts anyway and the log says what went wrong.
+        StatusText.Text = "Porting the Dark Souls III maps…";
+        var maps = await RunPorterAsync(setup, "port-maps", "Porting maps");
+        if (!maps.Ok)
+            StatusText.Text = $"The DS3 maps could not be ported (the rest of the content is fine); see {maps.Log}";
+        return true;
+    }
+
+    /// <summary>Runs one porter command, with its output in its own log file and on the status line.</summary>
+    private async Task<(bool Ok, string Tail, string Log)> RunPorterAsync(EldenRingSetup setup, string command, string status)
+    {
+        var log = Path.Combine(setup.LogDir, $"porter-{command}-{DateTime.Now:yyyyMMdd-HHmmss}.log");
         var start = new ProcessStartInfo(setup.PorterExe)
         {
             UseShellExecute = false,
@@ -422,7 +443,7 @@ public partial class MainWindow : Window
             RedirectStandardOutput = true,
             RedirectStandardError = true,
         };
-        foreach (var arg in new[] { "--root", Root, "port-weapons" })
+        foreach (var arg in new[] { "--root", Root, command })
             start.ArgumentList.Add(arg);
 
         using var process = Process.Start(start)!;
@@ -439,7 +460,7 @@ public partial class MainWindow : Window
                 if (last.Count > 8)
                     last.Dequeue();
             }
-            Dispatcher.BeginInvoke(() => StatusText.Text = $"Building content: {line}");
+            Dispatcher.BeginInvoke(() => StatusText.Text = $"{status}: {line}");
         }
         process.OutputDataReceived += (_, e) => OnLine(e.Data);
         process.ErrorDataReceived += (_, e) => OnLine(e.Data);
@@ -448,15 +469,10 @@ public partial class MainWindow : Window
         await process.WaitForExitAsync();
         process.WaitForExit(); // flushes the output events
 
-        if (process.ExitCode == 0)
-            return true;
         string tail;
         lock (last)
             tail = string.Join("\n", last);
-        MessageBox.Show(this, $"Building the content failed. The last lines were:\n\n{tail}\n\nFull log: {log}",
-            "Content build failed", MessageBoxButton.OK, MessageBoxImage.Error);
-        StatusText.Text = $"Content build failed; see {log}";
-        return false;
+        return (process.ExitCode == 0, tail, log);
     }
 
     private string DownloadPath(string fileName)

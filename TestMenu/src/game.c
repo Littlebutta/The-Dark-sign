@@ -14,13 +14,23 @@
 #define ATTRIBUTES 0x3C      /* PlayerGameData -> Vigor, then the other seven attributes as int32 */
 #define LEVEL 0x68           /* PlayerGameData -> character level */
 #define MAX_RUNES 999999999LL
+/* Erd-Tools (Offsets.cs): the global holding CSFD4VirtualMemoryFlag, and the game's SetEventFlag / IsEventFlag. */
+#define PAT_EVENT_FLAG_MAN "48 8B 3D ? ? ? ? 48 85 FF 74 ? 48 8B 49"
+#define PAT_SET_EVENT_FLAG "? ? ? ? ? 48 89 74 24 18 57 48 83 EC 30 48 8B DA 41 0F B6 F8 8B 12 48 8B F1 85 D2 0F 84 ? ? ? ? 45 84 C0"
+#define PAT_IS_EVENT_FLAG "48 83 EC 28 8B 12 85 D2"
 
 typedef void (*ItemGive)(void *map_item_man, void *entries, void *header, int unk);
+/* Both take the flag ID by pointer, as Erd-Tools' SetEventFlag.asm / IsEventFlag.asm pass it. */
+typedef void (*SetEventFlagFn)(void *flag_man, const uint32_t *id, uint8_t state);
+typedef uint8_t (*IsEventFlagFn)(void *flag_man, const uint32_t *id);
 
 static HANDLE g_log = INVALID_HANDLE_VALUE;
 static int g_scanned;
 static uintptr_t g_game_data_man_slot, g_map_item_man_slot;
 static ItemGive g_item_give;
+static uintptr_t g_event_flag_man_slot;
+static SetEventFlagFn g_set_event_flag;
+static IsEventFlagFn g_is_event_flag;
 
 void dks_open_log(void)
 {
@@ -127,6 +137,13 @@ void dks_scan_game(void)
     g_map_item_man_slot = rip_target(dks_find_in_game(PAT_MAP_ITEM_MAN));
     uintptr_t give = dks_find_in_game(PAT_ITEM_GIVE);
     g_item_give = give ? (ItemGive)(give + ITEM_GIVE_OFFSET) : NULL;
+    g_event_flag_man_slot = rip_target(dks_find_in_game(PAT_EVENT_FLAG_MAN));
+    g_set_event_flag = (SetEventFlagFn)dks_find_in_game(PAT_SET_EVENT_FLAG);
+    g_is_event_flag = (IsEventFlagFn)dks_find_in_game(PAT_IS_EVENT_FLAG);
+    dks_log("scan: EventFlagMan +%llx, SetEventFlag +%llx, IsEventFlag +%llx",
+            g_event_flag_man_slot ? (unsigned long long)(g_event_flag_man_slot - base) : 0ULL,
+            g_set_event_flag ? (unsigned long long)((uintptr_t)g_set_event_flag - base) : 0ULL,
+            g_is_event_flag ? (unsigned long long)((uintptr_t)g_is_event_flag - base) : 0ULL);
     dks_log("scan: base %p, GameDataMan +%llx, MapItemMan +%llx, ItemGive +%llx", (void *)base,
             g_game_data_man_slot ? (unsigned long long)(g_game_data_man_slot - base) : 0ULL,
             g_map_item_man_slot ? (unsigned long long)(g_map_item_man_slot - base) : 0ULL,
@@ -229,5 +246,33 @@ DksResult dks_set_attributes(const int attributes[DKS_ATTRIBUTES])
     }
     *(int32_t *)(pgd + LEVEL) = dks_level_for(attributes);
     dks_log("attributes: level %d -> %d", level, dks_level_for(attributes));
+    return DKS_OK;
+}
+
+static void *event_flag_man(void)
+{
+    uintptr_t man;
+    return read_ptr(g_event_flag_man_slot, &man) ? (void *)man : NULL;
+}
+
+int dks_get_event_flag(uint32_t id)
+{
+    dks_scan_game();
+    void *man = event_flag_man();
+    if (!g_is_event_flag || !man)
+        return -1;
+    return g_is_event_flag(man, &id) ? 1 : 0;
+}
+
+DksResult dks_set_event_flag(uint32_t id, int on)
+{
+    dks_scan_game();
+    if (!g_set_event_flag || !g_event_flag_man_slot)
+        return DKS_NOT_FOUND;
+    void *man = event_flag_man();
+    if (!man || !player_game_data())
+        return DKS_NOT_LOADED;
+    g_set_event_flag(man, &id, on ? 1 : 0);
+    dks_log("flag: %u -> %d", id, on ? 1 : 0);
     return DKS_OK;
 }

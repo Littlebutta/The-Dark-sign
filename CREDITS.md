@@ -23,6 +23,7 @@ install, and no game files are distributed.
 | [DrSwizzler](https://www.nuget.org/packages/DrSwizzler) | see package | see package | Texture swizzling (SoulsFormats dependency) |
 | [Acornima](https://github.com/adams85/acornima) | Adam Simon | BSD-3-Clause | JavaScript parser Jint depends on |
 | [Microsoft.Toolkit.HighPerformance](https://github.com/CommunityToolkit/dotnet) | .NET Foundation | MIT | Buffer helpers bundled with the porter |
+| [HKX2](https://github.com/vawser/Smithbox) (Smithbox, after Katalash's HKX2) | vawser, Katalash and contributors | MIT | Reading and writing DS3 Havok 2014 collision packfiles for the map port (files copied at Smithbox commit e27134d, Porter/third_party/HKX2) |
 | [BCnEncoder.NET](https://github.com/Nominom/BCnEncoder.NET) | Nominom | MIT/Unlicense | Encoding icon textures |
 
 ## Tools the launcher runs
@@ -58,3 +59,9 @@ install, and no game files are distributed.
 | [Weapon Catalysts](https://www.nexusmods.com/eldenring/mods/7222) (nikonikoneko) | Weapon behaviour changed in hks by special motion category |
 | [Ringed Knight Set](https://www.nexusmods.com/eldenring/mods/1061) (KRDCD), [Armor of Thorns](https://www.nexusmods.com/eldenring/mods/3115) (Noctis) | Earlier DS3 armor/weapon ports, done by replacing vanilla parts |
 | Nexus mods [6384](https://www.nexusmods.com/eldenring/mods/6384) and [6340](https://www.nexusmods.com/eldenring/mods/6340) | Ship vswarte's (chainfailure) ModEngine2 fork that loads sound banks |
+| [JortPob](https://github.com/infernoplus/JortPob) (infernoplus) | The Morrowind-to-Elden Ring map port: ported maps reuse existing map IDs, collision written as XML tagfiles, global event flags allocated from the empty tiles along the bottom edge of the world (1030290000-1039290000; 0-999 saved, 2000-2999 temporary) |
+| [ER_OBJ2HKX](https://github.com/Dropoff/ER_OBJ2HKX) (Dropoff) | Elden Ring map collision as an XML Havok tagfile (fsnpCustomParamCompressedMeshShape) that the game loads |
+| [Smithbox](https://github.com/vawser/Smithbox) (vawser and contributors) | Map file paths for both games, HKLib/HKX2 collision decoding (triangle and quad layout of compressed mesh sections), and the template-part approach to new MSB parts |
+| [DarkScript3](https://github.com/AinTunez/DarkScript3) (AinTunez, thefifthmatt) er-common.emedf.json | Elden Ring EMEVD instruction layouts (WaitForEventFlag, SetEventFlag, WarpPlayer, InitializeEvent, EndUnconditionally) for the DS3 run events |
+| [Erd-Tools](https://github.com/Nordgaren/Erd-Tools) (Nordgaren) | Byte patterns for Elden Ring's event flag manager, SetEventFlag and IsEventFlag, used by the F1 menu's DS3 run tab |
+| [NavMeshStudio](https://github.com/Pear0533/NavMeshStudio) (Pear0533) and [PhiveConverter](https://github.com/dt-12345/PhiveConverter) | Navmesh generation for Elden Ring maps and the hkcdSimdTree node layout; planned for the map port's navmesh stage |

@@ -40,6 +40,18 @@ DksResult dks_get_attributes(int attributes[DKS_ATTRIBUTES], int *level);
    numbers read from the game don't add up to its level, which would mean the offsets are wrong for this version. */
 DksResult dks_set_attributes(const int attributes[DKS_ATTRIBUTES]);
 
+/* Event flags, read and set through the game's own event flag manager (CSFD4VirtualMemoryFlag) and the functions
+   Erd-Tools calls. dks_get_event_flag returns 1 or 0, or -1 when the game code wasn't found or no flag manager exists
+   yet (title screen). */
+int dks_get_event_flag(uint32_t id);
+DksResult dks_set_event_flag(uint32_t id, int on);
+
+/* The "DS3 run" flags. They must match Porter/src/DarkSign.Porter/Maps/RunEvents.cs, whose events in common.emevd
+   act on them. */
+#define DKS_FLAG_DS3_RUN_ACTIVE 1039290100u
+#define DKS_FLAG_DS3_START_REQUEST 1039292100u
+#define DKS_FLAG_DS3_LEAVE_REQUEST 1039292101u
+
 #ifdef __cplusplus
 }
 #endif
