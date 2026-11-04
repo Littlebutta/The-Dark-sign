@@ -38,6 +38,9 @@ public static class MapSurvey
             Section(r, "Event scripts", () => Events(er, slot.Er));
         }
 
+        Section(r, "Cutscenes (remo)", () => Cutscenes(ds3, er, MapSlots.All.Where(s => only.Count == 0 || only.Contains(s.Ds3.ToString()))
+            .Select(s => s.Ds3).Distinct().ToList()));
+
         var log = ctx.WorkPath("logs", $"map-survey-{DateTime.Now:yyyyMMdd-HHmmss}.txt");
         File.WriteAllText(log, r.ToString());
         Console.WriteLine(r.ToString());
@@ -194,6 +197,53 @@ public static class MapSurvey
             foreach (var flver in bnd.Files.Where(f => FLVER2.Is(f.Bytes)).Select(f => FLVER2.Read(f.Bytes)))
                 foreach (var m in flver.Materials.Take(4))
                     yield return $"  material {m.Name}: {m.MTD} textures [{string.Join(", ", m.Textures.Select(t => $"{t.ParamName}={t.Path}"))}]";
+        }
+    }
+
+    /// <summary>
+    /// What the cutscene port will have to convert: each game's remo binders, the cutscenes the ported DS3 maps play
+    /// (from their event scripts) and what's inside one binder of each game (Havok animation, camera, timeline).
+    /// </summary>
+    private static IEnumerable<string> Cutscenes(GameArchives ds3, GameArchives er, IReadOnlyList<MapId> maps)
+    {
+        foreach (var (name, game) in new[] { ("DS3", ds3), ("ER", er) })
+        {
+            var remo = game.Entries.Where(e => e.Path is not null && e.Path.StartsWith("/remo/", StringComparison.OrdinalIgnoreCase))
+                .Select(e => e.Path!).OrderBy(p => p).ToList();
+            yield return $"{name}: {remo.Count} named files under /remo/ (e.g. {string.Join(", ", remo.Take(6).Select(ItemText.Leaf))})";
+        }
+
+        var played = new SortedSet<int>();
+        foreach (var id in maps)
+        {
+            var path = $"/event/{id}.emevd.dcx";
+            if (!ds3.Contains(path))
+                continue;
+            var ids = EMEVD.Read(ds3.Read(path)).Events.SelectMany(e => e.Instructions)
+                .Where(i => i.Bank == 2002 && i.ArgData.Length >= 4).Select(i => BitConverter.ToInt32(i.ArgData, 0)).Where(c => c > 0).Distinct().ToList();
+            played.UnionWith(ids);
+            yield return $"{id} plays {ids.Count} cutscenes: {string.Join(", ", ids.Take(20))}";
+        }
+
+        foreach (var (name, game, ids) in new[] { ("DS3", ds3, played.ToList()), ("ER", er, new List<int>()) })
+        {
+            var remo = game.Entries.Where(e => e.Path is not null && e.Path.EndsWith(".remobnd.dcx", StringComparison.OrdinalIgnoreCase)).Select(e => e.Path!).ToList();
+            var pick = remo.FirstOrDefault(p => ids.Any(i => ItemText.Leaf(p).Contains(i.ToString()))) ?? remo.FirstOrDefault();
+            if (pick is null)
+            {
+                yield return $"{name}: no named .remobnd.dcx to look inside";
+                continue;
+            }
+            yield return $"{name} sample {pick}:";
+            var bnd = BND4.Read(game.Read(pick));
+            yield return $"  BND4 {bnd.Version}, {bnd.Files.Count} files";
+            foreach (var group in bnd.Files.GroupBy(f => Path.GetExtension(ItemText.Leaf(f.Name)).ToLowerInvariant()))
+            {
+                var first = group.First();
+                var bytes = DCX.Is(first.Bytes) ? DCX.Decompress(first.Bytes) : first.Bytes;
+                var head = string.Concat(bytes.Take(16).Select(b => b is >= 32 and < 127 ? (char)b : '.'));
+                yield return $"  *{group.Key}: {group.Count()} (e.g. {ItemText.Leaf(first.Name)}, {bytes.Length} bytes, starts \"{head}\")";
+            }
         }
     }
 
