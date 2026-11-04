@@ -105,6 +105,9 @@ jobs:
       # The launcher downloads this zip from the release it was built with and runs it to build the content mod.
       - if: steps.cache.outputs.cache-hit != 'true'
         run: dotnet publish Porter/src/DarkSign.Porter -c Release -r win-x64 --self-contained false -o porter-publish
+      # Offline checks of the map porter (collision conversion, layouts, run events); no game files needed.
+      - if: steps.cache.outputs.cache-hit != 'true'
+        run: porter-publish/DarkSignPorter.exe map-selftest
       - if: steps.cache.outputs.cache-hit != 'true'
         run: Compress-Archive -Path porter-publish/* -DestinationPath DarkSignPorter.zip
       - uses: actions/upload-artifact@v4

@@ -130,6 +130,89 @@ void give_selected()
     g_status = text;
 }
 
+// The maps the porter ported, from darksign_maps.tsv next to the item list (DKSIGN_ITEMS):
+// "DS3 map<TAB>Elden Ring slot<TAB>name". Read once, when the DS3 run tab first opens.
+struct PortedMap {
+    std::string ds3, er, name;
+};
+std::vector<PortedMap> g_maps;
+bool g_maps_loaded;
+std::string g_run_status = "Starts a Dark Souls III run inside Elden Ring.";
+
+void load_maps()
+{
+    g_maps_loaded = true;
+    wchar_t path[MAX_PATH];
+    DWORD n = GetEnvironmentVariableW(L"DKSIGN_ITEMS", path, MAX_PATH);
+    if (!n || n >= MAX_PATH)
+        return;
+    wchar_t *slash = wcsrchr(path, L'\\');
+    if (!slash || (size_t)(slash - path) + 20 >= MAX_PATH)
+        return;
+    wcscpy(slash + 1, L"darksign_maps.tsv");
+    FILE *f = _wfopen(path, L"rb");
+    if (!f)
+        return;
+    char line[512];
+    while (fgets(line, sizeof line, f)) {
+        line[strcspn(line, "\r\n")] = 0;
+        char *tab1 = strchr(line, '\t');
+        char *tab2 = tab1 ? strchr(tab1 + 1, '\t') : nullptr;
+        if (!tab1 || !tab2 || line[0] == '#')
+            continue;
+        *tab1 = *tab2 = 0;
+        g_maps.push_back({line, tab1 + 1, tab2 + 1});
+    }
+    fclose(f);
+    dks_log("maps: %d ported", (int)g_maps.size());
+}
+
+void request_flag(uint32_t flag, const char *done)
+{
+    DksResult r = dks_set_event_flag(flag, 1);
+    if (r != DKS_OK) {
+        g_run_status = result_text(r);
+        return;
+    }
+    g_run_status = done;
+    g_open = false; // hand the game its input back for the warp
+}
+
+void draw_ds3_run()
+{
+    if (!g_maps_loaded)
+        load_maps();
+    int active = dks_get_event_flag(DKS_FLAG_DS3_RUN_ACTIVE);
+    if (active < 0)
+        ImGui::TextDisabled("DS3 run: load a character first");
+    else
+        ImGui::Text("DS3 run: %s", active ? "in progress" : "not started");
+    ImGui::Separator();
+
+    const PortedMap *start = nullptr;
+    for (const PortedMap &m : g_maps)
+        if (m.ds3 == "m40_00_00_00")
+            start = &m;
+    if (g_maps.empty())
+        ImGui::TextWrapped("No Dark Souls III maps are ported yet. Press Rebuild content in the launcher, then restart the game.");
+    else {
+        ImGui::TextUnformatted("Ported Dark Souls III maps:");
+        for (const PortedMap &m : g_maps)
+            ImGui::BulletText("%s  (%s, in Elden Ring's %s slot)", m.name.c_str(), m.ds3.c_str(), m.er.c_str());
+    }
+    ImGui::Spacing();
+    ImGui::BeginDisabled(!start);
+    if (ImGui::Button("Start DS3 run at the Cemetery of Ash", ImVec2(-1, 0)))
+        request_flag(DKS_FLAG_DS3_START_REQUEST, "Warping to the Cemetery of Ash...");
+    ImGui::EndDisabled();
+    ImGui::BeginDisabled(active != 1);
+    if (ImGui::Button("Leave DS3 run (back to Elden Ring)", ImVec2(-1, 0)))
+        request_flag(DKS_FLAG_DS3_LEAVE_REQUEST, "Warping back to Elden Ring...");
+    ImGui::EndDisabled();
+    ImGui::Separator();
+    ImGui::TextWrapped("%s", g_run_status.c_str());
+}
+
 void change_runes(bool add)
 {
     long long held = dks_get_runes();
@@ -198,7 +281,7 @@ void draw_menu()
     if (!open)
         g_open = false;
 
-    bool changed = false, levels = false;
+    bool changed = false, levels = false, run = false;
     if (ImGui::BeginTabBar("games")) {
         for (int i = 0; i < IM_ARRAYSIZE(GAME_LABELS); i++)
             if (ImGui::BeginTabItem(GAME_LABELS[i])) {
@@ -212,7 +295,16 @@ void draw_menu()
             levels = true;
             ImGui::EndTabItem();
         }
+        if (ImGui::BeginTabItem("DS3 run")) {
+            run = true;
+            ImGui::EndTabItem();
+        }
         ImGui::EndTabBar();
+    }
+    if (run) {
+        draw_ds3_run();
+        ImGui::End();
+        return;
     }
     if (levels) {
         draw_attributes();

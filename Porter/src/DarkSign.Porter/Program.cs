@@ -28,6 +28,10 @@ const string Usage = """
       validate-mod                 check the built mod offline: params, TAE, animations, clips, sounds, effects
       item-list                    write the test menu's item list (Elden Ring items only)
       chr-survey <DS3|ER> <chr id>...  report an enemy's files, binders, AI scripts and params (enemy port step 1)
+      map-selftest                 offline checks of the map porter (no game files needed)
+      map-survey [map ids]         report both games' map files for the ported slots (layouts, binders, textures, events)
+      port-maps [map ids] [--ds3-groups] [--binary-collision] [--simd]
+                                   port the DS3 maps that have an Elden Ring slot, and the F1 menu's DS3 run events
     """;
 
 var argList = args.ToList();
@@ -46,6 +50,9 @@ if (argList.Count == 0)
 
 try
 {
+    // Checks that need no game folder run before the project root is looked up.
+    if (argList[0].Equals("map-selftest", StringComparison.OrdinalIgnoreCase))
+        return DarkSign.Porter.Maps.MapSelfTest.Run();
     var ctx = new PorterContext(PorterContext.FindRoot(root));
     return argList[0].ToLowerInvariant() switch
     {
@@ -58,6 +65,8 @@ try
         "flver-info" when argList.Count == 3 => Explore.FlverInfo(ctx, PorterGame.Parse(argList[1]), argList[2]),
         "port-weapons" => Commands.PortWeapons(ctx),
         "validate-mod" => ModValidate.Run(ctx),
+        "port-maps" => DarkSign.Porter.Maps.MapPorter.Run(ctx, argList[1..]),
+        "map-survey" => DarkSign.Porter.Maps.MapSurvey.Run(ctx, argList[1..]),
         "item-list" => Commands.ItemListOnly(ctx),
         "weapons-plan" => Commands.WeaponsPlan(ctx).Count > 0 ? 0 : 1,
         "matbin-info" when argList.Count == 2 => Explore.MatbinInfo(ctx, argList[1]),
