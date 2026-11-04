@@ -81,6 +81,18 @@ public static class MapPorter
         else
             report.AppendLine("run events: not added (Firelink Shrine / Cemetery of Ash was not ported)");
 
+        // Read everything back and check it, so the first test in game starts from a known state.
+        try
+        {
+            var check = MapValidate.Validate(ctx, er);
+            MapValidate.Write(ctx, check);
+            report.AppendLine($"validation: {check.Fails} FAIL, {check.Warns} WARN (Mods\\ER\\darksign_maps_check.txt)");
+        }
+        catch (Exception ex)
+        {
+            report.AppendLine($"validation: FAILED to run: {ex.Message}");
+        }
+
         var log = ctx.WorkPath("logs", $"port-maps-{DateTime.Now:yyyyMMdd-HHmmss}.txt");
         File.WriteAllText(log, report.ToString());
         Console.WriteLine(report.ToString());

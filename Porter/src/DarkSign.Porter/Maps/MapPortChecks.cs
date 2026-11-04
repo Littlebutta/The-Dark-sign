@@ -22,6 +22,9 @@ public static partial class MapPortChecks
         yield return ("names: collision and texture binder entries", Names);
         yield return ("navmesh: DS3 Havok AI 2014 -> Elden Ring 2018 keeps faces, edges, graph and tree (XML)", () => Navmesh(xml: true));
         yield return ("navmesh: DS3 Havok AI 2014 -> Elden Ring 2018 keeps faces, edges, graph and tree (binary)", () => Navmesh(xml: false));
+        yield return ("models: a DS3 map piece converts into a valid Elden Ring FLVER with its own material", ModelEndToEnd);
+        yield return ("validate: layout checks catch a missing start point and parts without models", ValidateLayout);
+        yield return ("validate: run event checks pass on ported events and catch a missing one", ValidateEvents);
         yield return ("navmesh: binder entries are renamed to the host map and keep the host's compendium", NavmeshBinder);
     }
 
@@ -272,5 +275,128 @@ public static partial class MapPortChecks
         var names = result.Binder.Files.Select(f => f.Name).ToList();
         Expect(names.Any(n => n.EndsWith(@"\n45_00_00_00_000001.hkx") && n.Contains("INTERROOT_win64")), string.Join(", ", names));
         Expect(names.Any(n => n.EndsWith(".compendium")) && !names.Any(n => n.EndsWith("000100.hkx")), "compendium kept, host navmesh left out");
+    }
+
+    private static FLVER2 SyntheticFlver(int version, string mtd, params (string Param, string Path)[] textures)
+    {
+        var flver = new FLVER2();
+        flver.Header.Version = version;
+        flver.Header.Unicode = true;
+        flver.Header.BoundingBoxMin = new Vector3(0, 0, 0);
+        flver.Header.BoundingBoxMax = new Vector3(10, 1, 10);
+        flver.Nodes.Add(new FLVER.Node { Name = "root", ParentIndex = -1, FirstChildIndex = -1, NextSiblingIndex = -1, PreviousSiblingIndex = -1 });
+        var material = new FLVER2.Material("mat", mtd, 0) { GXIndex = 0 };
+        foreach (var (param, path) in textures)
+            material.Textures.Add(new FLVER2.Texture(param, path, Vector2.One, 0, 0, 0, 0, 0));
+        flver.Materials.Add(material);
+        var gx = new FLVER2.GXList();
+        gx.Add(new FLVER2.GXItem { ID = "GXMD", Unk04 = 162, Data = new byte[4] });
+        flver.GXLists.Add(gx);
+        var layout = new FLVER2.BufferLayout
+        {
+            new FLVER.LayoutMember(FLVER.LayoutType.Float3, FLVER.LayoutSemantic.Position),
+            new FLVER.LayoutMember(FLVER.LayoutType.UByte4Norm, FLVER.LayoutSemantic.Normal),
+            new FLVER.LayoutMember(FLVER.LayoutType.UByte4Norm, FLVER.LayoutSemantic.Tangent),
+            new FLVER.LayoutMember(FLVER.LayoutType.UByte4Norm, FLVER.LayoutSemantic.Tangent, 1),
+            new FLVER.LayoutMember(FLVER.LayoutType.Float2, FLVER.LayoutSemantic.UV),
+        };
+        flver.BufferLayouts.Add(layout);
+        var mesh = new FLVER2.Mesh { MaterialIndex = 0, NodeIndex = 0 };
+        foreach (var p in new[] { new Vector3(0, 0, 0), new Vector3(10, 0, 0), new Vector3(0, 0, 10) })
+        {
+            var v = new FLVER.Vertex();
+            v.Positions.Add(p);
+            v.Normals.Add(Vector3.UnitY);
+            v.NormalWs.Add(127);
+            v.Tangents.Add(new Vector4(1, 0, 0, 1));
+            v.Tangents.Add(new Vector4(1, 0, 0, 1));
+            v.UVs.Add(new Vector3(p.X / 10, p.Z / 10, 0));
+            mesh.Vertices.Add(v);
+        }
+        mesh.VertexBuffers.Add(new FLVER2.VertexBuffer(0));
+        mesh.FaceSets.Add(new FLVER2.FaceSet(FLVER2.FaceSet.FSFlags.None, false, true, 0, [0, 1, 2]));
+        flver.Meshes.Add(mesh);
+        if (version >= 0x20017)
+            flver.Skeletons = new FLVER2.SkeletonSet
+            {
+                BaseSkeleton = [new FLVER2.SkeletonSet.Bone(0) { ParentIndex = -1, FirstChildIndex = -1, NextSiblingIndex = -1, PreviousSiblingIndex = -1 }],
+                AllSkeletons = [new FLVER2.SkeletonSet.Bone(0) { ParentIndex = -1, FirstChildIndex = -1, NextSiblingIndex = -1, PreviousSiblingIndex = -1 }],
+            };
+        return FLVER2.Read(flver.Write());
+    }
+
+    private static MATBIN SyntheticMatbin(string name)
+    {
+        var matbin = new MATBIN { ShaderPath = @"N:\GR\data\Material\mtd\M[ARSN].spx", SourcePath = $@"N:\GR\data\Material\matxml\{name}.matxml" };
+        matbin.Samplers.Add(new MATBIN.Sampler { Type = "C_DetailBlend__snp_Texture2D_0_AlbedoMap_0", Path = @"N:\GR\data\Model\map\m45\tex\m45_00_wall_a.tif" });
+        matbin.Samplers.Add(new MATBIN.Sampler { Type = "C_DetailBlend__snp_Texture2D_1_NormalMap_0", Path = @"N:\GR\data\Model\map\m45\tex\m45_00_wall_n.tif" });
+        matbin.Samplers.Add(new MATBIN.Sampler { Type = "C_DetailBlend__snp_Texture2D_2_MetallicMap_0", Path = @"N:\GR\data\Model\map\m45\tex\m45_00_wall_m.tif" });
+        return MATBIN.Read(matbin.Write());
+    }
+
+    private static void ModelEndToEnd()
+    {
+        const string Template = "M_test_opaque";
+        var host = SyntheticFlver(0x2001A, $@"N:\GR\data\Material\matxml\{Template}.matxml");
+        var matbins = new Dictionary<string, BinderFile>
+        {
+            [Template] = new(Binder.FileFlags.Flag1, 0, $@"N:\GR\data\INTERROOT_win64\material\matbin\Map_m45\{Template}.matbin", SyntheticMatbin(Template).Write()),
+        };
+        var port = MapModelPort.Create([host], matbins, ErId);
+        var ds3Flver = SyntheticFlver(0x20014, @"N:\FDP\data\Material\mtd\map\M[ARSN].mtd",
+            ("g_DiffuseTexture", @"N:\FDP\data\Model\map\m40\tex\m40_00_stone_a.tga"),
+            ("g_BumpmapTexture", @"N:\FDP\data\Model\map\m40\tex\m40_00_stone_n.tga"));
+        var ds3Bnd = new BND4();
+        ds3Bnd.Files.Add(new BinderFile(Binder.FileFlags.Flag1, 0, @"N:\FDP\data\Model\map\m40_00_00_00\sib\m40_00_00_00_000100.flver", ds3Flver.Write()));
+        var hostBnd = new BND4();
+        hostBnd.Files.Add(new BinderFile(Binder.FileFlags.Flag1, 0, @"N:\GR\data\Model\map\m45_00_00_00\m45_00_00_00_001000\sib\m45_00_00_00_001000.flver", host.Write()));
+
+        var binder = BND4.Read(port.ConvertBinder(ds3Bnd, hostBnd, Ds3Id, ErId, "000100").Write());
+        var file = binder.Files.Single();
+        Expect(ItemText.Leaf(file.Name) == "m45_00_00_00_000100.flver" && file.Name.Contains(@"m45_00_00_00_000100\sib"), $"binder entry {file.Name}");
+        var flver = FLVER2.Read(file.Bytes);
+        var issues = MapValidate.CheckFlver(flver).ToList();
+        Expect(issues.Count == 0, string.Join("; ", issues));
+        Expect(flver.Header.Version == 0x2001A, $"FLVER version {flver.Header.Version:X}");
+        Expect(flver.Header.BoundingBoxMax == new Vector3(10, 1, 10), "bounding box from DS3");
+        Expect(host.Header.BoundingBoxMax == new Vector3(10, 1, 10) && !ReferenceEquals(host.Header, flver.Header), "template header must not be shared");
+        var material = flver.Materials.Single();
+        Expect(material.Name.StartsWith("DKS_40_00_00_00_") && ModelPort.MatbinName(material.MTD) == material.Name, $"material {material.Name} / {material.MTD}");
+        Expect(flver.Meshes[0].Vertices.All(v => v.Tangents.Count == 1 && v.Colors.Count >= 1), "one tangent and a vertex color per vertex");
+        Expect(port.Textures.SetEquals(["m40_00_stone_a", "m40_00_stone_n"]), $"textures {string.Join(",", port.Textures)}");
+
+        var newMatbin = port.MatbinFiles(100).Single();
+        Expect(Path.GetFileNameWithoutExtension(ItemText.Leaf(newMatbin.Name)) == material.Name, $"matbin file {newMatbin.Name}");
+        var samplers = MATBIN.Read(newMatbin.Bytes).Samplers.Select(s => Path.GetFileNameWithoutExtension(ItemText.Leaf(s.Path))).ToList();
+        Expect(samplers.SequenceEqual(["m40_00_stone_a", "m40_00_stone_n", MapModelPort.BlackMetallic]), $"samplers {string.Join(",", samplers)}");
+    }
+
+    private static void ValidateLayout()
+    {
+        var good = MsbPort.Convert(SyntheticDs3(), SyntheticHost(), Ds3Id, ErId).Msb;
+        var report = new MapValidate.Report();
+        MapValidate.CheckLayout(report, MSBE.Read(good.Write()), ErId);
+        Expect(report.Fails == 0, report.ToString());
+
+        var noStart = SyntheticDs3();
+        noStart.Parts.Players.Clear();
+        var bad = MsbPort.Convert(noStart, SyntheticHost(), Ds3Id, ErId).Msb;
+        bad.Parts.MapPieces[0].ModelName = "m999999";
+        report = new MapValidate.Report();
+        MapValidate.CheckLayout(report, bad, ErId);
+        Expect(report.Fails == 2, report.ToString());
+    }
+
+    private static void ValidateEvents()
+    {
+        var common = SyntheticCommon();
+        RunEvents.AddTo(common, ErId, 45000990, Back);
+        var issues = MapValidate.CheckRunEvents(EMEVD.Read(common.Write()), ErId).ToList();
+        Expect(issues.Count == 0, string.Join("; ", issues));
+        common.Events.RemoveAll(e => e.ID == RunEvents.LeaveEventId);
+        Expect(MapValidate.CheckRunEvents(common, ErId).Any(i => i.Contains("missing")), "missing event not reported");
+        var wrongHost = SyntheticCommon();
+        RunEvents.AddTo(wrongHost, MapId.Parse("m45_01_00_00"), 45010990, Back);
+        Expect(MapValidate.CheckRunEvents(wrongHost, ErId).Any(i => i.Contains("warps to")), "wrong warp target not reported");
     }
 }

@@ -144,9 +144,14 @@ public sealed class MapModelPort
     {
         var bboxMin = flver.Header.BoundingBoxMin;
         var bboxMax = flver.Header.BoundingBoxMax;
-        flver.Header = _templateFlver.Header;
-        flver.Header.BoundingBoxMin = bboxMin;
-        flver.Header.BoundingBoxMax = bboxMax;
+        // A copy of the template's header: sharing the object would give every model the last one's bounding box.
+        var h = _templateFlver.Header;
+        flver.Header = new FLVER2.FLVERHeader
+        {
+            BigEndian = h.BigEndian, Version = h.Version, Unicode = h.Unicode, Unk4A = h.Unk4A, Unk4B = h.Unk4B,
+            Unk4C = h.Unk4C, Unk5C = h.Unk5C, Unk5D = h.Unk5D, Unk68 = h.Unk68, SpecialModifier = h.SpecialModifier,
+            Unk74 = h.Unk74, BoundingBoxMin = bboxMin, BoundingBoxMax = bboxMax,
+        };
         flver.Skeletons = new FLVER2.SkeletonSet { BaseSkeleton = Bones(flver), AllSkeletons = Bones(flver) };
 
         // One GX list per template kind, in a fixed order.
