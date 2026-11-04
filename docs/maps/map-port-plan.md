@@ -18,6 +18,7 @@ after `port-weapons`. If it fails, the weapons still load and the game starts; t
 | Navmesh | `map/m40_00_00_00/m40_00_00_00.nvmhktbnd.dcx` (Havok AI 2014) | `map/m45/m45_00_00_00/m45_00_00_00.nvmhktbnd.dcx` (Havok AI 2018 tagfiles); faces, edges, cluster graph and AABB tree copied as-is, costs hkHalf → float | `Maps/NavmeshPort.cs`, `Maps/MapNavmesh.cs` |
 | Map events | `event/m40_00_00_00.emevd.dcx` | `event/m45_00_00_00.emevd.dcx`, converted instruction by instruction (see "Event scripts" below); the slot's own Elden Ring events no longer run | `Maps/EventPort.cs`, `Maps/MapEvents.cs` |
 | Common events | `event/common_func.emevd.dcx` (only the events the ported maps start, and the ones those start) | added to `event/common_func.emevd.dcx` under IDs 103x291000-103x291999 | `Maps/MapEvents.cs`, `Maps/FlagMap.cs` |
+| Map connections | MSB3 connect collisions | MSBE connect collisions copied from a legacy dungeon's, pointing at the neighbouring map's slot (ones to unported maps are left out) | `Maps/MsbPort.cs` |
 | Run start/leave | | two events in `common.emevd` wait for flags the F1 menu sets, then use the game's WarpPlayer | `Maps/RunEvents.cs`, `TestMenu/src/overlay.cpp` |
 
 ### Map slots
@@ -74,8 +75,13 @@ Both games run the same event system, and DarkScript3 documents every instructio
   that doesn't is skipped until cutscenes are ported.
 - The report (`port-maps` log) counts events kept, instructions converted and the most common misses.
 
-Not converted yet: DS3's "IF Action Button" family (doors, levers, fog walls; Elden Ring uses ActionButtonParam rows),
-sound and BGM instructions, map ceremonies and world tendency.
+- DS3's "IF Action Button" conditions (doors, levers, chests, elevators, boss fog) become "IF Action Button in Area".
+  Each distinct prompt gets an ActionButtonParam row (74000000+) in the mod's regulation, copied from row 6000 the way
+  JortPob does, with DS3's dummy poly, reach and angle. The prompt text is Elden Ring's when the words match ("Open"),
+  otherwise DS3's words are added to `menu_dlc02`'s ActionButtonText (74000000+). `Maps/ActionButtons.cs`.
+
+Not converted yet: sound and BGM instructions, map ceremonies and world tendency. Doors and levers only work once the
+DS3 objects themselves are ported (the next stage); until then the events wait for assets that aren't there.
 
 ## Open questions (answered by the first `map-survey` and in-game test)
 

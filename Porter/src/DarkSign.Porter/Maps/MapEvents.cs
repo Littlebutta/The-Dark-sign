@@ -24,7 +24,8 @@ public static class MapEvents
     /// <param name="erTemplate">The Elden Ring script a slot's script takes its format and links from.</param>
     /// <param name="erCommon">Elden Ring's common_func.emevd; ported DS3 common events from an earlier run are replaced.</param>
     public static Result Convert(Emedf ds3Defs, Emedf erDefs, FlagMap flags, IReadOnlyList<MapSlots.Slot> slots,
-        IReadOnlyDictionary<MapId, EMEVD> ds3Scripts, EMEVD? ds3Common, Func<MapSlots.Slot, EMEVD> erTemplate, EMEVD erCommon)
+        IReadOnlyDictionary<MapId, EMEVD> ds3Scripts, EMEVD? ds3Common, Func<MapSlots.Slot, EMEVD> erTemplate, EMEVD erCommon,
+        ActionButtons? buttons = null)
     {
         var main = slots.Where(s => !s.Probe).Select(s => (s.Ds3, s.Er)).ToList();
         var summary = new List<string>();
@@ -33,7 +34,7 @@ public static class MapEvents
 
         EventPort NewPort(IReadOnlyList<(MapId, MapId)> maps)
         {
-            var port = new EventPort(ds3Defs, erDefs, maps, flags);
+            var port = new EventPort(ds3Defs, erDefs, maps, flags) { Buttons = buttons };
             if (ds3Common is not null)
                 port.Learn(ds3Common, common: true);
             foreach (var script in ds3Scripts.Values)
@@ -138,12 +139,43 @@ public static class MapEvents
         // Build on the mod's copy when another step already changed it (earlier ported events are replaced).
         var erCommon = EMEVD.Read(File.Exists(modCommon) ? DCX.Decompress(File.ReadAllBytes(modCommon)) : vanillaCommon);
 
-        var result = Convert(ds3Defs, erDefs, flags, slots, ds3Scripts, ds3Common, s => Template(s).Script, erCommon);
+        // Action button prompts need ActionButtonParam rows; without the regulation they stay unconverted.
+        ParamStore? regulation = null;
+        ActionButtons? buttons = null;
+        string buttonNote;
+        try
+        {
+            regulation = ActionButtons.LoadRegulation(ctx);
+            var param = regulation.Get("ActionButtonParam") ?? throw new InvalidDataException("no ActionButtonParam");
+            var taken = ActionButtons.TakenRows(param);
+            buttons = new ActionButtons(taken.Contains);
+            buttonNote = "";
+        }
+        catch (Exception ex)
+        {
+            buttonNote = $"action buttons: not converted ({ex.Message}); events that wait for them are left out";
+        }
+
+        var result = Convert(ds3Defs, erDefs, flags, slots, ds3Scripts, ds3Common, s => Template(s).Script, erCommon, buttons);
+        if (buttons is not null && regulation is not null)
+        {
+            try
+            {
+                buttonNote = buttons.Write(ctx, ds3, er, regulation);
+            }
+            catch (Exception ex)
+            {
+                // Scripts that point at rows which were never written must not ship: fall back to leaving them out.
+                buttonNote = $"action buttons: FAILED to write rows ({ex.Message}); converting again without them";
+                flags = FlagMap.Load(flagPath);
+                result = Convert(ds3Defs, erDefs, flags, slots, ds3Scripts, ds3Common, s => Template(s).Script, erCommon);
+            }
+        }
         foreach (var slot in slots)
             if (result.Scripts.TryGetValue(slot.Er, out var script))
                 File.WriteAllBytes(ctx.ModPath(MapPorter.ModParts(ScriptPath(slot.Er))), DCX.Compress(script.Write(), Template(slot).Compression));
         File.WriteAllBytes(modCommon, DCX.Compress(result.CommonFunc.Write(), commonCompression));
         flags.Save(flagPath);
-        return "events:\n  " + result.Summary;
+        return "events:\n  " + result.Summary + (buttonNote.Length > 0 ? "\n  " + buttonNote : "");
     }
 }

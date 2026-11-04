@@ -33,7 +33,10 @@ public static class MsbPort
     /// <summary>The entity ID of the player start the "Start DS3 run" warp lands on: 990 in the host map's range.</summary>
     public static int StartEntityId(MapId er) => er.EntityBase + 990;
 
-    public static Result Convert(MSB3 ds3, MSBE host, MapId ds3Id, MapId erId, Options? options = null)
+    /// <param name="slots">Every ported DS3 map and its slot, so connect collisions can point at the right map.</param>
+    /// <param name="connectTemplate">An Elden Ring connect collision to copy (the host map usually has none).</param>
+    public static Result Convert(MSB3 ds3, MSBE host, MapId ds3Id, MapId erId, Options? options = null,
+        IReadOnlyList<(MapId Ds3, MapId Er)>? slots = null, MSBE.Part.ConnectCollision? connectTemplate = null)
     {
         options ??= new Options();
         var notes = new List<string>();
@@ -74,6 +77,31 @@ public static class MsbPort
             msb.Parts.Collisions.Add(part);
             AddModel(msb.Models.Collisions, src.ModelName, collisionModel, erId);
         }
+
+        // Connect collisions load the neighbouring map when the player stands on them: the DS3 map they name moves to
+        // its slot. One that names a map with no slot would load nothing, so it's left out.
+        connectTemplate ??= host.Parts.ConnectCollisions.FirstOrDefault();
+        int connects = 0, connectsSkipped = 0;
+        foreach (var src in ds3.Parts.ConnectCollisions)
+        {
+            MapId? target = slots?.Where(s => s.Ds3.Area == src.MapID[0] && s.Ds3.Block == src.MapID[1]).Select(s => (MapId?)s.Er).FirstOrDefault();
+            if (target is not { } to || connectTemplate is null || msb.Parts.Collisions.All(c => c.Name != src.CollisionName))
+            {
+                connectsSkipped++;
+                continue;
+            }
+            var part = (MSBE.Part.ConnectCollision)connectTemplate.DeepCopy();
+            CopyCommon(src, part, ds3Id, erId);
+            ApplyGroups(src, part.Unk1, options);
+            part.CollisionName = src.CollisionName;
+            part.MapID = [(byte)to.Area, (byte)to.Block, (byte)to.Region, (byte)to.Index];
+            msb.Parts.ConnectCollisions.Add(part);
+            AddModel(msb.Models.Collisions, src.ModelName, collisionModel, erId);
+            connects++;
+        }
+        if (ds3.Parts.ConnectCollisions.Count > 0)
+            notes.Add($"connect collisions: {connects} ported, {connectsSkipped} left out (map not ported"
+                      + (connectTemplate is null ? ", or no Elden Ring connect collision to copy" : "") + ")");
 
         // Player parts are spawn points (warps, respawns). The run's start point gets a fixed entity ID.
         var start = ChooseStart(ds3, ds3Id);

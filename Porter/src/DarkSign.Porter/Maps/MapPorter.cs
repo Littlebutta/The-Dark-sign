@@ -134,7 +134,10 @@ public static class MapPorter
         var (hostBytes, msbCompression) = er.ReadWithCompression(MsbPath(hostId));
         var host = MSBE.Read(hostBytes);
 
-        var layout = MsbPort.Convert(ds3Msb, host, ds3Id, erId, new MsbPort.Options { AllVisible = !options.Ds3Groups });
+        var slots = MapSlots.All.Where(s => !s.Probe && (options.Only.Count == 0 || options.Only.Contains(s.Ds3.ToString())))
+            .Select(s => (s.Ds3, s.Er)).ToList();
+        var layout = MsbPort.Convert(ds3Msb, host, ds3Id, erId, new MsbPort.Options { AllVisible = !options.Ds3Groups },
+            slots, ConnectTemplate(er));
         report.AppendLine($"{ds3Id} -> {erId}: {layout.MapPieces} map pieces, {layout.Collisions} collisions, {layout.Players} player points");
         foreach (var note in layout.Notes)
             report.AppendLine($"  note: {note}");
@@ -206,6 +209,8 @@ public static class MapPorter
         msb.Parts.MapPieces.RemoveAll(p => missingModels.Contains(p.ModelName));
         msb.Models.MapPieces.RemoveAll(m => missingModels.Contains(m.Name));
         msb.Parts.Collisions.RemoveAll(p => missingCollisions.Contains(p.ModelName));
+        msb.Parts.ConnectCollisions.RemoveAll(p => missingCollisions.Contains(p.ModelName)
+                                                   || msb.Parts.Collisions.All(c => c.Name != p.CollisionName));
         msb.Models.Collisions.RemoveAll(m => missingCollisions.Contains(m.Name));
         File.WriteAllBytes(ctx.ModPath(ModParts(MsbPath(erId))), DCX.Compress(msb.Write(), msbCompression));
         report.AppendLine($"  written: {msb.Parts.MapPieces.Count} map pieces, {msb.Parts.Collisions.Count} collisions, {msb.Parts.Players.Count} player points");
@@ -224,6 +229,35 @@ public static class MapPorter
         if (msb.Parts.Players.All(p => p.EntityID != (uint)layout.StartEntityId))
             return 0;
         return msb.Parts.MapPieces.Count > 0 && msb.Parts.Collisions.Count > 0 ? layout.StartEntityId : 0;
+    }
+
+    // Legacy dungeons with connect collisions to copy (the colosseum slots have none).
+    private static readonly string[] ConnectSources = ["m10_00_00_00", "m11_00_00_00", "m14_00_00_00", "m16_00_00_00"];
+    private static MSBE.Part.ConnectCollision? _connectTemplate;
+    private static bool _connectSearched;
+
+    private static MSBE.Part.ConnectCollision? ConnectTemplate(GameArchives er)
+    {
+        if (_connectSearched)
+            return _connectTemplate;
+        _connectSearched = true;
+        foreach (var name in ConnectSources)
+        {
+            var path = MsbPath(MapId.Parse(name));
+            if (!er.Contains(path))
+                continue;
+            try
+            {
+                _connectTemplate = MSBE.Read(er.Read(path)).Parts.ConnectCollisions.FirstOrDefault();
+                if (_connectTemplate is not null)
+                    break;
+            }
+            catch
+            {
+                // try the next map
+            }
+        }
+        return _connectTemplate;
     }
 
     public static string MsbPath(MapId id) => $"/map/mapstudio/{id}.msb.dcx";
