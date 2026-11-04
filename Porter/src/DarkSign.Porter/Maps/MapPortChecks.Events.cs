@@ -13,6 +13,7 @@ public static partial class MapPortChecks
         yield return ("event port: event parameters follow their argument and values passed in move by kind", EventParameters);
         yield return ("event port: DS3 common events are ported once, under saved IDs, with Elden Ring's slot argument", EventCommon);
         yield return ("event port: flag ranges stay consecutive and the flag table reads back the same", EventFlagTable);
+        yield return ("layout: connect collisions point at the neighbouring map's slot; ones to unported maps are left out", ConnectCollisions);
         yield return ("event port: DS3 action buttons become IF Action Button in Area with one ActionButtonParam row per prompt", EventActionButtons);
     }
 
@@ -308,5 +309,31 @@ public static partial class MapPortChecks
         // Without rows to point at, the event is left out as before.
         var without = NewEventPort().Convert(ds3, EMEVD.Game.Sekiro, MoveToSlot);
         Expect(without.Events.Count == 0, "action buttons converted with nowhere to put their rows");
+    }
+
+    private static void ConnectCollisions()
+    {
+        var ds3 = SyntheticDs3();
+        ds3.Parts.ConnectCollisions.Add(new MSB3.Part.ConnectCollision
+        {
+            Name = "h000100_0001", ModelName = "h000100", CollisionName = "h000100_0000",
+        });
+        ds3.Parts.ConnectCollisions[0].MapID[0] = 30; // High Wall: ported to m45_01
+        var unported = new MSB3.Part.ConnectCollision { Name = "h000100_0002", ModelName = "h000100", CollisionName = "h000100_0000" };
+        unported.MapID[0] = 35;
+        ds3.Parts.ConnectCollisions.Add(unported);
+        var template = new MSBE.Part.ConnectCollision { Name = "h000000_0000", ModelName = "h000000", CollisionName = "x" };
+
+        var result = MsbPort.Convert(ds3, SyntheticHost(), Ds3Id, ErId, null, [(Ds3Id, ErId), (Ds3High, ErHigh)], template);
+        var connects = result.Msb.Parts.ConnectCollisions;
+        Expect(connects.Count == 1, $"{connects.Count} connect collisions, expected 1");
+        Expect(connects[0].MapID.SequenceEqual(new byte[] { 45, 1, 0, 0 }), $"connect collision points at {string.Join(",", connects[0].MapID)}");
+        Expect(connects[0].CollisionName == "h000100_0000", "connect collision lost its collision");
+        var bytes = result.Msb.Write();
+        var back = MSBE.Read(bytes);
+        Expect(back.Parts.ConnectCollisions.Count == 1 && back.Parts.ConnectCollisions[0].CollisionName == "h000100_0000", "connect collision doesn't read back");
+
+        var none = MsbPort.Convert(ds3, SyntheticHost(), Ds3Id, ErId);
+        Expect(none.Msb.Parts.ConnectCollisions.Count == 0, "connect collisions ported without knowing the slots");
     }
 }
