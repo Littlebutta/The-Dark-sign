@@ -24,22 +24,35 @@ public readonly record struct MapId(int Area, int Block, int Region, int Index)
     public string AreaFolder => $"m{Area:D2}";
 
     /// <summary>
-    /// Entity IDs of a legacy map start with its area and block: 4000xxxx in DS3's m40_00, 4500xxxx in Elden Ring's
-    /// m45_00. Moving a map moves its IDs: the last four digits stay, the prefix becomes the host's.
+    /// Elden Ring legacy-map IDs (entities, events and map flags alike) are AABBLLLL: 4500xxxx in m45_00, 1000xxxx in
+    /// m10_00 (Stormveil). The last four digits are the map-local number.
     /// </summary>
     public int EntityBase => Area * 1_000_000 + Block * 10_000;
 
-    /// <summary>The ID moved from this map to another, or the ID unchanged when it isn't one of this map's.</summary>
+    /// <summary>Dark Souls III entity IDs are 7 digits, AABLLLL: 4000800 is Iudex Gundyr in m40_00, 3010800 is in m30_01.</summary>
+    public int Ds3EntityBase => Area * 100_000 + Block * 10_000;
+
+    /// <summary>Dark Souls III map event IDs and map flags are 1AABLLLL: 14000800 (Iudex Gundyr defeated), 13000000.</summary>
+    public int Ds3FlagBase => 10_000_000 + Ds3EntityBase;
+
+    /// <summary>
+    /// A DS3 ID of this map (an entity AABLLLL, or an event or flag 1AABLLLL) moved to an Elden Ring map
+    /// (AABBLLLL), keeping the map-local number; any other ID is returned unchanged. The 8-digit AABBLLLL form is
+    /// moved too, for IDs already in Elden Ring's numbering.
+    /// </summary>
     public int MoveEntity(int id, MapId to)
     {
         if (id <= 0)
             return id;
-        // Legacy-map IDs: AABBxxxx (8 digits), with a few maps using AABB0xxxx-style 9-digit ranges for generated
-        // entities; only the 8-digit form is moved.
-        if (id >= EntityBase && id < EntityBase + 10_000)
-            return to.EntityBase + (id - EntityBase);
+        foreach (var b in new[] { Ds3EntityBase, Ds3FlagBase, EntityBase })
+            if (id >= b && id < b + 10_000)
+                return to.EntityBase + (id - b);
         return id;
     }
+
+    /// <summary>True when the ID is one of this DS3 map's entities, events or flags.</summary>
+    public bool OwnsDs3Id(long id) =>
+        new[] { Ds3EntityBase, Ds3FlagBase }.Any(b => id >= b && id < b + 10_000);
 }
 
 /// <summary>

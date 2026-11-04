@@ -40,9 +40,12 @@ public static partial class MapPortChecks
     {
         var id = MapId.Parse("m40_00_00_00");
         Expect(id.ToString() == "m40_00_00_00" && id.Digits == "40_00_00_00" && id.AreaFolder == "m40", $"names: {id}");
-        Expect(id.EntityBase == 40_000_000, $"entity base {id.EntityBase}");
-        Expect(id.MoveEntity(40001234, ErId) == 45001234, "entity move");
-        Expect(id.MoveEntity(31001234, ErId) == 31001234, "another map's entity must stay");
+        Expect(id.EntityBase == 40_000_000 && id.Ds3EntityBase == 4_000_000 && id.Ds3FlagBase == 14_000_000, $"entity base {id.EntityBase}");
+        Expect(id.MoveEntity(4000800, ErId) == 45000800, "DS3 entity move (7 digits)");
+        Expect(id.MoveEntity(14000800, ErId) == 45000800, "DS3 flag/event move (1AABLLLL)");
+        Expect(id.MoveEntity(40001234, ErId) == 45001234, "8-digit move");
+        Expect(id.MoveEntity(3000800, ErId) == 3000800 && id.MoveEntity(13000800, ErId) == 13000800, "another map's IDs must stay");
+        Expect(MapId.Parse("m30_01_00_00").Ds3EntityBase == 3_010_000, "block digit");
         Expect(id.MoveEntity(0, ErId) == 0 && id.MoveEntity(-1, ErId) == -1, "unset entity must stay");
         Expect(MapSlots.ForDs3(id)?.Er == ErId, "m40 slot");
         Expect(MapPorter.ErMapBndPath(ErId, "000100") == "/map/m45/m45_00_00_00/m45_00_00_00_000100.mapbnd.dcx", "ER mapbnd path");
@@ -57,14 +60,14 @@ public static partial class MapPortChecks
         msb.Models.MapPieces.Add(new MSB3.Model.MapPiece { Name = "m000100" });
         msb.Models.Collisions.Add(new MSB3.Model.Collision { Name = "h000100" });
         msb.Models.Players.Add(new MSB3.Model.Player { Name = "c0000" });
-        var piece = new MSB3.Part.MapPiece { Name = "m000100_0000", ModelName = "m000100", Position = new Vector3(1, 2, 3), EntityID = 40000100 };
+        var piece = new MSB3.Part.MapPiece { Name = "m000100_0000", ModelName = "m000100", Position = new Vector3(1, 2, 3), EntityID = 4000100 };
         piece.DrawGroups[0] = 0x11;
         piece.DispGroups[0] = 0x22;
         piece.BackreadGroups[0] = 0x33;
         msb.Parts.MapPieces.Add(piece);
         msb.Parts.Collisions.Add(new MSB3.Part.Collision { Name = "h000100_0000", ModelName = "h000100", HitFilterID = 8, Rotation = new Vector3(0, 90, 0) });
-        msb.Parts.Players.Add(new MSB3.Part.Player { Name = "c0000_0000", ModelName = "c0000", EntityID = 40000500 });
-        msb.Parts.Players.Add(new MSB3.Part.Player { Name = "c0000_0001", ModelName = "c0000", EntityID = 40000990, Position = new Vector3(7, 8, 9) });
+        msb.Parts.Players.Add(new MSB3.Part.Player { Name = "c0000_0000", ModelName = "c0000", EntityID = 4000500 });
+        msb.Parts.Players.Add(new MSB3.Part.Player { Name = "c0000_0001", ModelName = "c0000", EntityID = 4000990, Position = new Vector3(7, 8, 9) });
         return msb;
     }
 
