@@ -50,13 +50,25 @@ public readonly record struct MapId(int Area, int Block, int Region, int Index)
 /// </summary>
 public static class MapSlots
 {
-    public sealed record Slot(MapId Ds3, MapId Er, string Name);
+    /// <param name="Template">
+    /// The Elden Ring map whose files give the formats and template parts when <paramref name="Er"/> is a map ID
+    /// Elden Ring doesn't ship (null: <paramref name="Er"/> itself).
+    /// </param>
+    /// <param name="Probe">A test slot: the same DS3 map again under a new map ID, to find out whether the game
+    /// loads map IDs it doesn't ship. If it does, every DS3 map can get its own slot.</param>
+    public sealed record Slot(MapId Ds3, MapId Er, string Name, MapId? Template = null, bool Probe = false)
+    {
+        public MapId Host => Template ?? Er;
+    }
 
     public static readonly IReadOnlyList<Slot> All =
     [
         new(MapId.Parse("m40_00_00_00"), MapId.Parse("m45_00_00_00"), "Firelink Shrine / Cemetery of Ash"),
         new(MapId.Parse("m30_00_00_00"), MapId.Parse("m45_01_00_00"), "High Wall of Lothric"),
         new(MapId.Parse("m31_00_00_00"), MapId.Parse("m45_02_00_00"), "Undead Settlement"),
+        // DS3's Dreg Heap ID, which Elden Ring doesn't use; built from the colosseum's file formats.
+        new(MapId.Parse("m40_00_00_00"), MapId.Parse("m50_00_00_00"), "Cemetery of Ash (new map ID test)",
+            Template: MapId.Parse("m45_00_00_00"), Probe: true),
     ];
 
     /// <summary>Every DS3 map the single-player game uses, for reports of what still has no slot.</summary>
@@ -72,5 +84,5 @@ public static class MapSlots
         ("m51_00_00_00", "The Ringed City"), ("m51_01_00_00", "Filianore's Rest"),
     ];
 
-    public static Slot? ForDs3(MapId ds3) => All.FirstOrDefault(s => s.Ds3 == ds3);
+    public static Slot? ForDs3(MapId ds3) => All.FirstOrDefault(s => s.Ds3 == ds3 && !s.Probe);
 }

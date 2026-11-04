@@ -18,6 +18,8 @@ public static partial class MapPortChecks
         yield return ("layout: DS3 group masks are copied by position when asked", LayoutGroups);
         yield return ("events: run events have DarkScript3's Elden Ring layouts and survive a write", RunEventLayout);
         yield return ("events: adding the run events twice leaves one copy", RunEventsIdempotent);
+        yield return ("events: one warp event per ported map, started from the constructor, replaced on a rerun", PerMapWarps);
+        yield return ("slots: the new-map-ID test slot uses a template map and doesn't hijack the real m40 slot", ProbeSlot);
         yield return ("events: the return point prefers a Roundtable Hold warp", ReturnPoint);
         yield return ("names: collision and texture binder entries", Names);
         yield return ("navmesh: DS3 Havok AI 2014 -> Elden Ring 2018 keeps faces, edges, graph and tree (XML)", () => Navmesh(xml: true));
@@ -398,5 +400,32 @@ public static partial class MapPortChecks
         var wrongHost = SyntheticCommon();
         RunEvents.AddTo(wrongHost, MapId.Parse("m45_01_00_00"), 45010990, Back);
         Expect(MapValidate.CheckRunEvents(wrongHost, ErId).Any(i => i.Contains("warps to")), "wrong warp target not reported");
+    }
+
+    private static void PerMapWarps()
+    {
+        var common = SyntheticCommon();
+        RunEvents.Warp[] warps = [new(ErId, 45000990, 0), new(MapId.Parse("m50_00_00_00"), 50000990, 1)];
+        RunEvents.AddWarps(common, warps);
+        RunEvents.AddWarps(common, warps);
+        common = EMEVD.Read(common.Write());
+        var events = common.Events.Where(e => e.ID == RunEvents.WarpEventId(0) || e.ID == RunEvents.WarpEventId(1)).ToList();
+        Expect(events.Count == 2, $"{events.Count} warp events");
+        var warp = events[1].Instructions.Single(i => i.Bank == 2003 && i.ID == 14);
+        Expect(warp.ArgData[0] == 50 && BitConverter.ToUInt32(warp.ArgData, 4) == 50000990 && warp.Layer is null, "second warp target");
+        var wait = events[1].Instructions[0];
+        Expect(BitConverter.ToUInt32(wait.ArgData, 4) == RunEvents.WarpRequestFlag(1), "waits on its own request flag");
+        var inits = common.Events.Single(e => e.ID == 0).Instructions.Count(i => i.Bank == 2000 && BitConverter.ToUInt32(i.ArgData, 4) >= RunEvents.WarpEventId(0));
+        Expect(inits == 2, $"{inits} constructor inits");
+        Expect(RunEvents.WarpRequestFlag(0) / 10000 == RunEvents.FlagBlock / 10000 && RunEvents.WarpRequestFlag(0) % 10000 is >= 2000 and < 3000,
+            "request flags must be in the block's temporary range");
+    }
+
+    private static void ProbeSlot()
+    {
+        var probe = MapSlots.All.Single(s => s.Probe);
+        Expect(probe.Host == ErId && probe.Er != ErId, $"probe host {probe.Host}");
+        Expect(MapSlots.ForDs3(Ds3Id)?.Er == ErId, "ForDs3 must return the real slot");
+        Expect(MapSlots.All.Select(s => s.Er).Distinct().Count() == MapSlots.All.Count, "slots must not share an Elden Ring map");
     }
 }

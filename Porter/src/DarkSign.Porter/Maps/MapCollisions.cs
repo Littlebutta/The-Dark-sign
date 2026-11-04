@@ -17,17 +17,18 @@ public static class MapCollisions
     public static string ErBinderPath(MapId id, string kind) => $"/map/{id.AreaFolder}/{id}/{kind}{id.Digits}.hkxbhd";
 
     public static Result Port(PorterContext ctx, GameArchives ds3, GameArchives er, MapId ds3Id, MapId erId, string kind,
-        MapPorter.Options options)
+        MapPorter.Options options, MapId? hostId = null)
     {
+        var host0 = hostId ?? erId;
         var ported = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var source = Ds3BinderPath(ds3Id, kind);
         if (!ds3.Contains(source))
             return new Result($"DS3 has no {ItemText.Leaf(source)}; skipped", ported);
 
         // The host binder of the same kind, else the high-detail one, gives the format and the template.
-        var hostPath = ErBinderPath(erId, kind);
+        var hostPath = ErBinderPath(host0, kind);
         if (!er.Contains(hostPath))
-            hostPath = ErBinderPath(erId, "h");
+            hostPath = ErBinderPath(host0, "h");
         if (!er.Contains(hostPath))
             return new Result($"Elden Ring has no {ItemText.Leaf(hostPath)} to copy the format from; skipped", ported);
         var host = BXF4.Read(er.Read(hostPath), er.Read(hostPath[..^3] + "bdt"));
@@ -49,7 +50,8 @@ public static class MapCollisions
         }
         templateNote = template is null && templateNote.Length == 0 ? "; no host template body, defaults used" : templateNote;
 
-        var folder = templateFile.Name[..^ItemText.Leaf(templateFile.Name).Length];
+        var folder = templateFile.Name[..^ItemText.Leaf(templateFile.Name).Length]
+            .Replace(host0.ToString(), erId.ToString(), StringComparison.OrdinalIgnoreCase);
         var output = new BXF4
         {
             Version = host.Version, Format = host.Format, BigEndian = host.BigEndian, BitBigEndian = host.BitBigEndian,

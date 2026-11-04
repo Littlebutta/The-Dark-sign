@@ -12,19 +12,20 @@ public static class MapNavmesh
     public static string Ds3BinderPath(MapId id) => $"/map/{id}/{id}.nvmhktbnd.dcx";
     public static string ErBinderPath(MapId id) => $"/map/{id.AreaFolder}/{id}/{id}.nvmhktbnd.dcx";
 
-    public static string Port(PorterContext ctx, GameArchives ds3, GameArchives er, MapId ds3Id, MapId erId, MapPorter.Options options)
+    public static string Port(PorterContext ctx, GameArchives ds3, GameArchives er, MapId ds3Id, MapId erId, MapPorter.Options options,
+        MapId? hostId = null)
     {
         var source = Ds3BinderPath(ds3Id);
         if (!ds3.Contains(source))
             return $"navmesh: DS3 has no {ItemText.Leaf(source)}; skipped";
-        var hostPath = ErBinderPath(erId);
+        var hostPath = ErBinderPath(hostId ?? erId);
         if (!er.Contains(hostPath))
             return $"navmesh: Elden Ring has no {ItemText.Leaf(hostPath)} to copy the format from; skipped";
 
         var (hostBytes, compression) = er.ReadWithCompression(hostPath);
         var host = BND4.Read(hostBytes);
         var ds3Binder = BND4.Read(ds3.Read(source));
-        var result = Convert(ds3Binder, host, ds3Id, erId, !options.BinaryCollision);
+        var result = Convert(ds3Binder, host, ds3Id, erId, !options.BinaryCollision, hostId);
 
         var target = ErBinderPath(erId);
         File.WriteAllBytes(ctx.ModPath(MapPorter.ModParts(target)), DCX.Compress(result.Binder.Write(), compression));
@@ -34,7 +35,7 @@ public static class MapNavmesh
     public sealed record Result(BND4 Binder, string Summary, int Converted);
 
     /// <summary>The DS3 binder's navmeshes in a copy of the host binder (its own navmeshes left out).</summary>
-    public static Result Convert(BND4 ds3, BND4 host, MapId ds3Id, MapId erId, bool xml)
+    public static Result Convert(BND4 ds3, BND4 host, MapId ds3Id, MapId erId, bool xml, MapId? hostId = null)
     {
         var output = new BND4
         {
@@ -49,6 +50,8 @@ public static class MapNavmesh
             hostEntryCompression = entryCompression;
         }
         var folder = hostHkx is null ? "" : hostHkx.Name[..^ItemText.Leaf(hostHkx.Name).Length];
+        if (hostId is { } hid && hid != erId)
+            folder = folder.Replace(hid.ToString(), erId.ToString(), StringComparison.OrdinalIgnoreCase);
         var flags = hostHkx?.Flags ?? Binder.FileFlags.Flag1;
         foreach (var keep in host.Files.Where(f => f.Name.Contains(".compendium", StringComparison.OrdinalIgnoreCase)))
             output.Files.Add(keep);
