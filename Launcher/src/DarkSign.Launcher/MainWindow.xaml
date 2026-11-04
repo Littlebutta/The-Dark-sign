@@ -57,6 +57,9 @@
           <StackPanel Orientation="Horizontal">
             <CheckBox x:Name="TestMenuBox" Content="F1 test menu (give items and runes)" Foreground="#E6E0D4"
                       VerticalAlignment="Center" Checked="OnTestMenuChanged" Unchecked="OnTestMenuChanged" />
+            <CheckBox x:Name="SeamlessBox" Content="Seamless Co-op" Foreground="#E6E0D4" Margin="16,0,0,0"
+                      VerticalAlignment="Center" Checked="OnSeamlessChanged" Unchecked="OnSeamlessChanged"
+                      ToolTip="Loads Seamless Co-op from your own download (pick its ersc.dll). Everyone in the session needs the same mod code shown above." />
             <Button x:Name="RebuildButton" Content="Rebuild content" Margin="16,0,0,0" Click="OnRebuildContent" />
             <Button Content="Open mod folder" Click="OnOpenModFolder" />
             <Button x:Name="UninstallButton" Content="Uninstall…" Click="OnUninstall"
