@@ -92,7 +92,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: DarkSignPorter.zip
-          key: porter-${{ hashFiles('Porter/**', 'Launcher/src/DarkSign.Core/**') }}
+          key: porter-${{ hashFiles('Porter/**', 'Launcher/src/DarkSign.Core/**', 'Randomizer/src/**', 'Randomizer/data/**') }}
       # SoulsFormatsNEXT needs C# 13, so the porter builds with SDK 9+ while still targeting net8.0.
       - if: steps.cache.outputs.cache-hit != 'true'
         run: dotnet --list-sdks
@@ -100,7 +100,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: .nuget/packages
-          key: nuget-porter-${{ hashFiles('Porter/**/*.csproj', 'Launcher/src/DarkSign.Core/*.csproj') }}
+          key: nuget-porter-${{ hashFiles('Porter/**/*.csproj', 'Launcher/src/DarkSign.Core/*.csproj', 'Randomizer/src/**/*.csproj') }}
           restore-keys: nuget-porter-
       # The launcher downloads this zip from the release it was built with and runs it to build the content mod.
       - if: steps.cache.outputs.cache-hit != 'true'
@@ -108,6 +108,9 @@ jobs:
       # Offline checks of the map porter (collision conversion, layouts, run events); no game files needed.
       - if: steps.cache.outputs.cache-hit != 'true'
         run: porter-publish/DarkSignPorter.exe map-selftest
+      # The randomizer's data ships with the porter: make one checked world in a scratch root (no game files needed).
+      - if: steps.cache.outputs.cache-hit != 'true'
+        run: porter-publish/DarkSignPorter.exe --root "$env:RUNNER_TEMP\rando-smoke" randomize --profile CI --seed 1
       - if: steps.cache.outputs.cache-hit != 'true'
         run: Compress-Archive -Path porter-publish/* -DestinationPath DarkSignPorter.zip
       - uses: actions/upload-artifact@v4

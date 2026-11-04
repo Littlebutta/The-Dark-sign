@@ -18,7 +18,13 @@ public static class ItemText
         ["AccessoryName"] = ["アクセサリ名", "AccessoryName"],
         ["GoodsName"] = ["アイテム名", "GoodsName"],
         ["GemName"] = ["GemName"],
+        // Elden Ring: Sites of Grace and region names (the randomizer's area lookup).
+        ["PlaceName"] = ["PlaceName"],
     };
+
+    // Text kinds that may live in the menu binders rather than the item ones.
+    private static readonly string[] MenuBinders =
+        ["/msg/engus/menu.msgbnd.dcx", "/msg/engus/menu_dlc01.msgbnd.dcx", "/msg/engus/menu_dlc02.msgbnd.dcx"];
 
     private static readonly Dictionary<PorterGame, string[]> ItemBinders = new()
     {
@@ -30,7 +36,8 @@ public static class ItemText
     public static Dictionary<int, string> Load(GameArchives archives, string kind)
     {
         var result = new Dictionary<int, string>();
-        foreach (var path in ItemBinders[archives.Game])
+        var binders = kind == "PlaceName" ? [.. ItemBinders[archives.Game], .. MenuBinders] : ItemBinders[archives.Game];
+        foreach (var path in binders)
         {
             if (!archives.Contains(path))
                 continue;

@@ -1,0 +1,71 @@
+# The Dark Sign's additions to FogMod's DS3 data (fog.txt stays unchanged upstream).
+#
+# Bosses: which DS3 bosses can change arenas, and how big an arena each needs. "fixed" bosses have scripted fights
+# (arena gimmicks, multi-body fights, item mechanics) and stay where they are. "final" ends the DS3 half of the run.
+# A DS3 boss only moves into another arena once the enemy port has brought its character into Elden Ring
+# (the launcher passes the list of ported characters); until then DS3 arenas receive Elden Ring bosses.
+Bosses:
+- {Name: iudexgundyr, Text: Iudex Gundyr, Area: firelink_iudexgundyr, Size: medium}
+- {Name: vordt, Text: Vordt of the Boreal Valley, Area: highwall_vordt, Size: medium}
+- {Name: greatwood, Text: Curse-Rotted Greatwood, Area: settlement_greatwood, Size: large, Tags: fixed}    # the floor collapses
+- {Name: crystalsage, Text: Crystal Sage, Area: farronkeep_crystalsage, Size: medium, Tags: fixed}           # teleport points
+- {Name: abysswatchers, Text: Abyss Watchers, Area: farronkeep_abysswatchers, Size: medium, Tags: fixed shardbearer}
+- {Name: deacons, Text: Deacons of the Deep, Area: cathedral_deacons, Size: medium, Tags: fixed}            # a crowd fight
+- {Name: wolnir, Text: High Lord Wolnir, Area: catacombs_wolnir, Size: large, Tags: fixed}                  # darkness arena
+- {Name: olddemonking, Text: Old Demon King, Area: catacombs_olddemonking, Size: medium}
+- {Name: pontiff, Text: Pontiff Sulyvahn, Area: irithyll_pontiff, Size: medium}
+- {Name: aldrich, Text: Aldrich, Devourer of Gods, Area: irithyll_aldrich, Size: large, Tags: shardbearer}
+- {Name: yhorm, Text: Yhorm the Giant, Area: dungeon_yhorm, Size: large, Tags: fixed shardbearer}          # Storm Ruler
+- {Name: dancer, Text: Dancer of the Boreal Valley, Area: highwall_dancer, Size: medium}
+- {Name: dragonslayerarmour, Text: Dragonslayer Armour, Area: lothric_dragonslayerarmour, Size: medium}
+- {Name: twinprinces, Text: Lothric and Lorian, Area: archives_twinprinces, Size: medium, Tags: fixed shardbearer}
+- {Name: oceiros, Text: Oceiros, the Consumed King, Area: highwall_oceiros, Size: medium}
+- {Name: championgundyr, Text: Champion Gundyr, Area: untended_championgundyr, Size: medium}
+- {Name: ancientwyvern, Text: Ancient Wyvern, Area: archdragon_ancientwyvern, Size: large, Tags: fixed}    # plunging attack
+- {Name: namelessking, Text: Nameless King, Area: archdragon_namelessking, Size: large, Tags: fixed}       # two phases, storm dragon
+- {Name: gravetender, Text: Champion's Gravetender, Area: ariandel_gravetender, Size: medium}
+- {Name: friede, Text: Sister Friede, Area: ariandel_friede, Size: medium, Tags: fixed}                    # Father Ariandel phase
+- {Name: demonprince, Text: Demon Prince, Area: dregheap_demonprince, Size: large, Tags: fixed}            # two demons
+- {Name: halflight, Text: Halflight, Spear of the Church, Area: ringedcity_halflight, Size: medium, Tags: fixed}
+- {Name: midir, Text: Darkeater Midir, Area: ringedcity_midir, Size: large, Tags: fixed}
+- {Name: gael, Text: Slave Knight Gael, Area: filianore_gael, Size: large}
+- {Name: soulofcinder, Text: Soul of Cinder, Area: kiln_soulofcinder, Size: large, Tags: final}
+
+# Areas whose boss counts as a shard (Lord of Cinder). With "shared shards", Elden Ring's Great Runes and DS3's
+# Lords of Cinder count toward both games' gates (Leyndell's door and the Firelink thrones).
+ShardAreas: [farronkeep_abysswatchers, irithyll_aldrich, dungeon_yhorm, archives_twinprinces]
+
+# Key items that are not item-lot pickups (given by events or NPCs) stay with their vanilla area.
+PinnedKeyItems: [cinder1, cinder2, cinder3, cinder4, pathofthedragon]
+
+# The Firelink thrones: the condition FogMod uses for the Kiln, rewritten when shards are shared.
+KilnCond: AND cinder1 cinder2 cinder3 cinder4
+
+# In-game names of FogMod's key items (for the spoiler log, and for finding the item when its ID isn't known).
+KeyItemText:
+  liftchamberkey: Lift Chamber Key
+  smalldoll: Small Doll
+  jailbreakerskey: Jailbreaker's Key
+  jailerskeyring: Jailer's Key Ring
+  cellkey: Cell Key
+  oldcellkey: Old Cell Key
+  towerkey: Tower Key
+  grandarchiveskey: Grand Archives Key
+  smalllothricbanner: Small Lothric Banner
+  basinofvows: Basin of Vows
+  cinder1: Cinders of a Lord (Abyss Watchers)
+  cinder2: Cinders of a Lord (Aldrich)
+  cinder3: Cinders of a Lord (Yhorm)
+  cinder4: Cinders of a Lord (Lothric)
+  coiledsword: Coiled Sword
+  contraptionkey: Contraption Key
+  smallenvoybanner: Small Envoy Banner
+  pathofthedragon: Path of the Dragon
+  morticiansashes: Mortician's Ashes
+  paladinsashes: Paladin's Ashes
+  gravewardensashes: Grave Warden's Ashes
+  prisonerchiefsashes: Prisoner Chief's Ashes
+  xanthousashes: Xanthous Ashes
+  dragonchasersashes: Dragon Chaser's Ashes
+  easternersashes: Easterner's Ashes
+  captainsashes: Captain's Ashes

@@ -14,6 +14,8 @@ public sealed class LaunchProfile
 {
     public string Name { get; set; } = "Default";
     public Dictionary<GameId, GameLaunchOptions> Games { get; set; } = [];
+    /// <summary>This profile's cross-game randomizer (null or disabled = the normal game).</summary>
+    public RandomizerSettings? Randomizer { get; set; }
 
     public GameLaunchOptions For(GameId id)
     {

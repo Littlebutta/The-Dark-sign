@@ -1,0 +1,519 @@
+# Elden Ring's world for the cross-game randomizer, written for The Dark Sign (our own data).
+#
+# Same layout as FogMod's DS3 file (Areas with To, KeyItems, Entrances) plus: Tier (0 = start, 1 = end), Regions /
+# Maps / Graces (how the porter puts each item location in an area), Groups (named lists used as "@name" in
+# conditions), Bosses and Dungeons.
+#
+# Rule for this file: when unsure whether a route exists without a key or boss, require it. Stricter logic can only
+# make the randomizer place items earlier than needed; looser logic could make a seed unbeatable.
+#
+# Elden Ring lets you warp to any discovered Site of Grace from anywhere outside a boss fight, so the logic never
+# needs a way back: anywhere you have reached stays reachable.
+#
+# Names in the game text (Regions, Graces, key item Text, boss Text) are looked up in the game's own text by the
+# porter on the player's PC; anything it can't find is reported and left vanilla.
+
+Start: chapel
+
+Groups:
+  # Great Rune bearers. Leyndell's gate needs two of them (Rennala's Great Rune of the Unborn doesn't count).
+  # With "shared shards" on, the randomizer replaces this list with both games' shardbearers (DS3 Lords of Cinder too).
+  shards: [stormveil_godrick, caelid_radahn, volcano_rykard, haligtree_malenia, mohgwyn_mohg, leyndell_morgott]
+
+Areas:
+- Name: chapel
+  Text: Chapel of Anticipation
+  Tier: 0
+  Maps: [m10_01]
+  To:
+  - Area: limgrave
+    Text: losing to the Grafted Scion
+
+- Name: roundtable
+  Text: Roundtable Hold
+  Tier: 0.05
+  Maps: [m11_10]
+  Graces: [Table of Lost Grace]
+
+- Name: limgrave
+  Text: Limgrave
+  Tier: 0.02
+  Regions: [Limgrave, Stormhill, Weeping Peninsula]
+  To:
+  - {Area: roundtable, Text: resting at a Site of Grace after meeting Melina}
+  - {Area: caelid, Text: walking east}
+  - {Area: siofra, Text: taking the Siofra River Well lift}
+
+- Name: stormveil_margit
+  Text: Margit, the Fell Omen
+  Tags: boss
+  Tier: 0.08
+  To:
+  - {Area: stormveil, Text: entering the castle gate}
+
+- Name: stormveil
+  Text: Stormveil Castle
+  Tier: 0.12
+  Maps: [m10_00]
+  Regions: [Stormveil Castle]
+
+- Name: stormveil_godrick
+  Text: Godrick the Grafted
+  Tags: boss shardbearer
+  Tier: 0.18
+  To:
+  - {Area: liurnia, Text: leaving through the Liurnia gate}
+
+- Name: liurnia
+  Text: Liurnia of the Lakes
+  Tier: 0.25
+  Regions: [Liurnia of the Lakes, Bellum Highway, Moonlight Altar]
+  To:
+  - {Area: raya_lucaria, Text: using the Academy Glintstone Key at the gate, Cond: academy_glintstone_key}
+  - {Area: altus, Text: riding the Grand Lift of Dectus, Cond: AND dectus_left dectus_right}
+  - {Area: ainsel, Text: taking the Ainsel River Well}
+  - {Area: caria_manor, Text: climbing to Caria Manor}
+
+- Name: caria_manor
+  Text: Caria Manor
+  Tier: 0.3
+  Graces: [Caria Manor, Manor Upper Level, Manor Lower Level]
+  To:
+  - {Area: caria_loretta, Text: approaching Royal Knight Loretta}
+
+- Name: caria_loretta
+  Text: Royal Knight Loretta
+  Tags: boss
+  Tier: 0.32
+
+- Name: raya_lucaria
+  Text: Raya Lucaria Academy
+  Tier: 0.28
+  Maps: [m14_00]
+  Regions: [Raya Lucaria Academy]
+
+- Name: raya_redwolf
+  Text: Red Wolf of Radagon
+  Tags: boss
+  Tier: 0.3
+  To:
+  - {Area: raya_inner, Text: past the Red Wolf}
+
+- Name: raya_inner
+  Text: Raya Lucaria Academy (Debate Parlor onward)
+  Tier: 0.31
+
+- Name: raya_rennala
+  Text: Rennala, Queen of the Full Moon
+  Tags: boss
+  Tier: 0.33
+
+- Name: liurnia_makar
+  Text: Magma Wyrm Makar
+  Tags: boss
+  Tier: 0.33
+  To:
+  - {Area: altus, Text: climbing out of the Ruin-Strewn Precipice}
+
+- Name: altus
+  Text: Altus Plateau
+  Tier: 0.42
+  Regions: [Altus Plateau]
+  To:
+  - {Area: gelmir, Text: riding west to Mt. Gelmir}
+  - {Area: outskirts, Text: riding east to the capital}
+
+- Name: gelmir
+  Text: Mt. Gelmir
+  Tier: 0.5
+  Regions: [Mt. Gelmir]
+  To:
+  - {Area: volcano, Text: entering Volcano Manor}
+
+- Name: volcano
+  Text: Volcano Manor
+  Tier: 0.55
+  Maps: [m16_00]
+  Regions: [Volcano Manor]
+
+- Name: volcano_rykard
+  Text: Rykard, Lord of Blasphemy
+  Tags: boss shardbearer
+  Tier: 0.6
+
+- Name: outskirts
+  Text: Capital Outskirts
+  Tier: 0.5
+  Regions: [Capital Outskirts]
+  To:
+  - {Area: leyndell, Text: passing the Draconic Tree Sentinel with two Great Runes, Cond: 2 OF @shards}
+
+- Name: leyndell
+  Text: Leyndell, Royal Capital
+  Tier: 0.6
+  Maps: [m11_00]
+  Regions: [Leyndell, Royal Capital]
+  To:
+  - {Area: leyndell_godfrey, Text: entering the Erdtree Sanctuary}
+
+- Name: leyndell_godfrey
+  Text: Godfrey, First Elden Lord (Golden Shade)
+  Tags: boss
+  Tier: 0.62
+
+- Name: leyndell_morgott
+  Text: Morgott, the Omen King
+  Tags: boss shardbearer
+  Tier: 0.65
+  To:
+  - {Area: forbidden_lands, Text: leaving the capital by the Forbidden Lands lift}
+
+- Name: forbidden_lands
+  Text: Forbidden Lands
+  Tier: 0.68
+  Regions: [Forbidden Lands]
+  To:
+  - {Area: forbidden_kindred, Text: approaching the Grand Lift of Rold}
+  - {Area: mountaintops, Text: riding the Grand Lift of Rold, Cond: rold_medallion}
+  - {Area: snowfield, Text: riding the Grand Lift of Rold to the hidden path, Cond: AND haligtree_left haligtree_right}
+
+- Name: forbidden_kindred
+  Text: Black Blade Kindred
+  Tags: boss
+  Tier: 0.7
+
+- Name: mountaintops
+  Text: Mountaintops of the Giants
+  Tier: 0.75
+  Regions: [Mountaintops of the Giants]
+  To:
+  - {Area: castle_sol, Text: climbing to Castle Sol}
+
+- Name: castle_sol
+  Text: Castle Sol
+  Tier: 0.78
+  Graces: [Castle Sol Main Gate, Church of the Eclipse]
+  To:
+  - {Area: castle_sol_niall, Text: approaching Commander Niall}
+
+- Name: castle_sol_niall
+  Text: Commander Niall
+  Tags: boss
+  Tier: 0.8
+
+- Name: mountaintops_firegiant
+  Text: Fire Giant
+  Tags: boss
+  Tier: 0.82
+  To:
+  - {Area: forge, Text: reaching the Forge of the Giants}
+
+- Name: forge
+  Text: Forge of the Giants
+  Tier: 0.84
+  To:
+  - {Area: farum, Text: Melina's sacrifice}
+
+- Name: farum
+  Text: Crumbling Farum Azula
+  Tier: 0.87
+  Maps: [m13_00]
+  Regions: [Crumbling Farum Azula]
+  To:
+  - {Area: farum_placidusax, Text: dropping into the dragon's arena}
+
+- Name: farum_godskinduo
+  Text: Godskin Duo
+  Tags: boss
+  Tier: 0.88
+  To:
+  - {Area: farum_upper, Text: climbing past the Godskin Duo's temple}
+
+- Name: farum_upper
+  Text: Crumbling Farum Azula (Beside the Great Bridge)
+  Tier: 0.9
+
+- Name: farum_maliketh
+  Text: Maliketh, the Black Blade
+  Tags: boss
+  Tier: 0.92
+  To:
+  - {Area: ashen_capital, Text: the Erdtree burning}
+
+- Name: farum_placidusax
+  Text: Dragonlord Placidusax
+  Tags: boss
+  Tier: 0.92
+
+- Name: ashen_capital
+  Text: Leyndell, Ashen Capital
+  Tier: 0.94
+  Maps: [m11_05]
+  Regions: [Leyndell, Ashen Capital]
+  To:
+  - {Area: ashen_hoarahloux, Text: entering the Elden Throne}
+
+- Name: ashen_hoarahloux
+  Text: Godfrey, First Elden Lord (Hoarah Loux)
+  Tags: boss
+  Tier: 0.96
+  To:
+  - {Area: ashen_eldenbeast, Text: passing through the Erdtree}
+
+- Name: ashen_eldenbeast
+  Text: Radagon of the Golden Order / Elden Beast
+  Tags: boss end
+  Tier: 1
+
+- Name: snowfield
+  Text: Consecrated Snowfield
+  Tier: 0.82
+  Regions: [Consecrated Snowfield]
+  To:
+  - {Area: haligtree, Text: lighting the Ordina towers}
+  - {Area: mohgwyn, Text: taking the teleporter in the snowfield}
+
+- Name: haligtree
+  Text: Miquella's Haligtree
+  Tier: 0.88
+  Maps: [m15_00]
+  Regions: [Miquella's Haligtree, Elphael, Brace of the Haligtree]
+
+- Name: haligtree_loretta
+  Text: Loretta, Knight of the Haligtree
+  Tags: boss
+  Tier: 0.9
+  To:
+  - {Area: haligtree_elphael, Text: past Loretta}
+
+- Name: haligtree_elphael
+  Text: Elphael, Brace of the Haligtree
+  Tier: 0.92
+
+- Name: haligtree_malenia
+  Text: Malenia, Blade of Miquella
+  Tags: boss shardbearer
+  Tier: 0.97
+
+- Name: mohgwyn
+  Text: Mohgwyn Palace
+  Tier: 0.85
+  Maps: [m12_05]
+  Regions: [Mohgwyn Palace]
+
+- Name: mohgwyn_mohg
+  Text: Mohg, Lord of Blood
+  Tags: boss shardbearer
+  Tier: 0.9
+
+- Name: caelid
+  Text: Caelid
+  Tier: 0.3
+  Regions: [Caelid, Dragonbarrow, Swamp of Aeonia, Greyoll's Dragonbarrow]
+  To:
+  - {Area: caelid_radahn, Text: the Radahn Festival at Redmane Castle}
+
+- Name: caelid_radahn
+  Text: Starscourge Radahn
+  Tags: boss shardbearer
+  Tier: 0.45
+  To:
+  - {Area: nokron, Text: following the fallen star}
+
+- Name: siofra
+  Text: Siofra River
+  Tier: 0.15
+  Regions: [Siofra River]
+
+- Name: nokron
+  Text: Nokron, Eternal City
+  Tier: 0.48
+  Regions: [Nokron, Eternal City, Siofra Aqueduct]
+  To:
+  - {Area: nokron_mimictear, Text: the Mimic Tear's chamber}
+  - {Area: deeproot, Text: descending the Siofra Aqueduct}
+
+- Name: nokron_mimictear
+  Text: Mimic Tear
+  Tags: boss
+  Tier: 0.5
+
+- Name: deeproot
+  Text: Deeproot Depths
+  Tier: 0.6
+  Regions: [Deeproot Depths]
+
+- Name: ainsel
+  Text: Ainsel River
+  Tier: 0.3
+  Regions: [Ainsel River, Ainsel River Main, Nokstella, Eternal City]
+  To:
+  - {Area: lake_of_rot, Text: descending to the Lake of Rot}
+
+- Name: lake_of_rot
+  Text: Lake of Rot
+  Tier: 0.55
+  Regions: [Lake of Rot]
+  To:
+  - {Area: lake_of_rot_astel, Text: crossing the Grand Cloister}
+
+- Name: lake_of_rot_astel
+  Text: Astel, Naturalborn of the Void
+  Tags: boss
+  Tier: 0.6
+
+# Shadow of the Erdtree: reached by touching Mohg's cocoon after beating both Mohg and Radahn.
+- Name: dlc_gravesite
+  Text: Gravesite Plain
+  Tags: dlc
+  Tier: 0.7
+  Regions: [Gravesite Plain, Castle Ensis, Belurat, Tower Settlement, Cerulean Coast, Charo's Hidden Grave, Stone Coffin Fissure]
+  To:
+  - {Area: dlc_rellana, Text: crossing Castle Ensis}
+
+- Name: dlc_rellana
+  Text: Rellana, Twin Moon Knight
+  Tags: boss dlc
+  Tier: 0.74
+  To:
+  - {Area: dlc_scadu, Text: leaving Castle Ensis for Scadu Altus}
+
+- Name: dlc_scadu
+  Text: Scadu Altus
+  Tags: dlc
+  Tier: 0.8
+  Regions: [Scadu Altus, Shadow Keep, Rauh Base, Ancient Ruins of Rauh, Abyssal Woods, Jagged Peak]
+  To:
+  - {Area: dlc_messmer, Text: climbing Shadow Keep}
+
+- Name: dlc_messmer
+  Text: Messmer the Impaler
+  Tags: boss dlc
+  Tier: 0.88
+  To:
+  - {Area: dlc_enirilim, Text: burning the Sealing Tree with Messmer's Kindling, Cond: messmers_kindling}
+
+- Name: dlc_enirilim
+  Text: Enir-Ilim
+  Tags: dlc
+  Tier: 0.95
+  Regions: [Enir-Ilim]
+  To:
+  - {Area: dlc_radahn, Text: climbing to the Divine Gate}
+
+- Name: dlc_radahn
+  Text: Promised Consort Radahn
+  Tags: boss dlc end
+  Tier: 1
+
+KeyItems:
+# Text is the item's in-game name; the porter finds its ID in the game's own text.
+- {Name: academy_glintstone_key, Text: Academy Glintstone Key, Area: liurnia}
+- {Name: dectus_left, Text: Dectus Medallion (Left), Area: limgrave}
+- {Name: dectus_right, Text: Dectus Medallion (Right), Area: caelid}
+- {Name: haligtree_left, Text: Haligtree Secret Medallion (Left), Area: liurnia, Tags: pinned}     # given by Albus
+- {Name: haligtree_right, Text: Haligtree Secret Medallion (Right), Area: castle_sol_niall}
+- {Name: rold_medallion, Text: Rold Medallion, Area: leyndell_morgott, Tags: pinned}               # given by Melina
+- {Name: messmers_kindling, Text: Messmer's Kindling, Area: dlc_messmer, Tags: pinned dlc}          # Messmer's drop
+
+Entrances:
+# Fog walls in front of bosses and legacy dungeons. A is the near side, B the far side. EntityId is found by
+# the porter from the fog wall assets in each map (0 here).
+- {Name: margit, Area: limgrave, Text: Stormgate fog to Margit, Tags: boss, ASide: {Area: limgrave}, BSide: {Area: stormveil_margit}}
+- {Name: godrick, Area: stormveil, Text: fog to Godrick the Grafted, Tags: boss, ASide: {Area: stormveil}, BSide: {Area: stormveil_godrick}}
+- {Name: redwolf, Area: raya_lucaria, Text: fog to the Red Wolf of Radagon, Tags: boss, ASide: {Area: raya_lucaria}, BSide: {Area: raya_redwolf}}
+- {Name: rennala, Area: raya_lucaria, Text: fog to Rennala's library, Tags: boss, ASide: {Area: raya_inner}, BSide: {Area: raya_rennala}}
+- {Name: makar, Area: liurnia, Text: fog to Magma Wyrm Makar, Tags: boss, ASide: {Area: liurnia}, BSide: {Area: liurnia_makar}}
+- {Name: rykard, Area: volcano, Text: fog to Rykard, Tags: boss, ASide: {Area: volcano}, BSide: {Area: volcano_rykard}}
+- {Name: morgott, Area: leyndell, Text: fog to Morgott, Tags: boss, ASide: {Area: leyndell}, BSide: {Area: leyndell_morgott}}
+- {Name: firegiant, Area: mountaintops, Text: fog to the Fire Giant, Tags: boss, ASide: {Area: mountaintops}, BSide: {Area: mountaintops_firegiant}}
+- {Name: godskinduo, Area: farum, Text: fog to the Godskin Duo, Tags: boss, ASide: {Area: farum}, BSide: {Area: farum_godskinduo}}
+- {Name: maliketh, Area: farum, Text: fog to Maliketh, Tags: boss, ASide: {Area: farum_upper}, BSide: {Area: farum_maliketh}}
+- {Name: loretta, Area: haligtree, Text: fog to Loretta, Tags: boss, ASide: {Area: haligtree}, BSide: {Area: haligtree_loretta}}
+- {Name: malenia, Area: haligtree, Text: fog to Malenia, Tags: boss, ASide: {Area: haligtree_elphael}, BSide: {Area: haligtree_malenia}}
+- {Name: mohg, Area: mohgwyn, Text: fog to Mohg, Tags: boss, ASide: {Area: mohgwyn}, BSide: {Area: mohgwyn_mohg}}
+- {Name: hoarahloux, Area: ashen_capital, Text: fog to the Elden Throne, Tags: boss norandom, ASide: {Area: ashen_capital}, BSide: {Area: ashen_hoarahloux}}
+- {Name: shadowrealm, Area: mohgwyn, Text: touching Mohg's cocoon, Tags: norandom dlc, ASide: {Area: mohgwyn_mohg, Cond: caelid_radahn}, BSide: {Area: dlc_gravesite}}
+- {Name: messmer, Area: dlc_scadu, Text: fog to Messmer, Tags: boss dlc, ASide: {Area: dlc_scadu}, BSide: {Area: dlc_messmer}}
+
+# Minor dungeons: each gets an area (found by its Site of Grace name), a two-way entrance from the region it sits
+# in, and its boss. Tier is the region's difficulty.
+Dungeons:
+- {Name: stormfoot, Text: Stormfoot Catacombs, Region: limgrave, Tier: 0.04, Boss: Erdtree Burial Watchdog, BossSize: small}
+- {Name: murkwatercave, Text: Murkwater Cave, Region: limgrave, Tier: 0.04, Boss: Patches, BossSize: small}
+- {Name: groveside, Text: Groveside Cave, Region: limgrave, Tier: 0.05, Boss: Beastman of Farum Azula, BossSize: small}
+- {Name: coastalcave, Text: Coastal Cave, Region: limgrave, Tier: 0.05, Boss: Demi-Human Chiefs, BossSize: small}
+- {Name: highroad, Text: Highroad Cave, Region: limgrave, Tier: 0.06, Boss: Guardian Golem, BossSize: medium}
+- {Name: deathtouched, Text: Deathtouched Catacombs, Region: limgrave, Tier: 0.06, Boss: Black Knife Assassin, BossSize: small}
+- {Name: limgravetunnels, Text: Limgrave Tunnels, Region: limgrave, Tier: 0.06, Boss: Stonedigger Troll, BossSize: medium}
+- {Name: murkwatercatacombs, Text: Murkwater Catacombs, Region: limgrave, Tier: 0.05, Boss: Grave Warden Duelist, BossSize: small}
+- {Name: tombsward, Text: Tombsward Catacombs, Region: limgrave, Tier: 0.08, Boss: Cemetery Shade, BossSize: small}
+- {Name: impalers, Text: Impaler's Catacombs, Region: limgrave, Tier: 0.08, Boss: Erdtree Burial Watchdog, BossSize: small}
+- {Name: earthbore, Text: Earthbore Cave, Region: limgrave, Tier: 0.08, Boss: Runebear, BossSize: medium}
+- {Name: tombswardcave, Text: Tombsward Cave, Region: limgrave, Tier: 0.08, Boss: Miranda the Blighted Bloom, BossSize: small}
+- {Name: morne, Text: Morne Tunnel, Region: limgrave, Tier: 0.08, Boss: Scaly Misbegotten, BossSize: small}
+- {Name: cliffbottom, Text: Cliffbottom Catacombs, Region: liurnia, Tier: 0.26, Boss: Erdtree Burial Watchdog, BossSize: small}
+- {Name: blackknifecatacombs, Text: Black Knife Catacombs, Region: liurnia, Tier: 0.28, Boss: Cemetery Shade, BossSize: small}
+- {Name: roadsend, Text: Road's End Catacombs, Region: liurnia, Tier: 0.26, Boss: Spirit-Caller Snail, BossSize: small}
+- {Name: stillwater, Text: Stillwater Cave, Region: liurnia, Tier: 0.26, Boss: Cleanrot Knight, BossSize: small}
+- {Name: lakesidecrystal, Text: Lakeside Crystal Cave, Region: liurnia, Tier: 0.26, Boss: Bloodhound Knight, BossSize: small}
+- {Name: academycrystal, Text: Academy Crystal Cave, Region: liurnia, Tier: 0.28, Boss: Crystalian Duo, BossSize: small}
+- {Name: rayacrystaltunnel, Text: Raya Lucaria Crystal Tunnel, Region: liurnia, Tier: 0.25, Boss: Crystalian, BossSize: small}
+- {Name: caelidcatacombs, Text: Caelid Catacombs, Region: caelid, Tier: 0.32, Boss: Cemetery Shade, BossSize: small}
+- {Name: minorerdtreecatacombs, Text: Minor Erdtree Catacombs, Region: caelid, Tier: 0.32, Boss: Mad Pumpkin Head, BossSize: small}
+- {Name: wardead, Text: War-Dead Catacombs, Region: caelid, Tier: 0.4, Boss: Putrid Tree Spirit, BossSize: medium}
+- {Name: gaeltunnel, Text: Gael Tunnel, Region: caelid, Tier: 0.32, Boss: Magma Wyrm, BossSize: large}
+- {Name: selliatunnel, Text: Sellia Crystal Tunnel, Region: caelid, Tier: 0.34, Boss: Fallingstar Beast, BossSize: medium}
+- {Name: abandonedcave, Text: Abandoned Cave, Region: caelid, Tier: 0.36, Boss: Cleanrot Knight Duo, BossSize: small}
+- {Name: gaolcave, Text: Gaol Cave, Region: caelid, Tier: 0.36, Boss: Frenzied Duelist, BossSize: small}
+- {Name: selliahideaway, Text: Sellia Hideaway, Region: caelid, Tier: 0.34, Boss: Putrid Crystalian Trio, BossSize: small}
+- {Name: dragonbarrowcave, Text: Dragonbarrow Cave, Region: caelid, Tier: 0.42, Boss: Beastman of Farum Azula, BossSize: small}
+- {Name: saintedhero, Text: Sainted Hero's Grave, Region: altus, Tier: 0.44, Boss: Ancient Hero of Zamor, BossSize: small}
+- {Name: altustunnel, Text: Altus Tunnel, Region: altus, Tier: 0.44, Boss: Crystalian Duo, BossSize: small}
+- {Name: oldaltus, Text: Old Altus Tunnel, Region: altus, Tier: 0.42, Boss: Stonedigger Troll, BossSize: medium}
+- {Name: perfumers, Text: Perfumer's Grotto, Region: altus, Tier: 0.44, Boss: Omenkiller, BossSize: small}
+- {Name: sagescave, Text: Sage's Cave, Region: altus, Tier: 0.44, Boss: Necromancer Garris, BossSize: small}
+- {Name: unsightly, Text: Unsightly Catacombs, Region: altus, Tier: 0.46, Boss: Perfumer Tricia, BossSize: small}
+- {Name: wyndham, Text: Wyndham Catacombs, Region: gelmir, Tier: 0.5, Boss: Erdtree Burial Watchdog, BossSize: small}
+- {Name: gelmirhero, Text: Gelmir Hero's Grave, Region: gelmir, Tier: 0.52, Boss: Red Wolf of the Champion, BossSize: small}
+- {Name: seethewater, Text: Seethewater Cave, Region: gelmir, Tier: 0.5, Boss: Kindred of Rot, BossSize: small}
+- {Name: volcanocave, Text: Volcano Cave, Region: gelmir, Tier: 0.52, Boss: Demi-Human Queen Margot, BossSize: small}
+- {Name: aurizahero, Text: Auriza Hero's Grave, Region: outskirts, Tier: 0.55, Boss: Crucible Knight Ordovis, BossSize: small}
+- {Name: aurizasidetomb, Text: Auriza Side Tomb, Region: outskirts, Tier: 0.55, Boss: Grave Warden Duelist, BossSize: small}
+- {Name: sealedtunnel, Text: Sealed Tunnel, Region: outskirts, Tier: 0.55, Boss: Onyx Lord, BossSize: small}
+- {Name: giantscatacombs, Text: Giants' Mountaintop Catacombs, Region: mountaintops, Tier: 0.76, Boss: Ulcerated Tree Spirit, BossSize: medium}
+- {Name: spiritcaller, Text: Spiritcaller Cave, Region: mountaintops, Tier: 0.78, Boss: Godskin Apostle and Noble, BossSize: small}
+- {Name: snowfieldcatacombs, Text: Consecrated Snowfield Catacombs, Region: snowfield, Tier: 0.84, Boss: Shadow of the Night, BossSize: small}
+- {Name: forlorn, Text: Cave of the Forlorn, Region: snowfield, Tier: 0.84, Boss: Misbegotten Crusader, BossSize: small}
+- {Name: yelough, Text: Yelough Anix Tunnel, Region: snowfield, Tier: 0.84, Boss: Astel, Stars of Darkness, BossSize: large}
+- {Name: hiddenpath, Text: Hidden Path to the Haligtree, Region: forbidden_lands, Tier: 0.72, Boss: Stray Mimic Tear, BossSize: small}
+
+Bosses:
+# Size: the arena a boss needs. "fixed": the fight depends on its arena or a script and stays put. "final": ends the
+# Elden Ring half of the run.
+- {Name: margit, Text: Margit, the Fell Omen, Area: stormveil_margit, Size: medium}
+- {Name: godrick, Text: Godrick the Grafted, Area: stormveil_godrick, Size: large}
+- {Name: redwolf, Text: Red Wolf of Radagon, Area: raya_redwolf, Size: medium}
+- {Name: rennala, Text: Rennala, Queen of the Full Moon, Area: raya_rennala, Size: large, Tags: fixed}   # two phases, students
+- {Name: loretta, Text: Royal Knight Loretta, Area: caria_loretta, Size: medium}
+- {Name: makar, Text: Magma Wyrm Makar, Area: liurnia_makar, Size: large}
+- {Name: radahn, Text: Starscourge Radahn, Area: caelid_radahn, Size: large, Tags: fixed}                # festival battlefield
+- {Name: rykard, Text: Rykard, Lord of Blasphemy, Area: volcano_rykard, Size: large, Tags: fixed}        # Serpent-Hunter
+- {Name: godfreyshade, Text: Godfrey, First Elden Lord, Area: leyndell_godfrey, Size: medium}
+- {Name: morgott, Text: Morgott, the Omen King, Area: leyndell_morgott, Size: medium}
+- {Name: kindred, Text: Black Blade Kindred, Area: forbidden_kindred, Size: large}
+- {Name: niall, Text: Commander Niall, Area: castle_sol_niall, Size: medium}
+- {Name: firegiant, Text: Fire Giant, Area: mountaintops_firegiant, Size: large, Tags: fixed}
+- {Name: godskinduo, Text: Godskin Duo, Area: farum_godskinduo, Size: large, Tags: fixed}
+- {Name: maliketh, Text: Maliketh, the Black Blade, Area: farum_maliketh, Size: medium, Tags: fixed}     # Beast Clergyman phase
+- {Name: placidusax, Text: Dragonlord Placidusax, Area: farum_placidusax, Size: large, Tags: fixed}
+- {Name: hoarahloux, Text: Hoarah Loux, Warrior, Area: ashen_hoarahloux, Size: medium, Tags: fixed}
+- {Name: eldenbeast, Text: Elden Beast, Area: ashen_eldenbeast, Size: large, Tags: final}
+- {Name: lorettahaligtree, Text: Loretta, Knight of the Haligtree, Area: haligtree_loretta, Size: medium}
+- {Name: malenia, Text: Malenia, Blade of Miquella, Area: haligtree_malenia, Size: medium, Tags: fixed}
+- {Name: mohg, Text: Mohg, Lord of Blood, Area: mohgwyn_mohg, Size: medium}
+- {Name: mimictear, Text: Mimic Tear, Area: nokron_mimictear, Size: small, Tags: fixed}
+- {Name: astel, Text: Astel, Naturalborn of the Void, Area: lake_of_rot_astel, Size: large}
+- {Name: rellana, Text: Rellana, Twin Moon Knight, Area: dlc_rellana, Size: medium}
+- {Name: messmer, Text: Messmer the Impaler, Area: dlc_messmer, Size: large}
+- {Name: consortradahn, Text: Promised Consort Radahn, Area: dlc_radahn, Size: large, Tags: final}
