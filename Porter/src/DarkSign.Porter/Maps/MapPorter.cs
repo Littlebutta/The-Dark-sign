@@ -74,6 +74,11 @@ public static class MapPorter
         if (materials.Count > 0)
             Step(report, "materials", () => WriteMaterials(ctx, er, materials));
 
+        // Event scripts last: they need every ported map, to send warps and IDs to the right slot. A failure leaves
+        // the empty scripts written with each map.
+        if (ported.Count > 0)
+            Step(report, "events", () => MapEvents.Port(ctx, ds3, er, ported.Select(p => p.Slot).ToList()));
+
         var warps = ported.Select((p, i) => new RunEvents.Warp(p.Slot.Er, (uint)p.StartEntity, i)).ToList();
         WriteMapList(ctx, ported.Select(p => p.Slot), warps);
         var startMap = ported.FirstOrDefault(p => p.Slot.Ds3 == MapId.Parse("m40_00_00_00") && !p.Slot.Probe);

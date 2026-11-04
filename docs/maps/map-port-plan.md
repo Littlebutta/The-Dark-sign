@@ -16,7 +16,8 @@ after `port-weapons`. If it fails, the weapons still load and the game starts; t
 | Textures | `map/m40/m40_000N.tpfbhd/.tpfbdt` | added to `map/m45/m45_0000.tpfbhd/.tpfbdt`, plus a flat metallic map | `Maps/MapTextures.cs` |
 | Collision | `h40_00_00_00.hkxbhd` (Havok 2014 packfile) | `h45_00_00_00.hkxbhd` (Havok 2018 XML tagfile, same compressed-mesh tree); every triangle is checked after conversion | `Maps/CollisionPort.cs`, `Maps/MapCollisions.cs` |
 | Navmesh | `map/m40_00_00_00/m40_00_00_00.nvmhktbnd.dcx` (Havok AI 2014) | `map/m45/m45_00_00_00/m45_00_00_00.nvmhktbnd.dcx` (Havok AI 2018 tagfiles); faces, edges, cluster graph and AABB tree copied as-is, costs hkHalf → float | `Maps/NavmeshPort.cs`, `Maps/MapNavmesh.cs` |
-| Map events | DS3's map script | the slot's own script is replaced with an empty one | `Maps/RunEvents.cs` |
+| Map events | `event/m40_00_00_00.emevd.dcx` | `event/m45_00_00_00.emevd.dcx`, converted instruction by instruction (see "Event scripts" below); the slot's own Elden Ring events no longer run | `Maps/EventPort.cs`, `Maps/MapEvents.cs` |
+| Common events | `event/common_func.emevd.dcx` (only the events the ported maps start, and the ones those start) | added to `event/common_func.emevd.dcx` under IDs 103x291000-103x291999 | `Maps/MapEvents.cs`, `Maps/FlagMap.cs` |
 | Run start/leave | | two events in `common.emevd` wait for flags the F1 menu sets, then use the game's WarpPlayer | `Maps/RunEvents.cs`, `TestMenu/src/overlay.cpp` |
 
 ### Map slots
@@ -53,6 +54,29 @@ Flags are in the block of the empty sea tile m60_39_29 (1039290000+), the way Jo
   binder entry names, the DS3 start point, the host collision template, map materials and texture folders, and the
   warp targets. Run it first on the PC; it answers the open questions below.
 
+### Event scripts
+
+Both games run the same event system, and DarkScript3 documents every instruction of each (`ds3-common.emedf.json`,
+`er-common.emedf.json`, downloaded at a pinned commit into the work cache), so the conversion is table-driven:
+
+- Each DS3 instruction is matched to the Elden Ring one of the same name, or a known rename ("Object" became "Asset",
+  "(De)activate Object" became "Change Asset Enable State", and so on). 261 of DS3's 360 instructions have one;
+  `DarkSignPorter event-coverage <ds3.json> <er.json>` lists every pairing and what has none.
+- Arguments are paired by name, then by what they hold (entity, flag, event), then by shared words; Elden Ring-only
+  arguments keep DarkScript3's default.
+- IDs move by what they are: the map's entities, events and flags become the slot's (14000500 -> 45000500), a warp or
+  flag of another ported DS3 map goes to that map's slot, and DS3's global flags get new ones from the JortPob-style
+  blocks (1030290000-1038290000, numbers 0-999). The assignments are saved in `Mods\ER\darksign_flags.tsv` and reused,
+  so a save keeps its DS3 progress across rebuilds.
+- Event parameters follow their argument, and values passed to an event move by what the event uses them for.
+- A command with no Elden Ring form becomes a no-op on the same line (so skips and labels stay right). An event whose
+  conditions can't convert is left out, with the lines that start it. A cutscene that warps becomes the warp; one
+  that doesn't is skipped until cutscenes are ported.
+- The report (`port-maps` log) counts events kept, instructions converted and the most common misses.
+
+Not converted yet: DS3's "IF Action Button" family (doors, levers, fog walls; Elden Ring uses ActionButtonParam rows),
+sound and BGM instructions, map ceremonies and world tendency.
+
 ## Open questions (answered by the first `map-survey` and in-game test)
 
 1. Does WarpPlayer into m45_00 work offline, and does the arena load with our layout?
@@ -66,5 +90,6 @@ Flags are in the block of the empty sea tile m60_39_29 (1039290000+), the way Jo
 
 1. Navmesh: converted since PR #44. If Elden Ring rejects converted navmeshes, fall back to generating them, as NavMeshStudio does with Recast.
 2. Enemies, objects, items and bonfires from the MSB, with the enemy porter ("Bring Midir and Friede into Elden Ring").
-3. DS3 map events (doors, elevators, fog walls, boss arenas) converted to Elden Ring EMEVD.
+3. DS3 map events: converted (see "Event scripts"). Next: action buttons (doors, levers, fog walls) as
+   ActionButtonParam rows, map-to-map connect collisions, then cutscenes (remo files, camera and animations via Havok).
 4. More slots for the remaining DS3 maps.

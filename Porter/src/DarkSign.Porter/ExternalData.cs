@@ -4,7 +4,7 @@ namespace DarkSign.Porter;
 
 /// <summary>
 /// Community data the porter needs but the repo does not carry: archive keys and file-name lists from
-/// UXM Selective Unpack, and paramdefs and row names from Paramdex. Each comes from a pinned commit and is
+/// UXM Selective Unpack, paramdefs and row names from Paramdex, and event instruction definitions from DarkScript3. Each comes from a pinned commit and is
 /// cached under the work folder, so a run after the first works offline.
 /// </summary>
 public sealed class ExternalData(string cacheDir)
@@ -13,6 +13,10 @@ public sealed class ExternalData(string cacheDir)
         "https://raw.githubusercontent.com/Nordgaren/UXM-Selective-Unpack/9501be87e272b6dae55e60a13c3f4753ca6fb3bb/UXM/";
     private const string ParamdexBase =
         "https://raw.githubusercontent.com/soulsmods/Paramdex/ff7245e524329bc3eab00036723d2bd53384cedf/";
+
+    // DarkScript3's instruction definitions (emedf) for each game's event scripts.
+    private const string DarkScript3Base =
+        "https://raw.githubusercontent.com/AinTunez/DarkScript3/733f024253930b70db8e3d0039c4b53b6ee0a2d4/DarkScript3/Resources/";
 
     private static readonly HttpClient Http = new() { Timeout = TimeSpan.FromMinutes(5) };
 
@@ -31,6 +35,9 @@ public sealed class ExternalData(string cacheDir)
     /// <summary>Row names for a param, or null when Paramdex has none for it.</summary>
     public string? ParamNames(PorterGame game, string paramName) =>
         TryGet(ParamdexBase + $"{game.ParamdexName}/Names/{paramName}.txt", $"paramdex/{game.ParamdexName}/Names/{paramName}.txt");
+
+    /// <summary>DarkScript3's event instruction definitions: "ds3-common" or "er-common".</summary>
+    public string Emedf(string name) => Get(DarkScript3Base + $"{name}.emedf.json", $"darkscript3/{name}.emedf.json");
 
     private string Get(string url, string relative) =>
         TryGet(url, relative) ?? throw new FileNotFoundException($"Could not download {url}");
