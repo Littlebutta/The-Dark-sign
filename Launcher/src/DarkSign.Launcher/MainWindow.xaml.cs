@@ -277,7 +277,7 @@ public partial class MainWindow : Window
             ? "Elden Ring was not found: point the launcher at it in the list below (Browse…)."
             : setup.ContentVersion is { } version
                 ? $"Dark Souls III weapons are ported (content build {version}). They're sold by Merchant Kalé." +
-                  (SeamlessCoop.Fingerprint(setup.ModDir) is { } code ? $" Mod code {code}: co-op partners need the same code." : "")
+                  (CoopCheckCode(setup) is { } code ? $" Mod code {code}: co-op partners need the same code." : "")
                 : "The content isn't built yet. The first Play builds it from your game files, which takes a few minutes.";
     }
 
@@ -342,6 +342,7 @@ public partial class MainWindow : Window
                 return;
             }
 
+            await EnsureRandomizedWorldAsync(setup, _settings.GetActiveProfile(), remake: false);
             SaveIsolation.EnsureSaveDirectory(Root, _settings.GetActiveProfile().Name, GameId.EldenRing);
             var dlls = new List<string> { setup.WriteDll(SaveIsolation.RedirectDllName, RedirectDll.Bytes) };
             var env = new Dictionary<string, string>();
@@ -362,7 +363,7 @@ public partial class MainWindow : Window
             var profile = setup.WriteProfile(SeamlessCoop.Natives(seamless, dlls));
             Process.Start(EldenRingSetup.Me3LaunchInfo(plan, me3, profile, env));
             StatusText.Text = $"Launched Elden Ring. Saves: {plan.SaveDirectory}" +
-                (seamless is not null ? $". Seamless Co-op is on (mod code {SeamlessCoop.Fingerprint(setup.ModDir) ?? "?"})" : "") +
+                (seamless is not null ? $". Seamless Co-op is on (mod code {CoopCheckCode(setup) ?? "?"})" : "") +
                 (env.ContainsKey(EldenRingSetup.ItemsVariable)
                     ? ". Press F1 in game for the test menu (it shows over Borderless or Windowed mode)."
                     : ".");
@@ -510,29 +511,44 @@ public partial class MainWindow : Window
         }
 
         // The randomized world depends on which maps were ported, so it is remade after a rebuild.
-        var profile = _settings.GetActiveProfile();
-        if (profile.Randomizer?.Enabled == true)
-            await MakeRandomizedWorldAsync(setup, profile);
+        await EnsureRandomizedWorldAsync(setup, _settings.GetActiveProfile(), remake: true);
         return true;
     }
 
-    /// <summary>Makes (or remakes) the profile's randomized world with the porter's randomize command. It takes
-    /// seconds and reads no game files; the result lives in TheDarkSign\Randomizer\&lt;profile&gt;.</summary>
-    private async Task<bool> MakeRandomizedWorldAsync(EldenRingSetup setup, LaunchProfile profile)
+    /// <summary>Makes (or remakes) a randomized world with the porter's randomize command: the profile's own, or a
+    /// friend's it joined with a co-op code. It takes seconds and reads no game files; the result lives in
+    /// TheDarkSign\Randomizer\&lt;world&gt;.</summary>
+    private async Task<bool> MakeRandomizedWorldAsync(EldenRingSetup setup, string worldName, RandomizerSettings settings)
     {
-        var settings = profile.Randomizer!;
-        settings.WriteOptions(Root, profile.Name);
-        var run = StartPorter(setup, "randomize", ["--profile", profile.Name],
+        settings.WriteOptions(Root, worldName);
+        var run = StartPorter(setup, "randomize", ["--profile", worldName],
             line => Dispatcher.BeginInvoke(() => StatusText.Text = "Randomizing: " + line));
         var (ok, tail, log) = await run.Completion;
+        var check = RandomizerCoop.CheckCode(SeamlessCoop.Fingerprint(setup.ModDir), RandomizerCoop.ReadWorldId(Root, worldName));
         StatusText.Text = ok
-            ? $"Randomized world for \"{profile.Name}\" ({settings.Summary}) is ready and checked finishable. Spoiler log: {RandomizerSettings.SpoilerPath(Root, profile.Name)}"
+            ? $"Randomized world \"{worldName}\" ({settings.Summary}) is ready and checked finishable." +
+              (check is null ? "" : $" Co-op check code {check}: friends playing with you need the same one.") +
+              $" Spoiler log: {RandomizerSettings.SpoilerPath(Root, worldName)}"
             : $"The randomizer failed; see {log}";
         if (!ok)
             MessageBox.Show(this, $"The randomizer failed. The last lines were:\n\n{tail}\n\nFull log: {log}",
                 "Randomizer failed", MessageBoxButton.OK, MessageBoxImage.Error);
         return ok;
     }
+
+    /// <summary>Makes the profile's active world (own or joined) if it hasn't been made yet.</summary>
+    private async Task EnsureRandomizedWorldAsync(EldenRingSetup setup, LaunchProfile profile, bool remake)
+    {
+        if (RandomizerCoop.ActiveWorld(profile) is not { } world)
+            return;
+        if (remake || RandomizerCoop.ReadWorldId(Root, world.WorldName) is null)
+            await MakeRandomizedWorldAsync(setup, world.WorldName, world.Settings);
+    }
+
+    /// <summary>The code co-op partners compare: the content build, plus the randomized world when one is active.</summary>
+    private string? CoopCheckCode(EldenRingSetup setup) =>
+        RandomizerCoop.CheckCode(SeamlessCoop.Fingerprint(setup.ModDir),
+            RandomizerCoop.ActiveWorld(_settings.GetActiveProfile()) is { } w ? RandomizerCoop.ReadWorldId(Root, w.WorldName) : null);
 
     private async void OnRandomizer(object sender, RoutedEventArgs e)
     {
@@ -541,7 +557,7 @@ public partial class MainWindow : Window
         var settings = profile.Randomizer is null
             ? new RandomizerSettings { Enabled = true, Seed = RandomizerSettings.NewSeed() }
             : System.Text.Json.JsonSerializer.Deserialize<RandomizerSettings>(System.Text.Json.JsonSerializer.Serialize(profile.Randomizer))!;
-        var result = RandomizerWindow.Show(this, profile.Name, settings);
+        var result = RandomizerWindow.Show(this, profile.Name, settings, profile.JoinCode, out var joinCode);
         if (result == RandomizerWindow.Result.Cancelled)
             return;
         if (result == RandomizerWindow.Result.NewCharacter)
@@ -563,9 +579,12 @@ public partial class MainWindow : Window
             RefreshProfiles();
         }
         else
+        {
             profile.Randomizer = settings;
+            profile.JoinCode = joinCode;
+        }
         _settings.Save(_settingsPath);
-        if (!settings.Enabled)
+        if (RandomizerCoop.ActiveWorld(profile) is null)
         {
             StatusText.Text = $"Randomizer off for \"{profile.Name}\": it plays the normal game.";
             return;
@@ -575,7 +594,7 @@ public partial class MainWindow : Window
             var setup = new EldenRingSetup(Root);
             Directory.CreateDirectory(setup.LogDir);
             await EnsurePorterAsync(setup);
-            await MakeRandomizedWorldAsync(setup, profile);
+            await EnsureRandomizedWorldAsync(setup, profile, remake: true);
         }
         catch (Exception ex) when (ex is InvalidOperationException or IOException or HttpRequestException)
         {
