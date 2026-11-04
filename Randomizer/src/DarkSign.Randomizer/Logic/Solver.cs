@@ -29,8 +29,9 @@ public sealed class SweepResult
 
 /// <summary>
 /// Sweeps a world from its start: repeatedly follows every route whose condition holds and picks up every key item
-/// whose location is reached, until nothing changes. Because Elden Ring can warp to any reached Site of Grace
-/// (and ported DS3 bonfires become graces), anything reached once stays reachable, so this fixpoint is exactly what
+/// whose location is reached, until nothing changes. Anything reached once stays reachable: Elden Ring warps to any
+/// reached Site of Grace, and from DS3 maps (whose bonfires aren't warp targets yet) the F1 menu's "Leave DS3 run"
+/// always returns to Roundtable Hold, from where the same route can be walked again. So this fixpoint is exactly what
 /// a player can do. A seed is accepted only if this sweep reaches the goal (and, by default, every location).
 /// </summary>
 public sealed class Solver

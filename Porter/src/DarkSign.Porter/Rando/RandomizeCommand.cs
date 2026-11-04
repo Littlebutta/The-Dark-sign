@@ -81,7 +81,9 @@ public static class RandomizeCommand
     {
         var path = Path.Combine(ctx.Root, "TheDarkSign", "Mods", "ER", "darksign_maps.tsv");
         if (!File.Exists(path)) return [];
+        // Columns: DS3 map, Elden Ring slot, name, warp flag. The new-map-ID probe ports m40 a second time; skip it.
         return File.ReadLines(path).Where(l => l.Length > 0 && !l.StartsWith('#'))
+            .Where(l => !l.Contains("new map ID test", StringComparison.OrdinalIgnoreCase))
             .Select(l => l.Split('\t')[0].Trim()).Where(m => m.StartsWith('m')).Distinct().ToList();
     }
 

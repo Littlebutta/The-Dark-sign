@@ -44,8 +44,10 @@ inside one game. Because The Dark Sign runs DS3's maps inside Elden Ring, this o
 2. **Assumed fill.** Each key item goes somewhere reachable while assuming the player owns every key not yet placed.
    No key can end up behind itself.
 3. **The solver.** A sweep from the start follows every route whose condition holds and picks up every key it
-   reaches, until nothing changes. Elden Ring can warp to any reached grace from anywhere, so whatever is reached stays
-   reachable and the sweep is exactly what a player can do. A seed is accepted only if the sweep reaches the goal,
+   reaches, until nothing changes. Whatever is reached stays reachable: Elden Ring warps to any reached grace, and in
+   the DS3 maps (whose bonfires aren't warp targets yet) the F1 menu's "Leave DS3 run" always returns to Roundtable
+   Hold, from where the same route can be walked again (conditions only get easier). So the sweep is what a player
+   can do, and no one-way drop can trap them. A seed is accepted only if the sweep reaches the goal,
    every key item, and (by default) every area and item location.
 4. **Re-verification.** The plan is checked again from scratch (`Generator.Verify`) before it is written, and the
    tests do the same for every seed. A failing seed is rerolled with the next sub-seed, so it stays deterministic.
@@ -94,8 +96,8 @@ three ported DS3 maps a seed needs on average fewer than one reroll; with all of
 
 ## Open questions
 
-- Do ported DS3 bonfires behave as Elden Ring graces (warpable)? The solver assumes they do; if not, DS3 areas
-  need return routes in the logic.
+- Ported DS3 bonfires are registered but not warp targets yet (map port, 2026-11-04). The guarantee relies on the
+  F1 "Leave DS3 run" warp instead; if that warp is ever removed, DS3 one-way drops need return routes in the logic.
 - Elden Ring region tab names for the grace menu (checked by `rando-survey`).
 - Which Elden Ring fog walls can safely warp (some boss fogs are tied to arena scripts).
 
