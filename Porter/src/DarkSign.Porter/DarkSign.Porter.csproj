@@ -21,6 +21,8 @@
     <ProjectReference Include="..\..\third_party\HKLib\HKLib.Serialization\HKLib.Serialization.csproj" />
     <ProjectReference Include="..\..\third_party\HKX2\HKX2.csproj" />
     <ProjectReference Include="..\..\..\Launcher\src\DarkSign.Core\DarkSign.Core.csproj" />
+    <!-- The cross-game randomizer's logic and world data (randomizer-data\ is copied next to the porter). -->
+    <ProjectReference Include="..\..\..\Randomizer\src\DarkSign.Randomizer\DarkSign.Randomizer.csproj" />
   </ItemGroup>
 
   <ItemGroup>

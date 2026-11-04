@@ -37,6 +37,9 @@ const string Usage = """
       map-validate                 read back the ported maps in the mod folder and check them (port-maps runs this too)
       port-maps [map ids] [--ds3-groups] [--binary-collision] [--simd] [--after-pid <port-weapons pid>]
                                    port the DS3 maps that have an Elden Ring slot, and the F1 menu's DS3 run events
+      randomize [--profile <name>] [--seed <n>]
+                                   make a profile's cross-game randomized world (checked finishable) and its spoiler log
+      rando-survey                 report Elden Ring's graces, regions and map item lots for the randomizer
     """;
 
 var argList = args.ToList();
@@ -87,6 +90,8 @@ try
         "port-maps" => DarkSign.Porter.Maps.MapPorter.Run(ctx, argList[1..]),
         "map-survey" => DarkSign.Porter.Maps.MapSurvey.Run(ctx, argList[1..]),
         "map-validate" => DarkSign.Porter.Maps.MapValidate.Run(ctx),
+        "randomize" => DarkSign.Porter.Rando.RandomizeCommand.Run(ctx, argList[1..]),
+        "rando-survey" => DarkSign.Porter.Rando.RandomizeCommand.Survey(ctx),
         "item-list" => Commands.ItemListOnly(ctx),
         "weapons-plan" => Commands.WeaponsPlan(ctx).Count > 0 ? 0 : 1,
         "matbin-info" when argList.Count == 2 => Explore.MatbinInfo(ctx, argList[1]),

@@ -42,6 +42,7 @@
         <Button Content="New…" Click="OnNewProfile" />
         <Button Content="Delete" Click="OnDeleteProfile" />
         <Button Content="Open saves folder" Click="OnOpenSaves" />
+        <Button Content="Randomizer…" Click="OnRandomizer" />
       </StackPanel>
     </Grid>
 

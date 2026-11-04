@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- The cross-game randomizer's logic: world graphs, fog wall pairing, item placement, boss and enemy shuffles,
+       and the solver that proves every seed can be finished. It reads no game files; the porter feeds it the
+       game data it scans and applies the plan it returns. -->
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>DarkSign.Randomizer</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="YamlDotNet" Version="16.3.0" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="DarkSign.Randomizer.Tests" />
+  </ItemGroup>
+  <!-- World data ships next to the dll (randomizer-data\...). -->
+  <ItemGroup>
+    <Content Include="..\..\data\**\*" LinkBase="randomizer-data" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
+</Project>

@@ -508,7 +508,79 @@ public partial class MainWindow : Window
             if (verdict is not null && !verdict.Contains(" 0 FAIL", StringComparison.Ordinal))
                 StatusText.Text = $"DS3 maps ported with problems ({verdict["map-validate:".Length..].Trim()}); see {check}";
         }
+
+        // The randomized world depends on which maps were ported, so it is remade after a rebuild.
+        var profile = _settings.GetActiveProfile();
+        if (profile.Randomizer?.Enabled == true)
+            await MakeRandomizedWorldAsync(setup, profile);
         return true;
+    }
+
+    /// <summary>Makes (or remakes) the profile's randomized world with the porter's randomize command. It takes
+    /// seconds and reads no game files; the result lives in TheDarkSign\Randomizer\&lt;profile&gt;.</summary>
+    private async Task<bool> MakeRandomizedWorldAsync(EldenRingSetup setup, LaunchProfile profile)
+    {
+        var settings = profile.Randomizer!;
+        settings.WriteOptions(Root, profile.Name);
+        var run = StartPorter(setup, "randomize", ["--profile", profile.Name],
+            line => Dispatcher.BeginInvoke(() => StatusText.Text = "Randomizing: " + line));
+        var (ok, tail, log) = await run.Completion;
+        StatusText.Text = ok
+            ? $"Randomized world for \"{profile.Name}\" ({settings.Summary}) is ready and checked finishable. Spoiler log: {RandomizerSettings.SpoilerPath(Root, profile.Name)}"
+            : $"The randomizer failed; see {log}";
+        if (!ok)
+            MessageBox.Show(this, $"The randomizer failed. The last lines were:\n\n{tail}\n\nFull log: {log}",
+                "Randomizer failed", MessageBoxButton.OK, MessageBoxImage.Error);
+        return ok;
+    }
+
+    private async void OnRandomizer(object sender, RoutedEventArgs e)
+    {
+        StoreRowsIntoSettings();
+        var profile = _settings.GetActiveProfile();
+        var settings = profile.Randomizer is null
+            ? new RandomizerSettings { Enabled = true, Seed = RandomizerSettings.NewSeed() }
+            : System.Text.Json.JsonSerializer.Deserialize<RandomizerSettings>(System.Text.Json.JsonSerializer.Serialize(profile.Randomizer))!;
+        var result = RandomizerWindow.Show(this, profile.Name, settings);
+        if (result == RandomizerWindow.Result.Cancelled)
+            return;
+        if (result == RandomizerWindow.Result.NewCharacter)
+        {
+            // A new character gets a new profile (its own saves) and a fresh seed; the current one is untouched.
+            var name = PromptWindow.Ask(this, "New randomized character", "Name for the new character's profile:")?.Trim();
+            if (string.IsNullOrEmpty(name))
+                return;
+            if (_settings.Profiles.Any(p => string.Equals(p.Name, name, StringComparison.OrdinalIgnoreCase)))
+            {
+                StatusText.Text = $"A profile named \"{name}\" already exists.";
+                return;
+            }
+            settings.Enabled = true;
+            settings.Seed = RandomizerSettings.NewSeed();
+            profile = new LaunchProfile { Name = name, Randomizer = settings };
+            _settings.Profiles.Add(profile);
+            _settings.ActiveProfile = name;
+            RefreshProfiles();
+        }
+        else
+            profile.Randomizer = settings;
+        _settings.Save(_settingsPath);
+        if (!settings.Enabled)
+        {
+            StatusText.Text = $"Randomizer off for \"{profile.Name}\": it plays the normal game.";
+            return;
+        }
+        try
+        {
+            var setup = new EldenRingSetup(Root);
+            Directory.CreateDirectory(setup.LogDir);
+            await EnsurePorterAsync(setup);
+            await MakeRandomizedWorldAsync(setup, profile);
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or IOException or HttpRequestException)
+        {
+            StatusText.Text = $"The randomizer could not run: {ex.Message}";
+        }
     }
 
     /// <summary>Shows the latest line of each porter process on the status line.</summary>

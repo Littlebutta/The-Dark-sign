@@ -25,6 +25,8 @@ install, and no game files are distributed.
 | [Microsoft.Toolkit.HighPerformance](https://github.com/CommunityToolkit/dotnet) | .NET Foundation | MIT | Buffer helpers bundled with the porter |
 | [HKX2](https://github.com/vawser/Smithbox) (Smithbox, after Katalash's HKX2) | vawser, Katalash and contributors | MIT | Reading and writing DS3 Havok 2014 collision packfiles for the map port (files copied at Smithbox commit e27134d, Porter/third_party/HKX2) |
 | [BCnEncoder.NET](https://github.com/Nominom/BCnEncoder.NET) | Nominom | MIT/Unlicense | Encoding icon textures |
+| [FogMod](https://github.com/thefifthmatt/FogMod) (DS3 Fog Gate Randomizer) | thefifthmatt | Apache-2.0 | DS3 world data for the cross-game randomizer: areas, routes and locks, fog gates, warps, key items, item and enemy locations (`fog.txt`, `locations.txt` copied unchanged at commit 28711c3, Randomizer/data/ds3, see NOTICE.md) |
+| [YamlDotNet](https://github.com/aaubry/YamlDotNet) | Antoine Aubry and contributors | MIT | Reading the randomizer's world files |
 
 ## Tools the launcher runs
 
@@ -65,6 +67,8 @@ install, and no game files are distributed.
 | [DarkScript3](https://github.com/AinTunez/DarkScript3) (AinTunez, thefifthmatt) er-common.emedf.json | Elden Ring EMEVD instruction layouts (WaitForEventFlag, SetEventFlag, WarpPlayer, InitializeEvent, EndUnconditionally) for the DS3 run events |
 | [DarkScript3](https://github.com/AinTunez/DarkScript3) (AinTunez, thefifthmatt) ds3-common.emedf.json and er-common.emedf.json | Both games' event instruction definitions (names, argument names, types and defaults), downloaded at a pinned commit and used to convert DS3 map and common event scripts into Elden Ring ones |
 | [Erd-Tools](https://github.com/Nordgaren/Erd-Tools) (Nordgaren) | Byte patterns for Elden Ring's event flag manager, SetEventFlag and IsEventFlag, used by the F1 menu's DS3 run tab |
+| thefifthmatt's [SoulsRandomizers](https://github.com/thefifthmatt/SoulsRandomizers) item randomizer notes (RandomizerCommon/Item/README.md) | Key items placed by "assumed fill" and items grouped into silos; read for ideas only (its code and data are source-available, not licensed for reuse in distributed tools, so nothing is copied) |
+| [me3](https://github.com/garyttierney/me3) source (crates/mod-host-assets/src/mapping.rs, crates/cli/src/db/profile.rs) | Packages are scanned in load order and a later package's file replaces an earlier one's, so a per-profile randomizer package with load_after the main mod wins |
 | [NavMeshStudio](https://github.com/Pear0533/NavMeshStudio) (Pear0533) and [PhiveConverter](https://github.com/dt-12345/PhiveConverter) | Navmesh generation for Elden Ring maps and the hkcdSimdTree node layout; planned for the map port's navmesh stage |
 | [Seamless Co-op](https://www.nexusmods.com/eldenring/mods/510) (LukeYui) and its [docs](https://ersc-docs.github.io/seamless-modding/) | Not bundled. The launcher can load the player's own `ersc.dll` through me3; its docs set our co-op rules (same regulation.bin, `.co2` saves, `cooppassword`). See docs/seamless-coop-compatibility.md |
 | [me3](https://github.com/garyttierney/me3) (garyttierney) Seamless support | me3's ModEngine2 shim loads `ersc.dll` as a native (v0.6.0+); its profile schema (`start_online`) shaped co-op mode |
