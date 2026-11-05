@@ -367,6 +367,9 @@ public sealed class WwiseBank
         return false;
     }
 
+    // Standard speaker masks: mono FC, stereo FL FR, 5.1 and 7.1 (FL FR FC LFE + back/side pairs).
+    private static int SpeakerMask(int channels) => channels switch { 1 => 0x4, 2 => 0x3, 4 => 0x33, 6 => 0x3F, 8 => 0x63F, _ => 0x3 };
+
     /// <summary>A 16-bit PCM .wem (RIFF WAVE, WAVEFORMATEXTENSIBLE), which Wwise plays with its PCM codec.</summary>
     public static byte[] PcmWem(short[] pcm, int channels, int rate)
     {
@@ -389,7 +392,7 @@ public sealed class WwiseBank
         U16(6);
         U16(16);
         // Wwise keeps an AkChannelConfig here: channel count, config type 1 (standard), speaker mask.
-        U32(channels | (1 << 8) | ((channels == 1 ? 0x4 : 0x3) << 12));
+        U32(channels | (1 << 8) | (SpeakerMask(channels) << 12));
         w.Write("data"u8);
         U32(data.Length);
         w.Write(data);

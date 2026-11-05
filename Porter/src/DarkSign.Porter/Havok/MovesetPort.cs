@@ -503,7 +503,10 @@ public static partial class MovesetPort
     /// <summary>The player files Apply writes; removed when a port fails so the game loads Elden Ring's own.</summary>
     public static IEnumerable<string> OutputFiles(PorterContext ctx) =>
         new[] { "c0000.behbnd.dcx", "c0000.anibnd.dcx", ItemText.Leaf(AnimBinder) }.Select(f => ctx.ModPath("chr", f))
-            .Append(ctx.ModPath(WideTable));
+            .Append(ctx.ModPath(WideTable))
+            // The ported effects and sounds name IDs only the ported moves play; a failed moveset drops them too, so a
+            // binder or bank from an earlier build (or game patch) doesn't keep replacing Elden Ring's own.
+            .Concat(FxrPort.StaleBinders(ctx)).Append(ctx.ModPath("sd", "enus", "cs_main.bnk"));
 
     private static bool IsWeaponSelector(CustomManualSelectorGenerator s) => s.m_offsetType is
         CustomManualSelectorGenerator.OffsetType.WeaponCategoryRight or CustomManualSelectorGenerator.OffsetType.WeaponCategoryLeft

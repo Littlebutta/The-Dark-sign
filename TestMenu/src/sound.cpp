@@ -36,7 +36,9 @@ struct TaeEventArgs {
     uint32_t pad;
     const int32_t *params;
 };
-using ExecOne = void(__fastcall *)(void *event, TaeEventArgs *args);
+// Only the first two arguments are known; the hook forwards all four register arguments and the return register
+// unchanged, so a third/fourth argument or a return value the game relies on survives the detour.
+using ExecOne = uintptr_t(__fastcall *)(void *event, TaeEventArgs *args, void *a3, void *a4);
 
 struct Wave {
     WAVEFORMATEX format{};
@@ -133,14 +135,18 @@ void play(int kind, int id)
     ReleaseSRWLockExclusive(&g_lock);
 }
 
-void __fastcall h_exec_one(void *event, TaeEventArgs *args)
+uintptr_t __fastcall h_exec_one(void *event, TaeEventArgs *args, void *a3, void *a4)
 {
-    o_exec_one(event, args);
+    // Read the event before the game runs it (it may reuse the argument block), play after.
+    int kind = 0, id = 0;
     if (args && args->params && (args->event_type == 128 || args->event_type == 129)) {
-        int kind = args->params[0], id = args->params[1];
-        if ((kind == 1 || kind == 5) && id >= FIRST_PORTED_ID && id < FIRST_PORTED_ID + 100000000)
-            play(kind, id);
+        kind = args->params[0];
+        id = args->params[1];
     }
+    uintptr_t ret = o_exec_one(event, args, a3, a4);
+    if ((kind == 1 || kind == 5) && id >= FIRST_PORTED_ID && id < FIRST_PORTED_ID + 100000000)
+        play(kind, id);
+    return ret;
 }
 
 bool game_is_2720()
