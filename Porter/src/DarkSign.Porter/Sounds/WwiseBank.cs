@@ -30,6 +30,12 @@ public sealed class WwiseBank
 
     public int Version { get; private set; }
 
+    /// <summary>The bank's own ID (BKHD), the FNV-1 hash of its name: what Play actions and the game's index name.</summary>
+    public uint BankId { get; private set; }
+
+    // The objects each AddSound created, in bank order (Sound, its container, Play action, event), for WriteOwnBank.
+    private readonly List<HircObject> _new = [];
+
     public static WwiseBank Read(byte[] bytes)
     {
         var bank = new WwiseBank();
@@ -44,6 +50,7 @@ public sealed class WwiseBank
             {
                 case "BKHD":
                     bank.Version = BitConverter.ToInt32(body, 0);
+                    bank.BankId = body.Length >= 8 ? BitConverter.ToUInt32(body, 4) : 0;
                     break;
                 case "DIDX": didx = body; break;
                 case "DATA": data = body; break;
@@ -165,6 +172,8 @@ public sealed class WwiseBank
             _objects.Insert(at, newContainer);
             _objects.Insert(at, newSound);
             _byId[newContainer.Id] = newContainer;
+            _new.Add(newSound);
+            _new.Add(newContainer);
         }
         else
         {
@@ -174,12 +183,14 @@ public sealed class WwiseBank
                 _objects.Insert(_objects.IndexOf(parent), newSound);
             else
                 _objects.Add(newSound);
+            _new.Add(newSound);
         }
         _byId[soundId] = newSound;
         foreach (var obj in new[] { new HircObject(ActionType, actionId, action), new HircObject(EventType, eventId, ev) })
         {
             _objects.Add(obj);
             _byId[obj.Id] = obj;
+            _new.Add(obj);
         }
         if (!streamed && _media.TryAdd(mediaId, wem))
             _added.Add((mediaId, wem));
@@ -346,6 +357,133 @@ public sealed class WwiseBank
             }
         }
         return output.ToArray();
+    }
+
+    public const byte AttenuationType = 14;
+    private const byte PropAttenuation = 0x46;
+    private const uint LanguageSfx = 393239870; // FNV-1 of "SFX": banks that aren't localized
+
+    /// <summary>
+    /// The sounds added so far as a bank of their own (launcher fallback "sounds" E), the way the community's custom
+    /// banks are made (ndahn's empty soundbank template, Yonder's "Custom Soundbanks" guide): this bank's header with
+    /// a new ID, not localized; the new media; attenuations first, then the new Sounds and containers, then unchanged
+    /// copies of every actor-mixer above them (Wwise keeps the first loaded copy of an ID, so these are the same
+    /// objects as cs_main's), each listing only the children this bank has; then the Play actions, now naming this
+    /// bank, and the events. Null when the new sounds don't hang under actor-mixers this reader can rewrite.
+    /// </summary>
+    public byte[]? WriteOwnBank(uint bankId)
+    {
+        var bkhd = _sections.FirstOrDefault(s => s.Tag == "BKHD").Body;
+        if (bkhd is null || bkhd.Length < 12 || _new.Count == 0)
+            return null;
+        var header = (byte[])bkhd.Clone();
+        BitConverter.GetBytes(bankId).CopyTo(header, 4);
+        BitConverter.GetBytes(LanguageSfx).CopyTo(header, 8);
+
+        var tree = _new.Where(o => o.Type is SoundType or RanSeqCntrType).ToList();
+        var mixers = new List<HircObject>(); // nearest first
+        var childrenOf = new Dictionary<uint, SortedSet<uint>>();
+        var treeIds = tree.Select(o => o.Id).ToHashSet();
+        foreach (var obj in tree)
+        {
+            var current = obj;
+            for (int depth = 0; depth < 16; depth++)
+            {
+                if (WwiseNode.Read(current) is not { } node)
+                    return null;
+                uint parent = node.Parent(current.Data);
+                if (parent == 0 || treeIds.Contains(parent))
+                    break; // the root, or the Sound's own new container
+                if (Get(parent) is not { Type: ActorMixerType } up || WwiseNode.Read(up) is not { ChildrenAt: >= 0 })
+                    return null;
+                bool seen = childrenOf.ContainsKey(parent);
+                if (!seen)
+                    childrenOf[parent] = [];
+                childrenOf[parent].Add(current.Id);
+                if (seen)
+                    break; // the rest of this branch is already collected
+                mixers.Add(up);
+                current = up;
+            }
+        }
+        // Each copied actor-mixer lists only the children this bank has.
+        var copies = new List<HircObject>();
+        foreach (var mixer in mixers)
+        {
+            var node = WwiseNode.Read(mixer)!;
+            var kids = childrenOf[mixer.Id];
+            var list = new MemoryStream();
+            list.Write(BitConverter.GetBytes(kids.Count));
+            foreach (var k in kids) list.Write(BitConverter.GetBytes(k));
+            var data = (byte[])mixer.Data.Clone();
+            data = [.. data.AsSpan(0, node.ChildrenAt), .. list.ToArray(), .. data.AsSpan(node.ChildrenAt + 4 + 4 * node.Children.Count)];
+            copies.Add(new HircObject(ActorMixerType, mixer.Id, data));
+        }
+        // Children before parents: a mixer goes after every mixer below it.
+        copies = [.. copies.OrderBy(c => Depth(c.Id, copies))];
+        var attenuations = tree.Concat(mixers).Select(o => WwiseNode.Read(o)?.Props.GetValueOrDefault(PropAttenuation) ?? 0)
+            .Where(id => id != 0).Distinct().Select(Get).OfType<HircObject>().Where(o => o.Type == AttenuationType).ToList();
+        var actions = _new.Where(o => o.Type == ActionType).Select(a =>
+        {
+            var d = (byte[])a.Data.Clone();
+            if (d.Length >= 4 && BitConverter.ToUInt32(d, d.Length - 4) == BankId)
+                BitConverter.GetBytes(bankId).CopyTo(d, d.Length - 4); // a Play action names the bank holding its target
+            return new HircObject(ActionType, a.Id, d);
+        }).ToList();
+        var objects = attenuations.Concat(tree).Concat(copies).Concat(actions).Concat(_new.Where(o => o.Type == EventType)).ToList();
+
+        var output = new MemoryStream();
+        void Section(string tag, byte[] body)
+        {
+            output.Write(Encoding.ASCII.GetBytes(tag));
+            output.Write(BitConverter.GetBytes(body.Length));
+            output.Write(body);
+        }
+        Section("BKHD", header);
+        if (_added.Count > 0)
+        {
+            var data = new MemoryStream();
+            var index = new MemoryStream();
+            foreach (var (id, bytes) in _added.OrderBy(m => m.Id))
+            {
+                while (data.Length % 16 != 0)
+                    data.WriteByte(0);
+                index.Write(BitConverter.GetBytes(id));
+                index.Write(BitConverter.GetBytes((int)data.Length));
+                index.Write(BitConverter.GetBytes(bytes.Length));
+                data.Write(bytes);
+            }
+            Section("DIDX", index.ToArray());
+            Section("DATA", data.ToArray());
+        }
+        var hirc = new MemoryStream();
+        hirc.Write(BitConverter.GetBytes(objects.Count));
+        foreach (var obj in objects)
+        {
+            hirc.WriteByte(obj.Type);
+            hirc.Write(BitConverter.GetBytes(obj.Data.Length));
+            hirc.Write(obj.Data);
+        }
+        Section("HIRC", hirc.ToArray());
+        return output.ToArray();
+    }
+
+    // How many of the copied mixers sit below this one (0 for the nearest to the sounds).
+    private int Depth(uint mixerId, List<HircObject> copies)
+    {
+        int depth = 0;
+        foreach (var c in copies)
+        {
+            var obj = c;
+            for (int i = 0; i < 16 && WwiseNode.Read(obj) is { } n; i++)
+            {
+                uint up = n.Parent(obj.Data);
+                if (up == mixerId) { depth++; break; }
+                if (copies.FirstOrDefault(x => x.Id == up) is not { } next) break;
+                obj = next;
+            }
+        }
+        return depth;
     }
 
     private static IEnumerable<uint> EventActions(HircObject ev)

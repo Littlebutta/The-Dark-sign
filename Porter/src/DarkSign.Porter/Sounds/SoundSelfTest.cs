@@ -18,7 +18,7 @@ public static class SoundSelfTest
         var mixer = Cat(U32(M), Base(0, [(0, -3f)]), U32(2), U32(Other), U32(R));
         var rsc = Cat(U32(R), Base(M, [(0, -14f), (2, -2200f), (3, 20f), (4, 10f)], [(2, -100f, 100f)]), U16(1), U16(0), U16(0), new byte[12], U16(1), [0, 1, 0, 0], U32(1), U32(S), U16(1), U32(S), U32(50000));
         var snd = Cat(U32(S), U32(0x00040001), [0], U32(media), U32(4), [0], Base(R, [(0, -2f), (2, -300f)]));
-        var act = Cat(U32(A), U16(0x0403), U32(R), [0], new byte[3], U32(12345));
+        var act = Cat(U32(A), U16(0x0403), U32(R), [0], new byte[3], U32(1)); // last u32: the bank holding the target (this one, ID 1)
         var ev = Cat(U32(E), [1], U32(A));
         var other = Cat(U32(Other), U32(0x00040001), [0], U32(media), U32(4), [0], Base(M, []));
         var objs = new (byte t, byte[] d)[] { (2, other), (2, snd), (5, rsc), (7, mixer), (3, act), (4, ev) };
@@ -53,6 +53,42 @@ public static class SoundSelfTest
         bank.AddSound(chain, 9101, 9102, 9103, 9104, 9105, wem, false);
         var b3 = WwiseBank.Read(bank.Write());
         Check(WwiseNode.Read(b3.Get(M)!)!.Children.SequenceEqual([Other, R, 9004u, 9104u]), "mixer lists both");
+        // Method E: the new sounds as a bank of their own: new ID, SFX language, the new media, the actor-mixer copied
+        // listing only the new containers, children before parents, Play actions naming the new bank.
+        var ownBytes = bank.WriteOwnBank(777);
+        Check(ownBytes is not null, "own bank written");
+        if (ownBytes is not null)
+        {
+            var own = WwiseBank.Read(ownBytes);
+            Check(own.BankId == 777 && BitConverter.ToUInt32(Section(ownBytes, "BKHD"), 8) == 393239870, "own bank header");
+            Check(own.Chain(9001)?.Sound.Id == 9002 && own.Chain(9101)?.Sound.Id == 9102, "own bank chains");
+            Check(own.Media(9005) is not null && own.Media(media) is null, "own bank holds only new media");
+            var ownMixer = own.Get(M);
+            Check(ownMixer is not null && WwiseNode.Read(ownMixer)!.Children.SequenceEqual([9004u, 9104u]), "own mixer lists only new containers");
+            Check(own.Get(R) is null && own.Get(S) is null && own.Get(E) is null, "own bank leaves vanilla objects out");
+            var ids = own.Objects.Select(o => o.Id).ToList();
+            Check(ids.IndexOf(9002) < ids.IndexOf(9004) && ids.IndexOf(9004) < ids.IndexOf(M) && ids.IndexOf(M) < ids.IndexOf(9003), "own bank order");
+            var ownAction = own.Get(9003)!.Data;
+            Check(BitConverter.ToUInt32(ownAction, ownAction.Length - 4) == 777, "own action names own bank");
+            Check(own.Write().SequenceEqual(ownBytes), "own bank round trip");
+        }
+
+        // The game's sound index (soundbanksinfo.mobnkinfo): new events listed under their bank, appended so the
+        // original bytes stay, sorted lists, a new bank added to its section in ID order.
+        var sbi = Sbi([(10, [5, 7]), (20, [3, 9, 0x1_0000_0001])], [(30, [1])]);
+        var idx = SoundIndex.Read(sbi);
+        Check(idx.SectionCount == 2 && idx.Lists(20, 9) && idx.Lists(20, 1) && !idx.Lists(20, 4), "sbi reads");
+        Check(idx.Register(20, [4, 9, 12]) == 2, "sbi register counts new");
+        Check(idx.Register(15, [8], sectionOf: 20) == 1, "sbi new bank");
+        var sbi2 = idx.Write();
+        Check(sbi2.Length % 8 == 0 && sbi2.Length > sbi.Length, "sbi appended");
+        var back = SoundIndex.Read(sbi2);
+        Check(back.Lists(20, 4) && back.Lists(20, 12) && back.Lists(20, 3) && back.Lists(20, 1) && back.Lists(15, 8) && back.Lists(10, 7) && back.Lists(30, 1), "sbi round trip");
+        Check(SbiEvents(sbi2, 0, 20).SequenceEqual(new ulong[] { 3, 4, 9, 12, 0x1_0000_0001 }), "sbi list sorted, flags kept: " + string.Join(",", SbiEvents(sbi2, 0, 20)));
+        Check(SbiBanks(sbi2, 0).SequenceEqual(new uint[] { 10, 15, 20 }), "sbi banks sorted");
+        Check(sbi2.AsSpan(0, 0x18).SequenceEqual(sbi.AsSpan(0, 0x18)) && SbiBanks(sbi2, 1).SequenceEqual([30u]), "sbi rest untouched");
+        Check(new SoundIndex[] { SoundIndex.Read(SoundIndex.Read(sbi).Write()) }.All(i => !i.Changed) && SoundIndex.Read(sbi).Write().SequenceEqual(sbi), "sbi unchanged writes the original");
+
         // Media: appended wems start on a 16-byte boundary of DATA, and the index stays sorted by ID.
         var b3Bytes = bank.Write();
         var didx = Section(b3Bytes, "DIDX");
@@ -89,6 +125,53 @@ public static class SoundSelfTest
 
         Console.WriteLine(_failures == 0 ? "sound-selftest: all checks passed" : $"sound-selftest: {_failures} checks FAILED");
         return _failures == 0 ? 0 : 1;
+    }
+
+    // A small SBI file: header, section table, then each section's bank array and event arrays.
+    private static byte[] Sbi(params (uint Bank, ulong[] Events)[][] sections)
+    {
+        var w = new MemoryStream();
+        w.Write("SBI\0"u8); w.Write(BitConverter.GetBytes(0x10000)); w.Write(BitConverter.GetBytes(0x18L)); w.Write(BitConverter.GetBytes((long)sections.Length));
+        long table = w.Length;
+        w.Write(new byte[32 * sections.Length]);
+        for (int s = 0; s < sections.Length; s++)
+        {
+            var eventAt = new List<long>();
+            foreach (var (_, events) in sections[s])
+            {
+                eventAt.Add(w.Length);
+                foreach (var e in events) w.Write(BitConverter.GetBytes(e));
+            }
+            long banksAt = w.Length;
+            for (int b = 0; b < sections[s].Length; b++)
+            {
+                w.Write(BitConverter.GetBytes(sections[s][b].Bank)); w.Write(BitConverter.GetBytes(sections[s][b].Events.Length)); w.Write(BitConverter.GetBytes(eventAt[b]));
+            }
+            long end = w.Length;
+            w.Position = table + 32 * s;
+            w.Write(Enumerable.Repeat((byte)(s + 1), 16).ToArray()); w.Write(BitConverter.GetBytes((long)sections[s].Length)); w.Write(BitConverter.GetBytes(banksAt));
+            w.Position = end;
+        }
+        return w.ToArray();
+    }
+
+    private static List<uint> SbiBanks(byte[] sbi, int section)
+    {
+        long at = 0x18 + 32 * section, count = BitConverter.ToInt64(sbi, (int)at + 16), banks = BitConverter.ToInt64(sbi, (int)at + 24);
+        return Enumerable.Range(0, (int)count).Select(b => BitConverter.ToUInt32(sbi, (int)banks + 16 * b)).ToList();
+    }
+
+    private static List<ulong> SbiEvents(byte[] sbi, int section, uint bank)
+    {
+        long at = 0x18 + 32 * section, count = BitConverter.ToInt64(sbi, (int)at + 16), banks = BitConverter.ToInt64(sbi, (int)at + 24);
+        for (int b = 0; b < count; b++)
+        {
+            int p = (int)banks + 16 * b;
+            if (BitConverter.ToUInt32(sbi, p) != bank) continue;
+            int n = BitConverter.ToInt32(sbi, p + 4); long e = BitConverter.ToInt64(sbi, p + 8);
+            return Enumerable.Range(0, n).Select(i => BitConverter.ToUInt64(sbi, (int)e + 8 * i)).ToList();
+        }
+        return [];
     }
 
     private static byte[] Section(byte[] bnk, string tag)

@@ -23,6 +23,35 @@ public static class SoundPort
     public static readonly bool DllSounds =
         string.Equals(Environment.GetEnvironmentVariable("DARKSIGN_SOUND_METHOD"), "dll", StringComparison.OrdinalIgnoreCase);
 
+    /// <summary>
+    /// DARKSIGN_SOUND_BANK=own (launcher fallback "sounds" E): cs_main is left alone; the ported sounds go into a bank
+    /// of their own, sd/cs_c9990.bnk, which Torrent's NpcParam rows load (SoundAddBankId), as Yonder's "Custom
+    /// Soundbanks" guide keeps a mod bank always loaded. The game's index lists the bank and its events.
+    /// </summary>
+    public static readonly bool OwnBank =
+        string.Equals(Environment.GetEnvironmentVariable("DARKSIGN_SOUND_BANK"), "own", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>The own bank's number (cs_c9990): unused by Elden Ring, and fits NpcParam's s16 bank fields.</summary>
+    public const int OwnBankNumber = 9990;
+    public static string OwnBankName => $"cs_c{OwnBankNumber:D4}";
+
+    /// <summary>
+    /// The game's own event index (/sound/soundbanksinfo.mobnkinfo) lists the new events under their bank unless
+    /// DARKSIGN_SOUND_INDEX=0. Every event Elden Ring ships is in it; new ones weren't, and new sound numbers stayed
+    /// silent while the same audio played under an existing number.
+    /// </summary>
+    private static readonly bool Register = Environment.GetEnvironmentVariable("DARKSIGN_SOUND_INDEX") != "0";
+
+    /// <summary>
+    /// Embedded media also gets a loose copy at sd\wem\NN\&lt;ID&gt;.wem unless DARKSIGN_SOUND_MIRROR=0: Nightreign
+    /// Ultimate Voices found that Wwise's PrepareEvent loading fails with the media only embedded and works with a
+    /// byte-identical loose copy, and which way the game loads isn't known.
+    /// </summary>
+    private static readonly bool Mirror = Environment.GetEnvironmentVariable("DARKSIGN_SOUND_MIRROR") != "0";
+
+    /// <summary>Where the edited index goes (me3 serves it in place of the game's).</summary>
+    public static string IndexPath(PorterContext ctx) => ctx.ModPath("sound", "soundbanksinfo.mobnkinfo");
+
     /// <summary>The folder the DLL reads (Mods\ER\darksign_sounds); must match TestMenu/src/sound.cpp.</summary>
     public const string DllSoundFolder = "darksign_sounds";
     private const string Bank = "/enus/cs_main.bnk";
@@ -36,6 +65,9 @@ public static class SoundPort
         internal void Add(int kind, int id) => _ported.Add((kind, id));
 
         public int Count => _ported.Count;
+
+        /// <summary>The sounds went into their own bank (method E): Torrent's NpcParam rows must load it.</summary>
+        public bool InOwnBank { get; internal set; }
     }
 
     /// <summary>The sample-name letter for a TAE sound kind, or null for kinds that aren't ported.</summary>
@@ -54,8 +86,9 @@ public static class SoundPort
         var bankPath = ctx.ModPath(["sd", .. Bank.TrimStart('/').Split('/')]);
         // A bank from an earlier build would still be loaded (stale events, or a bank cloned from an older game
         // patch); it is written again below whenever this build ports a sound into it.
-        if (File.Exists(bankPath))
-            File.Delete(bankPath);
+        foreach (var stale in new[] { bankPath, IndexPath(ctx), ctx.ModPath("sd", OwnBankName + ".bnk"), ctx.ModPath("sd", "enus", OwnBankName + ".bnk") })
+            if (File.Exists(stale))
+                File.Delete(stale);
         if (todo.Count == 0)
             return result;
 
@@ -82,6 +115,7 @@ public static class SoundPort
         var names = todo.SelectMany(w => new[] { "", "b", "c", "d", "e", "f", "g", "h" }.Select(v => $"{Letter(w.Kind)}{w.Id:D9}{v}")).ToHashSet();
         var samples = Ds3Samples(ctx, ds3Archives, names);
         var reasons = new Dictionary<string, int>();
+        var events = new List<uint>();
         int bytes = 0;
         foreach (var (kind, id) in todo)
         {
@@ -113,12 +147,13 @@ public static class SoundPort
             uint mediaId = UnusedId(bank, $"darksign_media_{letter}{id}"), containerId = UnusedId(bank, $"darksign_container_{letter}{id}");
             // Embedded in the bank like nearly all of Elden Ring's own sounds (17,018 embedded, 3 streamed): the
             // streamed loose wems (sd\wem\NN\<ID>.wem) stayed silent in game. DARKSIGN_STREAM_SOUNDS=1 streams them.
-            if (StreamSounds)
+            if (StreamSounds || Mirror)
             {
                 var mediaName = mediaId.ToString();
                 File.WriteAllBytes(ctx.ModPath("sd", "wem", mediaName[..2], mediaName + ".wem"), wem); // me3: sd/wem/NN/<id>.wem
             }
             bank.AddSound(template, eventId, soundId, actionId, containerId, mediaId, wem, streamed: StreamSounds);
+            events.Add(eventId);
             result.Add(kind, id);
             bytes += wem.Length;
         }
@@ -129,12 +164,63 @@ public static class SoundPort
                               (reasons.Count == 0 ? "none" : string.Join(", ", reasons.Select(r => $"{r.Value} {r.Key}"))));
             return result;
         }
+        uint eventBank = bank.BankId;
         if (result.Count > 0)
-            File.WriteAllBytes(bankPath, bank.Write());
+        {
+            byte[]? own = OwnBank ? bank.WriteOwnBank(FxSoundExplore.Fnv1(OwnBankName)) : null;
+            if (own is not null)
+            {
+                // Not localized (SFX), so it sits in sd\ like the game's other character banks.
+                File.WriteAllBytes(ctx.ModPath("sd", OwnBankName + ".bnk"), own);
+                eventBank = FxSoundExplore.Fnv1(OwnBankName);
+                result.InOwnBank = true;
+                Console.WriteLine($"sounds: method E: {result.Count} sounds in sd\\{OwnBankName}.bnk ({own.Length / 1024} KB), cs_main left as the game has it");
+            }
+            else
+            {
+                if (OwnBank)
+                    Console.WriteLine("sounds: method E: the new sounds don't hang under actor-mixers that can be copied; they go into cs_main instead");
+                File.WriteAllBytes(bankPath, bank.Write());
+            }
+            RegisterEvents(ctx, erArchives, eventBank, bank.BankId, events);
+        }
         Console.WriteLine($"sounds: {result.Count} DS3 sounds ported ({bytes / 1024} KB of PCM {(StreamSounds ? "streamed from sd/wem" : "embedded")}, {bank.OwnContainerCount} in a container of their own, {bank.ChildrenAdded} added to their parent) " +
                           $"into sd{Bank}; left out: " +
                           (reasons.Count == 0 ? "none" : string.Join(", ", reasons.Select(r => $"{r.Value} {r.Key}"))));
         return result;
+    }
+
+    // Lists the new events in the game's own index (see SoundIndex), under the bank that holds them.
+    private static void RegisterEvents(PorterContext ctx, GameArchives erArchives, uint bankId, uint mainBankId, List<uint> events)
+    {
+        if (erArchives.Contains("/sound/eventinfo.eib"))
+            Console.WriteLine("sounds: index: this game also has /sound/eventinfo.eib (Nightreign's second index); it isn't edited");
+        if (!Register)
+        {
+            Console.WriteLine("sounds: index: not edited (DARKSIGN_SOUND_INDEX=0)");
+            return;
+        }
+        if (!erArchives.Contains(SoundIndex.ArchivePath))
+        {
+            Console.WriteLine($"sounds: index: {SoundIndex.ArchivePath} not found in the game's archives; not edited");
+            return;
+        }
+        try
+        {
+            var index = SoundIndex.Read(erArchives.Read(SoundIndex.ArchivePath));
+            bool knewBank = index.HasBank(bankId);
+            int added = index.Register(bankId, events, sectionOf: mainBankId);
+            var path = IndexPath(ctx);
+            Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+            File.WriteAllBytes(path, index.Write());
+            Console.WriteLine($"sounds: index: {added} new events listed under bank {bankId}{(knewBank ? "" : " (bank added)")} in sound\\soundbanksinfo.mobnkinfo " +
+                              $"({index.SectionCount} sections)");
+        }
+        catch (Exception e) when (e is InvalidDataException or ArgumentException or IndexOutOfRangeException)
+        {
+            // An index this reader doesn't know stays the game's own.
+            Console.WriteLine($"sounds: index: left as the game has it ({e.GetType().Name}: {e.Message})");
+        }
     }
 
     /// <summary>A plain 16-bit PCM WAV file.</summary>
