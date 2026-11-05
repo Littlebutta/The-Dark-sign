@@ -65,3 +65,22 @@ public sealed class FallbacksTests
         Assert.DoesNotContain("disable_arxan", EldenRingSetup.Me3Profile(@"C:\mod", []));
     }
 }
+
+public sealed class FallbacksDocTests
+{
+    [Fact]
+    public void Docs_list_every_feature_and_option()
+    {
+        var dir = new DirectoryInfo(AppContext.BaseDirectory);
+        while (dir is not null && !File.Exists(Path.Combine(dir.FullName, "docs", "fallbacks.md")))
+            dir = dir.Parent;
+        Assert.NotNull(dir);
+        var doc = File.ReadAllText(Path.Combine(dir!.FullName, "docs", "fallbacks.md"));
+        foreach (var feature in Fallbacks.All)
+        {
+            Assert.Contains($"(`{feature.Key}`", doc);
+            foreach (var option in feature.Options)
+                Assert.Contains($"**{option.Letter}: {option.Title}.**", doc);
+        }
+    }
+}

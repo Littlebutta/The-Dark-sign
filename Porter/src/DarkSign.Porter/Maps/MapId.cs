@@ -74,7 +74,29 @@ public static class MapSlots
         public MapId Host => Template ?? Er;
     }
 
-    public static readonly IReadOnlyList<Slot> All =
+    /// <summary>
+    /// The slots in use: <see cref="Colosseums"/>, or <see cref="NewIds"/> when DARKSIGN_MAP_SLOTS=new (launcher
+    /// fallback "map-slots" B).
+    /// </summary>
+    public static IReadOnlyList<Slot> All => _all ??=
+        string.Equals(Environment.GetEnvironmentVariable("DARKSIGN_MAP_SLOTS"), "new", StringComparison.OrdinalIgnoreCase)
+            ? NewIdSlots() : Colosseums;
+
+    private static IReadOnlyList<Slot>? _all;
+
+    /// <summary>
+    /// Fallback: every DS3 map under a map ID of its own that Elden Ring doesn't ship (m50_00, m51_00, m52_00, the
+    /// IDs the m50 probe tests), built from the colosseum's formats. For when the colosseum slots won't load or their
+    /// own settings get in the way. Each map's entities, events and flags move to that ID's range.
+    /// </summary>
+    public static IReadOnlyList<Slot> NewIdSlots() =>
+    [
+        new(MapId.Parse("m40_00_00_00"), MapId.Parse("m50_00_00_00"), "Firelink Shrine / Cemetery of Ash", Template: MapId.Parse("m45_00_00_00")),
+        new(MapId.Parse("m30_00_00_00"), MapId.Parse("m51_00_00_00"), "High Wall of Lothric", Template: MapId.Parse("m45_01_00_00")),
+        new(MapId.Parse("m31_00_00_00"), MapId.Parse("m52_00_00_00"), "Undead Settlement", Template: MapId.Parse("m45_02_00_00")),
+    ];
+
+    public static readonly IReadOnlyList<Slot> Colosseums =
     [
         new(MapId.Parse("m40_00_00_00"), MapId.Parse("m45_00_00_00"), "Firelink Shrine / Cemetery of Ash"),
         new(MapId.Parse("m30_00_00_00"), MapId.Parse("m45_01_00_00"), "High Wall of Lothric"),

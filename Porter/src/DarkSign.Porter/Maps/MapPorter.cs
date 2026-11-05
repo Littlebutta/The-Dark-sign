@@ -354,7 +354,7 @@ public static class MapPorter
             scripts.Insert(0, EMEVD.Read(er.Read("/event/m11_10_00_00.emevd.dcx")));
         var back = RunEvents.FindReturnPoint(scripts)
                    ?? throw new InvalidDataException("no WarpPlayer target found in Elden Ring's event scripts to return to");
-        RunEvents.AddTo(common, host, startEntity, back);
+        RunEvents.AddTo(common, host, startEntity, back, RunEvents.AutoStart);
         RunEvents.AddWarps(common, warps);
         File.WriteAllBytes(modCommon, DCX.Compress(common.Write(), compression));
         return $"run events: start warps to {host} entity {startEntity}; leave warps to {back.Map} entity {back.EntityId}; "
