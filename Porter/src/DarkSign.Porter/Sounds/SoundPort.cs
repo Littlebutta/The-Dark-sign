@@ -13,6 +13,18 @@ public static class SoundPort
 {
     public const int IdBase = 900_000_000;
     private static readonly bool StreamSounds = Environment.GetEnvironmentVariable("DARKSIGN_STREAM_SOUNDS") == "1";
+
+    /// <summary>
+    /// DARKSIGN_SOUND_METHOD=dll (launcher fallback "sounds" D): Wwise is left alone. Each DS3 sample is written as a
+    /// plain WAV to Mods\ER\darksign_sounds\&lt;c|s&gt;&lt;ID&gt;.wav, the TAE events still name the new IDs, and the test
+    /// menu DLL plays the WAV on its own audio stream when the game runs such an event (DOOM RING's approach: its own
+    /// stream, no Wwise). Elden Ring's bank isn't changed, so a bank problem can't silence the game.
+    /// </summary>
+    public static readonly bool DllSounds =
+        string.Equals(Environment.GetEnvironmentVariable("DARKSIGN_SOUND_METHOD"), "dll", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>The folder the DLL reads (Mods\ER\darksign_sounds); must match TestMenu/src/sound.cpp.</summary>
+    public const string DllSoundFolder = "darksign_sounds";
     private const string Bank = "/enus/cs_main.bnk";
 
     public sealed class Result
@@ -36,9 +48,12 @@ public static class SoundPort
         var todo = wanted.Where(w => Letter(w.Kind) is not null && w.Id > 0 && w.Id < 100_000_000).Distinct().ToList();
         // Streamed wems live in sd\wem\NN: me3 looks a wem up as sd/wem/<id>.wem, then sd/wem/<first two digits>/<id>.wem
         // (garyttierney/me3 crates/mod-host-assets/src/wwise.rs). Mods\ER\wem is from a build that put them outside sd.
-        foreach (var wemDir in new[] { ctx.ModPath("sd", "wem"), ctx.ModPath("wem") })
+        foreach (var wemDir in new[] { ctx.ModPath("sd", "wem"), ctx.ModPath("wem"), ctx.ModPath(DllSoundFolder) })
             if (Directory.Exists(wemDir))
                 Directory.Delete(wemDir, true);
+        var bankPath = ctx.ModPath(["sd", .. Bank.TrimStart('/').Split('/')]);
+        if (DllSounds && File.Exists(bankPath))
+            File.Delete(bankPath); // a bank from an earlier build would still be loaded
         if (todo.Count == 0)
             return result;
 
@@ -75,6 +90,14 @@ public static class SoundPort
                 reasons[reason] = reasons.GetValueOrDefault(reason) + 1;
                 continue;
             }
+            if (DllSounds)
+            {
+                var wav = Wav(pcm, sample.Channels, sample.Rate);
+                File.WriteAllBytes(ctx.ModPath(DllSoundFolder, $"{letter}{IdBase + id:D9}.wav"), wav);
+                result.Add(kind, id);
+                bytes += wav.Length;
+                continue;
+            }
             var wem = WwiseBank.PcmWem(pcm, sample.Channels, sample.Rate);
             uint soundId = UnusedId(bank, $"darksign_sound_{letter}{id}"), actionId = UnusedId(bank, $"darksign_action_{letter}{id}");
             uint mediaId = UnusedId(bank, $"darksign_media_{letter}{id}"), containerId = UnusedId(bank, $"darksign_container_{letter}{id}");
@@ -89,12 +112,44 @@ public static class SoundPort
             result.Add(kind, id);
             bytes += wem.Length;
         }
+        if (DllSounds)
+        {
+            Console.WriteLine($"sounds: {result.Count} DS3 sounds written as WAV files to {DllSoundFolder} for the DLL to play " +
+                              $"({bytes / 1024} KB; Elden Ring's bank unchanged); left out: " +
+                              (reasons.Count == 0 ? "none" : string.Join(", ", reasons.Select(r => $"{r.Value} {r.Key}"))));
+            return result;
+        }
         if (result.Count > 0)
-            File.WriteAllBytes(ctx.ModPath(["sd", .. Bank.TrimStart('/').Split('/')]), bank.Write());
+            File.WriteAllBytes(bankPath, bank.Write());
         Console.WriteLine($"sounds: {result.Count} DS3 sounds ported ({bytes / 1024} KB of PCM {(StreamSounds ? "streamed from sd/wem" : "embedded")}, {bank.OwnContainerCount} in a container of their own, {bank.ChildrenAdded} added to their parent) " +
                           $"into sd{Bank}; left out: " +
                           (reasons.Count == 0 ? "none" : string.Join(", ", reasons.Select(r => $"{r.Value} {r.Key}"))));
         return result;
+    }
+
+    /// <summary>A plain 16-bit PCM WAV file.</summary>
+    public static byte[] Wav(short[] pcm, int channels, int rate)
+    {
+        var w = new MemoryStream();
+        void U16(int v) => w.Write(BitConverter.GetBytes((ushort)v));
+        void U32(int v) => w.Write(BitConverter.GetBytes(v));
+        w.Write("RIFF"u8);
+        U32(36 + pcm.Length * 2);
+        w.Write("WAVE"u8);
+        w.Write("fmt "u8);
+        U32(16);
+        U16(1);
+        U16(channels);
+        U32(rate);
+        U32(rate * channels * 2);
+        U16(channels * 2);
+        U16(16);
+        w.Write("data"u8);
+        U32(pcm.Length * 2);
+        var data = new byte[pcm.Length * 2];
+        Buffer.BlockCopy(pcm, 0, data, 0, data.Length);
+        w.Write(data);
+        return w.ToArray();
     }
 
     // The template's volume, pitch and filters up its parents (they add up in Wwise), for the log: the port keeps the

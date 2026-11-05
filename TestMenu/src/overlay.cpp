@@ -18,6 +18,8 @@
 #include "backends/imgui_impl_win32.h"
 #include "game.h"
 #include "motion.h"
+#include "hotkeys.h"
+#include "sound.h"
 
 extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND, UINT, WPARAM, LPARAM);
 
@@ -826,6 +828,15 @@ DWORD WINAPI start(LPVOID)
         return 0;
     }
     dks_motion_init();
+    dks_sound_init();
+    dks_hotkeys_start();
+    // Fallback "F1 test menu" B: no overlay (if hooking DirectX 12 breaks the game); the hotkeys still work.
+    wchar_t no_overlay[8];
+    DWORD n = GetEnvironmentVariableW(L"DKSIGN_NO_OVERLAY", no_overlay, 8);
+    if (n > 0 && n < 8 && no_overlay[0] == L'1') {
+        dks_log("overlay: off (DKSIGN_NO_OVERLAY=1); hotkeys only");
+        return 0;
+    }
     if (!hook_dx12())
         return 0;
     hook_input();
@@ -844,7 +855,7 @@ bool is_elden_ring()
 } // namespace
 
 /* Lets the launcher recognise this DLL. */
-extern "C" __declspec(dllexport) const char *DkSignTestMenuVersion(void) { return "dksign_testmenu 5"; }
+extern "C" __declspec(dllexport) const char *DkSignTestMenuVersion(void) { return "dksign_testmenu 6"; }
 
 BOOL WINAPI DllMain(HINSTANCE inst, DWORD reason, LPVOID)
 {

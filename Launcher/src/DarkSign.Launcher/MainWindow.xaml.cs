@@ -350,10 +350,18 @@ public partial class MainWindow : Window
             SaveIsolation.EnsureSaveDirectory(Root, _settings.GetActiveProfile().Name, GameId.EldenRing);
             var dlls = new List<string> { setup.WriteDll(SaveIsolation.RedirectDllName, RedirectDll.Bytes) };
             var env = Fallbacks.GameEnvironment(_settings.Methods);
-            if (_settings.TestMenu && TestMenuDll.Bytes is not null)
+            env[Fallbacks.ModDirVariable] = setup.ModDir;
+            var testMenuNeeded = Fallbacks.NeedsTestMenuDll(_settings.Methods);
+            if ((_settings.TestMenu || testMenuNeeded) && TestMenuDll.Bytes is not null)
             {
                 dlls.Add(setup.WriteDll(EldenRingSetup.TestMenuDllName, TestMenuDll.Bytes));
                 env[EldenRingSetup.ItemsVariable] = setup.ItemsFile;
+                if (!_settings.TestMenu)
+                {
+                    // Loaded only for a fallback method (DLL sounds): no menu, no hotkeys.
+                    env[Fallbacks.NoOverlayVariable] = "1";
+                    env[Fallbacks.NoHotkeysVariable] = "1";
+                }
             }
             string? seamless = null;
             if (coop)
@@ -373,9 +381,10 @@ public partial class MainWindow : Window
             StatusText.Text = $"Launched Elden Ring{(tweaks.ModEngine2 ? " (ModEngine2)" : "")}. Saves: {plan.SaveDirectory}" +
                 (methods.Length > 0 ? $". Fallback methods: {methods}" : "") +
                 (seamless is not null ? $". Seamless Co-op is on (mod code {CoopCheckCode(setup) ?? "?"})" : "") +
-                (env.ContainsKey(EldenRingSetup.ItemsVariable)
-                    ? ". Press F1 in game for the test menu (it shows over Borderless or Windowed mode)."
-                    : ".");
+                (!_settings.TestMenu || !env.ContainsKey(EldenRingSetup.ItemsVariable) ? "."
+                    : env.ContainsKey(Fallbacks.NoOverlayVariable)
+                        ? ". Test menu hotkeys: Ctrl+Shift+F1 start the DS3 run, F2 leave, 1-9 warp to a map, F3 give the DS3 weapons."
+                        : ". Press F1 in game for the test menu (it shows over Borderless or Windowed mode).");
         }
         catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or IOException or InvalidDataException
                                        or InvalidOperationException or UnauthorizedAccessException

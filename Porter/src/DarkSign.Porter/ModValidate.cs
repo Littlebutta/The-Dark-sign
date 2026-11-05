@@ -236,6 +236,15 @@ public static partial class ModValidate
     {
         if (sounds.Count == 0)
             return;
+        if (Directory.Exists(Path.Combine(modDir, SoundPort.DllSoundFolder)) && !File.Exists(Path.Combine(modDir, "sd", "enus", "cs_main.bnk")))
+        {
+            // Sounds method D: the DLL plays WAV files instead of the bank.
+            var missing = sounds.Select(s => (s.Kind, s.Id)).Distinct()
+                .Where(s => !File.Exists(Path.Combine(modDir, SoundPort.DllSoundFolder, $"{SoundPort.Letter(s.Kind)}{s.Id:D9}.wav"))).ToList();
+            foreach (var (kind, id) in missing.Take(10))
+                r.Error($"{SoundPort.Letter(kind)}{id:D9}: a TAE event plays it but {SoundPort.DllSoundFolder} has no WAV for it");
+            return;
+        }
         var bankPath = Path.Combine(modDir, "sd", "enus", "cs_main.bnk");
         if (!File.Exists(bankPath))
         {

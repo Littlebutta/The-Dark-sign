@@ -59,6 +59,13 @@ public static class Fallbacks
             new("D", "me3 without its memory patch", "me3 without mem_patch (its bigger game heap). Try only if A and B crash with an out-of-memory or allocator error in me3's log.")
                 { Launch = new LaunchTweaks(NoMemPatch: true) },
         ]),
+        new("test-menu", "Starting the game", "F1 test menu", Stage.Launch,
+            "The game crashes or freezes when the F1 menu opens or as soon as the game window shows, or F1 does nothing.",
+        [
+            new("A", "Overlay and hotkeys (default)", "F1 opens the menu (drawn into the game's DirectX 12 frames). The hotkeys work too: Ctrl+Shift+F1 starts the DS3 run, Ctrl+Shift+F2 leaves it, Ctrl+Shift+1-9 warps to a ported map, Ctrl+Shift+F3 gives every DS3 weapon."),
+            new("B", "Hotkeys only", "No overlay (nothing hooks DirectX 12); the same hotkeys do the main jobs. A beep means the game took it, two beeps that it couldn't (load a character first).")
+                { GameEnv = Env(NoOverlayVariable, "1") },
+        ]),
         new("build-threads", "Starting the game", "Content build speed", Stage.Build,
             "The content build fails or gives different results from one run to the next.",
         [
@@ -124,6 +131,8 @@ public static class Fallbacks
                 { PorterEnv = Env("DARKSIGN_STREAM_SOUNDS", "1") },
             new("C", "Inside Elden Ring's whoosh container", "The Sound goes under the template's own container (DARKSIGN_SOUND_CONTAINERS=0), as builds up to 1.0.12x did. That container lowers the pitch and filters it.")
                 { PorterEnv = Env("DARKSIGN_SOUND_CONTAINERS", "0") },
+            new("D", "Played by our DLL (no Wwise)", "Elden Ring's sound bank is left alone. The DS3 samples are written as WAV files and the test menu DLL plays them on its own audio stream whenever a ported swing's sound event runs (DOOM RING's approach). Always audible, but not 3D-positioned. Elden Ring 2.7.2 only.")
+                { PorterEnv = Env("DARKSIGN_SOUND_METHOD", "dll"), GameEnv = Env(DllSoundsVariable, "1") },
             new("off", "Off (Elden Ring sounds)", "Ported weapons keep the Elden Ring template's swing sounds (DARKSIGN_DS3_SOUND_EVENTS=0). Not DS3, but never silent.")
                 { PorterEnv = Env("DARKSIGN_DS3_SOUND_EVENTS", "0") },
         ]),
@@ -166,6 +175,22 @@ public static class Fallbacks
                 { Launch = new LaunchTweaks(ModEngine2: true) },
         ]),
     ];
+
+    /// <summary>Game variable: the test menu DLL plays the ported sounds itself (sounds D).</summary>
+    public const string DllSoundsVariable = "DKSIGN_DLL_SOUNDS";
+
+    /// <summary>Game variable: the test menu DLL doesn't hook DirectX 12 (no overlay), hotkeys only.</summary>
+    public const string NoOverlayVariable = "DKSIGN_NO_OVERLAY";
+
+    /// <summary>Game variable: no hotkeys (the DLL is loaded only for another job and the test menu is off).</summary>
+    public const string NoHotkeysVariable = "DKSIGN_NO_HOTKEYS";
+
+    /// <summary>Game variable: the mod folder, for the DLL's files (DLL sounds).</summary>
+    public const string ModDirVariable = "DKSIGN_MOD_DIR";
+
+    /// <summary>True when a chosen method needs the test menu DLL even with the F1 test menu unticked.</summary>
+    public static bool NeedsTestMenuDll(IReadOnlyDictionary<string, string>? methods) =>
+        GameEnvironment(methods).ContainsKey(DllSoundsVariable);
 
     public static Feature? Get(string key) => All.FirstOrDefault(f => f.Key == key);
 
