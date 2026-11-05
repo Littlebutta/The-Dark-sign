@@ -137,7 +137,7 @@ public static class MsbPort
         ?? ds3.Parts.Players.FirstOrDefault(p => p.EntityID > 0)
         ?? ds3.Parts.Players.FirstOrDefault();
 
-    private static void CopyCommon(MSB3.Part src, MSBE.Part part, MapId ds3Id, MapId erId)
+    internal static void CopyCommon(MSB3.Part src, MSBE.Part part, MapId ds3Id, MapId erId)
     {
         part.Name = src.Name;
         part.InstanceID = InstanceOf(src.Name);
@@ -158,7 +158,7 @@ public static class MsbPort
         return underscore >= 0 && int.TryParse(name[(underscore + 1)..], out var n) ? n : 0;
     }
 
-    private static void ApplyGroups(MSB3.Part src, MSBE.Part.UnkStruct1? unk1, Options options)
+    internal static void ApplyGroups(MSB3.Part src, MSBE.Part.UnkStruct1? unk1, Options options)
     {
         if (unk1 is null)
             return;
@@ -178,7 +178,7 @@ public static class MsbPort
         src.BackreadGroups.AsSpan(0, Math.Min(8, src.BackreadGroups.Length)).CopyTo(unk1.CollisionMask);
     }
 
-    private static void AddModel<T>(List<T> models, string name, T? template, MapId erId) where T : MSBE.Model, new()
+    internal static void AddModel<T>(List<T> models, string name, T? template, MapId erId) where T : MSBE.Model, new()
     {
         if (models.Any(m => m.Name == name))
             return;

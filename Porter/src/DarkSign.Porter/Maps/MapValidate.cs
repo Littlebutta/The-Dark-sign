@@ -151,6 +151,7 @@ public static class MapValidate
         }
         CompareFormat(report, er, msbPath, Mod(msbPath));
         CheckLayout(report, msb, erId);
+        CheckEnemies(ctx, er, report, msb, erId);
 
         // Map pieces.
         int pieces = 0, materials = 0;
@@ -431,6 +432,25 @@ public static class MapValidate
         {
             report.Fail($"action buttons: can't read the mod's ActionButtonParam: {ex.Message}");
         }
+    }
+
+    /// <summary>Every placed enemy's character exists (Elden Ring's or ported) and stands on a collision of the map.</summary>
+    private static void CheckEnemies(PorterContext ctx, GameArchives er, Report report, MSBE msb, MapId erId)
+    {
+        if (msb.Parts.Enemies.Count == 0)
+        {
+            report.Warn($"{erId}: no enemies placed (Fallbacks \"map-enemies\" C, or nothing could stand in; see the port-maps log)");
+            return;
+        }
+        var missing = msb.Models.Enemies.Select(m => m.Name)
+            .Where(m => !er.Contains($"/chr/{m.ToLowerInvariant()}.chrbnd.dcx") && !File.Exists(ctx.ModPath("chr", $"{m.ToLowerInvariant()}.chrbnd.dcx")))
+            .ToList();
+        if (missing.Count > 0)
+            report.Fail($"{erId}: enemies use characters with no chrbnd: {Sample(missing)}");
+        var floating = msb.Parts.Enemies.Count(e => string.IsNullOrEmpty(e.CollisionPartName));
+        if (floating > 0)
+            report.Warn($"{erId}: {floating} enemies have no collision to stand on (they may fall)");
+        report.Ok($"{erId}: {msb.Parts.Enemies.Count} enemies, {msb.Models.Enemies.Count} characters");
     }
 
     public static void ValidateEvents(PorterContext ctx, GameArchives er, Report report, MapId host)

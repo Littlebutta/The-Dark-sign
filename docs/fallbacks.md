@@ -158,6 +158,14 @@ Try the next option if: Parts of a DS3 map are invisible or flicker in and out a
 - **A: Everything visible (default).** Every map part draws everywhere in the map (Elden Ring's draw groups ignored).
 - **B: DS3's draw groups.** Parts keep DS3's draw and display groups (port-maps --ds3-groups), as DS3 culls them. (`port-maps --ds3-groups`)
 
+### Enemies and bosses in the DS3 maps (`map-enemies`, rebuilds the content)
+
+Try the next option if: A DS3 map crashes or hangs while loading, enemies stand in walls or fall through the floor, or a boss fight never starts.
+
+- **A: DS3 characters where ported, stand-ins elsewhere (default).** Every DS3 enemy and boss stands where it did in DS3, with its DS3 entity ID so the converted boss and trap events find it. Characters the enemy porter has ported (darksign_chr_map.tsv) are the real DS3 ones; the rest are Elden Ring enemies of the same kind (knight, soldier, dog, dragon...), bosses get Elden Ring bosses.
+- **B: Elden Ring stand-ins only.** The same placements, but always the Elden Ring stand-ins, even for ported DS3 characters (port-maps --enemies standin). Tells whether a ported character is what breaks. (`port-maps --enemies standin`)
+- **off: Off (no enemies).** The DS3 maps are empty of enemies (port-maps --enemies none), to explore them or to find out whether enemies are what breaks a map. (`port-maps --enemies none`)
+
 
 ## Seamless Co-op
 

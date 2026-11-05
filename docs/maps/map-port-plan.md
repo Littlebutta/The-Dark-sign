@@ -18,6 +18,7 @@ after `port-weapons`. If it fails, the weapons still load and the game starts; t
 | Navmesh | `map/m40_00_00_00/m40_00_00_00.nvmhktbnd.dcx` (Havok AI 2014) | `map/m45/m45_00_00_00/m45_00_00_00.nvmhktbnd.dcx` (Havok AI 2018 tagfiles); faces, edges, cluster graph and AABB tree copied as-is, costs hkHalf → float | `Maps/NavmeshPort.cs`, `Maps/MapNavmesh.cs` |
 | Map events | `event/m40_00_00_00.emevd.dcx` | `event/m45_00_00_00.emevd.dcx`, converted instruction by instruction (see "Event scripts" below); the slot's own Elden Ring events no longer run | `Maps/EventPort.cs`, `Maps/MapEvents.cs` |
 | Common events | `event/common_func.emevd.dcx` (only the events the ported maps start, and the ones those start) | added to `event/common_func.emevd.dcx` under IDs 103x291000-103x291999 | `Maps/MapEvents.cs`, `Maps/FlagMap.cs` |
+| Enemies and bosses | MSB3 enemy parts | MSBE enemy parts at DS3's spot, on DS3's collision, with DS3's entity ID moved to the slot. The character is the ported DS3 one when `Mods\ER\darksign_chr_map.tsv` lists it, otherwise an Elden Ring stand-in of the same kind copied from a vanilla legacy-dungeon placement; DS3 bosses (boss health bar in DS3's events) get Elden Ring bosses. NPCs are left out. Fallbacks `map-enemies`. | `Maps/EnemyPort.cs` |
 | Map connections | MSB3 connect collisions | MSBE connect collisions copied from a legacy dungeon's, pointing at the neighbouring map's slot (ones to unported maps are left out) | `Maps/MsbPort.cs` |
 | Run start/leave | | two events in `common.emevd` wait for flags the F1 menu sets, then use the game's WarpPlayer | `Maps/RunEvents.cs`, `TestMenu/src/overlay.cpp` |
 
@@ -82,6 +83,25 @@ Both games run the same event system, and DarkScript3 documents every instructio
 
 Not converted yet: sound and BGM instructions, map ceremonies and world tendency. Doors and levers only work once the
 DS3 objects themselves are ported (the next stage); until then the events wait for assets that aren't there.
+
+### Enemy placement and the enemy porter
+
+The enemy porter (thread "Bring Midir and Friede into Elden Ring") writes `Mods\ER\darksign_chr_map.tsv`, tab-separated,
+one line per ported character, and port-maps uses it on its next run:
+
+```
+npc <DS3 NpcParam ID> <ER model> <ER NpcParam ID> <ER ThinkParam ID> [name]   one DS3 NpcParam row
+chr <DS3 model>       <ER model> <ER NpcParam ID> <ER ThinkParam ID> [name]   any row of a DS3 model
+```
+
+An `npc` line wins over a `chr` line. Lines starting with `#` are ignored. Until a character is listed it gets a stand-in.
+
+Stand-ins: port-maps reads every enemy placed in Elden Ring's legacy dungeons (Stranded Graveyard, Stormveil, Raya Lucaria,
+Volcano Manor, Leyndell...) with its NpcParam name, sorts both games' names into kinds (knight, soldier, archer, mage,
+skeleton, dog, rat, bird, crab, worm, serpent, lizard, tree, ghost, beast, giant, dragon) and takes the earliest
+dungeon's enemy of the same kind, or the most common one when the kind has none. Bosses are spread over Elden Ring's
+bosses (of the same kind when there is one). Stand-ins keep their Elden Ring stats; the player keeps Elden Ring's
+jump, guard counter and the rest. Patrol routes and DS3's boss name text aren't ported yet.
 
 ## Open questions (answered by the first `map-survey` and in-game test)
 

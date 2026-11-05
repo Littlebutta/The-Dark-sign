@@ -27,6 +27,9 @@ public static class MapPorter
         /// </summary>
         public int AfterPid { get; set; }
 
+        /// <summary>--enemies auto|standin|none (launcher Fallbacks "map-enemies"): who stands where DS3's enemies stood.</summary>
+        public EnemyPort.Method Enemies { get; set; } = EnemyPort.Method.Auto;
+
         public static Options Parse(IEnumerable<string> args)
         {
             var o = new Options();
@@ -37,6 +40,7 @@ public static class MapPorter
                     case "--ds3-groups": o.Ds3Groups = true; break;
                     case "--binary-collision": o.BinaryCollision = true; break;
                     case "--simd": o.KeepSimdTree = true; break;
+                    case "--enemies" when i + 1 < list.Count: o.Enemies = EnemyPort.ParseMethod(list[i + 1]); i++; break;
                     case "--after-pid" when i + 1 < list.Count && int.TryParse(list[i + 1], out var pid): o.AfterPid = pid; i++; break;
                     default: o.Only.Add(MapId.Parse(list[i]).ToString()); break;
                 }
@@ -178,6 +182,28 @@ public static class MapPorter
         foreach (var note in layout.Notes)
             report.AppendLine($"  note: {note}");
 
+        // Enemies and bosses where DS3 had them. A failure here leaves the map empty of enemies, not broken.
+        if (options.Enemies != EnemyPort.Method.None)
+        {
+            try
+            {
+                var enemies = Enemies(ctx, ds3, er, options, report);
+                var bosses = EnemyPort.BossEntities(Ds3Scripts(ds3, ds3Id), ds3Layout: true);
+                var placed = EnemyPort.Place(ds3Msb, layout.Msb, ds3Id, erId, new MsbPort.Options { AllVisible = !options.Ds3Groups },
+                    enemies.Chooser, e => enemies.Describe(e, bosses), EnemyPort.AnyEnemyPart(enemies.Catalog));
+                report.AppendLine($"  enemies: {placed.Placed} placed ({placed.Ported} ported DS3 characters, {placed.StandIns} Elden Ring stand-ins), "
+                                  + $"{placed.Npcs} NPCs left out, {placed.Skipped} with nothing to stand in; {bosses.Count} DS3 boss entities");
+                foreach (var note in placed.Notes)
+                    report.AppendLine($"  enemies: {note}");
+            }
+            catch (Exception ex)
+            {
+                layout.Msb.Parts.Enemies.Clear();
+                layout.Msb.Models.Enemies.Clear();
+                report.AppendLine($"  enemies: FAILED ({ex.Message}); the map has no enemies");
+            }
+        }
+
         // Models.
         var hostPieceBinders = host.Models.MapPieces
             .Select(m => ErMapBndPath(hostId, ModelNumber(m.Name)))
@@ -248,8 +274,11 @@ public static class MapPorter
         msb.Parts.ConnectCollisions.RemoveAll(p => missingCollisions.Contains(p.ModelName)
                                                    || msb.Parts.Collisions.All(c => c.Name != p.CollisionName));
         msb.Models.Collisions.RemoveAll(m => missingCollisions.Contains(m.Name));
+        var keptCollisions = msb.Parts.Collisions.Select(c => c.Name).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        foreach (var enemy in msb.Parts.Enemies.Where(e => !string.IsNullOrEmpty(e.CollisionPartName) && !keptCollisions.Contains(e.CollisionPartName)))
+            enemy.CollisionPartName = "";
         File.WriteAllBytes(ctx.ModPath(ModParts(MsbPath(erId))), DCX.Compress(msb.Write(), msbCompression));
-        report.AppendLine($"  written: {msb.Parts.MapPieces.Count} map pieces, {msb.Parts.Collisions.Count} collisions, {msb.Parts.Players.Count} player points");
+        report.AppendLine($"  written: {msb.Parts.MapPieces.Count} map pieces, {msb.Parts.Collisions.Count} collisions, {msb.Parts.Players.Count} player points, {msb.Parts.Enemies.Count} enemies");
 
         // The slot's own event script would run colosseum events; replace it with an empty one.
         // A new map ID gets one too, in the template's format.
@@ -265,6 +294,52 @@ public static class MapPorter
         if (msb.Parts.Players.All(p => p.EntityID != (uint)layout.StartEntityId))
             return 0;
         return msb.Parts.MapPieces.Count > 0 && msb.Parts.Collisions.Count > 0 ? layout.StartEntityId : 0;
+    }
+
+    /// <summary>What enemy placement needs once per run: the stand-in catalog, the ported-character table and DS3's names.</summary>
+    private sealed record EnemyContext(List<EnemyPort.ErEnemy> Catalog, EnemyPort.Chooser Chooser, PARAM? Ds3Npc)
+    {
+        public EnemyPort.Ds3Enemy Describe(MSB3.Part.Enemy e, HashSet<long> bosses)
+        {
+            var name = Ds3Npc?[e.NPCParamID]?.Name;
+            if (string.IsNullOrWhiteSpace(name))
+                name = e.ModelName;
+            var npc = e.ModelName.StartsWith("c0000", StringComparison.OrdinalIgnoreCase) || e.TalkID > 0;
+            return new EnemyPort.Ds3Enemy(e.ModelName, e.NPCParamID, name, bosses.Contains(e.EntityID), npc);
+        }
+    }
+
+    private static EnemyContext? _enemies;
+
+    private static EnemyContext Enemies(PorterContext ctx, GameArchives ds3, GameArchives er, Options options, StringBuilder report)
+    {
+        if (_enemies is not null)
+            return _enemies;
+        var notes = new List<string>();
+        PARAM? erNpc = null, ds3Npc = null;
+        try { erNpc = ctx.LoadParams(PorterGame.EldenRing).Get("NpcParam"); }
+        catch (Exception ex) { notes.Add($"Elden Ring NpcParam names unavailable ({ex.Message}); stand-ins picked by model only"); }
+        try { ds3Npc = ctx.LoadParams(PorterGame.DarkSouls3).Get("NpcParam"); }
+        catch (Exception ex) { notes.Add($"DS3 NpcParam names unavailable ({ex.Message}); every DS3 enemy gets the most common stand-in"); }
+        var catalog = EnemyPort.BuildCatalog(er, erNpc, notes);
+        EnemyPort.ChrMap? ported = null;
+        var mapPath = ctx.ModPath(EnemyPort.ChrMap.FileName);
+        if (options.Enemies == EnemyPort.Method.Auto && File.Exists(mapPath))
+            ported = EnemyPort.ChrMap.Parse(File.ReadAllLines(mapPath));
+        report.AppendLine($"enemy catalog: {catalog.Count} Elden Ring placements ({catalog.Count(c => c.Boss)} bosses) from "
+                          + $"{catalog.Select(c => c.Source).Distinct().Count()} legacy dungeons; {ported?.Count ?? 0} ported DS3 characters");
+        foreach (var note in notes)
+            report.AppendLine($"  note: {note}");
+        if (catalog.Count == 0 && (ported?.Count ?? 0) == 0)
+            throw new InvalidDataException("no Elden Ring enemy placements found to stand in for DS3's");
+        return _enemies = new EnemyContext(catalog, new EnemyPort.Chooser(catalog, ported, options.Enemies), ds3Npc);
+    }
+
+    private static IEnumerable<EMEVD> Ds3Scripts(GameArchives ds3, MapId ds3Id)
+    {
+        foreach (var path in new[] { MapEvents.ScriptPath(ds3Id), MapEvents.CommonFunc })
+            if (ds3.Contains(path))
+                yield return EMEVD.Read(ds3.Read(path));
     }
 
     // Legacy dungeons with connect collisions to copy (the colosseum slots have none).

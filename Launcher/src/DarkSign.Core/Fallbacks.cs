@@ -199,6 +199,15 @@ public static class Fallbacks
             new("B", "DS3's draw groups", "Parts keep DS3's draw and display groups (port-maps --ds3-groups), as DS3 culls them.")
                 { MapsArgs = ["--ds3-groups"] },
         ]),
+        new("map-enemies", "DS3 maps", "Enemies and bosses in the DS3 maps", Stage.Build,
+            "A DS3 map crashes or hangs while loading, enemies stand in walls or fall through the floor, or a boss fight never starts.",
+        [
+            new("A", "DS3 characters where ported, stand-ins elsewhere (default)", "Every DS3 enemy and boss stands where it did in DS3, with its DS3 entity ID so the converted boss and trap events find it. Characters the enemy porter has ported (darksign_chr_map.tsv) are the real DS3 ones; the rest are Elden Ring enemies of the same kind (knight, soldier, dog, dragon...), bosses get Elden Ring bosses."),
+            new("B", "Elden Ring stand-ins only", "The same placements, but always the Elden Ring stand-ins, even for ported DS3 characters (port-maps --enemies standin). Tells whether a ported character is what breaks.")
+                { MapsArgs = ["--enemies", "standin"] },
+            new("off", "Off (no enemies)", "The DS3 maps are empty of enemies (port-maps --enemies none), to explore them or to find out whether enemies are what breaks a map.")
+                { MapsArgs = ["--enemies", "none"] },
+        ]),
 
         // ---- Co-op ----
         new("seamless", "Seamless Co-op", "How Seamless Co-op is loaded", Stage.Launch,
