@@ -85,7 +85,9 @@ public sealed class ActionButtons
 
     private const string Ds3Menu = "/msg/engus/menu_dlc2.msgbnd.dcx", Ds3MenuBase = "/msg/engus/menu.msgbnd.dcx";
     private static readonly string[] ErMenus = ["/msg/engus/menu.msgbnd.dcx", "/msg/engus/menu_dlc01.msgbnd.dcx", "/msg/engus/menu_dlc02.msgbnd.dcx"];
-    private const string ErModMenu = "/msg/engus/menu_dlc02.msgbnd.dcx";
+    private const string ErModMenu = ModMenu;
+    /// <summary>The menu binder port-maps writes the DS3 prompt text into (only port-maps writes it).</summary>
+    public const string ModMenu = "/msg/engus/menu_dlc02.msgbnd.dcx";
 
     /// <summary>Row IDs ActionButtonParam already has, other than ours: read before converting the scripts.</summary>
     public static HashSet<int> TakenRows(PARAM param) => param.Rows.Select(r => r.ID).Where(id => !IsOurs(id)).ToHashSet();

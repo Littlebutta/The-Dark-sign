@@ -8,8 +8,10 @@ namespace DarkSign.Porter.Maps;
 /// Tile 39 is the run's own (<see cref="RunEvents"/>). Ported common events take numbers 1000-1999 of the same
 /// blocks (JortPob's event range), counting down from tile 38.
 ///
-/// The assignments are kept in a file next to the mod and reused on every rebuild, so a save made with one build
-/// keeps its DS3 progress in the next.
+/// The assignments are written to a file next to the mod. A full port-maps run starts without it (from vanilla
+/// inputs, so every PC gets the same numbers); numbers are handed out in a fixed order from the game files, so a
+/// rebuild from the same files and maps gives the same flags and a save keeps its DS3 progress. A --only run reuses
+/// the file, so the maps it doesn't rebuild keep matching.
 /// </summary>
 public sealed class FlagMap
 {

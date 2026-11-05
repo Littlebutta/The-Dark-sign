@@ -89,6 +89,15 @@ public static class MapValidate
             ValidateMapScript(ctx, er, report, erId);
         ValidateCommonFunc(ctx, er, report);
         ValidateActionButtons(ctx, report, listed.Select(l => (MapId?)l.Er).Append(null).ToList());
+        try
+        {
+            var flags = FlagMap.Load(ctx.ModPath(MapEvents.FlagFile));
+            FlagAlloc.Check(er, report, listed.Select(l => l.Er), flags.Flags.Values.Concat(flags.Events.Values));
+        }
+        catch (Exception ex)
+        {
+            report.Warn($"flag allocation check didn't run: {ex.Message}");
+        }
         return report;
     }
 

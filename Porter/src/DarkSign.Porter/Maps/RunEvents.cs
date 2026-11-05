@@ -50,8 +50,10 @@ public static class RunEvents
     private static EMEVD.Instruction WaitForFlag(uint flag) => Make(1003, 0, On, EventFlagType, flag);
     private static EMEVD.Instruction EndIfFlagOn(uint flag) => Make(1003, 2, (byte)0, On, EventFlagType, flag);
     private static EMEVD.Instruction SetFlag(uint flag, byte state) => Make(2003, 66, EventFlagType, flag, state);
+    // The last argument is the area-name popup's message ID: 0 (er-common.emedf's default, and what vanilla warps pass)
+    // shows none; -1 would ask for message -1.
     private static EMEVD.Instruction WarpPlayer(MapId map, uint entity) =>
-        Make(2003, 14, (byte)map.Area, (byte)map.Block, (byte)map.Region, (byte)map.Index, entity, -1);
+        Make(2003, 14, (byte)map.Area, (byte)map.Block, (byte)map.Region, (byte)map.Index, entity, 0);
     private static EMEVD.Instruction WaitSeconds(float seconds) => Make(1001, 0, seconds);
     private static EMEVD.Instruction EndAndRestart() => Make(1000, 4, EndRestart);
     private static EMEVD.Instruction InitializeEvent(int slot, uint eventId) => Make(2000, 0, slot, eventId, 0u);
