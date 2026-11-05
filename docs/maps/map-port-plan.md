@@ -114,6 +114,17 @@ jump, guard counter and the rest. Patrol routes and DS3's boss name text aren't 
 4. Is the simd tree needed (`--simd` keeps DS3's)?
 5. Do the cloned map materials draw the DS3 textures correctly (opaque, alpha, two-layer)?
 6. Does Elden Ring need anything besides the .nvmhktbnd for a navmesh (an MSB entry or an .nva file)? `map-survey` lists every file type in both map folders.
+7. Are the port's flag blocks allocated? Elden Ring lists the flag blocks it keeps in
+   `event/eventflag/{legacymap,openmap}[_dlc02].eventflagalloclist.dcx`; a flag outside them is silently never set or
+   saved. The map check (`darksign_maps_check.txt`, "flag block" lines) probes the lists for every block the port uses
+   (run flags 1039290-1039292, DS3 global flags 1030290-1038291, each slot's AABB0 block) and prints the lists' first
+   bytes, since their format is still unknown. If the F1 Start button does nothing, check these lines first.
+8. The vanilla colosseum's other per-map files (`.nva`, `.mfr`, `.btl` lights, envmaps, ivinfo, `map/onav`,
+   `breakgeom`) stay as they are and describe the colosseum, not the DS3 map. SoulsFormats can't write Elden Ring's NVA.
+
+A full `port-maps` run first deletes everything it wrote last time (both slot methods) and builds from Elden Ring's own
+common.emevd, common_func.emevd and menu binder with a fresh flag table, so every PC gets the same output; a `--only`
+run is a partial rebuild that keeps the rest.
 
 ## Next stages
 

@@ -8,7 +8,7 @@ namespace DarkSign.Porter.Maps;
 /// with its link to common_func, which InitializeCommonEvent needs). The DS3 common events those scripts start
 /// (DS3's common_func.emevd: bonfires, item pickups, NPC summons, boss fog...) are converted too, along with every
 /// common event they start in turn, and added to Elden Ring's common_func.emevd under new event IDs
-/// (<see cref="FlagMap"/>). The flag and event numbers given out are saved in darksign_flags.tsv and reused.
+/// (<see cref="FlagMap"/>). The flag and event numbers given out are saved in darksign_flags.tsv (reused by --only runs).
 /// </summary>
 public static class MapEvents
 {

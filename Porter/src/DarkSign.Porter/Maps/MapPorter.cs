@@ -57,6 +57,11 @@ public static class MapPorter
         var options = Options.Parse(args);
         var started = DateTime.Now;
         _placedEnemies.Clear();
+        // A full run starts from Elden Ring's own files, not from what an earlier run left in Mods\ER: every PC that
+        // builds from the same game files then gets byte-identical maps, events and flag numbers (co-op), and a slot
+        // of the other map-slots method doesn't linger. A --only run is a partial rebuild and keeps the rest.
+        if (options.Only.Count == 0)
+            CleanOutputs(ctx);
         using var ds3 = ctx.OpenArchives(PorterGame.DarkSouls3);
         using var er = ctx.OpenArchives(PorterGame.EldenRing);
         var report = new StringBuilder();
@@ -119,6 +124,48 @@ public static class MapPorter
         Console.WriteLine(report.ToString());
         Console.WriteLine($"port-maps: {ported.Count} map(s) ported in {(DateTime.Now - started).TotalSeconds:F0} s; report {log}");
         return ported.Count > 0 ? 0 : 1;
+    }
+
+    /// <summary>
+    /// Deletes everything port-maps writes (and nothing port-weapons or the enemy porter writes: regulation.bin,
+    /// darksign_chr_map.tsv and the DLC02 material and item binders stay), for every slot of both map-slot methods.
+    /// </summary>
+    public static void CleanOutputs(PorterContext ctx)
+    {
+        var root = Path.GetDirectoryName(ctx.ModPath("darksign_maps.tsv"))!;
+        string Local(string archivePath) => Path.Combine([root, .. ModParts(archivePath)]);
+        void Delete(string path)
+        {
+            try
+            {
+                if (File.Exists(path))
+                    File.Delete(path);
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                Console.Error.WriteLine($"  could not delete {path}: {ex.Message}");
+            }
+        }
+
+        var ids = MapSlots.Colosseums.Concat(MapSlots.NewIdSlots()).Select(s => s.Er).Distinct().ToList();
+        foreach (var id in ids)
+        {
+            Delete(Local(MsbPath(id)));
+            Delete(Local(MapEvents.ScriptPath(id)));
+            var folder = Local($"/map/{id.AreaFolder}/{id}/x")[..^2];
+            if (Directory.Exists(folder))
+                foreach (var file in Directory.GetFiles(folder))
+                    Delete(file);
+        }
+        foreach (var area in ids.Select(i => i.AreaFolder).Distinct())
+            for (int n = 0; n < 10; n++)
+                foreach (var ext in new[] { "tpfbhd", "tpfbdt" })
+                    Delete(Local($"/map/{area}/{area}_{n:D4}.{ext}"));
+        foreach (var path in new[] { "/event/common.emevd.dcx", MapEvents.CommonFunc, MaterialBinder, ActionButtons.ModMenu })
+            Delete(Local(path));
+        foreach (var file in new[] { MapEvents.FlagFile, "darksign_maps.tsv", "darksign_maps_check.txt",
+                     DarkSign.Randomizer.Data.EnemyTables.PlacedFile, DarkSign.Randomizer.Data.EnemyTables.ErFile })
+            Delete(Path.Combine(root, file));
     }
 
     /// <summary>Waits for the port-weapons process (see <see cref="Options.AfterPid"/>) to finish writing regulation.bin.</summary>

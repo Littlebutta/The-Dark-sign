@@ -30,6 +30,43 @@ public static partial class MapPortChecks
         yield return ("validate: layout checks catch a missing start point and parts without models", ValidateLayout);
         yield return ("validate: run event checks pass on ported events and catch a missing one", ValidateEvents);
         yield return ("navmesh: binder entries are renamed to the host map and keep the host's compendium", NavmeshBinder);
+        yield return ("rebuild: a full run deletes port-maps' own old outputs (both slot methods) and keeps the other steps' files", CleanStale);
+        yield return ("flags: the allocation probe finds block numbers and lists every block the port uses", FlagAllocProbe);
+    }
+
+    private static void CleanStale()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "dks-clean-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            Directory.CreateDirectory(root);
+            var ctx = new PorterContext(root);
+            string[] ours = [ctx.ModPath("map", "mapstudio", "m50_00_00_00.msb.dcx"), ctx.ModPath("map", "m45", "m45_01_00_00", "h45_01_00_00.hkxbhd"),
+                ctx.ModPath("map", "m45", "m45_0000.tpfbhd"), ctx.ModPath("event", "common.emevd.dcx"), ctx.ModPath("event", "common_func.emevd.dcx"),
+                ctx.ModPath("event", "m51_00_00_00.emevd.dcx"), ctx.ModPath("material", "allmaterial_dlc01.matbinbnd.dcx"),
+                ctx.ModPath("msg", "engus", "menu_dlc02.msgbnd.dcx"), ctx.ModPath("darksign_flags.tsv"), ctx.ModPath("darksign_maps.tsv")];
+            string[] theirs = [ctx.ModPath("regulation.bin"), ctx.ModPath("darksign_chr_map.tsv"), ctx.ModPath("material", "allmaterial_dlc02.matbinbnd.dcx"),
+                ctx.ModPath("msg", "engus", "item_dlc02.msgbnd.dcx"), ctx.ModPath("event", "m10_00_00_00.emevd.dcx")];
+            foreach (var f in ours.Concat(theirs))
+                File.WriteAllText(f, "x");
+            MapPorter.CleanOutputs(ctx);
+            Expect(ours.All(f => !File.Exists(f)), "stale port-maps output left: " + string.Join(", ", ours.Where(File.Exists)));
+            Expect(theirs.All(File.Exists), "deleted another step's file: " + string.Join(", ", theirs.Where(f => !File.Exists(f))));
+        }
+        finally
+        {
+            try { Directory.Delete(root, true); } catch (IOException) { }
+        }
+    }
+
+    private static void FlagAllocProbe()
+    {
+        var data = new byte[64];
+        BitConverter.TryWriteBytes(data.AsSpan(13), 1039290u);
+        Expect(FlagAlloc.Mentions(data, 1039290) && !FlagAlloc.Mentions(data, 1038290), "block found by its 32-bit value, others not");
+        var blocks = FlagAlloc.UsedBlocks([ErId, ErId], [1030290005, 1030290006, 1038291000]);
+        Expect(blocks.Keys.SequenceEqual(new long[] { 45000, 1030290, 1038291, 1039290, 1039291, 1039292 }),
+            "blocks: " + string.Join(",", blocks.Keys));
     }
 
     private static void Expect(bool condition, string message)
@@ -143,7 +180,7 @@ public static partial class MapPortChecks
                && clear.ArgData[8] == 0, "SetEventFlag layout (u8 type, u32 flag, u8 state)");
         var warp = start.Instructions[3];
         Expect(warp.Bank == 2003 && warp.ID == 14 && warp.ArgData[0] == 45 && warp.ArgData[1] == 0
-               && BitConverter.ToUInt32(warp.ArgData, 4) == 45000990 && BitConverter.ToInt32(warp.ArgData, 8) == -1,
+               && BitConverter.ToUInt32(warp.ArgData, 4) == 45000990 && BitConverter.ToInt32(warp.ArgData, 8) == 0,
             "WarpPlayer layout (4 x u8 map, u32 entity, s32 popup)");
         var end = start.Instructions[5];
         Expect(end.Bank == 1000 && end.ID == 4 && end.ArgData[0] == 1, "EndUnconditionally(Restart)");
