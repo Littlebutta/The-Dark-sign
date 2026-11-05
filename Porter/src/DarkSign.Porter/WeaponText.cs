@@ -21,8 +21,10 @@ public static class WeaponText
 
         var (bytes, compression) = er.ReadWithCompression(Binder);
         var bnd = BND4.Read(bytes);
-        var nameFile = bnd.Files.Single(f => f.ID == WeaponNameDlc02);
-        var captionFile = bnd.Files.Single(f => f.ID == WeaponCaptionDlc02);
+        // By name first (WeaponName_dlc02.fmg, WeaponCaption_dlc02.fmg); the binder IDs are only a fallback, since a
+        // wrong ID put the names in another text file and the weapons showed none.
+        var nameFile = Fmg(bnd, "WeaponName_dlc02", WeaponNameDlc02);
+        var captionFile = Fmg(bnd, "WeaponCaption_dlc02", WeaponCaptionDlc02);
         var names = FMG.Read(nameFile.Bytes);
         var added = new Dictionary<int, string>();
         var captions = FMG.Read(captionFile.Bytes);
@@ -52,4 +54,9 @@ public static class WeaponText
         File.WriteAllBytes(ctx.ModPath("msg", "engus", "item_dlc02.msgbnd.dcx"), DCX.Compress(bnd.Write(), compression));
         return added;
     }
+
+    private static BinderFile Fmg(BND4 bnd, string stem, int id) =>
+        bnd.Files.FirstOrDefault(f => Path.GetFileNameWithoutExtension(ItemText.Leaf(f.Name)).Equals(stem, StringComparison.OrdinalIgnoreCase))
+        ?? bnd.Files.FirstOrDefault(f => f.ID == id)
+        ?? throw new InvalidDataException($"{Binder} has no {stem}.fmg (ID {id})");
 }

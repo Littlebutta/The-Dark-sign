@@ -140,8 +140,24 @@ public static class Commands
         Dictionary<int, string> newNames;
         using (Timing.Stage("text and shop"))
         {
-            newNames = WeaponText.Write(ctx, erArchives, ds3Archives, plans, erWeapons);
-            ShopPort.Write(ctx, erArchives, erStore.Get("ShopLineupParam")!, ds3, plans);
+            // Neither may sink the whole build: without them the weapons are still in the regulation and the F1 menu.
+            try
+            {
+                newNames = WeaponText.Write(ctx, erArchives, ds3Archives, plans, erWeapons);
+            }
+            catch (Exception e) when (e is not OutOfMemoryException)
+            {
+                Console.WriteLine($"text: failed, ported weapons have no in-game names ({e.GetType().Name}: {e.Message})");
+                newNames = plans.Where(p => p.Status == "port").ToDictionary(p => p.NewId!.Value, p => p.Name);
+            }
+            try
+            {
+                ShopPort.Write(ctx, erArchives, erStore.Get("ShopLineupParam")!, ds3, plans);
+            }
+            catch (Exception e) when (e is not OutOfMemoryException)
+            {
+                Console.WriteLine($"shop: failed, ported weapons are not sold ({e.GetType().Name}: {e.Message})");
+            }
         }
         // The icons only read the archives and write the menu files, which nothing else touches, so they are built on
         // other cores while the models, model positions and movesets are ported here.
@@ -180,7 +196,22 @@ public static class Commands
         }
 
         using (Timing.Stage("waiting for icons"))
-            icons.GetAwaiter().GetResult(); // an icon failure fails the build, as before
+        {
+            try
+            {
+                icons.GetAwaiter().GetResult();
+            }
+            catch (Exception e) when (e is not OutOfMemoryException)
+            {
+                // Without icons the weapons still work; a half-written set of menu files (a layout naming a sheet
+                // that isn't there) is removed so the game loads its own menus.
+                Console.WriteLine($"icons: failed, ported weapons have no icons ({e.GetType().Name}: {e.Message})");
+                foreach (var quality in new[] { "hi", "low" })
+                    foreach (var file in new[] { "01_common.tpf.dcx", "01_common.sblytbnd.dcx", "00_solo.tpfbhd", "00_solo.tpfbdt" })
+                        if (File.Exists(ctx.ModPath("menu", quality, file)))
+                            File.Delete(ctx.ModPath("menu", quality, file));
+            }
+        }
 
         var path = ctx.ModPath("regulation.bin");
         using (Timing.Stage("regulation and item list"))
@@ -216,7 +247,7 @@ public static class Commands
           script\talk\*.talkesdbnd.dcx       Kalé's talk scripts, opening the new shop lineup
           parts\wp_a_9NNN(_l).partsbnd.dcx    ported weapon models (and low-detail versions)
           material\allmaterial_dlc02...       materials for the ported models
-          menu\hi|low\01_common.*, 00_solo.*  the ported weapons' DS3 icons (sheet SB_Icon_DS3, IDs 41000+)
+          menu\hi|low\01_common.*, 00_solo.*  the ported weapons' DS3 icons (sheets SB_Icon_DS3_NN, IDs 50000+)
           sfx\sfxbnd_commoneffects...       Elden Ring's common effects plus the ported DS3 ones (IDs 900000000+)
           sd\enus\cs_main.bnk, sd\wem\     Elden Ring's main sound bank plus events for the DS3 sounds, and their audio
           darksign_items.tsv                 every item the F1 test menu can give (not a game file)

@@ -339,7 +339,9 @@ public static partial class MovesetPort
                 Console.WriteLine($"moveset: {groupName} -> motion category {section} (from Elden Ring {templateSection}, DS3 {ds3Section}/{ds3ArtSection}): " +
                                   $"{converted} DS3 animations, {copied} kept from Elden Ring ({(CopyErAnims ? "copied" : "imported")}), {registered} behaviour clips, {(DateTime.UtcNow - started).TotalSeconds:0}s");
             }
-            catch (Exception e) when (e is OverflowException or InvalidDataException or FileNotFoundException or KeyNotFoundException or InvalidCastException)
+            // Any failure (HKLib, a converter's NullReference or IndexOutOfRange, ...) skips this moveset only: it used
+            // to escape for anything but these types, which dropped every weapon's moveset and the effects and sounds.
+            catch (Exception e) when (e is not OutOfMemoryException)
             {
                 // No weapon points at the partly built category.
                 Console.WriteLine($"moveset: skipped {groupName}: {e.GetType().Name}: {e.Message}");
@@ -352,9 +354,10 @@ public static partial class MovesetPort
             foreach (var plan in group)
             {
                 int ds3Variation = Convert.ToInt32(ds3Weapons[plan.Ds3Id]!["behaviorVariationId"].Value), newId = plan.NewId!.Value;
+                int templateVariation = Convert.ToInt32(erWeapons[newId]!["behaviorVariationId"].Value);
                 pointWeapons.Add(() =>
                 {
-                    int variation = attackPort.PortVariation(ds3Variation);
+                    int variation = attackPort.PortVariation(ds3Variation, templateVariation);
                     if (UseWeaponMotionCategory && section > byte.MaxValue)
                         wideCategories[newId] = section; // the row keeps its template's category for the DLL to replace
                     foreach (var row in erWeapons.Rows.Where(r => r.ID >= newId && r.ID < newId + 10000))
@@ -818,39 +821,83 @@ public sealed class AttackParamPort(ParamStore er, ParamStore ds3)
     private readonly PARAM _erAttack = er.Get("AtkParam_Pc")!, _ds3Attack = ds3.Get("AtkParam_Pc")!;
     private int _behaviors, _attacks;
 
-    public string Summary => $"{_behaviors} behaviour rows, {_attacks} attack rows";
+    public string Summary => $"{_behaviors} behaviour rows ({_templateBehaviors} more from the templates), {_attacks} attack rows";
 
-    /// <summary>Copies a DS3 behaviour variation under a new Elden Ring variation ID and returns it (0 if DS3 has none).</summary>
-    public int PortVariation(int ds3Variation)
+    /// <summary>
+    /// Copies a DS3 behaviour variation under a new Elden Ring variation ID and returns it (0 if DS3 has none). The
+    /// new variation also gets the Elden Ring template's rows for every judge ID DS3 lacks: the moves kept from the
+    /// template (Elden Ring-only attacks) look their hits up in the weapon's variation too, and found nothing there.
+    /// </summary>
+    public int PortVariation(int ds3Variation, int templateVariation = 0)
     {
-        if (_variations.TryGetValue(ds3Variation, out var done))
+        if (_variations.TryGetValue((ds3Variation, templateVariation), out var done))
             return done;
-        return _variations[ds3Variation] = PortNewVariation(ds3Variation);
+        return _variations[(ds3Variation, templateVariation)] = PortNewVariation(ds3Variation, templateVariation);
     }
 
-    private readonly Dictionary<int, int> _variations = new();
+    private readonly Dictionary<(int, int), int> _variations = new();
 
-    private int PortNewVariation(int ds3Variation)
+    private static int Judge(PARAM.Row row) => Convert.ToInt32(row["behaviorJudgeId"].Value);
+
+    private int PortNewVariation(int ds3Variation, int templateVariation)
     {
         var rows = _ds3Behavior.Rows.Where(r => Convert.ToInt32(r["variationId"].Value) == ds3Variation).ToList();
         if (ds3Variation <= 0 || rows.Count == 0)
             return 0;
+        // The template's own rows, then its base variation's (XX00, which the game falls back to) for judges it lacks.
+        var templateRows = new Dictionary<int, PARAM.Row>();
+        if (templateVariation > 0)
+            foreach (var v in new[] { templateVariation, templateVariation / 100 * 100 }.Distinct())
+                foreach (var r in _erBehavior.Rows.Where(r => Convert.ToInt32(r["variationId"].Value) == v))
+                    templateRows.TryAdd(Judge(r), r);
         var used = _erBehavior.Rows.Select(r => Convert.ToInt32(r["variationId"].Value)).ToHashSet();
         int variation = Enumerable.Range(9000, 1000).First(v => !used.Contains(v));
+        var ds3Judges = new HashSet<int>();
         foreach (var source in rows)
         {
-            int id = source.ID + (variation - ds3Variation) * 1000;
+            int judge = Judge(source), id = variation * 1000 + judge;
+            ds3Judges.Add(judge);
             if (_erBehavior[id] is not null)
                 continue;
-            var row = CopyByName(source, new PARAM.Row(id, source.Name ?? "", _erBehavior.AppliedParamdef));
-            row["variationId"].Value = Convert.ChangeType(variation, row["variationId"].Value!.GetType());
-            if (Convert.ToInt32(source["refType"].Value) == 0)
+            int refType = Convert.ToInt32(source["refType"].Value);
+            PARAM.Row row;
+            if (refType == 0)
+            {
+                row = CopyByName(source, new PARAM.Row(id, source.Name ?? "", _erBehavior.AppliedParamdef));
                 row["refId"].Value = Convert.ChangeType(PortAttack(Convert.ToInt32(source["refId"].Value)), row["refId"].Value!.GetType());
+            }
+            // Bullets (1) and SpEffects (2) are DS3 IDs, which name unrelated Elden Ring bullets and effects (or none):
+            // the template's row for the same judge stands in, else the row is left out.
+            else if (templateRows.TryGetValue(judge, out var er))
+                row = CopyRow(er, id);
+            else
+                continue;
+            row["variationId"].Value = Convert.ChangeType(variation, row["variationId"].Value!.GetType());
             _erBehavior.Rows.Add(row);
             _behaviors++;
         }
+        foreach (var (judge, er) in templateRows.OrderBy(t => t.Key))
+        {
+            int id = variation * 1000 + judge;
+            if (ds3Judges.Contains(judge) || judge < 0 || judge >= 1000 || _erBehavior[id] is not null)
+                continue;
+            var row = CopyRow(er, id);
+            row["variationId"].Value = Convert.ChangeType(variation, row["variationId"].Value!.GetType());
+            _erBehavior.Rows.Add(row);
+            _templateBehaviors++;
+        }
         _erBehavior.Rows.Sort((a, b) => a.ID.CompareTo(b.ID));
         return variation;
+    }
+
+    private int _templateBehaviors;
+
+    private PARAM.Row CopyRow(PARAM.Row from, int id)
+    {
+        var row = new PARAM.Row(id, from.Name ?? "", _erBehavior.AppliedParamdef);
+        for (int i = 0; i < row.Cells.Count; i++)
+            row.Cells[i].Value = from.Cells[i].Value is byte[] b ? b.Clone() : from.Cells[i].Value;
+        return row;
     }
 
     private readonly Dictionary<int, int> _attackIds = new();

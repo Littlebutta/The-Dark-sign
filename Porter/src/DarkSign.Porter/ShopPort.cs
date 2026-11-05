@@ -18,8 +18,19 @@ public static class ShopPort
         var byId = shop.Rows.ToDictionary(r => r.ID);
         var kale = Enumerable.Range(KaleShopStart, KaleShopEnd - KaleShopStart + 1)
             .Where(byId.ContainsKey).Select(id => byId[id]).ToList();
+        if (kale.Count == 0)
+        {
+            Console.WriteLine($"shop: Kalé's lineup {KaleShopStart}-{KaleShopEnd} not found; ported weapons are not sold");
+            return 0;
+        }
         var template = kale[0];
-        int next = NewShopStart;
+        // The talk scripts open one contiguous ID range, so the whole new lineup must be free of Elden Ring's rows
+        // (a duplicate ID breaks the param): from 130000, the first free block of 1000 that holds it.
+        int count = kale.Count + plans.Count(p => p.Status == "port");
+        int start = NewShopStart;
+        while (byId.Keys.Any(id => id >= start && id < start + count))
+            start += 1000;
+        int next = start;
 
         foreach (var original in kale)
             shop.Rows.Add(CopyRow(original, next++, shop));
@@ -53,7 +64,7 @@ public static class ShopPort
                     if (cmd.CommandBank == OpenShopBank && cmd.CommandID == OpenShopCommand && cmd.Arguments.Count == 2
                         && EsdExpr.ReadInt(cmd.Arguments[0]) == KaleShopStart && EsdExpr.ReadInt(cmd.Arguments[1]) == KaleShopEnd)
                     {
-                        cmd.Arguments[0] = EsdExpr.WriteInt(NewShopStart);
+                        cmd.Arguments[0] = EsdExpr.WriteInt(start);
                         cmd.Arguments[1] = EsdExpr.WriteInt(last);
                         fileChanged = true;
                         patched++;
@@ -68,7 +79,7 @@ public static class ShopPort
             if (changed)
                 File.WriteAllBytes(ctx.ModPath(["script", "talk", ItemText.Leaf(path!)]), DCX.Compress(bnd.Write(), compression));
         }
-        Console.WriteLine($"shop: {next - NewShopStart} lineup rows ({NewShopStart}-{last}), {patched} Kalé shop commands redirected");
+        Console.WriteLine($"shop: {next - start} lineup rows ({start}-{last}), {patched} Kalé shop commands redirected");
         return patched;
     }
 
