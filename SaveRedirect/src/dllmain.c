@@ -38,6 +38,12 @@ typedef BOOL (WINAPI *ReplaceFileW_t)(LPCWSTR, LPCWSTR, LPCWSTR, DWORD, LPVOID, 
 typedef HANDLE (WINAPI *FindFirstFileExW_t)(LPCWSTR, FINDEX_INFO_LEVELS, LPVOID, FINDEX_SEARCH_OPS, LPVOID, DWORD);
 typedef BOOL (WINAPI *FindNextFileW_t)(HANDLE, LPWIN32_FIND_DATAW);
 typedef BOOL (WINAPI *FindClose_t)(HANDLE);
+typedef HANDLE (WINAPI *FindFirstFileW_t)(LPCWSTR, LPWIN32_FIND_DATAW);
+typedef BOOL (WINAPI *MoveFileW_t)(LPCWSTR, LPCWSTR);
+typedef BOOL (WINAPI *MoveFileWithProgressW_t)(LPCWSTR, LPCWSTR, LPPROGRESS_ROUTINE, LPVOID, DWORD);
+typedef BOOL (WINAPI *CopyFileExW_t)(LPCWSTR, LPCWSTR, LPPROGRESS_ROUTINE, LPVOID, LPBOOL, DWORD);
+typedef BOOL (WINAPI *SetFileAttributesW_t)(LPCWSTR, DWORD);
+typedef BOOL (WINAPI *CreateDirectoryExW_t)(LPCWSTR, LPCWSTR, LPSECURITY_ATTRIBUTES);
 
 static CreateFileW_t o_CreateFileW;
 static CreateFile2_t o_CreateFile2;
@@ -57,6 +63,12 @@ static ReplaceFileW_t o_ReplaceFileW;
 static FindFirstFileExW_t o_FindFirstFileExW;
 static FindNextFileW_t o_FindNextFileW;
 static FindClose_t o_FindClose;
+static FindFirstFileW_t o_FindFirstFileW;
+static MoveFileW_t o_MoveFileW;
+static MoveFileWithProgressW_t o_MoveFileWithProgressW;
+static CopyFileExW_t o_CopyFileExW;
+static SetFileAttributesW_t o_SetFileAttributesW;
+static CreateDirectoryExW_t o_CreateDirectoryExW;
 
 static void log_line(const wchar_t *fmt, ...)
 {
@@ -78,11 +90,23 @@ static void log_line(const wchar_t *fmt, ...)
     g_log_lines++;
 }
 
-/* Returns the path to use: the redirected one in `buf`, or the original. */
+/* A name no file API accepts ('|' is invalid in Win32 paths): the call fails with ERROR_INVALID_NAME. */
+static const wchar_t BLOCKED[] = L"|dksign-blocked|";
+
+/* Returns the path to use: the redirected one in `buf`, the original for any path outside the vanilla
+   save folder, or BLOCKED for a vanilla save path that can't be redirected (too long), so it is never
+   opened. */
 static LPCWSTR map(LPCWSTR path, wchar_t *buf, const wchar_t *what)
 {
-    if (!g_active || !path || !dks_redirect(&g_cfg, path, buf, DKS_MAX_PATH))
+    if (!g_active || !path)
         return path;
+    int r = dks_redirect(&g_cfg, path, buf, DKS_MAX_PATH);
+    if (r == 0)
+        return path;
+    if (r < 0) {
+        log_line(L"%ls %ls -> BLOCKED (redirected path too long)", what, path);
+        return BLOCKED;
+    }
     log_line(L"%ls %ls -> %ls", what, path, buf);
     return buf;
 }
@@ -173,6 +197,38 @@ static BOOL WINAPI h_ReplaceFileW(LPCWSTR dst, LPCWSTR src, LPCWSTR bak, DWORD f
     return o_ReplaceFileW(map(dst, b1, L"replace"), map(src, b2, L"replace with"), map(bak, b3, L"backup"), f, e, r);
 }
 
+/* Further entry points that don't (on every Windows version) pass through the hooks above. A path
+   already redirected by an outer hook no longer matches the vanilla folder, so double hooks are harmless. */
+static BOOL WINAPI h_MoveFileW(LPCWSTR from, LPCWSTR to)
+{
+    wchar_t b1[DKS_MAX_PATH], b2[DKS_MAX_PATH];
+    return o_MoveFileW(map(from, b1, L"move"), map(to, b2, L"move to"));
+}
+
+static BOOL WINAPI h_MoveFileWithProgressW(LPCWSTR from, LPCWSTR to, LPPROGRESS_ROUTINE cb, LPVOID d, DWORD flags)
+{
+    wchar_t b1[DKS_MAX_PATH], b2[DKS_MAX_PATH];
+    return o_MoveFileWithProgressW(map(from, b1, L"move"), map(to, b2, L"move to"), cb, d, flags);
+}
+
+static BOOL WINAPI h_CopyFileExW(LPCWSTR from, LPCWSTR to, LPPROGRESS_ROUTINE cb, LPVOID d, LPBOOL cancel, DWORD flags)
+{
+    wchar_t b1[DKS_MAX_PATH], b2[DKS_MAX_PATH];
+    return o_CopyFileExW(map(from, b1, L"copy"), map(to, b2, L"copy to"), cb, d, cancel, flags);
+}
+
+static BOOL WINAPI h_SetFileAttributesW(LPCWSTR p, DWORD attr)
+{
+    wchar_t buf[DKS_MAX_PATH];
+    return o_SetFileAttributesW(map(p, buf, L"chmod"), attr);
+}
+
+static BOOL WINAPI h_CreateDirectoryExW(LPCWSTR tmpl, LPCWSTR p, LPSECURITY_ATTRIBUTES sa)
+{
+    wchar_t b1[DKS_MAX_PATH], b2[DKS_MAX_PATH];
+    return o_CreateDirectoryExW(map(tmpl, b1, L"mkdir template"), map(p, b2, L"mkdir"), sa);
+}
+
 static void track_find(HANDLE h, int add)
 {
     AcquireSRWLockExclusive(&g_finds_lock);
@@ -215,7 +271,21 @@ static HANDLE WINAPI h_FindFirstFileExW(LPCWSTR p, FINDEX_INFO_LEVELS l, LPVOID 
     HANDLE h = o_FindFirstFileExW(mapped, l, d, o, f, fl);
     if (mapped != p && h != INVALID_HANDLE_VALUE) {
         restore_find_name(l, d);
-        track_find(h, 1);
+        if (!is_tracked(h))
+            track_find(h, 1);
+    }
+    return h;
+}
+
+static HANDLE WINAPI h_FindFirstFileW(LPCWSTR p, LPWIN32_FIND_DATAW d)
+{
+    wchar_t buf[DKS_MAX_PATH];
+    LPCWSTR mapped = map(p, buf, L"list");
+    HANDLE h = o_FindFirstFileW(mapped, d);
+    if (mapped != p && h != INVALID_HANDLE_VALUE) {
+        dks_restore_name(&g_cfg, d->cFileName, MAX_PATH);
+        if (!is_tracked(h))
+            track_find(h, 1);
     }
     return h;
 }
@@ -419,6 +489,12 @@ static void init(void)
     hook("FindFirstFileExW", h_FindFirstFileExW, (LPVOID *)&o_FindFirstFileExW);
     hook("FindNextFileW", h_FindNextFileW, (LPVOID *)&o_FindNextFileW);
     hook("FindClose", h_FindClose, (LPVOID *)&o_FindClose);
+    hook("FindFirstFileW", h_FindFirstFileW, (LPVOID *)&o_FindFirstFileW);
+    hook("MoveFileW", h_MoveFileW, (LPVOID *)&o_MoveFileW);
+    hook("MoveFileWithProgressW", h_MoveFileWithProgressW, (LPVOID *)&o_MoveFileWithProgressW);
+    hook("CopyFileExW", h_CopyFileExW, (LPVOID *)&o_CopyFileExW);
+    hook("SetFileAttributesW", h_SetFileAttributesW, (LPVOID *)&o_SetFileAttributesW);
+    hook("CreateDirectoryExW", h_CreateDirectoryExW, (LPVOID *)&o_CreateDirectoryExW);
     g_active = o_CreateFileW != NULL;
     if (!g_active || g_hook_failures)
         goto fail;

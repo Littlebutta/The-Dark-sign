@@ -16,7 +16,9 @@ typedef struct {
 } dks_config;
 
 /* Writes the redirected path to `out` and returns 1 when `in` lies in the vanilla save folder.
-   Returns 0 (and leaves `out` untouched) for any other path. */
+   Returns 0 (and leaves `out` untouched) for any other path. Returns -1 when `in` lies in the
+   vanilla save folder but its redirected path does not fit in `out`: the caller must then refuse
+   the call, never pass the vanilla path through. */
 int dks_redirect(const dks_config *cfg, const wchar_t *in, wchar_t *out, size_t out_len);
 
 /* Turns a redirected file name back into the vanilla one ("DS30000.dksign" -> "DS30000.sl2"),
