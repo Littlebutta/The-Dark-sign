@@ -33,6 +33,7 @@ const string Usage = """
       chr-survey <DS3|ER> <chr id>...  report an enemy's files, binders, AI scripts and params (enemy port step 1)
       map-selftest                 offline checks of the map porter (no game files needed)
       sound-selftest               offline checks of how ported sounds are added to a Wwise bank (no game files needed)
+      timing-selftest              offline checks that ported moves' combo/cancel windows don't cut DS3 swings short
       map-survey [map ids]         report both games' map files for the ported slots (layouts, binders, textures, events)
       event-coverage <ds3.emedf.json> <er.emedf.json>  which DS3 event instructions convert to Elden Ring, and how
       map-validate                 read back the ported maps in the mod folder and check them (port-maps runs this too)
@@ -76,6 +77,8 @@ try
         return DarkSign.Porter.Maps.MapSelfTest.Run();
     if (argList[0].Equals("sound-selftest", StringComparison.OrdinalIgnoreCase))
         return SoundSelfTest.Run();
+    if (argList[0].Equals("timing-selftest", StringComparison.OrdinalIgnoreCase))
+        return MoveTiming.SelfTest();
     if (argList[0].Equals("event-coverage", StringComparison.OrdinalIgnoreCase) && argList.Count == 3)
         return DarkSign.Porter.Maps.EventPort.CoverageReport(argList[1], argList[2]);
     // Build methods chosen in the launcher's Fallbacks window (DarkSign.Core.Fallbacks); "" = every default.

@@ -61,6 +61,14 @@ public static class AnimPort
 
     public static (byte[] Hkx, string Summary) Convert(byte[] ds3Hkx, Ds3Skeleton ds3, ErSkeleton er, byte[] erTemplate, byte[]? compendium, bool spline)
     {
+        var (hkx, summary, _) = ConvertTimed(ds3Hkx, ds3, er, erTemplate, compendium, spline);
+        return (hkx, summary);
+    }
+
+    /// <summary><see cref="Convert(byte[], Ds3Skeleton, ErSkeleton, byte[], byte[], bool)"/>, plus the Elden Ring
+    /// template animation's own length in seconds (0 when it has none), which the moveset port's timing needs.</summary>
+    public static (byte[] Hkx, string Summary, float TemplateDuration) ConvertTimed(byte[] ds3Hkx, Ds3Skeleton ds3, ErSkeleton er, byte[] erTemplate, byte[]? compendium, bool spline)
+    {
         var hkx = HKX.Read(ds3Hkx, HKX.HKXVariation.HKXDS3, false);
         var source = hkx.DataSection.Objects.OfType<HKX.HKASplineCompressedAnimation>().FirstOrDefault()
             ?? throw new InvalidDataException("the DS3 file has no spline-compressed animation");
@@ -112,10 +120,12 @@ public static class AnimPort
         // HKLib's serializer keeps type caches in unsynchronised static dictionaries, so reading the template and
         // writing the result happen one thread at a time; the transcode above, the slow part, runs on every core.
         using var output = new MemoryStream();
+        float templateDuration;
         lock (HavokLock)
         {
             var root = (hkRootLevelContainer)ReadEr(erTemplate, compendium);
             var container = Container(root);
+            templateDuration = container.m_animations.FirstOrDefault()?.m_duration ?? 0;
             container.m_animations.Clear();
             container.m_animations.Add(animation);
             var erBinding = container.m_bindings.First()!;
@@ -126,7 +136,7 @@ public static class AnimPort
             new HavokBinarySerializer().Write(root, output);
         }
         var summary = $"{source.Duration:0.###}s, {frames} frames, {mapped} of {erBones} bones from DS3, root motion {(refFrame is null ? "none" : $"{refFrame.ReferenceFrameSamples.Size} samples")}";
-        return (output.ToArray(), summary);
+        return (output.ToArray(), summary, templateDuration);
     }
 
     private static hkaInterleavedUncompressedAnimation Interleaved(HKX.HKASplineCompressedAnimation source, int tracks, int frames, int[] ds3TrackOf, Vector3[] offsets, ErSkeleton er)

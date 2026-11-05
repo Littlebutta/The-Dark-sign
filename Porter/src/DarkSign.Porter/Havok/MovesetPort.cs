@@ -198,7 +198,8 @@ public static partial class MovesetPort
             .Where(b => b.Length >= 32).GroupBy(Convert.ToHexString).MaxBy(g => g.Count())?.First();
         var soundPort = new SoundEvents(sounds, soundSample, swingSample);
 
-        int portedGroups = 0, skippedGroups = 0;
+        int portedGroups = 0, skippedGroups = 0, clipFixes = 0;
+        var timing = new List<string> { "section\tweapons\tmove\tDS3 animation\tDS3 length\tElden Ring length\tDS3 last hit\tDS3 first exit\tported first exit\twindows held back\tanchors" };
         int? timeActVariable = null;
         Console.WriteLine($"moveset: {ports.Count} weapons in {own.Count} DS3 movesets ({classes.Count} by class alone), " +
                           $"{freeSections.Count} free motion categories; {groups.Count(g => order.Contains(g.Key))} to build");
@@ -236,6 +237,8 @@ public static partial class MovesetPort
                     .Where(t => t.Tae is not null).ToList();
 
                 int converted = 0, copied = 0;
+                // Each converted move's stretch onto the DS3 timeline, for its behaviour clips below.
+                var stretches = new Dictionary<int, MoveTiming.Stretch>();
                 // Elden Ring's own imports show the ID scheme (section * 1,000,000 + ID) and the unknown field.
                 var imports = tae.Animations.Select(a => (Anim: a, Import: a.MiniHeader as TAE.Animation.AnimMiniHeader.ImportOtherAnim))
                     .Where(x => x.Import is not null).ToList();
@@ -260,18 +263,19 @@ public static partial class MovesetPort
                 }
                 // Second pass: the animation conversions, on every core. A failure is kept and thrown in order below,
                 // so a bad animation skips this moveset exactly as it did when the conversions ran one by one.
-                var convertedHkx = new (byte[]? Hkx, Exception? Error)[anims.Count];
+                var convertedHkx = new (byte[]? Hkx, float ErDuration, Exception? Error)[anims.Count];
                 Parallel.For(0, anims.Count, Parallelism.Options, i =>
                 {
                     if (jobs[i] is not { Ds3Bytes: { } bytes, Template: { } template })
                         return;
                     try
                     {
-                        convertedHkx[i] = (AnimPort.Convert(bytes, ds3Skeleton, erSkeleton, template.Bytes, template.Compendium).Hkx, null);
+                        var (converted, _, erDuration) = AnimPort.ConvertTimed(bytes, ds3Skeleton, erSkeleton, template.Bytes, template.Compendium, AnimPort.Spline);
+                        convertedHkx[i] = (converted, erDuration, null);
                     }
                     catch (Exception e)
                     {
-                        convertedHkx[i] = (null, e);
+                        convertedHkx[i] = (null, 0, e);
                     }
                 });
 
@@ -293,7 +297,10 @@ public static partial class MovesetPort
                         AddFile(erAnims, newName + ".hkx", hkx);
                         anim.MiniHeader = new TAE.Animation.AnimMiniHeader.Standard();
                         anim.AnimFileName = newName + ".hkt";
-                        anim.Events = MergeEvents(s.Events, anim, templateGroups, erEventLengths, effectEvents, effects, soundPort, AnimPort.Duration(ds3Bytes));
+                        float ds3Duration = AnimPort.Duration(ds3Bytes);
+                        anim.Events = MergeEvents(s.Events, anim, templateGroups, erEventLengths, effectEvents, effects, soundPort, ds3Duration, out var stretch);
+                        stretches[erId] = stretch;
+                        timing.Add(TimingLine(section, groupName, erId, s, ds3Duration, convertedHkx[i].ErDuration, stretch));
                         converted++;
                     }
                     else if (anim.MiniHeader is TAE.Animation.AnimMiniHeader.Standard && ErAnimFile(erArchives, templateName) is { } original)
@@ -337,6 +344,8 @@ public static partial class MovesetPort
                         copy.m_animationName = name;
                         copy.m_name = clip.m_name?.Replace(clip.m_animationName!, name, StringComparison.Ordinal);
                         copy.m_animationInternalId = internalId;
+                        if (stretches.TryGetValue(int.Parse(m.Groups[2].Value), out var moveStretch))
+                            clipFixes += FitClip(copy, moveStretch);
                         selector.m_generators.Add(copy);
                         registered++;
                     }
@@ -375,6 +384,12 @@ public static partial class MovesetPort
         // Params first: a failure there must not leave behaviour and animation files for weapons that don't use them.
         foreach (var point in pointWeapons)
             point();
+        var timingReport = ctx.WorkPath("reports", "moveset-timing.tsv");
+        Directory.CreateDirectory(Path.GetDirectoryName(timingReport)!);
+        File.WriteAllLines(timingReport, timing);
+        int moves = timing.Count - 1, held = timing.Skip(1).Count(l => l.Split('\t')[9] != "0"), early = timing.Skip(1).Count(l => l.EndsWith("\tEARLY"));
+        Console.WriteLine($"moveset: timing guard {(MoveTiming.Guard ? "on" : "off (1.0.89 timing)")}: {moves} DS3 moves, {held} had windows held back to DS3's own recovery, " +
+                          $"{clipFixes} behaviour clip limits fitted, {early} still exit before DS3 does; per move: {timingReport}");
         Console.WriteLine($"moveset: event switches: DS3 effect events {Ds3EffectEvents}, DS3 sound events {Ds3SoundEvents}, swing align {SwingAlign}");
         Console.WriteLine($"moveset: {portedGroups} movesets ported, {skippedGroups} skipped; attacks: {attackPort.Summary}; " +
                           $"{wideCategories.Count} weapons on categories above 255 (mod DLL)");
@@ -520,7 +535,7 @@ public static partial class MovesetPort
 
     /// <summary>DS3's events for a move, with Elden Ring's sound and effect events moved to DS3's first hit.</summary>
     private static List<TAE.Event> MergeEvents(List<TAE.Event> ds3Events, TAE.Animation anim, Dictionary<int, TAE.EventGroup> templateGroups,
-        Dictionary<int, int> erLengths, EffectEvents effectEvents, FxrPort.Result effects, SoundEvents sounds, float ds3Duration)
+        Dictionary<int, int> erLengths, EffectEvents effectEvents, FxrPort.Result effects, SoundEvents sounds, float ds3Duration, out MoveTiming.Stretch stretch)
     {
         var erEvents = anim.Events;
         var merged = new List<TAE.Event>();
@@ -591,38 +606,10 @@ public static partial class MovesetPort
                                        && !(ds3Sounds && SoundPort.Sound(e) is { } s && SoundPort.Letter(s.Kind) is not null)).ToList();
         int Pair(int erHit) => erHits.Count == 1 ? 0 : (int)Math.Round(erHit * (ds3Hits.Count - 1) / (double)(erHits.Count - 1));
         var pairedDs3 = new HashSet<int>();
-        // Behaviour windows are stretched, not shifted: anchors at the start, each paired hit, and the end.
-        var candidates = new List<(float Er, float Ds3)>();
-        for (int h = 0; h < erHits.Count && ds3Hits.Count > 0; h++)
-            candidates.Add((erHits[h], ds3Hits[Pair(h)]));
-        // JumpTable windows both games share (the recovery cancels: 4, 103, 107, ...) open where each game's move
-        // can end, so they anchor the stretch too; without them Elden Ring's quick chain window opened while the
-        // slower DS3 swing was still recovering.
-        var ds3Jt = ds3Events.Where(e => e.Type == 0 && e.GetParameterBytes(false).Length >= 4)
-            .GroupBy(e => BitConverter.ToInt32(e.GetParameterBytes(false), 0)).ToDictionary(g => g.Key, g => g.Min(e => e.StartTime));
-        foreach (var g in erEvents.Where(e => e.Type == 0 && e.GetParameterBytes(false).Length >= 4)
-                     .GroupBy(e => BitConverter.ToInt32(e.GetParameterBytes(false), 0)))
-            if (ds3Jt.TryGetValue(g.Key, out var ds3Start) && g.Min(e => e.StartTime) is var erStart && erStart > 0.05f && ds3Start > 0.05f)
-                candidates.Add((erStart, ds3Start));
-        // The DS3 end is the animation's own length: its events can stop well before it (Friede's R1 ended at 0.625 s).
-        float erEnd = erEvents.Select(e => e.EndTime).DefaultIfEmpty(0).Max(), ds3End = Math.Max(ds3Duration, ds3Events.Select(e => e.EndTime).DefaultIfEmpty(0).Max());
-        candidates.Add((erEnd, ds3End));
-        // Keep the anchors in order on both timelines; one that would run backwards is dropped.
-        var anchors = new List<(float Er, float Ds3)> { (0, 0) };
-        foreach (var c in candidates.OrderBy(c => c.Er).ThenBy(c => c.Ds3))
-            if (c.Er > anchors[^1].Er + 0.001f && c.Ds3 > anchors[^1].Ds3 + 0.001f)
-                anchors.Add(c);
-        float Warp(float t)
-        {
-            for (int i = 1; i < anchors.Count; i++)
-                if (t <= anchors[i].Er || i == anchors.Count - 1)
-                {
-                    var (a, b) = (anchors[i - 1], anchors[i]);
-                    float span = b.Er - a.Er;
-                    return Math.Max(0, span <= 0 ? a.Ds3 + (t - a.Er) : a.Ds3 + (t - a.Er) * (b.Ds3 - a.Ds3) / span);
-                }
-            return t;
-        }
+        // Behaviour windows are stretched, not shifted: anchors at the start, each paired hit, the shared recovery
+        // cancels and the end; see MoveTiming for the rules that keep them from cutting the DS3 swing short.
+        stretch = MoveTiming.Build(ds3Events, erEvents, ds3Hits, erHits, Pair, ds3Duration);
+        var moveStretch = stretch;
         // The charge window (67) names the same charge in both games (100280 for a heavy attack): where DS3's move has
         // one with the same ID it keeps DS3's own timing, so holding R2 charges where the DS3 swing winds up.
         static int? FirstInt(TAE.Event e) => e.GetParameterBytes(false) is { Length: >= 4 } b ? BitConverter.ToInt32(b, 0) : null;
@@ -638,8 +625,8 @@ public static partial class MovesetPort
                         merged.Add(new TAE.Event(d.StartTime, d.EndTime, 67, e.Unk04, (byte[])e.GetParameterBytes(false).Clone(), false) { Group = e.Group });
                 continue;
             }
-            merged.Add(new TAE.Event(Warp(e.StartTime), Math.Max(Warp(e.StartTime), Warp(e.EndTime)), e.Type, e.Unk04,
-                (byte[])e.GetParameterBytes(false).Clone(), false) { Group = e.Group });
+            var (start, end) = moveStretch.Place(e);
+            merged.Add(new TAE.Event(start, end, e.Type, e.Unk04, (byte[])e.GetParameterBytes(false).Clone(), false) { Group = e.Group });
         }
         foreach (var e in kept.Where(e => !BehaviourTypes.Contains(e.Type) || Ds3JumpTables))
         {
@@ -754,6 +741,49 @@ public static partial class MovesetPort
             if (starts.Count == 0 || t - starts[^1] > 0.1f)
                 starts.Add(t);
         return starts;
+    }
+
+    /// <summary>One row of Work\reports\moveset-timing.tsv; ends in EARLY when the ported move can still be left
+    /// before DS3's own first exit after its last hit.</summary>
+    private static string TimingLine(int section, string weapons, int erId, Ds3Move source, float ds3Duration, float erDuration, MoveTiming.Stretch st)
+    {
+        var hits = HitStarts(source.Events);
+        static string F(float? v) => v is { } x ? x.ToString("0.000", System.Globalization.CultureInfo.InvariantCulture) : "";
+        var exit = st.Recovery ?? MoveTiming.Recovery(source.Events, hits);
+        bool early = exit is { } r && st.FirstExit is { } f && f < r - 0.001f;
+        return string.Join('\t', section, weapons, erId, source.HkxName, F(ds3Duration), F(erDuration), F(hits.Count > 0 ? hits[^1] : null),
+            F(exit), F(st.FirstExit), st.Held,
+            string.Join(' ', st.Anchors.Select(a => $"{F(a.Er)}>{F(a.Ds3)}"))) + (early ? "\tEARLY" : "");
+    }
+
+    /// <summary>
+    /// A converted move's behaviour clip is a copy of the template's, whose limits were set for the Elden Ring
+    /// animation: an enforced duration plays the DS3 animation in the Elden Ring move's time, and a crop cuts its
+    /// end off. Both are cleared, and trigger times fixed on the Elden Ring timeline are moved onto DS3's (triggers
+    /// measured from the clip's end stay). Returns 1 when anything changed. Off with DARKSIGN_TIMING_GUARD=0.
+    /// </summary>
+    private static int FitClip(hkbClipGenerator clip, MoveTiming.Stretch stretch)
+    {
+        if (!MoveTiming.Guard)
+            return 0;
+        bool changed = clip.m_enforcedDuration > 0 || clip.m_cropStartAmountLocalTime != 0 || clip.m_cropEndAmountLocalTime != 0;
+        clip.m_enforcedDuration = 0;
+        clip.m_cropStartAmountLocalTime = 0;
+        clip.m_cropEndAmountLocalTime = 0;
+        if (clip.m_triggers is { m_triggers.Count: > 0 } triggers && triggers.m_triggers.Any(t => !t.m_relativeToEndOfClip && t.m_localTime > 0))
+        {
+            // The array is shared with the template's clip: the copy gets its own.
+            clip.m_triggers = new hkbClipTriggerArray
+            {
+                m_triggers = triggers.m_triggers.Select(t => new hkbClipTrigger
+                {
+                    m_localTime = t.m_relativeToEndOfClip ? t.m_localTime : stretch.Warp(t.m_localTime),
+                    m_event = t.m_event, m_relativeToEndOfClip = t.m_relativeToEndOfClip, m_acyclic = t.m_acyclic, m_isAnnotation = t.m_isAnnotation,
+                }).ToList(),
+            };
+            changed = true;
+        }
+        return changed ? 1 : 0;
     }
 
     private static int NearestHit(List<float> hits, float time) =>

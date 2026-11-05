@@ -61,9 +61,10 @@ Try the next option if: Some moves of a ported weapon are DS3 but others (often 
 
 Try the next option if: R1 doesn't chain to the second swing, swings are cut short, or you can act too early or too late.
 
-- **A: Elden Ring windows, stretched (default).** Elden Ring's combo and cancel windows from the template move, stretched onto the DS3 swing between matching hits and recovery points.
+- **A: Elden Ring windows, stretched (default).** Elden Ring's combo and cancel windows from the template move, stretched onto the DS3 swing between matching hits and recovery points. No window after the last hit opens before DS3's own first one, multi-hit DS3 swings anchor on their last hit, and the template clip's length limits are cleared, so no move is cut short.
 - **B: DS3's own windows.** DS3's JumpTable events copied as they are (DARKSIGN_DS3_JUMPTABLES=1). Some DS3 IDs mean different things in Elden Ring. (`DARKSIGN_DS3_JUMPTABLES=1`)
 - **C: Elden Ring windows, shifted.** Elden Ring's windows moved to the first DS3 hit and not stretched (DARKSIGN_SWING_ALIGN=0), as the first moveset builds did. (`DARKSIGN_SWING_ALIGN=0`)
+- **D: As Friede's first clean R1 (1.0.89).** A without the 2026-11-05 guard (DARKSIGN_TIMING_GUARD=0): windows may open before DS3's own recovery, and the template clip's length limits stay. Use it if A makes chains feel late. (`DARKSIGN_TIMING_GUARD=0`)
 
 ### Moves DS3 doesn't have (Elden Ring-only actions) (`er-moves`, rebuilds the content)
 
