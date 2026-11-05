@@ -74,6 +74,11 @@ public static class WeaponPort
         var templates = ChooseTemplates(er, erNames);
         var plans = new List<WeaponPlan>();
         int next = 0;
+        // Never take a base ID block or a model ID Elden Ring (or a later patch / DLC) already uses: a clash would
+        // overwrite or duplicate vanilla rows. The slots are skipped in order, so the IDs stay the same on every PC.
+        var erBlocks = er.Rows.Select(r => r.ID / 10000).ToHashSet();
+        var erModels = er.Rows.Select(r => Convert.ToInt32(r["equipModelId"].Value)).ToHashSet();
+        bool Free(int slot) => !erBlocks.Contains((FirstNewId + slot * 10000) / 10000) && !erModels.Contains(FirstNewModelId + slot);
 
         foreach (var row in ds3.Rows.Where(r => r.ID > 0 && r.ID % 10000 == 0).OrderBy(r => r.ID))
         {
@@ -104,6 +109,13 @@ public static class WeaponPort
             if (template is null)
             {
                 plans.Add(new(row.ID, name, motion, null, null, null, null, $"skip: no Elden Ring weapon class for motion {motion}"));
+                continue;
+            }
+            while (!Free(next))
+                next++;
+            if (FirstNewIconId + next > ushort.MaxValue)
+            {
+                plans.Add(new(row.ID, name, motion, null, null, null, null, "skip: no free icon ID left"));
                 continue;
             }
             plans.Add(new(row.ID, name, motion, template.ID, erNames.GetValueOrDefault(template.ID, template.Name),
@@ -141,6 +153,22 @@ public static class WeaponPort
                     }
                     Set(row, erField, value);
                 }
+
+                // References to the template's own rows (originEquipWep..originEquipWep25: the weapon an affinity or
+                // reinforcement reverts to) follow the copy, else removing an affinity handed out the template weapon.
+                foreach (var cell in row.Cells.Where(c => c.Def.InternalName.StartsWith("originEquipWep", StringComparison.Ordinal)))
+                    if (cell.Value is int origin && origin >= templateBase.ID && origin < templateBase.ID + 10000)
+                        cell.Value = plan.NewId!.Value + (origin - templateBase.ID);
+                // DS3 has no arcane requirement; the template's would otherwise stay.
+                if (row["properLuck"] is { } luck)
+                    luck.Value = Convert.ChangeType(0, luck.Value!.GetType());
+                // Status effects built into the template (a scythe's bleed) are Elden Ring's weapon, not the DS3 one:
+                // a slot holding the same effect as the template's standard row is dropped; an affinity's own effect
+                // (Blood, Cold, ...) differs from it and stays.
+                foreach (var slot in new[] { "spEffectBehaviorId0", "spEffectBehaviorId1", "spEffectBehaviorId2" })
+                    if (row[slot] is { } effect && Convert.ToInt32(templateBase[slot].Value) > 0
+                        && Convert.ToInt32(effect.Value) == Convert.ToInt32(templateBase[slot].Value))
+                        effect.Value = Convert.ChangeType(-1, effect.Value!.GetType());
 
                 row["equipModelId"].Value = (ushort)plan.NewModelId!.Value;
                 Set(row, "iconId", NewIconId(plan));

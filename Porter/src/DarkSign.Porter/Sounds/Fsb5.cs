@@ -15,7 +15,10 @@ public sealed class Fsb5
     public IReadOnlyList<Sample> Samples { get; }
 
     private const int CodecVorbis = 15;
-    private static readonly int[] Rates = [0, 8000, 11000, 11025, 16000, 22050, 24000, 32000, 44100, 48000];
+    // FSB5 frequency codes 0-10 (vgmstream fsb5.c); 11-15 are unused, and a frequency chunk (type 2) overrides them.
+    private static readonly int[] Rates = [4000, 8000, 11000, 11025, 16000, 22050, 24000, 32000, 44100, 48000, 96000, 0, 0, 0, 0, 0];
+    // Channel codes (bits 5-6): 1, 2, 6 or 8 channels; a channels chunk (type 1) overrides them.
+    private static readonly int[] ChannelCodes = [1, 2, 6, 8];
 
     private Fsb5(List<Sample> samples) => Samples = samples;
 
@@ -38,8 +41,9 @@ public sealed class Fsb5
             ulong raw = BitConverter.ToUInt64(bytes, p);
             p += 8;
             bool more = (raw & 1) != 0;
-            int rate = Rates[(int)(raw >> 1) & 0xF], channels = (int)((raw >> 5) & 1) + 1;
-            int offset = (int)((raw >> 6) & 0xFFFFFFF) * 16, frames = (int)((raw >> 34) & 0x3FFFFFFF);
+            int rate = Rates[(int)(raw >> 1) & 0xF], channels = ChannelCodes[(int)(raw >> 5) & 3];
+            // Data offset: bits 7-33, in units of 32 bytes (bit 6 belongs to the channel code).
+            int offset = (int)((raw >> 7) & 0x7FFFFFF) * 32, frames = (int)((raw >> 34) & 0x3FFFFFFF);
             uint crc = 0;
             while (more)
             {

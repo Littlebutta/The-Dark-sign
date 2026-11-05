@@ -52,23 +52,32 @@ public static class SoundPort
             if (Directory.Exists(wemDir))
                 Directory.Delete(wemDir, true);
         var bankPath = ctx.ModPath(["sd", .. Bank.TrimStart('/').Split('/')]);
-        if (DllSounds && File.Exists(bankPath))
-            File.Delete(bankPath); // a bank from an earlier build would still be loaded
+        // A bank from an earlier build would still be loaded (stale events, or a bank cloned from an older game
+        // patch); it is written again below whenever this build ports a sound into it.
+        if (File.Exists(bankPath))
+            File.Delete(bankPath);
         if (todo.Count == 0)
             return result;
 
-        var bankBytes = erArchives.Read(Bank); // not DCX-compressed
-        var bank = WwiseBank.Read(bankBytes);
-        // The template: the first Elden Ring player sound in the bank whose event plays a Sound through a Play action.
-        var template = templateIds.Select(id => bank.Chain(FxSoundExplore.Fnv1($"Play_c{id:D9}"))).FirstOrDefault(c => c is not null)
+        // The DLL method (D) never touches Wwise: no bank, no template needed (a missing template must not cost it
+        // its sounds).
+        WwiseBank bank = new();
+        (WwiseBank.HircObject Event, WwiseBank.HircObject Action, WwiseBank.HircObject Sound) template = default;
+        if (!DllSounds)
+        {
+            var bankBytes = erArchives.Read(Bank); // not DCX-compressed
+            bank = WwiseBank.Read(bankBytes);
+            // The template: the first Elden Ring player sound in the bank whose event plays a Sound through a Play action.
+            template = templateIds.Select(id => bank.Chain(FxSoundExplore.Fnv1($"Play_c{id:D9}"))).FirstOrDefault(c => c is not null)
                        ?? throw new InvalidDataException($"no template sound found in {Bank}");
-        Console.WriteLine($"sounds: {Bank} version {bank.Version}, template event {template.Event.Id}, sound {template.Sound.Id}; {Tuning(bank, template.Sound)}");
+            Console.WriteLine($"sounds: {Bank} version {bank.Version}, template event {template.Event.Id}, sound {template.Sound.Id}; {Tuning(bank, template.Sound)}");
 
-        // How well the node reader knows this bank (Spellforge reads every node of the game's banks to its exact size;
-        // a type that falls short here means the new layout falls back to the older one for it).
-        Console.WriteLine("sounds: nodes read exactly: " + string.Join(", ", bank.Objects
-            .Where(o => o.Type is WwiseBank.SoundType or WwiseBank.RanSeqCntrType or WwiseBank.SwitchCntrType or WwiseBank.ActorMixerType or WwiseBank.LayerCntrType)
-            .GroupBy(o => o.Type).OrderBy(g => g.Key).Select(g => $"type {g.Key} {g.Count(o => WwiseNode.Read(o) is not null)}/{g.Count()}")));
+            // How well the node reader knows this bank (Spellforge reads every node of the game's banks to its exact size;
+            // a type that falls short here means the new layout falls back to the older one for it).
+            Console.WriteLine("sounds: nodes read exactly: " + string.Join(", ", bank.Objects
+                .Where(o => o.Type is WwiseBank.SoundType or WwiseBank.RanSeqCntrType or WwiseBank.SwitchCntrType or WwiseBank.ActorMixerType or WwiseBank.LayerCntrType)
+                .GroupBy(o => o.Type).OrderBy(g => g.Key).Select(g => $"type {g.Key} {g.Count(o => WwiseNode.Read(o) is not null)}/{g.Count()}")));
+        }
 
         var names = todo.SelectMany(w => new[] { "", "b", "c", "d", "e", "f", "g", "h" }.Select(v => $"{Letter(w.Kind)}{w.Id:D9}{v}")).ToHashSet();
         var samples = Ds3Samples(ctx, ds3Archives, names);
@@ -84,8 +93,9 @@ public static class SoundPort
             if (bank.Has(eventId)) { reasons["event ID taken"] = reasons.GetValueOrDefault("event ID taken") + 1; continue; }
             short[] pcm;
             try { pcm = Fsb5.DecodePcm(sample); }
-            catch (Exception e) when (e is InvalidDataException or NotSupportedException or ArgumentException)
+            catch (Exception e) when (e is not OutOfMemoryException)
             {
+                // One undecodable sample (NVorbis throws its own types too) must not cost every other sound.
                 var reason = $"decode: {e.Message.Split(' ').Take(4).Aggregate((a, b) => a + " " + b)}";
                 reasons[reason] = reasons.GetValueOrDefault(reason) + 1;
                 continue;
@@ -190,9 +200,15 @@ public static class SoundPort
         }
         var loose = Path.Combine(ctx.GameDir(PorterGame.DarkSouls3), "sound");
         if (Directory.Exists(loose))
-            foreach (var file in Directory.EnumerateFiles(loose, "*.fsb").Order())
-                AddFile(File.ReadAllBytes(file));
-        foreach (var entry in ds3.Entries.Where(e => e.Path?.StartsWith("/sound/") == true && e.Path.EndsWith(".fsb")).OrderBy(e => e.Path))
+            foreach (var file in Directory.EnumerateFiles(loose, "*.fsb").Order(StringComparer.Ordinal))
+            {
+                try { AddFile(File.ReadAllBytes(file)); }
+                catch (Exception e) when (e is InvalidDataException or IndexOutOfRangeException or ArgumentException or IOException)
+                {
+                    Console.WriteLine($"sounds: skipped {Path.GetFileName(file)} ({e.GetType().Name}: {e.Message})");
+                }
+            }
+        foreach (var entry in ds3.Entries.Where(e => e.Path?.StartsWith("/sound/") == true && e.Path.EndsWith(".fsb")).OrderBy(e => e.Path, StringComparer.Ordinal))
         {
             try { AddFile(ds3.Read(entry.Path!)); }
             catch (Exception e) when (e is InvalidDataException or IndexOutOfRangeException or ArgumentException) { }

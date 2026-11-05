@@ -49,6 +49,10 @@ public static partial class FxrPort
     public static Result Apply(PorterContext ctx, GameArchives erArchives, Ds3Effects ds3, IEnumerable<int> wanted)
     {
         var result = new Result();
+        // A common effect binder from an earlier build would still replace Elden Ring's (with that build's effects,
+        // or from an older game patch); it is written again below whenever this build adds effects to it.
+        foreach (var stale in StaleBinders(ctx))
+            File.Delete(stale);
         var queue = new Queue<int>(wanted.Where(id => id > 0).Distinct());
         if (queue.Count == 0)
             return result;
@@ -158,6 +162,13 @@ public static partial class FxrPort
         return result;
     }
 
+    /// <summary>The common effect binders in the mod folder (Mods\ER\sfx\*commoneffects*.ffxbnd.dcx).</summary>
+    public static IEnumerable<string> StaleBinders(PorterContext ctx)
+    {
+        var dir = Path.GetDirectoryName(ctx.ModPath("sfx", "x"))!;
+        return Directory.EnumerateFiles(dir, "*commoneffects*.ffxbnd.dcx").ToList();
+    }
+
     private static void DropDependents(Dictionary<int, (byte[] Bytes, FxrScript.Info Info)> effects, HashSet<int> failed)
     {
         for (bool changed = true; changed;)
@@ -221,7 +232,7 @@ public static partial class FxrPort
     {
         var binders = new List<ErBinder>();
         foreach (var entry in er.Entries.Where(e => e.Path is { } p && p.StartsWith("/sfx/") && p.EndsWith(".ffxbnd.dcx", StringComparison.OrdinalIgnoreCase)
-                                                    && p.Contains("commoneffects", StringComparison.OrdinalIgnoreCase)).OrderBy(e => e.Path!.Length))
+                                                    && p.Contains("commoneffects", StringComparison.OrdinalIgnoreCase)).OrderBy(e => e.Path!.Length).ThenBy(e => e.Path, StringComparer.Ordinal))
         {
             var (bytes, compression) = er.ReadWithCompression(entry.Path!);
             binders.Add(new ErBinder(entry.Path!, BND4.Read(bytes), compression));
@@ -262,7 +273,7 @@ public static partial class FxrPort
     {
         var index = new Ds3Effects();
         foreach (var entry in ds3.Entries.Where(e => e.Path is { } p && p.StartsWith("/sfx/") && p.EndsWith(".ffxbnd.dcx", StringComparison.OrdinalIgnoreCase))
-                     .OrderBy(e => e.Path!.Contains("common", StringComparison.OrdinalIgnoreCase) ? 0 : 1).ThenBy(e => e.Path))
+                     .OrderBy(e => e.Path!.Contains("common", StringComparison.OrdinalIgnoreCase) ? 0 : 1).ThenBy(e => e.Path, StringComparer.Ordinal))
         {
             BND4 bnd;
             try { bnd = BND4.Read(ds3.Read(entry.Path!)); }
@@ -287,8 +298,9 @@ public static partial class FxrPort
 
     private static TPF RenameTextures(TPF tpf, int oldId, int newId)
     {
+        // Only a digit run that is the old ID itself (s10020 for 10020, not the "20" inside s10020 for ID 20).
         foreach (var t in tpf.Textures)
-            t.Name = t.Name.Replace(oldId.ToString(), newId.ToString(), StringComparison.Ordinal);
+            t.Name = Digits().Replace(t.Name, m => int.TryParse(m.Value, out var v) && v == oldId ? newId.ToString() : m.Value);
         return tpf;
     }
 

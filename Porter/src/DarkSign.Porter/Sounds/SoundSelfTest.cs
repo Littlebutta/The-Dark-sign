@@ -53,8 +53,50 @@ public static class SoundSelfTest
         bank.AddSound(chain, 9101, 9102, 9103, 9104, 9105, wem, false);
         var b3 = WwiseBank.Read(bank.Write());
         Check(WwiseNode.Read(b3.Get(M)!)!.Children.SequenceEqual([Other, R, 9004u, 9104u]), "mixer lists both");
+        // Media: appended wems start on a 16-byte boundary of DATA, and the index stays sorted by ID.
+        var b3Bytes = bank.Write();
+        var didx = Section(b3Bytes, "DIDX");
+        var entries = Enumerable.Range(0, didx.Length / 12).Select(i => (Id: BitConverter.ToUInt32(didx, 12 * i), Offset: BitConverter.ToInt32(didx, 12 * i + 4))).ToList();
+        Check(entries.Where(e => e.Id != media).All(e => e.Offset % 16 == 0), "new media 16-byte aligned");
+        Check(entries.Zip(entries.Skip(1)).All(p => p.First.Id < p.Second.Id), "media index sorted");
+
+        // PCM wem header as Wwise reads it: RIFF/WAVE, 24-byte fmt (0xFFFE, cbSize 6, 16 valid bits, AkChannelConfig).
+        var w2 = WwiseBank.PcmWem(new short[8], 2, 48000);
+        Check(Encoding.ASCII.GetString(w2, 0, 4) == "RIFF" && BitConverter.ToInt32(w2, 4) == w2.Length - 8 && Encoding.ASCII.GetString(w2, 8, 8) == "WAVEfmt ", "wem RIFF header");
+        Check(BitConverter.ToInt32(w2, 16) == 24 && BitConverter.ToUInt16(w2, 20) == 0xFFFE && BitConverter.ToUInt16(w2, 22) == 2
+              && BitConverter.ToInt32(w2, 24) == 48000 && BitConverter.ToInt32(w2, 28) == 48000 * 4 && BitConverter.ToUInt16(w2, 32) == 4
+              && BitConverter.ToUInt16(w2, 34) == 16 && BitConverter.ToUInt16(w2, 36) == 6 && BitConverter.ToUInt16(w2, 38) == 16, "wem fmt chunk");
+        Check(BitConverter.ToUInt32(w2, 40) == (2u | (1u << 8) | (3u << 12)), "wem stereo channel config");
+        Check(BitConverter.ToUInt32(wem, 40) == (1u | (1u << 8) | (4u << 12)), "wem mono channel config");
+        Check(Encoding.ASCII.GetString(w2, 44, 4) == "data" && BitConverter.ToInt32(w2, 48) == 16 && w2.Length == 52 + 16, "wem data chunk");
+        var wav = SoundPort.Wav(new short[8], 2, 48000);
+        Check(wav.Length == 44 + 16 && BitConverter.ToInt32(wav, 4) == wav.Length - 8 && BitConverter.ToUInt16(wav, 20) == 1, "dll wav header");
+
+        // FSB5 sample headers: rate code 10 (96 kHz) and channel codes 2-3 (6/8 channels) read, offsets in 32-byte units.
+        static byte[] Fsb(params ulong[] heads)
+        {
+            var hdr = heads.SelectMany(BitConverter.GetBytes).ToArray();
+            var b = new byte[0x3C + hdr.Length + 64];
+            "FSB5"u8.CopyTo(b); BitConverter.GetBytes(1).CopyTo(b, 4); BitConverter.GetBytes(heads.Length).CopyTo(b, 8);
+            BitConverter.GetBytes(hdr.Length).CopyTo(b, 12); BitConverter.GetBytes(64).CopyTo(b, 20); BitConverter.GetBytes(15).CopyTo(b, 24);
+            hdr.CopyTo(b, 0x3C);
+            return b;
+        }
+        var fsb = Fsb((8ul << 1) | (0ul << 5) | (0ul << 7) | (100ul << 34), (10ul << 1) | (1ul << 5) | (1ul << 7) | (200ul << 34), (9ul << 1) | (2ul << 5) | (1ul << 7));
+        var fs = Fsb5.Read(fsb).Samples;
+        Check(fs.Count == 3 && fs[0] is { Rate: 44100, Channels: 1, Frames: 100 } && fs[0].Data.Length == 32
+              && fs[1] is { Rate: 96000, Channels: 2, Frames: 200 } && fs[2] is { Rate: 48000, Channels: 6 }, "fsb5 sample headers");
+
         Console.WriteLine(_failures == 0 ? "sound-selftest: all checks passed" : $"sound-selftest: {_failures} checks FAILED");
         return _failures == 0 ? 0 : 1;
+    }
+
+    private static byte[] Section(byte[] bnk, string tag)
+    {
+        for (int at = 0; at + 8 <= bnk.Length; at += 8 + BitConverter.ToInt32(bnk, at + 4))
+            if (Encoding.ASCII.GetString(bnk, at, 4) == tag)
+                return bnk[(at + 8)..(at + 8 + BitConverter.ToInt32(bnk, at + 4))];
+        return [];
     }
 
     private static void Check(bool ok, string what)
