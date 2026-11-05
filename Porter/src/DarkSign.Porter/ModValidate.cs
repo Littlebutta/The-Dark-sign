@@ -245,17 +245,34 @@ public static partial class ModValidate
                 r.Error($"{SoundPort.Letter(kind)}{id:D9}: a TAE event plays it but {SoundPort.DllSoundFolder} has no WAV for it");
             return;
         }
-        var bankPath = Path.Combine(modDir, "sd", "enus", "cs_main.bnk");
+        // Method E puts them in a bank of their own (sd\cs_c9990.bnk) and leaves cs_main alone.
+        var bankName = File.Exists(Path.Combine(modDir, "sd", "enus", "cs_main.bnk")) ? Path.Combine("sd", "enus", "cs_main.bnk")
+            : Path.Combine("sd", SoundPort.OwnBankName + ".bnk");
+        var bankPath = Path.Combine(modDir, bankName);
         if (!File.Exists(bankPath))
         {
-            r.Error($"{sounds.Count} events play ported sounds but sd\\enus\\cs_main.bnk is missing");
+            r.Error($"{sounds.Count} events play ported sounds but neither sd\\enus\\cs_main.bnk nor sd\\{SoundPort.OwnBankName}.bnk is in the mod");
             return;
         }
         WwiseBank bank;
         try { bank = WwiseBank.Read(File.ReadAllBytes(bankPath)); }
-        catch (Exception e) { r.Error($"sd\\enus\\cs_main.bnk does not read back: {e.GetType().Name}: {e.Message}"); return; }
+        catch (Exception e) { r.Error($"{bankName} does not read back: {e.GetType().Name}: {e.Message}"); return; }
+        // The game's own event index: every posted event should be listed under the bank that holds it.
+        SoundIndex? soundIndex = null;
+        var indexPath = Path.Combine(modDir, "sound", "soundbanksinfo.mobnkinfo");
+        if (File.Exists(indexPath))
+        {
+            try { soundIndex = SoundIndex.Read(File.ReadAllBytes(indexPath)); }
+            catch (Exception e) when (e is InvalidDataException or ArgumentException or IndexOutOfRangeException)
+            {
+                r.Error($"sound\\soundbanksinfo.mobnkinfo does not read back: {e.Message}");
+            }
+        }
+        else
+            r.Info("sounds: the game's sound index isn't edited (DARKSIGN_SOUND_INDEX=0, or the build couldn't read it)");
+        int listed = 0;
         foreach (var dup in bank.Objects.GroupBy(o => o.Id).Where(g => g.Count() > 1).Take(5))
-            r.Error($"cs_main.bnk: HIRC ID {dup.Key} is used by {dup.Count()} objects (Wwise rejects the bank)");
+            r.Error($"{bankName}: HIRC ID {dup.Key} is used by {dup.Count()} objects (Wwise rejects the bank)");
         var index = new Dictionary<uint, int>();
         for (int i = 0; i < bank.Objects.Count; i++)
             index.TryAdd(bank.Objects[i].Id, i);
@@ -270,9 +287,16 @@ public static partial class ModValidate
             var name = $"Play_{letter}{posted:D9}";
             if (bank.Chain(FxSoundExplore.Fnv1(name)) is not { } chain)
             {
-                r.Error($"a{s.Section:D3}_{s.Animation:D6}: plays {name}, which the mod's cs_main.bnk doesn't have" +
+                r.Error($"a{s.Section:D3}_{s.Animation:D6}: plays {name}, which the mod's {bankName} doesn't have" +
                         (posted != s.Id ? $" (sound offset {posted - s.Id})" : ""));
                 continue;
+            }
+            if (soundIndex is not null)
+            {
+                if (soundIndex.Lists(bank.BankId, FxSoundExplore.Fnv1(name)))
+                    listed++;
+                else
+                    r.Error($"{name}: not listed under bank {bank.BankId} in sound\\soundbanksinfo.mobnkinfo (the game's own index of which sounds exist)");
             }
             var data = chain.Sound.Data;
             if (data.Length < 17) { r.Error($"{name}: Sound {chain.Sound.Id} is too short"); continue; }
@@ -288,7 +312,7 @@ public static partial class ModValidate
             else
                 ok++;
         }
-        r.Info($"sounds: {ok} ported sound events reach their audio");
+        r.Info($"sounds: {ok} ported sound events reach their audio in {bankName}" + (soundIndex is null ? "" : $"; {listed} listed in the game's sound index"));
     }
 
     // Up a ported Sound's parents to the first actor-mixer: each parent must come after its child in the bank and

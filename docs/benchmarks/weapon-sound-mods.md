@@ -43,3 +43,22 @@ Run `sound-probe` (ported events -> Elden Ring's whoosh) under me3. Whoosh heard
 audio is at fault, so try Vorbis via WwiseConsole (Yonder's path, needs the free Wwise install). Still silent: the
 TAE events aren't reaching the bank; check `mod-check 81190000`. DOOM RING's own-audio-stream DLL is the last resort
 (no 3D position, but always audible).
+
+## Second round (2026-11-05): what the first round missed
+
+On 2026-11-01 the ported audio played on Devin's PC when a swing used an existing Elden Ring sound number, and stayed
+silent under any new number. The community tools copy events under their **original** numbers (er_soundbank_helper,
+Spellforge), so that test fits what they do and doesn't tell why ours fail. Two sources that add brand-new numbers do:
+
+| Finding | Source | What changed |
+|---|---|---|
+| The game keeps its own index of which events each bank provides, `/sound/soundbanksinfo.mobnkinfo` (FromSoftware's replacement for Wwise's SoundbanksInfo). Every shipped event is listed; ours never were | Yonder `game/mo.py`, Smithbox `SBI.bt` (TKGP), Spellforge format notes, Nightreign Ultimate Voices | `SoundIndex` lists every ported event under its bank and writes `Mods\ER\sound\soundbanksinfo.mobnkinfo` (appended patch: the original bytes stay put). `validate-mod` checks each posted event is listed |
+| Nightreign Ultimate Voices' new `Play_c9xxxxxxxx` events stayed silent even after registering them, until the TAE event was the game's own **one-shot 129** (DummyPoly/Slot -1, PlaybackBehaviorType 0, offset type -1). PlaybackBehaviorType 1 cuts the sound off when the event ends, and DS3's sound events last a frame or two | NUV docs/retimed-callout-trigger.md, Smithbox ER enums | Ported sound events are always 129 (a move without its own 129 swing takes Elden Ring's most common one, never 128), with slot -1 and playback 0. The dummy poly stays the template swing's, so the sound still comes from the blade |
+| Wwise's PrepareEvent loading failed with the media only embedded and worked with a loose copy | NUV verification.md | Each embedded sample also gets a byte-identical `sd\wem\NN\<id>.wem` |
+| Yonder recommends a bank of your own over editing the 75 MB cs_main, kept loaded through Torrent's NpcParam rows (`SoundAddBankId`) | Yonder Custom Soundbanks guide, er_soundbank_helper's empty bank | New fallback **E**: the sounds go into `sd\cs_c9990.bnk` (header copied from cs_main with a new ID and the SFX language, the new Sounds and containers, unchanged copies of their actor-mixers listing only them, Play actions naming the new bank); cs_main isn't touched; Torrent's rows 8000-8005 that name no bank load it; the index lists it |
+
+`eventinfo.eib`, Nightreign's second index, isn't in Elden Ring's archive lists (BinderKeys), so only the SBI is
+edited; the porter logs it if a game version has one. Fallback **F** is A as it was before this round
+(`DARKSIGN_SOUND_INDEX=0`, `DARKSIGN_SOUND_ONESHOT=0`, `DARKSIGN_SOUND_MIRROR=0`), for when the new A breaks something.
+
+Order to try if swings are still silent: A, then E (no cs_main edit at all), then B, then D (our DLL; always audible).

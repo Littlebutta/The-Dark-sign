@@ -112,10 +112,12 @@ Try the next option if: Two-handing a split weapon doesn't split it, or the seco
 
 Try the next option if: Swings are silent, play the wrong sound, or sound pitched down or muffled.
 
-- **A: Embedded, own container (default).** DS3 samples decoded to PCM and embedded in cs_main.bnk, each Sound in a random container of its own under the template's actor-mixer (the layout Yonder and Spellforge use).
+- **A: Embedded, own container, registered (default).** DS3 samples decoded to PCM and embedded in cs_main.bnk, each Sound in a random container of its own under the template's actor-mixer (the layout Yonder and Spellforge use). The new sound numbers are listed in the game's own sound index (sound\soundbanksinfo.mobnkinfo), the swing events are one-shot 129s that play to the end, and each sample also gets a loose copy in sd\wem (what made Nightreign Ultimate Voices' new sounds play).
 - **B: Streamed loose files.** Same layout, but each sample is a loose .wem in sd\wem\NN\ that me3 streams (DARKSIGN_STREAM_SOUNDS=1), the way RogueRing ships its sounds. (`DARKSIGN_STREAM_SOUNDS=1`)
 - **C: Inside Elden Ring's whoosh container.** The Sound goes under the template's own container (DARKSIGN_SOUND_CONTAINERS=0), as builds up to 1.0.12x did. That container lowers the pitch and filters it. (`DARKSIGN_SOUND_CONTAINERS=0`)
 - **D: Played by our DLL (no Wwise).** Elden Ring's sound bank is left alone. The DS3 samples are written as WAV files and the test menu DLL plays them on its own audio stream whenever a ported swing's sound event runs (DOOM RING's approach). Always audible, but not 3D-positioned. Elden Ring 2.7.2 only. (`DARKSIGN_SOUND_METHOD=dll`, game `DKSIGN_DLL_SOUNDS=1`)
+- **E: A bank of our own, loaded by Torrent.** cs_main.bnk is left exactly as the game has it. The DS3 sounds go into a bank of their own (sd\cs_c9990.bnk, built like the community's custom banks) that Torrent's NpcParam rows load, the way Yonder's guide keeps a mod bank always loaded; the game's index lists it. Use it if A or B silence the whole game. (`DARKSIGN_SOUND_BANK=own`)
+- **F: As builds up to 1.0.161.** A without this round's changes: the game's sound index isn't edited, the swing events keep the template's playback settings, and there are no loose copies (DARKSIGN_SOUND_INDEX=0, DARKSIGN_SOUND_ONESHOT=0, DARKSIGN_SOUND_MIRROR=0). Use it if A breaks something B, C and E don't. (`DARKSIGN_SOUND_INDEX=0`, `DARKSIGN_SOUND_ONESHOT=0`, `DARKSIGN_SOUND_MIRROR=0`)
 - **off: Off (Elden Ring sounds).** Ported weapons keep the Elden Ring template's swing sounds (DARKSIGN_DS3_SOUND_EVENTS=0). Not DS3, but never silent. (`DARKSIGN_DS3_SOUND_EVENTS=0`)
 
 ### DS3 weapon effects (trails, sparks) (`effects`, rebuilds the content)
@@ -124,6 +126,7 @@ Try the next option if: The game crashes when a ported weapon swings, or its eff
 
 - **A: DS3 effects (default).** DS3's FXR effects converted to Elden Ring's format (@cccode/fxr), with the sounds they play.
 - **B: DS3 effects without their sounds.** Same effects; the sounds inside them are left out (DARKSIGN_FXR_SOUNDS=0). (`DARKSIGN_FXR_SOUNDS=0`)
+- **C: DS3 and Elden Ring effects together.** Moves spawn DS3's effects and keep the template's Elden Ring trails and sparks too (DARKSIGN_KEEP_ER_EFFECTS=1), so a DS3 effect that doesn't show still leaves Elden Ring's instead of nothing. (`DARKSIGN_KEEP_ER_EFFECTS=1`)
 - **off: Off (Elden Ring effects).** Ported weapons keep the template's effects (DARKSIGN_DS3_EFFECT_EVENTS=0). (`DARKSIGN_DS3_EFFECT_EVENTS=0`)
 
 

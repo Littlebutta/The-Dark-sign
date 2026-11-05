@@ -190,7 +190,13 @@ public static partial class MovesetPort
             sounds = new SoundPort.Result();
         }
         soundsTime.Dispose();
-        var soundPort = new SoundEvents(sounds, soundSample);
+        if (sounds.InOwnBank)
+            LoadOwnBank(er);
+        // The most common Elden Ring character swing sound (129, kind 1): the layout for ported sounds in moves whose
+        // template has no 129 of its own (128 isn't used for them: see SoundEvents).
+        var swingSample = erMainEvents.Where(e => e.Type == 129 && SoundPort.Sound(e) is { Kind: 1 }).Select(e => e.GetParameterBytes(false))
+            .Where(b => b.Length >= 32).GroupBy(Convert.ToHexString).MaxBy(g => g.Count())?.First();
+        var soundPort = new SoundEvents(sounds, soundSample, swingSample);
 
         int portedGroups = 0, skippedGroups = 0;
         int? timeActVariable = null;
@@ -544,7 +550,8 @@ public static partial class MovesetPort
         foreach (var e in ds3Events)
         {
             if (Ds3SoundEvents && sounds.Convert(e, erSwing) is { } sound
-                && (erSwing?.Group ?? groupOf.GetValueOrDefault(128) ?? groupOf.GetValueOrDefault(129)) is { } soundGroup)
+                && (erSwing?.Group ?? (sound.Type == 129 ? groupOf.GetValueOrDefault(129) ?? groupOf.GetValueOrDefault(128)
+                    : groupOf.GetValueOrDefault(128) ?? groupOf.GetValueOrDefault(129))) is { } soundGroup)
             {
                 sound.Group = soundGroup;
                 merged.Add(sound);
@@ -579,7 +586,8 @@ public static partial class MovesetPort
             erHits = [.. erHits.Take(1)];
         }
         // A move that plays DS3's own character and effect sounds drops Elden Ring's (footsteps and the rest stay).
-        var kept = erEvents.Where(e => ErOwned(e.Type) && !ds3Effects.Contains(e.Type)
+        var kept = erEvents.Where(e => (ErOwned(e.Type) && (KeepErEffects || !ds3Effects.Contains(e.Type))
+                                        || KeepErEffects && effectEvents.IsEffect(e.Type) && e.Group is not null)
                                        && !(ds3Sounds && SoundPort.Sound(e) is { } s && SoundPort.Letter(s.Kind) is not null)).ToList();
         int Pair(int erHit) => erHits.Count == 1 ? 0 : (int)Math.Round(erHit * (ds3Hits.Count - 1) / (double)(erHits.Count - 1));
         var pairedDs3 = new HashSet<int>();
@@ -659,13 +667,45 @@ public static partial class MovesetPort
         return merged.OrderBy(e => e.StartTime).ToList();
     }
 
+    /// <summary>
+    /// Sounds method E: Torrent's NpcParam rows name the ported sounds' own bank in SoundAddBankId, so the game keeps
+    /// it loaded (Yonder's "Custom Soundbanks" guide: Torrent's rows 8002-8005 from Elden Ring 1.17, 8000 before; a
+    /// row that already names a bank keeps it).
+    /// </summary>
+    private static void LoadOwnBank(ParamStore er)
+    {
+        if (er.Get("NpcParam") is not { } npcs)
+        {
+            Console.WriteLine("sounds: method E: no NpcParam; the own bank won't be loaded");
+            return;
+        }
+        var set = new List<int>();
+        foreach (var row in npcs.Rows.Where(r => r.ID is >= 8000 and <= 8005))
+        {
+            if (row.Cells.FirstOrDefault(c => c.Def.InternalName == "SoundAddBankId") is not { } cell || System.Convert.ToInt32(cell.Value) >= 0)
+                continue;
+            cell.Value = System.Convert.ChangeType(SoundPort.OwnBankNumber, cell.Value!.GetType());
+            set.Add(row.ID);
+        }
+        Console.WriteLine($"sounds: method E: Torrent's NpcParam rows {(set.Count == 0 ? "(none free)" : string.Join(", ", set))} load {SoundPort.OwnBankName}");
+    }
+
+    /// <summary>
+    /// The one-shot form of Wwise_PlaySound_BySlot (129) ported sounds use unless DARKSIGN_SOUND_ONESHOT=0:
+    /// PlaybackBehaviorType 0 (play until the sound ends; DS3's sound events last a frame or two, and type 1 cuts the
+    /// sound off when the event ends) and no slot (-1). Nightreign Ultimate Voices' new Play_c9xxxxxxxx events stayed
+    /// silent as 128s and in a cut-off layout, and played once written as the game's own one-shot 129s.
+    /// </summary>
+    private static readonly bool OneShot = Environment.GetEnvironmentVariable("DARKSIGN_SOUND_ONESHOT") != "0";
+
     /// <summary>DS3 sound events as Elden Ring PlaySound events for the ported sounds: in the layout of the move's
-    /// own swing sound (129) when it has one, else of Elden Ring's most common 128.</summary>
-    private sealed class SoundEvents(SoundPort.Result sounds, byte[]? sample)
+    /// own swing sound (129) when it has one, else of Elden Ring's most common character 129 (else 128).</summary>
+    private sealed class SoundEvents(SoundPort.Result sounds, byte[]? sample, byte[]? swingSample)
     {
         public TAE.Event? Convert(TAE.Event e, TAE.Event? erSwing)
         {
-            var layout = erSwing?.GetParameterBytes(false) ?? sample;
+            int type = erSwing?.Type ?? (OneShot && swingSample is not null ? 129 : 128);
+            var layout = erSwing?.GetParameterBytes(false) ?? (type == 129 ? swingSample : sample);
             if (layout is null || SoundPort.Sound(e) is not { } s || SoundPort.Letter(s.Kind) is null || sounds.Map(s.Kind, s.Id) is not { } id)
                 return null;
             var bytes = (byte[])layout.Clone();
@@ -675,19 +715,30 @@ public static partial class MovesetPort
             // (+20 type, +24 ID) and its SoundIDOffsetType (+28; 2 adds the weapon's wepSeIdOffset) all belong to the
             // Elden Ring whoosh. The community's copied sound events clear StateInfo; the override is set to the
             // ported sound itself so either ID the game picks is ours, and -1 means no weapon offset.
-            if ((erSwing?.Type ?? 128) == 129 && bytes.Length >= 32)
+            if (type == 129 && bytes.Length >= 32)
             {
                 BitConverter.GetBytes((short)0).CopyTo(bytes, 16);
                 BitConverter.GetBytes(s.Kind).CopyTo(bytes, 20);
                 BitConverter.GetBytes(id).CopyTo(bytes, 24);
                 bytes[28] = unchecked((byte)-1);
+                if (OneShot)
+                {
+                    BitConverter.GetBytes(-1).CopyTo(bytes, 12); // SlotID: none
+                    bytes[18] = 0;                               // PlaybackBehaviorType: until the sound ends
+                }
             }
-            return new TAE.Event(e.StartTime, e.EndTime, erSwing?.Type ?? 128, e.Unk04, bytes, false);
+            return new TAE.Event(e.StartTime, e.EndTime, type, e.Unk04, bytes, false);
         }
     }
 
     // Switches for finding which part of the event port Elden Ring rejects; all on unless set to 0.
     private static readonly bool Ds3EffectEvents = Environment.GetEnvironmentVariable("DARKSIGN_DS3_EFFECT_EVENTS") != "0";
+    /// <summary>
+    /// DARKSIGN_KEEP_ER_EFFECTS=1 (launcher fallback "effects" C): a move that spawns DS3's effects keeps the
+    /// template's Elden Ring effects of the same types too, so a DS3 effect that doesn't show leaves Elden Ring's
+    /// trail and sparks rather than nothing.
+    /// </summary>
+    private static readonly bool KeepErEffects = Environment.GetEnvironmentVariable("DARKSIGN_KEEP_ER_EFFECTS") == "1";
     private static readonly bool Ds3SoundEvents = Environment.GetEnvironmentVariable("DARKSIGN_DS3_SOUND_EVENTS") != "0";
     private static readonly bool SwingAlign = Environment.GetEnvironmentVariable("DARKSIGN_SWING_ALIGN") != "0";
     private static readonly bool AddGroups = Environment.GetEnvironmentVariable("DARKSIGN_ADD_EVENT_GROUPS") != "0";
