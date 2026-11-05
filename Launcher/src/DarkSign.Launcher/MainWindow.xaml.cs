@@ -328,16 +328,25 @@ public partial class MainWindow : Window
             var stamp = Fallbacks.BuildStamp(porterVersion, _settings.Methods);
             if (rebuild || setup.NeedsContentBuild(stamp))
             {
-                if (!File.Exists(_settings.GameExePaths.GetValueOrDefault(GameId.DarkSouls3, "")))
+                if (!File.Exists(_settings.GameExePaths.GetValueOrDefault(GameId.DarkSouls3, "")) && !rebuild && launch
+                    && File.Exists(Path.Combine(setup.ModDir, "regulation.bin")) && File.Exists(setup.ItemsFile))
+                {
+                    // Dark Souls III moved or was uninstalled after a build: play the content already built.
+                    StatusText.Text = "Dark Souls III wasn't found, so the content wasn't rebuilt; playing the last build.";
+                }
+                else if (!File.Exists(_settings.GameExePaths.GetValueOrDefault(GameId.DarkSouls3, "")))
                 {
                     MessageBox.Show(this, "The mod is built from your own Dark Souls III files, and Dark Souls III wasn't found.\n\n" +
                         "Point the launcher at your Dark Souls III install in the list (Browse…), then press PLAY again.",
                         "Dark Souls III needed", MessageBoxButton.OK, MessageBoxImage.Information);
                     return;
                 }
-                if (!await BuildContentAsync(setup))
-                    return;
-                setup.MarkContentBuilt(stamp);
+                else
+                {
+                    if (!await BuildContentAsync(setup))
+                        return;
+                    setup.MarkContentBuilt(stamp);
+                }
             }
             RefreshContentText();
             if (!launch)
@@ -463,8 +472,16 @@ public partial class MainWindow : Window
             StatusText.Text = "Downloading the porter…";
             var zip = DownloadPath($"DarkSignPorter-{version}.zip");
             using var http = new HttpClient { Timeout = TimeSpan.FromMinutes(5) };
-            if (await new SelfUpdater(_settings.GitHubToken, http).DownloadAssetAsync(SelfUpdater.TagPrefix + version, EldenRingSetup.PorterAsset, zip))
-                setup.InstallPorter(zip, version);
+            try
+            {
+                if (await new SelfUpdater(_settings.GitHubToken, http).DownloadAssetAsync(SelfUpdater.TagPrefix + version, EldenRingSetup.PorterAsset, zip))
+                    setup.InstallPorter(zip, version);
+            }
+            catch (Exception ex) when (setup.PorterVersion is not null && ex is HttpRequestException or TaskCanceledException)
+            {
+                // No connection: keep playing with the porter already installed (the content stays as it was built).
+                StatusText.Text = $"The porter could not be updated ({ex.Message}); using the installed one.";
+            }
         }
         return setup.PorterVersion
             ?? throw new InvalidOperationException($"The porter is missing from {setup.PorterDir} and could not be downloaded.");
