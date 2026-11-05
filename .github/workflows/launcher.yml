@@ -111,6 +111,9 @@ jobs:
       # Offline checks of the sound bank layout ported sounds get (no game files needed).
       - if: steps.cache.outputs.cache-hit != 'true'
         run: porter-publish/DarkSignPorter.exe sound-selftest
+      # Offline checks that ported moves' combo/cancel windows don't cut DS3 swings short (no game files needed).
+      - if: steps.cache.outputs.cache-hit != 'true'
+        run: porter-publish/DarkSignPorter.exe timing-selftest
       # The randomizer's data ships with the porter: make one checked world in a scratch root (no game files needed).
       - if: steps.cache.outputs.cache-hit != 'true'
         run: porter-publish/DarkSignPorter.exe --root "$env:RUNNER_TEMP\rando-smoke" randomize --profile CI --seed 1

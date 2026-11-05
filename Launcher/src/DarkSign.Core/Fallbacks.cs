@@ -96,11 +96,13 @@ public static class Fallbacks
         new("combo-windows", "Weapon movesets", "When the next attack can start (R1 chains)", Stage.Build,
             "R1 doesn't chain to the second swing, swings are cut short, or you can act too early or too late.",
         [
-            new("A", "Elden Ring windows, stretched (default)", "Elden Ring's combo and cancel windows from the template move, stretched onto the DS3 swing between matching hits and recovery points."),
+            new("A", "Elden Ring windows, stretched (default)", "Elden Ring's combo and cancel windows from the template move, stretched onto the DS3 swing between matching hits and recovery points. No window after the last hit opens before DS3's own first one, multi-hit DS3 swings anchor on their last hit, and the template clip's length limits are cleared, so no move is cut short."),
             new("B", "DS3's own windows", "DS3's JumpTable events copied as they are (DARKSIGN_DS3_JUMPTABLES=1). Some DS3 IDs mean different things in Elden Ring.")
                 { PorterEnv = Env("DARKSIGN_DS3_JUMPTABLES", "1") },
             new("C", "Elden Ring windows, shifted", "Elden Ring's windows moved to the first DS3 hit and not stretched (DARKSIGN_SWING_ALIGN=0), as the first moveset builds did.")
                 { PorterEnv = Env("DARKSIGN_SWING_ALIGN", "0") },
+            new("D", "As Friede's first clean R1 (1.0.89)", "A without the 2026-11-05 guard (DARKSIGN_TIMING_GUARD=0): windows may open before DS3's own recovery, and the template clip's length limits stay. Use it if A makes chains feel late.")
+                { PorterEnv = Env("DARKSIGN_TIMING_GUARD", "0") },
         ]),
         new("er-moves", "Weapon movesets", "Moves DS3 doesn't have (Elden Ring-only actions)", Stage.Build,
             "The game hangs while loading, or Elden Ring-only moves of a ported weapon (e.g. guard counter) T-pose or do nothing.",
