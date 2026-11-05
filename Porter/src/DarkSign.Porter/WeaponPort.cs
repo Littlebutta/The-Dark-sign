@@ -218,9 +218,6 @@ public static class WeaponPort
                 var commonType = g.GroupBy(r => r["wepType"].Value).OrderByDescending(t => t.Count()).First().Key;
                 return g.OrderByDescending(r => Equals(r["wepType"].Value, commonType))
                     .ThenByDescending(r => ids.Contains(r.ID + 100))
-                    // then one with no built-in status effect (its affinity rows carry it too)
-                    .ThenBy(r => new[] { "spEffectBehaviorId0", "spEffectBehaviorId1", "spEffectBehaviorId2" }
-                        .Count(f => Convert.ToInt32(r[f].Value) > 0))
                     .ThenBy(r => r.ID)
                     .ToList();
             });
