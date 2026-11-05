@@ -28,6 +28,7 @@ namespace {
 using PresentFn = HRESULT(STDMETHODCALLTYPE *)(IDXGISwapChain3 *, UINT, UINT);
 using Present1Fn = HRESULT(STDMETHODCALLTYPE *)(IDXGISwapChain3 *, UINT, UINT, const DXGI_PRESENT_PARAMETERS *);
 using ResizeBuffersFn = HRESULT(STDMETHODCALLTYPE *)(IDXGISwapChain3 *, UINT, UINT, UINT, DXGI_FORMAT, UINT);
+using ResizeBuffers1Fn = HRESULT(STDMETHODCALLTYPE *)(IDXGISwapChain3 *, UINT, UINT, UINT, DXGI_FORMAT, UINT, const UINT *, IUnknown *const *);
 using ExecuteFn = void(STDMETHODCALLTYPE *)(ID3D12CommandQueue *, UINT, ID3D12CommandList *const *);
 using GetDeviceStateFn = HRESULT(STDMETHODCALLTYPE *)(IDirectInputDevice8W *, DWORD, LPVOID);
 using GetDeviceDataFn = HRESULT(STDMETHODCALLTYPE *)(IDirectInputDevice8W *, DWORD, LPDIDEVICEOBJECTDATA, LPDWORD, DWORD);
@@ -40,6 +41,7 @@ using GetRawInputBufferFn = UINT(WINAPI *)(PRAWINPUT, PUINT, UINT);
 PresentFn o_present;
 Present1Fn o_present1;
 ResizeBuffersFn o_resize;
+ResizeBuffers1Fn o_resize1;
 ExecuteFn o_execute;
 GetDeviceStateFn o_get_state;
 GetDeviceDataFn o_get_data;
@@ -107,6 +109,8 @@ void refilter()
 const char *result_text(DksResult r)
 {
     return r == DKS_NOT_FOUND ? "Not available: this game version's code wasn't recognised."
+         : r == DKS_NOT_KEPT  ? "The game didn't keep the request flag (no flag block for that ID in this save or version). "
+                                "Send the test menu log."
                               : "Load your character first.";
 }
 
@@ -196,6 +200,8 @@ void request_flag(uint32_t flag, const char *done)
     DksResult r = dks_set_event_flag(flag, 1);
     if (r != DKS_OK) {
         g_run_status = result_text(r);
+        if (r == DKS_NOT_KEPT)
+            dks_log("ds3 run: request flag %u did not stick; check RunEvents.FlagBlock against this game version", flag);
         return;
     }
     g_run_status = done;
@@ -670,8 +676,13 @@ void render(IDXGISwapChain3 *swap_chain)
     if (down && !g_f1_was_down && GetForegroundWindow() == g_hwnd)
         toggle();
     g_f1_was_down = down;
-    if (!g_open)
+    if (!g_open) {
+        // Hold no back-buffer references while the menu is closed: a ResizeBuffers(1) the hooks miss (another overlay's
+        // hook in front of ours, Alt+Enter) would otherwise fail with DXGI_ERROR_INVALID_CALL and take the game down.
+        if (g_targets_ready)
+            release_targets();
         return;
+    }
     if (!g_targets_ready && !create_targets(swap_chain))
         return;
 
@@ -727,6 +738,14 @@ HRESULT STDMETHODCALLTYPE h_resize(IDXGISwapChain3 *self, UINT count, UINT w, UI
     return o_resize(self, count, w, h, format, flags);
 }
 
+HRESULT STDMETHODCALLTYPE h_resize1(IDXGISwapChain3 *self, UINT count, UINT w, UINT h, DXGI_FORMAT format, UINT flags,
+                                    const UINT *masks, IUnknown *const *queues)
+{
+    if (g_ready)
+        release_targets();
+    return o_resize1(self, count, w, h, format, flags, masks, queues);
+}
+
 // The game's own direct queue is the one the menu draws on.
 void STDMETHODCALLTYPE h_execute(ID3D12CommandQueue *self, UINT count, ID3D12CommandList *const *lists)
 {
@@ -780,6 +799,11 @@ bool hook_dx12()
              hook(sc_vtbl[13], (void *)h_resize, (void **)&o_resize, "ResizeBuffers") &&
              hook(queue_vtbl[10], (void *)h_execute, (void **)&o_execute, "ExecuteCommandLists");
         hook(sc_vtbl[22], (void *)h_present1, (void **)&o_present1, "Present1");
+        IDXGISwapChain3 *sc3 = nullptr;
+        if (SUCCEEDED(swap_chain->QueryInterface(IID_PPV_ARGS(&sc3)))) {
+            hook((*(void ***)sc3)[39], (void *)h_resize1, (void **)&o_resize1, "ResizeBuffers1");
+            sc3->Release();
+        }
     } else {
         dks_log("overlay: could not create the DirectX 12 probe");
     }
@@ -820,6 +844,17 @@ void hook_input()
     if (di) di->Release();
 }
 
+// The item, rune and flag addresses are looked up here, off the render thread, so the first F1 doesn't stall a frame
+// for the scan; whatever is missing is looked for again a little later.
+void prescan()
+{
+    dks_scan_game();
+    for (int i = 0; i < 3; i++) {
+        Sleep(15000);
+        dks_rescan_missing();
+    }
+}
+
 DWORD WINAPI start(LPVOID)
 {
     g_item_count = dks_load_items(&g_items);
@@ -828,20 +863,29 @@ DWORD WINAPI start(LPVOID)
         dks_log("overlay: MinHook failed to start");
         return 0;
     }
+    dks_hotkeys_start();
+    // me3 and ModEngine2 load this DLL while the game is still starting up. Game code is scanned and hooked only once
+    // the game has its window (its code unpacked and its globals set up), so a scan that runs too early doesn't leave
+    // the motion hook or the item and flag calls "not found" for the whole session.
+    if (!dks_wait_for_game_window(120000))
+        dks_log("game window not seen after 120 s; hooking anyway");
     dks_motion_init();
     dks_sound_init();
-    dks_hotkeys_start();
     // Fallback "F1 test menu" B: no overlay (if hooking DirectX 12 breaks the game); the hotkeys still work.
     wchar_t no_overlay[8];
     DWORD n = GetEnvironmentVariableW(L"DKSIGN_NO_OVERLAY", no_overlay, 8);
     if (n > 0 && n < 8 && no_overlay[0] == L'1') {
         dks_log("overlay: off (DKSIGN_NO_OVERLAY=1); hotkeys only");
+        prescan();
         return 0;
     }
-    if (!hook_dx12())
+    if (!hook_dx12()) {
+        prescan();
         return 0;
+    }
     hook_input();
     dks_log("overlay: hooks in place; press F1 in game");
+    prescan();
     return 0;
 }
 

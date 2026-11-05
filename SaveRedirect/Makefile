@@ -18,5 +18,14 @@ test:
 	$(HOSTCC) -Wall -Wextra -Isrc tests/test_redirect.c src/redirect.c -o build/test_redirect
 	./build/test_redirect
 
+.PHONY: test test-hooks clean
 clean:
 	rm -rf build
+
+# End-to-end hook test under wine (or on Windows: run build/hooks/eldenring.exe).
+WINE ?= $(shell command -v wine64 || command -v wine || echo /usr/lib/wine/wine64)
+test-hooks: build/dksign_saveredirect.dll
+	mkdir -p build/hooks
+	$(CC) -O2 -Wall -o build/hooks/eldenring.exe tests/test_hooks.c
+	cp build/dksign_saveredirect.dll build/hooks/
+	cd build/hooks && WINEDEBUG=-all $(WINE) ./eldenring.exe
