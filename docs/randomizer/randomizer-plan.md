@@ -96,6 +96,30 @@ files on every PC in a session, so playing together means everyone loads the hos
 - Later: a DLL could exchange the world code over the Seamless session and swap worlds without pasting a code. When
   the apply stage writes `Mods\ER-Rando\<world>`, the mod code must also hash that folder's `regulation.bin`.
 
+### Enemies and bosses, mixed
+
+The randomizer only mixes what really exists in this player's build. port-maps writes two tables into `Mods\ER`
+(format in `Randomizer/src/DarkSign.Randomizer/Data/EnemyTables.cs`):
+
+- `darksign_enemies.tsv`: every DS3 enemy it placed in a ported map. For each one, the DS3 map and part, the Elden
+  Ring slot, part and entity, whether its scripts show a boss bar, and who stands there: the ported DS3 character,
+  or an Elden Ring stand-in.
+- `darksign_er_enemies.tsv`: the Elden Ring legacy-dungeon enemies the stand-ins come from, with their parts.
+
+`randomize` reads both (`EnemyTables.Apply`). The enemy shuffle then:
+
+- gives every regular spot in either game a character from either game;
+- picks the game first, weighted by `CrossGameEnemies`, so one game's long variant list doesn't crowd out the other;
+- then picks a model, preferring the spot's own kind (knight, soldier, dog...; shared with the map port's
+  stand-in picker in `Logic/EnemyKinds.cs`).
+
+Spots whose scripts show a boss bar are left to the boss shuffle, so a boss is never swapped for a trash mob. A DS3
+boss can travel as soon as its character is ported (its model comes from the placed table). Elden Ring bosses always
+can. Each placement carries the map, entity and character the apply stage writes.
+
+The randomizer is off by default: a new profile, and the dialog's first open, start with it unticked, so the game
+keeps its original enemies, bosses and items until a player turns it on.
+
 ## Stages
 
 1. **Done (this PR): logic, data, solver, preview.** The launcher's Randomizer button makes a checked plan and a
@@ -112,7 +136,9 @@ files on every PC in a session, so playing together means everyone loads the hos
    applied yet is planned as vanilla (e.g. items applied before fog walls means the logic uses vanilla fog walls), so
    a plan never relies on a change that isn't in the game.
 5. **Apply bosses and enemies.** Elden Ring bosses into DS3 arenas first (they already exist in Elden Ring), with
-   SpEffect scaling by tier; DS3 bosses once the enemy port lists them (`ds3-overrides.yaml` gets their models).
+   SpEffect scaling by tier; DS3 bosses as soon as the enemy porter lists them in `darksign_chr_map.tsv` (their
+   models are read from the enemy tables, so no data file needs editing). The plan already names each part to change
+   (map and entity) and the character to put there (model, NpcParam, ThinkParam); see "Enemies and bosses" above.
 6. **Per-character worlds in one save (optional).** A DLL that picks the overlay when a character loads.
 
 ## Open questions

@@ -575,7 +575,7 @@ public partial class MainWindow : Window
         StoreRowsIntoSettings();
         var profile = _settings.GetActiveProfile();
         var settings = profile.Randomizer is null
-            ? new RandomizerSettings { Enabled = true, Seed = RandomizerSettings.NewSeed() }
+            ? new RandomizerSettings { Enabled = false, Seed = RandomizerSettings.NewSeed() }
             : System.Text.Json.JsonSerializer.Deserialize<RandomizerSettings>(System.Text.Json.JsonSerializer.Serialize(profile.Randomizer))!;
         var result = RandomizerWindow.Show(this, profile.Name, settings, profile.JoinCode, out var joinCode);
         if (result == RandomizerWindow.Result.Cancelled)

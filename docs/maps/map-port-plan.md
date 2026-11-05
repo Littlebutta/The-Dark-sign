@@ -96,6 +96,9 @@ chr <DS3 model>       <ER model> <ER NpcParam ID> <ER ThinkParam ID> [name]   an
 
 An `npc` line wins over a `chr` line. Lines starting with `#` are ignored. Until a character is listed it gets a stand-in.
 
+port-maps also writes `darksign_enemies.tsv` (every DS3 enemy it placed, with its slot part and entity) and
+`darksign_er_enemies.tsv` (the Elden Ring enemies below) for the cross-game randomizer's enemy shuffle.
+
 Stand-ins: port-maps reads every enemy placed in Elden Ring's legacy dungeons (Stranded Graveyard, Stormveil, Raya Lucaria,
 Volcano Manor, Leyndell...) with its NpcParam name, sorts both games' names into kinds (knight, soldier, archer, mage,
 skeleton, dog, rat, bird, crab, worm, serpent, lizard, tree, ghost, beast, giant, dragon) and takes the earliest

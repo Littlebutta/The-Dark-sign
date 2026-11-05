@@ -2,12 +2,16 @@ using DarkSign.Randomizer.Logic;
 
 namespace DarkSign.Randomizer.Generate;
 
-/// <summary>A boss placed into an arena, and how much it should be scaled to fit the arena's place in the run.</summary>
+/// <summary>A boss placed into an arena, and how much it should be scaled to fit the arena's place in the run.
+/// When the porter's enemy tables are there, it also says which part to change (map and entity of the arena's boss)
+/// and the character to put there (model, NpcParam, ThinkParam).</summary>
 public sealed record BossPlacement(string Arena, string ArenaGame, string Boss, string BossName, string BossGame,
-    double FromTier, double ToTier);
+    double FromTier, double ToTier, string? Map = null, long Entity = 0, string? Model = null, int NpcParam = 0, int ThinkParam = 0);
 
-/// <summary>A regular enemy replaced by another game's or another area's enemy.</summary>
-public sealed record EnemyPlacement(string Spot, string Area, string Model, string Name, string FromGame, double ToTier);
+/// <summary>An enemy spot given another character, from either game. Map and Entity say which part in this
+/// player's build; Model, NpcParam and ThinkParam what to put there (0 when only the model is known).</summary>
+public sealed record EnemyPlacement(string Spot, string Area, string Model, string Name, string FromGame, double ToTier,
+    string? Map = null, long Entity = 0, int NpcParam = 0, int ThinkParam = 0, string SpotGame = "", string WasName = "");
 
 /// <summary>
 /// Moves bosses between arenas, mixing both games. Progression never depends on which boss stands in an arena:
@@ -22,6 +26,8 @@ public static class BossShuffler
         if (!options.Bosses)
             return result;
         var ported = options.PortedDs3Characters.ToHashSet(StringComparer.OrdinalIgnoreCase);
+        foreach (var c in world.Characters.Where(c => c.Game == SourceGame.DS3 && c.Ds3Model is not null))
+            ported.Add(c.Ds3Model!);
         foreach (var b in world.Bosses.Where(b => b.Game == SourceGame.DS3))
             b.Available = b.Model is not null && ported.Contains(b.Model);
 
@@ -48,18 +54,53 @@ public static class BossShuffler
                 var boss = rng.PickWeighted(fits, b => b.Game != arena.Game
                     ? Math.Max(0.02, options.CrossGameBosses) : Math.Max(0.02, 1 - options.CrossGameBosses));
                 remaining.Remove(boss);
+                var spot = ArenaSpot(world, arena);
+                var who = CharacterOf(world, boss);
                 result.Add(new BossPlacement(arena.Area, arena.Game.ToString(), boss.Id, boss.Name, boss.Game.ToString(),
-                    TierOf(world, boss.Area), TierOf(world, arena.Area)));
+                    TierOf(world, boss.Area), TierOf(world, arena.Area), spot?.Map, spot?.Entity ?? 0,
+                    who?.Model ?? boss.Model, who?.NpcParam ?? 0, who?.ThinkParam ?? 0));
             }
         }
         return result;
     }
 
+    /// <summary>
+    /// Gives enemy spots new characters, mixing both games: Elden Ring enemies into DS3's maps and ported DS3
+    /// characters into Elden Ring's (and each game's own enemies among its own spots). With the porter's enemy
+    /// tables, only spots and characters that exist in this player's build take part; bosses are left to the boss
+    /// shuffle, so an arena's boss is never replaced by a regular enemy.
+    /// </summary>
     public static List<EnemyPlacement> ShuffleEnemies(World world, RandomizerOptions options, Rng rng)
     {
         var result = new List<EnemyPlacement>();
         if (!options.Enemies)
             return result;
+        double Weight(SourceGame pick, SourceGame spot) =>
+            pick != spot ? Math.Max(0.02, options.CrossGameEnemies) : Math.Max(0.02, 1 - options.CrossGameEnemies);
+
+        if (world.Characters.Count > 0)
+        {
+            var spots = world.Enemies.Where(e => e.InGame && !e.Boss && e.Class == EnemyClass.Regular)
+                .OrderBy(e => e.Id, StringComparer.Ordinal).ToList();
+            // Pick the game first (so a long list of one game's variants doesn't drown the other), then a model of
+            // that game, preferring the spot's own kind (a knight's spot gets a knight more often), then a variant.
+            var byGame = world.Characters.Where(c => !c.Boss).GroupBy(c => c.Game)
+                .ToDictionary(g => g.Key, g => g.GroupBy(c => c.Model).OrderBy(m => m.Key, StringComparer.Ordinal).Select(m => m.ToList()).ToList());
+            if (byGame.Count == 0)
+                return result;
+            var games = byGame.Keys.OrderBy(g => g).ToList();
+            foreach (var spot in spots)
+            {
+                var game = rng.PickWeighted(games, g => Weight(g, spot.Game));
+                var model = rng.PickWeighted(byGame[game], m => spot.Kind.Length > 0 && m[0].Kind == spot.Kind ? 3.0 : 1.0);
+                var pick = rng.Pick(model);
+                result.Add(new EnemyPlacement(spot.Id, spot.Area, pick.Model, pick.Name, pick.Game.ToString(), TierOf(world, spot.Area),
+                    spot.Map, spot.Entity, pick.NpcParam, pick.ThinkParam, spot.Game.ToString(), spot.Name));
+            }
+            return result;
+        }
+
+        // No tables (nothing ported yet): FogMod's DS3 list, and only characters known to be in Elden Ring.
         var ported = options.PortedDs3Characters.ToHashSet(StringComparer.OrdinalIgnoreCase);
         bool Available(EnemySpot e) => e.Model is not null && (e.Game == SourceGame.ER || ported.Contains(e.Model));
         foreach (var cls in new[] { EnemyClass.Regular, EnemyClass.Elite, EnemyClass.Miniboss })
@@ -70,12 +111,44 @@ public static class BossShuffler
                 continue;
             foreach (var spot in spots)
             {
-                var pick = rng.PickWeighted(pool, p => p.Game != spot.Game
-                    ? Math.Max(0.02, options.CrossGameEnemies) : Math.Max(0.02, 1 - options.CrossGameEnemies));
-                result.Add(new EnemyPlacement(spot.Id, spot.Area, pick.Model!, pick.Name, pick.Game.ToString(), TierOf(world, spot.Area)));
+                var pick = rng.PickWeighted(pool, p => Weight(p.Game, spot.Game));
+                result.Add(new EnemyPlacement(spot.Id, spot.Area, pick.Model!, pick.Name, pick.Game.ToString(), TierOf(world, spot.Area),
+                    SpotGame: spot.Game.ToString(), WasName: spot.Name));
             }
         }
         return result;
+    }
+
+    /// <summary>The boss part standing in an arena in this build (from the enemy tables), if known. DS3 spots carry
+    /// their FogMod area; an Elden Ring map can hold several bosses, so there the boss's name has to match.</summary>
+    private static EnemySpot? ArenaSpot(World world, Boss arena)
+    {
+        var spots = world.Enemies.Where(e => e.InGame && e.Boss).OrderBy(e => e.Id, StringComparer.Ordinal);
+        if (arena.Game == SourceGame.DS3)
+            return spots.FirstOrDefault(e => e.Area == arena.Area);
+        return NameMatch(spots.Where(e => e.Game == SourceGame.ER && InMaps(world, arena, e.Map)).ToList(), arena.Name, e => e.Name);
+    }
+
+    /// <summary>The character that plays a boss in this build: the ported DS3 character, or the Elden Ring boss
+    /// placed in one of the boss's maps whose name matches.</summary>
+    private static Character? CharacterOf(World world, Boss boss)
+    {
+        if (boss.Game == SourceGame.DS3)
+            return world.Characters.FirstOrDefault(c => c.Game == SourceGame.DS3 && c.Boss && c.Ds3Model == boss.Model)
+                ?? world.Characters.FirstOrDefault(c => c.Game == SourceGame.DS3 && c.Ds3Model == boss.Model);
+        return NameMatch(world.Characters.Where(c => c.Game == SourceGame.ER && c.Boss && InMaps(world, boss, c.Map)).ToList(), boss.Name, c => c.Name);
+    }
+
+    // An arena area without its own map list (most Elden Ring arenas) may be in any Elden Ring map; the name decides.
+    private static bool InMaps(World world, Boss boss, string? map) =>
+        map is not null && (!world.Areas.TryGetValue(boss.Area, out var a) || a.Maps.Count == 0 ||
+                            a.Maps.Any(m => map.StartsWith(m, StringComparison.OrdinalIgnoreCase)));
+
+    // "Godrick the Grafted" matches an NpcParam named "Godrick the Grafted" or "Godrick".
+    private static T? NameMatch<T>(List<T> candidates, string bossName, Func<T, string> name) where T : class
+    {
+        var word = bossName.Split(' ', ',')[0];
+        return candidates.FirstOrDefault(c => word.Length > 2 && name(c).Contains(word, StringComparison.OrdinalIgnoreCase));
     }
 
     private static double TierOf(World world, string area) => world.Areas.TryGetValue(area, out var a) ? a.Tier : 0;
