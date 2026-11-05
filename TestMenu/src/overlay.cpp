@@ -665,7 +665,8 @@ void render(IDXGISwapChain3 *swap_chain)
     }
 
     // F1 counts only while the game has focus, so other programs keep their F1.
-    bool down = (GetAsyncKeyState(VK_F1) & 0x8000) != 0;
+    // Ctrl+Shift+F1 is the "start DS3 run" hotkey (hotkeys.c), not a menu toggle.
+    bool down = (GetAsyncKeyState(VK_F1) & 0x8000) != 0 && !((GetAsyncKeyState(VK_CONTROL) & 0x8000) && (GetAsyncKeyState(VK_SHIFT) & 0x8000));
     if (down && !g_f1_was_down && GetForegroundWindow() == g_hwnd)
         toggle();
     g_f1_was_down = down;
