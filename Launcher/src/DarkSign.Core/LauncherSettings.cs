@@ -56,6 +56,12 @@ public sealed class LauncherSettings
     /// <summary>Full path of ersc.dll from the player's own Seamless Co-op download. Never copied or shipped.</summary>
     public string SeamlessCoopDll { get; set; } = "";
 
+    /// <summary>
+    /// The method chosen for each feature in the Fallbacks window, by feature key ("sounds" -> "B"). Missing keys use
+    /// option A, the default. See <see cref="Fallbacks"/>.
+    /// </summary>
+    public Dictionary<string, string> Methods { get; set; } = [];
+
     /// <summary>Check GitHub for a newer launcher on every start.</summary>
     public bool AutoUpdate { get; set; } = true;
 

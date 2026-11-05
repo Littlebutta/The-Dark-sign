@@ -320,9 +320,13 @@ public partial class MainWindow : Window
         try
         {
             RemoveGameFolderProxy(plan.ExePath);
-            var me3 = await EnsureMe3Async(setup);
+            var coop = _settings.SeamlessCoop;
+            var tweaks = Fallbacks.Launch(_settings.Methods, coop);
+            var loader = tweaks.ModEngine2 ? await EnsureModEngineAsync(setup) : await EnsureMe3Async(setup);
             var porterVersion = await EnsurePorterAsync(setup);
-            if (rebuild || setup.NeedsContentBuild(porterVersion))
+            // The stamp holds the build methods (Fallbacks window), so switching one rebuilds the content.
+            var stamp = Fallbacks.BuildStamp(porterVersion, _settings.Methods);
+            if (rebuild || setup.NeedsContentBuild(stamp))
             {
                 if (!File.Exists(_settings.GameExePaths.GetValueOrDefault(GameId.DarkSouls3, "")))
                 {
@@ -333,7 +337,7 @@ public partial class MainWindow : Window
                 }
                 if (!await BuildContentAsync(setup))
                     return;
-                setup.MarkContentBuilt(porterVersion);
+                setup.MarkContentBuilt(stamp);
             }
             RefreshContentText();
             if (!launch)
@@ -345,14 +349,14 @@ public partial class MainWindow : Window
             await EnsureRandomizedWorldAsync(setup, _settings.GetActiveProfile(), remake: false);
             SaveIsolation.EnsureSaveDirectory(Root, _settings.GetActiveProfile().Name, GameId.EldenRing);
             var dlls = new List<string> { setup.WriteDll(SaveIsolation.RedirectDllName, RedirectDll.Bytes) };
-            var env = new Dictionary<string, string>();
+            var env = Fallbacks.GameEnvironment(_settings.Methods);
             if (_settings.TestMenu && TestMenuDll.Bytes is not null)
             {
                 dlls.Add(setup.WriteDll(EldenRingSetup.TestMenuDllName, TestMenuDll.Bytes));
                 env[EldenRingSetup.ItemsVariable] = setup.ItemsFile;
             }
             string? seamless = null;
-            if (_settings.SeamlessCoop)
+            if (coop)
             {
                 if (SeamlessCoop.Problem(_settings.SeamlessCoopDll) is { } problem)
                     throw new InvalidOperationException("Seamless Co-op is on, but " + char.ToLower(problem[0]) + problem[1..] +
@@ -360,9 +364,14 @@ public partial class MainWindow : Window
                 seamless = _settings.SeamlessCoopDll;
                 env[SeamlessCoop.CoopVariable] = "1";
             }
-            var profile = setup.WriteProfile(SeamlessCoop.Natives(seamless, dlls));
-            Process.Start(EldenRingSetup.Me3LaunchInfo(plan, me3, profile, env));
-            StatusText.Text = $"Launched Elden Ring. Saves: {plan.SaveDirectory}" +
+            var natives = SeamlessCoop.Natives(seamless, dlls);
+            if (tweaks.ModEngine2)
+                Process.Start(EldenRingSetup.LaunchInfo(plan, loader, setup.WriteConfig(natives), env));
+            else
+                Process.Start(EldenRingSetup.Me3LaunchInfo(plan, loader, setup.WriteProfile(natives, tweaks), env));
+            var methods = Fallbacks.Summary(_settings.Methods);
+            StatusText.Text = $"Launched Elden Ring{(tweaks.ModEngine2 ? " (ModEngine2)" : "")}. Saves: {plan.SaveDirectory}" +
+                (methods.Length > 0 ? $". Fallback methods: {methods}" : "") +
                 (seamless is not null ? $". Seamless Co-op is on (mod code {CoopCheckCode(setup) ?? "?"})" : "") +
                 (env.ContainsKey(EldenRingSetup.ItemsVariable)
                     ? ". Press F1 in game for the test menu (it shows over Borderless or Windowed mode)."
@@ -474,12 +483,14 @@ public partial class MainWindow : Window
         var started = Stopwatch.StartNew();
         var progress = new BuildProgress(this);
         var weapons = StartPorter(setup, "port-weapons", [], line => progress.Update("weapons", line));
+        var mapsArgs = new List<string> { "--after-pid", weapons.Pid.ToString() };
+        mapsArgs.AddRange(Fallbacks.MapsArguments(_settings.Methods));
         // The DS3 maps (F1 menu, "DS3 run" tab) are a test feature: if they fail, the weapons still work, so the game
         // starts anyway and the log says what went wrong.
         PorterRun? maps = null;
         try
         {
-            maps = StartPorter(setup, "port-maps", ["--after-pid", weapons.Pid.ToString()], line => progress.Update("maps", line));
+            maps = StartPorter(setup, "port-maps", mapsArgs, line => progress.Update("maps", line));
         }
         catch (Exception ex) when (ex is Win32Exception or InvalidOperationException or IOException)
         {
@@ -646,6 +657,9 @@ public partial class MainWindow : Window
         start.ArgumentList.Add(command);
         foreach (var arg in extraArgs)
             start.ArgumentList.Add(arg);
+        // The build methods chosen in the Fallbacks window reach the porter as DARKSIGN_* variables.
+        foreach (var (key, value) in Fallbacks.PorterEnvironment(_settings.Methods))
+            start.Environment[key] = value;
 
         var process = Process.Start(start)!;
         return new PorterRun(process.Id, WaitForPorterAsync(process, log, onLine));
@@ -691,6 +705,19 @@ public partial class MainWindow : Window
         var path = Path.Combine(dir, fileName);
         PathGuard.EnsureInsideRoot(path, Root);
         return path;
+    }
+
+    private void OnFallbacks(object sender, RoutedEventArgs e)
+    {
+        StoreRowsIntoSettings();
+        if (!FallbacksWindow.Show(this, _settings.Methods, out var methods))
+            return;
+        var before = Fallbacks.BuildSignature(_settings.Methods);
+        _settings.Methods = methods;
+        _settings.Save(_settingsPath);
+        var summary = Fallbacks.Summary(methods);
+        StatusText.Text = (summary.Length == 0 ? "All features use their default method (A)." : $"Fallback methods: {summary}.") +
+                          (Fallbacks.BuildSignature(methods) != before ? " The content is rebuilt on the next PLAY." : "");
     }
 
     private void OnTestMenuChanged(object sender, RoutedEventArgs e)

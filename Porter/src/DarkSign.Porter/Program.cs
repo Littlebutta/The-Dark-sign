@@ -78,6 +78,9 @@ try
         return SoundSelfTest.Run();
     if (argList[0].Equals("event-coverage", StringComparison.OrdinalIgnoreCase) && argList.Count == 3)
         return DarkSign.Porter.Maps.EventPort.CoverageReport(argList[1], argList[2]);
+    // Build methods chosen in the launcher's Fallbacks window (DarkSign.Core.Fallbacks); "" = every default.
+    if (Environment.GetEnvironmentVariable("DARKSIGN_METHODS") is { Length: > 0 } methods)
+        Console.WriteLine($"fallback methods: {methods}");
     var ctx = new PorterContext(PorterContext.FindRoot(root), gameExes);
     return argList[0].ToLowerInvariant() switch
     {
