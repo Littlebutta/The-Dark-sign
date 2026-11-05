@@ -21,6 +21,8 @@ public static partial class MapPortChecks
         yield return ("events: one warp event per ported map, started from the constructor, replaced on a rerun", PerMapWarps);
         yield return ("slots: the new-map-ID test slot uses a template map and doesn't hijack the real m40 slot", ProbeSlot);
         yield return ("events: the return point prefers a Roundtable Hold warp", ReturnPoint);
+        yield return ("fallbacks: auto-start adds one start request per load outside a run, and a rerun without it removes it", AutoStartRun);
+        yield return ("fallbacks: the new-map-ID slots give each DS3 map its own unshipped ID, built from a colosseum", NewIdSlots);
         yield return ("names: collision and texture binder entries", Names);
         yield return ("navmesh: DS3 Havok AI 2014 -> Elden Ring 2018 keeps faces, edges, graph and tree (XML)", () => Navmesh(xml: true));
         yield return ("navmesh: DS3 Havok AI 2014 -> Elden Ring 2018 keeps faces, edges, graph and tree (binary)", () => Navmesh(xml: false));
@@ -422,6 +424,32 @@ public static partial class MapPortChecks
         Expect(inits == 2, $"{inits} constructor inits");
         Expect(RunEvents.WarpRequestFlag(0) / 10000 == RunEvents.FlagBlock / 10000 && RunEvents.WarpRequestFlag(0) % 10000 is >= 2000 and < 3000,
             "request flags must be in the block's temporary range");
+    }
+
+    private static void AutoStartRun()
+    {
+        var common = SyntheticCommon();
+        RunEvents.AddTo(common, ErId, 45000990, Back, autoStart: true);
+        common = EMEVD.Read(common.Write());
+        var auto = common.Events.Single(e => e.ID == RunEvents.AutoStartEventId);
+        Expect(auto.Instructions.Count == 3, $"{auto.Instructions.Count} instructions");
+        var end = auto.Instructions[0];
+        Expect(end.Bank == 1003 && end.ID == 2 && BitConverter.ToUInt32(end.ArgData, 4) == RunEvents.Ds3RunActive, "ends when the run is active");
+        var set = auto.Instructions[2];
+        Expect(set.Bank == 2003 && set.ID == 66 && BitConverter.ToUInt32(set.ArgData, 4) == RunEvents.StartDs3Request, "requests the start");
+        int Inits(EMEVD c) => c.Events.Single(e => e.ID == 0).Instructions.Count(i => i.Bank == 2000 && BitConverter.ToUInt32(i.ArgData, 4) == RunEvents.AutoStartEventId);
+        Expect(Inits(common) == 1, "started once from the constructor");
+        RunEvents.AddTo(common, ErId, 45000990, Back);
+        Expect(common.Events.All(e => e.ID != RunEvents.AutoStartEventId) && Inits(common) == 0, "a build without it removes it");
+        Expect(MapValidate.CheckRunEvents(common, ErId).Count() == 0, "run events still valid");
+    }
+
+    private static void NewIdSlots()
+    {
+        var slots = MapSlots.NewIdSlots();
+        Expect(slots.Select(s => s.Ds3).SequenceEqual(MapSlots.Colosseums.Where(s => !s.Probe).Select(s => s.Ds3)), "same DS3 maps");
+        Expect(slots.All(s => s.Template is { Area: 45 } && s.Er.Area >= 50 && !s.Probe), "colosseum templates, IDs from m50");
+        Expect(slots.Select(s => s.Er).Distinct().Count() == slots.Count, "one ID each");
     }
 
     private static void ProbeSlot()

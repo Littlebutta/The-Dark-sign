@@ -64,6 +64,7 @@ public static partial class MovesetPort
         foreach (var (name, ds3Ids) in ds3Selectors)
             if (ds3Ids.Count == 1 && erSelectors.TryGetValue(name, out var erIds) && erIds.Count == 1)
                 erToDs3.TryAdd(erIds.First(), ds3Ids.First());
+        ExtendMap(erToDs3, erSelectors.Values.SelectMany(v => v).ToHashSet());
 
         // Each binder is read once (decompressing the large animation binder took a while).
         var (erMainBytes, erMainCompression) = erArchives.ReadWithCompression("/chr/c0000.anibnd.dcx");
@@ -192,6 +193,7 @@ public static partial class MovesetPort
         var soundPort = new SoundEvents(sounds, soundSample);
 
         int portedGroups = 0, skippedGroups = 0;
+        int? timeActVariable = null;
         Console.WriteLine($"moveset: {ports.Count} weapons in {own.Count} DS3 movesets ({classes.Count} by class alone), " +
                           $"{freeSections.Count} free motion categories; {groups.Count(g => order.Contains(g.Key))} to build");
 
@@ -309,6 +311,8 @@ public static partial class MovesetPort
                 AddFile(erMain, $"a{section}.tae", tae.Write(), templateTaeFile);
 
                 // 2. Register the category in every weapon selector: a clip per move, copied from the template's.
+                timeActVariable ??= graph.OfType<hkbBehaviorGraphStringData>().Select(d => d.m_variableNames.IndexOf("TimeActEditor_10"))
+                    .FirstOrDefault(i => i >= 0, -1);
                 int registered = 0;
                 var internalIds = new Dictionary<string, short>();
                 foreach (var selector in selectors.Where(IsWeaponSelector))
@@ -322,6 +326,8 @@ public static partial class MovesetPort
                         if (!internalIds.TryGetValue(name, out var internalId))
                             internalIds[name] = internalId = checked((short)nextInternalId++);
                         var copy = HavokGraph.ShallowCopy(clip);
+                        if (JumpBinding && int.Parse(m.Groups[2].Value) % 100 == 70)
+                            BindStartTime(copy, timeActVariable);
                         copy.m_animationName = name;
                         copy.m_name = clip.m_name?.Replace(clip.m_animationName!, name, StringComparison.Ordinal);
                         copy.m_animationInternalId = internalId;
@@ -385,6 +391,46 @@ public static partial class MovesetPort
     }
 
     /// <summary>
+    /// DARKSIGN_ANIM_MAP (launcher fallback "anim-map"): how Elden Ring moves find their DS3 animation beyond the
+    /// behaviour selectors that hold exactly one ID in each game (the default, which left moves such as charged heavies
+    /// on Elden Ring's animation when a selector holds several IDs or the two games name it differently).
+    /// "offsets": an unpaired Elden Ring ID takes the ID offset its paired neighbours in the same block of 100 share
+    /// (Elden Ring 0305xx -> DS3 0303xx when most of that block's pairs differ by the same amount).
+    /// "table": offsets, plus the pairs found by hand while porting Friede's scythe (heavy 030500/030501/030505 = DS3
+    /// 030320/030330/030321; two-handed moves are DS3 034xxx = Elden Ring 032xxx), which win over everything else.
+    /// A pair is only used when the weapon's DS3 sections have that animation, so a wrong guess keeps Elden Ring's move.
+    /// </summary>
+    public static readonly string AnimMap = (Environment.GetEnvironmentVariable("DARKSIGN_ANIM_MAP") ?? "").ToLowerInvariant();
+
+    internal static readonly (int Er, int Ds3)[] HandPairs = [(30500, 30320), (30501, 30330), (30505, 30321)];
+
+    /// <summary>Adds pairs to <paramref name="erToDs3"/> per <see cref="AnimMap"/>; <paramref name="erIds"/> are every
+    /// Elden Ring ID the weapon selectors play.</summary>
+    internal static void ExtendMap(Dictionary<int, int> erToDs3, IReadOnlySet<int> erIds, string? mode = null)
+    {
+        mode ??= AnimMap;
+        if (mode is not ("offsets" or "table"))
+            return;
+        int before = erToDs3.Count;
+        // The usual offset in each block of 100 (Elden Ring ID / 100), from the pairs the selectors gave.
+        var blockOffset = erToDs3.GroupBy(p => p.Key / 100)
+            .Select(g => (Block: g.Key, Best: g.GroupBy(p => p.Value - p.Key).OrderByDescending(o => o.Count()).First(), Total: g.Count()))
+            .Where(b => b.Best.Count() * 2 > b.Total) // a clear majority, else the block is left alone
+            .ToDictionary(b => b.Block, b => b.Best.Key);
+        foreach (var er in erIds.Where(id => !erToDs3.ContainsKey(id)).Order())
+            if (blockOffset.TryGetValue(er / 100, out var offset) && er + offset > 0)
+                erToDs3[er] = er + offset;
+        if (mode == "table")
+            foreach (var (er, ds3) in HandPairs)
+            {
+                erToDs3[er] = ds3;
+                if (erIds.Contains(er + 2000)) // two-handed: Elden Ring 032xxx, DS3 034xxx
+                    erToDs3[er + 2000] = ds3 + 4000;
+            }
+        Console.WriteLine($"moveset: anim map '{mode}' added {erToDs3.Count - before} pairs to the {before} from behaviour selectors");
+    }
+
+    /// <summary>
     /// DARKSIGN_MOVESET_FIELD=wmc puts the new section in wepmotionCategory, as builds up to 1.0.1xx did. By default it
     /// goes in spAtkcategory ("Special Motion Category"), the way Elden Ring's own unique movesets and the community's
     /// custom movesets do it (Themyys, Introduction to Moveset Modding): every animation in that section overrides the
@@ -395,15 +441,23 @@ public static partial class MovesetPort
     public static readonly bool UseWeaponMotionCategory =
         string.Equals(Environment.GetEnvironmentVariable("DARKSIGN_MOVESET_FIELD"), "wmc", StringComparison.OrdinalIgnoreCase);
 
+    /// <summary>
+    /// DARKSIGN_MOVESET_FIELD=both: the section goes in spAtkcategory and, when it fits the byte, in wepmotionCategory
+    /// too, so whichever field the game reads for a move finds the DS3 moveset. Elden Ring's class rules that follow
+    /// wepmotionCategory (powerstance, guard) then come from the new section, which starts as a copy of the template's.
+    /// </summary>
+    public static readonly bool UseBothFields =
+        string.Equals(Environment.GetEnvironmentVariable("DARKSIGN_MOVESET_FIELD"), "both", StringComparison.OrdinalIgnoreCase);
+
     /// <summary>Points one EquipParamWeapon row at its ported section and DS3 attack variation.</summary>
     public static void PointRow(PARAM.Row row, int section, int variation, bool ds3Sounds)
     {
-        if (UseWeaponMotionCategory)
+        if (UseWeaponMotionCategory || UseBothFields)
         {
             if (section <= byte.MaxValue)
                 row["wepmotionCategory"].Value = Convert.ChangeType(section, row["wepmotionCategory"].Value!.GetType());
         }
-        else
+        if (!UseWeaponMotionCategory)
             row["spAtkcategory"].Value = Convert.ChangeType(section, row["spAtkcategory"].Value!.GetType());
         if (variation > 0)
             row["behaviorVariationId"].Value = Convert.ChangeType(variation, row["behaviorVariationId"].Value!.GetType());
@@ -412,6 +466,35 @@ public static partial class MovesetPort
         // the template makes the game ask for an event that isn't in the bank, and the swing stays silent.
         if (ds3Sounds)
             row["wepSeIdOffset"].Value = Convert.ChangeType(0, row["wepSeIdOffset"].Value!.GetType());
+    }
+
+    /// <summary>
+    /// DARKSIGN_JUMP_BINDING=1 (launcher fallback "jump-attacks" B): every new clip of an animation whose ID ends in 70
+    /// gets its own variable binding set with its Start Time bound to the behaviour variable TimeActEditor_10, as
+    /// Themyys' moveset guide says jump attacks need (else they play again on landing). By default a new clip shares
+    /// the template clip's binding set, which is the same binding when the template has it.
+    /// </summary>
+    private static readonly bool JumpBinding = Environment.GetEnvironmentVariable("DARKSIGN_JUMP_BINDING") == "1";
+
+    private static int _jumpBindings;
+
+    private static void BindStartTime(hkbClipGenerator clip, int? variable)
+    {
+        if (variable is not >= 0)
+            return;
+        var set = new hkbVariableBindingSet { m_indexOfBindingToEnable = clip.m_variableBindingSet?.m_indexOfBindingToEnable ?? -1 };
+        foreach (var b in clip.m_variableBindingSet?.m_bindings ?? [])
+            if (b.m_memberPath != "startTime")
+                set.m_bindings.Add(new hkbVariableBindingSet.Binding
+                    { m_memberPath = b.m_memberPath, m_variableIndex = b.m_variableIndex, m_bitIndex = b.m_bitIndex, m_bindingType = b.m_bindingType });
+        set.m_bindings.Add(new hkbVariableBindingSet.Binding
+        {
+            m_memberPath = "startTime", m_variableIndex = variable.Value, m_bitIndex = -1,
+            m_bindingType = hkbVariableBindingSet.Binding.BindingType.BINDING_TYPE_VARIABLE,
+        });
+        clip.m_variableBindingSet = set;
+        if (_jumpBindings++ == 0)
+            Console.WriteLine($"moveset: jump attack clips get Start Time bound to TimeActEditor_10 (variable {variable})");
     }
 
     /// <summary>The player files Apply writes; removed when a port fails so the game loads Elden Ring's own.</summary>

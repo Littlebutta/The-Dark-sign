@@ -15,10 +15,14 @@ namespace DarkSign.Porter;
 /// BothHandDamipolyId(k) two-handed in the right hand, BothHandDamipolyId(4+k) two-handed in the left hand,
 /// ShealthDamipolyId(2k) / (2k+1) sheathed from the right / left hand.
 /// DARKSIGN_ABSORP=0 keeps every weapon on its template's row.
+/// Fallbacks (launcher "two-hand" B and C): DARKSIGN_ABSORP=er copies the positions from an Elden Ring row that
+/// already holds a second model in the left hand when two-handed (the game's own working layout); DARKSIGN_ABSORP=raw
+/// copies DS3's dummy poly IDs as they are, without matching them through the bones.
 /// </summary>
 public static class AbsorpPort
 {
-    private static readonly bool Enabled = Environment.GetEnvironmentVariable("DARKSIGN_ABSORP") != "0";
+    private static readonly string Mode = (Environment.GetEnvironmentVariable("DARKSIGN_ABSORP") ?? "").ToLowerInvariant();
+    private static readonly bool Enabled = Mode != "0";
 
     public static void Apply(GameArchives erArchives, GameArchives ds3Archives, ParamStore er, ParamStore ds3, IReadOnlyList<WeaponPlan> plans)
     {
@@ -36,7 +40,12 @@ public static class AbsorpPort
             Console.WriteLine("absorp: WepAbsorpPosParam missing in one of the games, skipped");
             return;
         }
-        var map = DummyMap(ds3Archives, erArchives);
+        var map = Mode == "raw" ? RawMap(ds3Archives) : DummyMap(ds3Archives, erArchives);
+        // DARKSIGN_ABSORP=er: Elden Ring rows whose model 1 sits in the left hand when two-handed, most used first.
+        var erSplitRows = Mode == "er" ? ErSplitRows(erAbsorp, erWeapons) : [];
+        if (Mode == "er")
+            Console.WriteLine($"absorp: method 'er': {erSplitRows.Count} Elden Ring rows hold model 1 in the left hand two-handed" +
+                              (erSplitRows.Count > 0 ? $" (using row {erSplitRows[0].ID})" : "; falling back to DS3 positions"));
         int nextId = Math.Max(erAbsorp.Rows.Max(r => r.ID) + 1, 900_000);
         int added = 0;
         var notes = new List<string>();
@@ -54,9 +63,18 @@ public static class AbsorpPort
                 continue;
             }
             var row = new PARAM.Row(nextId++, "", erAbsorp.AppliedParamdef);
-            for (int i = 0; i < row.Cells.Count; i++)
-                row.Cells[i].Value = template.Cells[i].Value;
             var unmapped = new SortedSet<int>();
+            if (erSplitRows.Count > 0)
+            {
+                // The Elden Ring split row as a whole (positions, display types and visibility for every model).
+                var split = erSplitRows[0];
+                for (int i = 0; i < row.Cells.Count; i++)
+                    row.Cells[i].Value = split.Cells[i].Value;
+                models = 0; // nothing more to place
+            }
+            else
+                for (int i = 0; i < row.Cells.Count; i++)
+                    row.Cells[i].Value = template.Cells[i].Value;
             for (int k = 0; k < Math.Min(models, 4); k++)
             {
                 Set(row, $"right_{k}", Ds3(source, "OneHandDamipolyId", 2 * k), map, unmapped);
@@ -89,6 +107,19 @@ public static class AbsorpPort
         foreach (var note in notes.Take(12))
             Console.WriteLine("  " + note);
     }
+
+    /// <summary>Elden Ring rows that place a model 1 in the left hand when two-handed, by how many weapons use them.</summary>
+    private static List<PARAM.Row> ErSplitRows(PARAM absorp, PARAM weapons)
+    {
+        var uses = weapons.Rows.GroupBy(w => Convert.ToInt32(w["absorpParamId"].Value)).ToDictionary(g => g.Key, g => g.Count());
+        return absorp.Rows.Where(r => r["leftBoth_1"] is { } c && Convert.ToInt32(c.Value) > 0
+                                      && r["both_0"] is { } b && Convert.ToInt32(b.Value) > 0 && uses.ContainsKey(r.ID))
+            .OrderByDescending(r => uses[r.ID]).ThenBy(r => r.ID).ToList();
+    }
+
+    /// <summary>DS3 dummy poly IDs unchanged (method 'raw'): every player dummy maps to itself.</summary>
+    private static Dictionary<int, int> RawMap(GameArchives ds3) =>
+        PlayerDummies(ds3).Keys.ToDictionary(id => id, id => id);
 
     private static int Ds3(PARAM.Row row, string field, int index) =>
         row[$"{field}{index}"] is { } cell ? Convert.ToInt32(cell.Value) : -1;

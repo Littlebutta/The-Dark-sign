@@ -81,6 +81,17 @@ public static class Fallbacks
             new("A", "spAtkcategory (default)", "The DS3 moveset goes in the weapon's Special Motion Category, the way Elden Ring's unique weapons and community moveset mods do it; the row keeps its template's motion category."),
             new("B", "wepmotionCategory", "The DS3 moveset replaces the weapon's motion category itself (builds up to 1.0.12x); the template's special section, if it has one, is left in place.")
                 { PorterEnv = Env("DARKSIGN_MOVESET_FIELD", "wmc") },
+            new("C", "Both fields", "The DS3 moveset goes in spAtkcategory and in wepmotionCategory, so whichever one the game reads for a move finds it. Class rules (powerstance, guard) then follow the new section, a copy of the template's.")
+                { PorterEnv = Env("DARKSIGN_MOVESET_FIELD", "both") },
+        ]),
+        new("anim-map", "Weapon movesets", "Which DS3 animation replaces each move (R2, charged R2)", Stage.Build,
+            "Some moves of a ported weapon are DS3 but others (often R2, charged R2 or two-handed attacks) still look like Elden Ring.",
+        [
+            new("A", "Behaviour selector names (default)", "An Elden Ring move gets the DS3 animation whose behaviour selector has the same name, when each game's selector holds exactly one animation."),
+            new("B", "Names, then neighbours' offsets", "Moves the names don't pair take the ID offset their paired neighbours share (e.g. Elden Ring 0305xx -> DS3 0303xx), when that DS3 animation exists for the weapon.")
+                { PorterEnv = Env("DARKSIGN_ANIM_MAP", "offsets") },
+            new("C", "B plus the hand-checked heavy table", "B, plus the heavy-attack pairs found while porting Friede's scythe (Elden Ring 030500/030501/030505 = DS3 030320/030330/030321, two-handed 032xxx = DS3 034xxx), which win.")
+                { PorterEnv = Env("DARKSIGN_ANIM_MAP", "table") },
         ]),
         new("combo-windows", "Weapon movesets", "When the next attack can start (R1 chains)", Stage.Build,
             "R1 doesn't chain to the second swing, swings are cut short, or you can act too early or too late.",
@@ -105,6 +116,13 @@ public static class Fallbacks
             new("B", "Interleaved (uncompressed)", "Every frame stored as is (DARKSIGN_ANIM_INTERLEAVED=1). Exact, but about 5x bigger: the first build like this hung loading.")
                 { PorterEnv = Env("DARKSIGN_ANIM_INTERLEAVED", "1") },
         ]),
+        new("jump-attacks", "Weapon movesets", "Jump attacks", Stage.Build,
+            "A ported weapon's jump attack plays again when you land, or the landing freezes.",
+        [
+            new("A", "Template clip settings (default)", "Each new behaviour clip shares its Elden Ring template clip's variable bindings, as copied."),
+            new("B", "Start Time bound to TimeActEditor_10", "Every new clip of a jump attack (animation ID ending in 70) gets its own binding of Start Time to TimeActEditor_10, as Themyys' moveset guide says jump attacks need.")
+                { PorterEnv = Env("DARKSIGN_JUMP_BINDING", "1") },
+        ]),
         new("event-groups", "Weapon movesets", "TAE event groups for new DS3 events", Stage.Build,
             "DS3 effects or sounds of some moves never happen while others do, or a move freezes the character.",
         [
@@ -118,6 +136,10 @@ public static class Fallbacks
             "Two-handing a split weapon doesn't split it, or the second blade floats, sticks to the body or sits in the wrong hand.",
         [
             new("A", "DS3 positions, matched by bone (default)", "Each model's DS3 dummy poly translated to the Elden Ring player dummy on the same bone."),
+            new("B", "An Elden Ring split layout", "The weapon takes a whole WepAbsorpPosParam row from an Elden Ring weapon that already holds a second model in the left hand when two-handed (the game's own working layout).")
+                { PorterEnv = Env("DARKSIGN_ABSORP", "er") },
+            new("C", "DS3 dummy IDs as they are", "DS3's dummy poly IDs copied without matching them through the bones (both games number most hand and back dummies alike).")
+                { PorterEnv = Env("DARKSIGN_ABSORP", "raw") },
             new("off", "Off (template positions)", "Ported weapons keep their template's WepAbsorpPosParam row (DARKSIGN_ABSORP=0): no split. Tells whether the split is what breaks something.")
                 { PorterEnv = Env("DARKSIGN_ABSORP", "0") },
         ]),
@@ -147,6 +169,20 @@ public static class Fallbacks
         ]),
 
         // ---- DS3 maps ----
+        new("map-slots", "DS3 maps", "Which Elden Ring map IDs hold the DS3 maps", Stage.Build,
+            "Warping into a DS3 map fails (nothing happens, endless loading, crash, or you land in the colosseum).",
+        [
+            new("A", "Colosseum slots (default)", "Firelink/Cemetery of Ash, High Wall and Undead Settlement replace the three colosseum arenas (m45_00-02), which single-player never visits; plus an m50 test copy of the Cemetery."),
+            new("B", "New map IDs", "Each DS3 map gets a map ID Elden Ring doesn't ship (m50_00, m51_00, m52_00), built from the colosseums' file formats. Works if the F1 menu's m50 test warp works.")
+                { PorterEnv = Env("DARKSIGN_MAP_SLOTS", "new") },
+        ]),
+        new("run-start", "DS3 maps", "Getting into the DS3 run", Stage.Build,
+            "Neither the F1 menu's Start button nor Ctrl+Shift+F1 takes you to the Cemetery of Ash.",
+        [
+            new("A", "On request (default)", "The F1 menu or Ctrl+Shift+F1 sets a request flag, and an event in common.emevd warps you."),
+            new("B", "Automatically on load", "Also, every time a character loads outside a DS3 run, the event warps you there after 3 seconds, without any menu. Leave with the F1 menu or Ctrl+Shift+F2 (you'll be sent back on the next load).")
+                { PorterEnv = Env("DARKSIGN_AUTO_DS3_RUN", "1") },
+        ]),
         new("map-collision", "DS3 maps", "Map collision format", Stage.Build,
             "You fall through the floor of a DS3 map, or the game hangs or crashes while a DS3 map loads.",
         [

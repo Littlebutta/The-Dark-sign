@@ -27,6 +27,12 @@ public static class RunEvents
     public const uint StartEventId = FlagBlock + 1100;
     public const uint LeaveEventId = FlagBlock + 1101;
 
+    /// <summary>Fallback "run-start" B: on every load outside a DS3 run, requests the start (no menu needed).</summary>
+    public const uint AutoStartEventId = FlagBlock + 1102;
+
+    /// <summary>DARKSIGN_AUTO_DS3_RUN=1 (launcher fallback "run-start" B) adds <see cref="AutoStartEventId"/>.</summary>
+    public static readonly bool AutoStart = Environment.GetEnvironmentVariable("DARKSIGN_AUTO_DS3_RUN") == "1";
+
     /// <summary>Per-map warps (F1 menu, one button per ported map): request flag 2200+i, event 1200+i.</summary>
     public const int MaxWarps = 100;
     public static uint WarpRequestFlag(int index) => FlagBlock + 2200 + (uint)index;
@@ -42,6 +48,7 @@ public static class RunEvents
     // as the layer mask and drop it from the arguments.
     public static EMEVD.Instruction Make(int bank, int id, params object[] args) => new(bank, id, args);
     private static EMEVD.Instruction WaitForFlag(uint flag) => Make(1003, 0, On, EventFlagType, flag);
+    private static EMEVD.Instruction EndIfFlagOn(uint flag) => Make(1003, 2, (byte)0, On, EventFlagType, flag);
     private static EMEVD.Instruction SetFlag(uint flag, byte state) => Make(2003, 66, EventFlagType, flag, state);
     private static EMEVD.Instruction WarpPlayer(MapId map, uint entity) =>
         Make(2003, 14, (byte)map.Area, (byte)map.Block, (byte)map.Region, (byte)map.Index, entity, -1);
@@ -54,9 +61,9 @@ public static class RunEvents
     /// <summary>
     /// Adds (or replaces) the run events in common.emevd and starts them from its constructor (event 0).
     /// </summary>
-    public static void AddTo(EMEVD common, MapId host, uint startEntity, ReturnPoint back)
+    public static void AddTo(EMEVD common, MapId host, uint startEntity, ReturnPoint back, bool autoStart = false)
     {
-        common.Events.RemoveAll(e => e.ID is StartEventId or LeaveEventId);
+        common.Events.RemoveAll(e => e.ID is StartEventId or LeaveEventId or AutoStartEventId);
         foreach (var e in common.Events.Where(e => e.ID == 0))
             e.Instructions.RemoveAll(IsOurInit);
 
@@ -79,6 +86,17 @@ public static class RunEvents
         common.Events.Add(start);
         common.Events.Add(leave);
 
+        // Runs once per load: outside a DS3 run, wait for the world to settle and ask the start event to warp.
+        EMEVD.Event? auto = null;
+        if (autoStart)
+        {
+            auto = new EMEVD.Event(AutoStartEventId, EMEVD.Event.RestBehaviorType.Default);
+            auto.Instructions.Add(EndIfFlagOn(Ds3RunActive));
+            auto.Instructions.Add(WaitSeconds(3));
+            auto.Instructions.Add(SetFlag(StartDs3Request, On));
+            common.Events.Add(auto);
+        }
+
         var constructor = common.Events.FirstOrDefault(e => e.ID == 0);
         if (constructor is null)
         {
@@ -87,11 +105,13 @@ public static class RunEvents
         }
         constructor.Instructions.Add(InitializeEvent(0, StartEventId));
         constructor.Instructions.Add(InitializeEvent(0, LeaveEventId));
+        if (auto is not null)
+            constructor.Instructions.Add(InitializeEvent(0, AutoStartEventId));
     }
 
     private static bool IsOurInit(EMEVD.Instruction i) =>
         i.Bank == 2000 && i.ID == 0 && i.ArgData.Length >= 8
-        && (BitConverter.ToUInt32(i.ArgData, 4) is StartEventId or LeaveEventId || IsWarpEvent(BitConverter.ToUInt32(i.ArgData, 4)));
+        && (BitConverter.ToUInt32(i.ArgData, 4) is StartEventId or LeaveEventId or AutoStartEventId || IsWarpEvent(BitConverter.ToUInt32(i.ArgData, 4)));
 
     /// <summary>
     /// Adds (or replaces) one warp event per ported map: it waits for the map's request flag, turns the run on and
