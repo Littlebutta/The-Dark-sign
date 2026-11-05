@@ -48,16 +48,24 @@ public static class SeamlessCoop
     }
 
     /// <summary>
-    /// A short code for the built regulation.bin. Seamless needs every player's regulation.bin to be identical,
-    /// so friends compare this code before playing together (null when the content isn't built).
+    /// A short code for the built content. Seamless needs every player's regulation.bin to be identical, and the
+    /// build methods (Fallbacks window) change animations, sounds, effects and maps outside regulation.bin, so the
+    /// code covers both: friends compare it before playing together (null when the content isn't built). With every
+    /// build method on A it is the regulation.bin hash alone, as before.
     /// </summary>
     public static string? Fingerprint(string modDir)
     {
         var regulation = Path.Combine(modDir, "regulation.bin");
         if (!File.Exists(regulation))
             return null;
-        using var stream = File.OpenRead(regulation);
-        return Convert.ToHexString(SHA256.HashData(stream))[..8];
+        byte[] hash;
+        using (var stream = File.OpenRead(regulation))
+            hash = SHA256.HashData(stream);
+        var stampFile = Path.Combine(modDir, EldenRingSetup.BuildStampName);
+        var methods = File.Exists(stampFile) ? Fallbacks.SignatureOfStamp(File.ReadAllText(stampFile)) : "";
+        if (methods.Length > 0)
+            hash = SHA256.HashData([.. hash, .. System.Text.Encoding.UTF8.GetBytes("|" + methods)]);
+        return Convert.ToHexString(hash)[..8];
     }
 
     /// <summary>The me3 natives in load order: Seamless first (as its own docs list it), then ours.</summary>

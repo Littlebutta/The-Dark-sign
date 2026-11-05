@@ -509,14 +509,18 @@ public partial class MainWindow : Window
         var started = Stopwatch.StartNew();
         var progress = new BuildProgress(this);
         var weapons = StartPorter(setup, "port-weapons", [], line => progress.Update("weapons", line));
-        var mapsArgs = new List<string> { "--after-pid", weapons.Pid.ToString() };
+        // Fallback "build-threads" B (one core): port-maps starts only after port-weapons, so nothing runs side by side.
+        var serial = Fallbacks.SerialBuild(_settings.Methods);
+        var weaponsFailed = serial && !(await weapons.Completion).Ok;
+        var mapsArgs = serial ? new List<string>() : new List<string> { "--after-pid", weapons.Pid.ToString() };
         mapsArgs.AddRange(Fallbacks.MapsArguments(_settings.Methods));
         // The DS3 maps (F1 menu, "DS3 run" tab) are a test feature: if they fail, the weapons still work, so the game
         // starts anyway and the log says what went wrong.
         PorterRun? maps = null;
         try
         {
-            maps = StartPorter(setup, "port-maps", mapsArgs, line => progress.Update("maps", line));
+            if (!weaponsFailed)
+                maps = StartPorter(setup, "port-maps", mapsArgs, line => progress.Update("maps", line));
         }
         catch (Exception ex) when (ex is Win32Exception or InvalidOperationException or IOException)
         {

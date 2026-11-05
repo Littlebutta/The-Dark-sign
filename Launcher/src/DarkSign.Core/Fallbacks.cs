@@ -292,6 +292,21 @@ public static class Fallbacks
         string.Join(", ", Choices(methods).Where(c => c.Option != c.Feature.Options[0])
             .Select(c => $"{c.Feature.Title}: {c.Option.Letter}"));
 
+    /// <summary>The build methods a stamp from <see cref="BuildStamp"/> was built with ("" for all-A or no stamp).</summary>
+    public static string SignatureOfStamp(string? stamp)
+    {
+        stamp = stamp?.Trim() ?? "";
+        int open = stamp.IndexOf(" [", StringComparison.Ordinal);
+        return open >= 0 && stamp.EndsWith(']') ? stamp[(open + 2)..^1] : "";
+    }
+
+    /// <summary>
+    /// True when the build runs on one core (build-threads B): the launcher then also runs port-maps after
+    /// port-weapons instead of side by side, so the build really is one step at a time.
+    /// </summary>
+    public static bool SerialBuild(IReadOnlyDictionary<string, string>? methods) =>
+        PorterEnvironment(methods).TryGetValue("DARKSIGN_THREADS", out var threads) && threads == "1";
+
     /// <summary>The build stamp for a porter version and methods.</summary>
     public static string BuildStamp(string porterVersion, IReadOnlyDictionary<string, string>? methods) =>
         BuildSignature(methods) is { Length: > 0 } sig ? $"{porterVersion} [{sig}]" : porterVersion;

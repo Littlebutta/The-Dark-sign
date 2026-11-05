@@ -7,8 +7,8 @@ implementations. **off** turns a feature back to plain Elden Ring, to find out w
 - Change one feature at a time, and play again.
 - A **build** method rebuilds the content on the next PLAY, which takes a few minutes. A **launch** method only changes how
   the game starts.
-- The status line says which methods are in use, and every porter log starts with `fallback methods: …`.
-- Co-op partners need the same build methods. The mod code on the main window shows whether they match.
+- The status line says which methods are in use, and when a build method isn't A every porter log starts with `fallback methods: …`.
+- Co-op partners need the same build methods. The mod code on the main window covers regulation.bin and the build methods, so it shows whether they match.
 
 The list below is generated from `Launcher/src/DarkSign.Core/Fallbacks.cs`, the catalog the window reads. The
 variable names in brackets are what the launcher passes to the porter or the game, for running the porter by hand.
