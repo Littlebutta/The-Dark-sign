@@ -184,6 +184,78 @@ public class RandomizerTests
         Assert.NotNull(Generator.Verify(LoadWorld(o), plan));
     }
 
+    /// <summary>Enemy tables as port-maps writes them: every DS3 spot of the given areas placed (Vordt's and the
+    /// Hollow Soldiers ported), and a few Elden Ring legacy-dungeon enemies including Margit.</summary>
+    internal static (List<string> Placed, List<string> Er) FakeEnemyTables(World world)
+    {
+        var placed = new List<string> { Data.EnemyTables.PlacedHeader };
+        int n = 0;
+        foreach (var spot in world.Enemies.Where(e => e.Game == SourceGame.DS3 && e.Class == EnemyClass.Regular && e.Area.StartsWith("ds3:highwall")))
+        {
+            var parts = spot.Id[4..].Split(' ');
+            var boss = spot.Area == "ds3:highwall_vordt";
+            var ported = boss || spot.Name == "Hollow Soldier";
+            placed.Add(string.Join('\t', "m30_00_00_00", parts[1], 3000000 + n, "m45_00_00_00", $"{spot.Model}_9{n:D3}", 45000000 + n,
+                spot.Model, 100000 + n, spot.Name, boss ? 1 : 0, ported ? "ported" : "stand-in",
+                ported ? "c" + spot.Model![1..] : "c3000", ported ? 900000 + n : 30000000, ported ? 900000 + n : 30000000));
+            n++;
+        }
+        var er = new List<string>
+        {
+            Data.EnemyTables.ErHeader,
+            "m10_00_00_00\tc3000_9000\t10000100\tc3000\t30000000\t30000000\tGodrick Soldier\t0",
+            "m10_00_00_00\tc4350_9000\t10000200\tc4350\t43500000\t43500000\tBanished Knight\t0",
+            "m10_00_00_00\tc2100_9000\t10000300\tc2100\t21000000\t21000000\tGiant Dog\t0",
+            "m10_00_00_00\tc2130_9000\t10000800\tc2130\t21300000\t21300000\tMargit, the Fell Omen\t1",
+        };
+        for (int i = 0; i < 20; i++)   // more soldiers along the castle walls
+            er.Add($"m10_00_00_00\tc3000_{9100 + i}\t{10001000 + i}\tc3000\t30000000\t30000000\tGodrick Soldier\t0");
+        return (placed, er);
+    }
+
+    [Fact]
+    public void EnemiesAndBossesMixBothGamesOnThePortedSpots()
+    {
+        var o = new RandomizerOptions { Seed = 2026, CrossGameEnemies = 0.5, CrossGameBosses = 0.9 };
+        var world = LoadWorld(o);
+        var (placed, er) = FakeEnemyTables(world);
+        var summary = Data.EnemyTables.Apply(world, placed, er);
+        _out.WriteLine(summary);
+        Assert.Contains(world.Characters, c => c.Game == SourceGame.ER);
+        Assert.Contains(world.Characters, c => c.Game == SourceGame.DS3);
+        Assert.Equal("c2240", world.Bosses.Single(b => b.Id == "ds3:vordt").Model);
+
+        var plan = Generator.Generate(world, o);
+        Assert.Null(Generator.Verify(world, plan));
+        // Elden Ring enemies stand in DS3's maps, ported DS3 characters in Elden Ring's, all on real parts.
+        Assert.Contains(plan.Enemies, e => e.SpotGame == "DS3" && e.FromGame == "ER");
+        Assert.Contains(plan.Enemies, e => e.SpotGame == "ER" && e.FromGame == "DS3");
+        Assert.All(plan.Enemies, e => { Assert.NotNull(e.Map); Assert.NotEqual(0, e.Entity); Assert.NotEqual(0, e.NpcParam); });
+        // Arena bosses are never handed to the regular-enemy shuffle.
+        Assert.DoesNotContain(plan.Enemies, e => e.WasName.StartsWith("Vordt") || e.WasName.StartsWith("Margit"));
+        // Vordt is ported, so he can travel; wherever a boss goes, the plan names the part and the character.
+        Assert.Contains(world.Bosses, b => b.Id == "ds3:vordt" && b.Available);
+        var vordtArena = plan.Bosses.SingleOrDefault(b => b.Arena == "ds3:highwall_vordt");
+        Assert.NotNull(vordtArena);
+        Assert.Equal("m45_00_00_00", vordtArena!.Map);
+        var margit = plan.Bosses.FirstOrDefault(b => b.Boss == "er:margit");
+        if (margit is not null)
+            Assert.Equal("c2130", margit.Model);
+        _out.WriteLine(Generator.Spoiler(world, plan).Split("== Enemies ==")[1].Split("== Play order ==")[0]);
+    }
+
+    [Fact]
+    public void EnemyShuffleOffKeepsTheOriginals()
+    {
+        var o = new RandomizerOptions { Seed = 5, Enemies = false, Bosses = false };
+        var world = LoadWorld(o);
+        var (placed, er) = FakeEnemyTables(world);
+        Data.EnemyTables.Apply(world, placed, er);
+        var plan = Generator.Generate(world, o);
+        Assert.Empty(plan.Enemies);
+        Assert.Empty(plan.Bosses);
+    }
+
     [Fact]
     public void SameWorldOnAnyPcWhateverItsLanguage()
     {

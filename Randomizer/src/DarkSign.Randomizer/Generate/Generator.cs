@@ -204,6 +204,17 @@ public static class Generator
         foreach (var b in plan.Bosses)
             sb.AppendLine($"{AreaText(b.Arena)}: {b.BossName} ({b.BossGame})");
         sb.AppendLine();
+        sb.AppendLine("== Enemies ==");
+        if (plan.Enemies.Count == 0)
+            sb.AppendLine("(not shuffled)");
+        foreach (var area in plan.Enemies.GroupBy(e => e.Area).OrderBy(g => g.Key, StringComparer.Ordinal))
+        {
+            var cross = area.Count(e => e.SpotGame.Length > 0 && e.SpotGame != e.FromGame);
+            sb.AppendLine($"{AreaText(area.Key)}: {area.Count()} enemies, {cross} from the other game: " +
+                string.Join(", ", area.GroupBy(e => $"{e.Name} ({e.FromGame})").OrderByDescending(g => g.Count())
+                    .ThenBy(g => g.Key, StringComparer.Ordinal).Take(6).Select(g => $"{g.Key} x{g.Count()}")));
+        }
+        sb.AppendLine();
         sb.AppendLine("== Play order ==");
         for (int i = 0; i < plan.Spheres.Count; i++)
             sb.AppendLine($"{i}: {string.Join(", ", plan.Spheres[i].Select(n => world.Areas.ContainsKey(n) ? AreaText(n) : world.KeyItems.TryGetValue(n, out var k) ? "[" + k.Text + "]" : n))}");

@@ -101,7 +101,7 @@ public sealed class Boss
     public ArenaSize Size { get; init; } = ArenaSize.Medium;
     public HashSet<string> Tags { get; init; } = [];
     /// <summary>The model ("c5110") when known, so the porter can find the boss in a map without a name lookup.</summary>
-    public string? Model { get; init; }
+    public string? Model { get; set; }
     /// <summary>False until the boss's character files exist in Elden Ring (DS3 bosses need the enemy port).</summary>
     public bool Available { get; set; } = true;
     /// <summary>Bosses with scripted fights (final bosses, item-gated mechanics) stay where they are.</summary>
@@ -119,6 +119,23 @@ public sealed class EnemySpot
     public string Name { get; init; } = "";
     public string? Model { get; init; }
     public EnemyClass Class { get; init; } = EnemyClass.Regular;
+    /// <summary>Where the spot is in this player's Elden Ring build: the map (a DS3 map's slot) and entity ID. Set
+    /// from the porter's enemy tables; spots without it aren't in the game yet.</summary>
+    public string? Map { get; set; }
+    public long Entity { get; set; }
+    public string PartName { get; set; } = "";
+    /// <summary>The scripts show a boss health bar for this enemy: it is an arena's boss, not a regular enemy.</summary>
+    public bool Boss { get; set; }
+    public bool InGame => Map is not null;
+    public string Kind => EnemyKinds.KindOf(Name);
+}
+
+/// <summary>A character that exists in this player's Elden Ring build and can stand in an enemy spot: an Elden Ring
+/// enemy (model, NpcParam and ThinkParam from a vanilla placement), or a DS3 character the enemy porter has ported.</summary>
+public sealed record Character(SourceGame Game, string Model, int NpcParam, int ThinkParam, string Name, bool Boss,
+    string? Ds3Model = null, string? Map = null)
+{
+    public string Kind { get; } = EnemyKinds.KindOf(Name);
 }
 
 public enum EnemyClass { Regular, Elite, Miniboss, Npc, Unused }
@@ -133,6 +150,8 @@ public sealed class World
     public List<ItemLocation> Locations { get; } = [];
     public List<Boss> Bosses { get; } = [];
     public List<EnemySpot> Enemies { get; } = [];
+    /// <summary>Characters this build can place (from the porter's enemy tables); empty without them.</summary>
+    public List<Character> Characters { get; } = [];
     public string Start { get; set; } = "er:chapel";
 
     public void Add(World other)

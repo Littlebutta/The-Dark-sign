@@ -56,6 +56,7 @@ public static class MapPorter
     {
         var options = Options.Parse(args);
         var started = DateTime.Now;
+        _placedEnemies.Clear();
         using var ds3 = ctx.OpenArchives(PorterGame.DarkSouls3);
         using var er = ctx.OpenArchives(PorterGame.EldenRing);
         var report = new StringBuilder();
@@ -94,6 +95,7 @@ public static class MapPorter
 
         var warps = ported.Select((p, i) => new RunEvents.Warp(p.Slot.Er, (uint)p.StartEntity, i)).ToList();
         WriteMapList(ctx, ported.Select(p => p.Slot), warps);
+        Step(report, "enemy tables", () => WriteEnemyTables(ctx, ported.Select(p => p.Slot.Ds3.ToString()).ToHashSet()));
         var startMap = ported.FirstOrDefault(p => p.Slot.Ds3 == MapId.Parse("m40_00_00_00") && !p.Slot.Probe);
         if (startMap.Slot is not null)
             Step(report, "run events", () => AddRunEvents(ctx, er, startMap.Slot.Er, (uint)startMap.StartEntity, warps));
@@ -190,7 +192,7 @@ public static class MapPorter
                 var enemies = Enemies(ctx, ds3, er, options, report);
                 var bosses = EnemyPort.BossEntities(Ds3Scripts(ds3, ds3Id), ds3Layout: true);
                 var placed = EnemyPort.Place(ds3Msb, layout.Msb, ds3Id, erId, new MsbPort.Options { AllVisible = !options.Ds3Groups },
-                    enemies.Chooser, e => enemies.Describe(e, bosses), EnemyPort.AnyEnemyPart(enemies.Catalog));
+                    enemies.Chooser, e => enemies.Describe(e, bosses), EnemyPort.AnyEnemyPart(enemies.Catalog), _placedEnemies);
                 report.AppendLine($"  enemies: {placed.Placed} placed ({placed.Ported} ported DS3 characters, {placed.StandIns} Elden Ring stand-ins), "
                                   + $"{placed.Npcs} NPCs left out, {placed.Skipped} with nothing to stand in; {bosses.Count} DS3 boss entities");
                 foreach (var note in placed.Notes)
@@ -310,6 +312,8 @@ public static class MapPorter
     }
 
     private static EnemyContext? _enemies;
+    /// <summary>darksign_enemies.tsv rows for this run: every DS3 enemy placed, for the randomizer.</summary>
+    private static readonly List<string> _placedEnemies = [];
 
     private static EnemyContext Enemies(PorterContext ctx, GameArchives ds3, GameArchives er, Options options, StringBuilder report)
     {
@@ -407,6 +411,17 @@ public static class MapPorter
         }
         File.WriteAllBytes(ctx.ModPath(ModParts(MaterialBinder)), DCX.Compress(bnd.Write(), compression));
         return $"materials: {added} map materials added to {ItemText.Leaf(MaterialBinder)}";
+    }
+
+    /// <summary>The randomizer's enemy tables (Randomizer EnemyTables): the DS3 enemies placed in the maps that were
+    /// ported, and the Elden Ring enemies they were picked from, so the randomizer mixes real spots and characters.</summary>
+    private static string WriteEnemyTables(PorterContext ctx, HashSet<string> portedMaps)
+    {
+        var placed = _placedEnemies.Where(r => portedMaps.Contains(r.Split('\t')[0])).ToList();
+        File.WriteAllLines(ctx.ModPath(DarkSign.Randomizer.Data.EnemyTables.PlacedFile), [DarkSign.Randomizer.Data.EnemyTables.PlacedHeader, .. placed]);
+        var catalog = _enemies is null ? [] : EnemyPort.CatalogRows(_enemies.Catalog).ToList();
+        File.WriteAllLines(ctx.ModPath(DarkSign.Randomizer.Data.EnemyTables.ErFile), [DarkSign.Randomizer.Data.EnemyTables.ErHeader, .. catalog]);
+        return $"enemy tables: {placed.Count} DS3 enemies placed, {catalog.Count} Elden Ring enemies (for the randomizer)";
     }
 
     /// <summary>darksign_maps.tsv: one line per ported map, read by the F1 menu's "DS3 run" tab.</summary>

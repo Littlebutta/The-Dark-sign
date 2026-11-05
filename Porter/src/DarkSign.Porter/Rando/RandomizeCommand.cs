@@ -1,4 +1,5 @@
 using System.Text;
+using DarkSign.Randomizer.Data;
 using DarkSign.Randomizer.Generate;
 using DarkSign.Randomizer.Logic;
 using DarkSign.Core;
@@ -55,6 +56,9 @@ public static class RandomizeCommand
 
         var log = new List<string>();
         var world = WorldLoader.Load(options, null, log);
+        // What enemies really exist in this build (port-maps writes these): DS3 spots in the ported maps, the
+        // Elden Ring enemies, and the DS3 characters the enemy porter has ported, so both games' enemies mix.
+        log.Add(EnemyTables.Apply(world, ReadModFile(ctx, EnemyTables.PlacedFile), ReadModFile(ctx, EnemyTables.ErFile)));
         foreach (var line in log) Console.WriteLine("randomize: " + line);
         // Elden Ring's own item locations come from the apply stage's scanner; until then each Elden Ring area
         // holds one stand-in location so the preview shows where keys would go.
@@ -73,9 +77,16 @@ public static class RandomizeCommand
         File.WriteAllText(Path.Combine(dir, "spoiler.txt"), Generator.Spoiler(world, plan), new UTF8Encoding(false));
         Console.WriteLine($"randomize: seed {plan.Seed} is finishable (checked after {plan.Attempt + 1} tries): " +
             $"{plan.Entrances.Count / 2} fog walls linked ({plan.Entrances.Count(e => e.CrossGame) / 2} cross games), " +
-            $"{plan.Items.Count(i => i.Value.StartsWith("key:"))} key items placed, {plan.Bosses.Count} bosses moved");
+            $"{plan.Items.Count(i => i.Value.StartsWith("key:"))} key items placed, {plan.Bosses.Count} bosses moved, " +
+            $"{plan.Enemies.Count} enemies shuffled ({plan.Enemies.Count(e => e.SpotGame.Length > 0 && e.SpotGame != e.FromGame)} from the other game)");
         Console.WriteLine($"randomize: world ID {plan.WorldId}; plan and spoiler log in {dir}");
         return 0;
+    }
+
+    private static string[]? ReadModFile(PorterContext ctx, string name)
+    {
+        var path = Path.Combine(ctx.Root, "TheDarkSign", "Mods", "ER", name);
+        return File.Exists(path) ? File.ReadAllLines(path) : null;
     }
 
     /// <summary>DS3 maps the map port has written (darksign_maps.tsv); none if maps haven't been ported.</summary>

@@ -42,36 +42,8 @@ public static class EnemyPort
     /// <summary>One DS3 enemy as the port sees it.</summary>
     public sealed record Ds3Enemy(string Model, int NpcParam, string Name, bool Boss, bool Npc);
 
-    // DS3/Elden Ring name words -> kind. Checked in order; the first kind whose word is in the name wins.
-    private static readonly (string Kind, string[] Words)[] Kinds =
-    [
-        ("dragon", ["dragon", "wyvern", "drake", "wyrm"]),
-        ("giant", ["giant", "troll", "ogre", "colossus"]),
-        ("knight", ["knight", "paladin", "sentinel", "guard captain", "banner"]),
-        ("archer", ["archer", "crossbow", "bowman", "sniper"]),
-        ("mage", ["sorcerer", "mage", "scholar", "wizard", "pyromancer", "evangelist", "deacon", "cleric", "priest", "monk"]),
-        ("skeleton", ["skeleton", "bonewheel", "skull"]),
-        ("dog", ["dog", "hound", "wolf"]),
-        ("rat", ["rat"]),
-        ("bird", ["crow", "bird", "harpy"]),
-        ("crab", ["crab"]),
-        ("worm", ["slug", "leech", "maggot", "worm", "larva"]),
-        ("serpent", ["serpent", "snake"]),
-        ("lizard", ["lizard"]),
-        ("tree", ["tree", "root", "ent "]),
-        ("ghost", ["ghost", "spirit", "phantom", "wraith"]),
-        ("beast", ["beast", "boar", "bear", "ox", "demon", "ape"]),
-        ("soldier", ["soldier", "hollow", "thrall", "manservant", "peasant", "footman", "foot ", "zombie", "noble", "villager", "infantry", "warrior", "assassin", "thief"]),
-    ];
-
-    public static string KindOf(string name)
-    {
-        var n = " " + name.ToLowerInvariant() + " ";
-        foreach (var (kind, words) in Kinds)
-            if (words.Any(w => n.Contains(w)))
-                return kind;
-        return "";
-    }
+    /// <summary>The kind of an enemy by its name (shared with the randomizer, which mixes enemies by the same kinds).</summary>
+    public static string KindOf(string name) => DarkSign.Randomizer.Logic.EnemyKinds.KindOf(name);
 
     /// <summary>
     /// Picks who stands in for a DS3 enemy: the ported character if there is one (method A), else the first Elden
@@ -160,7 +132,7 @@ public static class EnemyPort
     /// (name from its NpcParam, boss or not, NPC or not).
     /// </summary>
     public static Result Place(MSB3 ds3, MSBE msb, MapId ds3Id, MapId erId, MsbPort.Options options, Chooser chooser,
-        Func<MSB3.Part.Enemy, Ds3Enemy> describe, MSBE.Part.Enemy? fallbackTemplate = null)
+        Func<MSB3.Part.Enemy, Ds3Enemy> describe, MSBE.Part.Enemy? fallbackTemplate = null, List<string>? table = null)
     {
         int placed = 0, ported = 0, standIns = 0, npcs = 0, skipped = 0;
         var notes = new List<string>();
@@ -211,6 +183,9 @@ public static class EnemyPort
             msb.Parts.Enemies.Add(part);
             MsbPort.AddModel(msb.Models.Enemies, who.Model, who.ModelEntry, erId);
             placed++;
+            // One row of darksign_enemies.tsv (Randomizer EnemyTables.PlacedFile), so the randomizer knows this spot.
+            table?.Add(string.Join('\t', ds3Id, src.Name, src.EntityID, erId, part.Name, part.EntityID, src.ModelName, src.NPCParamID,
+                Clean(what.Name), what.Boss ? 1 : 0, who.Source == "ported DS3 character" ? "ported" : "stand-in", who.Model, who.NpcParam, who.ThinkParam));
             if (who.Source == "ported DS3 character")
                 ported++;
             else
@@ -226,6 +201,13 @@ public static class EnemyPort
             notes.Add("stand-ins: " + string.Join("; ", standInUse.OrderByDescending(s => s.Value).Take(15).Select(s => $"{s.Key} x{s.Value}")));
         return new Result(placed, ported, standIns, npcs, skipped, notes);
     }
+
+    private static string Clean(string s) => s.Replace('\t', ' ').Replace('\n', ' ').Replace('\r', ' ');
+
+    /// <summary>darksign_er_enemies.tsv rows (Randomizer EnemyTables.ErFile): the catalog's Elden Ring placements.</summary>
+    public static IEnumerable<string> CatalogRows(IEnumerable<ErEnemy> catalog) =>
+        catalog.Where(c => c.Part is not null && c.Source.StartsWith('m')).Select(c => string.Join('\t', c.Source, c.Part!.Name,
+            c.Part.EntityID, c.Model, c.NpcParam, c.ThinkParam, Clean(c.Name), c.Boss ? 1 : 0));
 
     // ---- What the event scripts say about bosses ----
 
