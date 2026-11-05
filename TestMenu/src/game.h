@@ -12,7 +12,8 @@
 extern "C" {
 #endif
 
-typedef enum { DKS_OK, DKS_NOT_FOUND, DKS_NOT_LOADED } DksResult;
+/* DKS_NOT_KEPT: an event flag was set but reads back unchanged (the game has no block for that flag ID). */
+typedef enum { DKS_OK, DKS_NOT_FOUND, DKS_NOT_LOADED, DKS_NOT_KEPT } DksResult;
 
 void dks_log(const char *fmt, ...);
 void dks_open_log(void);
@@ -23,8 +24,14 @@ int dks_load_items(DksItem **out);
 /* First match of a byte pattern ("48 8B ? ...") in the game's image, or 0. */
 uintptr_t dks_find_in_game(const char *pattern_text);
 
-/* Looks up the game addresses once; later calls return straight away. */
+/* Looks up the game addresses once; later calls return straight away. Safe to call from any thread. */
 void dks_scan_game(void);
+
+/* Scans again for addresses the first scan missed (at most a few times in all), for the background thread. */
+void dks_rescan_missing(void);
+
+/* Waits until the game has a visible top-level window (its code is then unpacked and initialised); 0 on timeout. */
+int dks_wait_for_game_window(unsigned long timeout_ms);
 
 /* Gives quantity x id (an ID from dks_item_give_id). */
 DksResult dks_give_item(uint32_t id, int quantity);

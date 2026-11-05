@@ -20,11 +20,15 @@ public static class Uninstaller
         var data = Path.Combine(root, DataFolderName);
         var folders = new List<string>();
         var kept = new List<string>();
+        var exes = gameExePaths.Where(p => !string.IsNullOrWhiteSpace(p)).ToList();
         if (Directory.Exists(data))
         {
             foreach (var dir in Directory.GetDirectories(data))
             {
                 if (!deleteSaves && string.Equals(Path.GetFileName(dir), SavesFolderName, StringComparison.OrdinalIgnoreCase))
+                    kept.Add(dir);
+                // A game the player keeps (or copied) inside TheDarkSign is theirs: never deleted with the mod.
+                else if (exes.Any(exe => PathGuard.IsInsideRoot(exe, dir)))
                     kept.Add(dir);
                 else
                     folders.Add(dir);
@@ -33,8 +37,8 @@ public static class Uninstaller
 
         var files = new List<string>();
         if (Directory.Exists(data))
-            files.AddRange(Directory.GetFiles(data));
-        foreach (var exe in gameExePaths.Where(p => !string.IsNullOrWhiteSpace(p)).Distinct(StringComparer.OrdinalIgnoreCase))
+            files.AddRange(Directory.GetFiles(data).Where(f => !exes.Any(e => string.Equals(Path.GetFullPath(e), f, StringComparison.OrdinalIgnoreCase))));
+        foreach (var exe in exes.Distinct(StringComparer.OrdinalIgnoreCase))
         {
             var proxy = SaveRedirectInstaller.ProxyPath(exe);
             if (PathGuard.IsInsideRoot(proxy, root) && File.Exists(proxy) && SaveRedirectInstaller.IsOurs(File.ReadAllBytes(proxy)))

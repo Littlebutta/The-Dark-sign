@@ -220,6 +220,35 @@ public sealed class CoreTests : IDisposable
     }
 
     [Fact]
+    public void Uninstall_never_deletes_a_game_kept_inside_the_data_folder()
+    {
+        Touch("TheDarkSign", "Mods", "ER", "regulation.bin");
+        var game = Touch("TheDarkSign", "Games", "ELDEN RING", "Game", "eldenring.exe");
+
+        var plan = Uninstaller.MakePlan(_root, [game], deleteSaves: true);
+        Assert.Empty(Uninstaller.Run(_root, plan));
+
+        Assert.True(File.Exists(game));
+        Assert.False(Directory.Exists(Path.Combine(_root, "TheDarkSign", "Mods")));
+    }
+
+    [Fact]
+    public void A_broken_settings_file_falls_back_to_defaults_and_is_kept_aside()
+    {
+        var path = Path.Combine(_root, LauncherSettings.FileName);
+        File.WriteAllText(path, "{ \"RootPath\": \"D:\\Games\", oops");
+        var loaded = LauncherSettings.Load(path);
+        Assert.Equal("Default", loaded.GetActiveProfile().Name);
+        Assert.True(File.Exists(path + ".broken"));
+
+        File.WriteAllText(path, "{ \"GameExePaths\": null, \"Profiles\": null, \"Methods\": null }");
+        loaded = LauncherSettings.Load(path);
+        Assert.Empty(loaded.GameExePaths);
+        Assert.Equal("Default", loaded.GetActiveProfile().Name);
+        Assert.Empty(Fallbacks.BuildSignature(loaded.Methods));
+    }
+
+    [Fact]
     public void Settings_round_trip_and_default_root_is_parent_of_Launcher_folder_else_the_launchers_own()
     {
         var path = Path.Combine(_root, LauncherSettings.FileName);

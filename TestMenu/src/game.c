@@ -25,7 +25,11 @@ typedef void (*SetEventFlagFn)(void *flag_man, const uint32_t *id, uint8_t state
 typedef uint8_t (*IsEventFlagFn)(void *flag_man, const uint32_t *id);
 
 static HANDLE g_log = INVALID_HANDLE_VALUE;
-static int g_scanned;
+/* The render thread (F1 menu), the hotkey thread and the start thread all call in here: the scan runs once under this
+   lock, and g_scanned is only set after every address is stored, so nobody sees a half-done scan as "not found". */
+static SRWLOCK g_scan_lock = SRWLOCK_INIT;
+static volatile LONG g_scanned;
+static int g_scan_attempts;
 static uintptr_t g_game_data_man_slot, g_map_item_man_slot;
 static ItemGive g_item_give;
 static uintptr_t g_event_flag_man_slot;
@@ -127,27 +131,86 @@ static uintptr_t rip_target(uintptr_t instruction)
     return instruction ? instruction + 7 + *(int32_t *)(instruction + 3) : 0;
 }
 
+static int scan_complete(void)
+{
+    return g_game_data_man_slot && g_map_item_man_slot && g_item_give && g_event_flag_man_slot && g_set_event_flag &&
+           g_is_event_flag;
+}
+
+/* Looks up whatever is still missing. Caller holds g_scan_lock. */
+static void scan_locked(void)
+{
+    uintptr_t base = (uintptr_t)GetModuleHandleW(NULL);
+    g_scan_attempts++;
+    if (!g_game_data_man_slot)
+        g_game_data_man_slot = rip_target(dks_find_in_game(PAT_GAME_DATA_MAN));
+    if (!g_map_item_man_slot)
+        g_map_item_man_slot = rip_target(dks_find_in_game(PAT_MAP_ITEM_MAN));
+    if (!g_item_give) {
+        uintptr_t give = dks_find_in_game(PAT_ITEM_GIVE);
+        g_item_give = give ? (ItemGive)(give + ITEM_GIVE_OFFSET) : NULL;
+    }
+    if (!g_event_flag_man_slot)
+        g_event_flag_man_slot = rip_target(dks_find_in_game(PAT_EVENT_FLAG_MAN));
+    if (!g_set_event_flag)
+        g_set_event_flag = (SetEventFlagFn)dks_find_in_game(PAT_SET_EVENT_FLAG);
+    if (!g_is_event_flag)
+        g_is_event_flag = (IsEventFlagFn)dks_find_in_game(PAT_IS_EVENT_FLAG);
+    dks_log("scan %d: EventFlagMan +%llx, SetEventFlag +%llx, IsEventFlag +%llx", g_scan_attempts,
+            g_event_flag_man_slot ? (unsigned long long)(g_event_flag_man_slot - base) : 0ULL,
+            g_set_event_flag ? (unsigned long long)((uintptr_t)g_set_event_flag - base) : 0ULL,
+            g_is_event_flag ? (unsigned long long)((uintptr_t)g_is_event_flag - base) : 0ULL);
+    dks_log("scan %d: base %p, GameDataMan +%llx, MapItemMan +%llx, ItemGive +%llx", g_scan_attempts, (void *)base,
+            g_game_data_man_slot ? (unsigned long long)(g_game_data_man_slot - base) : 0ULL,
+            g_map_item_man_slot ? (unsigned long long)(g_map_item_man_slot - base) : 0ULL,
+            g_item_give ? (unsigned long long)((uintptr_t)g_item_give - base) : 0ULL);
+}
+
 void dks_scan_game(void)
 {
     if (g_scanned)
         return;
-    g_scanned = 1;
-    uintptr_t base = (uintptr_t)GetModuleHandleW(NULL);
-    g_game_data_man_slot = rip_target(dks_find_in_game(PAT_GAME_DATA_MAN));
-    g_map_item_man_slot = rip_target(dks_find_in_game(PAT_MAP_ITEM_MAN));
-    uintptr_t give = dks_find_in_game(PAT_ITEM_GIVE);
-    g_item_give = give ? (ItemGive)(give + ITEM_GIVE_OFFSET) : NULL;
-    g_event_flag_man_slot = rip_target(dks_find_in_game(PAT_EVENT_FLAG_MAN));
-    g_set_event_flag = (SetEventFlagFn)dks_find_in_game(PAT_SET_EVENT_FLAG);
-    g_is_event_flag = (IsEventFlagFn)dks_find_in_game(PAT_IS_EVENT_FLAG);
-    dks_log("scan: EventFlagMan +%llx, SetEventFlag +%llx, IsEventFlag +%llx",
-            g_event_flag_man_slot ? (unsigned long long)(g_event_flag_man_slot - base) : 0ULL,
-            g_set_event_flag ? (unsigned long long)((uintptr_t)g_set_event_flag - base) : 0ULL,
-            g_is_event_flag ? (unsigned long long)((uintptr_t)g_is_event_flag - base) : 0ULL);
-    dks_log("scan: base %p, GameDataMan +%llx, MapItemMan +%llx, ItemGive +%llx", (void *)base,
-            g_game_data_man_slot ? (unsigned long long)(g_game_data_man_slot - base) : 0ULL,
-            g_map_item_man_slot ? (unsigned long long)(g_map_item_man_slot - base) : 0ULL,
-            g_item_give ? (unsigned long long)((uintptr_t)g_item_give - base) : 0ULL);
+    AcquireSRWLockExclusive(&g_scan_lock);
+    if (!g_scanned) {
+        scan_locked();
+        MemoryBarrier();
+        g_scanned = 1;
+    }
+    ReleaseSRWLockExclusive(&g_scan_lock);
+}
+
+void dks_rescan_missing(void)
+{
+    dks_scan_game();
+    AcquireSRWLockExclusive(&g_scan_lock);
+    if (!scan_complete() && g_scan_attempts < 4)
+        scan_locked();
+    ReleaseSRWLockExclusive(&g_scan_lock);
+}
+
+static BOOL CALLBACK find_game_window(HWND hwnd, LPARAM found)
+{
+    DWORD pid = 0;
+    GetWindowThreadProcessId(hwnd, &pid);
+    if (pid == GetCurrentProcessId() && IsWindowVisible(hwnd) && !GetWindow(hwnd, GW_OWNER)) {
+        *(HWND *)found = hwnd;
+        return FALSE;
+    }
+    return TRUE;
+}
+
+int dks_wait_for_game_window(DWORD timeout_ms)
+{
+    ULONGLONG until = GetTickCount64() + timeout_ms;
+    for (;;) {
+        HWND found = NULL;
+        EnumWindows(find_game_window, (LPARAM)&found);
+        if (found)
+            return 1;
+        if (GetTickCount64() >= until)
+            return 0;
+        Sleep(250);
+    }
 }
 
 static uintptr_t player_game_data(void)
@@ -273,6 +336,9 @@ DksResult dks_set_event_flag(uint32_t id, int on)
     if (!man || !player_game_data())
         return DKS_NOT_LOADED;
     g_set_event_flag(man, &id, on ? 1 : 0);
-    dks_log("flag: %u -> %d", id, on ? 1 : 0);
-    return DKS_OK;
+    /* SetEventFlag writes the bit straight away; reading it back catches a flag whose block the game doesn't have
+       (it then drops the write without a word), which would otherwise look like an event script that never runs. */
+    int now = g_is_event_flag ? (g_is_event_flag(man, &id) ? 1 : 0) : -1;
+    dks_log("flag: %u -> %d (reads %d)", id, on ? 1 : 0, now);
+    return now >= 0 && now != (on ? 1 : 0) ? DKS_NOT_KEPT : DKS_OK;
 }

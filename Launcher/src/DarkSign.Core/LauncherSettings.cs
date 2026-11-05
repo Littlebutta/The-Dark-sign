@@ -88,10 +88,36 @@ public sealed class LauncherSettings
     {
         if (!File.Exists(path))
             return new LauncherSettings();
-        return JsonSerializer.Deserialize<LauncherSettings>(File.ReadAllText(path), JsonOptions) ?? new LauncherSettings();
+        try
+        {
+            var settings = JsonSerializer.Deserialize<LauncherSettings>(File.ReadAllText(path), JsonOptions) ?? new LauncherSettings();
+            // A hand-edited file may say "null" for these; the rest of the launcher expects them set.
+            settings.GameExePaths ??= [];
+            settings.Profiles ??= [];
+            settings.Methods ??= [];
+            settings.RootPath ??= "";
+            settings.SeamlessCoopDll ??= "";
+            settings.GitHubToken ??= "";
+            settings.ActiveProfile ??= "Default";
+            return settings;
+        }
+        catch (Exception e) when (e is JsonException or NotSupportedException or ArgumentException)
+        {
+            // A broken file (hand edit, a crash mid-write) must not stop the launcher from starting: it is kept
+            // aside for the player and the defaults are used.
+            try { File.Copy(path, path + ".broken", overwrite: true); }
+            catch (Exception copy) when (copy is IOException or UnauthorizedAccessException) { }
+            return new LauncherSettings();
+        }
     }
 
-    public void Save(string path) => File.WriteAllText(path, JsonSerializer.Serialize(this, JsonOptions));
+    /// <summary>Writes the file through a temporary copy, so a crash or full disk never leaves half a file.</summary>
+    public void Save(string path)
+    {
+        var tmp = path + ".tmp";
+        File.WriteAllText(tmp, JsonSerializer.Serialize(this, JsonOptions));
+        File.Move(tmp, path, overwrite: true);
+    }
 
     /// <summary>
     /// In the original layout the launcher lives in "&lt;root&gt;\Launcher\...", so the root is the parent of the nearest

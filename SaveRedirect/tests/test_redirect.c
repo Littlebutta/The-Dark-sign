@@ -44,8 +44,22 @@ int main(void)
     CHECK(!dks_redirect(&c, L"D:\\The Dark sign\\DARK SOULS III\\Game\\Data0.bdt", out, DKS_MAX_PATH));
     CHECK(!dks_redirect(&c, L"DS30000.sl2", out, DKS_MAX_PATH));
 
-    /* An output buffer that is too small is refused rather than truncated. */
-    CHECK(!dks_redirect(&c, L"C:\\Users\\Dev\\AppData\\Roaming\\DarkSoulsIII\\x\\DS30000.sl2", out, 20));
+    /* An output buffer that is too small is refused rather than truncated, and reported as a save path
+       (-1) so the hook blocks the call instead of letting it reach the vanilla save. */
+    CHECK(dks_redirect(&c, L"C:\\Users\\Dev\\AppData\\Roaming\\DarkSoulsIII\\x\\DS30000.sl2", out, 20) == -1);
+    CHECK(dks_redirect(&c, L"D:\\elsewhere\\DS30000.sl2", out, 20) == 0);
+
+    /* Elden Ring's other files in its AppData folder (GraphicsConfig.xml) follow the saves. */
+    {
+        dks_config e = { 0 };
+        wcscpy(e.vanilla_dir, L"C:\\Users\\Dév\\AppData\\Roaming\\EldenRing");
+        wcscpy(e.save_dir, L"E:\\Jeux Modés\\TheDarkSign\\Saves\\Default\\ER");
+        wcscpy(e.save_ext, L".dksign");
+        CHECK(dks_redirect(&e, L"C:\\Users\\Dév\\AppData\\Roaming\\EldenRing\\GraphicsConfig.xml", out, DKS_MAX_PATH) == 1);
+        CHECK(wcscmp(out, L"E:\\Jeux Modés\\TheDarkSign\\Saves\\Default\\ER\\GraphicsConfig.xml") == 0);
+        CHECK(dks_redirect(&e, L"C:\\Users\\Dév\\AppData\\Roaming\\EldenRing\\7656\\ER0000.sl2", out, DKS_MAX_PATH) == 1);
+        CHECK(wcscmp(out, L"E:\\Jeux Modés\\TheDarkSign\\Saves\\Default\\ER\\7656\\ER0000.dksign") == 0);
+    }
 
     wchar_t name[64] = L"ER0000.dksign.bak";
     dks_restore_name(&c, name, 64);

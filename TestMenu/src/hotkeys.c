@@ -65,7 +65,8 @@ static void report(int ok)
 static void request(uint32_t flag, const char *what)
 {
     DksResult r = dks_set_event_flag(flag, 1);
-    dks_log("hotkey: %s (flag %u): %s", what, flag, r == DKS_OK ? "set" : "not available");
+    dks_log("hotkey: %s (flag %u): %s", what, flag,
+            r == DKS_OK ? "set" : r == DKS_NOT_KEPT ? "set, but the game did not keep it" : "not available");
     report(r == DKS_OK);
 }
 

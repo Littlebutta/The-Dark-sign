@@ -16,6 +16,7 @@ public sealed class EldenRingSetup(string root)
     public const string TestMenuDllName = "dksign_testmenu.dll";
     public const string ItemsVariable = "DKSIGN_ITEMS";
     public const string PorterAsset = "DarkSignPorter.zip";
+    public const string BuildStampName = "darksign_build.txt";
 
     public const string ModEngineUrl =
         "https://github.com/soulsmods/ModEngine2/releases/download/release-2.1.0/ModEngine-2.1.0.0-win64.zip";
@@ -29,7 +30,7 @@ public sealed class EldenRingSetup(string root)
     public string ToolsDir => Path.Combine(Root, "TheDarkSign", "Tools");
     public string ModDir => Path.Combine(Root, "TheDarkSign", "Mods", "ER");
     public string ItemsFile => Path.Combine(ModDir, "darksign_items.tsv");
-    public string BuildStampFile => Path.Combine(ModDir, "darksign_build.txt");
+    public string BuildStampFile => Path.Combine(ModDir, BuildStampName);
     public string ModEngineDir => Path.Combine(ToolsDir, "ModEngine2");
     public string ConfigPath => Path.Combine(ModEngineDir, "config_darksign_launcher.toml");
     public string Me3Dir => Path.Combine(ToolsDir, "me3");

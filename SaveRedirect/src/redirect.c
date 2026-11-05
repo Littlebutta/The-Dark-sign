@@ -83,7 +83,7 @@ int dks_redirect(const dks_config *cfg, const wchar_t *in, wchar_t *out, size_t 
     while (dir_len > 0 && is_sep(cfg->save_dir[dir_len - 1]))
         dir_len--;
     if (dir_len + wcslen(rest) + 1 > out_len)
-        return 0;
+        return -1;
 
     wmemcpy(out, cfg->save_dir, dir_len);
     wcscpy(out + dir_len, rest);
@@ -92,7 +92,7 @@ int dks_redirect(const dks_config *cfg, const wchar_t *in, wchar_t *out, size_t 
             *c = L'\\';
 
     if (cfg->save_ext[0] && !swap_ext(out, out_len, VANILLA_EXT, cfg->save_ext))
-        return 0;
+        return -1;
     return 1;
 }
 

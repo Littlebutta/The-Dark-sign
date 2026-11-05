@@ -29,6 +29,11 @@ typedef BOOL (WINAPI *CreateDirectoryW_t)(LPCWSTR, LPSECURITY_ATTRIBUTES);
 typedef BOOL (WINAPI *RemoveDirectoryW_t)(LPCWSTR);
 typedef BOOL (WINAPI *MoveFileExW_t)(LPCWSTR, LPCWSTR, DWORD);
 typedef BOOL (WINAPI *CopyFileW_t)(LPCWSTR, LPCWSTR, BOOL);
+typedef BOOL (WINAPI *CopyFileExW_t)(LPCWSTR, LPCWSTR, LPPROGRESS_ROUTINE, LPVOID, LPBOOL, DWORD);
+typedef HRESULT (WINAPI *CopyFile2_t)(PCWSTR, PCWSTR, COPYFILE2_EXTENDED_PARAMETERS *);
+typedef BOOL (WINAPI *MoveFileW_t)(LPCWSTR, LPCWSTR);
+typedef BOOL (WINAPI *MoveFileWithProgressW_t)(LPCWSTR, LPCWSTR, LPPROGRESS_ROUTINE, LPVOID, DWORD);
+typedef HANDLE (WINAPI *FindFirstFileW_t)(LPCWSTR, LPWIN32_FIND_DATAW);
 typedef BOOL (WINAPI *ReplaceFileW_t)(LPCWSTR, LPCWSTR, LPCWSTR, DWORD, LPVOID, LPVOID);
 typedef HANDLE (WINAPI *FindFirstFileExW_t)(LPCWSTR, FINDEX_INFO_LEVELS, LPVOID, FINDEX_SEARCH_OPS, LPVOID, DWORD);
 typedef BOOL (WINAPI *FindNextFileW_t)(HANDLE, LPWIN32_FIND_DATAW);
@@ -43,6 +48,11 @@ static CreateDirectoryW_t o_CreateDirectoryW;
 static RemoveDirectoryW_t o_RemoveDirectoryW;
 static MoveFileExW_t o_MoveFileExW;
 static CopyFileW_t o_CopyFileW;
+static CopyFileExW_t o_CopyFileExW;
+static CopyFile2_t o_CopyFile2;
+static MoveFileW_t o_MoveFileW;
+static MoveFileWithProgressW_t o_MoveFileWithProgressW;
+static FindFirstFileW_t o_FindFirstFileW;
 static ReplaceFileW_t o_ReplaceFileW;
 static FindFirstFileExW_t o_FindFirstFileExW;
 static FindNextFileW_t o_FindNextFileW;
@@ -68,11 +78,23 @@ static void log_line(const wchar_t *fmt, ...)
     g_log_lines++;
 }
 
-/* Returns the path to use: the redirected one in `buf`, or the original. */
+/* A name no file API accepts ('|' is invalid in Win32 paths): the call fails with ERROR_INVALID_NAME. */
+static const wchar_t BLOCKED[] = L"|dksign-blocked|";
+
+/* Returns the path to use: the redirected one in `buf`, the original for any path outside the vanilla
+   save folder, or BLOCKED for a vanilla save path that can't be redirected (too long), so it is never
+   opened. */
 static LPCWSTR map(LPCWSTR path, wchar_t *buf, const wchar_t *what)
 {
-    if (!g_active || !path || !dks_redirect(&g_cfg, path, buf, DKS_MAX_PATH))
+    if (!g_active || !path)
         return path;
+    int r = dks_redirect(&g_cfg, path, buf, DKS_MAX_PATH);
+    if (r == 0)
+        return path;
+    if (r < 0) {
+        log_line(L"%ls %ls -> BLOCKED (redirected path too long)", what, path);
+        return BLOCKED;
+    }
     log_line(L"%ls %ls -> %ls", what, path, buf);
     return buf;
 }
@@ -131,6 +153,32 @@ static BOOL WINAPI h_CopyFileW(LPCWSTR from, LPCWSTR to, BOOL fail)
     return o_CopyFileW(map(from, b1, L"copy"), map(to, b2, L"copy to"), fail);
 }
 
+/* The variants below may call the hooked functions above inside KernelBase; the inner hook then sees the already
+   redirected path, which lies outside the vanilla folder and passes through unchanged. */
+static BOOL WINAPI h_CopyFileExW(LPCWSTR from, LPCWSTR to, LPPROGRESS_ROUTINE pr, LPVOID d, LPBOOL cancel, DWORD flags)
+{
+    wchar_t b1[DKS_MAX_PATH], b2[DKS_MAX_PATH];
+    return o_CopyFileExW(map(from, b1, L"copy"), map(to, b2, L"copy to"), pr, d, cancel, flags);
+}
+
+static HRESULT WINAPI h_CopyFile2(PCWSTR from, PCWSTR to, COPYFILE2_EXTENDED_PARAMETERS *x)
+{
+    wchar_t b1[DKS_MAX_PATH], b2[DKS_MAX_PATH];
+    return o_CopyFile2(map(from, b1, L"copy"), map(to, b2, L"copy to"), x);
+}
+
+static BOOL WINAPI h_MoveFileW(LPCWSTR from, LPCWSTR to)
+{
+    wchar_t b1[DKS_MAX_PATH], b2[DKS_MAX_PATH];
+    return o_MoveFileW(map(from, b1, L"move"), map(to, b2, L"move to"));
+}
+
+static BOOL WINAPI h_MoveFileWithProgressW(LPCWSTR from, LPCWSTR to, LPPROGRESS_ROUTINE pr, LPVOID d, DWORD flags)
+{
+    wchar_t b1[DKS_MAX_PATH], b2[DKS_MAX_PATH];
+    return o_MoveFileWithProgressW(map(from, b1, L"move"), map(to, b2, L"move to"), pr, d, flags);
+}
+
 static BOOL WINAPI h_ReplaceFileW(LPCWSTR dst, LPCWSTR src, LPCWSTR bak, DWORD f, LPVOID e, LPVOID r)
 {
     wchar_t b1[DKS_MAX_PATH], b2[DKS_MAX_PATH], b3[DKS_MAX_PATH];
@@ -140,6 +188,11 @@ static BOOL WINAPI h_ReplaceFileW(LPCWSTR dst, LPCWSTR src, LPCWSTR bak, DWORD f
 static void track_find(HANDLE h, int add)
 {
     AcquireSRWLockExclusive(&g_finds_lock);
+    for (int i = 0; add && i < MAX_FINDS; i++)
+        if (g_finds[i] == h) { /* already tracked (FindFirstFileW over FindFirstFileExW) */
+            ReleaseSRWLockExclusive(&g_finds_lock);
+            return;
+        }
     for (int i = 0; i < MAX_FINDS; i++) {
         if (add ? g_finds[i] == NULL : g_finds[i] == h) {
             g_finds[i] = add ? h : NULL;
@@ -179,6 +232,18 @@ static HANDLE WINAPI h_FindFirstFileExW(LPCWSTR p, FINDEX_INFO_LEVELS l, LPVOID 
     return h;
 }
 
+static HANDLE WINAPI h_FindFirstFileW(LPCWSTR p, LPWIN32_FIND_DATAW d)
+{
+    wchar_t buf[DKS_MAX_PATH];
+    LPCWSTR mapped = map(p, buf, L"list");
+    HANDLE h = o_FindFirstFileW(mapped, d);
+    if (mapped != p && h != INVALID_HANDLE_VALUE) {
+        dks_restore_name(&g_cfg, d->cFileName, MAX_PATH);
+        track_find(h, 1);
+    }
+    return h;
+}
+
 static BOOL WINAPI h_FindNextFileW(HANDLE h, LPWIN32_FIND_DATAW d)
 {
     BOOL ok = o_FindNextFileW(h, d);
@@ -193,8 +258,11 @@ static BOOL WINAPI h_FindClose(HANDLE h)
     return o_FindClose(h);
 }
 
+static int g_hook_failures;
+
 /* Hooks the KernelBase implementation, which kernel32's exports forward to, so calls made
-   through either DLL are caught. */
+   through either DLL are caught. A function this Windows doesn't have is skipped (the game can't call it either);
+   one that exists but can't be hooked counts as a failure, since the game could then reach the vanilla saves. */
 static void hook(const char *name, LPVOID detour, LPVOID *original)
 {
     HMODULE base = GetModuleHandleW(L"kernelbase.dll");
@@ -206,10 +274,16 @@ static void hook(const char *name, LPVOID detour, LPVOID *original)
         return;
     }
     MH_STATUS status = MH_CreateHook((LPVOID)target, detour, original);
+    if (status == MH_ERROR_ALREADY_CREATED) {
+        log_line(L"hook: %hs is the same code as a function already hooked", name);
+        return;
+    }
     if (status == MH_OK)
         status = MH_EnableHook((LPVOID)target);
-    if (status != MH_OK)
+    if (status != MH_OK) {
         log_line(L"hook: %hs failed (%hs)", name, MH_StatusToString(status));
+        g_hook_failures++;
+    }
 }
 
 static void dirname_inplace(wchar_t *path)
@@ -348,12 +422,17 @@ static void init(void)
     hook("RemoveDirectoryW", h_RemoveDirectoryW, (LPVOID *)&o_RemoveDirectoryW);
     hook("MoveFileExW", h_MoveFileExW, (LPVOID *)&o_MoveFileExW);
     hook("CopyFileW", h_CopyFileW, (LPVOID *)&o_CopyFileW);
+    hook("CopyFileExW", h_CopyFileExW, (LPVOID *)&o_CopyFileExW);
+    hook("CopyFile2", h_CopyFile2, (LPVOID *)&o_CopyFile2);
+    hook("MoveFileW", h_MoveFileW, (LPVOID *)&o_MoveFileW);
+    hook("MoveFileWithProgressW", h_MoveFileWithProgressW, (LPVOID *)&o_MoveFileWithProgressW);
+    hook("FindFirstFileW", h_FindFirstFileW, (LPVOID *)&o_FindFirstFileW);
     hook("ReplaceFileW", h_ReplaceFileW, (LPVOID *)&o_ReplaceFileW);
     hook("FindFirstFileExW", h_FindFirstFileExW, (LPVOID *)&o_FindFirstFileExW);
     hook("FindNextFileW", h_FindNextFileW, (LPVOID *)&o_FindNextFileW);
     hook("FindClose", h_FindClose, (LPVOID *)&o_FindClose);
     g_active = o_CreateFileW != NULL;
-    if (!g_active)
+    if (!g_active || g_hook_failures)
         goto fail;
 
     /* Co-op mode (the launcher sets DKSIGN_COOP=1 when Seamless Co-op is loaded): Seamless talks to the
