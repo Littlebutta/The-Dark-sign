@@ -86,18 +86,25 @@ public sealed class EldenRingSetup(string root)
     }
 
     /// <summary>Writes the me3 profile: the content mod folder as a package, and our DLLs as natives.</summary>
-    public string WriteProfile(IEnumerable<string> dlls)
+    public string WriteProfile(IEnumerable<string> dlls, Fallbacks.LaunchTweaks? tweaks = null)
     {
         Directory.CreateDirectory(Guard(Me3Dir));
-        File.WriteAllText(ProfilePath, Me3Profile(ModDir, dlls));
+        File.WriteAllText(ProfilePath, Me3Profile(ModDir, dlls, tweaks));
         return ProfilePath;
     }
 
-    public static string Me3Profile(string modDir, IEnumerable<string> dlls)
+    public static string Me3Profile(string modDir, IEnumerable<string> dlls, Fallbacks.LaunchTweaks? tweaks = null)
     {
         var text = new StringBuilder();
         text.AppendLine("# Written by The Dark Sign launcher on every launch; edits here are overwritten.");
         text.AppendLine("profileVersion = \"v1\"");
+        // Fallback methods (launcher Fallbacks window): me3 v0.13.0 profile options (crates/mod-protocol ModProfileV1).
+        if (tweaks?.DisableArxan == true)
+            text.AppendLine("disable_arxan = true");
+        if (tweaks?.NoMemPatch == true)
+            text.AppendLine("mem_patch = false");
+        if (tweaks?.StartOnline == true)
+            text.AppendLine("start_online = true");
         text.AppendLine();
         text.AppendLine("[[supports]]");
         text.AppendLine("game = \"eldenring\"");
