@@ -50,6 +50,33 @@ public sealed class PreflightTests
     }
 
     [Fact]
+    public void Enemy_port_report_is_counted_and_failures_warned()
+    {
+        var path = Path.Combine(Path.GetTempPath(), "dks-enemy-" + Guid.NewGuid().ToString("N") + ".tsv");
+        try
+        {
+            File.WriteAllLines(path, [
+                "DS3 chr\tname\tboss\ttemplate\ttemplate name\tbone match\tnew chr\tmethod\tnotes",
+                "c1100\tLothric Knight\t0\tc4300\tBanished Knight\t0.80\tc7000\tfull\t",
+                "c1200\tHollow\t0\tc4310\tSoldier\t0.70\tc7001\tmodel\t",
+                "c1300\tRat\t0\tc4410\tWolf\t0.10\t\tstats\tbone match 0.10 below 0.25",
+                "# c1400 Crystal Lizard: files failed (InvalidDataException: bad flver); using the template's body",
+            ]);
+            var items = new List<Preflight.Item>();
+            Preflight.CheckEnemyReport(items, path);
+            Assert.Contains(items, i => i.Level == Preflight.Level.Ok && i.Text.Contains("1 with DS3 model and animations, 1 DS3 model only, 1 on Elden Ring bodies"));
+            Assert.Contains(items, i => i.Level == Preflight.Level.Warn && i.Text.Contains("c1400 Crystal Lizard"));
+            items.Clear();
+            Preflight.CheckEnemyReport(items, path + ".missing");
+            Assert.Empty(items);
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
+
+    [Fact]
     public void Redact_blanks_the_token()
     {
         Assert.Contains("\"GitHubToken\": \"(removed)\"", Diagnostics.Redact("{ \"GitHubToken\": \"ghp_secret\" }"));

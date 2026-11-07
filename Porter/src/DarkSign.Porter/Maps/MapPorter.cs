@@ -1,5 +1,6 @@
 using System.Text;
 using SoulsFormats;
+using ChrPort = DarkSign.Porter.Enemies.ChrPort;
 
 namespace DarkSign.Porter.Maps;
 
@@ -69,6 +70,23 @@ public static class MapPorter
         var textures = new Dictionary<string, MapTextures>(); // by Elden Ring area folder
         var materials = new List<BinderFile>();
 
+        // The enemy port goes first (a full run only): it writes darksign_chr_map.tsv, which the maps read when they
+        // place DS3's enemies. Its params wait for port-weapons' regulation.bin (below). A failure leaves stand-ins.
+        ChrPort.Result? enemyPort = null;
+        if (options.Only.Count == 0)
+        {
+            try
+            {
+                enemyPort = ChrPort.Build(ctx, er, ds3);
+                report.AppendLine($"enemy port: {enemyPort.Summary} (Work\\reports\\{ChrPort.ReportFile})");
+            }
+            catch (Exception ex) when (ex is not OutOfMemoryException)
+            {
+                report.AppendLine($"enemy port: FAILED: {ex.Message}; DS3 maps use Elden Ring stand-ins");
+                Console.Error.WriteLine($"enemies: failed: {ex}");
+            }
+        }
+
         foreach (var slot in MapSlots.All.Where(s => options.Only.Count == 0 || options.Only.Contains(s.Ds3.ToString())))
         {
             Console.WriteLine($"map {slot.Ds3} ({slot.Name}) -> Elden Ring {slot.Er}");
@@ -95,6 +113,8 @@ public static class MapPorter
         // Event scripts last: they need every ported map, to send warps and IDs to the right slot. A failure leaves
         // the empty scripts written with each map.
         WaitForWeapons(options.AfterPid);
+        if (enemyPort is not null)
+            Step(report, "enemy params", () => ChrPort.ApplyParams(ctx, er, enemyPort));
         if (ported.Count > 0)
             Step(report, "events", () => MapEvents.Port(ctx, ds3, er, ported.Select(p => p.Slot).ToList()));
 

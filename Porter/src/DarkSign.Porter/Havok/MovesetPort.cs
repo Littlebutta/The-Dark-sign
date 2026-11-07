@@ -899,10 +899,11 @@ public static partial class MovesetPort
 /// Ports the DS3 attack data a weapon's hits use: its BehaviorParam_PC rows (one per hit, by behaviour variation and
 /// judge ID) and the AtkParam_Pc rows they point at, copying every field both games have by name.
 /// </summary>
-public sealed class AttackParamPort(ParamStore er, ParamStore ds3)
+public sealed class AttackParamPort(ParamStore er, ParamStore ds3, string behaviorParam = "BehaviorParam_PC", string attackParam = "AtkParam_Pc")
 {
-    private readonly PARAM _erBehavior = er.Get("BehaviorParam_PC")!, _ds3Behavior = ds3.Get("BehaviorParam_PC")!;
-    private readonly PARAM _erAttack = er.Get("AtkParam_Pc")!, _ds3Attack = ds3.Get("AtkParam_Pc")!;
+    // Weapons use the player's params; the enemy port (Enemies/ChrPort.cs) passes BehaviorParam and AtkParam_Npc.
+    private readonly PARAM _erBehavior = er.Get(behaviorParam)!, _ds3Behavior = ds3.Get(behaviorParam)!;
+    private readonly PARAM _erAttack = er.Get(attackParam)!, _ds3Attack = ds3.Get(attackParam)!;
     private int _behaviors, _attacks;
 
     public string Summary => $"{_behaviors} behaviour rows ({_templateBehaviors} more from the templates), {_attacks} attack rows";
@@ -912,18 +913,18 @@ public sealed class AttackParamPort(ParamStore er, ParamStore ds3)
     /// new variation also gets the Elden Ring template's rows for every judge ID DS3 lacks: the moves kept from the
     /// template (Elden Ring-only attacks) look their hits up in the weapon's variation too, and found nothing there.
     /// </summary>
-    public int PortVariation(int ds3Variation, int templateVariation = 0)
+    public int PortVariation(int ds3Variation, int templateVariation = 0, int? newVariation = null)
     {
         if (_variations.TryGetValue((ds3Variation, templateVariation), out var done))
             return done;
-        return _variations[(ds3Variation, templateVariation)] = PortNewVariation(ds3Variation, templateVariation);
+        return _variations[(ds3Variation, templateVariation)] = PortNewVariation(ds3Variation, templateVariation, newVariation);
     }
 
     private readonly Dictionary<(int, int), int> _variations = new();
 
     private static int Judge(PARAM.Row row) => Convert.ToInt32(row["behaviorJudgeId"].Value);
 
-    private int PortNewVariation(int ds3Variation, int templateVariation)
+    private int PortNewVariation(int ds3Variation, int templateVariation, int? newVariation)
     {
         var rows = _ds3Behavior.Rows.Where(r => Convert.ToInt32(r["variationId"].Value) == ds3Variation).ToList();
         if (ds3Variation <= 0 || rows.Count == 0)
@@ -935,7 +936,9 @@ public sealed class AttackParamPort(ParamStore er, ParamStore ds3)
                 foreach (var r in _erBehavior.Rows.Where(r => Convert.ToInt32(r["variationId"].Value) == v))
                     templateRows.TryAdd(Judge(r), r);
         var used = _erBehavior.Rows.Select(r => Convert.ToInt32(r["variationId"].Value)).ToHashSet();
-        int variation = Enumerable.Range(9000, 1000).First(v => !used.Contains(v));
+        // Weapons take the first free variation from 9000; an enemy names its own (its new character ID * 100, the
+        // way Elden Ring numbers enemy variations).
+        int variation = newVariation is { } wanted && !used.Contains(wanted) ? wanted : Enumerable.Range(9000, 1000).First(v => !used.Contains(v));
         var ds3Judges = new HashSet<int>();
         foreach (var source in rows)
         {
