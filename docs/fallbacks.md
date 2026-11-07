@@ -138,6 +138,22 @@ Try the next option if: The game crashes when a ported weapon swings, or its eff
 - **C: DS3 and Elden Ring effects together.** Moves spawn DS3's effects and keep the template's Elden Ring trails and sparks too (DARKSIGN_KEEP_ER_EFFECTS=1), so a DS3 effect that doesn't show still leaves Elden Ring's instead of nothing. (`DARKSIGN_KEEP_ER_EFFECTS=1`)
 - **off: Off (Elden Ring effects).** Ported weapons keep the template's effects (DARKSIGN_DS3_EFFECT_EVENTS=0). (`DARKSIGN_DS3_EFFECT_EVENTS=0`)
 
+### DS3 weapon arts (skills on L2) (`weapon-arts`, rebuilds the content)
+
+Try the next option if: L2 on a ported weapon does an Elden Ring Ash of War, nothing, the wrong move, the character freezes or T-poses, or the player can't move at all after loading (that last one means the hks: go to B).
+
+- **A: DS3 arts with stances (default).** Each DS3 weapon art becomes its own Ash of War (art IDs 300-398, TAE sections a900-a998, SwordArtsParam rows 90000+) with DS3's animations, events and FP cost. Stance skills (Friede's, the Great Scythe's) hold the stance with light and heavy follow-ups, which needs `Mods\ER\action\script\c0000.hks` (ividyon's community hks with the ported stances added to IsStanceArts). The port-weapons log lists every art (`arts: ...`).
+- **B: DS3 arts without the hks.** Same arts, but no c0000.hks (DARKSIGN_WEAPON_ARTS=nohks): one-shot skills are unchanged, stance skills become a single attack (their stance light attack). (`DARKSIGN_WEAPON_ARTS=nohks`)
+- **off: Off (Elden Ring Ashes of War).** Ported weapons keep their template's Elden Ring Ash of War (DARKSIGN_WEAPON_ARTS=0), as in builds up to 1.0.169. (`DARKSIGN_WEAPON_ARTS=0`)
+
+### DS3 weapon status and buffs (frostbite, bleed, poison) (`weapon-effects`, rebuilds the content)
+
+Try the next option if: A ported weapon builds up no status (Friede's scythe no frostbite), the wrong status, or holding or swinging it does something odd (health drains, stats change, the game crashes on hit).
+
+- **A: Status, equipped effects and art buffs (default).** DS3's status on hit, the effects a DS3 weapon gives while held and the buffs its weapon art casts, ported as new Elden Ring effects (status rows copied from Elden Ring's own bleed, frost and poison rows with DS3's buildup). Report: `TheDarkSign\Work\reports\weapon-effects.tsv`.
+- **B: Status on hit only.** Only the status a weapon builds up on hit (DARKSIGN_WEAPON_EFFECTS=status); equipped effects and art buffs are left out. (`DARKSIGN_WEAPON_EFFECTS=status`)
+- **off: Off.** No DS3 effects (DARKSIGN_WEAPON_EFFECTS=0): ported weapons build up nothing, as in builds before 1.0.17x. (`DARKSIGN_WEAPON_EFFECTS=0`)
+
 
 ## DS3 maps
 
