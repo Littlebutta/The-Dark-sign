@@ -61,6 +61,23 @@ int dks_level_for(const int attributes[DKS_ATTRIBUTES]);
 /* Case-insensitive ASCII substring test, so "long sw" finds "Longsword". */
 int dks_name_matches(const char *name, const char *query);
 
+/* One line of darksign_spawn_list.tsv (Porter Enemies/SpawnList.cs):
+   "<game DS3|ER>\t<model cNNNN>\t<NpcParam>\t<ThinkParam>\t<boss 0|1>\t<name>". Returns 1 if valid. */
+typedef struct {
+    char game[8];
+    int chr;             /* 2275 for c2275 */
+    int npc_param;
+    int think_param;
+    int boss;
+    char name[DKS_NAME_MAX];
+} DksSpawnable;
+
+int dks_parse_spawn_line(const char *line, DksSpawnable *out);
+
+/* Where the n-th character of a spawn goes, from the player's position and facing (a Havok quaternion x, y, z, w):
+   rows of five, three metres ahead and 1.5 m apart, a little above the ground. out = x, y, z. */
+void dks_spawn_position(const float player[3], const float quaternion[4], int n, float out[3]);
+
 #ifdef __cplusplus
 }
 #endif

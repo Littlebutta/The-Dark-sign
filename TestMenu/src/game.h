@@ -24,6 +24,9 @@ int dks_load_items(DksItem **out);
 /* First match of a byte pattern ("48 8B ? ...") in the game's image, or 0. */
 uintptr_t dks_find_in_game(const char *pattern_text);
 
+/* Like dks_find_in_game, but goes on to the next match until accept(hit, ctx) returns non-zero. */
+uintptr_t dks_find_in_game_where(const char *pattern_text, int (*accept)(uintptr_t hit, void *ctx), void *ctx);
+
 /* Looks up the game addresses once; later calls return straight away. Safe to call from any thread. */
 void dks_scan_game(void);
 

@@ -21,6 +21,7 @@
 #include "hotkeys.h"
 #include "flagcheck.h"
 #include "sound.h"
+#include "spawn.h"
 
 extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND, UINT, WPARAM, LPARAM);
 
@@ -277,6 +278,75 @@ void draw_ds3_run()
         ImGui::TextDisabled("Porter check of the ported maps: %s", g_map_check.c_str());
 }
 
+// The "Spawn enemies" tab: Dark Souls III (ported) or Elden Ring characters from darksign_spawn_list.tsv (spawn.c).
+int g_spawn_game;          // 0 Dark Souls III, 1 Elden Ring
+int g_spawn_selected = -1; // index into the spawn list
+int g_spawn_count = 1;
+char g_spawn_search[96];
+bool g_spawn_bosses = true;
+
+void draw_spawn()
+{
+    const DksSpawnable *list;
+    int from_file = 0;
+    int count = dks_spawn_list(&list, &from_file);
+    static const char *const GAME_CODES[] = {"DS3", "ER"};
+
+    ImGui::RadioButton("Dark Souls III enemies", &g_spawn_game, 0);
+    ImGui::SameLine();
+    ImGui::RadioButton("Elden Ring enemies", &g_spawn_game, 1);
+    ImGui::SameLine();
+    ImGui::Checkbox("Bosses", &g_spawn_bosses);
+    ImGui::SetNextItemWidth(-1);
+    ImGui::InputTextWithHint("##spawnsearch", "Search enemies...", g_spawn_search, sizeof g_spawn_search);
+
+    if (g_spawn_selected >= count || (g_spawn_selected >= 0 && strcmp(list[g_spawn_selected].game, GAME_CODES[g_spawn_game]) != 0))
+        g_spawn_selected = -1;
+    int shown = 0;
+    ImGui::BeginChild("spawnlist", ImVec2(0, -200), ImGuiChildFlags_Borders);
+    for (int i = 0; i < count; i++) {
+        const DksSpawnable &s = list[i];
+        if (strcmp(s.game, GAME_CODES[g_spawn_game]) != 0 || (s.boss && !g_spawn_bosses) || !dks_name_matches(s.name, g_spawn_search))
+            continue;
+        shown++;
+        ImGui::PushID(i);
+        if (ImGui::Selectable(s.name, g_spawn_selected == i, ImGuiSelectableFlags_AllowDoubleClick)) {
+            g_spawn_selected = i;
+            if (ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left))
+                dks_spawn(&s, g_spawn_count);
+        }
+        ImGui::SameLine(ImGui::GetContentRegionAvail().x - 150);
+        ImGui::TextDisabled("%sc%04d", s.boss ? "boss  " : "", s.chr);
+        ImGui::PopID();
+    }
+    if (!shown)
+        ImGui::TextWrapped(g_spawn_game == 0 && from_file
+                               ? "No Dark Souls III enemies are ported yet (Fallbacks: enemy port is off, or it failed). See Work\\reports\\enemy-port.tsv."
+                           : g_spawn_game == 0
+                               ? "No spawn list yet. Press Rebuild content in the launcher (the enemy port writes it), then restart the game."
+                               : "Nothing matches.");
+    ImGui::EndChild();
+    if (!from_file)
+        ImGui::TextDisabled("Built-in list (no darksign_spawn_list.tsv yet): rebuild the content for every enemy.");
+
+    const DksSpawnable *who = g_spawn_selected >= 0 ? &list[g_spawn_selected] : nullptr;
+    ImGui::SetNextItemWidth(160);
+    ImGui::SliderInt("How many", &g_spawn_count, 1, 10);
+    ImGui::BeginDisabled(!who);
+    if (ImGui::Button(who ? (std::string("Spawn ") + who->name + " next to me").c_str() : "Spawn", ImVec2(-1, 0)) && who)
+        dks_spawn(who, g_spawn_count);
+    ImGui::EndDisabled();
+
+    ImGui::Separator();
+    int alive = dks_spawn_alive(), pending = dks_spawn_pending();
+    ImGui::Text("Spawned by this menu and still alive: %d%s", alive, pending ? "  (more on the way)" : "");
+    if (ImGui::Button("Clear enemies spawned from this menu", ImVec2(-1, 0)))
+        dks_spawn_clear();
+    ImGui::TextDisabled("Ctrl+Shift+F4 clears them too. Only enemies spawned here are touched.");
+    ImGui::Separator();
+    ImGui::TextWrapped("%s", dks_spawn_status());
+}
+
 void change_runes(bool add)
 {
     long long held = dks_get_runes();
@@ -345,7 +415,7 @@ void draw_menu()
     if (!open)
         g_open = false;
 
-    bool changed = false, levels = false, run = false;
+    bool changed = false, levels = false, run = false, spawn = false;
     if (ImGui::BeginTabBar("games")) {
         for (int i = 0; i < IM_ARRAYSIZE(GAME_LABELS); i++)
             if (ImGui::BeginTabItem(GAME_LABELS[i])) {
@@ -363,7 +433,16 @@ void draw_menu()
             run = true;
             ImGui::EndTabItem();
         }
+        if (ImGui::BeginTabItem("Spawn enemies")) {
+            spawn = true;
+            ImGui::EndTabItem();
+        }
         ImGui::EndTabBar();
+    }
+    if (spawn) {
+        draw_spawn();
+        ImGui::End();
+        return;
     }
     if (run) {
         draw_ds3_run();
@@ -677,6 +756,7 @@ void render(IDXGISwapChain3 *swap_chain)
     if (down && !g_f1_was_down && GetForegroundWindow() == g_hwnd)
         toggle();
     g_f1_was_down = down;
+    dks_spawn_update(); // spawns queued from the menu go on while it's closed
     if (!g_open) {
         // Hold no back-buffer references while the menu is closed: a ResizeBuffers(1) the hooks miss (another overlay's
         // hook in front of ours, Alt+Enter) would otherwise fail with DXGI_ERROR_INVALID_CALL and take the game down.
@@ -850,6 +930,7 @@ void hook_input()
 void prescan()
 {
     dks_scan_game();
+    dks_spawn_scan();
     for (int i = 0; i < 3; i++) {
         Sleep(15000);
         dks_rescan_missing();
@@ -902,7 +983,7 @@ bool is_elden_ring()
 } // namespace
 
 /* Lets the launcher recognise this DLL. */
-extern "C" __declspec(dllexport) const char *DkSignTestMenuVersion(void) { return "dksign_testmenu 6"; }
+extern "C" __declspec(dllexport) const char *DkSignTestMenuVersion(void) { return "dksign_testmenu 7"; }
 
 BOOL WINAPI DllMain(HINSTANCE inst, DWORD reason, LPVOID)
 {

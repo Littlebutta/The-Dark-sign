@@ -125,6 +125,37 @@ uintptr_t dks_find_in_game(const char *pattern_text)
     return 0;
 }
 
+uintptr_t dks_find_in_game_where(const char *pattern_text, int (*accept)(uintptr_t hit, void *ctx), void *ctx)
+{
+    DksPattern pattern;
+    if (!dks_parse_pattern(pattern_text, &pattern))
+        return 0;
+    uint8_t *base = (uint8_t *)GetModuleHandleW(NULL);
+    MEMORY_BASIC_INFORMATION mbi;
+    int hits = 0;
+    for (uint8_t *at = base; VirtualQuery(at, &mbi, sizeof mbi) && mbi.AllocationBase == base;
+         at = (uint8_t *)mbi.BaseAddress + mbi.RegionSize) {
+        DWORD readable = PAGE_READONLY | PAGE_READWRITE | PAGE_WRITECOPY | PAGE_EXECUTE_READ |
+                         PAGE_EXECUTE_READWRITE | PAGE_EXECUTE_WRITECOPY;
+        if (mbi.State != MEM_COMMIT || !(mbi.Protect & readable) || (mbi.Protect & (PAGE_GUARD | PAGE_NOACCESS)))
+            continue;
+        const uint8_t *region = (const uint8_t *)mbi.BaseAddress;
+        size_t offset = 0;
+        while (offset < mbi.RegionSize) {
+            long long hit = dks_find_pattern(region + offset, mbi.RegionSize - offset, &pattern);
+            if (hit < 0)
+                break;
+            uintptr_t addr = (uintptr_t)region + offset + (uintptr_t)hit;
+            hits++;
+            if (accept(addr, ctx))
+                return addr;
+            offset += (size_t)hit + 1;
+        }
+    }
+    dks_log("scan: %d matches, none accepted: %s", hits, pattern_text);
+    return 0;
+}
+
 /* "mov reg, [rip+rel32]": the address of the global it reads. */
 static uintptr_t rip_target(uintptr_t instruction)
 {

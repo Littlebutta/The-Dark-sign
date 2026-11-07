@@ -178,16 +178,17 @@ public static partial class ChrPort
         var result = new Result();
         CleanOutputs(ctx);
         var method = CurrentMethod;
+        var notes = result.Notes;
+        var erNpc = ctx.LoadParams(PorterGame.EldenRing).Get("NpcParam") ?? throw new InvalidDataException("Elden Ring has no NpcParam");
+        var catalog = EnemyPort.BuildCatalog(erArchives, erNpc, notes);
         if (method == Method.Off)
         {
             Console.WriteLine("enemies: off (Fallbacks enemy-port); DS3 maps use stand-ins");
+            WriteSpawnList(ctx, [], catalog, new HashSet<string>());
             return result;
         }
         TAE.ValidateEventBank = false;
-        var notes = result.Notes;
-        var erNpc = ctx.LoadParams(PorterGame.EldenRing).Get("NpcParam") ?? throw new InvalidDataException("Elden Ring has no NpcParam");
         var ds3Npc = ctx.LoadParams(PorterGame.DarkSouls3).Get("NpcParam");
-        var catalog = EnemyPort.BuildCatalog(erArchives, erNpc, notes);
         var characters = Ds3Characters(ds3Archives, ds3Npc);
         Console.WriteLine($"enemies: {characters.Count} DS3 characters in DS3's maps, {catalog.Count} Elden Ring templates");
 
@@ -274,6 +275,7 @@ public static partial class ChrPort
         }
 
         File.WriteAllLines(ctx.ModPath(EnemyPort.ChrMap.FileName), mapLines);
+        WriteSpawnList(ctx, mapLines, catalog, plans.Where(p => p.Ds3.Boss).Select(p => $"c{p.Ds3.Chr:D4}").ToHashSet());
         File.WriteAllLines(ctx.ModPath(ManifestFile), written.Select(w => Path.GetRelativePath(ctx.ModPath(), w)));
         WriteReport(ctx, result);
         Console.WriteLine($"enemies: {result.Summary} (report: Work\\reports\\{ReportFile})");
@@ -321,6 +323,19 @@ public static partial class ChrPort
         return $"enemies: {rows} NpcParam rows, {attacks.Summary}{(failed > 0 ? $", {failed} characters' params failed" : "")}";
     }
 
+    /// <summary>The F1 menu's spawn list; a failure only costs the menu its list (it falls back to a built-in one).</summary>
+    private static void WriteSpawnList(PorterContext ctx, IEnumerable<string> mapLines, IEnumerable<EnemyPort.ErEnemy> catalog, ISet<string> ds3Bosses)
+    {
+        try
+        {
+            SpawnList.Write(ctx, mapLines, catalog, ds3Bosses);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            Console.WriteLine($"enemies: F1 spawn list not written ({ex.Message})");
+        }
+    }
+
     private static void WriteReport(PorterContext ctx, Result result)
     {
         var report = new List<string> { "DS3 chr\tname\tboss\ttemplate\ttemplate name\tbone match\tnew chr\tmethod\tnotes" };
@@ -363,7 +378,7 @@ public static partial class ChrPort
                     && !full.EndsWith("regulation.bin", StringComparison.OrdinalIgnoreCase))
                     File.Delete(full);
             }
-        foreach (var file in new[] { manifest, ctx.ModPath(EnemyPort.ChrMap.FileName) })
+        foreach (var file in new[] { manifest, ctx.ModPath(EnemyPort.ChrMap.FileName), ctx.ModPath(SpawnList.FileName) })
             if (File.Exists(file))
                 File.Delete(file);
     }
@@ -728,7 +743,7 @@ public static partial class ChrPort
         catch (Exception e) when (e is InvalidCastException or OverflowException or FormatException) { }
     }
 
-    public static IEnumerable<string> OutputFiles(PorterContext ctx) => [ctx.ModPath(ManifestFile), ctx.ModPath(EnemyPort.ChrMap.FileName)];
+    public static IEnumerable<string> OutputFiles(PorterContext ctx) => [ctx.ModPath(ManifestFile), ctx.ModPath(EnemyPort.ChrMap.FileName), ctx.ModPath(SpawnList.FileName)];
 
     internal static string Describe(Plan p) => new StringBuilder()
         .Append($"c{p.Ds3.Chr:D4} {p.Ds3.Name} -> {p.Template.Model} ({p.Template.Name}, bone match {p.BoneMatch:0.00}) as c{p.NewChr:D4}, {p.Method}")
