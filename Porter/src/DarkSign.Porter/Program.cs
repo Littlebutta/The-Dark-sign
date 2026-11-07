@@ -29,10 +29,12 @@ const string Usage = """
       weapons-plan                 decide which DS3 weapons to port and as which Elden Ring class
       port-weapons                 build the weapon rows into TheDarkSign\Mods\ER\regulation.bin
       validate-mod                 check the built mod offline: params, TAE, animations, clips, sounds, effects
+      texture-check [weapon...]    check every ported weapon model's materials find their textures (grey models)
       item-list                    write the test menu's item list (Elden Ring items only)
       chr-survey <DS3|ER> <chr id>...  report an enemy's files, binders, AI scripts and params (enemy port step 1)
       map-selftest                 offline checks of the map porter (no game files needed)
       sound-selftest               offline checks of how ported sounds are added to a Wwise bank (no game files needed)
+      texture-selftest             offline checks of the DS3 reflectance -> Elden Ring metallic texture conversion
       timing-selftest              offline checks that ported moves' combo/cancel windows don't cut DS3 swings short
       enemy-selftest               offline checks of the enemy porter (templates, IDs, skin indices, chr map, TAE merge)
       arts-selftest                offline checks of the weapon art port (hks patch, skill names)
@@ -79,6 +81,8 @@ try
         return DarkSign.Porter.Maps.MapSelfTest.Run();
     if (argList[0].Equals("sound-selftest", StringComparison.OrdinalIgnoreCase))
         return SoundSelfTest.Run();
+    if (argList[0].Equals("texture-selftest", StringComparison.OrdinalIgnoreCase))
+        return WeaponTextures.SelfTest();
     if (argList[0].Equals("timing-selftest", StringComparison.OrdinalIgnoreCase))
         return MoveTiming.SelfTest();
     if (argList[0].Equals("enemy-selftest", StringComparison.OrdinalIgnoreCase))
@@ -102,6 +106,7 @@ try
         "flver-info" when argList.Count == 3 => Explore.FlverInfo(ctx, PorterGame.Parse(argList[1]), argList[2]),
         "port-weapons" => Commands.PortWeapons(ctx),
         "validate-mod" => ModValidate.Run(ctx),
+        "texture-check" => TextureCheck.Run(ctx, argList[1..]),
         "port-maps" => DarkSign.Porter.Maps.MapPorter.Run(ctx, argList[1..]),
         "map-survey" => DarkSign.Porter.Maps.MapSurvey.Run(ctx, argList[1..]),
         "map-validate" => DarkSign.Porter.Maps.MapValidate.Run(ctx),

@@ -115,6 +115,17 @@ Try the next option if: Two-handing a split weapon doesn't split it, or the seco
 - **off: Off (template positions).** Ported weapons keep their template's WepAbsorpPosParam row (DARKSIGN_ABSORP=0): no split. Tells whether the split is what breaks something. (`DARKSIGN_ABSORP=0`)
 
 
+## Weapon models
+
+### DS3 weapon colours (metal) (`weapon-textures`, rebuilds the content)
+
+Try the next option if: Ported weapons look dark grey and untextured, or metal parts look painted, too shiny or too bright.
+
+- **A: Reflectance to metallic and base colour (default).** Each DS3 reflectance map (_r) becomes Elden Ring's metallic map (_m), and the diffuse map (_a) takes the reflectance colour where the surface is metal, the usual specular-to-metallic conversion.
+- **B: Metallic only.** The metallic map is made from the reflectance the same way, but DS3's diffuse map is kept as it is (DARKSIGN_WEAPON_PBR=metal). (`DARKSIGN_WEAPON_PBR=metal`)
+- **off: Off (flat, not metal).** The old way: a flat black metallic map and DS3's diffuse map (DARKSIGN_WEAPON_PBR=0). Metal blades render dark grey. (`DARKSIGN_WEAPON_PBR=0`)
+
+
 ## Weapon sounds and effects
 
 ### DS3 weapon sounds (`sounds`, rebuilds the content)
