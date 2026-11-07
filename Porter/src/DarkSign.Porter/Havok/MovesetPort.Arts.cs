@@ -80,9 +80,15 @@ public static partial class MovesetPort
         var usedIds = artParam.Rows.Select(ArtId).ToHashSet();
         var taeSections = erMain.Files.Select(f => ItemText.Leaf(f.Name)).Where(n => n.EndsWith(".tae", StringComparison.OrdinalIgnoreCase))
             .Select(n => int.TryParse(n[1..^4], out var s) ? s : -1).ToHashSet();
-        // 300-398 first (Elden Ring's own DLC range), then 170-254: c0000.hks gives both the plain one-shot by default.
-        var free = new Queue<int>(Enumerable.Range(300, 99).Concat(Enumerable.Range(170, 85)).Where(id => id is not (196 or 305 or 357 or 399)
-            && !usedIds.Contains(id) && !taeSections.Contains(600 + id) && !clipsBySection.ContainsKey(600 + id)));
+        // 300-398 first (Elden Ring's own DLC range), then 170-254: Elden Ring's own c0000.hks gives both the plain
+        // one-shot. With our hks (ividyon's, which also gives an ID missing from its SwordArtsCategory table the
+        // default), every other ID it never names is free too: 39 IDs weren't enough for DS3's 77 arts.
+        string? hks = ArtsWithHks ? LoadHks(ctx) : null;
+        var hksNamed = hks is null ? [] : HksNamedIds(hks);
+        var extra = hks is null ? [] : Enumerable.Range(1, 169).Concat(Enumerable.Range(255, 45)).Where(id => !hksNamed.Contains(id));
+        var free = new Queue<int>(Enumerable.Range(300, 99).Concat(Enumerable.Range(170, 85)).Where(id => id is not (196 or 305 or 357 or 399))
+            .Concat(extra)
+            .Where(id => !usedIds.Contains(id) && !taeSections.Contains(600 + id) && !clipsBySection.ContainsKey(600 + id)));
 
         // One art per DS3 art section; weapons whose DS3 art has no skill animations (talismans, bows) are left alone.
         var jobs = new List<ArtJob>();
@@ -96,8 +102,8 @@ public static partial class MovesetPort
                 continue;
             bool stance = skill.Contains(36200);
             // One-shot: the first move of the skill (its x00 animation). Without the hks, a stance plays its light attack.
-            int start = stance ? 36230 : skill.FirstOrDefault(id => id % 100 == 0, skill[0]);
-            jobs.Add(new ArtJob(g.Key, cls, stance && ArtsWithHks, start, g.ToList()));
+            int start = stance && hks is null ? 36230 : stance ? 36200 : skill.FirstOrDefault(id => id % 100 == 0, skill[0]);
+            jobs.Add(new ArtJob(g.Key, cls, stance && hks is not null, start, g.ToList()));
         }
         jobs = jobs.OrderByDescending(j => j.Weapons.Any(p => p.Ds3Id == 10180000)).ThenByDescending(j => j.Weapons.Count).ThenBy(j => j.Ds3Section).ToList();
         Console.WriteLine($"arts: {jobs.Count} DS3 weapon arts with skill animations ({jobs.Count(j => j.Stance)} stances), {free.Count} free art IDs");
@@ -105,6 +111,7 @@ public static partial class MovesetPort
         var ds3Captions = new Dictionary<int, string>();
         var names = new Dictionary<int, string>();
         var stanceIds = new List<int>();
+        var portedIds = new List<int>();
         int arts = 0, weapons = 0, nextRow = FirstArtRow;
         foreach (var job in jobs)
         {
@@ -226,6 +233,7 @@ public static partial class MovesetPort
                         SetCell(w, "swordArtsParamId", nextRow);
                 if (job.Stance)
                     stanceIds.Add(artId);
+                portedIds.Add(artId);
                 free.Dequeue();
                 arts++;
                 weapons += job.Weapons.Count;
@@ -238,11 +246,17 @@ public static partial class MovesetPort
                 Console.WriteLine($"arts: skipped {label}: {e.GetType().Name}: {e.Message}");
             }
         }
-        if (stanceIds.Count > 0)
-            WriteHks(ctx, stanceIds);
+        // The hks goes with every build that has arts (the extra IDs rely on it), and is removed otherwise.
+        bool hksWritten = false;
+        if (hks is not null && arts > 0)
+        {
+            Directory.CreateDirectory(Path.GetDirectoryName(HksPath(ctx))!);
+            File.WriteAllText(HksPath(ctx), PatchHks(hks, stanceIds, portedIds.Where(id => id < 300).ToList()), new System.Text.UTF8Encoding(false));
+            hksWritten = true;
+        }
         else if (File.Exists(HksPath(ctx)))
             File.Delete(HksPath(ctx));
-        Console.WriteLine($"arts: {arts} DS3 weapon arts for {weapons} weapons ({stanceIds.Count} stances{(stanceIds.Count > 0 ? ", c0000.hks written" : "")})");
+        Console.WriteLine($"arts: {arts} DS3 weapon arts for {weapons} weapons ({stanceIds.Count} stances{(hksWritten ? ", c0000.hks written" : ", no c0000.hks")})");
         return new ArtResult(arts, weapons, names, stanceIds);
     }
 
@@ -299,8 +313,9 @@ public static partial class MovesetPort
 
     private static string HksPath(PorterContext ctx) => ctx.ModPath("action", "script", "c0000.hks");
 
-    /// <summary>ividyon's c0000.hks with the ported stance arts added to IsStanceArts.</summary>
-    private static void WriteHks(PorterContext ctx, IReadOnlyList<int> stanceIds)
+    /// <summary>ividyon's c0000.hks (cached under Work\cache), or null when it can't be had: then stance arts aren't
+    /// built as stances and only the IDs Elden Ring's own hks treats as plain one-shots are used.</summary>
+    private static string? LoadHks(PorterContext ctx)
     {
         try
         {
@@ -311,18 +326,43 @@ public static partial class MovesetPort
                 using var http = new HttpClient { Timeout = TimeSpan.FromMinutes(2) };
                 File.WriteAllBytes(cache, http.GetByteArrayAsync(HksUrl).GetAwaiter().GetResult());
             }
-            var text = PatchHks(File.ReadAllText(cache), stanceIds);
-            Directory.CreateDirectory(Path.GetDirectoryName(HksPath(ctx))!);
-            File.WriteAllText(HksPath(ctx), text, new System.Text.UTF8Encoding(false));
+            var text = File.ReadAllText(cache);
+            PatchHks(text, []); // refuses a file without IsStanceArts
+            return text;
         }
         catch (Exception e) when (e is not OutOfMemoryException)
         {
-            // Without the hks the stance arts play as Elden Ring's default one-shot (their stance start only).
-            Console.WriteLine($"arts: c0000.hks not written, stance arts won't hold their stance ({e.GetType().Name}: {e.Message})");
+            Console.WriteLine($"arts: no c0000.hks ({e.GetType().Name}: {e.Message}); stance arts become one-shots and only art IDs 170-254/300-398 are used");
+            return null;
         }
     }
 
-    internal static string PatchHks(string hks, IReadOnlyList<int> stanceIds)
+    /// <summary>Art IDs the hks gives behaviour of its own outside the SwordArtsCategory table: compared with an art ID
+    /// variable (c_SwordArtsID == 318, arts_id ~= 17), inside a range test (130 <= arts_id and arts_id <= 140), or
+    /// listed in an aow_list. Those are never handed to a ported art. (Table entries are overridden by PatchHks.)</summary>
+    internal static HashSet<int> HksNamedIds(string hks)
+    {
+        const string artVar = @"(?:c_SwordArtsID|arts_?id|art_?id|artsID|weaponswordartid)";
+        var opt = System.Text.RegularExpressions.RegexOptions.IgnoreCase;
+        int table = hks.IndexOf("SwordArtsCategory = {", StringComparison.Ordinal);
+        int tableEnd = table < 0 ? -1 : hks.IndexOf("\n}", table, StringComparison.Ordinal);
+        var body = table < 0 || tableEnd < 0 ? hks : hks[..table] + hks[tableEnd..];
+        var ids = new HashSet<int>();
+        foreach (System.Text.RegularExpressions.Match m in System.Text.RegularExpressions.Regex.Matches(body, artVar + @"\s*(?:[=~]=|<=?|>=?)\s*(\d{1,3})\b", opt))
+            ids.Add(int.Parse(m.Groups[1].Value));
+        foreach (System.Text.RegularExpressions.Match m in System.Text.RegularExpressions.Regex.Matches(body, @"\b(\d{1,3})\s*(?:<=?|>=?)\s*" + artVar, opt))
+            ids.Add(int.Parse(m.Groups[1].Value));
+        foreach (System.Text.RegularExpressions.Match m in System.Text.RegularExpressions.Regex.Matches(body,
+                     @"\b(\d{1,3})\s*<=?\s*" + artVar + @"\s+and\s+" + artVar + @"\s*<=?\s*(\d{1,3})\b", opt))
+            for (int id = int.Parse(m.Groups[1].Value); id <= int.Parse(m.Groups[2].Value); id++)
+                ids.Add(id);
+        foreach (System.Text.RegularExpressions.Match list in System.Text.RegularExpressions.Regex.Matches(body, @"aow_\w+\s*=\s*\{([^}]*)\}"))
+            foreach (System.Text.RegularExpressions.Match n in System.Text.RegularExpressions.Regex.Matches(list.Groups[1].Value, @"(?m)^\s*(\d{1,3})\b"))
+                ids.Add(int.Parse(n.Groups[1].Value));
+        return ids;
+    }
+
+    internal static string PatchHks(string hks, IReadOnlyList<int> stanceIds, IReadOnlyCollection<int>? defaultIds = null)
     {
         const string fn = "function IsStanceArts(arts_id)";
         int at = hks.IndexOf(fn, StringComparison.Ordinal);
@@ -331,7 +371,20 @@ public static partial class MovesetPort
             throw new InvalidDataException("c0000.hks has no IsStanceArts list");
         int insert = hks.IndexOf('\n', list) + 1;
         var lines = string.Concat(stanceIds.Select(id => $"        {id}, -- The Dark Sign: DS3 stance art\n"));
-        return hks[..insert] + lines + hks[insert..];
+        hks = hks[..insert] + lines + hks[insert..];
+        // Ported arts on IDs below 300 that SwordArtsCategory has a row for: plain default animations, like Elden Ring's
+        // own IDs from 300 up (the row would ask for per-weapon-class variants the DS3 art doesn't have).
+        if (defaultIds is { Count: > 0 })
+        {
+            const string diff = "function GetSwordArtsDiffCategory(artID, idleCat, wepCat)";
+            int d = hks.IndexOf(diff, StringComparison.Ordinal);
+            if (d < 0)
+                throw new InvalidDataException("c0000.hks has no GetSwordArtsDiffCategory");
+            int after = hks.IndexOf('\n', d) + 1;
+            var test = string.Join(" or ", defaultIds.Order().Select(id => $"artID == {id}"));
+            hks = hks[..after] + $"    if {test} then -- The Dark Sign: DS3 weapon arts\n        return SWORD_ART_DIFF_CAT_DEFAULT\n    end\n" + hks[after..];
+        }
+        return hks;
     }
 
     /// <summary>Adds the ported arts' names to Elden Ring's DLC02 art name text (ArtsName_dlc02), in the built mod.</summary>
@@ -380,6 +433,11 @@ public static class ArtSelfTest
         bool threw = false;
         try { MovesetPort.PatchHks("function Other()\nend\n", [300]); } catch (InvalidDataException) { threw = true; }
         Check(threw, "hks: a file without IsStanceArts is refused (the build then skips the hks)");
+        var named = MovesetPort.HksNamedIds("if c_SwordArtsID == 318 then end\nif arts_id ~= 17 then end\nif 130 <= arts_id and arts_id <= 140 then end\n" +
+                                            "local aow_list = {\n        10, -- Wild Strikes\n        372\n    }\nSwordArtsCategory = {\n    [26] = {SWORD_ART_DIFF_CAT_DEFAULT},\n}\nlocal idx = 0\nif idx == 26 then end\n");
+        Check(named.SetEquals([318, 17, 10, 372, .. Enumerable.Range(130, 11)]), $"hks: art IDs with behaviour of their own found (got {string.Join(" ", named.Order())})");
+        var withDefault = MovesetPort.PatchHks("function IsStanceArts(arts_id)\n    local aow_list = {\n    }\nend\nfunction GetSwordArtsDiffCategory(artID, idleCat, wepCat)\n    return 1\nend\n", [], [26, 27]);
+        Check(withDefault.Contains("function GetSwordArtsDiffCategory(artID, idleCat, wepCat)\n    if artID == 26 or artID == 27 then"), "hks: ported IDs below 300 get the default animations");
         Check(MovesetPort.SkillName("A great scythe.\n\nSkill: Spin Sweep\nSpin the scythe.") == "Spin Sweep", "skill name read from a DS3 description");
         Check(MovesetPort.SkillName("No skill here.") is null, "no skill name when the description names none");
         // Bitfield fillers (ParamStore.FillBitfields): Elden Ring 2.7.2's SpEffectParam sets flags in bits Paramdex leaves unnamed.
