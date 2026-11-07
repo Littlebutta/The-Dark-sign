@@ -163,7 +163,7 @@ public static class MapPorter
                     Delete(Local($"/map/{area}/{area}_{n:D4}.{ext}"));
         foreach (var path in new[] { "/event/common.emevd.dcx", MapEvents.CommonFunc, MaterialBinder, ActionButtons.ModMenu })
             Delete(Local(path));
-        foreach (var file in new[] { MapEvents.FlagFile, "darksign_maps.tsv", "darksign_maps_check.txt",
+        foreach (var file in new[] { MapEvents.FlagFile, "darksign_maps.tsv", "darksign_maps_check.txt", FlagAlloc.ProbeFile,
                      DarkSign.Randomizer.Data.EnemyTables.PlacedFile, DarkSign.Randomizer.Data.EnemyTables.ErFile })
             Delete(Path.Combine(root, file));
     }

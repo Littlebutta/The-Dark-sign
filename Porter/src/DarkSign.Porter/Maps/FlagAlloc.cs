@@ -46,6 +46,39 @@ public static class FlagAlloc
         return blocks;
     }
 
+    public const string ProbeFile = "darksign_flag_blocks.txt";
+
+    /// <summary>
+    /// The flag blocks the game is asked about in game (TestMenu flagcheck.c): every block a flag of the port lives in
+    /// (event IDs aren't flags and need no block). Each line is the block's probe flag (its last number, which the port
+    /// never hands out) and what uses the block.
+    /// </summary>
+    public static IEnumerable<string> ProbeLines(IEnumerable<MapId> slots, IEnumerable<long> flags, bool slotFlags = true)
+    {
+        var blocks = new SortedDictionary<long, string>();
+        void Add(long flag, string what) => blocks.TryAdd(flag / 1000, what);
+        Add(RunEvents.Ds3RunActive, "DS3 run active flag, saved");
+        Add(RunEvents.StartDs3Request, "F1 menu start/leave/warp requests");
+        if (slotFlags)
+            foreach (var s in slots.Distinct())
+                for (long b = 0; b < 10; b++)
+                    Add(s.EntityBase + b * 1000, $"{s} map flags");
+        foreach (var f in flags.Where(f => f > 0))
+            Add(f, Layout(f));
+        yield return "# probe flag\twhat uses the block (written by port-maps; read by dksign_testmenu.dll, which logs flagcheck: lines)";
+        foreach (var (block, what) in blocks)
+            yield return $"{block * 1000 + 999}\t{what}";
+    }
+
+    /// <summary>What JortPob's shipped layout says a flag in the bottom-edge sea tiles is (see DarkSign.Core.Preflight).</summary>
+    public static string Layout(long flag) => DarkSign.Core.Preflight.JortPobLayout(flag) switch
+    {
+        "saved" => "saved flags (JortPob layout)",
+        "temporary" => "temporary flags (JortPob layout)",
+        "event" => "event IDs (JortPob layout)",
+        _ => "outside JortPob's blocks",
+    };
+
     public static void Check(GameArchives er, MapValidate.Report report, IEnumerable<MapId> slots, IEnumerable<long> globalFlags)
     {
         var lists = new List<(string Name, byte[] Data)>();

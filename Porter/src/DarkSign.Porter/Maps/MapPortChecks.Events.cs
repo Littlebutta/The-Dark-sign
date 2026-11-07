@@ -13,8 +13,27 @@ public static partial class MapPortChecks
         yield return ("event port: event parameters follow their argument and values passed in move by kind", EventParameters);
         yield return ("event port: DS3 common events are ported once, under saved IDs, with Elden Ring's slot argument", EventCommon);
         yield return ("event port: flag ranges stay consecutive and the flag table reads back the same", EventFlagTable);
+        yield return ("fallbacks: map-flags B gives map flags JortPob numbers and still moves entities to the slot", EventCommonMapFlags);
         yield return ("layout: connect collisions point at the neighbouring map's slot; ones to unported maps are left out", ConnectCollisions);
         yield return ("event port: DS3 action buttons become IF Action Button in Area with one ActionButtonParam row per prompt", EventActionButtons);
+    }
+
+    private static void EventCommonMapFlags()
+    {
+        Environment.SetEnvironmentVariable("DARKSIGN_MAP_FLAGS", "common");
+        try
+        {
+            var port = NewEventPort();
+            long flag = Ds3Id.Ds3FlagBase + 800, entity = Ds3Id.Ds3EntityBase + 800;
+            Expect(port.Move(flag, EventPort.Kind.Flag) == FlagMap.LocalSlot(0), $"map flag became {port.Move(flag, EventPort.Kind.Flag)}");
+            Expect(port.Move(entity, EventPort.Kind.Entity) == ErId.EntityBase + 800, "entities still move to the slot");
+            Expect(port.Move(50000, EventPort.Kind.Flag) == FlagMap.FlagSlot(0), "global flags unchanged");
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("DARKSIGN_MAP_FLAGS", null);
+        }
+        Expect(NewEventPort().Move(Ds3Id.Ds3FlagBase + 800, EventPort.Kind.Flag) == ErId.EntityBase + 800, "method A moves map flags to the slot");
     }
 
     // Made-up definitions in DarkScript3's format, shaped like the real ones where it matters.

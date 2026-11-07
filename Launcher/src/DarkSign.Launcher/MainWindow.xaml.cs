@@ -750,6 +750,35 @@ public partial class MainWindow : Window
                           (Fallbacks.BuildSignature(methods) != before ? " The content is rebuilt on the next PLAY." : "");
     }
 
+    /// <summary>Pre-flight check window: fast checks, the porter's checks of the built mod, and the test report zip.</summary>
+    private void OnPreflight(object sender, RoutedEventArgs e)
+    {
+        StoreRowsIntoSettings();
+        SaveSettings();
+        var setup = new EldenRingSetup(Root);
+        PreflightWindow.Show(this,
+            () => Preflight.Run(new Preflight.Context(Root, _settings, setup.PorterVersion)),
+            async onLine =>
+            {
+                if (!File.Exists(setup.PorterExe) || !File.Exists(Path.Combine(setup.ModDir, "regulation.bin")))
+                    return false;
+                Directory.CreateDirectory(setup.LogDir);
+                try
+                {
+                    await StartPorter(setup, "validate-mod", [], onLine).Completion;
+                    await StartPorter(setup, "map-validate", [], onLine).Completion;
+                    // validate-mod exits 1 when it found errors; the report is what counts.
+                    return File.Exists(Path.Combine(Root, "TheDarkSign", "Work", "reports", "validate-mod.txt"));
+                }
+                catch (Exception ex) when (ex is Win32Exception or InvalidOperationException or IOException)
+                {
+                    onLine(ex.Message);
+                    return false;
+                }
+            },
+            preflight => Diagnostics.Write(Root, _settings, AppContext.BaseDirectory, SelfUpdater.CurrentVersion.ToString(3), preflight));
+    }
+
     private void OnTestMenuChanged(object sender, RoutedEventArgs e)
     {
         _settings.TestMenu = TestMenuBox.IsChecked == true;

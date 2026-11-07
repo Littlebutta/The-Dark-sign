@@ -32,6 +32,7 @@ public static partial class MapPortChecks
         yield return ("navmesh: binder entries are renamed to the host map and keep the host's compendium", NavmeshBinder);
         yield return ("rebuild: a full run deletes port-maps' own old outputs (both slot methods) and keeps the other steps' files", CleanStale);
         yield return ("flags: the allocation probe finds block numbers and lists every block the port uses", FlagAllocProbe);
+        yield return ("flags: in-game probe flags are each block's last number, and map-flags B uses JortPob's saved ranges", FlagProbesAndLocalFlags);
     }
 
     private static void CleanStale()
@@ -67,6 +68,31 @@ public static partial class MapPortChecks
         var blocks = FlagAlloc.UsedBlocks([ErId, ErId], [1030290005, 1030290006, 1038291000]);
         Expect(blocks.Keys.SequenceEqual(new long[] { 45000, 1030290, 1038291, 1039290, 1039291, 1039292 }),
             "blocks: " + string.Join(",", blocks.Keys));
+    }
+
+    private static void FlagProbesAndLocalFlags()
+    {
+        var lines = FlagAlloc.ProbeLines([ErId], [1030290005, 1031290002]).Where(l => !l.StartsWith('#')).ToList();
+        var probes = lines.Select(l => long.Parse(l.Split('\t')[0])).ToList();
+        Expect(probes.All(p => p % 1000 == 999), "probe flags are a block's last number");
+        Expect(probes.Contains(1039290999) && probes.Contains(1039292999) && probes.Contains(45000999) && probes.Contains(45009999)
+               && probes.Contains(1030290999) && probes.Contains(1031290999), "probes: " + string.Join(",", probes));
+        Expect(!probes.Contains(1039291999), "event IDs need no flag block");
+        Expect(!FlagAlloc.ProbeLines([ErId], [], slotFlags: false).Any(l => l.StartsWith("4500")), "map-flags B drops the slot blocks");
+
+        var map = new FlagMap();
+        var global = map.Flag(50000);
+        var local = map.LocalFlag(14000800);
+        Expect(global == FlagMap.FlagSlot(0) && local == FlagMap.LocalSlot(0) && local == 1030294000, $"first local flag {local}");
+        Expect(DarkSign.Core.Preflight.JortPobLayout(local) == "saved", "local flags are in a saved range");
+        Expect(Enumerable.Range(0, map.LocalCapacity).Select(FlagMap.LocalSlot).All(f => DarkSign.Core.Preflight.JortPobLayout(f) == "saved"),
+            "every local slot is saved");
+        Expect(Enumerable.Range(0, map.LocalCapacity).Select(FlagMap.LocalSlot).Distinct().Count() == map.LocalCapacity, "local slots unique");
+        Expect(!Enumerable.Range(0, map.Capacity).Select(FlagMap.FlagSlot).Intersect(Enumerable.Range(0, map.LocalCapacity).Select(FlagMap.LocalSlot)).Any(),
+            "local and global slots never overlap");
+        var start = map.LocalRange(14000900, 14000909);
+        Expect(start > 0 && Enumerable.Range(0, 10).All(i => map.Flags[14000900 + i] == start + i), "local ranges stay consecutive");
+        Expect(map.LocalFlag(14000800) == local, "the same DS3 flag keeps its number");
     }
 
     private static void Expect(bool condition, string message)
