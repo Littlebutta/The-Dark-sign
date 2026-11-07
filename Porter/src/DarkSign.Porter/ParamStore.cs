@@ -48,7 +48,19 @@ public sealed class ParamStore
             ?? (name.EndsWith("Param", StringComparison.Ordinal) ? _data.ParamDef(_game, name[..^5]) : null)
             ?? throw new FileNotFoundException($"Paramdex has no def for {_game.ShortName} {name} ({param.ParamType}).");
         var def = PARAMDEF.XmlDeserialize(defFile, versionAware: true, validateFields: false);
-        if (!param.ApplyParamdefCarefully(def))
+        bool applied;
+        try
+        {
+            applied = param.ApplyParamdefCarefully(def);
+        }
+        catch (InvalidDataException e) when (e.Message.Contains("bits would be lost", StringComparison.Ordinal))
+        {
+            // The game set flags Paramdex doesn't name yet (Elden Ring 2.7.2's SpEffectParam at +0x352): the unnamed
+            // bits of each bitfield byte get filler fields, so they are read and written back unchanged.
+            Console.WriteLine($"params: {_game.ShortName} {name}: {FillBitfields(def)} unnamed bitfield bits kept ({e.Message})");
+            applied = param.ApplyParamdefCarefully(def);
+        }
+        if (!applied)
             throw new InvalidDataException(
                 $"{_game.ShortName} {name}: Paramdex def {param.ParamType} does not fit this game version " +
                 $"(row size {param.DetectedSize}).");
@@ -69,6 +81,33 @@ public sealed class ParamStore
             RegulationDecryptor.EncryptDS3Regulation(path, Regulation);
         else
             RegulationDecryptor.EncryptERRegulation(path, Regulation);
+    }
+
+    /// <summary>Adds a filler field after each run of bitfields that leaves bits of its unit unnamed; returns the bit count.</summary>
+    internal static int FillBitfields(PARAMDEF def)
+    {
+        int filled = 0;
+        var fields = def.Fields;
+        for (int i = 0; i < fields.Count; i++)
+        {
+            var f = fields[i];
+            if (f.BitSize <= 0 || !ParamUtil.IsBitType(f.DisplayType))
+                continue;
+            int limit = ParamUtil.GetBitLimit(f.DisplayType), used = 0, j = i;
+            // A run: consecutive bitfields of the same unit size that fit in one unit.
+            while (j < fields.Count && fields[j].BitSize > 0 && ParamUtil.IsBitType(fields[j].DisplayType)
+                   && ParamUtil.GetBitLimit(fields[j].DisplayType) == limit && used + fields[j].BitSize <= limit)
+                used += fields[j++].BitSize;
+            if (used < limit)
+            {
+                var filler = new PARAMDEF.Field(def, f.DisplayType, $"darksignBits{filled}_{i}") { BitSize = limit - used };
+                fields.Insert(j, filler);
+                filled += limit - used;
+                j++;
+            }
+            i = j - 1;
+        }
+        return filled;
     }
 
     // Binder names are Windows paths ("N:\\GR\\data\\Param\\param\\GameParam\\EquipParamWeapon.param") on every OS.

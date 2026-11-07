@@ -16,9 +16,9 @@ namespace DarkSign.Porter;
 /// is DS3's, same names). c0000.hks decides which: IDs from 300 up with no special case get the plain one-shot
 /// (GetSwordArtsDiffCategory returns the default), stance only for IDs listed in IsStanceArts.</item>
 /// </list>
-/// So each DS3 art gets a free art ID from 300 to 398 (sections 900-998, in c0000_a9x with the movesets), a TAE built
+/// So each DS3 art gets a free art ID (300-398, then 170-254; animations go in c0000_a9x with the movesets), a TAE built
 /// from an Elden Ring art of the same kind with DS3's animations and events, behaviour clips copied from that art's,
-/// and a SwordArtsParam row (a copy of the template weapon's, with DS3's FP cost) the ported weapon points at.
+/// and a SwordArtsParam row (a copy of the template weapon's, with the FP costs of DS3's SwordArtsParam row) the ported weapon points at.
 /// Stance arts need c0000.hks to list their ID: ividyon's EldenRingHKS (the community's decompiled hks) is fetched and
 /// written to Mods\ER\action\script\c0000.hks with our IDs added to IsStanceArts.
 /// Fallback "weapon-arts": DARKSIGN_WEAPON_ARTS=nohks (no hks; stance arts become a one-shot of their light attack),
@@ -80,7 +80,8 @@ public static partial class MovesetPort
         var usedIds = artParam.Rows.Select(ArtId).ToHashSet();
         var taeSections = erMain.Files.Select(f => ItemText.Leaf(f.Name)).Where(n => n.EndsWith(".tae", StringComparison.OrdinalIgnoreCase))
             .Select(n => int.TryParse(n[1..^4], out var s) ? s : -1).ToHashSet();
-        var free = new Queue<int>(Enumerable.Range(300, 99).Where(id => id is not (305 or 357 or 399)
+        // 300-398 first (Elden Ring's own DLC range), then 170-254: c0000.hks gives both the plain one-shot by default.
+        var free = new Queue<int>(Enumerable.Range(300, 99).Concat(Enumerable.Range(170, 85)).Where(id => id is not (196 or 305 or 357 or 399)
             && !usedIds.Contains(id) && !taeSections.Contains(600 + id) && !clipsBySection.ContainsKey(600 + id)));
 
         // One art per DS3 art section; weapons whose DS3 art has no skill animations (talismans, bows) are left alone.
@@ -203,15 +204,14 @@ public static partial class MovesetPort
                 for (int i = 0; i < row.Cells.Count; i++)
                     row.Cells[i].Value = templateArtRow.Cells[i].Value is byte[] b ? b.Clone() : templateArtRow.Cells[i].Value;
                 SetArtId(row, artId);
-                int fp = Ds3ArtFp(ds3, ds3Weapons, job.Weapons[0].Ds3Id);
-                if (fp > 0)
-                {
+                var (fp, fpLight, fpHeavy, ds3ArtName) = Ds3Art(ds3, ds3Weapons, job.Weapons[0].Ds3Id);
+                if (fp >= 0)
                     SetCell(row, "useMagicPoint_L2", fp);
-                    if (job.Stance)
-                    {
-                        SetCell(row, "useMagicPoint_R1", fp);
-                        SetCell(row, "useMagicPoint_R2", fp);
-                    }
+                if (job.Stance)
+                {
+                    // DS3 charges the stance's follow-ups separately (FPCostLight, FpCostStrong; -1 = the skill's cost).
+                    SetCell(row, "useMagicPoint_R1", fpLight >= 0 ? fpLight : Math.Max(fp, 0));
+                    SetCell(row, "useMagicPoint_R2", fpHeavy >= 0 ? fpHeavy : Math.Max(fp, 0));
                 }
                 SetCell(row, "textId", nextRow);
                 artParam.Rows.Add(row);
@@ -219,7 +219,8 @@ public static partial class MovesetPort
                 if (ds3Captions.Count == 0)
                     foreach (var (k, v) in ItemText.Load(ds3Archives, "WeaponCaption"))
                         ds3Captions[k] = v;
-                names[nextRow] = SkillName(ds3Captions.GetValueOrDefault(job.Weapons[0].Ds3Id)) ?? $"{job.Weapons[0].Name} Skill";
+                names[nextRow] = SkillName(ds3Captions.GetValueOrDefault(job.Weapons[0].Ds3Id))
+                                 ?? (string.IsNullOrWhiteSpace(ds3ArtName) ? null : ds3ArtName) ?? $"{job.Weapons[0].Name} Skill";
                 foreach (var plan in job.Weapons)
                     foreach (var w in erWeapons.Rows.Where(r => r.ID >= plan.NewId!.Value && r.ID < plan.NewId.Value + 10000))
                         SetCell(w, "swordArtsParamId", nextRow);
@@ -228,7 +229,7 @@ public static partial class MovesetPort
                 free.Dequeue();
                 arts++;
                 weapons += job.Weapons.Count;
-                Console.WriteLine($"arts: {label} -> art {artId} (a{section}, SwordArtsParam {nextRow} '{names[nextRow]}', FP {fp}) from DS3 a{job.Ds3Section} " +
+                Console.WriteLine($"arts: {label} -> art {artId} (a{section}, SwordArtsParam {nextRow} '{names[nextRow]}', FP {fp}/{fpLight}/{fpHeavy}) from DS3 a{job.Ds3Section} " +
                                   $"{(job.Stance ? "stance" : $"one-shot {job.Ds3Start}")} on Elden Ring a{templateSection}: {kept.Count} moves, {registered} behaviour clips");
                 nextRow += 10;
             }
@@ -276,16 +277,15 @@ public static partial class MovesetPort
             cell.Value = Convert.ChangeType(value, cell.Value!.GetType());
     }
 
-    /// <summary>DS3's FP cost of the weapon's art: the most common non-zero "mp" of its behaviour rows (0 when none).</summary>
-    private static int Ds3ArtFp(ParamStore ds3, PARAM ds3Weapons, int ds3Id)
+    /// <summary>DS3's weapon art row (EquipParamWeapon swordArtId -> SwordArtsParam): FP for the skill, its light and
+    /// heavy follow-ups (-1 = none given), and the row's name. All -1 when DS3 has no such row.</summary>
+    private static (int Fp, int Light, int Heavy, string? Name) Ds3Art(ParamStore ds3, PARAM ds3Weapons, int ds3Id)
     {
-        int variation = Convert.ToInt32(ds3Weapons[ds3Id]!["behaviorVariationId"].Value);
-        var behaviors = ds3.Get("BehaviorParam_PC");
-        if (behaviors is null || variation <= 0)
-            return 0;
-        return behaviors.Rows.Where(r => Convert.ToInt32(r["variationId"].Value) == variation)
-            .Select(r => r["mp"]?.Value is { } v ? Convert.ToInt32(v) : 0).Where(mp => mp > 0)
-            .GroupBy(mp => mp).OrderByDescending(g => g.Count()).ThenBy(g => g.Key).Select(g => g.Key).FirstOrDefault();
+        int id = Convert.ToInt32(ds3Weapons[ds3Id]!["swordArtId"].Value);
+        if (ds3.Get("SwordArtsParam") is not { } arts || arts[id] is not { } row)
+            return (-1, -1, -1, null);
+        int Get(string field) => row[field]?.Value is { } v and not byte[] ? Convert.ToInt32(v) : -1;
+        return (Get("FPCost"), Get("FPCostLight"), Get("FpCostStrong"), row.Name);
     }
 
     /// <summary>"Skill: Spin Sweep" from a DS3 weapon description, if it names one.</summary>
@@ -382,6 +382,19 @@ public static class ArtSelfTest
         Check(threw, "hks: a file without IsStanceArts is refused (the build then skips the hks)");
         Check(MovesetPort.SkillName("A great scythe.\n\nSkill: Spin Sweep\nSpin the scythe.") == "Spin Sweep", "skill name read from a DS3 description");
         Check(MovesetPort.SkillName("No skill here.") is null, "no skill name when the description names none");
+        // Bitfield fillers (ParamStore.FillBitfields): Elden Ring 2.7.2's SpEffectParam sets flags in bits Paramdex leaves unnamed.
+        var xml = Path.Combine(Path.GetTempPath(), $"darksign-bits-{Environment.ProcessId}.xml");
+        File.WriteAllText(xml, """
+            <?xml version="1.0" encoding="utf-8"?>
+            <PARAMDEF XmlVersion="2"><ParamType>TEST_ST</ParamType><DataVersion>1</DataVersion><BigEndian>False</BigEndian>
+            <Unicode>True</Unicode><FormatVersion>203</FormatVersion><Fields>
+            <Field Def="u8 a" /><Field Def="u8 b:1" /><Field Def="u8 c:1" /><Field Def="u8 d:3" /><Field Def="dummy8 pad[1]" />
+            <Field Def="f32 e" /></Fields></PARAMDEF>
+            """);
+        var def = SoulsFormats.PARAMDEF.XmlDeserialize(xml, versionAware: true, validateFields: false);
+        File.Delete(xml);
+        int size = def.GetRowSize(), filled = ParamStore.FillBitfields(def);
+        Check(filled == 3 && def.GetRowSize() == size && def.Fields.Count == 7, $"params: unnamed bits of a bitfield byte get a filler, row size unchanged ({filled} bits, {size} -> {def.GetRowSize()} bytes)");
         Console.WriteLine(failures == 0 ? "arts-selftest: all checks passed" : $"arts-selftest: {failures} failed");
         return failures == 0 ? 0 : 1;
     }
