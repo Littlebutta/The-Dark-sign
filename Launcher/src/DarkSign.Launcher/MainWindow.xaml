@@ -1,7 +1,8 @@
 <Window x:Class="DarkSign.Launcher.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="The Dark Sign" Height="660" Width="960"
+        xmlns:local="clr-namespace:DarkSign.Launcher"
+        Title="The Dark Sign" Height="720" Width="960" MinHeight="560" MinWidth="820"
         Background="#16141A" Foreground="#E6E0D4" FontFamily="Segoe UI" FontSize="13"
         Closing="OnClosing">
   <Window.Resources>
@@ -74,10 +75,26 @@
       </DockPanel>
     </Border>
 
+    <!-- Everything the launcher does, porter output included, also written to TheDarkSignLauncher.log next to the exe. -->
+    <Expander x:Name="LogExpander" DockPanel.Dock="Bottom" Margin="0,6,0,0" Foreground="#E6E0D4"
+              Header="Launcher activity (everything the launcher is doing)">
+      <DockPanel Margin="0,4,0,0">
+        <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,0,0,4">
+          <CheckBox x:Name="LogFollowBox" Content="Follow new lines" IsChecked="True" Foreground="#E6E0D4" VerticalAlignment="Center" />
+          <Button Content="Copy" Margin="12,0,0,0" Click="OnCopyLog" />
+          <Button Content="Open log file" Click="OnOpenLogFile" />
+          <Button Content="Clear" Click="OnClearLog" />
+        </StackPanel>
+        <TextBox x:Name="LogBox" Height="190" IsReadOnly="True" FontFamily="Consolas" FontSize="12"
+                 Background="#0F0E12" Foreground="#CFC8BA" BorderBrush="#3A3542" TextWrapping="NoWrap"
+                 VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto" />
+      </DockPanel>
+    </Expander>
     <TextBlock x:Name="StatusText" DockPanel.Dock="Bottom" Margin="0,8,0,0" Opacity="0.8" TextWrapping="Wrap" />
-    <TextBlock DockPanel.Dock="Top" Opacity="0.75" Margin="0,0,0,4" TextWrapping="Wrap"
-               Text="Your games: point each one at your own install with Browse… (a Steam copy is fine; it is only read). Elden Ring and Dark Souls III are needed to build the mod. Games inside the data folder can also be launched from here, unmodded, with separate saves." />
+    <TextBlock x:Name="GamesHint" DockPanel.Dock="Top" Opacity="0.75" Margin="0,0,0,4" TextWrapping="Wrap"
+               Text="Your games: point each one at your own install with Browse… (a Steam copy is fine; it is only read). Both are needed to build the mod." />
 
+    <Grid>
     <DataGrid x:Name="GameGrid" AutoGenerateColumns="False" CanUserAddRows="False" CanUserDeleteRows="False"
               HeadersVisibility="Column" RowHeight="34" GridLinesVisibility="Horizontal"
               Background="#1F1C24" RowBackground="#1F1C24" Foreground="#E6E0D4" BorderBrush="#3A3542">
@@ -89,7 +106,7 @@
         </Style>
       </DataGrid.ColumnHeaderStyle>
       <DataGrid.Columns>
-        <DataGridTextColumn Header="Game" Binding="{Binding DisplayName}" IsReadOnly="True" Width="150" />
+        <DataGridTextColumn Header="Game" Binding="{Binding DisplayName}" IsReadOnly="True" Width="130" />
         <DataGridTextColumn Header="Exe" Binding="{Binding ExePath}" IsReadOnly="True" Width="*" />
         <DataGridTextColumn Header="Launch arguments" Binding="{Binding Arguments, UpdateSourceTrigger=PropertyChanged}" Width="140" />
         <DataGridTextColumn Header="Status" Binding="{Binding Status}" IsReadOnly="True" Width="140" />
@@ -105,5 +122,51 @@
         </DataGridTemplateColumn>
       </DataGrid.Columns>
     </DataGrid>
+
+    <!-- Shown while the content builds: the Darksign ignites as the build goes, with a bar across the panel. -->
+    <Border x:Name="BuildPanel" Visibility="Collapsed" Background="#0B0A0D" BorderBrush="#6B5A3A" BorderThickness="1" Padding="16">
+      <DockPanel>
+        <Grid DockPanel.Dock="Bottom" Margin="0,12,0,0" Height="14">
+          <Border x:Name="BarTrack" Background="#1C1820" CornerRadius="7" BorderBrush="#3A2E22" BorderThickness="1" />
+          <Border x:Name="BarFill" HorizontalAlignment="Left" Width="0" CornerRadius="7">
+            <Border.Background>
+              <LinearGradientBrush StartPoint="0,0" EndPoint="1,0">
+                <GradientStop Color="#5A1A04" Offset="0" />
+                <GradientStop Color="#C2410C" Offset="0.6" />
+                <GradientStop Color="#FDBA54" Offset="1" />
+              </LinearGradientBrush>
+            </Border.Background>
+            <Border.Effect>
+              <DropShadowEffect Color="#FF7A1A" BlurRadius="14" ShadowDepth="0" Opacity="0.9" />
+            </Border.Effect>
+          </Border>
+        </Grid>
+        <local:DarksignProgress x:Name="Darksign" DockPanel.Dock="Left" Width="230" Height="230" Margin="0,0,20,0" />
+        <StackPanel VerticalAlignment="Center">
+          <TextBlock x:Name="BuildTitle" Text="Kindling the Dark Sign…" FontSize="22" Foreground="#F2C27A"
+                     FontWeight="SemiBold" />
+          <TextBlock Text="Building the mod from your own game files." Opacity="0.75" Margin="0,2,0,14" />
+          <Grid>
+            <Grid.ColumnDefinitions>
+              <ColumnDefinition Width="130" />
+              <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+            <Grid.RowDefinitions>
+              <RowDefinition /><RowDefinition /><RowDefinition /><RowDefinition />
+            </Grid.RowDefinitions>
+            <TextBlock Text="Time elapsed" Opacity="0.7" />
+            <TextBlock x:Name="ElapsedText" Grid.Column="1" Text="0:00" FontSize="16" FontWeight="SemiBold" />
+            <TextBlock Grid.Row="1" Text="Time remaining" Opacity="0.7" Margin="0,4,0,0" />
+            <TextBlock x:Name="RemainingText" Grid.Row="1" Grid.Column="1" Text="estimating…" FontSize="16" FontWeight="SemiBold" Margin="0,4,0,0" />
+            <TextBlock Grid.Row="2" Text="Weapons" Opacity="0.7" Margin="0,12,0,0" />
+            <TextBlock x:Name="WeaponsLine" Grid.Row="2" Grid.Column="1" Opacity="0.85" Margin="0,12,0,0" TextTrimming="CharacterEllipsis" />
+            <TextBlock Grid.Row="3" Text="Maps" Opacity="0.7" Margin="0,4,0,0" />
+            <TextBlock x:Name="MapsLine" Grid.Row="3" Grid.Column="1" Opacity="0.85" Margin="0,4,0,0" TextTrimming="CharacterEllipsis" />
+          </Grid>
+          <TextBlock Text="Every line the build prints is in Launcher activity below." Opacity="0.55" Margin="0,14,0,0" />
+        </StackPanel>
+      </DockPanel>
+    </Border>
+    </Grid>
   </DockPanel>
 </Window>

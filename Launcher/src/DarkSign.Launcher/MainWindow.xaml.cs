@@ -5,6 +5,7 @@ using System.IO;
 using System.Net.Http;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Threading;
 using DarkSign.Core;
 using Microsoft.Win32;
 
@@ -13,17 +14,22 @@ namespace DarkSign.Launcher;
 public partial class MainWindow : Window
 {
     private readonly string _settingsPath = Path.Combine(AppContext.BaseDirectory, LauncherSettings.FileName);
-    // Every game has a row, so each player can point the launcher at their own installs. Elden Ring is played with
-    // the panel's PLAY button (with the ported content); the others can be launched from the list.
+    // Only the two games the mod is built from have a row (Dark Souls III, and Elden Ring, the host played with the
+    // panel's PLAY button). Paths saved for the other games stay in the settings, untouched.
+    private static readonly GameId[] ShownGames = [GameId.DarkSouls3, GameId.EldenRing];
     private readonly ObservableCollection<GameRow> _rows;
+    private readonly ActivityLog _log;
     private readonly LauncherSettings _settings;
     private bool _loadingProfile;
 
     public MainWindow()
     {
         InitializeComponent();
+        BuildTitle.FontFamily = DarksignProgress.Cinzel;
+        _log = new ActivityLog(LogBox, LogFollowBox, Path.Combine(AppContext.BaseDirectory, ActivityLog.FileName));
         _settings = LauncherSettings.Load(_settingsPath);
-        _rows = new(GameDefinition.All.Select(d => new GameRow(d, () => Root)));
+        _log.Write($"The Dark Sign launcher v{SelfUpdater.CurrentVersion.ToString(3)} started from {AppContext.BaseDirectory}");
+        _rows = new(GameDefinition.All.Where(d => ShownGames.Contains(d.Id)).Select(d => new GameRow(d, () => Root)));
         GameGrid.ItemsSource = _rows;
 
         RootBox.Text = Root;
@@ -37,6 +43,9 @@ public partial class MainWindow : Window
         if (_rows.Any(r => !File.Exists(r.ExePath)))
             Scan(replaceFound: false);
         RefreshContentText();
+        _log.Write($"Data folder: {Root}");
+        foreach (var row in _rows)
+            _log.Write($"{row.DisplayName}: {(string.IsNullOrEmpty(row.ExePath) ? "(not set)" : row.ExePath)} [{row.Status}]");
 
         Title = $"The Dark Sign  v{SelfUpdater.CurrentVersion.ToString(3)}";
         Loaded += async (_, _) => await UpdateLauncherAsync();
@@ -56,7 +65,7 @@ public partial class MainWindow : Window
             if (update is null)
                 return;
 
-            StatusText.Text = $"Updating the launcher to v{update.Version.ToString(3)}…";
+            SetStatus($"Updating the launcher to v{update.Version.ToString(3)}…");
             IsEnabled = false;
             await updater.InstallAsync(update, exePath);
             SelfUpdater.Restart(exePath);
@@ -65,9 +74,9 @@ public partial class MainWindow : Window
         catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or IOException or UnauthorizedAccessException)
         {
             IsEnabled = true;
-            StatusText.Text = string.IsNullOrWhiteSpace(_settings.GitHubToken) && ex.Message.Contains("404")
+            SetStatus(string.IsNullOrWhiteSpace(_settings.GitHubToken) && ex.Message.Contains("404")
                 ? $"Update check skipped: the repository is private, so set \"GitHubToken\" in {LauncherSettings.FileName}."
-                : $"Update check failed: {ex.Message}";
+                : $"Update check failed: {ex.Message}");
         }
     }
 
@@ -89,10 +98,10 @@ public partial class MainWindow : Window
                 row.ExePath = game.ExePath;
         }
         var missing = _rows.Where(r => !File.Exists(r.ExePath)).Select(r => r.DisplayName).ToList();
-        StatusText.Text = missing.Count == 0
-            ? "Found all four games."
-            : $"Found {GameDefinition.All.Count - missing.Count} of {GameDefinition.All.Count} games. Not found: {string.Join(", ", missing)}. " +
-              "Use Browse… to point at your own install.";
+        SetStatus(missing.Count == 0
+            ? "Found Dark Souls III and Elden Ring."
+            : $"Found {_rows.Count - missing.Count} of {_rows.Count} games. Not found: {string.Join(", ", missing)}. " +
+              "Use Browse… to point at your own install.");
         SaveSettings();
         RefreshContentText();
     }
@@ -174,7 +183,7 @@ public partial class MainWindow : Window
         row.ExePath = exe;
         SaveSettings();
         RefreshContentText();
-        StatusText.Text = $"{row.DisplayName}: {exe}";
+        SetStatus($"{row.DisplayName}: {exe}");
     }
 
     private static string SteamFolderHint(GameId id) => id switch
@@ -223,8 +232,9 @@ public partial class MainWindow : Window
 
         try
         {
+            _log.Write($"Starting {plan.ExePath} {plan.Arguments}".TrimEnd());
             Process.Start(start);
-            StatusText.Text = $"Launched {row.DisplayName}. Saves: {plan.SaveDirectory}";
+            SetStatus($"Launched {row.DisplayName}. Saves: {plan.SaveDirectory}");
         }
         catch (Exception ex)
         {
@@ -311,7 +321,7 @@ public partial class MainWindow : Window
         }
         if (launch && Process.GetProcessesByName("eldenring").Length > 0)
         {
-            StatusText.Text = "Elden Ring is already running.";
+            SetStatus("Elden Ring is already running.");
             return;
         }
 
@@ -332,7 +342,7 @@ public partial class MainWindow : Window
                     && File.Exists(Path.Combine(setup.ModDir, "regulation.bin")) && File.Exists(setup.ItemsFile))
                 {
                     // Dark Souls III moved or was uninstalled after a build: play the content already built.
-                    StatusText.Text = "Dark Souls III wasn't found, so the content wasn't rebuilt; playing the last build.";
+                    SetStatus("Dark Souls III wasn't found, so the content wasn't rebuilt; playing the last build.");
                 }
                 else if (!File.Exists(_settings.GameExePaths.GetValueOrDefault(GameId.DarkSouls3, "")))
                 {
@@ -351,7 +361,7 @@ public partial class MainWindow : Window
             RefreshContentText();
             if (!launch)
             {
-                StatusText.Text = "Content rebuilt.";
+                SetStatus("Content rebuilt.");
                 return;
             }
 
@@ -382,25 +392,31 @@ public partial class MainWindow : Window
                 env[SeamlessCoop.CoopVariable] = "1";
             }
             var natives = SeamlessCoop.Natives(seamless, dlls);
-            if (tweaks.ModEngine2)
-                Process.Start(EldenRingSetup.LaunchInfo(plan, loader, setup.WriteConfig(natives), env));
-            else
-                Process.Start(EldenRingSetup.Me3LaunchInfo(plan, loader, setup.WriteProfile(natives, tweaks), env));
+            var info = tweaks.ModEngine2
+                ? EldenRingSetup.LaunchInfo(plan, loader, setup.WriteConfig(natives), env)
+                : EldenRingSetup.Me3LaunchInfo(plan, loader, setup.WriteProfile(natives, tweaks), env);
+            _log.Write($"Starting {info.FileName} {(info.ArgumentList.Count > 0 ? string.Join(" ", info.ArgumentList.Select(Quote)) : info.Arguments)}".TrimEnd());
+            foreach (var dll in natives)
+                _log.Write($"  native DLL: {dll}");
+            foreach (var (key, value) in env)
+                _log.Write($"  env {key}={value}");
+            Process.Start(info);
             var methods = Fallbacks.Summary(_settings.Methods);
-            StatusText.Text = $"Launched Elden Ring{(tweaks.ModEngine2 ? " (ModEngine2)" : "")}. Saves: {plan.SaveDirectory}" +
+            SetStatus($"Launched Elden Ring{(tweaks.ModEngine2 ? " (ModEngine2)" : "")}. Saves: {plan.SaveDirectory}" +
                 (methods.Length > 0 ? $". Fallback methods: {methods}" : "") +
                 (seamless is not null ? $". Seamless Co-op is on (mod code {CoopCheckCode(setup) ?? "?"})" : "") +
                 (!_settings.TestMenu || !env.ContainsKey(EldenRingSetup.ItemsVariable) ? "."
                     : env.ContainsKey(Fallbacks.NoOverlayVariable)
                         ? ". Test menu hotkeys: Ctrl+Shift+F1 start the DS3 run, F2 leave, 1-9 warp to a map, F3 give the DS3 weapons."
-                        : ". Press F1 in game for the test menu (it shows over Borderless or Windowed mode).");
+                        : ". Press F1 in game for the test menu (it shows over Borderless or Windowed mode)."));
         }
         catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or IOException or InvalidDataException
                                        or InvalidOperationException or UnauthorizedAccessException
                                        or IsolationViolationException or Win32Exception)
         {
+            _log.Write($"Error ({ex.GetType().Name}): {ex}");
             MessageBox.Show(this, ex.Message, "Cannot start Elden Ring", MessageBoxButton.OK, MessageBoxImage.Error);
-            StatusText.Text = ex.Message;
+            SetStatus(ex.Message);
         }
         finally
         {
@@ -435,7 +451,7 @@ public partial class MainWindow : Window
     {
         if (setup.FindMe3() is { } existing)
             return existing;
-        StatusText.Text = "Downloading me3…";
+        SetStatus("Downloading me3…");
         var zip = DownloadPath(Path.GetFileName(EldenRingSetup.Me3Url));
         using (var http = new HttpClient { Timeout = TimeSpan.FromMinutes(5) })
         {
@@ -451,7 +467,7 @@ public partial class MainWindow : Window
     {
         if (setup.FindModEngineLauncher() is { } existing)
             return existing;
-        StatusText.Text = "Downloading ModEngine2…";
+        SetStatus("Downloading ModEngine2…");
         var zip = DownloadPath(Path.GetFileName(EldenRingSetup.ModEngineUrl));
         using (var http = new HttpClient { Timeout = TimeSpan.FromMinutes(5) })
         {
@@ -469,7 +485,7 @@ public partial class MainWindow : Window
         var version = SelfUpdater.CurrentVersion.ToString(3);
         if (setup.PorterVersion != version && version != "1.0.0")
         {
-            StatusText.Text = "Downloading the porter…";
+            SetStatus("Downloading the porter…");
             var zip = DownloadPath($"DarkSignPorter-{version}.zip");
             using var http = new HttpClient { Timeout = TimeSpan.FromMinutes(5) };
             try
@@ -480,7 +496,7 @@ public partial class MainWindow : Window
             catch (Exception ex) when (setup.PorterVersion is not null && ex is HttpRequestException or TaskCanceledException)
             {
                 // No connection: keep playing with the porter already installed (the content stays as it was built).
-                StatusText.Text = $"The porter could not be updated ({ex.Message}); using the installed one.";
+                SetStatus($"The porter could not be updated ({ex.Message}); using the installed one.");
             }
         }
         return setup.PorterVersion
@@ -501,16 +517,19 @@ public partial class MainWindow : Window
                     "Close the game completely (check Task Manager if its window is already gone), then press OK.",
                     "Close Elden Ring first", MessageBoxButton.OKCancel, MessageBoxImage.Warning) != MessageBoxResult.OK)
             {
-                StatusText.Text = "Rebuild cancelled: Elden Ring is still running.";
+                SetStatus("Rebuild cancelled: Elden Ring is still running.");
                 return false;
             }
         }
         Directory.CreateDirectory(setup.LogDir);
         var started = Stopwatch.StartNew();
-        var progress = new BuildProgress(this);
-        var weapons = StartPorter(setup, "port-weapons", [], line => progress.Update("weapons", line));
         // Fallback "build-threads" B (one core): port-maps starts only after port-weapons, so nothing runs side by side.
         var serial = Fallbacks.SerialBuild(_settings.Methods);
+        var estimator = new BuildEstimator(["weapons", "maps"], _settings.LastBuild, serial, DateTime.Now);
+        using var progress = new BuildProgress(this, estimator, started);
+        var weapons = StartPorter(setup, "port-weapons", [], line => progress.Update("weapons", line));
+        estimator.Start("weapons", DateTime.Now);
+        _ = weapons.Completion.ContinueWith(_ => estimator.Finish("weapons", DateTime.Now), TaskScheduler.Default);
         var weaponsFailed = serial && !(await weapons.Completion).Ok;
         var mapsArgs = serial ? new List<string>() : new List<string> { "--after-pid", weapons.Pid.ToString() };
         mapsArgs.AddRange(Fallbacks.MapsArguments(_settings.Methods));
@@ -520,26 +539,39 @@ public partial class MainWindow : Window
         try
         {
             if (!weaponsFailed)
+            {
                 maps = StartPorter(setup, "port-maps", mapsArgs, line => progress.Update("maps", line));
+                estimator.Start("maps", DateTime.Now);
+                _ = maps.Completion.ContinueWith(_ => estimator.Finish("maps", DateTime.Now), TaskScheduler.Default);
+            }
+            else
+                estimator.Skip("maps");
         }
         catch (Exception ex) when (ex is Win32Exception or InvalidOperationException or IOException)
         {
+            estimator.Skip("maps");
             progress.Update("maps", $"could not start: {ex.Message}");
         }
 
         var weaponsResult = await weapons.Completion;
         var mapsResult = maps is null ? (Ok: false, Tail: "", Log: "") : await maps.Completion;
+        // Only parts that worked are kept for the next estimate (a failed run stops early and would skew it).
+        foreach (var (part, stat) in estimator.Results())
+            if (part == "weapons" ? weaponsResult.Ok : mapsResult.Ok)
+                _settings.LastBuild[part] = stat;
+        _settings.Save(_settingsPath);
+        progress.Done(weaponsResult.Ok);
         if (!weaponsResult.Ok)
         {
             MessageBox.Show(this, $"Building the content failed. The last lines were:\n\n{weaponsResult.Tail}\n\nFull log: {weaponsResult.Log}",
                 "Content build failed", MessageBoxButton.OK, MessageBoxImage.Error);
-            StatusText.Text = $"Content build failed; see {weaponsResult.Log}";
+            SetStatus($"Content build failed; see {weaponsResult.Log}");
             return false;
         }
 
-        StatusText.Text = $"Content built in {started.Elapsed.TotalMinutes:0.0} min.";
+        SetStatus($"Content built in {started.Elapsed.TotalMinutes:0.0} min.");
         if (!mapsResult.Ok)
-            StatusText.Text = $"The DS3 maps could not be ported (the rest of the content is fine); see {mapsResult.Log}";
+            SetStatus($"The DS3 maps could not be ported (the rest of the content is fine); see {mapsResult.Log}");
         else
         {
             // port-maps reads its output back and checks it; show the verdict so a broken map is known before launch.
@@ -548,7 +580,7 @@ public partial class MainWindow : Window
                 ? File.ReadLines(check).LastOrDefault(l => l.StartsWith("map-validate:", StringComparison.Ordinal))
                 : null;
             if (verdict is not null && !verdict.Contains(" 0 FAIL", StringComparison.Ordinal))
-                StatusText.Text = $"DS3 maps ported with problems ({verdict["map-validate:".Length..].Trim()}); see {check}";
+                SetStatus($"DS3 maps ported with problems ({verdict["map-validate:".Length..].Trim()}); see {check}");
         }
 
         // The randomized world depends on which maps were ported, so it is remade after a rebuild.
@@ -566,11 +598,11 @@ public partial class MainWindow : Window
             line => Dispatcher.BeginInvoke(() => StatusText.Text = "Randomizing: " + line));
         var (ok, tail, log) = await run.Completion;
         var check = RandomizerCoop.CheckCode(SeamlessCoop.Fingerprint(setup.ModDir), RandomizerCoop.ReadWorldId(Root, worldName));
-        StatusText.Text = ok
+        SetStatus(ok
             ? $"Randomized world \"{worldName}\" ({settings.Summary}) is ready and checked finishable." +
               (check is null ? "" : $" Co-op check code {check}: friends playing with you need the same one.") +
               $" Spoiler log: {RandomizerSettings.SpoilerPath(Root, worldName)}"
-            : $"The randomizer failed; see {log}";
+            : $"The randomizer failed; see {log}");
         if (!ok)
             MessageBox.Show(this, $"The randomizer failed. The last lines were:\n\n{tail}\n\nFull log: {log}",
                 "Randomizer failed", MessageBoxButton.OK, MessageBoxImage.Error);
@@ -609,7 +641,7 @@ public partial class MainWindow : Window
                 return;
             if (_settings.Profiles.Any(p => string.Equals(p.Name, name, StringComparison.OrdinalIgnoreCase)))
             {
-                StatusText.Text = $"A profile named \"{name}\" already exists.";
+                SetStatus($"A profile named \"{name}\" already exists.");
                 return;
             }
             settings.Enabled = true;
@@ -627,7 +659,7 @@ public partial class MainWindow : Window
         _settings.Save(_settingsPath);
         if (RandomizerCoop.ActiveWorld(profile) is null)
         {
-            StatusText.Text = $"Randomizer off for \"{profile.Name}\": it plays the normal game.";
+            SetStatus($"Randomizer off for \"{profile.Name}\": it plays the normal game.");
             return;
         }
         try
@@ -639,25 +671,103 @@ public partial class MainWindow : Window
         }
         catch (Exception ex) when (ex is InvalidOperationException or IOException or HttpRequestException)
         {
-            StatusText.Text = $"The randomizer could not run: {ex.Message}";
+            SetStatus($"The randomizer could not run: {ex.Message}");
         }
     }
 
-    /// <summary>Shows the latest line of each porter process on the status line.</summary>
-    private sealed class BuildProgress(MainWindow window)
+    /// <summary>
+    /// The build panel: the Darksign ignites as the build goes, with time elapsed, time remaining, a bar across the
+    /// panel and the latest line of each porter process. Every line also goes to the activity log (by StartPorter).
+    /// </summary>
+    private sealed class BuildProgress : IDisposable
     {
+        private readonly MainWindow _window;
+        private readonly BuildEstimator _estimator;
+        private readonly Stopwatch _started;
+        private readonly DispatcherTimer _timer;
         private readonly Dictionary<string, string> _latest = new();
+
+        public BuildProgress(MainWindow window, BuildEstimator estimator, Stopwatch started)
+        {
+            _window = window;
+            _estimator = estimator;
+            _started = started;
+            window.WeaponsLine.Text = "starting…";
+            window.MapsLine.Text = "starting…";
+            window.BuildTitle.Text = "Kindling the Dark Sign…";
+            window.Darksign.Fraction = 0;
+            window.BarFill.Width = 0;
+            window.GameGrid.Visibility = Visibility.Collapsed;
+            window.GamesHint.Visibility = Visibility.Collapsed;
+            window.BuildPanel.Visibility = Visibility.Visible;
+            _timer = new DispatcherTimer(TimeSpan.FromMilliseconds(200), DispatcherPriority.Background, (_, _) => Tick(), window.Dispatcher);
+            _timer.Start();
+            Tick();
+        }
 
         public void Update(string part, string line)
         {
+            _estimator.Line(part, DateTime.Now);
             lock (_latest)
-                _latest[part] = line.Length > 90 ? line[..90] + "…" : line;
-            window.Dispatcher.BeginInvoke(() =>
+                _latest[part] = line;
+            window_Dispatch(() =>
             {
                 lock (_latest)
-                    window.StatusText.Text = "Building from your game files: " +
-                                             string.Join("   |   ", _latest.Select(p => $"{p.Key}: {p.Value}"));
+                {
+                    if (_latest.TryGetValue("weapons", out var w)) _window.WeaponsLine.Text = w;
+                    if (_latest.TryGetValue("maps", out var m)) _window.MapsLine.Text = m;
+                }
+                _window.SetStatusQuiet("Building from your game files…");
             });
+        }
+
+        private void window_Dispatch(Action action) => _window.Dispatcher.BeginInvoke(action, DispatcherPriority.Background);
+
+        private void Tick()
+        {
+            var (fraction, left) = _estimator.Estimate(DateTime.Now);
+            Show(fraction);
+            _window.ElapsedText.Text = BuildEstimator.Format(_started.Elapsed);
+            _window.RemainingText.Text = left is { } l
+                ? (_estimator.FirstBuild ? "about " : "") + BuildEstimator.Format(TimeSpan.FromSeconds(Math.Ceiling(l))) +
+                  (_estimator.FirstBuild ? " (first build: a rough guess)" : "")
+                : "almost done…";
+        }
+
+        private void Show(double fraction)
+        {
+            _window.Darksign.Fraction = fraction;
+            var track = _window.BarTrack.ActualWidth;
+            _window.BarFill.Width = Math.Max(0, track * fraction);
+        }
+
+        /// <summary>Ends the animation: a full ring when the build worked. The panel stays up a moment, then the game list returns.</summary>
+        public void Done(bool ok)
+        {
+            _timer.Stop();
+            if (ok)
+            {
+                Show(1);
+                _window.RemainingText.Text = "done";
+                _window.BuildTitle.Text = "The Dark Sign is kindled";
+            }
+            else
+                _window.BuildTitle.Text = "The build failed";
+            _window.ElapsedText.Text = BuildEstimator.Format(_started.Elapsed);
+        }
+
+        public void Dispose()
+        {
+            _timer.Stop();
+            var hide = new DispatcherTimer { Interval = TimeSpan.FromSeconds(2.5) };
+            hide.Tick += (_, _) =>
+            {
+                hide.Stop();
+                _window.BuildPanel.Visibility = Visibility.Collapsed;
+                _window.GameGrid.Visibility = Visibility.Visible;
+                _window.GamesHint.Visibility = Visibility.Visible;
+            };
+            hide.Start();
         }
     }
 
@@ -691,8 +801,22 @@ public partial class MainWindow : Window
         foreach (var (key, value) in Fallbacks.PorterEnvironment(_settings.Methods))
             start.Environment[key] = value;
 
+        _log.Write($"Running porter: {string.Join(" ", start.ArgumentList.Select(Quote))}");
+        foreach (var (key, value) in Fallbacks.PorterEnvironment(_settings.Methods))
+            _log.Write($"  env {key}={value}");
         var process = Process.Start(start)!;
-        return new PorterRun(process.Id, WaitForPorterAsync(process, log, onLine));
+        var watch = Stopwatch.StartNew();
+        var completion = WaitForPorterAsync(process, log, line =>
+        {
+            _log.Write($"[{command}] {line}");
+            onLine(line);
+        });
+        _ = completion.ContinueWith(t =>
+        {
+            if (t.IsCompletedSuccessfully)
+                _log.Write($"Porter {command} {(t.Result.Ok ? "finished" : "FAILED")} after {BuildEstimator.Format(watch.Elapsed)}. Log: {t.Result.Log}");
+        }, TaskScheduler.Default);
+        return new PorterRun(process.Id, completion);
     }
 
     private static async Task<(bool Ok, string Tail, string Log)> WaitForPorterAsync(Process process, string log, Action<string> onLine)
@@ -728,6 +852,32 @@ public partial class MainWindow : Window
         }
     }
 
+    /// <summary>Shows a message on the status line and writes it to the activity log.</summary>
+    private void SetStatus(string text)
+    {
+        StatusText.Text = text;
+        _log.Write(text);
+    }
+
+    /// <summary>Status line only (for messages repeated many times, whose detail is already in the log).</summary>
+    private void SetStatusQuiet(string text) => StatusText.Text = text;
+
+    private static string Quote(string arg) => arg.Contains(' ') || arg.Length == 0 ? $"\"{arg}\"" : arg;
+
+    private void OnCopyLog(object sender, RoutedEventArgs e)
+    {
+        try { Clipboard.SetText(LogBox.Text); }
+        catch (System.Runtime.InteropServices.ExternalException) { }
+    }
+
+    private void OnOpenLogFile(object sender, RoutedEventArgs e)
+    {
+        if (File.Exists(_log.Path))
+            Process.Start(new ProcessStartInfo(_log.Path) { UseShellExecute = true });
+    }
+
+    private void OnClearLog(object sender, RoutedEventArgs e) => _log.ClearView();
+
     private string DownloadPath(string fileName)
     {
         var dir = Path.Combine(Root, "TheDarkSign", "Work", "downloads");
@@ -746,8 +896,8 @@ public partial class MainWindow : Window
         _settings.Methods = methods;
         _settings.Save(_settingsPath);
         var summary = Fallbacks.Summary(methods);
-        StatusText.Text = (summary.Length == 0 ? "All features use their default method (A)." : $"Fallback methods: {summary}.") +
-                          (Fallbacks.BuildSignature(methods) != before ? " The content is rebuilt on the next PLAY." : "");
+        SetStatus((summary.Length == 0 ? "All features use their default method (A)." : $"Fallback methods: {summary}.") +
+                          (Fallbacks.BuildSignature(methods) != before ? " The content is rebuilt on the next PLAY." : ""));
     }
 
     /// <summary>Pre-flight check window: fast checks, the porter's checks of the built mod, and the test report zip.</summary>
@@ -803,7 +953,7 @@ public partial class MainWindow : Window
             _settings.SeamlessCoopDll = dialog.FileName;
         }
         if (on && SeamlessCoop.Password(_settings.SeamlessCoopDll).Length == 0)
-            StatusText.Text = $"Set a co-op password in {SeamlessCoop.SettingsName} next to ersc.dll; everyone in the session needs the same one.";
+            SetStatus($"Set a co-op password in {SeamlessCoop.SettingsName} next to ersc.dll; everyone in the session needs the same one.");
         _settings.SeamlessCoop = on;
         _settings.Save(_settingsPath);
     }
@@ -842,7 +992,9 @@ public partial class MainWindow : Window
                 "Delete saves", MessageBoxButton.YesNo, MessageBoxImage.Warning, MessageBoxResult.No) != MessageBoxResult.Yes)
             return;
 
-        var plan = Uninstaller.MakePlan(Root, _rows.Select(r => r.ExePath), deleteSaves);
+        // Every game path the settings know, not only the rows shown: older launchers put DLLs next to the others too.
+        var plan = Uninstaller.MakePlan(Root, _settings.GameExePaths.Values.Concat(_rows.Select(r => r.ExePath)).Distinct(), deleteSaves);
+        _log.Write($"Uninstall: {(deleteSaves ? "deleting saves too" : "keeping saves")}");
         var failed = Uninstaller.Run(Root, plan);
         foreach (var row in _rows)
             row.Refresh();
@@ -852,10 +1004,10 @@ public partial class MainWindow : Window
         {
             MessageBox.Show(this, "Some files could not be removed (close any program using them and press Uninstall again):\n\n" +
                                   string.Join("\n", failed.Take(10)), "Uninstall", MessageBoxButton.OK, MessageBoxImage.Warning);
-            StatusText.Text = $"Uninstall left {failed.Count} item(s) behind.";
+            SetStatus($"Uninstall left {failed.Count} item(s) behind.");
             return;
         }
-        StatusText.Text = "The Dark Sign is uninstalled" + (deleteSaves ? "." : $"; your saves are still in {SaveIsolation.SavesRoot(Root)}.");
+        SetStatus("The Dark Sign is uninstalled" + (deleteSaves ? "." : $"; your saves are still in {SaveIsolation.SavesRoot(Root)}."));
         MessageBox.Show(this,
             "The Dark Sign is uninstalled. " + (deleteSaves ? "" : $"Your saves were kept in {SaveIsolation.SavesRoot(Root)}. ") +
             $"\n\nTo remove the launcher too, close it and delete its folder:\n{launcherDir}\n\nPressing PLAY again reinstalls everything.",
@@ -880,7 +1032,7 @@ public partial class MainWindow : Window
         name = name.Trim();
         if (_settings.Profiles.Any(p => string.Equals(p.Name, name, StringComparison.OrdinalIgnoreCase)))
         {
-            StatusText.Text = $"A profile named \"{name}\" already exists.";
+            SetStatus($"A profile named \"{name}\" already exists.");
             return;
         }
         StoreRowsIntoSettings();
@@ -894,7 +1046,7 @@ public partial class MainWindow : Window
     {
         if (_settings.Profiles.Count <= 1)
         {
-            StatusText.Text = "The last profile cannot be deleted.";
+            SetStatus("The last profile cannot be deleted.");
             return;
         }
         var profile = _settings.GetActiveProfile();
@@ -920,5 +1072,7 @@ public partial class MainWindow : Window
     {
         GameGrid.CommitEdit(DataGridEditingUnit.Row, true);
         SaveSettings();
+        _log.Write("Launcher closed.");
+        _log.Dispose();
     }
 }

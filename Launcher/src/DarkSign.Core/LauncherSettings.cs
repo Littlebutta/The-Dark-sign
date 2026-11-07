@@ -62,6 +62,9 @@ public sealed class LauncherSettings
     /// </summary>
     public Dictionary<string, string> Methods { get; set; } = [];
 
+    /// <summary>How long each part of the last content build took (port-weapons, port-maps), for the time-left estimate.</summary>
+    public Dictionary<string, BuildStat> LastBuild { get; set; } = [];
+
     /// <summary>Check GitHub for a newer launcher on every start.</summary>
     public bool AutoUpdate { get; set; } = true;
 
@@ -95,6 +98,7 @@ public sealed class LauncherSettings
             settings.GameExePaths ??= [];
             settings.Profiles ??= [];
             settings.Methods ??= [];
+            settings.LastBuild ??= [];
             settings.RootPath ??= "";
             settings.SeamlessCoopDll ??= "";
             settings.GitHubToken ??= "";
