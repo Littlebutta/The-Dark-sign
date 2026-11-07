@@ -137,11 +137,13 @@ public static class Fallbacks
         new("two-hand", "Two-handed split", "Split weapons (Friede's scythe, twinblades)", Stage.Build,
             "Two-handing a split weapon doesn't split it, or the second blade floats, sticks to the body or sits in the wrong hand.",
         [
-            new("A", "DS3 positions, matched by bone (default)", "Each model's DS3 dummy poly translated to the Elden Ring player dummy on the same bone."),
+            new("A", "DS3 positions, matched by bone (default)", "Each model's DS3 dummy poly translated to the Elden Ring player dummy with the same ID at the same spot (else on the same bone), with DS3's show/hide bytes; paired weapons (left blade in the left hand) also get isDualBlade and DS3's two-handed grip."),
             new("B", "An Elden Ring split layout", "The weapon takes a whole WepAbsorpPosParam row from an Elden Ring weapon that already holds a second model in the left hand when two-handed (the game's own working layout).")
                 { PorterEnv = Env("DARKSIGN_ABSORP", "er") },
             new("C", "DS3 dummy IDs as they are", "DS3's dummy poly IDs copied without matching them through the bones (both games number most hand and back dummies alike).")
                 { PorterEnv = Env("DARKSIGN_ABSORP", "raw") },
+            new("D", "A without the paired grip", "A's positions, but paired weapons keep the template's isDualBlade and hold motions (DARKSIGN_PAIRED_GRIP=0). Try it if two-handing a paired weapon looks wrong or crashes.")
+                { PorterEnv = Env("DARKSIGN_PAIRED_GRIP", "0") },
             new("off", "Off (template positions)", "Ported weapons keep their template's WepAbsorpPosParam row (DARKSIGN_ABSORP=0): no split. Tells whether the split is what breaks something.")
                 { PorterEnv = Env("DARKSIGN_ABSORP", "0") },
         ]),
