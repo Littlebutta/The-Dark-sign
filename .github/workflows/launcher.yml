@@ -117,6 +117,9 @@ jobs:
       # Offline checks of the enemy porter (templates, IDs, skin indices, chr map, TAE merge; no game files needed).
       - if: steps.cache.outputs.cache-hit != 'true'
         run: porter-publish/DarkSignPorter.exe enemy-selftest
+      # Offline checks of the weapon art port (hks patch, skill names; no game files needed).
+      - if: steps.cache.outputs.cache-hit != 'true'
+        run: porter-publish/DarkSignPorter.exe arts-selftest
       # The randomizer's data ships with the porter: make one checked world in a scratch root (no game files needed).
       - if: steps.cache.outputs.cache-hit != 'true'
         run: porter-publish/DarkSignPorter.exe --root "$env:RUNNER_TEMP\rando-smoke" randomize --profile CI --seed 1

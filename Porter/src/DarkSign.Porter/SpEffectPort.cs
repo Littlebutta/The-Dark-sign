@@ -1,0 +1,346 @@
+using SoulsFormats;
+
+namespace DarkSign.Porter;
+
+/// <summary>
+/// Ports DS3 SpEffects (special effects) into Elden Ring under new IDs: the status a weapon builds up on hit (Friede's
+/// frostbite, bleed, poison), the effects a weapon gives while equipped, and the buffs a DS3 weapon art casts.
+/// DS3 and Elden Ring number their effects differently and name many fields differently, so a DS3 ID copied as is
+/// named an unrelated Elden Ring effect (or none), which is why ported weapons had no status until now.
+/// <list type="bullet">
+/// <item>Status on hit: the new row is a copy of the Elden Ring row most Elden Ring weapons use for the same status
+/// (so the game treats it exactly like its own bleed or frost), with DS3's buildup value. DS3's toxic becomes poison
+/// (Elden Ring has no toxic).</item>
+/// <item>Anything else (regeneration, attack buffs, damage cuts): a fresh row with DS3's values for the fields both
+/// games share and mean the same, renamed where the names differ; other fields keep Elden Ring's defaults.</item>
+/// </list>
+/// Weapons build status up per upgrade level by adding ReinforceParamWeapon's spEffectId offsets to the row ID, so each
+/// ported effect gets a block of 100 IDs: base + offset holds DS3's row at the same offset (or its base row).
+/// Fallback "weapon-effects": DARKSIGN_WEAPON_EFFECTS=status (only status on hit) or 0 (none, as before).
+/// Report: Work\reports\weapon-effects.tsv.
+/// </summary>
+public sealed class SpEffectPort
+{
+    public static readonly string Mode = (Environment.GetEnvironmentVariable("DARKSIGN_WEAPON_EFFECTS") ?? "").ToLowerInvariant();
+    public static bool Enabled => Mode != "0";
+    private static bool StatusOnly => Mode == "status";
+
+    /// <summary>First ID of the ported effects; each takes a block of 100.</summary>
+    public const int FirstNewId = 690_000_000;
+
+    private readonly PARAM _er, _ds3;
+    private readonly Dictionary<int, int> _ported = new();
+    private readonly HashSet<int> _inProgress = new();
+    private readonly Dictionary<string, int> _statusTemplates;
+    private readonly List<string> _report = ["DS3 effect\tDS3 name\tElden Ring effect\thow\tdetail"];
+    private int _nextBlock;
+    private const int NotStatus = -2;
+
+    // DS3 status buildup field -> Elden Ring's.
+    private static readonly (string Ds3, string Er)[] StatusFields =
+    [
+        ("registPoison", "poizonAttackPower"),
+        ("registToxic", "poizonAttackPower"),
+        ("registBlood", "bloodAttackPower"),
+        ("registCurse", "curseAttackPower"),
+        ("registFrost", "freezeAttackPower"),
+    ];
+
+    private static readonly string[] ErStatusFields =
+        ["poizonAttackPower", "diseaseAttackPower", "bloodAttackPower", "curseAttackPower", "freezeAttackPower", "sleepAttackPower", "madnessAttackPower"];
+
+    // Fields both games name the same and use the same way.
+    private static readonly string[] SharedFields =
+    [
+        "effectEndurance", "motionInterval", "changeHpRate", "changeHpPoint", "changeMpRate", "changeMpPoint",
+        "changeStaminaRate", "changeStaminaPoint", "maxHpRate", "maxMpRate", "haveSoulRate", "soulRate",
+        "darkAttackPowerRate", "magicDamageCutRate", "fireDamageCutRate", "thunderDamageCutRate", "darkDamageCutRate",
+        "slashDamageCutRate", "blowDamageCutRate", "thrustDamageCutRate", "neutralDamageCutRate", "guardStaminaCutRate",
+        "staminaAttackRate", "hpRecoverRate", "staminaRecoverChangeSpeed", "mpRecoverChangeSpeed", "equipWeightChangeRate",
+        "allItemWeightChangeRate", "wepParamChange", "effectTargetSelf", "effectTargetFriend", "effectTargetEnemy",
+        "effectTargetPlayer", "effectTargetAI", "effectTargetLive", "effectTargetGhost", "effectTargetAttacker",
+        "effectTargetOpposeTarget", "effectTargetFriendlyTarget", "effectTargetSelfTarget",
+    ];
+
+    // DS3 name -> Elden Ring name, same meaning.
+    private static readonly (string Ds3, string Er)[] RenamedFields =
+    [
+        ("physAtkRate", "physicsAttackRate"), ("magicAtkRate", "magicAttackRate"), ("fireAtkRate", "fireAttackRate"),
+        ("thunderAtkRate", "thunderAttackRate"), ("physAtkPowerRate", "physicsAttackPowerRate"),
+        ("magicAtkPowerRate", "magicAttackPowerRate"), ("fireAtkPowerRate", "fireAttackPowerRate"),
+        ("thunderAtkPowerRate", "thunderAttackPowerRate"), ("physAtkPower", "physicsAttackPower"),
+        ("magicAtkPower", "magicAttackPower"), ("fireAtkPower", "fireAttackPower"), ("thunderAtkPower", "thunderAttackPower"),
+        ("darkAtkPower", "darkAttackPower"),
+    ];
+
+    // Effects that start other effects: ported too, so the chain stays DS3's.
+    private static readonly (string Ds3, string Er)[] ChainFields =
+    [
+        ("replaceSpEffectId", "replaceSpEffectId"), ("cycleOccurenceSpEffectId", "cycleOccurrenceSpEffectId"),
+        ("atkOccurenceSpEffectId", "atkOccurrenceSpEffectId"),
+    ];
+
+    public SpEffectPort(ParamStore er, ParamStore ds3)
+    {
+        _er = er.Get("SpEffectParam") ?? throw new InvalidDataException("Elden Ring has no SpEffectParam");
+        _ds3 = ds3.Get("SpEffectParam") ?? throw new InvalidDataException("DS3 has no SpEffectParam");
+        // The row Elden Ring's own weapons use most for each status (their base rows; upgrades add offsets to them).
+        var weapons = er.Get("EquipParamWeapon")!;
+        _statusTemplates = weapons.Rows.Where(r => r.ID < WeaponPort.FirstNewId)
+            .SelectMany(r => new[] { "spEffectBehaviorId0", "spEffectBehaviorId1", "spEffectBehaviorId2" }.Select(f => Int(r, f)))
+            .Where(id => id > 0 && _er[id] is not null)
+            .Select(id => (Id: id, Kind: StatusOf(_er[id]!)))
+            .Where(t => t.Kind is not null)
+            .GroupBy(t => t.Kind!)
+            .ToDictionary(g => g.Key, g => g.GroupBy(t => t.Id).OrderByDescending(x => x.Count()).ThenBy(x => x.Key).First().Key);
+    }
+
+    public int Count => _ported.Count(p => p.Value > 0);
+
+    public string Summary => $"{Count} DS3 effects ported ({_report.Count(l => l.Contains("\tstatus\t"))} status, " +
+                             $"{_report.Count(l => l.Contains("\tvalues\t"))} other), {_report.Count(l => l.Contains("\tskipped\t"))} skipped; " +
+                             $"status templates: {string.Join(", ", _statusTemplates.Select(t => $"{t.Key} {t.Value}"))}";
+
+    /// <summary>The Elden Ring ID for a DS3 effect, porting it on first use; -1 when it can't be ported.</summary>
+    public int Port(int ds3Id, bool statusOnly = false)
+    {
+        if (ds3Id <= 0)
+            return -1;
+        if (_ported.TryGetValue(ds3Id, out var done))
+            return done;
+        if (!_inProgress.Add(ds3Id))
+            return -1; // a chain back to itself
+        try
+        {
+            int id = PortNew(ds3Id, statusOnly || StatusOnly);
+            if (id == NotStatus)
+                return -1; // may still be ported in full where full effects are wanted
+            return _ported[ds3Id] = id;
+        }
+        finally
+        {
+            _inProgress.Remove(ds3Id);
+        }
+    }
+
+    private int PortNew(int ds3Id, bool statusOnly)
+    {
+        if (_ds3[ds3Id] is not { } source)
+        {
+            Note(ds3Id, "", -1, "skipped", "not in DS3's SpEffectParam");
+            return -1;
+        }
+        var status = StatusFields.Where(f => Int(source, f.Ds3) > 0).ToList();
+        string? kind = status.Count > 0 ? status[0].Er : null;
+        if (kind is null && statusOnly)
+        {
+            if (StatusOnly)
+                Note(ds3Id, source.Name, -1, "skipped", "not a status effect (weapon-effects B ports status only)");
+            return NotStatus;
+        }
+        if (kind is not null && !_statusTemplates.ContainsKey(kind))
+        {
+            Note(ds3Id, source.Name, -1, "skipped", $"no Elden Ring weapon builds up {kind}");
+            return -1;
+        }
+        if (kind is null && !HasValues(source))
+        {
+            Note(ds3Id, source.Name, -1, "skipped", "nothing Elden Ring can use (state, visuals or fields without an equivalent)");
+            return -1;
+        }
+
+        int baseId = NextBlock();
+        // DS3's own upgrade rows for this effect (base + 1, + 2, ...), as far as they go without a gap.
+        int offsets = 1;
+        while (offsets < 100 && _ds3[ds3Id + offsets] is not null && SameEffect(_ds3[ds3Id]!, _ds3[ds3Id + offsets]!))
+            offsets++;
+        // Elden Ring upgrades add up to 25 to the ID; give every offset a row so no upgrade level finds nothing.
+        for (int k = 0; k < 26; k++)
+        {
+            var from = _ds3[ds3Id + Math.Min(k, offsets - 1)]!;
+            var row = kind is not null ? StatusRow(baseId + k, from, kind, k) : ValuesRow(baseId + k, from);
+            _er.Rows.Add(row);
+        }
+        _er.Rows.Sort((a, b) => a.ID.CompareTo(b.ID));
+        Note(ds3Id, source.Name, baseId, kind is not null ? "status" : "values",
+            kind is not null ? $"{kind} {Int(source, status[0].Ds3)} (copy of Elden Ring {_statusTemplates[kind]}), DS3 upgrade rows {offsets}"
+                : $"DS3 upgrade rows {offsets}");
+        // Chains point at their own ported rows (after the block is taken, so a loop ends).
+        foreach (var k in Enumerable.Range(0, 26))
+        {
+            var row = _er[baseId + k]!;
+            var from = _ds3[ds3Id + Math.Min(k, offsets - 1)]!;
+            foreach (var (ds3Field, erField) in ChainFields)
+                if (row[erField] is { } cell)
+                    Set(cell, kind is not null && erField == "replaceSpEffectId" ? -1 : Port(Int(from, ds3Field)));
+        }
+        return baseId;
+    }
+
+    private PARAM.Row StatusRow(int id, PARAM.Row ds3, string kind, int k)
+    {
+        int template = _statusTemplates[kind];
+        var from = _er[template + k] is { } up && StatusOf(up) == kind ? up : _er[template]!;
+        var row = Copy(from, id, ds3.Name);
+        foreach (var field in ErStatusFields)
+            if (row[field] is { } cell)
+                Set(cell, 0);
+        int value = StatusFields.Where(f => f.Er == kind).Sum(f => Int(ds3, f.Ds3));
+        Set(row[kind]!, value);
+        // Elden Ring's chain from its template row would start the template's own follow-up effects.
+        foreach (var (_, erField) in ChainFields)
+            if (row[erField] is { } cell)
+                Set(cell, -1);
+        return row;
+    }
+
+    private PARAM.Row ValuesRow(int id, PARAM.Row ds3)
+    {
+        var row = new PARAM.Row(id, ds3.Name ?? "", _er.AppliedParamdef);
+        foreach (var field in SharedFields)
+            CopyField(ds3, field, row, field);
+        foreach (var (d, e) in RenamedFields)
+            CopyField(ds3, d, row, e);
+        foreach (var (d, e) in StatusFields)
+            if (Int(ds3, d) > 0 && row[e] is { } cell)
+                Set(cell, Int(ds3, d));
+        return row;
+    }
+
+    private static bool HasValues(PARAM.Row ds3)
+    {
+        foreach (var field in SharedFields.Where(f => !f.StartsWith("effectTarget", StringComparison.Ordinal) && f != "effectEndurance" && f != "motionInterval" && f != "wepParamChange"))
+            if (ds3[field]?.Value is { } v && IsSet(field, Convert.ToDouble(v)))
+                return true;
+        foreach (var (d, _) in RenamedFields)
+            if (ds3[d]?.Value is { } v && IsSet(d, Convert.ToDouble(v)))
+                return true;
+        foreach (var (d, _) in ChainFields)
+            if (Int(ds3, d) > 0)
+                return true;
+        return false;
+    }
+
+    // Rates are neutral at 1 (100 for the ...Rate ints), amounts at 0.
+    private static bool IsSet(string field, double value) =>
+        field.EndsWith("Rate", StringComparison.Ordinal) || field.EndsWith("Speed", StringComparison.Ordinal)
+            ? Math.Abs(value - 1) > 1e-6 && Math.Abs(value - 100) > 1e-6 && value != 0
+            : value != 0;
+
+    private static bool SameEffect(PARAM.Row a, PARAM.Row b) =>
+        StatusFields.Select(f => Int(a, f.Ds3) > 0).SequenceEqual(StatusFields.Select(f => Int(b, f.Ds3) > 0))
+        && Int(a, "stateInfo") == Int(b, "stateInfo");
+
+    private static string? StatusOf(PARAM.Row er)
+    {
+        var set = ErStatusFields.Where(f => Int(er, f) > 0).ToList();
+        return set.Count == 1 ? set[0] : null;
+    }
+
+    private int NextBlock()
+    {
+        while (true)
+        {
+            int id = FirstNewId + _nextBlock++ * 100;
+            if (Enumerable.Range(0, 100).All(k => _er[id + k] is null))
+                return id;
+        }
+    }
+
+    private PARAM.Row Copy(PARAM.Row from, int id, string? name)
+    {
+        var row = new PARAM.Row(id, name ?? "", _er.AppliedParamdef);
+        for (int i = 0; i < row.Cells.Count; i++)
+            row.Cells[i].Value = from.Cells[i].Value is byte[] b ? b.Clone() : from.Cells[i].Value;
+        return row;
+    }
+
+    private static void CopyField(PARAM.Row from, string fromField, PARAM.Row to, string toField)
+    {
+        if (from[fromField]?.Value is not { } value || to[toField] is not { } cell || cell.Value is null)
+            return;
+        try
+        {
+            cell.Value = cell.Value switch
+            {
+                float => Convert.ToSingle(value),
+                double => Convert.ToDouble(value),
+                _ => Convert.ChangeType(Math.Round(Convert.ToDouble(value)), cell.Value.GetType()),
+            };
+        }
+        catch (Exception e) when (e is InvalidCastException or OverflowException or FormatException)
+        {
+            // Out of the Elden Ring field's range: keep the default.
+        }
+    }
+
+    private static void Set(PARAM.Cell cell, int value)
+    {
+        try { cell.Value = Convert.ChangeType(value, cell.Value!.GetType()); }
+        catch (OverflowException) { }
+    }
+
+    internal static int Int(PARAM.Row row, string field) =>
+        row[field]?.Value is { } v and not byte[] ? Convert.ToInt32(v) : 0;
+
+    private void Note(int ds3Id, string? name, int erId, string how, string detail) =>
+        _report.Add($"{ds3Id}\t{name}\t{erId}\t{how}\t{detail}");
+
+    /// <summary>
+    /// Gives each ported weapon (every affinity row) its DS3 base weapon's status on hit and equipped effects, in the
+    /// slots its Elden Ring template leaves free, with the passive-effect text Elden Ring shows for that status.
+    /// </summary>
+    public void ApplyWeapons(IEnumerable<WeaponPlan> plans, PARAM ds3Weapons, PARAM erWeapons)
+    {
+        // The menu text Elden Ring's own weapons show for an effect row ("Causes blood loss buildup").
+        var messages = new Dictionary<int, int>();
+        foreach (var r in erWeapons.Rows.Where(r => r.ID < WeaponPort.FirstNewId))
+            for (int s = 0; s < 3; s++)
+                if (Int(r, $"spEffectBehaviorId{s}") is > 0 and var id && Int(r, $"spEffectMsgId{s}") is > 0 and var msg)
+                    messages.TryAdd(id, msg);
+
+        int weapons = 0, slots = 0;
+        foreach (var plan in plans.Where(p => p.Status == "port"))
+        {
+            var source = ds3Weapons[plan.Ds3Id]!;
+            var onHit = Enumerable.Range(0, 3).Select(s => Int(source, $"spEffectBehaviorId{s}")).Where(id => id > 0)
+                .Select(id => (Ds3: id, Er: Port(id))).Where(t => t.Er > 0).ToList();
+            var equipped = StatusOnly ? [] : Enumerable.Range(0, 3).Select(s => Int(source, $"residentSpEffectId{s}")).Where(id => id > 0)
+                .Select(id => (Ds3: id, Er: Port(id))).Where(t => t.Er > 0).ToList();
+            if (onHit.Count + equipped.Count == 0)
+                continue;
+            weapons++;
+            foreach (var row in erWeapons.Rows.Where(r => r.ID >= plan.NewId!.Value && r.ID < plan.NewId.Value + 10000))
+            {
+                foreach (var (ds3Id, erId) in onHit)
+                {
+                    int slot = Enumerable.Range(0, 3).FirstOrDefault(s => Int(row, $"spEffectBehaviorId{s}") <= 0, -1);
+                    if (slot < 0)
+                        break;
+                    Set(row[$"spEffectBehaviorId{slot}"]!, erId);
+                    var template = _statusTemplates.Values.FirstOrDefault(t => _er[erId] is { } e && _er[t] is { } te && StatusOf(e) == StatusOf(te), -1);
+                    if (row[$"spEffectMsgId{slot}"] is { } msgCell && messages.TryGetValue(template, out var msg))
+                        Set(msgCell, msg);
+                    slots++;
+                }
+                var residentFields = new[] { "residentSpEffectId", "residentSpEffectId1", "residentSpEffectId2" };
+                foreach (var (_, erId) in equipped)
+                {
+                    var field = residentFields.FirstOrDefault(f => row[f] is not null && Int(row, f) <= 0);
+                    if (field is null)
+                        break;
+                    Set(row[field]!, erId);
+                    slots++;
+                }
+            }
+        }
+        Console.WriteLine($"weapon effects: {weapons} weapons got DS3 effects ({slots} slots over their affinity rows); {Summary}");
+    }
+
+    public void WriteReport(PorterContext ctx)
+    {
+        var path = ctx.WorkPath("reports", "weapon-effects.tsv");
+        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+        File.WriteAllLines(path, _report);
+    }
+}

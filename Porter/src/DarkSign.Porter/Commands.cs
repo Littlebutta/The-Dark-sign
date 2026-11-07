@@ -181,10 +181,25 @@ public static class Commands
         {
             Console.WriteLine($"absorp: failed, weapons keep their template's model positions ({e.GetType().Name}: {e.Message})");
         }
+        // DS3's weapon effects (status on hit, equipped effects): the moveset port below uses the same instance for
+        // the effects DS3's weapon arts cast.
+        SpEffectPort? spEffects = null;
+        if (SpEffectPort.Enabled)
+            try
+            {
+                using var _ = Timing.Stage("weapon effects");
+                spEffects = new SpEffectPort(erStore, ds3Store);
+                spEffects.ApplyWeapons(plans, ds3, erWeapons);
+            }
+            catch (Exception e) when (e is not OutOfMemoryException)
+            {
+                Console.WriteLine($"weapon effects: failed, ported weapons have no DS3 status or equipped effects ({e.GetType().Name}: {e.Message})");
+                spEffects = null;
+            }
         try
         {
             using var _ = Timing.Stage("movesets, effects and sounds");
-            MovesetPort.Apply(ctx, erArchives, ds3Archives, erStore, ds3Store, plans);
+            MovesetPort.Apply(ctx, erArchives, ds3Archives, erStore, ds3Store, plans, spEffects);
         }
         catch (Exception e)
         {
@@ -213,6 +228,15 @@ public static class Commands
             }
         }
 
+        spEffects?.WriteReport(ctx);
+        try
+        {
+            MovesetPort.WriteArtNames(ctx, erArchives, MovesetPort.ArtNames);
+        }
+        catch (Exception e) when (e is not OutOfMemoryException)
+        {
+            Console.WriteLine($"arts: names not written, ported arts show their template's name ({e.GetType().Name}: {e.Message})");
+        }
         var path = ctx.ModPath("regulation.bin");
         using (Timing.Stage("regulation and item list"))
         {

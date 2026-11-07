@@ -31,6 +31,9 @@ public static partial class MovesetPort
 
     private const string AnimBinder = "/chr/c0000_a9x.anibnd.dcx";
 
+    /// <summary>The last Apply's ported art names by SwordArtsParam row (its textId), for <see cref="WriteArtNames"/>.</summary>
+    public static IReadOnlyDictionary<int, string> ArtNames { get; private set; } = new Dictionary<int, string>();
+
     /// <summary>DARKSIGN_COPY_ER_ANIMS=1 copies the template's own animations under the new category, as before, instead of importing them.</summary>
     private static readonly bool CopyErAnims = Environment.GetEnvironmentVariable("DARKSIGN_COPY_ER_ANIMS") == "1";
 
@@ -51,7 +54,7 @@ public static partial class MovesetPort
     private static partial Regex AnimName();
 
     public static void Apply(PorterContext ctx, GameArchives erArchives, GameArchives ds3Archives, ParamStore er, ParamStore ds3,
-        IReadOnlyList<WeaponPlan> plans)
+        IReadOnlyList<WeaponPlan> plans, SpEffectPort? spEffects = null)
     {
         var ports = plans.Where(p => p.Status == "port" && (Only.Length == 0 || Only.Contains(p.Ds3Id))).ToList();
         if (ports.Count == 0)
@@ -96,7 +99,7 @@ public static partial class MovesetPort
 
         var erWeapons = er.Get("EquipParamWeapon")!;
         var ds3Weapons = ds3.Get("EquipParamWeapon")!;
-        var attackPort = new AttackParamPort(er, ds3);
+        var attackPort = new AttackParamPort(er, ds3) { Effects = spEffects };
         // Param changes wait until every file is written, so a failure leaves the weapons on their template moveset.
         var pointWeapons = new List<Action>();
 
@@ -153,8 +156,9 @@ public static partial class MovesetPort
         var effectsTime = Timing.Stage("effects");
         var ds3EffectFiles = FxrPort.Ds3Index(ds3Archives);
         var effectEvents = EffectEvents.Find(ds3Main, erMain, ds3EffectFiles);
+        var artSections = ArtSections(ports, ds3Weapons).ToList();
         var wantedEffects = groups.Where(g => order.Contains(g.Key)).SelectMany(g => new[] { g.Key.Ds3Section, g.Key.Ds3ArtSection })
-            .Distinct().Where(s => s > 0).Select(Ds3Tae).Where(t => t is not null)
+            .Concat(artSections).Distinct().Where(s => s > 0).Select(Ds3Tae).Where(t => t is not null)
             .SelectMany(t => effectEvents.Ids(t!.Animations.SelectMany(a => a.Events))).ToHashSet();
         FxrPort.Result effects;
         try { effects = FxrPort.Apply(ctx, erArchives, ds3EffectFiles, wantedEffects); }
@@ -169,7 +173,7 @@ public static partial class MovesetPort
         // DS3's sounds, the same way: every character and effect sound the sections play, under new IDs.
         var soundsTime = Timing.Stage("sounds");
         var ds3SectionEvents = groups.Where(g => order.Contains(g.Key)).SelectMany(g => new[] { g.Key.Ds3Section, g.Key.Ds3ArtSection })
-            .Distinct().Where(s => s > 0).Select(Ds3Tae).Where(t => t is not null).SelectMany(t => t!.Animations.SelectMany(a => a.Events)).ToList();
+            .Concat(artSections).Distinct().Where(s => s > 0).Select(Ds3Tae).Where(t => t is not null).SelectMany(t => t!.Animations.SelectMany(a => a.Events)).ToList();
         var erMainEvents = erMain.Files.Where(f => f.Name.EndsWith(".tae", StringComparison.OrdinalIgnoreCase))
             .SelectMany(f => { try { return TAE.Read(f.Bytes).Animations.SelectMany(a => a.Events).ToList(); } catch (Exception) { return []; } }).ToList();
         var soundSample = erMainEvents.Where(e => e.Type == 128).Select(e => e.GetParameterBytes(false))
@@ -384,6 +388,22 @@ public static partial class MovesetPort
         // Params first: a failure there must not leave behaviour and animation files for weapons that don't use them.
         foreach (var point in pointWeapons)
             point();
+        // DS3 weapon arts, as Ashes of War of their own (MovesetPort.Arts.cs).
+        ArtResult artResult;
+        using (Timing.Stage("weapon arts"))
+        {
+            try
+            {
+                artResult = PortArts(ctx, erArchives, ds3Archives, er, ds3, ports, erMain, erAnims, ds3Main, Ds3Tae, ds3Hkx, ds3Skeleton, erSkeleton,
+                    selectors, ref nextInternalId, effectEvents, effects, soundPort, timing);
+            }
+            catch (Exception e) when (e is not OutOfMemoryException)
+            {
+                Console.WriteLine($"arts: failed, ported weapons keep Elden Ring Ashes of War ({e.GetType().Name}: {e.Message})");
+                artResult = new ArtResult(0, 0, [], []);
+            }
+        }
+        ArtNames = artResult.Names;
         var timingReport = ctx.WorkPath("reports", "moveset-timing.tsv");
         Directory.CreateDirectory(Path.GetDirectoryName(timingReport)!);
         File.WriteAllLines(timingReport, timing);
@@ -399,7 +419,7 @@ public static partial class MovesetPort
                 .Concat(wideCategories.Select(e => $"{e.Key}\t{e.Value}")));
         else
             File.Delete(table);
-        if (portedGroups == 0)
+        if (portedGroups == 0 && artResult.Arts == 0)
             return;
         using var output = new MemoryStream();
         new HavokBinarySerializer().Write(behavior, output);
@@ -904,9 +924,13 @@ public sealed class AttackParamPort(ParamStore er, ParamStore ds3, string behavi
     // Weapons use the player's params; the enemy port (Enemies/ChrPort.cs) passes BehaviorParam and AtkParam_Npc.
     private readonly PARAM _erBehavior = er.Get(behaviorParam)!, _ds3Behavior = ds3.Get(behaviorParam)!;
     private readonly PARAM _erAttack = er.Get(attackParam)!, _ds3Attack = ds3.Get(attackParam)!;
-    private int _behaviors, _attacks;
+    private int _behaviors, _attacks, _effectBehaviors;
 
-    public string Summary => $"{_behaviors} behaviour rows ({_templateBehaviors} more from the templates), {_attacks} attack rows";
+    /// <summary>When set, DS3 SpEffect references (behaviours that cast an effect, attacks that apply one) are ported
+    /// with it instead of standing in the template's or being dropped.</summary>
+    public SpEffectPort? Effects { get; init; }
+
+    public string Summary => $"{_behaviors} behaviour rows ({_templateBehaviors} more from the templates, {_effectBehaviors} casting ported DS3 effects), {_attacks} attack rows";
 
     /// <summary>
     /// Copies a DS3 behaviour variation under a new Elden Ring variation ID and returns it (0 if DS3 has none). The
@@ -953,8 +977,15 @@ public sealed class AttackParamPort(ParamStore er, ParamStore ds3, string behavi
                 row = CopyByName(source, new PARAM.Row(id, source.Name ?? "", _erBehavior.AppliedParamdef));
                 row["refId"].Value = Convert.ChangeType(PortAttack(Convert.ToInt32(source["refId"].Value)), row["refId"].Value!.GetType());
             }
-            // Bullets (1) and SpEffects (2) are DS3 IDs, which name unrelated Elden Ring bullets and effects (or none):
-            // the template's row for the same judge stands in, else the row is left out.
+            // SpEffects (2): the DS3 effect ported under its new ID (weapon art buffs).
+            else if (refType == 2 && Effects?.Port(Convert.ToInt32(source["refId"].Value)) is > 0 and var effect)
+            {
+                row = CopyByName(source, new PARAM.Row(id, source.Name ?? "", _erBehavior.AppliedParamdef));
+                row["refId"].Value = Convert.ChangeType(effect, row["refId"].Value!.GetType());
+                _effectBehaviors++;
+            }
+            // Bullets (1) and unported SpEffects are DS3 IDs, which name unrelated Elden Ring bullets and effects (or
+            // none): the template's row for the same judge stands in, else the row is left out.
             else if (templateRows.TryGetValue(judge, out var er))
                 row = CopyRow(er, id);
             else
@@ -998,7 +1029,14 @@ public sealed class AttackParamPort(ParamStore er, ParamStore ds3, string behavi
         int id = _erAttack[ds3Id] is null ? ds3Id : 700_000_000 + ds3Id % 100_000_000;
         while (_erAttack[id] is not null)
             id++;
-        _erAttack.Rows.Add(CopyByName(source, new PARAM.Row(id, source.Name ?? "", _erAttack.AppliedParamdef)));
+        var row = CopyByName(source, new PARAM.Row(id, source.Name ?? "", _erAttack.AppliedParamdef));
+        // DS3 names these spEffect0-4, Elden Ring spEffectId0-4: the effect a hit applies (an art's frost or poison).
+        if (Effects is not null)
+            for (int i = 0; i < 5; i++)
+                if (source[$"spEffect{i}"] is { } from && row[$"spEffectId{i}"] is { } to && Convert.ToInt32(from.Value) > 0
+                    && Effects.Port(Convert.ToInt32(from.Value), statusOnly: true) is > 0 and var effect)
+                    to.Value = Convert.ChangeType(effect, to.Value!.GetType());
+        _erAttack.Rows.Add(row);
         _erAttack.Rows.Sort((a, b) => a.ID.CompareTo(b.ID));
         _attacks++;
         return _attackIds[ds3Id] = id;

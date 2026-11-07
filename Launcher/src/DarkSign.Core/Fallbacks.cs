@@ -184,6 +184,24 @@ public static class Fallbacks
             new("off", "Off (Elden Ring effects)", "Ported weapons keep the template's effects (DARKSIGN_DS3_EFFECT_EVENTS=0).")
                 { PorterEnv = Env("DARKSIGN_DS3_EFFECT_EVENTS", "0") },
         ]),
+        new("weapon-arts", "Weapon sounds and effects", "DS3 weapon arts (skills on L2)", Stage.Build,
+            "L2 on a ported weapon does an Elden Ring Ash of War, nothing, the wrong move, the character freezes or T-poses, or the player can't move at all after loading (that last one means the hks: go to B).",
+        [
+            new("A", "DS3 arts with stances (default)", "Each DS3 weapon art becomes its own Ash of War with DS3's animations, events and FP cost. Stance skills (Friede's, the Great Scythe's) hold the stance with light and heavy follow-ups, which needs Mods\\ER\\action\\script\\c0000.hks (ividyon's community hks with the ported stances added)."),
+            new("B", "DS3 arts without the hks", "Same arts, but no c0000.hks (DARKSIGN_WEAPON_ARTS=nohks): one-shot skills are unchanged, stance skills become a single attack (their stance light attack).")
+                { PorterEnv = Env("DARKSIGN_WEAPON_ARTS", "nohks") },
+            new("off", "Off (Elden Ring Ashes of War)", "Ported weapons keep their template's Elden Ring Ash of War (DARKSIGN_WEAPON_ARTS=0), as in builds up to 1.0.169.")
+                { PorterEnv = Env("DARKSIGN_WEAPON_ARTS", "0") },
+        ]),
+        new("weapon-effects", "Weapon sounds and effects", "DS3 weapon status and buffs (frostbite, bleed, poison)", Stage.Build,
+            "A ported weapon builds up no status (Friede's scythe no frostbite), the wrong status, or holding or swinging it does something odd (health drains, stats change, the game crashes on hit).",
+        [
+            new("A", "Status, equipped effects and art buffs (default)", "DS3's status on hit, the effects a DS3 weapon gives while held and the buffs its weapon art casts, ported as new Elden Ring effects (status rows copied from Elden Ring's own bleed, frost and poison rows with DS3's buildup)."),
+            new("B", "Status on hit only", "Only the status a weapon builds up on hit (DARKSIGN_WEAPON_EFFECTS=status); equipped effects and art buffs are left out.")
+                { PorterEnv = Env("DARKSIGN_WEAPON_EFFECTS", "status") },
+            new("off", "Off", "No DS3 effects (DARKSIGN_WEAPON_EFFECTS=0): ported weapons build up nothing, as in builds before 1.0.17x.")
+                { PorterEnv = Env("DARKSIGN_WEAPON_EFFECTS", "0") },
+        ]),
 
         // ---- DS3 maps ----
         new("map-slots", "DS3 maps", "Which Elden Ring map IDs hold the DS3 maps", Stage.Build,
