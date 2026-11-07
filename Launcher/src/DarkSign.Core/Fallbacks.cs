@@ -155,6 +155,17 @@ public static class Fallbacks
                 { PorterEnv = Env("DARKSIGN_ABSORP", "0") },
         ]),
 
+        // ---- Weapon models ----
+        new("weapon-textures", "Weapon models", "DS3 weapon colours (metal)", Stage.Build,
+            "Ported weapons look dark grey and untextured, or metal parts look painted, too shiny or too bright.",
+        [
+            new("A", "Reflectance to metallic and base colour (default)", "Each DS3 reflectance map (_r) becomes Elden Ring's metallic map (_m), and the diffuse map (_a) takes the reflectance colour where the surface is metal, the usual specular-to-metallic conversion."),
+            new("B", "Metallic only", "The metallic map is made from the reflectance the same way, but DS3's diffuse map is kept as it is (DARKSIGN_WEAPON_PBR=metal).")
+                { PorterEnv = Env("DARKSIGN_WEAPON_PBR", "metal") },
+            new("off", "Off (flat, not metal)", "The old way: a flat black metallic map and DS3's diffuse map (DARKSIGN_WEAPON_PBR=0). Metal blades render dark grey.")
+                { PorterEnv = Env("DARKSIGN_WEAPON_PBR", "0") },
+        ]),
+
         // ---- Weapon sounds and effects ----
         new("sounds", "Weapon sounds and effects", "DS3 weapon sounds", Stage.Build,
             "Swings are silent, play the wrong sound, or sound pitched down or muffled.",

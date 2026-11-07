@@ -154,19 +154,14 @@ public static class ModelPort
         }).ToList();
 
     /// <summary>
-    /// Renames textures to the new model and adds a flat, non-metallic _m map for each _r map, since Elden Ring's
-    /// weapon shader reads metallic (_m) where DS3's read reflectance (_r).
+    /// Renames textures to the new model and adds an _m (metallic) map for each _r (reflectance) map, since Elden
+    /// Ring's weapon shader reads metallic where DS3's read reflectance (see <see cref="WeaponTextures"/>).
     /// </summary>
     private static TPF ConvertTpf(TPF tpf, string oldTag, string newTag)
     {
-        var added = new List<TPF.Texture>();
         foreach (var t in tpf.Textures)
-        {
             t.Name = TextureName(t.Name, oldTag, newTag);
-            if (t.Name.EndsWith("_r", StringComparison.OrdinalIgnoreCase))
-                added.Add(new TPF.Texture(t.Name[..^2] + "_m", 103, 0, BlackBc4Dds(), TPF.TPFPlatform.PC));
-        }
-        tpf.Textures.AddRange(added);
+        WeaponTextures.AddMetallicMaps(tpf, WeaponTextures.CurrentMode);
         return tpf;
     }
 
