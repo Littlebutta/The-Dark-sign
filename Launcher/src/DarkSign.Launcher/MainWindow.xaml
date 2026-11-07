@@ -64,6 +64,8 @@
             <Button x:Name="RebuildButton" Content="Rebuild content" Margin="16,0,0,0" Click="OnRebuildContent" />
             <Button Content="Fallbacks…" Click="OnFallbacks"
                     ToolTip="If a feature doesn't work in game, switch it to another method (B, C, …) here. Changing a build method rebuilds the content on the next PLAY." />
+            <Button Content="Pre-flight check…" Click="OnPreflight"
+                    ToolTip="Checks the game paths, me3 profile, sound banks and event flags before you test, and saves a zip of every log and report after a test." />
             <Button Content="Open mod folder" Click="OnOpenModFolder" />
             <Button x:Name="UninstallButton" Content="Uninstall…" Click="OnUninstall"
                     ToolTip="Removes the mod and everything the launcher downloaded or built. Your games are not changed; you choose whether to keep your saves." />

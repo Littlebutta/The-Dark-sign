@@ -170,6 +170,13 @@ Try the next option if: A DS3 map crashes or hangs while loading, enemies stand 
 - **B: Elden Ring stand-ins only.** The same placements, but always the Elden Ring stand-ins, even for ported DS3 characters (port-maps --enemies standin). Tells whether a ported character is what breaks. (`port-maps --enemies standin`)
 - **off: Off (no enemies).** The DS3 maps are empty of enemies (port-maps --enemies none), to explore them or to find out whether enemies are what breaks a map. (`port-maps --enemies none`)
 
+### Where the DS3 maps' own flags are kept (`map-flags`, rebuilds the content)
+
+Try the next option if: In a DS3 map, bosses come back, opened doors and shortcuts close again or picked-up items return after a reload, or the pre-flight check says a map flag block is MISSING.
+
+- **A: The slot map's own flags (default).** A DS3 map's flags move with it into its Elden Ring slot's map flags (e.g. 4500xxxx for m45_00), the way Elden Ring's legacy dungeons number theirs.
+- **B: JortPob's saved blocks.** The maps' own flags get new numbers in the saved ranges of the bottom-edge sea tiles (1030294000 and up), the blocks JortPob's Morrowind port keeps all its flags in (DARKSIGN_MAP_FLAGS=common). Saves made with A lose their DS3 map progress. (`DARKSIGN_MAP_FLAGS=common`)
+
 
 ## Seamless Co-op
 

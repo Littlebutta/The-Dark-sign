@@ -119,6 +119,11 @@ jump, guard counter and the rest. Patrol routes and DS3's boss name text aren't 
    saved. The map check (`darksign_maps_check.txt`, "flag block" lines) probes the lists for every block the port uses
    (run flags 1039290-1039292, DS3 global flags 1030290-1038291, each slot's AABB0 block) and prints the lists' first
    bytes, since their format is still unknown. If the F1 Start button does nothing, check these lines first.
+   Status 2026-11-07: JortPob, which ships and saves, keeps all its flags in the same sea-tile blocks with the same
+   saved (0-999, 4000-4999, 7000-9999) and temporary (2000-2999) ranges our run and global flags use, so those are
+   expected to work. The slot map's own blocks (4500xxxx) are unconfirmed: the F1 test menu DLL now asks the game
+   about every block once a character loads (`flagcheck:` lines in dksign_testmenu.log, shown by the launcher's
+   pre-flight check), and fallback `map-flags` B moves the maps' own flags into JortPob's saved ranges.
 8. The vanilla colosseum's other per-map files (`.nva`, `.mfr`, `.btl` lights, envmaps, ivinfo, `map/onav`,
    `breakgeom`) stay as they are and describe the colosseum, not the DS3 map. SoulsFormats can't write Elden Ring's NVA.
 

@@ -217,6 +217,14 @@ public static class Fallbacks
                 { MapsArgs = ["--enemies", "none"] },
         ]),
 
+        new("map-flags", "DS3 maps", "Where the DS3 maps' own flags are kept", Stage.Build,
+            "In a DS3 map, bosses come back, opened doors and shortcuts close again or picked-up items return after a reload, or the pre-flight check says a map flag block is MISSING.",
+        [
+            new("A", "The slot map's own flags (default)", "A DS3 map's flags move with it into its Elden Ring slot's map flags (e.g. 4500xxxx for m45_00), the way Elden Ring's legacy dungeons number theirs."),
+            new("B", "JortPob's saved blocks", "The maps' own flags get new numbers in the saved ranges of the bottom-edge sea tiles (1030294000 and up), the blocks JortPob's Morrowind port keeps all its flags in (DARKSIGN_MAP_FLAGS=common). Saves made with A lose their DS3 map progress.")
+                { PorterEnv = Env("DARKSIGN_MAP_FLAGS", "common") },
+        ]),
+
         // ---- Co-op ----
         new("seamless", "Seamless Co-op", "How Seamless Co-op is loaded", Stage.Launch,
             "With Seamless Co-op ticked: the game won't start, Seamless' menu doesn't appear, or you can't connect.",
