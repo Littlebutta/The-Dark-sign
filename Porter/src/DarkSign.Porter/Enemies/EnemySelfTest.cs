@@ -83,6 +83,12 @@ public static class EnemySelfTest
         var stats = ChrPort.MapLines(plan with { Method = ChrPort.Method.Stats }, rows, 43000000).First().Split('\t');
         Check("method C (stats) points the map at the template's model", stats[2] == "c4300");
 
+        // The F1 menu's spawn list (TestMenu/src/spawn.c parses these lines).
+        var spawn = SpawnList.Lines(ChrPort.MapLines(plan, rows, 43000000), [knight, knight, hound with { Boss = true }], new HashSet<string>());
+        Check("spawn list: header, one DS3 line per ported character on the new model, Elden Ring deduplicated, bosses last",
+            spawn.Count == 4 && spawn[0].StartsWith('#') && spawn[1] == "DS3\tc7000\t70000000\t43000000\t0\tLothric Knight"
+            && spawn[2] == "ER\tc4300\t43000000\t43000000\t0\tBanished Knight" && spawn[3] == "ER\tc4410\t44100000\t44100000\t1\tWolf");
+
         // TAE keys.
         Check("TAE sections: a000.tae -> 0, a061.tae -> 61, c1100.tae -> 0",
             ChrPort.TaeSection("a000.tae") == 0 && ChrPort.TaeSection(@"N:\x\a061.tae") == 61 && ChrPort.TaeSection("c1100.tae") == 0);

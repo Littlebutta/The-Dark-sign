@@ -62,9 +62,16 @@ public static class Fallbacks
         new("test-menu", "Starting the game", "F1 test menu", Stage.Launch,
             "The game crashes or freezes when the F1 menu opens or as soon as the game window shows, or F1 does nothing.",
         [
-            new("A", "Overlay and hotkeys (default)", "F1 opens the menu (drawn into the game's DirectX 12 frames). The hotkeys work too: Ctrl+Shift+F1 starts the DS3 run, Ctrl+Shift+F2 leaves it, Ctrl+Shift+1-9 warps to a ported map, Ctrl+Shift+F3 gives every DS3 weapon."),
+            new("A", "Overlay and hotkeys (default)", "F1 opens the menu (drawn into the game's DirectX 12 frames). The hotkeys work too: Ctrl+Shift+F1 starts the DS3 run, Ctrl+Shift+F2 leaves it, Ctrl+Shift+1-9 warps to a ported map, Ctrl+Shift+F3 gives every DS3 weapon, Ctrl+Shift+F4 clears the enemies spawned from the menu."),
             new("B", "Hotkeys only", "No overlay (nothing hooks DirectX 12); the same hotkeys do the main jobs. A beep means the game took it, two beeps that it couldn't (load a character first).")
                 { GameEnv = Env(NoOverlayVariable, "1") },
+        ]),
+        new("spawn-clear", "Starting the game", "Clearing enemies spawned from the F1 menu", Stage.Launch,
+            "\"Clear enemies spawned from this menu\" (or Ctrl+Shift+F4) leaves them standing, or the game crashes when they're cleared.",
+        [
+            new("A", "Kill them (default)", "Their HP is set to 0, so the game kills them the normal way: they fall and fade out (and may drop runes)."),
+            new("B", "Remove them", "The game's own RemoveChrIns takes them out of the world at once, no bodies (DKSIGN_SPAWN_REMOVE=1). Called from the menu's thread, not the game's, so it can crash: use it only if A doesn't clear them.")
+                { GameEnv = Env(SpawnRemoveVariable, "1") },
         ]),
         new("build-threads", "Starting the game", "Content build speed", Stage.Build,
             "The content build fails or gives different results from one run to the next.",
@@ -250,6 +257,9 @@ public static class Fallbacks
 
     /// <summary>Game variable: the test menu DLL plays the ported sounds itself (sounds D).</summary>
     public const string DllSoundsVariable = "DKSIGN_DLL_SOUNDS";
+
+    /// <summary>Game variable: the F1 menu removes spawned enemies instead of killing them (spawn-clear B).</summary>
+    public const string SpawnRemoveVariable = "DKSIGN_SPAWN_REMOVE";
 
     /// <summary>Game variable: the test menu DLL doesn't hook DirectX 12 (no overlay), hotkeys only.</summary>
     public const string NoOverlayVariable = "DKSIGN_NO_OVERLAY";

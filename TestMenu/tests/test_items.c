@@ -45,6 +45,28 @@ int main(void)
     int wild[DKS_ATTRIBUTES] = {0, 150, 5, 5, 5, 5, 5, 5};
     CHECK(dks_level_for(wild) == 1 + 99 + 30 - 79);
 
+    DksSpawnable sp;
+    CHECK(dks_parse_spawn_line("DS3\tc7000\t70000000\t43000000\t0\tLothric Knight\r\n", &sp));
+    CHECK(strcmp(sp.game, "DS3") == 0 && sp.chr == 7000 && sp.npc_param == 70000000 && sp.think_param == 43000000);
+    CHECK(!sp.boss && strcmp(sp.name, "Lothric Knight") == 0);
+    CHECK(dks_parse_spawn_line("ER\tc2275\t22750020\t22750000\t1\tGiant Crab", &sp) && sp.boss && sp.chr == 2275);
+    CHECK(!dks_parse_spawn_line("# game\tmodel\tNpcParam\tThinkParam\tboss\tname", &sp));
+    CHECK(!dks_parse_spawn_line("BB\tc2275\t22750020\t22750000\t0\tX", &sp));
+    CHECK(!dks_parse_spawn_line("ER\tx2275\t22750020\t22750000\t0\tX", &sp));
+    CHECK(!dks_parse_spawn_line("ER\tc2275\tabc\t22750000\t0\tX", &sp));
+    CHECK(!dks_parse_spawn_line("ER\tc2275\t22750020", &sp));
+
+    float player[3] = {10, 5, 20}, out[3];
+    float facing_z[4] = {0, 0, 0, 1};             /* no rotation: facing +Z */
+    dks_spawn_position(player, facing_z, 2, out);  /* middle of the first row */
+    CHECK(out[0] > 9.99f && out[0] < 10.01f && out[1] > 5.2f && out[2] > 22.99f && out[2] < 23.01f);
+    float facing_x[4] = {0, 0.70710678f, 0, 0.70710678f}; /* 90 degrees about Y: +Z turns to +X */
+    dks_spawn_position(player, facing_x, 2, out);
+    CHECK(out[0] > 12.99f && out[0] < 13.01f && out[2] > 19.99f && out[2] < 20.01f);
+    float broken[4] = {0, 0, 0, 0};
+    dks_spawn_position(player, broken, 7, out);    /* second row, no facing: still somewhere near */
+    CHECK(out[2] > 24.4f && out[2] < 24.6f);
+
     if (failures)
         return 1;
     printf("test_items: all passed\n");

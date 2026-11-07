@@ -1,6 +1,9 @@
 #include "items.h"
 
+#include <math.h>
+
 #include <ctype.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -112,4 +115,54 @@ int dks_level_for(const int attributes[DKS_ATTRIBUTES])
     for (int i = 0; i < DKS_ATTRIBUTES; i++)
         sum += attributes[i] < 1 ? 1 : attributes[i] > DKS_ATTRIBUTE_MAX ? DKS_ATTRIBUTE_MAX : attributes[i];
     return sum - 79 < 1 ? 1 : sum - 79;
+}
+
+int dks_parse_spawn_line(const char *line, DksSpawnable *out)
+{
+    char model[16], npc[16], think[16], boss[4];
+    memset(out, 0, sizeof *out);
+    if (line[0] == '#' || !(line = next_field(line, out->game, sizeof out->game)) || !(line = next_field(line, model, sizeof model)) ||
+        !(line = next_field(line, npc, sizeof npc)) || !(line = next_field(line, think, sizeof think)) ||
+        !(line = next_field(line, boss, sizeof boss)))
+        return 0;
+    next_field(line, out->name, sizeof out->name);
+    char *end;
+    if ((model[0] != 'c' && model[0] != 'C') || !model[1])
+        return 0;
+    long chr = strtol(model + 1, &end, 10);
+    if (*end || chr <= 0 || chr > 9999)
+        return 0;
+    out->chr = (int)chr;
+    out->npc_param = (int)strtol(npc, &end, 10);
+    if (*end || !npc[0] || out->npc_param <= 0)
+        return 0;
+    out->think_param = (int)strtol(think, &end, 10);
+    if (*end || !think[0])
+        return 0;
+    out->boss = boss[0] == '1';
+    if (!out->name[0])
+        snprintf(out->name, sizeof out->name, "c%04d", out->chr);
+    return strcmp(out->game, "DS3") == 0 || strcmp(out->game, "ER") == 0;
+}
+
+void dks_spawn_position(const float player[3], const float q[4], int n, float out[3])
+{
+    /* The facing: the quaternion applied to +Z, flattened onto the ground. */
+    float fx = 2.0f * (q[0] * q[2] + q[3] * q[1]);
+    float fz = 1.0f - 2.0f * (q[0] * q[0] + q[1] * q[1]);
+    float len = sqrtf(fx * fx + fz * fz);
+    if (!(len > 0.01f) || len != len) {
+        fx = 0.0f;
+        fz = 1.0f;
+    } else {
+        fx /= len;
+        fz /= len;
+    }
+    if (n < 0)
+        n = 0;
+    float ahead = 3.0f + (float)(n / 5) * 1.5f;
+    float side = (float)(n % 5 - 2) * 1.5f;
+    out[0] = player[0] + fx * ahead + fz * side;
+    out[1] = player[1] + 0.3f;
+    out[2] = player[2] + fz * ahead - fx * side;
 }

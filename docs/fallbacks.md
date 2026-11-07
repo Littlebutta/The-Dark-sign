@@ -28,8 +28,15 @@ Try the next option if: The game doesn't start, closes at the logo, hangs before
 
 Try the next option if: The game crashes or freezes when the F1 menu opens or as soon as the game window shows, or F1 does nothing.
 
-- **A: Overlay and hotkeys (default).** F1 opens the menu (drawn into the game's DirectX 12 frames). The hotkeys work too: Ctrl+Shift+F1 starts the DS3 run, Ctrl+Shift+F2 leaves it, Ctrl+Shift+1-9 warps to a ported map, Ctrl+Shift+F3 gives every DS3 weapon.
+- **A: Overlay and hotkeys (default).** F1 opens the menu (drawn into the game's DirectX 12 frames). The hotkeys work too: Ctrl+Shift+F1 starts the DS3 run, Ctrl+Shift+F2 leaves it, Ctrl+Shift+1-9 warps to a ported map, Ctrl+Shift+F3 gives every DS3 weapon, Ctrl+Shift+F4 clears the enemies spawned from the menu.
 - **B: Hotkeys only.** No overlay (nothing hooks DirectX 12); the same hotkeys do the main jobs. A beep means the game took it, two beeps that it couldn't (load a character first). (game `DKSIGN_NO_OVERLAY=1`)
+
+### Clearing enemies spawned from the F1 menu (`spawn-clear`, at launch, no rebuild)
+
+Try the next option if: "Clear enemies spawned from this menu" (or Ctrl+Shift+F4) leaves them standing, or the game crashes when they're cleared.
+
+- **A: Kill them (default).** Their HP is set to 0, so the game kills them the normal way: they fall and fade out (and may drop runes).
+- **B: Remove them.** The game's own RemoveChrIns takes them out of the world at once, no bodies (DKSIGN_SPAWN_REMOVE=1). Called from the menu's thread, not the game's, so it can crash: use it only if A doesn't clear them. (`DKSIGN_SPAWN_REMOVE=1`)
 
 ### Content build speed (`build-threads`, rebuilds the content)
 

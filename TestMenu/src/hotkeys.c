@@ -5,6 +5,7 @@
      Ctrl+Shift+F2        leave the DS3 run (back to Roundtable Hold)
      Ctrl+Shift+1 ... 9   warp to ported map 1-9 (the order of darksign_maps.tsv, the F1 tab's list)
      Ctrl+Shift+F3        give every ported Dark Souls III weapon (+0, no affinity)
+     Ctrl+Shift+F4        clear the enemies spawned from the F1 menu's "Spawn enemies" tab
    The flags are the ones the F1 menu sets (game.h, RunEvents.cs). */
 #include <windows.h>
 #include <stdio.h>
@@ -13,6 +14,7 @@
 
 #include "game.h"
 #include "hotkeys.h"
+#include "spawn.h"
 
 #define MAX_WARPS 9
 
@@ -91,12 +93,12 @@ static DWORD WINAPI watch(LPVOID unused)
 {
     (void)unused;
     load_warps();
-    dks_log("hotkeys: on (Ctrl+Shift+F1 start DS3 run, F2 leave, 1-%d warp, F3 give DS3 weapons)", g_warp_count);
+    dks_log("hotkeys: on (Ctrl+Shift+F1 start DS3 run, F2 leave, 1-%d warp, F3 give DS3 weapons, F4 clear spawned enemies)", g_warp_count);
     int was[16] = {0};
     for (;;) {
         Sleep(50);
         int combo = game_has_focus() && down(VK_CONTROL) && down(VK_SHIFT);
-        int keys[] = {VK_F1, VK_F2, VK_F3, '1', '2', '3', '4', '5', '6', '7', '8', '9'};
+        int keys[] = {VK_F1, VK_F2, VK_F3, VK_F4, '1', '2', '3', '4', '5', '6', '7', '8', '9'};
         for (int k = 0; k < (int)(sizeof keys / sizeof keys[0]); k++) {
             int now = combo && down(keys[k]);
             if (now && !was[k]) {
@@ -106,6 +108,12 @@ static DWORD WINAPI watch(LPVOID unused)
                     request(DKS_FLAG_DS3_LEAVE_REQUEST, "leave DS3 run");
                 else if (keys[k] == VK_F3)
                     give_ds3_weapons();
+                else if (keys[k] == VK_F4) {
+                    /* The render thread does the clearing (it owns the spawn list); see dks_spawn_update. */
+                    dks_spawn_request_clear();
+                    dks_log("hotkey: clear spawned enemies");
+                    report(1);
+                }
                 else if (keys[k] - '1' < g_warp_count && g_warp_flags[keys[k] - '1'])
                     request(g_warp_flags[keys[k] - '1'], "warp to a ported map");
                 else
