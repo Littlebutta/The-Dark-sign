@@ -28,6 +28,13 @@ install, and no game files are distributed.
 | [FogMod](https://github.com/thefifthmatt/FogMod) (DS3 Fog Gate Randomizer) | thefifthmatt | Apache-2.0 | DS3 world data for the cross-game randomizer: areas, routes and locks, fog gates, warps, key items, item and enemy locations (`fog.txt`, `locations.txt` copied unchanged at commit 28711c3, Randomizer/data/ds3, see NOTICE.md) |
 | [YamlDotNet](https://github.com/aaubry/YamlDotNet) | Antoine Aubry and contributors | MIT | Reading the randomizer's world files |
 
+## Launcher art and fonts
+
+| Work | Author | License | How we use it |
+|---|---|---|---|
+| [Cinzel](https://github.com/NDISCOVER/Cinzel) | Natanael Gama, The Cinzel Project Authors | SIL OFL 1.1 (Launcher/src/DarkSign.Launcher/Assets/Cinzel-OFL.txt) | The percentage inside the build Darksign and the build panel title; a free font in the style of Elden Ring's titles (Elden Ring's own font is not used) |
+| Darksign ring-of-fire image | supplied by Devin | personal use | The build progress ring (Assets/darksign.png, background made transparent) |
+
 ## Tools the launcher runs
 
 | Work | Author | License | How we use it |
