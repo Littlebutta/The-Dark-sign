@@ -86,8 +86,8 @@ DS3 objects themselves are ported (the next stage); until then the events wait f
 
 ### Enemy placement and the enemy porter
 
-The enemy porter (thread "Bring Midir and Friede into Elden Ring") writes `Mods\ER\darksign_chr_map.tsv`, tab-separated,
-one line per ported character, and port-maps uses it on its next run:
+The enemy porter (`Enemies/ChrPort.cs`) runs at the start of every full port-maps run, before any map places its
+enemies, and writes `Mods\ER\darksign_chr_map.tsv`, tab-separated, one line per ported row:
 
 ```
 npc <DS3 NpcParam ID> <ER model> <ER NpcParam ID> <ER ThinkParam ID> [name]   one DS3 NpcParam row
@@ -95,6 +95,27 @@ chr <DS3 model>       <ER model> <ER NpcParam ID> <ER ThinkParam ID> [name]   an
 ```
 
 An `npc` line wins over a `chr` line. Lines starting with `#` are ignored. Until a character is listed it gets a stand-in.
+
+What the enemy porter does, for every DS3 character placed in DS3's maps (one run, no list to keep up to date):
+
+1. **Template.** The Elden Ring enemy (from the legacy-dungeon catalog) whose skeleton shares the most bone names with
+   the DS3 model, with a small bonus for the same kind and boss-ness. Below 25% shared bones it uses method C.
+2. **ID.** A new character ID from c7000 up, in DS3 ID order, skipping IDs Elden Ring has, so every PC gets the same.
+3. **Files.** Every `/chr/` and `/sfx/` file of the template is copied under the new ID. The FLVER becomes DS3's model
+   (template header and GX list, skin indices into the node list, one tangent, vertex colours), each material a copy
+   of the template's closest MATBIN pointed at DS3's textures (DLC02 material binder), DS3's textures go into the
+   `_h` texbnd. Method A also gives the template skeleton DS3's bind pose and replaces each template animation that
+   DS3 has (same aXXX_YYYYYY) with DS3's, retargeted by bone name, and merges the TAE: the template's behaviour
+   windows and ID-based sounds/effects, scaled to DS3's length, plus DS3's events that fit Elden Ring's layouts.
+4. **Params** (after port-weapons wrote regulation.bin): ChrModelParam for the new model, one NpcParam row per DS3
+   row (new ID * 10000 and up, a copy of the template's named "[DS3] ..." with DS3's HP, souls, stamina and FP) and,
+   for method A, DS3's BehaviorParam/AtkParam_Npc rows under a new variation.
+5. **Report.** `Work\reports\enemy-port.tsv` (template, bone match, method, failures); the pre-flight check sums it up.
+
+A character whose files fail falls back to C (the template's body with DS3's stats), never to nothing. The written
+files are listed in `darksign_chr_files.txt` and deleted at the start of the next run. Fallbacks `enemy-port`: A model
+and animations, B model only, C Elden Ring bodies with DS3 stats, off. Offline checks: `DarkSignPorter enemy-selftest`.
+Not yet ported: DS3's AI scripts (the template's ThinkParam/AI is used), sounds (the template's bank), boss events.
 
 port-maps also writes `darksign_enemies.tsv` (every DS3 enemy it placed, with its slot part and entity) and
 `darksign_er_enemies.tsv` (the Elden Ring enemies below) for the cross-game randomizer's enemy shuffle.
@@ -134,7 +155,7 @@ run is a partial rebuild that keeps the rest.
 ## Next stages
 
 1. Navmesh: converted since PR #44. If Elden Ring rejects converted navmeshes, fall back to generating them, as NavMeshStudio does with Recast.
-2. Enemies, objects, items and bonfires from the MSB, with the enemy porter ("Bring Midir and Friede into Elden Ring").
+2. Enemies: placed, and ported by the enemy porter (see above). Next: DS3 AI scripts and sounds per character, objects, items and bonfires from the MSB.
 3. DS3 map events: converted (see "Event scripts"). Next: action buttons (doors, levers, fog walls) as
    ActionButtonParam rows, map-to-map connect collisions, then cutscenes (remo files, camera and animations via Havok).
 4. More slots for the remaining DS3 maps.

@@ -170,6 +170,15 @@ Try the next option if: A DS3 map crashes or hangs while loading, enemies stand 
 - **B: Elden Ring stand-ins only.** The same placements, but always the Elden Ring stand-ins, even for ported DS3 characters (port-maps --enemies standin). Tells whether a ported character is what breaks. (`port-maps --enemies standin`)
 - **off: Off (no enemies).** The DS3 maps are empty of enemies (port-maps --enemies none), to explore them or to find out whether enemies are what breaks a map. (`port-maps --enemies none`)
 
+### How DS3's enemies and bosses are ported (`enemy-port`, rebuilds the content)
+
+Try the next option if: A ported DS3 enemy crashes the game when it loads, is invisible or a mess of stretched polygons, T-poses or moves wrongly, or the enemy-port report (Work\reports\enemy-port.tsv) lists many failures.
+
+- **A: DS3 model and animations (default).** Every DS3 character placed in DS3's maps gets its own Elden Ring character ID (c7000 and up), built on the closest Elden Ring enemy: DS3's model, textures and animations on that enemy's skeleton, behaviour and AI, with DS3's HP, souls and attacks.
+- **B: DS3 model, Elden Ring animations.** DS3's model and textures on the Elden Ring enemy, which keeps its own animations and timing (DARKSIGN_ENEMY_PORT=model). Use when ported characters look right standing still but move wrongly. (`DARKSIGN_ENEMY_PORT=model`)
+- **C: Elden Ring bodies with DS3 stats.** No new models: each DS3 character is the closest Elden Ring enemy with DS3's name, HP and souls (DARKSIGN_ENEMY_PORT=stats). Use when ported models crash or don't show. (`DARKSIGN_ENEMY_PORT=stats`)
+- **off: Off (plain stand-ins).** No enemy port: the DS3 maps use Elden Ring enemies of the same kind as stand-ins (DARKSIGN_ENEMY_PORT=0). (`DARKSIGN_ENEMY_PORT=0`)
+
 ### Where the DS3 maps' own flags are kept (`map-flags`, rebuilds the content)
 
 Try the next option if: In a DS3 map, bosses come back, opened doors and shortcuts close again or picked-up items return after a reload, or the pre-flight check says a map flag block is MISSING.

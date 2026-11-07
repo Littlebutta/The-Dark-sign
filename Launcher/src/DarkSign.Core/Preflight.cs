@@ -169,11 +169,14 @@ public static class Preflight
         var chrMap = Path.Combine(setup.ModDir, "darksign_chr_map.tsv");
         if (File.Exists(chrMap))
         {
-            var lines = File.ReadLines(chrMap).Count(l => l.Length > 0 && !l.StartsWith('#'));
-            Add(lines > 0 ? Level.Ok : Level.Warn, "Enemies", $"{lines} ported DS3 characters in darksign_chr_map.tsv");
+            var rows = File.ReadLines(chrMap).Where(l => l.Length > 0 && !l.StartsWith('#')).ToList();
+            int models = rows.Count(l => l.StartsWith("chr\t", StringComparison.Ordinal)), npcs = rows.Count - models;
+            Add(rows.Count > 0 ? Level.Ok : Level.Warn, "Enemies",
+                $"darksign_chr_map.tsv: {npcs} DS3 NpcParam rows ported, {models} DS3 models with their own Elden Ring character");
         }
         else if (File.Exists(Path.Combine(setup.ModDir, "regulation.bin")))
             Add(Level.Info, "Enemies", "no ported DS3 characters yet (darksign_chr_map.tsv); DS3 maps use Elden Ring stand-ins");
+        CheckEnemyReport(items, Path.Combine(c.Root, "TheDarkSign", "Work", "reports", "enemy-port.tsv"));
 
         // ---- The last game session ----
         var saves = SaveIsolation.SaveDirectory(c.Root, s.GetActiveProfile().Name, GameId.EldenRing);
@@ -307,6 +310,24 @@ public static class Preflight
     }
 
     /// <summary>The report as text, worst first within each area's order of appearance.</summary>
+    /// <summary>The enemy porter's report: how many characters got which method, and its failure notes.</summary>
+    public static void CheckEnemyReport(List<Item> items, string path)
+    {
+        if (!File.Exists(path))
+            return;
+        var lines = ReadShared(path).Where(l => l.Length > 0).ToList();
+        var methods = lines.Skip(1).Where(l => !l.StartsWith('#')).Select(l => l.Split('\t'))
+            .Where(cols => cols.Length > 7).GroupBy(cols => cols[7]).ToDictionary(g => g.Key, g => g.Count());
+        var failures = lines.Where(l => l.StartsWith('#') && l.Contains("failed", StringComparison.OrdinalIgnoreCase)).ToList();
+        int Count(string m) => methods.GetValueOrDefault(m);
+        items.Add(new Item(Count("full") + Count("model") > 0 ? Level.Ok : Level.Info, "Enemies",
+            $"enemy port: {Count("full")} with DS3 model and animations, {Count("model")} DS3 model only, {Count("stats")} on Elden Ring bodies, " +
+            $"{Count("skipped")} skipped (Work\\reports\\enemy-port.tsv)"));
+        if (failures.Count > 0)
+            items.Add(new Item(Level.Warn, "Enemies", $"enemy port: {failures.Count} failure note(s), first: {failures[0].TrimStart('#', ' ')}. " +
+                "Many failures: try Fallbacks enemy-port B or C."));
+    }
+
     public static string Format(IEnumerable<Item> items) =>
         string.Join(Environment.NewLine, items.Select(i => $"{Tag(i.Level),-5} {i.Area}: {i.Text}"));
 
