@@ -876,7 +876,8 @@ public static partial class MovesetPort
         new(Math.Max(0, e.StartTime + shift), Math.Max(0, e.EndTime + shift), e.Type, e.Unk04,
             (byte[])e.GetParameterBytes(false).Clone(), false) { Group = e.Group };
 
-    private sealed record Ds3Move(string HkxName, List<TAE.Event> Events);
+    /// <summary>A DS3 move: its animation file, events, and the file its TAE entry names (when that differs).</summary>
+    private sealed record Ds3Move(string HkxName, List<TAE.Event> Events, string? FileName = null);
 
     /// <summary>The DS3 animation for an ID, from the first section that has it, following imports to their file.</summary>
     private static Ds3Move? FindDs3(List<(int Section, TAE? Tae)> taes, BND4 ds3Main, int id)
@@ -898,7 +899,8 @@ public static partial class MovesetPort
                     events = src.Events;
                 return string.IsNullOrEmpty(hkx) ? null : new Ds3Move(hkx, events);
             }
-            return new Ds3Move($"a{section:D3}_{id:D6}.hkx", anim.Events);
+            var named = (anim.AnimFileName ?? "").Replace(".hkt", ".hkx", StringComparison.OrdinalIgnoreCase);
+            return new Ds3Move($"a{section:D3}_{id:D6}.hkx", anim.Events, AnimName().IsMatch(named) ? named : null);
         }
         return null;
     }

@@ -221,9 +221,11 @@ public static class Fallbacks
         new("weapon-arts", "Weapon sounds and effects", "DS3 weapon arts (skills on L2)", Stage.Build,
             "L2 on a ported weapon does an Elden Ring Ash of War, nothing, the wrong move, the character freezes or T-poses, or the player can't move at all after loading (that last one means the hks: go to B).",
         [
-            new("A", "DS3 arts with stances (default)", "Each DS3 weapon art becomes its own Ash of War with DS3's animations, events and FP cost. Stance skills (Friede's, the Great Scythe's) hold the stance with light and heavy follow-ups, which needs Mods\\ER\\action\\script\\c0000.hks (ividyon's community hks with the ported stances added)."),
+            new("A", "DS3 arts with stances (default)", "Each DS3 weapon art (a weapon's own, or its class's skill such as Warcry or Stomp) becomes its own Ash of War with DS3's animations, events, FP cost and R1/R2 follow-ups, locked to the weapon. Stance skills (Friede's, the Great Scythe's) hold the stance with light and heavy follow-ups, which needs Mods\\ER\\action\\script\\c0000.hks (ividyon's community hks with the ported stances added)."),
             new("B", "DS3 arts without the hks", "Same arts, but no c0000.hks (DARKSIGN_WEAPON_ARTS=nohks): one-shot skills are unchanged, stance skills become a single attack (their stance light attack).")
                 { PorterEnv = Env("DARKSIGN_WEAPON_ARTS", "nohks") },
+            new("C", "DS3 arts, Ashes of War allowed", "Same as A, but ported weapons aren't locked to their art (DARKSIGN_WEAPON_ARTS=unlocked): Ashes of War and affinities can be put on them as on the Elden Ring weapon they're built from.")
+                { PorterEnv = Env("DARKSIGN_WEAPON_ARTS", "unlocked") },
             new("off", "Off (Elden Ring Ashes of War)", "Ported weapons keep their template's Elden Ring Ash of War (DARKSIGN_WEAPON_ARTS=0), as in builds up to 1.0.169.")
                 { PorterEnv = Env("DARKSIGN_WEAPON_ARTS", "0") },
         ]),
