@@ -31,7 +31,7 @@ public static partial class MapPortChecks
         yield return ("validate: run event checks pass on ported events and catch a missing one", ValidateEvents);
         yield return ("navmesh: binder entries are renamed to the host map and keep the host's compendium", NavmeshBinder);
         yield return ("rebuild: a full run deletes port-maps' own old outputs (both slot methods) and keeps the other steps' files", CleanStale);
-        yield return ("flags: the allocation probe finds block numbers and lists every block the port uses", FlagAllocProbe);
+        yield return ("flags: the allocation lists parse, blocks map to their maps, and a new map ID gets a line", FlagAllocProbe);
         yield return ("flags: in-game probe flags are each block's last number, and map-flags B uses JortPob's saved ranges", FlagProbesAndLocalFlags);
     }
 
@@ -62,9 +62,27 @@ public static partial class MapPortChecks
 
     private static void FlagAllocProbe()
     {
-        var data = new byte[64];
-        BitConverter.TryWriteBytes(data.AsSpan(13), 1039290u);
-        Expect(FlagAlloc.Mentions(data, 1039290) && !FlagAlloc.Mentions(data, 1038290), "block found by its 32-bit value, others not");
+        // The shipped lists' shape: blank lines, then "index,map,type" lines (CRLF), indices numbered across the files.
+        var legacy = System.Text.Encoding.UTF8.GetBytes("\r\n\r\n0,m10_00_00_00,0\r\n1,m10_01_00_00,0\r\n72,m45_00_00_00,0\r\n73,m45_01_00_00,0");
+        var open = System.Text.Encoding.UTF8.GetBytes("\r\n200,m60_41_38_00,0\r\n201,m60_39_29_00,0\r\n");
+        var entries = FlagAlloc.Parse(legacy);
+        Expect(entries.Count == 4 && entries[2].Index == 72 && entries[2].Map == ErId && entries[2].Rest == ",0", "parse: " + string.Join(" ", entries));
+        Expect(FlagAlloc.BlockMap(45000) == ErId && FlagAlloc.BlockMap(45019) == MapId.Parse("m45_01_00_00"), "legacy block -> map");
+        Expect(FlagAlloc.BlockMap(1039290) == MapId.Parse("m60_39_29_00") && FlagAlloc.BlockMap(2053460) == MapId.Parse("m61_53_46_00"),
+            "tile block -> map");
+        Expect(FlagAlloc.BlockMap(999) is null && FlagAlloc.BlockMap(50000) == MapId.Parse("m50_00_00_00"), "odd blocks");
+        var lists = new List<(string, List<FlagAlloc.Entry>)> { ("legacy", entries), ("open", FlagAlloc.Parse(open)) };
+        Expect(FlagAlloc.Find(lists, 45000)?.Entry.Index == 72 && FlagAlloc.Find(lists, 1039290)?.Entry.Index == 201
+               && FlagAlloc.Find(lists, 50000) is null, "find by block");
+        var probe = MapId.Parse("m50_00_00_00");
+        var (data, added) = FlagAlloc.WithMaps(legacy, [open], [(probe, ErId), (probe, ErId), (ErId, ErId)]);
+        Expect(added.Count == 1 && added[0].Index == 74 && added[0].Map == probe && added[0].Rest == ",0", "added: " + string.Join(" ", added));
+        var text = System.Text.Encoding.UTF8.GetString(data);
+        Expect(text.StartsWith(System.Text.Encoding.UTF8.GetString(legacy)) && text.EndsWith("73,m45_01_00_00,0\r\n74,m50_00_00_00,0\r\n"),
+            "original text kept, line appended: " + text[^40..].Replace("\r\n", "|"));
+        var again = FlagAlloc.Parse(data);
+        Expect(again.Count == 5 && FlagAlloc.Find([("legacy", again)], 50000)?.Entry.Index == 74, "reads back");
+        Expect(FlagAlloc.WithMaps(data, [open], [(probe, ErId)]).Added.Count == 0, "nothing added twice");
         var blocks = FlagAlloc.UsedBlocks([ErId, ErId], [1030290005, 1030290006, 1038291000]);
         Expect(blocks.Keys.SequenceEqual(new long[] { 45000, 1030290, 1038291, 1039290, 1039291, 1039292 }),
             "blocks: " + string.Join(",", blocks.Keys));

@@ -1,37 +1,149 @@
+using System.Text;
+using System.Text.RegularExpressions;
+using SoulsFormats;
+
 namespace DarkSign.Porter.Maps;
 
 /// <summary>
-/// Elden Ring only keeps event flags in blocks its flag manager allocates, and it reads which blocks exist from
+/// Elden Ring only keeps event flags in blocks its flag manager allocates, and it reads which maps get blocks from
 /// /event/eventflag/*.eventflagalloclist.dcx (legacy maps and open-world tiles, base game and DLC). A flag in a block
-/// that isn't listed is silently never set and never saved, so the F1 menu's run flags, the ported DS3 global flags
-/// and the slot's map flags all depend on these lists.
+/// that isn't allocated is silently never set and never saved, so the F1 menu's run flags, the ported DS3 global flags
+/// and each slot's own map flags all depend on these lists.
 ///
-/// The list format isn't documented anywhere this project can check, so this is a best-effort probe: it looks for each
-/// block number (flag / 1000, the flag manager's divisor) as a 32-bit value in the decompressed lists, and puts the
-/// files' sizes and first bytes in the report so the format can be worked out from a player's map check.
+/// The lists are plain text (seen in the map check of Devin's 2026-11-08 build: the file starts with blank lines, then
+/// "0,m10_00_00_00,0", "1,m10_01_00_00,..."): one entry per line, <c>index,mAA_BB_CC_DD,type</c>, with the indices
+/// numbered across the four files (legacy maps from 0, open-world tiles from 200, DLC tiles from 350). The same build's
+/// in-game check confirmed the effect: the colosseum slots (listed) keep flags in blocks 45000-45029, the m50 test slot
+/// (not listed) keeps none. So a map ID Elden Ring doesn't ship gets its flags by adding a line for it, copied from its
+/// template map's; <see cref="WriteForNewIds"/> does that for every new-ID slot in a build.
 /// </summary>
 public static class FlagAlloc
 {
+    public const string LegacyList = "/event/eventflag/legacymap.eventflagalloclist.dcx";
+
     public static readonly string[] Lists =
     [
-        "/event/eventflag/legacymap.eventflagalloclist.dcx", "/event/eventflag/legacymap_dlc02.eventflagalloclist.dcx",
+        LegacyList, "/event/eventflag/legacymap_dlc02.eventflagalloclist.dcx",
         "/event/eventflag/openmap.eventflagalloclist.dcx", "/event/eventflag/openmap_dlc02.eventflagalloclist.dcx",
     ];
 
-    /// <summary>Whether a block number (or the block's 10000-flag group) appears as a little-endian 32-bit value.</summary>
-    public static bool Mentions(byte[] data, long block)
+    /// <summary>One line of a list: its index, the map, and the fields after the map kept as written (the type).</summary>
+    public sealed record Entry(int Index, MapId Map, string Rest)
     {
-        foreach (var value in new[] { block, block / 10 })
-        {
-            var v = (uint)value;
-            for (int i = 0; i + 4 <= data.Length; i++)
-                if (BitConverter.ToUInt32(data, i) == v)
-                    return true;
-        }
-        return false;
+        public override string ToString() => $"{Index},{Map}{Rest}";
     }
 
-    /// <summary>The blocks the port's flags fall in, with what uses them.</summary>
+    private static readonly Regex Line = new(@"^\s*(\d+)\s*,\s*(m\d\d_\d\d_\d\d_\d\d)(.*?)\s*$", RegexOptions.Compiled);
+
+    /// <summary>The entries of a decompressed list; lines that aren't entries (the blank lines at the top) are skipped.</summary>
+    public static List<Entry> Parse(byte[] data)
+    {
+        var entries = new List<Entry>();
+        foreach (var raw in Text(data).Split('\n'))
+        {
+            var m = Line.Match(raw.TrimEnd('\r'));
+            if (m.Success)
+                entries.Add(new Entry(int.Parse(m.Groups[1].Value), MapId.Parse(m.Groups[2].Value), m.Groups[3].Value));
+        }
+        return entries;
+    }
+
+    private static string Text(byte[] data)
+    {
+        // The shipped lists are single-byte text; a UTF-16 copy (from another tool) is read too.
+        if (data.Length >= 2 && data[0] == 0xFF && data[1] == 0xFE)
+            return Encoding.Unicode.GetString(data, 2, data.Length - 2);
+        if (data.Length >= 4 && data[1] == 0 && data[3] == 0)
+            return Encoding.Unicode.GetString(data);
+        return Encoding.UTF8.GetString(data);
+    }
+
+    /// <summary>
+    /// The map a flag block belongs to, or null for a block outside the map layouts. A block is flag / 1000; legacy map
+    /// flags are AABBxxxx (block AABBx, map mAA_BB), open-world flags are 10XXYYxxxx for m60_XX_YY and 20XXYYxxxx for
+    /// m61_XX_YY (the sea tile m60_39_29 holds 1039290000+). The returned map has region and index 0: a list names the
+    /// tile's small map (m60_41_38_00), and <see cref="SameMap"/> compares area, block and region only.
+    /// </summary>
+    public static MapId? BlockMap(long block)
+    {
+        var prefix = block / 10;
+        if (prefix is >= 1000 and < 10000)
+            return new MapId((int)(prefix / 100), (int)(prefix % 100), 0, 0);
+        if (prefix is >= 100000 and < 110000)
+            return new MapId(60, (int)((prefix - 100000) / 100), (int)(prefix % 100), 0);
+        if (prefix is >= 200000 and < 210000)
+            return new MapId(61, (int)((prefix - 200000) / 100), (int)(prefix % 100), 0);
+        return null;
+    }
+
+    public static bool SameMap(MapId a, MapId b) => a.Area == b.Area && a.Block == b.Block && a.Region == b.Region;
+
+    /// <summary>The entry that allocates a block's map, in any of the parsed lists.</summary>
+    public static (string List, Entry Entry)? Find(IEnumerable<(string Name, List<Entry> Entries)> lists, long block)
+    {
+        if (BlockMap(block) is not { } map)
+            return null;
+        foreach (var (name, entries) in lists)
+            foreach (var e in entries)
+                if (SameMap(e.Map, map))
+                    return (name, e);
+        return null;
+    }
+
+    /// <summary>
+    /// The legacy list with a line added for each map that no list names yet, copied from its template's line (the
+    /// same type field) under the first index no list uses above the legacy list's highest. The original text is
+    /// kept byte for byte; only lines are appended. Returns the new text and the lines added (none: nothing to do).
+    /// </summary>
+    public static (byte[] Data, List<Entry> Added) WithMaps(byte[] legacy, IEnumerable<byte[]> otherLists,
+        IEnumerable<(MapId Map, MapId Template)> maps)
+    {
+        var legacyEntries = Parse(legacy);
+        var all = new List<Entry>(legacyEntries);
+        foreach (var other in otherLists)
+            all.AddRange(Parse(other));
+        var used = all.Select(e => e.Index).ToHashSet();
+        var next = legacyEntries.Count > 0 ? legacyEntries.Max(e => e.Index) + 1 : 0;
+        var added = new List<Entry>();
+        var text = new StringBuilder(Text(legacy));
+        foreach (var (map, template) in maps)
+        {
+            if (all.Any(e => SameMap(e.Map, map)) || added.Any(e => SameMap(e.Map, map)))
+                continue;
+            var from = all.FirstOrDefault(e => SameMap(e.Map, template))
+                       ?? throw new InvalidDataException($"{template} (the template of {map}) is in no flag allocation list");
+            while (used.Contains(next))
+                next++;
+            used.Add(next);
+            var entry = new Entry(next, map, from.Rest);
+            added.Add(entry);
+            if (text.Length > 0 && text[^1] != '\n')
+                text.Append("\r\n");
+            text.Append(entry).Append("\r\n");
+        }
+        return (added.Count == 0 ? legacy : Encoding.UTF8.GetBytes(text.ToString()), added);
+    }
+
+    /// <summary>
+    /// port-maps step: writes Mods\ER\event\eventflag\legacymap.eventflagalloclist.dcx with the new-ID slots' maps
+    /// added, so the game allocates their flag blocks (the m50 probe, and every map of the map-slots B method). Slots
+    /// whose map Elden Ring ships need nothing. Returns the report line.
+    /// </summary>
+    public static string WriteForNewIds(PorterContext ctx, GameArchives er, IEnumerable<MapSlots.Slot> slots)
+    {
+        var maps = slots.Where(s => s.Host != s.Er).Select(s => (s.Er, s.Host)).Distinct().ToList();
+        if (maps.Count == 0)
+            return "flag allocation: every slot is a map Elden Ring ships; nothing to add";
+        var (legacy, compression) = er.ReadWithCompression(LegacyList);
+        var others = Lists.Skip(1).Where(er.Contains).Select(er.Read).ToList();
+        var (data, added) = WithMaps(legacy, others, maps);
+        if (added.Count == 0)
+            return "flag allocation: the new map IDs are already listed; nothing to add";
+        File.WriteAllBytes(ctx.ModPath(MapPorter.ModParts(LegacyList)), DCX.Compress(data, compression));
+        return $"flag allocation: {string.Join(", ", added)} added to legacymap.eventflagalloclist";
+    }
+
+    /// <summary>The flag blocks the port's flags fall in, with what uses them.</summary>
     public static SortedDictionary<long, string> UsedBlocks(IEnumerable<MapId> slots, IEnumerable<long> globalFlags)
     {
         var blocks = new SortedDictionary<long, string>();
@@ -79,16 +191,38 @@ public static class FlagAlloc
         _ => "outside JortPob's blocks",
     };
 
-    public static void Check(GameArchives er, MapValidate.Report report, IEnumerable<MapId> slots, IEnumerable<long> globalFlags)
+    /// <summary>
+    /// Map check: is every block the port uses allocated to a listed map? The mod's own legacy list (written by
+    /// <see cref="WriteForNewIds"/>) is read in place of the game's when it exists, since that is the one the game loads.
+    /// </summary>
+    public static void Check(GameArchives er, MapValidate.Report report, IEnumerable<MapId> slots, IEnumerable<long> globalFlags,
+        string? modLegacyList = null)
     {
-        var lists = new List<(string Name, byte[] Data)>();
-        foreach (var path in Lists.Where(er.Contains))
+        var lists = new List<(string Name, List<Entry> Entries)>();
+        foreach (var path in Lists)
         {
             try
             {
-                var data = er.Read(path);
-                lists.Add((ItemText.Leaf(path), data));
-                report.Ok($"flag alloc list {ItemText.Leaf(path)}: {data.Length} bytes; starts {Convert.ToHexString(data.AsSpan(0, Math.Min(48, data.Length)))}");
+                byte[] data;
+                var name = ItemText.Leaf(path);
+                if (path == LegacyList && modLegacyList is not null && File.Exists(modLegacyList))
+                {
+                    data = DCX.Decompress(File.ReadAllBytes(modLegacyList));
+                    name += " (the mod's copy)";
+                }
+                else if (er.Contains(path))
+                    data = er.Read(path);
+                else
+                    continue;
+                var entries = Parse(data);
+                if (entries.Count == 0)
+                {
+                    report.Warn($"flag alloc list {name}: {data.Length} bytes but no \"index,map,type\" lines; starts "
+                                + Convert.ToHexString(data.AsSpan(0, Math.Min(32, data.Length))));
+                    continue;
+                }
+                lists.Add((name, entries));
+                report.Ok($"flag alloc list {name}: {entries.Count} maps, indices {entries.Min(e => e.Index)}-{entries.Max(e => e.Index)}");
             }
             catch (Exception ex)
             {
@@ -102,12 +236,17 @@ public static class FlagAlloc
         }
         foreach (var (block, what) in UsedBlocks(slots, globalFlags))
         {
-            var where = lists.Where(l => Mentions(l.Data, block)).Select(l => l.Name).ToList();
-            if (where.Count > 0)
-                report.Ok($"flag block {block}xxx ({what}): listed in {string.Join(", ", where)}");
+            var map = BlockMap(block);
+            if (map is null)
+                report.Warn($"flag block {block}xxx ({what}): not in any map's flag layout; the game keeps no such flags");
+            else if (Find(lists, block) is { } found)
+                report.Ok($"flag block {block}xxx ({what}): {found.Entry.Map} is listed in {found.List} (entry {found.Entry.Index})");
+            else if (map.Value.Area < 60)
+                report.Warn($"flag block {block}xxx ({what}): {map} is in no flag allocation list, so the game is expected to keep "
+                            + "none of these flags (the in-game flagcheck says MISSING for such a map); a new map ID needs a line in legacymap.eventflagalloclist");
             else
-                report.Warn($"flag block {block}xxx ({what}): not found in Elden Ring's flag allocation lists (format unconfirmed); "
-                            + "if these flags never turn on in game, this block is not allocated");
+                report.Warn($"flag block {block}xxx ({what}): tile {map} is in no flag allocation list (the in-game flagcheck decides; "
+                            + "JortPob's sea-tile flags kept in the 2026-11-08 test)");
         }
     }
 }

@@ -150,16 +150,14 @@ jump, guard counter and the rest. Patrol routes and DS3's boss name text aren't 
 4. Is the simd tree needed (`--simd` keeps DS3's)?
 5. Do the cloned map materials draw the DS3 textures correctly (opaque, alpha, two-layer)?
 6. Does Elden Ring need anything besides the .nvmhktbnd for a navmesh (an MSB entry or an .nva file)? `map-survey` lists every file type in both map folders.
-7. Are the port's flag blocks allocated? Elden Ring lists the flag blocks it keeps in
-   `event/eventflag/{legacymap,openmap}[_dlc02].eventflagalloclist.dcx`; a flag outside them is silently never set or
-   saved. The map check (`darksign_maps_check.txt`, "flag block" lines) probes the lists for every block the port uses
-   (run flags 1039290-1039292, DS3 global flags 1030290-1038291, each slot's AABB0 block) and prints the lists' first
-   bytes, since their format is still unknown. If the F1 Start button does nothing, check these lines first.
-   Status 2026-11-07: JortPob, which ships and saves, keeps all its flags in the same sea-tile blocks with the same
-   saved (0-999, 4000-4999, 7000-9999) and temporary (2000-2999) ranges our run and global flags use, so those are
-   expected to work. The slot map's own blocks (4500xxxx) are unconfirmed: the F1 test menu DLL now asks the game
-   about every block once a character loads (`flagcheck:` lines in dksign_testmenu.log, shown by the launcher's
-   pre-flight check), and fallback `map-flags` B moves the maps' own flags into JortPob's saved ranges.
+7. ~~Are the port's flag blocks allocated?~~ Answered 2026-11-08. Elden Ring lists the maps that get flag blocks in
+   `event/eventflag/{legacymap,openmap}[_dlc02].eventflagalloclist.dcx`, plain text, one `index,mAA_BB_CC_DD,type`
+   line per map (indices numbered across the files: legacy maps from 0, open-world tiles from 200, DLC tiles from
+   350). The in-game check (dksign_testmenu.dll `flagcheck:` lines, shown by the pre-flight) confirmed the effect: the
+   colosseum slots keep flags in 45000-45029 (except blocks 45006, 45016, 45026), the m50 probe slot kept none, and
+   the JortPob-style sea-tile blocks (1030290, 1039290, 1039292) are kept. port-maps now adds a line for every slot
+   whose map ID the game doesn't ship (`FlagAlloc.WriteForNewIds`), and the map check parses the lists. See
+   `docs/maps/own-map-ids.md` for the own-map-ID assessment and the probe test.
 8. The vanilla colosseum's other per-map files (`.nva`, `.mfr`, `.btl` lights, envmaps, ivinfo, `map/onav`,
    `breakgeom`) stay as they are and describe the colosseum, not the DS3 map. SoulsFormats can't write Elden Ring's NVA.
 
