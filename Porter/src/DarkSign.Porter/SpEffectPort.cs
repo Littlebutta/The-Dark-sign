@@ -146,7 +146,7 @@ public sealed class SpEffectPort
             Note(ds3Id, source.Name, -1, "skipped", $"no Elden Ring weapon builds up {kind}");
             return -1;
         }
-        if (kind is null && !HasValues(source))
+        if (kind is null && !HasValues(source) && ErBase(source.Name) < 0)
         {
             Note(ds3Id, source.Name, -1, "skipped", "nothing Elden Ring can use (state, visuals or fields without an equivalent)");
             return -1;
@@ -167,14 +167,14 @@ public sealed class SpEffectPort
         _er.Rows.Sort((a, b) => a.ID.CompareTo(b.ID));
         Note(ds3Id, source.Name, baseId, kind is not null ? "status" : "values",
             kind is not null ? $"{kind} {Int(source, status[0].Ds3)} (copy of Elden Ring {_statusTemplates[kind]}), DS3 upgrade rows {offsets}"
-                : $"DS3 upgrade rows {offsets}");
+                : $"DS3 upgrade rows {offsets}{(_erBased.Contains(baseId) ? $", based on Elden Ring {ErBase(source.Name)}" : "")}");
         // Chains point at their own ported rows (after the block is taken, so a loop ends).
         foreach (var k in Enumerable.Range(0, 26))
         {
             var row = _er[baseId + k]!;
             var from = _ds3[ds3Id + Math.Min(k, offsets - 1)]!;
             foreach (var (ds3Field, erField) in ChainFields)
-                if (row[erField] is { } cell)
+                if (row[erField] is { } cell && !(_erBased.Contains(row.ID) && Int(from, ds3Field) <= 0)) // an Elden Ring-based buff keeps its own chain
                     Set(cell, kind is not null && erField == "replaceSpEffectId" ? -1 : Port(Int(from, ds3Field)));
         }
         return baseId;
@@ -197,8 +197,46 @@ public sealed class SpEffectPort
         return row;
     }
 
+    // DS3 weapon art buffs Elden Ring has its own version of (Paramdex names: DS3 120750 "Weapon Art - Perserverence",
+    // ER 1650 "[Weapon] Endure - Poise Buff", 1810-1818 "[Weapon] War Cry"). The ported row starts from Elden Ring's,
+    // so it has Elden Ring's icon under the health bar, glow and poise (DS3 keeps poise in fields Paramdex doesn't
+    // name), with DS3's duration and rates on top. "No FP" is the weaker twin weapon arts cast without enough FP.
+    private static readonly (string[] Words, int Er, int ErNoFp)[] ErBuffs =
+    [
+        (["perserverence", "perseverance", "endure", "stomp", "hold", "lockout"], 1650, 1651),
+        (["warcry", "war cry", "rage", "roar"], 1811, 1816),
+    ];
+
+    private int ErBase(string? ds3Name)
+    {
+        var name = (ds3Name ?? "").ToLowerInvariant();
+        if (!name.Contains("weapon art") && !name.Contains("skill"))
+            return -1;
+        bool noFp = name.Contains("lack of fp") || name.Contains("no fp") || name.Contains("insufficient");
+        foreach (var (words, er, erNoFp) in ErBuffs)
+            if (words.Any(name.Contains) && _er[noFp ? erNoFp : er] is not null)
+                return noFp ? erNoFp : er;
+        return -1;
+    }
+
+    private readonly HashSet<int> _erBased = new();
+
     private PARAM.Row ValuesRow(int id, PARAM.Row ds3)
     {
+        int erBase = ErBase(ds3.Name);
+        if (erBase > 0)
+        {
+            // Elden Ring's buff, with DS3's values only where DS3 sets them.
+            var based = Copy(_er[erBase]!, id, ds3.Name);
+            _erBased.Add(id);
+            foreach (var field in SharedFields.Where(f => !f.StartsWith("effectTarget", StringComparison.Ordinal)))
+                if (ds3[field]?.Value is { } v and not byte[] && IsSet(field, Convert.ToDouble(v)))
+                    CopyField(ds3, field, based, field);
+            foreach (var (d, e) in RenamedFields)
+                if (ds3[d]?.Value is { } v and not byte[] && IsSet(d, Convert.ToDouble(v)))
+                    CopyField(ds3, d, based, e);
+            return based;
+        }
         var row = new PARAM.Row(id, ds3.Name ?? "", _er.AppliedParamdef);
         foreach (var field in SharedFields)
             CopyField(ds3, field, row, field);

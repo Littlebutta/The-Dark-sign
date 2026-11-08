@@ -152,6 +152,10 @@ public static partial class MovesetPort
         }
         // What the weapons with their own section teach about blocks: DS3 art ActionId / name -> block.
         var blockByAction = new Dictionary<int, Dictionary<int, int>>();
+        // DS3's weapon row also has swordArt_ActId; if it names the skill's motion (an animation ID or an index), the
+        // weapons with their own section teach it too, and it beats the art's name.
+        var blockByActId = new Dictionary<int, Dictionary<int, int>>();
+        int ActId(WeaponPlan p) => ds3Weapons[p.Ds3Id]!["swordArt_ActId"]?.Value is { } a and not byte[] ? Convert.ToInt32(a) : 0;
         var blockByName = new Dictionary<string, Dictionary<int, int>>(StringComparer.OrdinalIgnoreCase);
         void Learn<TK>(Dictionary<TK, Dictionary<int, int>> map, TK key, int block) where TK : notnull
         {
@@ -165,9 +169,13 @@ public static partial class MovesetPort
                 var (name, action) = Kind(p);
                 if (action >= 0)
                     Learn(blockByAction, action, job.Ds3Start / 100);
+                if (ActId(p) > 0)
+                    Learn(blockByActId, ActId(p), job.Ds3Start / 100);
                 if (!string.IsNullOrEmpty(name))
                     Learn(blockByName, name, job.Ds3Start / 100);
             }
+        Console.WriteLine("arts: swordArt_ActId -> block from weapons with their own section: " + string.Join(", ",
+            blockByActId.OrderBy(k => k.Key).Select(k => $"{k.Key}:{string.Join("/", k.Value.Select(b => $"{b.Key * 100}x{b.Value}"))}")));
         int noClassSkill = 0;
         var unknownBlocks = new List<string>();
         foreach (var g in classWeapons.GroupBy(p => Convert.ToInt32(ds3Weapons[p.Ds3Id]!["wepmotionCategory"].Value)))
@@ -191,7 +199,12 @@ public static partial class MovesetPort
                              key is not null && map.TryGetValue(key, out var counts)
                                  ? counts.Where(c => blocks.Contains(c.Key)).OrderByDescending(c => c.Value).Select(c => (int?)c.Key).FirstOrDefault()
                                  : null;
-                         return (Block: Pick(blockByName, name)
+                         int actId = ActId(p);
+                         // Taught only when every weapon with that value used one block (a real motion ID, not noise).
+                         int? byActId = actId >= 36000 && actId < 38000 && blocks.Contains(actId / 100) ? actId / 100
+                             : actId > 0 && blockByActId.TryGetValue(actId, out var actCounts) && actCounts.Count == 1 && blocks.Contains(actCounts.Keys.First())
+                                 ? actCounts.Keys.First() : null;
+                         return (Block: byActId ?? Pick(blockByName, name)
                                         ?? (name is not null && Kinds.TryGetValue(name, out var known) && blocks.Contains(known) ? known : (int?)null)
                                         ?? (action >= 0 ? Pick(blockByAction, action) : null) ?? -1, Name: name);
                      }))
@@ -199,7 +212,7 @@ public static partial class MovesetPort
                 if (byBlock.Key.Block < 0)
                 {
                     unknownBlocks.Add($"{string.Join(", ", byBlock.Select(p => p.Name))} (DS3 a{g.Key} blocks {string.Join("/", blocks.Select(b => b * 100))}, " +
-                                      $"art '{Kind(byBlock.First()).Name}' action {Kind(byBlock.First()).Action})");
+                                      $"art '{Kind(byBlock.First()).Name}' action {Kind(byBlock.First()).Action} swordArt_ActId {ActId(byBlock.First())})");
                     continue;
                 }
                 jobs.Add(MakeJob(g.Key, g.Key, skill.Where(id => id / 100 == byBlock.Key.Block).ToList(), byBlock.ToList(), "class"));
@@ -761,6 +774,9 @@ public static class ArtSelfTest
         Check(move.Events.Where(e => BitConverter.ToInt32(e.GetParameterBytes(false), 0) is 100051 or 100054).All(e => e.StartTime == 0.5f && e.EndTime == 1.2f), "arts: follow-up windows use DS3's own timing");
         MovesetPort.SetComboWindows(move, proto, null, 2f, light: false, heavy: false);
         Check(move.Events.Count == 1, "arts: a one-shot without follow-ups has no combo window");
+        var engine = MovesetPort.HksEffectIds("if env(GetSpEffectID, 102355) == TRUE then\nelseif env( GetSpEffectID , 30) == TRUE then end");
+        Check(engine.Contains(102355) && engine.Contains(30) && engine.Contains(100280) && engine.Contains(100054) && !engine.Contains(6340),
+            "effects: the hks's own SpEffect IDs (and charge / combo windows) are kept, others are ported");
         // Bitfield fillers (ParamStore.FillBitfields): Elden Ring 2.7.2's SpEffectParam sets flags in bits Paramdex leaves unnamed.
         var xml = Path.Combine(Path.GetTempPath(), $"darksign-bits-{Environment.ProcessId}.xml");
         File.WriteAllText(xml, """
