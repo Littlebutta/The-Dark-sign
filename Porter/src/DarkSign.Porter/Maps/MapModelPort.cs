@@ -174,6 +174,8 @@ public sealed class MapModelPort
         var kinds = _templates.Keys.OrderBy(k => k).ToList();
         flver.GXLists = kinds.Select(k => _templates[k].GxList).ToList();
 
+        // Binders convert in parallel; the shared material table, texture list and notes are changed under a lock.
+        lock (_materials)
         foreach (var m in flver.Materials)
         {
             var kind = Ds3Kind(m);
@@ -198,7 +200,8 @@ public sealed class MapModelPort
             var key = string.Join("|", template.Matbin, albedo, normal, albedo2, normal2);
             if (!_materials.TryGetValue(key, out var material))
             {
-                material = new NewMaterial($"DKS_{ds3Id.Digits}_{_materials.Count:D4}", template, albedo ?? "", normal ?? "",
+                // Named from what it holds, not from the order binders converted in, so every build names it the same.
+                material = new NewMaterial($"DKS_{ds3Id.Digits}_{StableHash(key)}", template, albedo ?? "", normal ?? "",
                     albedo2, normal2);
                 _materials[key] = material;
             }
@@ -241,6 +244,10 @@ public sealed class MapModelPort
         }
     }
 
+    // Eight hex digits of SHA-1: two different materials of one map sharing them is a one in billions chance.
+    private static string StableHash(string key) =>
+        Convert.ToHexString(System.Security.Cryptography.SHA1.HashData(System.Text.Encoding.UTF8.GetBytes(key.ToLowerInvariant())))[..8];
+
     private static List<FLVER2.SkeletonSet.Bone> Bones(FLVER2 flver) =>
         flver.Nodes.Select((n, i) => new FLVER2.SkeletonSet.Bone(i)
         {
@@ -265,7 +272,7 @@ public sealed class MapModelPort
     public IEnumerable<BinderFile> MatbinFiles(int firstId)
     {
         var id = firstId;
-        foreach (var material in _materials.Values)
+        foreach (var material in _materials.Values.OrderBy(m => m.Name, StringComparer.Ordinal))
         {
             var matbin = MATBIN.Read(material.Template.File.Bytes);
             foreach (var sampler in matbin.Samplers)
