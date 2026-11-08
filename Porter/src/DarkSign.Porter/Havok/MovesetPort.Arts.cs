@@ -119,7 +119,7 @@ public static partial class MovesetPort
         (string? Name, int Action) Kind(WeaponPlan p)
         {
             var row = ds3ArtParam?[Convert.ToInt32(ds3Weapons[p.Ds3Id]!["swordArtId"].Value)];
-            return (row?.Name?.Trim(), row?["ActionId"]?.Value is { } v and not byte[] ? Convert.ToInt32(v) : -1);
+            return (row?.Name?.Trim(), row is not null && Field(row, "ActionId")?.Value is { } v and not byte[] ? Convert.ToInt32(v) : -1);
         }
         ArtJob MakeJob(int section, int cls, List<int> skill, List<WeaponPlan> weapons, string source)
         {
@@ -583,9 +583,19 @@ public static partial class MovesetPort
         int id = Convert.ToInt32(ds3Weapons[ds3Id]!["swordArtId"].Value);
         if (ds3.Get("SwordArtsParam") is not { } arts || arts[id] is not { } row)
             return (-1, -1, -1, null);
-        int Get(string field) => row[field]?.Value is { } v and not byte[] ? Convert.ToInt32(v) : -1;
+        int Get(string field) => Field(row, field)?.Value is { } v and not byte[] ? Convert.ToInt32(v) : -1;
         return (Get("FPCost"), Get("FPCostLight"), Get("FpCostStrong"), row.Name);
     }
+
+    /// <summary>
+    /// A cell by field name, or null. PARAM.Row[name] throws ("Sequence contains no matching element") when the def
+    /// lacks the name, and Paramdex's DS3 SwordArtsParam def writes some names with a range ("u8 ActionId [0-36]"),
+    /// which SoulsFormats keeps in the name: indexing "ActionId" failed every art of the 1.0.199-1.0.202 builds.
+    /// </summary>
+    internal static PARAM.Cell? Field(PARAM.Row row, string name) =>
+        row.Cells.FirstOrDefault(c => c.Def.InternalName == name)
+        ?? row.Cells.FirstOrDefault(c => c.Def.InternalName.StartsWith(name + " ", StringComparison.Ordinal)
+                                         || c.Def.InternalName.StartsWith(name + "[", StringComparison.Ordinal));
 
     /// <summary>"Skill: Spin Sweep" from a DS3 weapon description, if it names one.</summary>
     internal static string? SkillName(string? caption)

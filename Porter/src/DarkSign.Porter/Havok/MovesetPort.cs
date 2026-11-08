@@ -410,6 +410,10 @@ public static partial class MovesetPort
             catch (Exception e) when (e is not OutOfMemoryException)
             {
                 Console.WriteLine($"arts: failed, ported weapons keep Elden Ring Ashes of War ({e.GetType().Name}: {e.Message})");
+                // Where it failed (a PARAM row indexed by a field name its def lacks throws this same "no matching
+                // element"), so the next log names the line.
+                foreach (var line in (e.StackTrace ?? "").Split('\n').Take(8))
+                    Console.WriteLine("  " + line.Trim());
                 artResult = new ArtResult(0, 0, [], []);
             }
         }
