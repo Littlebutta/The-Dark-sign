@@ -284,6 +284,11 @@ int g_spawn_selected = -1; // index into the spawn list
 int g_spawn_count = 1;
 char g_spawn_search[96];
 bool g_spawn_bosses = true;
+bool g_spawn_ds3_models_only = true; // hide DS3 enemies the port could only put on an Elden Ring body (method C)
+
+// A DS3 entry with its own ported model has a new character ID (Porter ChrPort: c7000-c7999); any other model is the
+// Elden Ring template it was put on, so it looks like an Elden Ring enemy.
+bool has_ds3_model(const DksSpawnable &s) { return strcmp(s.game, "DS3") != 0 || (s.chr >= 7000 && s.chr <= 7999); }
 
 void draw_spawn()
 {
@@ -297,17 +302,28 @@ void draw_spawn()
     ImGui::RadioButton("Elden Ring enemies", &g_spawn_game, 1);
     ImGui::SameLine();
     ImGui::Checkbox("Bosses", &g_spawn_bosses);
+    if (g_spawn_game == 0) {
+        ImGui::SameLine();
+        ImGui::Checkbox("Only DS3 models", &g_spawn_ds3_models_only);
+        if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("Untick to also list DS3 enemies the port put on an Elden Ring body\n"
+                              "(they have DS3's name, HP and souls but look like the Elden Ring enemy).");
+    }
     ImGui::SetNextItemWidth(-1);
     ImGui::InputTextWithHint("##spawnsearch", "Search enemies...", g_spawn_search, sizeof g_spawn_search);
 
     if (g_spawn_selected >= count || (g_spawn_selected >= 0 && strcmp(list[g_spawn_selected].game, GAME_CODES[g_spawn_game]) != 0))
         g_spawn_selected = -1;
-    int shown = 0;
+    int shown = 0, hidden_bodies = 0;
     ImGui::BeginChild("spawnlist", ImVec2(0, -200), ImGuiChildFlags_Borders);
     for (int i = 0; i < count; i++) {
         const DksSpawnable &s = list[i];
         if (strcmp(s.game, GAME_CODES[g_spawn_game]) != 0 || (s.boss && !g_spawn_bosses) || !dks_name_matches(s.name, g_spawn_search))
             continue;
+        if (g_spawn_ds3_models_only && !has_ds3_model(s)) {
+            hidden_bodies++;
+            continue;
+        }
         shown++;
         ImGui::PushID(i);
         if (ImGui::Selectable(s.name, g_spawn_selected == i, ImGuiSelectableFlags_AllowDoubleClick)) {
@@ -315,8 +331,13 @@ void draw_spawn()
             if (ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left))
                 dks_spawn(&s, g_spawn_count);
         }
-        ImGui::SameLine(ImGui::GetContentRegionAvail().x - 150);
-        ImGui::TextDisabled("%sc%04d", s.boss ? "boss  " : "", s.chr);
+        bool crashed = dks_spawn_crashed(s.chr);
+        ImGui::SameLine(ImGui::GetContentRegionAvail().x - (crashed ? 330 : 220));
+        if (crashed) {
+            ImGui::TextColored(ImVec4(1.0f, 0.45f, 0.35f, 1.0f), "crashed last time");
+            ImGui::SameLine();
+        }
+        ImGui::TextDisabled("%s%s c%04d", s.boss ? "boss " : "", has_ds3_model(s) ? "" : "ER body", s.chr);
         ImGui::PopID();
     }
     if (!shown)
@@ -326,10 +347,14 @@ void draw_spawn()
                                ? "No spawn list yet. Press Rebuild content in the launcher (the enemy port writes it), then restart the game."
                                : "Nothing matches.");
     ImGui::EndChild();
+    if (hidden_bodies)
+        ImGui::TextDisabled("%d more DS3 enemies on Elden Ring bodies are hidden (untick \"Only DS3 models\").", hidden_bodies);
     if (!from_file)
         ImGui::TextDisabled("Built-in list (no darksign_spawn_list.tsv yet): rebuild the content for every enemy.");
 
     const DksSpawnable *who = g_spawn_selected >= 0 ? &list[g_spawn_selected] : nullptr;
+    if (who && dks_spawn_crashed(who->chr))
+        ImGui::TextColored(ImVec4(1.0f, 0.45f, 0.35f, 1.0f), "The game went down right after spawning this one last time (its ported model is the likely cause).");
     ImGui::SetNextItemWidth(160);
     ImGui::SliderInt("How many", &g_spawn_count, 1, 10);
     ImGui::BeginDisabled(!who);
@@ -983,7 +1008,7 @@ bool is_elden_ring()
 } // namespace
 
 /* Lets the launcher recognise this DLL. */
-extern "C" __declspec(dllexport) const char *DkSignTestMenuVersion(void) { return "dksign_testmenu 7"; }
+extern "C" __declspec(dllexport) const char *DkSignTestMenuVersion(void) { return "dksign_testmenu 8"; }
 
 BOOL WINAPI DllMain(HINSTANCE inst, DWORD reason, LPVOID)
 {

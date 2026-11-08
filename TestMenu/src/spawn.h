@@ -23,6 +23,10 @@ extern "C" {
    Ring ones when there is none. *from_file says which. Read once; later calls return the same list. */
 int dks_spawn_list(const DksSpawnable **out, int *from_file);
 
+/* 1 if the game closed or crashed right after this character (chr 7064 for c7064) was spawned in an earlier session
+   (dksign_spawn_crashes.log). Valid once dks_spawn_list has been called. */
+int dks_spawn_crashed(int chr);
+
 /* Looks up the game addresses (once). Safe from any thread; the menu's prescan calls it early. */
 void dks_spawn_scan(void);
 

@@ -39,6 +39,9 @@
 #define MAX_QUEUE 64
 #define MAX_TRACKED 256
 #define SPAWN_TIMEOUT_MS 15000
+/* A spawn counts as safe once the character has been in the world this long without the game going down. */
+#define SPAWN_SAFE_MS 20000
+#define MAX_CRASHED 128
 
 typedef void (*RemoveChrInsFn)(void *world_chr_man, void *chr_ins);
 
@@ -72,6 +75,91 @@ static int g_spawned_len;
 
 static volatile LONG g_clear_requested;
 static char g_status[200] = "Pick an enemy and press Spawn.";
+
+/* Crash memory: the character being spawned is written to dksign_spawn_pending.log (in the save folder) until it has
+   stood SPAWN_SAFE_MS; a pending file found at the next start means the game went down right after spawning it, and it
+   is added to dksign_spawn_crashes.log, which the menu marks (both are .log so "Save test report" picks them up). */
+static int g_crashed[MAX_CRASHED];
+static int g_crashed_len;
+static int g_pending_open;          /* a pending file is written */
+static ULONGLONG g_pending_spawned; /* when its character appeared, 0 while still being created */
+
+static int save_path(const wchar_t *file, wchar_t out[MAX_PATH])
+{
+    wchar_t dir[MAX_PATH];
+    DWORD n = GetEnvironmentVariableW(L"DKSIGN_SAVE_DIR", dir, MAX_PATH);
+    if (!n || n >= MAX_PATH - 40)
+        return 0;
+    _snwprintf(out, MAX_PATH, L"%ls\\%ls", dir, file);
+    out[MAX_PATH - 1] = 0;
+    return 1;
+}
+
+static void load_crashes(void)
+{
+    wchar_t pending[MAX_PATH], crashes[MAX_PATH];
+    if (!save_path(L"dksign_spawn_pending.log", pending) || !save_path(L"dksign_spawn_crashes.log", crashes))
+        return;
+    FILE *p = _wfopen(pending, L"rb");
+    if (p) {
+        char line[256] = {0};
+        if (fgets(line, sizeof line, p)) {
+            line[strcspn(line, "\r\n")] = 0;
+            FILE *c = _wfopen(crashes, L"ab");
+            if (c) {
+                SYSTEMTIME t;
+                GetLocalTime(&t);
+                fprintf(c, "%s\tgame closed or crashed within %d s of spawning it (%04d-%02d-%02d %02d:%02d)\r\n", line,
+                        SPAWN_SAFE_MS / 1000, t.wYear, t.wMonth, t.wDay, t.wHour, t.wMinute);
+                fclose(c);
+            }
+            dks_log("spawn: the game went down right after spawning %s last time; marked in the menu", line);
+        }
+        fclose(p);
+        DeleteFileW(pending);
+    }
+    FILE *c = _wfopen(crashes, L"rb");
+    if (!c)
+        return;
+    char line[256];
+    while (g_crashed_len < MAX_CRASHED && fgets(line, sizeof line, c)) {
+        int chr = 0;
+        if ((line[0] == 'c' || line[0] == 'C') && sscanf(line + 1, "%d", &chr) == 1 && chr > 0 && !dks_spawn_crashed(chr))
+            g_crashed[g_crashed_len++] = chr;
+    }
+    fclose(c);
+}
+
+int dks_spawn_crashed(int chr)
+{
+    for (int i = 0; i < g_crashed_len; i++)
+        if (g_crashed[i] == chr)
+            return 1;
+    return 0;
+}
+
+static void pending_write(const DksSpawnable *who)
+{
+    wchar_t path[MAX_PATH];
+    if (!save_path(L"dksign_spawn_pending.log", path))
+        return;
+    FILE *f = _wfopen(path, L"wb");
+    if (!f)
+        return;
+    fprintf(f, "c%04d\t%s\t%s\r\n", who->chr, who->game, who->name);
+    fflush(f);
+    fclose(f);
+    g_pending_open = 1;
+    g_pending_spawned = 0;
+}
+
+static void pending_clear(void)
+{
+    wchar_t path[MAX_PATH];
+    if (g_pending_open && save_path(L"dksign_spawn_pending.log", path))
+        DeleteFileW(path);
+    g_pending_open = 0;
+}
 
 static DksSpawnable *g_list;
 static int g_list_len, g_list_from_file, g_list_loaded;
@@ -184,6 +272,7 @@ int dks_spawn_list(const DksSpawnable **out, int *from_file)
 {
     if (!g_list_loaded) {
         g_list_loaded = 1;
+        load_crashes();
         wchar_t path[MAX_PATH];
         DWORD n = GetEnvironmentVariableW(L"DKSIGN_ITEMS", path, MAX_PATH);
         wchar_t *slash = n && n < MAX_PATH ? wcsrchr(path, L'\\') : NULL;
@@ -295,9 +384,12 @@ static int start_request(uintptr_t wcm, uintptr_t creator, const Request *r)
         !write_mem(init + INIT_TALK_ID, &talk, 4) || !write_mem(init + INIT_NAME, name, sizeof name) ||
         !write_mem(init + INIT_CHARA_INIT_PARAM, &init_param, 4))
         return 0;
+    pending_write(&r->who);
     MemoryBarrier();
-    if (!write_mem(creator + CREATOR_SPAWN, &one, 1))
+    if (!write_mem(creator + CREATOR_SPAWN, &one, 1)) {
+        pending_clear();
         return 0;
+    }
     g_current = *r;
     g_current_entity = entity;
     g_current_since = GetTickCount64();
@@ -313,6 +405,8 @@ void dks_spawn_update(void)
 {
     if (InterlockedExchange(&g_clear_requested, 0))
         dks_spawn_clear();
+    if (g_pending_open && !g_active && g_pending_spawned && GetTickCount64() - g_pending_spawned > SPAWN_SAFE_MS)
+        pending_clear();
     if (!g_active && !g_queue_len)
         return;
     uintptr_t wcm = world_chr_man();
@@ -331,6 +425,7 @@ void dks_spawn_update(void)
                    (id == g_current_entity || last != g_current_before);
         if (ours) {
             track(last, id == g_current_entity ? g_current_entity : id);
+            g_pending_spawned = GetTickCount64();
             if (id != g_current_entity)
                 dks_log("spawn: c%04d created with entity %u, not %u", g_current.who.chr, id, g_current_entity);
             g_active = 0;
@@ -348,6 +443,7 @@ void dks_spawn_update(void)
                        flag ? " (the request was never picked up)" : " (model or params missing from the mod?)");
             g_active = 0;
             g_queue_len = 0;
+            pending_clear();
             return;
         } else
             return;
