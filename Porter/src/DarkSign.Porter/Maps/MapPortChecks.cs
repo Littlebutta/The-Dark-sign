@@ -32,6 +32,8 @@ public static partial class MapPortChecks
         yield return ("navmesh: binder entries are renamed to the host map and keep the host's compendium", NavmeshBinder);
         yield return ("rebuild: a full run deletes port-maps' own old outputs (both slot methods) and keeps the other steps' files", CleanStale);
         yield return ("flags: the allocation lists parse, blocks map to their maps, and a new map ID gets a line", FlagAllocProbe);
+        yield return ("map registry: worldmsblist parses and a new map ID is inserted after the last map line", MapRegistryList);
+        yield return ("new map IDs: the template's per-map files are found, renamed and the port's own outputs skipped", NewIdFileSet);
         yield return ("flags: in-game probe flags are each block's last number, and map-flags B uses JortPob's saved ranges", FlagProbesAndLocalFlags);
     }
 
@@ -75,6 +77,8 @@ public static partial class MapPortChecks
         Expect(FlagAlloc.Find(lists, 45000)?.Entry.Index == 72 && FlagAlloc.Find(lists, 1039290)?.Entry.Index == 201
                && FlagAlloc.Find(lists, 50000) is null, "find by block");
         var probe = MapId.Parse("m50_00_00_00");
+        var unlisted = System.Text.Encoding.UTF8.GetBytes("\r\n0,m10_00_00_00,0\r\n");
+        Expect(FlagAlloc.WithMaps(unlisted, [open], [(probe, ErId)]).Added.Count == 0, "template not listed: no line (mirrors the colosseums)");
         var (data, added) = FlagAlloc.WithMaps(legacy, [open], [(probe, ErId), (probe, ErId), (ErId, ErId)]);
         Expect(added.Count == 1 && added[0].Index == 74 && added[0].Map == probe && added[0].Rest == ",0", "added: " + string.Join(" ", added));
         var text = System.Text.Encoding.UTF8.GetString(data);
@@ -86,6 +90,59 @@ public static partial class MapPortChecks
         var blocks = FlagAlloc.UsedBlocks([ErId, ErId], [1030290005, 1030290006, 1038291000]);
         Expect(blocks.Keys.SequenceEqual(new long[] { 45000, 1030290, 1038291, 1039290, 1039291, 1039292 }),
             "blocks: " + string.Join(",", blocks.Keys));
+    }
+
+    private static void MapRegistryList()
+    {
+        // The shipped list's shape (read 2026-11-08): blank lines, "map:/MapStudio/mXX.msb " lines with a trailing
+        // space, ",testmap=1" on test maps, groups separated by blank lines, many blank lines at the end.
+        var text = "\r\n\r\nmap:/MapStudio/m60_42_34_00.msb \r\n\r\nmap:/MapStudio/m70_51_54_00.msb,testmap=1 \r\n\r\n"
+                   + "map:/MapStudio/m10_00_00_00.msb \r\nmap:/MapStudio/m45_00_00_00.msb \r\nmap:/MapStudio/m45_01_00_00.msb \r\n\r\n\r\n";
+        var list = System.Text.Encoding.UTF8.GetBytes(text);
+        var entries = MapRegistry.Parse(list);
+        Expect(entries.Count == 5 && entries[1].Options == ",testmap=1" && entries[3].Map == ErId && entries[3].Options == "",
+            "parse: " + string.Join(" ", entries));
+        var dlc = System.Text.Encoding.UTF8.GetBytes("\r\nmap:/MapStudio/m20_00_00_00.msb \r\n");
+        var probe = MapId.Parse("m50_00_00_00");
+        var (data, added) = MapRegistry.WithMaps(list, [dlc], [probe, probe, ErId, MapId.Parse("m20_00_00_00")]);
+        Expect(added.SequenceEqual([probe]), "added: " + string.Join(" ", added));
+        var result = System.Text.Encoding.UTF8.GetString(data);
+        Expect(result == text.Replace("m45_01_00_00.msb \r\n", "m45_01_00_00.msb \r\nmap:/MapStudio/m50_00_00_00.msb \r\n"),
+            "line inserted after the last map line, rest kept: " + result.Replace("\r\n", "|"));
+        Expect(MapRegistry.Parse(data).Select(e => e.Map).Contains(probe), "reads back");
+        Expect(MapRegistry.WithMaps(data, [dlc], [probe]).Added.Count == 0, "nothing added twice");
+    }
+
+    private static void NewIdFileSet()
+    {
+        var template = ErId;
+        var paths = new[]
+        {
+            "/map/m45/m45_00_00_00/f45_00_00_00.hkxbhd", "/map/m45/m45_00_00_00/f45_00_00_00.hkxbdt",
+            "/map/m45/m45_00_00_00/h45_00_00_00.hkxbhd", "/map/m45/m45_00_00_00/h45_00_00_00.hkxbdt",
+            "/map/m45/m45_00_00_00/l45_00_00_00.hkxbhd", "/map/m45/m45_00_00_00/m45_00_00_00.mfr.dcx",
+            "/map/m45/m45_00_00_00/m45_00_00_00.nva.dcx", "/map/m45/m45_00_00_00/m45_00_00_00.nvmhktbnd.dcx",
+            "/map/m45/m45_00_00_00/m45_00_00_00_0000.btl.dcx", "/map/m45/m45_00_00_00/m45_00_00_00_high.ivinfobnd.dcx",
+            "/map/m45/m45_00_00_00/m45_00_00_00_000001.mapbnd.dcx", "/map/m45/common/m45_0000.tpfbhd",
+            "/map/breakgeom/lod0/m45_00_00_00_lod0.breakgeom.dcx", "/map/onav/m45_00_00_00.onav.dcx",
+            "/param/drawparam/m45_00_0000.gparam.dcx", "/map/mapstudio/m45_00_00_00.msb.dcx", "/map/mapstudio/m45_00_00_99.msb.dcx",
+            "/event/m45_00_00_00.emevd.dcx", "/map/m45/m45_01_00_00/m45_01_00_00.nva.dcx", "/map/m10/m10_00_00_00/m10_00_00_00.nva.dcx",
+        };
+        var files = NewIdFiles.TemplateFiles(paths, template);
+        var expected = new[]
+        {
+            "/map/breakgeom/lod0/m45_00_00_00_lod0.breakgeom.dcx", "/map/m45/m45_00_00_00/f45_00_00_00.hkxbhd",
+            "/map/m45/m45_00_00_00/m45_00_00_00.mfr.dcx", "/map/m45/m45_00_00_00/m45_00_00_00.nva.dcx",
+            "/map/m45/m45_00_00_00/m45_00_00_00_0000.btl.dcx", "/map/m45/m45_00_00_00/m45_00_00_00_high.ivinfobnd.dcx",
+            "/map/onav/m45_00_00_00.onav.dcx", "/param/drawparam/m45_00_0000.gparam.dcx",
+        };
+        Expect(files.OrderBy(f => f, StringComparer.Ordinal).SequenceEqual(expected.OrderBy(f => f, StringComparer.Ordinal)), "template files: " + string.Join(" ", files));
+        var probe = MapId.Parse("m50_00_00_00");
+        Expect(NewIdFiles.Renamed("/map/m45/m45_00_00_00/f45_00_00_00.hkxbhd", template, probe) == "/map/m50/m50_00_00_00/f50_00_00_00.hkxbhd"
+               && NewIdFiles.Renamed("/param/drawparam/m45_00_0000.gparam.dcx", template, probe) == "/param/drawparam/m50_00_0000.gparam.dcx"
+               && NewIdFiles.Renamed("m45_00_00_00_high.ivinfo", template, probe) == "m50_00_00_00_high.ivinfo", "renamed paths");
+        var outputs = NewIdFiles.OutputPaths(files, template, probe).ToList();
+        Expect(outputs.Count == expected.Length + 1 && outputs.Contains("/map/m50/m50_00_00_00/f50_00_00_00.hkxbdt"), "outputs include the bdt");
     }
 
     private static void FlagProbesAndLocalFlags()

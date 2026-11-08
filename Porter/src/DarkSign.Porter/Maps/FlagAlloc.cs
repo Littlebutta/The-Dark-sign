@@ -13,9 +13,11 @@ namespace DarkSign.Porter.Maps;
 /// The lists are plain text (seen in the map check of Devin's 2026-11-08 build: the file starts with blank lines, then
 /// "0,m10_00_00_00,0", "1,m10_01_00_00,..."): one entry per line, <c>index,mAA_BB_CC_DD,type</c>, with the indices
 /// numbered across the four files (legacy maps from 0, open-world tiles from 200, DLC tiles from 350). The same build's
-/// in-game check confirmed the effect: the colosseum slots (listed) keep flags in blocks 45000-45029, the m50 test slot
-/// (not listed) keeps none. So a map ID Elden Ring doesn't ship gets its flags by adding a line for it, copied from its
-/// template map's; <see cref="WriteForNewIds"/> does that for every new-ID slot in a build.
+/// in-game check showed the colosseum slots keeping flags in blocks 45000-45029 and the m50 test slot keeping none,
+/// yet the colosseums are in none of these lists (read from the game files 2026-11-08: 83 legacy maps, m17 and
+/// m34_12 among them, no m45) while the test slot was missing from the map registry (<see cref="MapRegistry"/>). So
+/// the registry decides a map's flag blocks and these lists are something else (open-world tiles carry types 1-2).
+/// <see cref="WriteForNewIds"/> still mirrors the template: a new-ID slot gets a line only when its template has one.
 /// </summary>
 public static class FlagAlloc
 {
@@ -110,8 +112,11 @@ public static class FlagAlloc
         {
             if (all.Any(e => SameMap(e.Map, map)) || added.Any(e => SameMap(e.Map, map)))
                 continue;
-            var from = all.FirstOrDefault(e => SameMap(e.Map, template))
-                       ?? throw new InvalidDataException($"{template} (the template of {map}) is in no flag allocation list");
+            // The colosseums are in no list and keep their flags anyway (the map registry decides, 2026-11-08), so a
+            // map whose template isn't listed mirrors it and gets no line either.
+            var from = all.FirstOrDefault(e => SameMap(e.Map, template));
+            if (from is null)
+                continue;
             while (used.Contains(next))
                 next++;
             used.Add(next);
@@ -138,7 +143,8 @@ public static class FlagAlloc
         var others = Lists.Skip(1).Where(er.Contains).Select(er.Read).ToList();
         var (data, added) = WithMaps(legacy, others, maps);
         if (added.Count == 0)
-            return "flag allocation: the new map IDs are already listed; nothing to add";
+            return "flag allocation: nothing to add (the new map IDs are listed already, or their templates aren't listed "
+                   + "either, like the colosseums; the map registry decides their flag blocks)";
         File.WriteAllBytes(ctx.ModPath(MapPorter.ModParts(LegacyList)), DCX.Compress(data, compression));
         return $"flag allocation: {string.Join(", ", added)} added to legacymap.eventflagalloclist";
     }
@@ -196,7 +202,7 @@ public static class FlagAlloc
     /// <see cref="WriteForNewIds"/>) is read in place of the game's when it exists, since that is the one the game loads.
     /// </summary>
     public static void Check(GameArchives er, MapValidate.Report report, IEnumerable<MapId> slots, IEnumerable<long> globalFlags,
-        string? modLegacyList = null)
+        string? modLegacyList = null, ISet<MapId>? registered = null)
     {
         var lists = new List<(string Name, List<Entry> Entries)>();
         foreach (var path in Lists)
@@ -241,9 +247,12 @@ public static class FlagAlloc
                 report.Warn($"flag block {block}xxx ({what}): not in any map's flag layout; the game keeps no such flags");
             else if (Find(lists, block) is { } found)
                 report.Ok($"flag block {block}xxx ({what}): {found.Entry.Map} is listed in {found.List} (entry {found.Entry.Index})");
+            else if (registered is not null && registered.Any(r => SameMap(r, map.Value)))
+                report.Ok($"flag block {block}xxx ({what}): {map} is in no flag allocation list but is in the map registry, "
+                          + "like the colosseums, whose flags the game keeps");
             else if (map.Value.Area < 60)
-                report.Warn($"flag block {block}xxx ({what}): {map} is in no flag allocation list, so the game is expected to keep "
-                            + "none of these flags (the in-game flagcheck says MISSING for such a map); a new map ID needs a line in legacymap.eventflagalloclist");
+                report.Warn($"flag block {block}xxx ({what}): {map} is in no flag allocation list and not in the map registry, so "
+                            + "the game keeps none of these flags (flagcheck MISSING for the unregistered m50 test slot, 2026-11-08)");
             else
                 report.Warn($"flag block {block}xxx ({what}): tile {map} is in no flag allocation list (the in-game flagcheck decides; "
                             + "JortPob's sea-tile flags kept in the 2026-11-08 test)");
