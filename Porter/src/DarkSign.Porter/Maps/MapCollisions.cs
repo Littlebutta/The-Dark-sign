@@ -64,21 +64,33 @@ public static class MapCollisions
         var ds3Binder = BXF4.Read(ds3.Read(source), ds3.Read(source[..^3] + "bdt"));
         int triangles = 0;
         var failed = new List<string>();
-        foreach (var file in ds3Binder.Files.Where(f => f.Name.EndsWith(".hkx.dcx", StringComparison.OrdinalIgnoreCase)))
+        // Each collision file converts on its own thread; they're added in DS3's order, so every build is the same.
+        var files = ds3Binder.Files.Where(f => f.Name.EndsWith(".hkx.dcx", StringComparison.OrdinalIgnoreCase)).ToList();
+        var results = new (byte[]? Bytes, int Triangles, string? Error)[files.Count];
+        Parallel.For(0, files.Count, Parallelism.Options, i =>
         {
-            var leaf = ItemText.Leaf(file.Name);
             try
             {
-                var result = CollisionPort.Convert(DCX.Decompress(file.Bytes), template, !options.BinaryCollision, options.KeepSimdTree);
-                var name = leaf.Replace(ds3Id.Digits, erId.Digits, StringComparison.OrdinalIgnoreCase);
-                output.Files.Add(new BinderFile(templateFile.Flags, nextId++, folder + name, DCX.Compress(result.Bytes, compression)));
-                ported.Add(ModelNumberOf(leaf));
-                triangles += result.Triangles;
+                var result = CollisionPort.Convert(DCX.Decompress(files[i].Bytes), template, !options.BinaryCollision, options.KeepSimdTree);
+                results[i] = (DCX.Compress(result.Bytes, compression), result.Triangles, null);
             }
             catch (Exception ex)
             {
-                failed.Add($"{leaf} ({ex.Message})");
+                results[i] = (null, 0, ex.Message);
             }
+        });
+        for (int i = 0; i < files.Count; i++)
+        {
+            var leaf = ItemText.Leaf(files[i].Name);
+            if (results[i].Bytes is not { } bytes)
+            {
+                failed.Add($"{leaf} ({results[i].Error})");
+                continue;
+            }
+            var name = leaf.Replace(ds3Id.Digits, erId.Digits, StringComparison.OrdinalIgnoreCase);
+            output.Files.Add(new BinderFile(templateFile.Flags, nextId++, folder + name, bytes));
+            ported.Add(ModelNumberOf(leaf));
+            triangles += results[i].Triangles;
         }
 
         var target = ErBinderPath(erId, kind);

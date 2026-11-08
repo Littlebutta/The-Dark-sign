@@ -59,6 +59,7 @@ public static class MapPorter
         var started = DateTime.Now;
         _placedEnemies.Clear();
         _templates.Clear();
+        _converted.Clear();
         // A full run starts from Elden Ring's own files, not from what an earlier run left in Mods\ER: every PC that
         // builds from the same game files then gets byte-identical maps, events and flag numbers (co-op), and a slot
         // of the other map-slots method doesn't linger. A --only run is a partial rebuild and keeps the rest.
@@ -76,6 +77,7 @@ public static class MapPorter
         ChrPort.Result? enemyPort = null;
         if (options.Only.Count == 0)
         {
+            var enemyClock = System.Diagnostics.Stopwatch.StartNew();
             try
             {
                 enemyPort = ChrPort.Build(ctx, er, ds3);
@@ -86,11 +88,14 @@ public static class MapPorter
                 report.AppendLine($"enemy port: FAILED: {ex.Message}; DS3 maps use Elden Ring stand-ins");
                 Console.Error.WriteLine($"enemies: failed: {ex}");
             }
+            Time(report, "enemy port", enemyClock);
         }
 
-        foreach (var slot in MapSlots.All.Where(s => options.Only.Count == 0 || options.Only.Contains(s.Ds3.ToString())))
+        // Probe slots last: they copy their main slot's converted map pieces.
+        foreach (var slot in MapSlots.All.Where(s => options.Only.Count == 0 || options.Only.Contains(s.Ds3.ToString())).OrderBy(s => s.Probe))
         {
             Console.WriteLine($"map {slot.Ds3} ({slot.Name}) -> Elden Ring {slot.Er}");
+            var mapClock = System.Diagnostics.Stopwatch.StartNew();
             try
             {
                 if (!textures.TryGetValue(slot.Er.AreaFolder, out var areaTextures))
@@ -104,6 +109,7 @@ public static class MapPorter
                 report.AppendLine($"{slot.Ds3}: FAILED: {ex.Message}");
                 Console.Error.WriteLine($"  failed: {ex.Message}");
             }
+            Time(report, $"map {slot.Ds3} -> {slot.Er}", mapClock);
         }
         // Missing textures or materials leave the maps grey, not broken, so a failure here doesn't stop the run.
         foreach (var areaTextures in textures.Values)
@@ -221,6 +227,7 @@ public static class MapPorter
 
     private static void Step(StringBuilder report, string name, Func<string> step)
     {
+        var clock = System.Diagnostics.Stopwatch.StartNew();
         try
         {
             report.AppendLine(step());
@@ -230,6 +237,15 @@ public static class MapPorter
             report.AppendLine($"{name}: FAILED: {ex.Message}");
             Console.Error.WriteLine($"  {name} failed: {ex.Message}");
         }
+        Time(report, name, clock);
+    }
+
+    /// <summary>A "time:" line in the report and the console, so a slow build shows which step to speed up.</summary>
+    private static void Time(StringBuilder report, string name, System.Diagnostics.Stopwatch clock)
+    {
+        var line = $"time: {name} {clock.Elapsed.TotalSeconds:F1} s";
+        report.AppendLine(line);
+        Console.WriteLine(line);
     }
 
     /// <summary>Ports one map; returns the run's start entity ID, or 0 when the map couldn't be ported.</summary>
@@ -281,32 +297,61 @@ public static class MapPorter
         var (models, hostBnd, bndCompression, binderMap) = MaterialTemplates(er, hostId, host);
         report.AppendLine($"  material templates: {models.TemplateSummary} (binder layout from {binderMap})");
 
-        var missingModels = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        foreach (var model in layout.Msb.Models.MapPieces)
+        // Every map piece binder converts in parallel (thousands per map). A probe slot copies what its main slot
+        // already converted from the same DS3 map, renamed to its own map ID, instead of converting it again.
+        var clock = System.Diagnostics.Stopwatch.StartNew();
+        var mapPieces = layout.Msb.Models.MapPieces.ToList();
+        var failures = new string?[mapPieces.Count];
+        _converted.TryGetValue(ds3Id, out var main);
+        int copied = 0;
+        Parallel.For(0, mapPieces.Count, Parallelism.Options, i =>
         {
-            var number = ModelNumber(model.Name);
-            var source = Ds3MapBndPath(ds3Id, number);
+            var number = ModelNumber(mapPieces[i].Name);
+            var target = ctx.ModPath(ModParts(ErMapBndPath(erId, number)));
             try
             {
+                if (main.Er != erId && main.Er != default && File.Exists(ctx.ModPath(ModParts(ErMapBndPath(main.Er, number)))))
+                {
+                    var bnd = BND4.Read(DCX.Decompress(File.ReadAllBytes(ctx.ModPath(ModParts(ErMapBndPath(main.Er, number)))), out var c));
+                    foreach (var f in bnd.Files)
+                        f.Name = f.Name.Replace(main.Er.ToString(), erId.ToString(), StringComparison.OrdinalIgnoreCase);
+                    File.WriteAllBytes(target, DCX.Compress(bnd.Write(), c));
+                    Interlocked.Increment(ref copied);
+                    return;
+                }
+                var source = Ds3MapBndPath(ds3Id, number);
                 if (!ds3.Contains(source))
                     throw new FileNotFoundException(source);
                 var binder = models.ConvertBinder(BND4.Read(ds3.Read(source)), hostBnd, ds3Id, erId, number, binderMap);
-                File.WriteAllBytes(ctx.ModPath(ModParts(ErMapBndPath(erId, number))), DCX.Compress(binder.Write(), bndCompression));
+                File.WriteAllBytes(target, DCX.Compress(binder.Write(), bndCompression));
             }
             catch (Exception ex)
             {
-                missingModels.Add(model.Name);
-                report.AppendLine($"  model {model.Name}: left out ({ex.Message})");
+                failures[i] = ex.Message;
             }
-        }
+        });
+        var missingModels = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        for (int i = 0; i < mapPieces.Count; i++)
+            if (failures[i] is { } failure)
+            {
+                missingModels.Add(mapPieces[i].Name);
+                report.AppendLine($"  model {mapPieces[i].Name}: left out ({failure})");
+            }
         foreach (var note in models.Notes.Distinct().Take(20))
             report.AppendLine($"  note: {note}");
         textures.Need(models.Textures, ds3Id);
         materials.AddRange(models.MatbinFiles(0));
+        if (copied > 0)
+            textures.Need(main.Textures, ds3Id);
+        else if (!slot.Probe)
+            _converted[ds3Id] = (erId, models.Textures);
+        report.AppendLine($"  time: {mapPieces.Count} map piece binders in {clock.Elapsed.TotalSeconds:F0} s"
+                          + (copied > 0 ? $" ({copied} copied from {main.Er})" : "") + $" on {Parallelism.Threads} threads");
 
         // Collision.
         var missingCollisions = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var collisionModels = layout.Msb.Models.Collisions.Select(m => m.Name).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        clock.Restart();
         foreach (var kind in new[] { "h", "l" })
         {
             var result = MapCollisions.Port(ctx, ds3, er, ds3Id, erId, kind, options, hostId);
@@ -317,6 +362,8 @@ public static class MapPorter
         }
         foreach (var name in missingCollisions)
             report.AppendLine($"  collision {name}: left out (no converted file)");
+        report.AppendLine($"  time: collision {clock.Elapsed.TotalSeconds:F0} s");
+        clock.Restart();
 
         // Navmesh, so enemies placed in the map can walk. A failure only leaves them standing.
         try
@@ -327,6 +374,7 @@ public static class MapPorter
         {
             report.AppendLine($"  navmesh: FAILED: {ex.Message}");
         }
+        report.AppendLine($"  time: navmesh {clock.Elapsed.TotalSeconds:F0} s");
 
         // Drop what has no model, then write the layout.
         var msb = layout.Msb;
@@ -445,6 +493,8 @@ public static class MapPorter
     public const string TemplateAsset = "/asset/aeg/aeg006/aeg006_030.geombnd.dcx";
 
     private static readonly Dictionary<MapId, (MapModelPort, BND4, DCX.CompressionInfo, MapId)> _templates = new();
+    // The main slot each DS3 map's map pieces were converted into this run, and the textures they use.
+    private static readonly Dictionary<MapId, (MapId Er, HashSet<string> Textures)> _converted = new();
 
     private static (MapModelPort Models, BND4 Binder, DCX.CompressionInfo Compression, MapId BinderMap) MaterialTemplates(
         GameArchives er, MapId hostId, MSBE host)
