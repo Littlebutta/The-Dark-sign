@@ -57,7 +57,7 @@ internal static class PreflightWindow
                 row.Children.Add(new TextBox
                 {
                     Text = item.Text, TextWrapping = TextWrapping.Wrap, IsReadOnly = true, BorderThickness = new Thickness(0),
-                    Background = Brushes.Transparent, Foreground = Brushes.Black,
+                    Background = Brushes.Transparent, Foreground = (Brush)Application.Current.FindResource("TextBrush"),
                 });
                 list.Children.Add(row);
             }
@@ -118,6 +118,7 @@ internal static class PreflightWindow
         root.Children.Add(new ScrollViewer { Content = list, VerticalScrollBarVisibility = ScrollBarVisibility.Auto });
         var window = new Window
         {
+            Style = Theme.WindowStyle,
             Title = "Pre-flight check",
             Owner = owner,
             Content = root,

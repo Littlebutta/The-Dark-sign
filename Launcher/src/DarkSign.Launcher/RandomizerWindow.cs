@@ -89,6 +89,7 @@ internal static class RandomizerWindow
 
         var window = new Window
         {
+            Style = Theme.WindowStyle,
             Title = "Cross-game randomizer",
             Owner = owner,
             Content = panel,

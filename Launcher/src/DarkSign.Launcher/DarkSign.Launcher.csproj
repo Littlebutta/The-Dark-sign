@@ -27,11 +27,15 @@
   <Target Name="RequireRedirectDll" BeforeTargets="Build" Condition="'$(RequireRedirectDll)' == 'true' And (!Exists('$(RedirectDll)') Or !Exists('$(TestMenuDll)'))">
     <Error Text="SaveRedirect/build/dksign_saveredirect.dll or TestMenu/build/dksign_testmenu.dll is missing: build them with make first." />
   </Target>
-  <!-- The Darksign build animation (image supplied by Devin) and the Cinzel font (SIL OFL 1.1, Assets/Cinzel-OFL.txt). -->
+  <!-- The Darksign build animation (image supplied by Devin) and the Cinzel and EB Garamond fonts (SIL OFL 1.1, Assets/*-OFL.txt), and the menu backdrop. -->
   <ItemGroup>
     <Resource Include="Assets\darksign.png" />
     <Resource Include="Assets\Cinzel-SemiBold.ttf" />
+    <Resource Include="Assets\EBGaramond-Regular.ttf" />
+    <Resource Include="Assets\EBGaramond-SemiBold.ttf" />
+    <Resource Include="Assets\menu-background.jpg" />
     <None Include="Assets\Cinzel-OFL.txt" />
+    <None Include="Assets\EBGaramond-OFL.txt" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\DarkSign.Core\DarkSign.Core.csproj" />

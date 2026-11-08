@@ -17,6 +17,7 @@ internal static class PromptWindow
 
         var window = new Window
         {
+            Style = Theme.WindowStyle,
             Title = title,
             Owner = owner,
             Content = panel,
