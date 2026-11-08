@@ -50,9 +50,20 @@ public static class SoundSelfTest
         Check(BitConverter.ToUInt32(b2.Get(9002)!.Data, 4) == 0x00010001, "pcm plugin");
         Check(b2.Write().SequenceEqual(out1), "new bank round trip");
         // second sound
-        bank.AddSound(chain, 9101, 9102, 9103, 9104, 9105, wem, false);
+        // second sound, with two DS3 random variants (c...b, c...c) in its container
+        var wemB = WwiseBank.PcmWem([1, 2, 3, 4], 1, 44100);
+        var wemC = WwiseBank.PcmWem([5, 6, 7, 8, 9, 10], 1, 44100);
+        bank.AddSound(chain, 9101, 9102, 9103, 9104, 9105, wem, false, [(9108u, 9109u, wemC), (9106u, 9107u, wemB)]);
         var b3 = WwiseBank.Read(bank.Write());
         Check(WwiseNode.Read(b3.Get(M)!)!.Children.SequenceEqual([Other, R, 9004u, 9104u]), "mixer lists both");
+        var vC = b3.Get(9104)!;
+        var nVC = WwiseNode.Read(vC)!;
+        Check(nVC.Children.SequenceEqual([9102u, 9106u, 9108u]) && nVC.Playlist.Count == 3 && nVC.Playlist.All(p => p.Weight == 50000), "variant container lists all: " + string.Join(",", nVC.Children));
+        Check(BitConverter.ToUInt16(vC.Data, nVC.AvoidRepeatAt) <= 2, "variant avoid repeat fits");
+        Check(new uint[] { 9106, 9108 }.All(v => b3.Get(v) is { } o && WwiseNode.Read(o)!.Parent(o.Data) == 9104), "variants under the container");
+        Check(BitConverter.ToUInt32(b3.Get(9106)!.Data, 9) == 9107 && BitConverter.ToInt32(b3.Get(9106)!.Data, 13) == wemB.Length, "variant media ref");
+        Check(b3.Media(9107)!.SequenceEqual(wemB) && b3.Media(9109)!.SequenceEqual(wemC), "variant media embedded");
+        Check(bank.VariantsAdded == 2, "variants counted");
         // Method E: the new sounds as a bank of their own: new ID, SFX language, the new media, the actor-mixer copied
         // listing only the new containers, children before parents, Play actions naming the new bank.
         var ownBytes = bank.WriteOwnBank(777);
@@ -63,6 +74,7 @@ public static class SoundSelfTest
             Check(own.BankId == 777 && BitConverter.ToUInt32(Section(ownBytes, "BKHD"), 8) == 393239870, "own bank header");
             Check(own.Chain(9001)?.Sound.Id == 9002 && own.Chain(9101)?.Sound.Id == 9102, "own bank chains");
             Check(own.Media(9005) is not null && own.Media(media) is null, "own bank holds only new media");
+            Check(own.Media(9107) is not null && own.Get(9108) is not null, "own bank holds the variants");
             var ownMixer = own.Get(M);
             Check(ownMixer is not null && WwiseNode.Read(ownMixer)!.Children.SequenceEqual([9004u, 9104u]), "own mixer lists only new containers");
             Check(own.Get(R) is null && own.Get(S) is null && own.Get(E) is null, "own bank leaves vanilla objects out");

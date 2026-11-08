@@ -126,8 +126,11 @@ public sealed class WwiseBank
     /// When the template's nodes can't be read exactly, the older layout is used (the Sound under the template's
     /// own container, played directly).</para></summary>
     public void AddSound((HircObject Event, HircObject Action, HircObject Sound) template, uint eventId, uint soundId, uint actionId,
-        uint containerId, uint mediaId, byte[] wem, bool streamed)
+        uint containerId, uint mediaId, byte[] wem, bool streamed, IReadOnlyList<(uint SoundId, uint MediaId, byte[] Wem)>? variants = null)
     {
+        // DS3 sounds come in variants (c000001043, c000001043b, c...c, ...d), played at random by FMOD: they become
+        // extra Sounds in the new random container (only with a container of their own; the older layout keeps one).
+        variants ??= [];
         // Sound: ID, then AkBankSourceData: plugin (PCM), stream type (0 in the bank, 2 streamed), media ID and size.
         // A source-plugin template (e.g. Wwise Silence, plugin type 2) carries a u32 parameter size and its parameters
         // after that; a codec Sound has neither, and leaving them in makes Wwise reject the whole bank.
@@ -147,7 +150,8 @@ public sealed class WwiseBank
 
         uint target = soundId;
         HircObject? insertBefore = null, newContainer = null;
-        if (OwnContainers && ContainerFor(template.Sound, sound, soundId, containerId) is { } own)
+        var allIds = new[] { soundId }.Concat(variants.Select(v => v.SoundId)).ToList();
+        if (OwnContainers && ContainerFor(template.Sound, sound, allIds, containerId) is { } own)
         {
             (newContainer, insertBefore, sound) = own;
             target = containerId;
@@ -173,6 +177,20 @@ public sealed class WwiseBank
             _objects.Insert(at, newSound);
             _byId[newContainer.Id] = newContainer;
             _new.Add(newSound);
+            foreach (var (vId, vMedia, vWem) in variants)
+            {
+                var v = (byte[])sound.Clone();
+                BitConverter.GetBytes(vId).CopyTo(v, 0);
+                BitConverter.GetBytes(vMedia).CopyTo(v, 9);
+                BitConverter.GetBytes(vWem.Length).CopyTo(v, 13);
+                var vSound = new HircObject(SoundType, vId, v);
+                _objects.Insert(_objects.IndexOf(newContainer), vSound);
+                _byId[vId] = vSound;
+                _new.Add(vSound);
+                if (!streamed && _media.TryAdd(vMedia, vWem))
+                    _added.Add((vMedia, vWem));
+                VariantsAdded++;
+            }
             _new.Add(newContainer);
         }
         else
@@ -201,6 +219,9 @@ public sealed class WwiseBank
 
     private static readonly byte[] Retuned = [WwiseNode.PropPitch, WwiseNode.PropLowPass, WwiseNode.PropHighPass];
 
+    /// <summary>How many extra DS3 variants went into the new containers.</summary>
+    public int VariantsAdded { get; private set; }
+
     /// <summary>How many new sounds got a container of their own.</summary>
     public int OwnContainerCount { get; private set; }
 
@@ -208,8 +229,9 @@ public sealed class WwiseBank
     // playback settings, without pitch and filters) holding just the new Sound, under the nearest actor-mixer above
     // it, which lists it. Returns the container, the actor-mixer (the container goes right before it) and the Sound
     // data with its parent set to the container; null when the template isn't laid out that way.
-    private (HircObject Container, HircObject Mixer, byte[] Sound)? ContainerFor(HircObject templateSound, byte[] sound, uint soundId, uint containerId)
+    private (HircObject Container, HircObject Mixer, byte[] Sound)? ContainerFor(HircObject templateSound, byte[] sound, IReadOnlyList<uint> soundIds, uint containerId)
     {
+        uint soundId = soundIds[0];
         if (WwiseNode.Read(new HircObject(SoundType, soundId, sound)) is not { } soundNode
             || Get(soundNode.Parent(sound)) is not { Type: RanSeqCntrType } container
             || WwiseNode.Read(container) is not { PlaylistAt: >= 0 } containerNode)
@@ -236,9 +258,16 @@ public sealed class WwiseBank
         int weight = containerNode.Playlist.Count > 0 ? containerNode.Playlist[0].Weight : 50000;
         BitConverter.GetBytes(containerId).CopyTo(data, 0);
         BitConverter.GetBytes(mixer.Id).CopyTo(data, copy.ParentAt);
-        BitConverter.GetBytes((ushort)0).CopyTo(data, copy.AvoidRepeatAt); // one child: nothing to avoid
-        data = [.. data.AsSpan(0, copy.ChildrenAt), .. BitConverter.GetBytes(1), .. BitConverter.GetBytes(soundId),
-            .. BitConverter.GetBytes((ushort)1), .. BitConverter.GetBytes(soundId), .. BitConverter.GetBytes(weight)];
+        // Avoid repeating the variant just played, as the game's own random containers do (one child: nothing to avoid).
+        int avoid = Math.Min(BitConverter.ToUInt16(container.Data, containerNode.AvoidRepeatAt), soundIds.Count - 1);
+        BitConverter.GetBytes((ushort)Math.Max(0, avoid)).CopyTo(data, copy.AvoidRepeatAt);
+        var sorted = soundIds.Order().ToList();
+        var lists = new MemoryStream();
+        lists.Write(BitConverter.GetBytes(sorted.Count));
+        foreach (var id in sorted) lists.Write(BitConverter.GetBytes(id));
+        lists.Write(BitConverter.GetBytes((ushort)soundIds.Count));
+        foreach (var id in soundIds) { lists.Write(BitConverter.GetBytes(id)); lists.Write(BitConverter.GetBytes(weight)); }
+        data = [.. data.AsSpan(0, copy.ChildrenAt), .. lists.ToArray()];
 
         // The actor-mixer lists its children sorted by ID (every game bank does), at the end of its data.
         var kids = mixerNode.Children.Append(containerId).Distinct().Order().ToList();

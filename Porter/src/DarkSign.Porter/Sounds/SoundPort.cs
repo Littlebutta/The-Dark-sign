@@ -116,24 +116,32 @@ public static class SoundPort
         var samples = Ds3Samples(ctx, ds3Archives, names);
         var reasons = new Dictionary<string, int>();
         var events = new List<uint>();
-        int bytes = 0;
+        int bytes = 0, variantsLost = 0;
         foreach (var (kind, id) in todo)
         {
             char letter = Letter(kind)!.Value;
             var name = $"{letter}{id:D9}";
-            var sample = samples.GetValueOrDefault(name) ?? "bcdefgh".Select(v => samples.GetValueOrDefault(name + v)).FirstOrDefault(s => s is not null);
+            // DS3 keeps a sound's random variants as separate samples (c000001043, c000001043b, ...c, ...d): every one
+            // present is ported, and Elden Ring's random container picks between them like the DS3 event did.
+            var present = new[] { "", "b", "c", "d", "e", "f", "g", "h" }
+                .Select(v => (Suffix: v, Sample: samples.GetValueOrDefault(name + v))).Where(x => x.Sample is not null).ToList();
             uint eventId = FxSoundExplore.Fnv1($"Play_{letter}{IdBase + id:D9}");
-            if (sample is null) { reasons["no DS3 sample"] = reasons.GetValueOrDefault("no DS3 sample") + 1; continue; }
+            if (present.Count == 0) { reasons["no DS3 sample"] = reasons.GetValueOrDefault("no DS3 sample") + 1; continue; }
             if (bank.Has(eventId)) { reasons["event ID taken"] = reasons.GetValueOrDefault("event ID taken") + 1; continue; }
-            short[] pcm;
-            try { pcm = Fsb5.DecodePcm(sample); }
-            catch (Exception e) when (e is not OutOfMemoryException)
+            var decoded = new List<(string Suffix, Fsb5.Sample Sample, short[] Pcm)>();
+            string? failure = null;
+            foreach (var (suffix, s) in present)
             {
-                // One undecodable sample (NVorbis throws its own types too) must not cost every other sound.
-                var reason = $"decode: {e.Message.Split(' ').Take(4).Aggregate((a, b) => a + " " + b)}";
-                reasons[reason] = reasons.GetValueOrDefault(reason) + 1;
-                continue;
+                try { decoded.Add((suffix, s!, Fsb5.DecodePcm(s!))); }
+                catch (Exception e) when (e is not OutOfMemoryException)
+                {
+                    // One undecodable sample (NVorbis throws its own types too) must not cost every other sound.
+                    failure ??= $"decode: {e.Message.Split(' ').Take(4).Aggregate((a, b) => a + " " + b)}";
+                }
             }
+            if (decoded.Count == 0) { reasons[failure!] = reasons.GetValueOrDefault(failure!) + 1; continue; }
+            if (failure is not null) variantsLost++;
+            var (_, sample, pcm) = decoded[0];
             if (DllSounds)
             {
                 var wav = Wav(pcm, sample.Channels, sample.Rate);
@@ -145,14 +153,23 @@ public static class SoundPort
             var wem = WwiseBank.PcmWem(pcm, sample.Channels, sample.Rate);
             uint soundId = UnusedId(bank, $"darksign_sound_{letter}{id}"), actionId = UnusedId(bank, $"darksign_action_{letter}{id}");
             uint mediaId = UnusedId(bank, $"darksign_media_{letter}{id}"), containerId = UnusedId(bank, $"darksign_container_{letter}{id}");
+            var variants = new List<(uint SoundId, uint MediaId, byte[] Wem)>();
+            var taken = new HashSet<uint> { soundId, actionId, mediaId, containerId };
+            foreach (var (suffix, s, p) in decoded.Skip(1))
+            {
+                uint vs = UnusedId(bank, $"darksign_sound_{letter}{id}{suffix}", taken), vm = UnusedId(bank, $"darksign_media_{letter}{id}{suffix}", taken);
+                variants.Add((vs, vm, WwiseBank.PcmWem(p, s.Channels, s.Rate)));
+            }
             // Embedded in the bank like nearly all of Elden Ring's own sounds (17,018 embedded, 3 streamed): the
             // streamed loose wems (sd\wem\NN\<ID>.wem) stayed silent in game. DARKSIGN_STREAM_SOUNDS=1 streams them.
             if (StreamSounds || Mirror)
-            {
-                var mediaName = mediaId.ToString();
-                File.WriteAllBytes(ctx.ModPath("sd", "wem", mediaName[..2], mediaName + ".wem"), wem); // me3: sd/wem/NN/<id>.wem
-            }
-            bank.AddSound(template, eventId, soundId, actionId, containerId, mediaId, wem, streamed: StreamSounds);
+                foreach (var (m, w) in variants.Select(v => (v.MediaId, v.Wem)).Prepend((mediaId, wem)))
+                {
+                    var mediaName = m.ToString();
+                    File.WriteAllBytes(ctx.ModPath("sd", "wem", mediaName[..2], mediaName + ".wem"), w); // me3: sd/wem/NN/<id>.wem
+                }
+            bank.AddSound(template, eventId, soundId, actionId, containerId, mediaId, wem, streamed: StreamSounds, variants: variants);
+            bytes += variants.Sum(v => v.Wem.Length);
             events.Add(eventId);
             result.Add(kind, id);
             bytes += wem.Length;
@@ -184,7 +201,7 @@ public static class SoundPort
             }
             RegisterEvents(ctx, erArchives, eventBank, bank.BankId, events);
         }
-        Console.WriteLine($"sounds: {result.Count} DS3 sounds ported ({bytes / 1024} KB of PCM {(StreamSounds ? "streamed from sd/wem" : "embedded")}, {bank.OwnContainerCount} in a container of their own, {bank.ChildrenAdded} added to their parent) " +
+        Console.WriteLine($"sounds: {result.Count} DS3 sounds ported ({bytes / 1024} KB of PCM {(StreamSounds ? "streamed from sd/wem" : "embedded")}, {bank.OwnContainerCount} in a container of their own, {bank.ChildrenAdded} added to their parent, {bank.VariantsAdded} DS3 random variants alongside them{(variantsLost > 0 ? $", {variantsLost} sounds lost a variant that didn't decode" : "")}) " +
                           $"into sd{Bank}; left out: " +
                           (reasons.Count == 0 ? "none" : string.Join(", ", reasons.Select(r => $"{r.Value} {r.Key}"))));
         return result;
@@ -265,11 +282,12 @@ public static class SoundPort
         return parts.Count == 0 ? "template nodes not readable (older layout used)" : "template chain " + string.Join(" < ", parts);
     }
 
-    private static uint UnusedId(WwiseBank bank, string name)
+    private static uint UnusedId(WwiseBank bank, string name, HashSet<uint>? taken = null)
     {
         uint id = FxSoundExplore.Fnv1(name);
-        while (bank.Has(id))
+        while (bank.Has(id) || taken?.Contains(id) == true)
             id++;
+        taken?.Add(id);
         return id;
     }
 
