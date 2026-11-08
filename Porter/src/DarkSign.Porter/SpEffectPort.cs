@@ -95,6 +95,9 @@ public sealed class SpEffectPort
             .ToDictionary(g => g.Key, g => g.GroupBy(t => t.Id).OrderByDescending(x => x.Count()).ThenBy(x => x.Key).First().Key);
     }
 
+    /// <summary>Whether Elden Ring has an effect with this ID (its own; ported ones are far above DS3's IDs).</summary>
+    public bool ErHas(int id) => _er[id] is not null;
+
     public int Count => _ported.Count(p => p.Value > 0);
 
     public string Summary => $"{Count} DS3 effects ported ({_report.Count(l => l.Contains("\tstatus\t"))} status, " +
