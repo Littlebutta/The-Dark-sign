@@ -55,6 +55,10 @@ public static partial class MovesetPort
     /// <summary>An Elden Ring TAE event that holds an art combo window SpEffect (100050-100055): type, bytes, group.</summary>
     internal sealed record WindowEvent(int Type, byte[] Bytes, TAE.EventGroup Group);
 
+    // Art IDs vanilla Elden Ring's hks special-cases in the 300s (stance and attack-stance lists), skipped even when
+    // the hks text can't be read.
+    private static readonly int[] VanillaSpecialArtIds = [305, 309, 318, 335, 337, 340, 341, 342, 343, 346, 347, 357, 371, 372, 373, 399];
+
     // DS3 art names whose block is known, for class skills no weapon with its own section teaches.
     private static readonly Dictionary<string, int> Kinds = new(StringComparer.OrdinalIgnoreCase)
     {
@@ -98,12 +102,18 @@ public static partial class MovesetPort
         // 300-398 first (Elden Ring's own DLC range), then 170-254: Elden Ring's own c0000.hks gives both the plain
         // one-shot. With our hks (ividyon's, which also gives an ID missing from its SwordArtsCategory table the
         // default), every other ID it never names is free too: 39 IDs weren't enough for DS3's 77 arts.
-        string? hks = ArtsWithHks ? LoadHks(ctx) : null;
-        var hksNamed = hks is null ? [] : HksNamedIds(hks);
-        var extra = hks is null ? [] : Enumerable.Range(1, 169).Concat(Enumerable.Range(255, 45)).Where(id => !hksNamed.Contains(id));
+        // No range is free of special cases: the hks lists 340-343, 346 and 347 ("UNUSED") as stances and 340/341 as
+        // attack stances like Spinning Wheel, so an art given 340 played as one (the Moonlight Greatsword did Ghiza's
+        // Wheel in 1.0.206). Every ID the hks names is skipped, whichever range it is in; the hks is read for that
+        // even when it isn't written (weapon-arts B).
+        string? hksText = LoadHks(ctx);
+        string? hks = ArtsWithHks ? hksText : null;
+        var hksNamed = hksText is null ? [] : HksNamedIds(hksText);
+        hksNamed.UnionWith(VanillaSpecialArtIds);
+        var extra = hks is null ? [] : Enumerable.Range(1, 169).Concat(Enumerable.Range(255, 45));
         var free = new Queue<int>(Enumerable.Range(300, 99).Concat(Enumerable.Range(170, 85)).Where(id => id is not (196 or 305 or 357 or 399))
             .Concat(extra)
-            .Where(id => !usedIds.Contains(id) && !taeSections.Contains(600 + id) && !clipsBySection.ContainsKey(600 + id)));
+            .Where(id => !hksNamed.Contains(id) && !usedIds.Contains(id) && !taeSections.Contains(600 + id) && !clipsBySection.ContainsKey(600 + id)));
 
         // Which DS3 moves make each weapon's art. A weapon with its own art section (spAtkCategory, Friede's a232) uses
         // that; every other weapon (spAtkCategory 0: Vordt's Great Hammer, the Dragonslayer Greataxe, most weapons) does
@@ -169,26 +179,30 @@ public static partial class MovesetPort
                 continue;
             }
             var blocks = skill.Select(id => id / 100).Distinct().ToList();
+            // One art per block and DS3 art (by name): weapons that share moves but not the art (Black Knight Sword's
+            // and the Moonlight Greatsword's) keep their own name and FP cost. Name first: DS3 gives many unrelated arts
+            // the same ActionId (22: Crescent Blade, Bloodlust, Unleash Dragon), so that is the last resort.
             foreach (var byBlock in g.GroupBy(p =>
                      {
-                         if (blocks.Count == 1)
-                             return blocks[0];
                          var (name, action) = Kind(p);
+                         if (blocks.Count == 1)
+                             return (Block: blocks[0], Name: name);
                          int? Pick<TK>(Dictionary<TK, Dictionary<int, int>> map, TK? key) where TK : notnull =>
                              key is not null && map.TryGetValue(key, out var counts)
                                  ? counts.Where(c => blocks.Contains(c.Key)).OrderByDescending(c => c.Value).Select(c => (int?)c.Key).FirstOrDefault()
                                  : null;
-                         return (action >= 0 ? Pick(blockByAction, action) : null) ?? Pick(blockByName, name)
-                                ?? (name is not null && Kinds.TryGetValue(name, out var known) && blocks.Contains(known) ? known : -1);
+                         return (Block: Pick(blockByName, name)
+                                        ?? (name is not null && Kinds.TryGetValue(name, out var known) && blocks.Contains(known) ? known : (int?)null)
+                                        ?? (action >= 0 ? Pick(blockByAction, action) : null) ?? -1, Name: name);
                      }))
             {
-                if (byBlock.Key < 0)
+                if (byBlock.Key.Block < 0)
                 {
                     unknownBlocks.Add($"{string.Join(", ", byBlock.Select(p => p.Name))} (DS3 a{g.Key} blocks {string.Join("/", blocks.Select(b => b * 100))}, " +
                                       $"art '{Kind(byBlock.First()).Name}' action {Kind(byBlock.First()).Action})");
                     continue;
                 }
-                jobs.Add(MakeJob(g.Key, g.Key, skill.Where(id => id / 100 == byBlock.Key).ToList(), byBlock.ToList(), "class"));
+                jobs.Add(MakeJob(g.Key, g.Key, skill.Where(id => id / 100 == byBlock.Key.Block).ToList(), byBlock.ToList(), "class"));
             }
         }
         jobs = jobs.OrderByDescending(j => j.Weapons.Any(p => p.Ds3Id == 10180000)).ThenByDescending(j => j.Weapons.Count).ThenBy(j => j.Ds3Section).ToList();

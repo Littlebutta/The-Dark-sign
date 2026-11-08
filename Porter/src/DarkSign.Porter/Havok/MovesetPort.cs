@@ -45,6 +45,11 @@ public static partial class MovesetPort
     // DS3 doesn't have, and DS3's full-length 108 isn't Elden Ring's), so a DS3 move copied with DS3's never chained.
     // These come from the Elden Ring template, stretched onto the DS3 move's timeline between matching hits.
     private static readonly HashSet<int> BehaviourTypes = [0, 67, 608, 800];
+
+    /// <summary>The effect port for SpEffect events in DS3 moves (set by Apply; null = DS3 IDs are left as they were).</summary>
+    private static SpEffectPort? TaeEffects;
+
+    private static int _taeEffectEvents;
     private static readonly bool Ds3JumpTables = Environment.GetEnvironmentVariable("DARKSIGN_DS3_JUMPTABLES") == "1";
     // Event types Elden Ring keeps from its own template animation: sounds, effects and other references to IDs that
     // DS3 numbers differently. Every other type comes from DS3 when both games lay it out the same.
@@ -102,6 +107,8 @@ public static partial class MovesetPort
         var erWeapons = er.Get("EquipParamWeapon")!;
         var ds3Weapons = ds3.Get("EquipParamWeapon")!;
         var attackPort = new AttackParamPort(er, ds3) { Effects = spEffects };
+        TaeEffects = spEffects;
+        _taeEffectEvents = 0;
         // Param changes wait until every file is written, so a failure leaves the weapons on their template moveset.
         var pointWeapons = new List<Action>();
 
@@ -425,7 +432,7 @@ public static partial class MovesetPort
         Console.WriteLine($"moveset: timing guard {(MoveTiming.Guard ? "on" : "off (1.0.89 timing)")}: {moves} DS3 moves, {held} had windows held back to DS3's own recovery, " +
                           $"{clipFixes} behaviour clip limits fitted, {early} still exit before DS3 does; per move: {timingReport}");
         Console.WriteLine($"moveset: event switches: DS3 effect events {Ds3EffectEvents}, DS3 sound events {Ds3SoundEvents}, swing align {SwingAlign}");
-        Console.WriteLine($"moveset: {portedGroups} movesets ported, {skippedGroups} skipped; attacks: {attackPort.Summary}; " +
+        Console.WriteLine($"moveset: {portedGroups} movesets ported, {skippedGroups} skipped; attacks: {attackPort.Summary}; {_taeEffectEvents} DS3 SpEffect events with ported effects; " +
                           $"{wideCategories.Count} weapons on categories above 255 (mod DLL)");
         var table = ctx.ModPath(WideTable);
         if (wideCategories.Count > 0)
@@ -665,6 +672,22 @@ public static partial class MovesetPort
                 continue;
             }
             var bytes = e.GetParameterBytes(false);
+            // SpEffects a move casts (66, 67; the buff of Perseverance, Warcry, Ember): DS3's ID names an unrelated
+            // Elden Ring effect or none, so an effect Elden Ring lacks is ported (SpEffectPort) under its new ID. IDs
+            // both games have (the engine's: charge 100280, art combo windows 100050-100055) stay as they are.
+            if (TaeEffects is { } fx && e.Type is 66 or 67 && bytes.Length >= 4
+                && erLengths.TryGetValue(e.Type, out var fxLength) && fxLength == bytes.Length
+                && BitConverter.ToInt32(bytes, 0) is > 0 and var ds3Effect && !fx.ErHas(ds3Effect))
+            {
+                if (fx.Port(ds3Effect) is > 0 and var ported && TryGroup(e.Type, out var fxGroup))
+                {
+                    var fxBytes = (byte[])bytes.Clone();
+                    BitConverter.GetBytes(ported).CopyTo(fxBytes, 0);
+                    merged.Add(new TAE.Event(e.StartTime, e.EndTime, e.Type, e.Unk04, fxBytes, false) { Group = fxGroup });
+                    _taeEffectEvents++;
+                }
+                continue;
+            }
             if (ErOwned(e.Type) || !erLengths.TryGetValue(e.Type, out var length) || length != bytes.Length)
                 continue;
             if (!TryGroup(e.Type, out var group))
