@@ -297,10 +297,29 @@ public partial class MainWindow : Window
     private async void OnRebuildContent(object sender, RoutedEventArgs e) => await PlayEldenRingAsync(rebuild: true, launch: false);
 
     /// <summary>
+    /// A save left inside a ported DS3 map crashes on every load (the game loads the map before any event runs). This
+    /// starts the game once with the ported maps hidden (SaveRescue), so the save lands in the game's own colosseum
+    /// arena under the same map ID; from there Ctrl+Shift+F2 (or dying) gets the player back to Elden Ring.
+    /// </summary>
+    private async void OnRescueSave(object sender, RoutedEventArgs e)
+    {
+        var answer = MessageBox.Show(this,
+            "Use this when a character crashes the game every time it loads, because it was saved inside a Dark Souls III map.\n\n" +
+            "Elden Ring starts once with the DS3 maps hidden, so the save loads the game's own arena under that map ID instead. " +
+            "Load the character, then press Ctrl+Shift+F2 (Leave DS3 run) to warp to Roundtable Hold, or let the character fall and respawn at its last grace. " +
+            "Quit the game, then press PLAY as usual: the maps are put back before every normal launch.\n\n" +
+            "A character saved in a new-map-ID slot (map-slots method B, m50-m52) has no arena to fall back to and can't be rescued this way.\n\n" +
+            "Start Elden Ring in rescue mode now?",
+            "Rescue save", MessageBoxButton.YesNo, MessageBoxImage.Question);
+        if (answer == MessageBoxResult.Yes)
+            await PlayEldenRingAsync(rebuild: false, launch: true, rescue: true);
+    }
+
+    /// <summary>
     /// Gets everything ready and starts Elden Ring through me3: the porter builds the content mod when it is
     /// missing or out of date, and me3 loads it (sound banks included) with the save redirect and (optionally) the F1 test menu.
     /// </summary>
-    private async Task PlayEldenRingAsync(bool rebuild, bool launch)
+    private async Task PlayEldenRingAsync(bool rebuild, bool launch, bool rescue = false)
     {
         SaveSettings();
         LaunchPlan plan;
@@ -331,6 +350,11 @@ public partial class MainWindow : Window
         try
         {
             RemoveGameFolderProxy(plan.ExePath);
+            // A rescue launch (below) hides the DS3 maps; every launch and rebuild starts by putting them back.
+            var hiddenMaps = SaveRescue.HiddenDir(Root);
+            var restored = SaveRescue.Restore(setup.ModDir, hiddenMaps);
+            if (restored.Count > 0)
+                _log.Write($"Rescue mode is over: {restored.Count} hidden DS3 map file(s)/folder(s) put back into the mod folder.");
             var coop = _settings.SeamlessCoop;
             var tweaks = Fallbacks.Launch(_settings.Methods, coop);
             var loader = tweaks.ModEngine2 ? await EnsureModEngineAsync(setup) : await EnsureMe3Async(setup);
@@ -393,6 +417,13 @@ public partial class MainWindow : Window
                 env[SeamlessCoop.CoopVariable] = "1";
             }
             var natives = SeamlessCoop.Natives(seamless, dlls);
+            if (rescue)
+            {
+                var hidden = SaveRescue.Hide(setup.ModDir, hiddenMaps);
+                _log.Write($"Rescue mode: {hidden.Count} DS3 map file(s)/folder(s) moved to {hiddenMaps} for this launch: {string.Join(", ", hidden)}");
+                if (hidden.Count == 0)
+                    _log.Write("Rescue mode: no ported maps were in the mod folder (nothing to hide).");
+            }
             var info = tweaks.ModEngine2
                 ? EldenRingSetup.LaunchInfo(plan, loader, setup.WriteConfig(natives), env)
                 : EldenRingSetup.Me3LaunchInfo(plan, loader, setup.WriteProfile(natives, tweaks), env);
@@ -403,7 +434,10 @@ public partial class MainWindow : Window
                 _log.Write($"  env {key}={value}");
             Process.Start(info);
             var methods = Fallbacks.Summary(_settings.Methods);
-            SetStatus($"Launched Elden Ring{(tweaks.ModEngine2 ? " (ModEngine2)" : "")}. Saves: {plan.SaveDirectory}" +
+            SetStatus(rescue
+                ? "Launched Elden Ring in rescue mode: the DS3 maps are hidden for this launch. Load the stuck character, press Ctrl+Shift+F2 " +
+                  "(Leave DS3 run) or let it respawn at a grace, quit, then press PLAY as usual to put the maps back."
+                : $"Launched Elden Ring{(tweaks.ModEngine2 ? " (ModEngine2)" : "")}. Saves: {plan.SaveDirectory}" +
                 (methods.Length > 0 ? $". Fallback methods: {methods}" : "") +
                 (seamless is not null ? $". Seamless Co-op is on (mod code {CoopCheckCode(setup) ?? "?"})" : "") +
                 (!_settings.TestMenu || !env.ContainsKey(EldenRingSetup.ItemsVariable) ? "."
