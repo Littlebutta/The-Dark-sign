@@ -60,9 +60,10 @@ Try the next option if: A ported weapon swings with Elden Ring's moves (R1 or R2
 
 Try the next option if: Some moves of a ported weapon are DS3 but others (often R2, charged R2 or two-handed attacks) still look like Elden Ring.
 
-- **A: Behaviour selector names (default).** An Elden Ring move gets the DS3 animation whose behaviour selector has the same name, when each game's selector holds exactly one animation.
+- **A: Behaviour selector names (default).** An Elden Ring move gets the DS3 animation whose behaviour selector has the same name, when each game's selector holds exactly one animation; a two-handed move the names miss follows its one-handed twin.
 - **B: Names, then neighbours' offsets.** Moves the names don't pair take the ID offset their paired neighbours share (e.g. Elden Ring 0305xx -> DS3 0303xx), when that DS3 animation exists for the weapon. (`DARKSIGN_ANIM_MAP=offsets`)
 - **C: B plus the hand-checked heavy table.** B, plus the heavy-attack pairs found while porting Friede's scythe (Elden Ring 030500/030501/030505 = DS3 030320/030330/030321, two-handed 032xxx = DS3 034xxx), which win. (`DARKSIGN_ANIM_MAP=table`)
+- **D: Names only, no two-handed twins.** A, without pairing two-handed moves through their one-handed twins (Elden Ring 032xxx = DS3 034xxx) when the names don't pair them (DARKSIGN_TWOHAND_MAP=0). (`DARKSIGN_TWOHAND_MAP=0`)
 
 ### When the next attack can start (R1 chains) (`combo-windows`, rebuilds the content)
 
@@ -112,6 +113,7 @@ Try the next option if: Two-handing a split weapon doesn't split it, or the seco
 - **B: An Elden Ring split layout.** The weapon takes a whole WepAbsorpPosParam row from an Elden Ring weapon that already holds a second model in the left hand when two-handed (the game's own working layout). (`DARKSIGN_ABSORP=er`)
 - **C: DS3 dummy IDs as they are.** DS3's dummy poly IDs copied without matching them through the bones (both games number most hand and back dummies alike). (`DARKSIGN_ABSORP=raw`)
 - **D: A without the paired grip.** A's positions, but paired weapons keep the template's isDualBlade and hold motions (DARKSIGN_PAIRED_GRIP=0). Try it if two-handing a paired weapon looks wrong or crashes. (`DARKSIGN_PAIRED_GRIP=0`)
+- **E: A without the Friede layout.** A, but Friede's scythe keeps DS3's own row (second scythe on the back in every grip) and its art's DS3-only "Friede override" event as DS3 wrote it (DARKSIGN_FRIEDE_OVERRIDE=keep). (`DARKSIGN_FRIEDE_OVERRIDE=keep`)
 - **off: Off (template positions).** Ported weapons keep their template's WepAbsorpPosParam row (DARKSIGN_ABSORP=0): no split. Tells whether the split is what breaks something. (`DARKSIGN_ABSORP=0`)
 
 
