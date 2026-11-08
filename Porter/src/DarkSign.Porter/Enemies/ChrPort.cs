@@ -197,6 +197,7 @@ public static partial class ChrPort
         var ids = AssignIds(characters.Select(c => c.Chr), n => erArchives.Contains($"/chr/c{n:D4}.chrbnd.dcx"));
 
         var plans = new List<Plan>();
+        var fileChrs = new ConcurrentDictionary<int, int>();
         foreach (var ds3Chr in characters)
         {
             var bones = FlverBones(ds3Archives, ds3Chr.Chr) ?? [];
@@ -206,7 +207,21 @@ public static partial class ChrPort
                 continue;
             }
             var chosen = pick.Match < MinBoneMatch && method != Method.Stats ? Method.Stats : method;
-            plans.Add(new Plan(ds3Chr, pick.Template, ChrId(pick.Template.Model), pick.Match, chosen, newChr));
+            int templateChr = ChrId(pick.Template.Model);
+            if (chosen != Method.Stats)
+            {
+                // A variant (c3061) keeps its animations and behaviour in its base character (c3060): the new
+                // character is built from the base's files, which are complete.
+                int files = fileChrs.GetOrAdd(templateChr, c => FileChr(c, chr => AnimationCount(erArchives, chr)));
+                if (files < 0)
+                {
+                    notes.Add($"c{ds3Chr.Chr:D4} {ds3Chr.Name}: template {pick.Template.Model} and its base have no animations; using the template's body");
+                    chosen = Method.Stats;
+                }
+                else
+                    templateChr = files;
+            }
+            plans.Add(new Plan(ds3Chr, pick.Template, templateChr, pick.Match, chosen, newChr));
         }
 
         var mapLines = new List<string> { "# kind\tDS3\tElden Ring model\tNpcParam\tThinkParam\tname (written by DarkSignPorter port-maps, enemy port)" };
@@ -221,7 +236,7 @@ public static partial class ChrPort
             }
             catch (Exception ex) when (ex is not OutOfMemoryException)
             {
-                built[plan.Ds3.Chr] = (null, $"{ex.GetType().Name}: {ex.Message}");
+                built[plan.Ds3.Chr] = (null, Describe(ex));
             }
         });
 
@@ -301,14 +316,18 @@ public static partial class ChrPort
         {
             try
             {
-                rows += PortParams(regulation, ds3, attacks, plan, npcRows);
+                rows += PortParams(regulation, ds3, attacks, plan, npcRows, result.Notes);
             }
             catch (Exception ex) when (ex is not OutOfMemoryException)
             {
                 failed++;
-                result.Notes.Add($"c{plan.Ds3.Chr:D4} {plan.Ds3.Name}: params failed ({ex.GetType().Name}: {ex.Message})");
+                result.Notes.Add($"c{plan.Ds3.Chr:D4} {plan.Ds3.Name}: params failed ({Describe(ex)})");
             }
         }
+        int fallback = EnsureNpcRows(regulation.Get("NpcParam")!,
+            result.Params.SelectMany(p => p.NpcRows.Values.Select(row => (p.Plan.Template.NpcParam, row))));
+        if (fallback > 0)
+            result.Notes.Add($"{fallback} NpcParam rows added as plain copies of their template's (their params step failed)");
         regulation.Save(ctx.ModPath("regulation.bin"));
         try
         {
@@ -320,7 +339,9 @@ public static partial class ChrPort
             result.Notes.Add($"materials: failed ({ex.Message}); ported models may render untextured");
         }
         WriteReport(ctx, result);
-        return $"enemies: {rows} NpcParam rows, {attacks.Summary}{(failed > 0 ? $", {failed} characters' params failed" : "")}";
+        return $"enemies: {rows + fallback} NpcParam rows ({fallback} plain template copies), {attacks.Summary}" +
+               $"{(failed > 0 ? $", {failed} characters' params failed (first: {result.Notes.FirstOrDefault(n => n.Contains("params failed")) ?? ""})" : "")}" +
+               $"{(result.Notes.FirstOrDefault(n => n.Contains("attacks not ported")) is { } a ? $"; {a}" : "")}";
     }
 
     /// <summary>The F1 menu's spawn list; a failure only costs the menu its list (it falls back to a built-in one).</summary>
@@ -334,6 +355,66 @@ public static partial class ChrPort
         {
             Console.WriteLine($"enemies: F1 spawn list not written ({ex.Message})");
         }
+    }
+
+    /// <summary>
+    /// port-enemies: the enemy port on its own (port-maps runs it too), then a read-back of what the game will look up:
+    /// every NpcParam row darksign_chr_map.tsv names must be in the mod's regulation.bin, and every new model must
+    /// have its chrbnd, anibnd and behbnd with a TAE and animations. Run it with --root on a scratch folder to try a
+    /// porter build without touching the real mod. Returns 1 when a check fails.
+    /// </summary>
+    public static int Run(PorterContext ctx)
+    {
+        using var ds3 = ctx.OpenArchives(PorterGame.DarkSouls3);
+        using var er = ctx.OpenArchives(PorterGame.EldenRing);
+        var result = Build(ctx, er, ds3);
+        Console.WriteLine(ApplyParams(ctx, er, result));
+        var check = CheckOutputs(ctx);
+        foreach (var line in check)
+            Console.WriteLine(line);
+        foreach (var note in result.Notes.Where(n => n.Contains("failed") || n.Contains("not ported")).Take(15))
+            Console.WriteLine($"enemies: note: {note}");
+        return check.Any(l => l.StartsWith("FAIL", StringComparison.Ordinal)) ? 1 : 0;
+    }
+
+    /// <summary>The read-back of port-enemies (and of validate tools): missing rows and incomplete models are FAIL lines.</summary>
+    public static List<string> CheckOutputs(PorterContext ctx)
+    {
+        var lines = new List<string>();
+        var mapPath = ctx.ModPath(EnemyPort.ChrMap.FileName);
+        if (!File.Exists(mapPath))
+            return ["check: no darksign_chr_map.tsv (enemy port off or failed)"];
+        var rows = File.ReadLines(mapPath).Where(l => !l.StartsWith('#')).Select(l => l.Split('\t')).Where(p => p.Length >= 5).ToList();
+        var npc = ActionButtons.LoadRegulation(ctx).Get("NpcParam")!;
+        var missing = rows.Where(p => int.TryParse(p[3], out var id) && npc[id] is null).Select(p => $"{p[3]} ({p[^1]})").Distinct().ToList();
+        lines.Add(missing.Count == 0
+            ? $"check: ok   all {rows.Select(p => p[3]).Distinct().Count()} NpcParam rows the maps and spawn list use are in regulation.bin"
+            : $"FAIL check: {missing.Count} NpcParam rows missing from regulation.bin (the game crashes loading them): {string.Join(", ", missing.Take(8))}");
+        int bad = 0;
+        foreach (var model in rows.Select(p => p[2]).Where(m => ChrId(m) >= FirstNewChr).Distinct())
+        {
+            var problems = new List<string>();
+            foreach (var kind in new[] { "chrbnd", "anibnd", "behbnd" })
+                if (!File.Exists(ctx.ModPath("chr", $"{model}.{kind}.dcx")))
+                    problems.Add($"no {kind}");
+            var anibnd = ctx.ModPath("chr", $"{model}.anibnd.dcx");
+            if (File.Exists(anibnd))
+            {
+                var files = Directory.GetFiles(Path.GetDirectoryName(anibnd)!, $"{model}*.anibnd.dcx")
+                    .SelectMany(f => BND4.Read(DCX.Decompress(File.ReadAllBytes(f))).Files).ToList();
+                if (!files.Any(f => f.Name.EndsWith(".tae", StringComparison.OrdinalIgnoreCase)))
+                    problems.Add("no TAE");
+                if (!files.Any(f => AnimLeaf().IsMatch(ItemText.Leaf(f.Name))))
+                    problems.Add("no animations");
+            }
+            if (problems.Count > 0 && bad++ < 8)
+                lines.Add($"FAIL check: {model}: {string.Join(", ", problems)}");
+        }
+        if (bad == 0)
+            lines.Add("check: ok   every new model has its chrbnd, anibnd (TAE and animations) and behbnd");
+        else if (bad > 8)
+            lines.Add($"FAIL check: {bad} new models incomplete in all");
+        return lines;
     }
 
     private static void WriteReport(PorterContext ctx, Result result)
@@ -430,14 +511,62 @@ public static partial class ChrPort
         try
         {
             var bnd = BND4.Read(archives.Read(path));
-            var flver = bnd.Files.FirstOrDefault(f => FLVER2.Is(f.Bytes));
-            return flver is null ? null : FLVER2.Read(flver.Bytes).Nodes.Select(n => n.Name ?? "").ToList();
+            var file = bnd.Files.FirstOrDefault(f => FLVER2.Is(f.Bytes));
+            if (file is null)
+                return null;
+            var flver = FLVER2.Read(file.Bytes);
+            // A model with nothing to draw (an invisible dummy, or c0000, whose body comes from equipment) can't carry or
+            // be replaced by another model: treated as having no model.
+            if (!HasBody(flver))
+                return null;
+            return flver.Nodes.Select(n => n.Name ?? "").ToList();
         }
         catch (Exception)
         {
             return null;
         }
     }
+
+    /// <summary>
+    /// The character whose files a new character is built from: the template itself when its anibnd has a TAE and
+    /// animations, else its base (c3061 -> c3060), else -1. <paramref name="animations"/> counts a character's.
+    /// </summary>
+    public static int FileChr(int chr, Func<int, int> animations)
+    {
+        foreach (var candidate in new[] { chr, chr / 10 * 10, chr / 100 * 100 }.Distinct())
+            if (candidate > 0 && animations(candidate) > 0)
+                return candidate;
+        return -1;
+    }
+
+    /// <summary>Animations (hkx) in a character's anibnds when its main anibnd has a TAE; 0 otherwise.</summary>
+    public static int AnimationCount(GameArchives er, int chr)
+    {
+        var main = $"/chr/c{chr:D4}.anibnd.dcx";
+        if (!er.Contains(main))
+            return 0;
+        try
+        {
+            if (!BND4.Read(er.Read(main)).Files.Any(f => f.Name.EndsWith(".tae", StringComparison.OrdinalIgnoreCase)))
+                return 0;
+            return er.Entries.Where(e => e.Path is { } p && p.StartsWith($"/chr/c{chr:D4}", StringComparison.OrdinalIgnoreCase)
+                                         && p.EndsWith(".anibnd.dcx", StringComparison.OrdinalIgnoreCase)
+                                         && Regex.IsMatch(ItemText.Leaf(p), $@"^c{chr:D4}(_div\d+)?\.anibnd\.dcx$", RegexOptions.IgnoreCase))
+                .Sum(e => BND4.Read(er.Read(e.Path!)).Files.Count(f => AnimLeaf().IsMatch(ItemText.Leaf(f.Name))));
+        }
+        catch (Exception)
+        {
+            return 0;
+        }
+    }
+
+    /// <summary>The DS3 characters whose animations a DS3 character can play: itself, then its base (c2191 -> c2190).</summary>
+    public static int[] Ds3AnimationSources(int chr) => new[] { chr, chr / 10 * 10 }.Distinct().ToArray();
+
+    /// <summary>Whether a model draws anything: meshes with faces, materials and a GX list to give them.</summary>
+    public static bool HasBody(FLVER2 flver) =>
+        flver.Materials.Count > 0 && flver.GXLists.Count > 0 && flver.Nodes.Count > 0
+        && flver.Meshes.Any(m => m.Vertices.Count > 0 && m.FaceSets.Any(f => f.Indices.Count > 0));
 
     // ---- Files ----
 
@@ -531,10 +660,12 @@ public static partial class ChrPort
     /// </summary>
     private static int PortAnimations(GameArchives ds3, int x, Dictionary<string, (BND4 Bnd, DCX.CompressionInfo Compression)> binders, int n, List<string> notes)
     {
-        var ds3Anibnds = ds3.Entries.Where(e => e.Path is { } p && p.StartsWith($"/chr/c{x:D4}", StringComparison.OrdinalIgnoreCase)
-                                                && p.EndsWith(".anibnd.dcx", StringComparison.OrdinalIgnoreCase))
-            .Select(e => BND4.Read(ds3.Read(e.Path!))).ToList();
-        var ds3Files = ds3Anibnds.SelectMany(b => b.Files).ToList();
+        // A DS3 variant (c2191) plays its base's animations (c2190): its own files first, then the base's.
+        var ds3Files = Ds3AnimationSources(x).SelectMany(chr => ds3.Entries
+                .Where(e => e.Path is { } p && Regex.IsMatch(ItemText.Leaf(p), $@"^c{chr:D4}(_.*)?\.anibnd\.dcx$", RegexOptions.IgnoreCase))
+                .OrderBy(e => e.Path, StringComparer.Ordinal)
+                .SelectMany(e => BND4.Read(ds3.Read(e.Path!)).Files))
+            .ToList();
         var ds3SkeletonFile = ds3Files.FirstOrDefault(f => ItemText.Leaf(f.Name).Equals("skeleton.hkx", StringComparison.OrdinalIgnoreCase));
         if (ds3SkeletonFile is null)
         {
@@ -571,7 +702,7 @@ public static partial class ChrPort
             int moved = 0;
             for (int b = 0; b < skeleton.m_bones.Count && b < skeleton.m_referencePose.Count; b++)
             {
-                if (!ds3Index.TryGetValue(skeleton.m_bones[b].m_name ?? "", out var d))
+                if (!ds3Index.TryGetValue(skeleton.m_bones[b].m_name ?? "", out var d) || d >= ds3Skeleton.ReferencePose.Count)
                     continue;
                 var pose = ds3Skeleton.ReferencePose[d];
                 skeleton.m_referencePose[b] = new hkQsTransform
@@ -686,17 +817,29 @@ public static partial class ChrPort
     /// row placed with it (the template's row with DS3's health and souls, the template's sound bank, and for method A
     /// DS3's attack data under its own behaviour variation). Returns how many NpcParam rows were added.
     /// </summary>
-    private static int PortParams(ParamStore er, ParamStore ds3, AttackParamPort attacks, Plan plan, IReadOnlyDictionary<int, int> npcRows)
+    private static int PortParams(ParamStore er, ParamStore ds3, AttackParamPort attacks, Plan plan, IReadOnlyDictionary<int, int> npcRows,
+        List<string>? notes = null)
     {
         var npc = er.Get("NpcParam")!;
         var ds3Npc = ds3.Get("NpcParam");
         var template = npc[plan.Template.NpcParam] ?? throw new InvalidDataException($"template NpcParam {plan.Template.NpcParam} is missing");
         bool newModel = plan.Method != Method.Stats;
-        if (newModel && er.Get("ChrModelParam") is { } models && models[plan.TemplateChr] is { } modelRow && models[plan.NewChr] is null)
-        {
-            models.Rows.Add(CopyRow(models, modelRow, plan.NewChr));
-            models.Rows.Sort((a, b) => a.ID.CompareTo(b.ID));
-        }
+        // ChrModelParam is optional (a model without a row loads with the defaults) and Paramdex's def for it doesn't
+        // fit Elden Ring 2.7.2 (row size 16): reading it threw before any NpcParam row was added (2026-11-07 test).
+        if (newModel)
+            try
+            {
+                if (er.Get("ChrModelParam") is { } models && models[plan.TemplateChr] is { } modelRow && models[plan.NewChr] is null)
+                {
+                    models.Rows.Add(CopyRow(models, modelRow, plan.NewChr));
+                    models.Rows.Sort((a, b) => a.ID.CompareTo(b.ID));
+                }
+            }
+            catch (Exception ex) when (ex is not OutOfMemoryException)
+            {
+                if (notes is not null && !notes.Any(n => n.StartsWith("ChrModelParam:", StringComparison.Ordinal)))
+                    notes.Add($"ChrModelParam: left out ({Describe(ex)}); the new models load with the defaults");
+            }
         int added = 0;
         foreach (var (ds3Id, id) in npcRows.OrderBy(r => r.Key))
         {
@@ -710,18 +853,54 @@ public static partial class ChrPort
                         Set(to, from.Value);
             if (newModel && Cell(row, "SoundAddBankId") is { } bank && Convert.ToInt32(bank.Value) < 0)
                 Set(bank, plan.TemplateChr);
+            // The row goes in first: a placed or spawned character whose NpcParam row is missing crashes the game, a
+            // character that keeps the template's attack data only hits like the template.
+            npc.Rows.Add(row);
+            added++;
             if (plan.Method == Method.Full && ds3Npc?[ds3Id] is { } src && Cell(src, "behaviorVariationId") is { } ds3Var
                 && Cell(row, "behaviorVariationId") is { } erVar)
             {
-                int variation = attacks.PortVariation(Convert.ToInt32(ds3Var.Value), Convert.ToInt32(erVar.Value), plan.NewChr * 100);
-                if (variation > 0)
-                    Set(erVar, variation);
+                try
+                {
+                    int variation = attacks.PortVariation(Convert.ToInt32(ds3Var.Value), Convert.ToInt32(erVar.Value), plan.NewChr * 100);
+                    if (variation > 0)
+                        Set(erVar, variation);
+                }
+                catch (Exception ex) when (ex is not OutOfMemoryException)
+                {
+                    notes?.Add($"c{plan.Ds3.Chr:D4} {plan.Ds3.Name}: DS3 attacks not ported, the template's kept ({Describe(ex)})");
+                }
             }
-            npc.Rows.Add(row);
-            added++;
         }
         npc.Rows.Sort((a, b) => a.ID.CompareTo(b.ID));
         return added;
+    }
+
+    /// <summary>
+    /// The last safety net: every NpcParam row the maps and the F1 spawn list name exists, at least as a plain copy of
+    /// the template's row (a missing row crashes the game when the character loads). Returns how many were added.
+    /// </summary>
+    public static int EnsureNpcRows(PARAM npc, IEnumerable<(int Template, int Row)> rows)
+    {
+        int added = 0;
+        foreach (var (templateId, id) in rows)
+        {
+            if (npc[id] is not null || npc[templateId] is not { } template)
+                continue;
+            npc.Rows.Add(CopyRow(npc, template, id));
+            added++;
+        }
+        if (added > 0)
+            npc.Rows.Sort((a, b) => a.ID.CompareTo(b.ID));
+        return added;
+    }
+
+    /// <summary>An exception as one report line: type, message and the method it came from.</summary>
+    public static string Describe(Exception ex)
+    {
+        var frame = ex.StackTrace?.Split('\n').Select(l => l.Trim()).FirstOrDefault(l => l.StartsWith("at ", StringComparison.Ordinal)) ?? "";
+        var at = frame.Length > 0 ? " " + (frame.IndexOf(" in ", StringComparison.Ordinal) is > 0 and var i ? frame[..i] : frame) : "";
+        return $"{ex.GetType().Name}: {ex.Message}{at}";
     }
 
     private static PARAM.Row CopyRow(PARAM param, PARAM.Row from, int id)

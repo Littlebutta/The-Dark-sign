@@ -115,6 +115,38 @@ public static class EnemySelfTest
             merged.Count(e => e.Type == 1) == 1 && merged.First(e => e.Type == 1).StartTime == 0.7f && merged.All(e => e.Type != 2));
         Check("TAE merge: every event has a group", merged.All(e => e.Group is not null));
 
+        // Every NpcParam row the maps and spawn list name exists, even when its params step failed (a missing row
+        // crashed the game when a ported character loaded: 2026-11-07 test).
+        var def = new PARAMDEF { ParamType = "NPC_PARAM_ST", Fields = [] };
+        def.Fields.Add(new PARAMDEF.Field(def, PARAMDEF.DefType.s32, "hp"));
+        var npc = new PARAM { Rows = [] };
+        npc.ApplyParamdef(def);
+        var templateRow = new PARAM.Row(41500000, "template", def);
+        templateRow["hp"]!.Value = 800;
+        npc.Rows.Add(templateRow);
+        npc.Rows.Add(new PARAM.Row(70640001, "already there", def));
+        int fallback = ChrPort.EnsureNpcRows(npc, [(41500000, 70640000), (41500000, 70640001), (99, 70640002)]);
+        Check("missing NpcParam rows are added as template copies (one added, existing and template-less ones left)",
+            fallback == 1 && npc[70640000] is { } copy && Convert.ToInt32(copy["hp"]!.Value) == 800 && npc[70640002] is null
+            && npc.Rows.Select(r => r.ID).SequenceEqual(npc.Rows.Select(r => r.ID).Order()));
+        string described;
+        try { _ = new List<int>()[3]; described = ""; }
+        catch (Exception ex) { described = ChrPort.Describe(ex); }
+        Check($"failures name the exception and where it came from ({described})",
+            described.StartsWith("ArgumentOutOfRangeException", StringComparison.Ordinal) && described.Contains(" at ", StringComparison.Ordinal));
+
+        // A model with nothing to draw is neither a template nor ported (the 6 "files failed" of 2026-11-07).
+        Check("an empty model has no body", !ChrPort.HasBody(new FLVER2()));
+
+        // Variants: Elden Ring's c3061 keeps its animations in c3060, DS3's c2191 plays c2190's (2026-11-07: 21 ports on
+        // c3061 had 0 DS3 animations).
+        var anims = new Dictionary<int, int> { [3060] = 190, [4150] = 117 };
+        Check("a template without animations is built from its base (c3061 -> c3060), one with its own stays (c4150)",
+            ChrPort.FileChr(3061, c => anims.GetValueOrDefault(c)) == 3060 && ChrPort.FileChr(4150, c => anims.GetValueOrDefault(c)) == 4150
+            && ChrPort.FileChr(5021, c => anims.GetValueOrDefault(c)) == -1);
+        Check("DS3 animations come from the character, then its base (c2191 -> c2191, c2190)",
+            ChrPort.Ds3AnimationSources(2191).SequenceEqual([2191, 2190]) && ChrPort.Ds3AnimationSources(2190).SequenceEqual([2190]));
+
         // Fallbacks enemy-port switch.
         Check("method switch: unset/A -> full, model -> B, stats -> C, 0 -> off",
             ChrPort.ParseMethod(null) == ChrPort.Method.Full && ChrPort.ParseMethod("model") == ChrPort.Method.Model

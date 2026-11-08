@@ -40,6 +40,7 @@ const string Usage = """
       arts-selftest                offline checks of the weapon art port (hks patch, skill names)
       map-survey [map ids]         report both games' map files for the ported slots (layouts, binders, textures, events)
       event-coverage <ds3.emedf.json> <er.emedf.json>  which DS3 event instructions convert to Elden Ring, and how
+      port-enemies                 port DS3's enemies only (port-maps does this too) and check what the game will load
       map-validate                 read back the ported maps in the mod folder and check them (port-maps runs this too)
       port-maps [map ids] [--ds3-groups] [--binary-collision] [--simd] [--after-pid <port-weapons pid>]
                                    port the DS3 maps that have an Elden Ring slot, and the F1 menu's DS3 run events
@@ -108,6 +109,7 @@ try
         "validate-mod" => ModValidate.Run(ctx),
         "texture-check" => TextureCheck.Run(ctx, argList[1..]),
         "port-maps" => DarkSign.Porter.Maps.MapPorter.Run(ctx, argList[1..]),
+        "port-enemies" => DarkSign.Porter.Enemies.ChrPort.Run(ctx),
         "map-survey" => DarkSign.Porter.Maps.MapSurvey.Run(ctx, argList[1..]),
         "map-validate" => DarkSign.Porter.Maps.MapValidate.Run(ctx),
         "randomize" => DarkSign.Porter.Rando.RandomizeCommand.Run(ctx, argList[1..]),
