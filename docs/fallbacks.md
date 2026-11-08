@@ -121,7 +121,7 @@ Try the next option if: Two-handing a split weapon doesn't split it, or the seco
 - **B: An Elden Ring split layout.** The weapon takes a whole WepAbsorpPosParam row from an Elden Ring weapon that already holds a second model in the left hand when two-handed (the game's own working layout). (`DARKSIGN_ABSORP=er`)
 - **C: DS3 dummy IDs as they are.** DS3's dummy poly IDs copied without matching them through the bones (both games number most hand and back dummies alike). (`DARKSIGN_ABSORP=raw`)
 - **D: A without the paired grip.** A's positions, but paired weapons keep the template's isDualBlade and hold motions (DARKSIGN_PAIRED_GRIP=0). Try it if two-handing a paired weapon looks wrong or crashes. (`DARKSIGN_PAIRED_GRIP=0`)
-- **E: A without the Friede layout.** A, but Friede's scythe keeps DS3's own row (second scythe on the back in every grip) and its art's DS3-only "Friede override" event as DS3 wrote it (DARKSIGN_FRIEDE_OVERRIDE=keep). (`DARKSIGN_FRIEDE_OVERRIDE=keep`)
+- **E: A without the Friede layout.** A, but Friede's art keeps its DS3-only "Friede override" event as DS3 wrote it and the scythe's row is DS3's own (no left-hand slot for the art's second blade) (DARKSIGN_FRIEDE_OVERRIDE=keep). (`DARKSIGN_FRIEDE_OVERRIDE=keep`)
 - **off: Off (template positions).** Ported weapons keep their template's WepAbsorpPosParam row (DARKSIGN_ABSORP=0): no split. Tells whether the split is what breaks something. (`DARKSIGN_ABSORP=0`)
 
 
