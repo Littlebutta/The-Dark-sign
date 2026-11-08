@@ -125,10 +125,16 @@ public static class MapPorter
         if (ported.Count > 0)
             Step(report, "events", () => MapEvents.Port(ctx, ds3, er, ported.Select(p => p.Slot).ToList()));
 
-        // A map ID Elden Ring doesn't ship (the m50 probe, map-slots B) gets its event flag blocks from a line in the
-        // flag allocation list; without it the game keeps none of the map's flags (flagcheck MISSING, 2026-11-08).
+        // A map ID Elden Ring doesn't ship (the m50 probe, map-slots B) is registered the way the game's own maps are:
+        // a line in the map registry (without it the 1.0.230 warp sat on the loading screen and the game asked for no
+        // m50 file), the template's per-map files under the new ID, and a flag allocation line where the template
+        // has one.
         if (ported.Any(p => p.Slot.Host != p.Slot.Er))
+        {
+            Step(report, "map registry", () => MapRegistry.WriteForNewIds(ctx, er, ported.Select(p => p.Slot)));
+            Step(report, "new map ID files", () => NewIdFiles.Copy(ctx, er, ported.Select(p => p.Slot)));
             Step(report, "flag allocation", () => FlagAlloc.WriteForNewIds(ctx, er, ported.Select(p => p.Slot)));
+        }
 
         var warps = ported.Select((p, i) => new RunEvents.Warp(p.Slot.Er, (uint)p.StartEntity, i)).ToList();
         WriteMapList(ctx, ported.Select(p => p.Slot), warps);
@@ -196,7 +202,13 @@ public static class MapPorter
         foreach (var area in ids.Select(i => i.AreaFolder).Distinct())
             foreach (var ext in new[] { "tpfbhd", "tpfbdt" })
                 Delete(Local(MapTextures.CommonBinder(area)[..^6] + ext));
-        foreach (var path in new[] { "/event/common.emevd.dcx", MapEvents.CommonFunc, MaterialBinder, ActionButtons.ModMenu, FlagAlloc.LegacyList })
+        // The per-map copies of a new-ID slot outside its map folder (breakgeom, onav, draw params).
+        foreach (var slot in MapSlots.Colosseums.Concat(MapSlots.NewIdSlots()).Where(s => s.Host != s.Er))
+            foreach (var path in NewIdFiles.OutputPaths(
+                         [$"/map/breakgeom/lod0/{slot.Host}_lod0.breakgeom.dcx", $"/map/onav/{slot.Host}.onav.dcx",
+                          $"/param/drawparam/m{slot.Host.Area:D2}_{slot.Host.Block:D2}_0000.gparam.dcx"], slot.Host, slot.Er))
+                Delete(Local(path));
+        foreach (var path in new[] { "/event/common.emevd.dcx", MapEvents.CommonFunc, MaterialBinder, ActionButtons.ModMenu, FlagAlloc.LegacyList, MapRegistry.ListPath })
             Delete(Local(path));
         foreach (var file in new[] { MapEvents.FlagFile, "darksign_maps.tsv", "darksign_maps_check.txt", FlagAlloc.ProbeFile,
                      DarkSign.Randomizer.Data.EnemyTables.PlacedFile, DarkSign.Randomizer.Data.EnemyTables.ErFile })

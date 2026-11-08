@@ -74,22 +74,43 @@ same way under any map ID.
 | Locked save | Rescue save loads the vanilla arena under the same ID | nothing to fall back to; a save left in a crashing new-ID map needs the save file edited |
 | Co-op | map IDs every client knows | untested |
 
+## First probe result (1.0.230, 2026-11-08)
+
+Devin pressed Ctrl+Shift+4 on a throwaway character: **endless loading screen, no crash**. The me3 log of that
+launch shows the game asking for none of the m50 files (it did ask for the m45 ones in the launches before), and
+the build log shows the flag-allocation line was never written: `m45_00_00_00 (the template of m50_00_00_00) is in
+no flag allocation list`. Reading the lists out of the game archives (porter `extract`) explained both:
+
+- **`/map/worldmsblist.worldloadlistlist.dcx`** (plus `_dlc01`, `_dlc02`) is Elden Ring's **map registry**: plain
+  text, one `map:/MapStudio/mAA_BB_CC_DD.msb ` line per map (trailing space; `,testmap=1` on test maps). Every map
+  the game ships is in it, m45_00-02 included, and so are IDs with no files (m11_70, m19_70, test maps m70, m80,
+  m88). m50 was not. An unlisted map is never looked up, which is the loading screen Devin saw.
+- The **flag allocation lists** do not name the colosseums at all (83 legacy maps, m17 and m34_12 among them, no
+  m45), yet the game keeps the colosseums' flags. So the registry decides a map's flag blocks too, and the allocation
+  lists mean something else (open-world tiles carry types 1 and 2). PR #93's "add a line" fix was aimed at the wrong
+  file; it now only mirrors the template (no line when the template has none).
+
+**Attempt 2 (this PR)** registers a new-ID slot the way the game's own maps are set up: a registry line
+(`MapRegistry.WriteForNewIds`), the template's per-map files the port doesn't write (f-collision binder, mfr, nva,
+btl, ivinfo binders, breakgeom, onav, draw params) copied under the new ID with binder entry names renamed
+(`NewIdFiles.Copy`), and the map check fails a slot that isn't registered. If the m50 warp still doesn't load after
+this, the game keeps a map table in the executable as well, and own map IDs stop here under RULE 2: the remaining
+slots then come from IDs the registry already names and single-player never visits (m11_70, m11_72, m19_70, the
+m70/m80/m88 test maps) or from sea tiles.
+
 ## Recommendation
 
-Don't rewrite anything yet. Decide with one test, on a **throwaway character**, in the next playtest build (which
-carries this PR's allocation-list change, so the test is fair):
+Don't rewrite anything yet. Decide with one test, on a **throwaway character** (a save stuck on the loading screen
+is deleted, not rescued), in the next playtest build:
 
 1. Load the throwaway character, wait for the pre-flight's flagcheck lines. If block 50000 now reads **ok**, the
-   allocation list is the game's map registry for flags, and the game's data files can register a map.
+   registry is also what allocates a map's flags.
 2. Press **Ctrl+Shift+4** (warp to "Cemetery of Ash (new map ID test)"). Three outcomes:
    - **Loads and looks like the Cemetery:** switch the default to method B (one line in `MapSlots.All`), give every
      DS3 map its own ID, and drop the colosseum handling (Rescue save, empty arena scripts). Also extend Rescue save
      to a new-ID save: write a tiny valid map under that ID for one launch.
-   - **Nothing happens, or an endless load:** the game refuses unknown IDs. Stay on A, and take the extra slots
-     from IDs the game ships: first the three "Unknown" maps, then sea tiles.
+   - **Endless loading again:** the executable gates map IDs too. Stay on A, and take the extra slots from IDs the
+     registry names: first the three "Unknown" maps and the test maps, then sea tiles.
    - **Crash:** send the Save test report; the crash offset says whether it died in map lookup (ID refused) or in
      content (same bugs as the colosseum slot, which then say nothing about IDs).
 3. Whatever the outcome, keep fixing map content under the method that loads: those bugs are the same under both.
-
-Under RULE 2 this is the first attempt at "maps under their own IDs"; the second and last is whatever the crash
-offset points at.
