@@ -125,6 +125,11 @@ public static class MapPorter
         if (ported.Count > 0)
             Step(report, "events", () => MapEvents.Port(ctx, ds3, er, ported.Select(p => p.Slot).ToList()));
 
+        // A map ID Elden Ring doesn't ship (the m50 probe, map-slots B) gets its event flag blocks from a line in the
+        // flag allocation list; without it the game keeps none of the map's flags (flagcheck MISSING, 2026-11-08).
+        if (ported.Any(p => p.Slot.Host != p.Slot.Er))
+            Step(report, "flag allocation", () => FlagAlloc.WriteForNewIds(ctx, er, ported.Select(p => p.Slot)));
+
         var warps = ported.Select((p, i) => new RunEvents.Warp(p.Slot.Er, (uint)p.StartEntity, i)).ToList();
         WriteMapList(ctx, ported.Select(p => p.Slot), warps);
         Step(report, "enemy tables", () => WriteEnemyTables(ctx, ported.Select(p => p.Slot.Ds3.ToString()).ToHashSet()));
@@ -191,7 +196,7 @@ public static class MapPorter
         foreach (var area in ids.Select(i => i.AreaFolder).Distinct())
             foreach (var ext in new[] { "tpfbhd", "tpfbdt" })
                 Delete(Local(MapTextures.CommonBinder(area)[..^6] + ext));
-        foreach (var path in new[] { "/event/common.emevd.dcx", MapEvents.CommonFunc, MaterialBinder, ActionButtons.ModMenu })
+        foreach (var path in new[] { "/event/common.emevd.dcx", MapEvents.CommonFunc, MaterialBinder, ActionButtons.ModMenu, FlagAlloc.LegacyList })
             Delete(Local(path));
         foreach (var file in new[] { MapEvents.FlagFile, "darksign_maps.tsv", "darksign_maps_check.txt", FlagAlloc.ProbeFile,
                      DarkSign.Randomizer.Data.EnemyTables.PlacedFile, DarkSign.Randomizer.Data.EnemyTables.ErFile })
