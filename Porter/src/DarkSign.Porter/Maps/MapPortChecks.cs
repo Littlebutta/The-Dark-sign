@@ -412,7 +412,15 @@ public static partial class MapPortChecks
         {
             [Template] = new(Binder.FileFlags.Flag1, 0, $@"N:\GR\data\INTERROOT_win64\material\matbin\Map_m45\{Template}.matbin", SyntheticMatbin(Template).Write()),
         };
-        var port = MapModelPort.Create([host], matbins, ErId);
+        // A terrain blend material first (most of Elden Ring's legacy dungeon pieces): skipped for the plain one.
+        var blend = SyntheticFlver(0x2001A, @"N:\GR\data\Material\mtd\Map_m10_00\matxml\m10_00_027.matxml");
+        var blendMatbin = new MATBIN { ShaderPath = @"N:\GR\data\Material\sat\OutputData\SPX\M[AMSN_V][Mb2][Ov_N].spx", SourcePath = @"N:\GR\data\Material\mtd\Map_m10_00\matxml\m10_00_027.matxml" };
+        blendMatbin.Samplers.Add(new MATBIN.Sampler { Type = "M_AMSN_V_Mb2_Ov_N__snp_Texture2D_2_GSBlendMap_AlbedoMap_1", Path = @"N:\GR\data\Asset\Environment\texture\AET210\AET210_030_a.tif" });
+        blendMatbin.Samplers.Add(new MATBIN.Sampler { Type = "M_AMSN_V_Mb2_Ov_N__snp_Texture2D_5_GSBlendMap_NormalMap_0", Path = @"N:\GR\data\Asset\Environment\texture\AET210\AET210_896_n.tif" });
+        matbins["m10_00_027"] = new(Binder.FileFlags.Flag1, 1, @"N:\GR\data\INTERROOT_win64\material\matbin\Map_m10_00\matxml\m10_00_027.matbin", MATBIN.Read(blendMatbin.Write()).Write());
+        Expect(MapModelPort.Classify(MATBIN.Read(matbins["m10_00_027"].Bytes)) is null, "a terrain blend material is not a template");
+        var port = MapModelPort.Create([blend, host], matbins, blend);
+        Expect(port.TemplateSummary.Contains(Template) && !port.TemplateSummary.Contains("m10_00_027"), $"templates {port.TemplateSummary}");
         var ds3Flver = SyntheticFlver(0x20014, @"N:\FDP\data\Material\mtd\map\M[ARSN].mtd",
             ("g_DiffuseTexture", @"N:\FDP\data\Model\map\m40\tex\m40_00_stone_a.tga"),
             ("g_BumpmapTexture", @"N:\FDP\data\Model\map\m40\tex\m40_00_stone_n.tga"));
@@ -437,8 +445,24 @@ public static partial class MapPortChecks
 
         var newMatbin = port.MatbinFiles(100).Single();
         Expect(Path.GetFileNameWithoutExtension(ItemText.Leaf(newMatbin.Name)) == material.Name, $"matbin file {newMatbin.Name}");
-        var samplers = MATBIN.Read(newMatbin.Bytes).Samplers.Select(s => Path.GetFileNameWithoutExtension(ItemText.Leaf(s.Path))).ToList();
-        Expect(samplers.SequenceEqual(["m40_00_stone_a", "m40_00_stone_n", MapModelPort.BlackMetallic]), $"samplers {string.Join(",", samplers)}");
+        var samplers = MATBIN.Read(newMatbin.Bytes).Samplers.Select(s => s.Path).ToList();
+        Expect(samplers.SequenceEqual(["m40_00_stone_a", "m40_00_stone_n", MapModelPort.BlackMetallic]), $"samplers {string.Join(",", samplers)} (bare texture names)");
+        Expect(port.Fresh().Textures.Count == 0 && port.Fresh().TemplateSummary == port.TemplateSummary, "a fresh port keeps the templates, not the materials");
+
+        // Elden Ring's sampler names, from real MATBINs.
+        Expect(MapModelPort.Role("M_A__snp_Texture2D_0_AlbedoMap_0") == ("albedo", 0), "plain albedo");
+        Expect(MapModelPort.Role("M_AMSN_V__Grass_snp_Texture2D_1_NormalMap_0") == ("normal", 0), "plain normal");
+        Expect(MapModelPort.Role("M_AMSN_V_Mb3_Ov_N__snp_Texture2D_3_GSBlendMap_AlbedoMap_2") == ("blend", 2), "blend layer");
+        Expect(MapModelPort.Role("M_Water_ocean4__snp_Texture2D_3_Mask1Map") is null, "mask");
+        var assetOnly = new MATBIN { ShaderPath = @"N:\GR\data\Material\sat\OutputData\SPX\M[A].spx", SourcePath = @"N:\GR\data\Material\mtd\Map_m60_00\matxml\AEG006_030_ID001.matxml" };
+        assetOnly.Samplers.Add(new MATBIN.Sampler { Type = "M_A__snp_Texture2D_0_AlbedoMap_0", Path = @"N:\GR\data\Other\SysTex\SYSTEX_Dummy.tif" });
+        Expect(MapModelPort.Classify(assetOnly) == "opaque", "JortPob's albedo-only asset material is an opaque template");
+
+        // The texture binder, laid out like JortPob's.
+        var bxf = MapTextures.BuildBinder([new TPF.Texture("m40_00_stone_a", 0, 0, ModelPort.BlackBc4Dds(), TPF.TPFPlatform.PC)]);
+        Expect(bxf.Version == "07D7R6" && bxf.Files.Select(f => f.Name).SequenceEqual(["m40_00_stone_a.tpf.dcx", "m40_00_stone_a_l.tpf.dcx"]), "texture binder entries");
+        Expect(TPF.Read(bxf.Files[0].Bytes).Textures.Single().Name == "m40_00_stone_a", "texture binder TPF");
+        Expect(MapTextures.CommonBinder("m45") == "/map/m45/common/m45_0000.tpfbhd", "texture binder path");
     }
 
     private static void ValidateLayout()

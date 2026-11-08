@@ -58,6 +58,7 @@ public static class MapPorter
         var options = Options.Parse(args);
         var started = DateTime.Now;
         _placedEnemies.Clear();
+        _templates.Clear();
         // A full run starts from Elden Ring's own files, not from what an earlier run left in Mods\ER: every PC that
         // builds from the same game files then gets byte-identical maps, events and flag numbers (co-op), and a slot
         // of the other map-slots method doesn't linger. A --only run is a partial rebuild and keeps the rest.
@@ -181,6 +182,9 @@ public static class MapPorter
             for (int n = 0; n < 10; n++)
                 foreach (var ext in new[] { "tpfbhd", "tpfbdt" })
                     Delete(Local($"/map/{area}/{area}_{n:D4}.{ext}"));
+        foreach (var area in ids.Select(i => i.AreaFolder).Distinct())
+            foreach (var ext in new[] { "tpfbhd", "tpfbdt" })
+                Delete(Local(MapTextures.CommonBinder(area)[..^6] + ext));
         foreach (var path in new[] { "/event/common.emevd.dcx", MapEvents.CommonFunc, MaterialBinder, ActionButtons.ModMenu })
             Delete(Local(path));
         foreach (var file in new[] { MapEvents.FlagFile, "darksign_maps.tsv", "darksign_maps_check.txt", FlagAlloc.ProbeFile,
@@ -273,20 +277,9 @@ public static class MapPorter
             }
         }
 
-        // Models.
-        var hostPieceBinders = host.Models.MapPieces
-            .Select(m => ErMapBndPath(hostId, ModelNumber(m.Name)))
-            .Where(er.Contains)
-            .Take(8)
-            .ToList();
-        if (hostPieceBinders.Count == 0)
-            throw new InvalidDataException($"no map piece binder of {hostId} found to use as a template");
-        var (hostBndBytes, bndCompression) = er.ReadWithCompression(hostPieceBinders[0]);
-        var hostBnd = BND4.Read(hostBndBytes);
-        var hostFlvers = hostPieceBinders.SelectMany(p => BND4.Read(er.Read(p)).Files)
-            .Where(f => FLVER2.Is(f.Bytes)).Select(f => FLVER2.Read(f.Bytes)).ToList();
-        var models = MapModelPort.Create(hostFlvers, AllMatbins(er), erId);
-        report.AppendLine($"  material templates: {models.TemplateSummary}");
+        // Models. The material templates and binder layout come from vanilla map pieces (see MaterialTemplates).
+        var (models, hostBnd, bndCompression, binderMap) = MaterialTemplates(er, hostId, host);
+        report.AppendLine($"  material templates: {models.TemplateSummary} (binder layout from {binderMap})");
 
         var missingModels = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var model in layout.Msb.Models.MapPieces)
@@ -297,7 +290,7 @@ public static class MapPorter
             {
                 if (!ds3.Contains(source))
                     throw new FileNotFoundException(source);
-                var binder = models.ConvertBinder(BND4.Read(ds3.Read(source)), hostBnd, ds3Id, erId, number, hostId);
+                var binder = models.ConvertBinder(BND4.Read(ds3.Read(source)), hostBnd, ds3Id, erId, number, binderMap);
                 File.WriteAllBytes(ctx.ModPath(ModParts(ErMapBndPath(erId, number))), DCX.Compress(binder.Write(), bndCompression));
             }
             catch (Exception ex)
@@ -440,6 +433,87 @@ public static class MapPorter
             }
         }
         return _connectTemplate;
+    }
+
+    /// <summary>
+    /// Maps whose map pieces are tried for material templates after the slot's host. The colosseums the slots use
+    /// are built from assets (m45_00 has a single map piece binder) and most legacy dungeon pieces use terrain blend
+    /// materials, so several maps are tried, then the plain one-layer asset material JortPob builds its models on.
+    /// </summary>
+    public static readonly string[] TemplateMaps =
+        ["m10_00_00_00", "m11_00_00_00", "m14_00_00_00", "m15_00_00_00", "m16_00_00_00", "m13_00_00_00", "m12_01_00_00", "m11_05_00_00"];
+    public const string TemplateAsset = "/asset/aeg/aeg006/aeg006_030.geombnd.dcx";
+
+    private static readonly Dictionary<MapId, (MapModelPort, BND4, DCX.CompressionInfo, MapId)> _templates = new();
+
+    private static (MapModelPort Models, BND4 Binder, DCX.CompressionInfo Compression, MapId BinderMap) MaterialTemplates(
+        GameArchives er, MapId hostId, MSBE host)
+    {
+        if (_templates.TryGetValue(hostId, out var known))
+            return (known.Item1.Fresh(), known.Item2, known.Item3, known.Item4);
+        var matbins = AllMatbins(er);
+        var flvers = new List<FLVER2>();
+        (BND4 Bnd, DCX.CompressionInfo Compression, MapId Map, FLVER2 Header)? layout = null;
+        var tried = new List<string>();
+
+        IEnumerable<(MapId Id, MSBE? Msb)> Maps()
+        {
+            yield return (hostId, host);
+            foreach (var name in TemplateMaps)
+            {
+                var id = MapId.Parse(name);
+                if (id != hostId && er.Contains(MsbPath(id)))
+                    yield return (id, null);
+            }
+        }
+
+        MapModelPort? models = null;
+        foreach (var (id, given) in Maps())
+        {
+            var msb = given ?? MSBE.Read(er.Read(MsbPath(id)));
+            var binders = msb.Models.MapPieces.Select(m => ErMapBndPath(id, ModelNumber(m.Name))).Where(er.Contains).Distinct().Take(40).ToList();
+            foreach (var path in binders)
+            {
+                var (bytes, compression) = er.ReadWithCompression(path);
+                var bnd = BND4.Read(bytes);
+                var found = bnd.Files.Where(f => FLVER2.Is(f.Bytes)).Select(f => FLVER2.Read(f.Bytes)).ToList();
+                if (found.Count > 0 && layout is null)
+                    layout = (bnd, compression, id, found[0]);
+                flvers.AddRange(found);
+            }
+            tried.Add($"{id} ({binders.Count} binders)");
+            if (layout is not null && flvers.Count > 0)
+            {
+                try
+                {
+                    models = MapModelPort.Create(flvers, matbins, layout.Value.Header);
+                    break;
+                }
+                catch (InvalidDataException)
+                {
+                    // No one-layer material yet: read the next map too.
+                }
+            }
+        }
+        if (layout is null)
+            throw new InvalidDataException($"no Elden Ring map piece binder found to copy the layout from (tried {string.Join(", ", tried)})");
+        if (models is null && er.Contains(TemplateAsset))
+        {
+            var asset = BND4.Read(er.Read(TemplateAsset)).Files.Where(f => FLVER2.Is(f.Bytes)).Select(f => FLVER2.Read(f.Bytes));
+            flvers.AddRange(asset);
+            tried.Add(ItemText.Leaf(TemplateAsset));
+            try
+            {
+                models = MapModelPort.Create(flvers, matbins, layout.Value.Header);
+            }
+            catch (InvalidDataException)
+            {
+            }
+        }
+        if (models is null)
+            throw new InvalidDataException($"no plain one-layer material to use as a template in {string.Join(", ", tried)}");
+        _templates[hostId] = (models, layout.Value.Bnd, layout.Value.Compression, layout.Value.Map);
+        return (models.Fresh(), layout.Value.Bnd, layout.Value.Compression, layout.Value.Map);
     }
 
     public static string MsbPath(MapId id) => $"/map/mapstudio/{id}.msb.dcx";
