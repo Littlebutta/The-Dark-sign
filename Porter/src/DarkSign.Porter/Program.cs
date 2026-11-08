@@ -124,6 +124,7 @@ try
         "anim-test" => AnimTest.Run(ctx, argList[1..]),
         "anim-spline-check" => AnimSplineCheck.Run(ctx, argList[1..]),
         "mod-check" when argList.Count == 2 => ModCheck.Run(ctx, int.Parse(argList[1])),
+        "weapon-diag" => WeaponDiag.Run(ctx, argList[1..]),
         "explore-behavior" => BehaviorExplore.Run(ctx, argList[1..]),
         "anim-id-map" => AnimIdMap.Run(ctx),
         "behavior-roundtrip" => BehaviorRoundTrip.Run(ctx),
