@@ -43,6 +43,44 @@ public static partial class ModValidate
         return report.Errors > 0 ? 1 : 0;
     }
 
+    /// <summary>
+    /// The icon menu files must be a whole set in both qualities (a half set made the DS3 icons vanish on 2026-11-07),
+    /// and every ported weapon's icon must be on one of the DS3 sheet layouts in each.
+    /// </summary>
+    private static void CheckIcons(Report r, string modDir, HashSet<int> icons)
+    {
+        if (IconPort.SetProblem(modDir) is { } problem)
+        {
+            r.Error($"icons: {problem}; the game mixes its own menus with the mod's and DS3 icons go missing (rebuild with Elden Ring closed)");
+            return;
+        }
+        foreach (var quality in new[] { "hi", "low" })
+        {
+            var file = Path.Combine(modDir, "menu", quality, "01_common.sblytbnd.dcx");
+            if (!File.Exists(file))
+            {
+                if (icons.Count > 0)
+                    r.Warn($"icons: no menu\\{quality} icon files; ported weapons show no icons");
+                continue;
+            }
+            BND4 bnd;
+            try { bnd = BND4.Read(DCX.Decompress(File.ReadAllBytes(file))); }
+            catch (Exception e) { r.Error($"icons: menu\\{quality}\\01_common.sblytbnd.dcx does not open: {e.GetType().Name}: {e.Message}"); continue; }
+            var listed = new HashSet<int>();
+            foreach (var layout in bnd.Files.Where(f => ItemText.Leaf(f.Name).StartsWith("SB_Icon_DS3_", StringComparison.Ordinal)))
+                foreach (Match m in IconName().Matches(Encoding.UTF8.GetString(layout.Bytes)))
+                    listed.Add(int.Parse(m.Groups[1].Value));
+            var missing = icons.Where(i => !listed.Contains(i)).Order().ToList();
+            if (missing.Count > 0)
+                r.Error($"icons: {missing.Count} ported weapon icon(s) are not on a DS3 sheet in menu\\{quality} ({string.Join(", ", missing.Take(10))}); those weapons show no icon");
+            else
+                r.Info($"icons: menu\\{quality} lists all {icons.Count} ported weapon icons");
+        }
+    }
+
+    [GeneratedRegex(@"MENU_ItemIcon_(\d{5})\.png")]
+    private static partial Regex IconName();
+
     public static Report Check(PorterContext ctx)
     {
         var r = new Report();
@@ -107,6 +145,7 @@ public static partial class ModValidate
             else if (variation > 0)
                 hitVariations.Add(variation);
         }
+        CheckIcons(r, modDir, bases.Select(row => Field(row, "iconId")).ToHashSet());
         // Ported hits need a hitbox: an attack row with a sphere/capsule (radius > 0 on a dummy poly). 1.0.183 copied
         // DS3 attack rows with radius 0 and DS3 weapons hit nothing (enemies or walls).
         if (mod.Get("BehaviorParam_PC") is { } behaviours && mod.Get("AtkParam_Pc") is { } attacks)
