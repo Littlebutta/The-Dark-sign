@@ -168,6 +168,7 @@ public sealed class MapModelPort
             Unk4C = h.Unk4C, Unk5C = h.Unk5C, Unk5D = h.Unk5D, Unk68 = h.Unk68, SpecialModifier = h.SpecialModifier,
             Unk74 = h.Unk74, BoundingBoxMin = bboxMin, BoundingBoxMax = bboxMax,
         };
+        MakeStatic(flver);
         flver.Skeletons = new FLVER2.SkeletonSet { BaseSkeleton = Bones(flver), AllSkeletons = Bones(flver) };
 
         // One GX list per template kind, in a fixed order.
@@ -242,6 +243,40 @@ public sealed class MapModelPort
                 while (vertex.Colors.Count < colors)
                     vertex.Colors.Add(new FLVER.VertexColor(1f, 1f, 1f, 1f));
         }
+    }
+
+    /// <summary>
+    /// Puts every unskinned mesh on the model's one root node, the way JortPob builds Elden Ring map pieces
+    /// (NIFToFLVER.cs: NodeIndex 0, no per-mesh bone list, NormalW 0). DS3's exporter left map piece meshes pointing
+    /// at Maya nodes the FLVER never held (mesh.NodeIndex up to 12 in one-node files: 6530 meshes, 2098 of the first
+    /// build's 14,000 models), which Dark Souls III ignores but Elden Ring reads past its node table for. Dummies on a
+    /// missing node lose their parent the same way. Returns how many meshes pointed past the node table.
+    /// </summary>
+    public static int MakeStatic(FLVER2 flver)
+    {
+        if (flver.Nodes.Count == 0)
+            flver.Nodes.Add(new FLVER.Node { Name = "root", ParentIndex = -1, FirstChildIndex = -1, NextSiblingIndex = -1, PreviousSiblingIndex = -1 });
+        int past = 0;
+        foreach (var mesh in flver.Meshes)
+        {
+            if (mesh.UseBoneWeights)
+                continue;
+            if (mesh.NodeIndex < 0 || mesh.NodeIndex >= flver.Nodes.Count)
+                past++;
+            mesh.NodeIndex = 0;
+            mesh.BoneIndices = [];
+            foreach (var vertex in mesh.Vertices)
+                for (int i = 0; i < vertex.NormalWs.Count; i++)
+                    vertex.NormalWs[i] = 0;
+        }
+        foreach (var dummy in flver.Dummies)
+        {
+            if (dummy.ParentBoneIndex >= flver.Nodes.Count)
+                dummy.ParentBoneIndex = (short)-1;
+            if (dummy.AttachBoneIndex >= flver.Nodes.Count)
+                dummy.AttachBoneIndex = (short)-1;
+        }
+        return past;
     }
 
     // Eight hex digits of SHA-1: two different materials of one map sharing them is a one in billions chance.

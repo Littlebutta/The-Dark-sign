@@ -124,6 +124,44 @@ public static partial class ChrPort
         Regex.Replace(path, $"c{from:D4}", $"c{to:D4}", RegexOptions.IgnoreCase);
 
     /// <summary>
+    /// Renames the character ID inside a Havok file's own strings, in place. A behbnd's project data names its
+    /// character and behaviour files (Characters\c4300.hkx, Behaviors\c4300.hkx) and the character's string data names
+    /// its skeleton, ragdoll and animation files; the game looks every one of them up by name when the behbnd loads.
+    /// Renaming the binder entries alone leaves those lookups finding nothing: every spawn of a cloned character
+    /// crashed right after its behbnd loaded (2026-11-08 me3 logs, crash in the behaviour set-up at RVA 0x1421be8
+    /// reading the result of a failed keyed lookup). Both IDs are 5 characters, so the bytes are replaced in place
+    /// and no offset in the file moves. Only an ID that stands on its own is replaced (not part of a longer name or
+    /// number). Returns how many occurrences changed.
+    /// </summary>
+    public static int RenameInside(byte[] bytes, int from, int to)
+    {
+        var old = System.Text.Encoding.ASCII.GetBytes($"c{from:D4}");
+        var fresh = System.Text.Encoding.ASCII.GetBytes($"c{to:D4}");
+        int count = 0;
+        for (int i = 0; i + old.Length <= bytes.Length; i++)
+        {
+            if ((bytes[i] | 0x20) != old[0])
+                continue;
+            bool match = true;
+            for (int k = 1; k < old.Length && match; k++)
+                match = bytes[i + k] == old[k];
+            if (!match)
+                continue;
+            if (i > 0 && IsNameChar(bytes[i - 1]))
+                continue;
+            if (i + old.Length < bytes.Length && bytes[i + old.Length] is >= (byte)'0' and <= (byte)'9')
+                continue;
+            for (int k = 1; k < old.Length; k++)
+                bytes[i + k] = fresh[k];
+            count++;
+            i += old.Length - 1;
+        }
+        return count;
+
+        static bool IsNameChar(byte b) => b is >= (byte)'0' and <= (byte)'9' or >= (byte)'A' and <= (byte)'Z' or >= (byte)'a' and <= (byte)'z';
+    }
+
+    /// <summary>
     /// Vertex bone indices of a DS3 mesh as indices into the model's node list: DS3 meshes index a per-mesh palette
     /// (Mesh.BoneIndices), Elden Ring's index the nodes directly.
     /// </summary>
@@ -408,11 +446,24 @@ public static partial class ChrPort
                 if (!files.Any(f => AnimLeaf().IsMatch(ItemText.Leaf(f.Name))))
                     problems.Add("no animations");
             }
+            var behbnd = ctx.ModPath("chr", $"{model}.behbnd.dcx");
+            if (File.Exists(behbnd))
+            {
+                // The game resolves the project's Characters\cXXXX.hkx and Behaviors\cXXXX.hkx by name: a template's ID
+                // left inside means a crash at spawn.
+                var foreign = BND4.Read(DCX.Decompress(File.ReadAllBytes(behbnd))).Files
+                    .Where(f => f.Name.EndsWith(".hkx", StringComparison.OrdinalIgnoreCase))
+                    .SelectMany(f => Regex.Matches(System.Text.Encoding.Latin1.GetString(f.Bytes), @"(?:Characters|Behaviors)\\(c\d{4})\.hkx", RegexOptions.IgnoreCase)
+                        .Select(m => m.Groups[1].Value.ToLowerInvariant()))
+                    .Where(id => id != model.ToLowerInvariant()).Distinct().ToList();
+                if (foreign.Count > 0)
+                    problems.Add($"behbnd still names {string.Join(", ", foreign)} inside");
+            }
             if (problems.Count > 0 && bad++ < 8)
                 lines.Add($"FAIL check: {model}: {string.Join(", ", problems)}");
         }
         if (bad == 0)
-            lines.Add("check: ok   every new model has its chrbnd, anibnd (TAE and animations) and behbnd");
+            lines.Add("check: ok   every new model has its chrbnd, anibnd (TAE and animations) and behbnd, named its own inside");
         else if (bad > 8)
             lines.Add($"FAIL check: {bad} new models incomplete in all");
         return lines;
@@ -591,6 +642,7 @@ public static partial class ChrPort
         // The template's character and effect files, under the new ID. Its sound bank isn't copied: the new NpcParam
         // rows load the template's own bank (SoundAddBankId), so its sound events keep playing.
         var binders = new Dictionary<string, (BND4 Bnd, DCX.CompressionInfo Compression)>(StringComparer.OrdinalIgnoreCase);
+        int renamedInside = 0;
         foreach (var entry in er.Entries.Where(e => e.Path is { } p && ClonedFolders.Any(f => p.StartsWith(f, StringComparison.OrdinalIgnoreCase))
                                                      && Regex.IsMatch(ItemText.Leaf(p), $@"(^|_)c{t:D4}(\.|_)", RegexOptions.IgnoreCase))
                      .OrderBy(e => e.Path, StringComparer.Ordinal))
@@ -600,7 +652,11 @@ public static partial class ChrPort
             {
                 var bnd = BND4.Read(bytes);
                 foreach (var f in bnd.Files)
+                {
                     f.Name = Rename(f.Name, t, n);
+                    if (f.Name.EndsWith(".hkx", StringComparison.OrdinalIgnoreCase))
+                        renamedInside += RenameInside(f.Bytes, t, n);
+                }
                 binders[Rename(entry.Path!, t, n)] = (bnd, compression);
             }
             else
@@ -609,6 +665,7 @@ public static partial class ChrPort
         var chrbndPath = $"/chr/c{n:D4}.chrbnd.dcx";
         if (!binders.ContainsKey(chrbndPath))
             throw new InvalidDataException($"template c{t:D4} has no chrbnd");
+        notes.Add(binders.ContainsKey($"/chr/c{n:D4}.behbnd.dcx") ? $"{renamedInside} Havok names renamed" : $"template c{t:D4} has no behbnd; {renamedInside} Havok names renamed");
 
         // The DS3 model, on the template's binder.
         var ds3Chrbnd = BND4.Read(ds3.Read($"/chr/c{x:D4}.chrbnd.dcx"));
