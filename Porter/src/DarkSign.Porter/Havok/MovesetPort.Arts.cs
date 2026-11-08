@@ -215,6 +215,19 @@ public static partial class MovesetPort
                                       $"art '{Kind(byBlock.First()).Name}' action {Kind(byBlock.First()).Action} swordArt_ActId {ActId(byBlock.First())})");
                     continue;
                 }
+                // Which weapons do a class skill, and what their own section holds: a weapon whose DS3 art has its own
+                // name (the Moonlight Greatsword's "Moonlight Vortex", 1.0.221: it did the class's Stomp) tells here
+                // whether DS3 keeps its skill in a section this port didn't look at, or outside the 36000-37999 range.
+                foreach (var p in byBlock)
+                {
+                    int ownSection = Convert.ToInt32(ds3Weapons[p.Ds3Id]!["spAtkCategory"].Value);
+                    var ownTae = ownSection > 0 ? ds3Tae(ownSection) : null;
+                    string own = ownSection <= 0 ? "no spAtkCategory section"
+                        : ownTae is null ? $"spAtkCategory a{ownSection} has no TAE"
+                        : $"spAtkCategory a{ownSection}: {ownTae.Animations.Count} animations, IDs {string.Join(" ", ownTae.Animations.Select(a => a.ID / 1000 * 1000).Distinct().Order().Select(k => $"{k}+"))}";
+                    if (ownSection > 0 || !string.Equals(byBlock.Key.Name, Kinds.FirstOrDefault(k => k.Value == byBlock.Key.Block).Key, StringComparison.OrdinalIgnoreCase))
+                        Console.WriteLine($"arts: {p.Name} does class a{g.Key}'s block {byBlock.Key.Block * 100} for its DS3 art '{byBlock.Key.Name}' ({own})");
+                }
                 jobs.Add(MakeJob(g.Key, g.Key, skill.Where(id => id / 100 == byBlock.Key.Block).ToList(), byBlock.ToList(), "class"));
             }
         }

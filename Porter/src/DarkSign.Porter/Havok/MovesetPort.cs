@@ -116,6 +116,7 @@ public static partial class MovesetPort
         var ds3Main = BND4.Read(ds3Archives.Read("/chr/c0000.anibnd.dcx"));
         var ds3Skeleton = AnimPort.ReadDs3Skeleton(BinderLeaf(ds3Main, "skeleton.hkx")!.Bytes);
         var erSkeleton = AnimPort.ReadErSkeleton(BinderLeaf(erMain, "skeleton.hkx")!.Bytes, Compendium(erMain));
+        erSkeleton.Frozen = AnimPort.RestDifferent(ds3Skeleton, erSkeleton);
         var ds3Hkx = new Ds3AnimFiles(ds3Archives);
 
         var usedSections = clips.Select(c => AnimName().Match(c.m_animationName ?? "")).Where(m => m.Success)
@@ -651,6 +652,9 @@ public static partial class MovesetPort
     /// <summary>
     /// Turns DS3's Friede-only ChangeType 5 into a plain move: a right-hand model goes to its "1H left weapon"
     /// location (AbsorpPort puts the left hand there for Friede's model 1), a left-hand model to its "1H right" one.
+    /// DS3 writes the slot's AbsorpPosParamCondition byte as 2 with the override; Elden Ring's own "1H left" moves
+    /// (the scythe's a050: RH model 0, condition 0, ChangeType 1) write 0, so the converted slot gets 0 too (1.0.221
+    /// kept DS3's 2, and the scythe still never reached the left hand).
     /// </summary>
     internal static int FixModelOverride(byte[] bytes)
     {
@@ -660,6 +664,7 @@ public static partial class MovesetPort
         for (int slot = 0; slot < 8; slot++)
             if ((sbyte)bytes[2 * slot + 1] == 5)
             {
+                bytes[2 * slot] = 0;
                 bytes[2 * slot + 1] = slot < 4 ? (byte)1 : (byte)0;
                 fixedCount++;
             }
