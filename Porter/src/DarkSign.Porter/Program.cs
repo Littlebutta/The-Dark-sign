@@ -95,6 +95,8 @@ try
     // Build methods chosen in the launcher's Fallbacks window (DarkSign.Core.Fallbacks); "" = every default.
     if (Environment.GetEnvironmentVariable("DARKSIGN_METHODS") is { Length: > 0 } methods)
         Console.WriteLine($"fallback methods: {methods}");
+    if (GameRunningGuard.Problem(argList[0]) is { } running)
+        return Fail(running);
     var ctx = new PorterContext(PorterContext.FindRoot(root), gameExes);
     return argList[0].ToLowerInvariant() switch
     {

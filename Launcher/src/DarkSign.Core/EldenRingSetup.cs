@@ -57,7 +57,26 @@ public sealed class EldenRingSetup(string root)
 
     /// <summary>The content is rebuilt when it was never built, or was built by a different porter.</summary>
     public bool NeedsContentBuild(string porterVersion) =>
-        !File.Exists(Path.Combine(ModDir, "regulation.bin")) || !File.Exists(ItemsFile) || ContentVersion != porterVersion;
+        !File.Exists(Path.Combine(ModDir, "regulation.bin")) || !File.Exists(ItemsFile) || ContentVersion != porterVersion
+        || IconFilesProblem() is not null;
+
+    /// <summary>The menu files the porter writes for item icons, in menu\hi and menu\low (see the porter's IconPort).</summary>
+    public static readonly string[] IconFiles = ["01_common.tpf.dcx", "01_common.sblytbnd.dcx", "00_solo.tpfbhd", "00_solo.tpfbdt"];
+
+    /// <summary>
+    /// Why the built mod's icon menu files are not a whole set, or null. A build that ran while the game held them
+    /// open once left menu\hi with only 00_solo.tpfbdt, and the DS3 weapon icons vanished; a rebuild fixes it.
+    /// </summary>
+    public string? IconFilesProblem()
+    {
+        var counts = new[] { "hi", "low" }.ToDictionary(q => q, q => IconFiles.Where(f => File.Exists(Path.Combine(ModDir, "menu", q, f))).ToList());
+        foreach (var (quality, files) in counts)
+            if (files.Count is > 0 and < 4)
+                return $"menu\\{quality} is missing {string.Join(", ", IconFiles.Except(files))}";
+        if (counts["hi"].Count != counts["low"].Count)
+            return counts["hi"].Count == 0 ? "menu\\hi has no icon files but menu\\low has" : "menu\\low has no icon files but menu\\hi has";
+        return null;
+    }
 
     public void MarkContentBuilt(string porterVersion) => File.WriteAllText(Guard(BuildStampFile), porterVersion);
 

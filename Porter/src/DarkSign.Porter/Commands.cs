@@ -218,13 +218,12 @@ public static class Commands
             }
             catch (Exception e) when (e is not OutOfMemoryException)
             {
-                // Without icons the weapons still work; a half-written set of menu files (a layout naming a sheet
-                // that isn't there) is removed so the game loads its own menus.
+                // Without icons the weapons still work. Nothing of this build reached the mod (the icon files are
+                // moved in only once all are written), but an older build's icons may name other weapons, so every
+                // icon menu file is removed and the game loads its own menus.
                 Console.WriteLine($"icons: failed, ported weapons have no icons ({e.GetType().Name}: {e.Message})");
-                foreach (var quality in new[] { "hi", "low" })
-                    foreach (var file in new[] { "01_common.tpf.dcx", "01_common.sblytbnd.dcx", "00_solo.tpfbhd", "00_solo.tpfbdt" })
-                        if (File.Exists(ctx.ModPath("menu", quality, file)))
-                            File.Delete(ctx.ModPath("menu", quality, file));
+                foreach (var left in IconPort.RemoveFromMod(ctx))
+                    Console.WriteLine($"icons: could not remove {left} (open in another program?); delete it by hand or rebuild with the game closed");
             }
         }
 

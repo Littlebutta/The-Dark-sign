@@ -135,6 +135,8 @@ public static class Preflight
             Add(Level.Info, "Content", $"built with {setup.ContentVersion ?? "an unknown porter"}; PLAY rebuilds it for {stamp}");
         else
             Add(Level.Ok, "Content", $"built ({setup.ContentVersion})");
+        if (setup.IconFilesProblem() is { } icons)
+            Add(Level.Fail, "Icons", $"{icons}: the game would mix its own menus with the mod's and DS3 icons go missing; PLAY rebuilds the content (close Elden Ring first)");
         var methods = Fallbacks.Summary(s.Methods);
         Add(Level.Info, "Fallbacks", methods.Length == 0 ? "every feature uses method A" : methods);
 

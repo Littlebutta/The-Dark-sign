@@ -284,6 +284,18 @@ public sealed class CoreTests : IDisposable
         Assert.False(setup.NeedsContentBuild("1.0.9"));
         Assert.True(setup.NeedsContentBuild("1.0.10"));
 
+        // Icon menu files only work as a whole set in both qualities (2026-11-07: hi kept only 00_solo.tpfbdt).
+        foreach (var file in EldenRingSetup.IconFiles)
+            Touch("TheDarkSign", "Mods", "ER", "menu", "low", file);
+        Assert.Contains("hi has no icon files", setup.IconFilesProblem());
+        Assert.True(setup.NeedsContentBuild("1.0.9"));
+        Touch("TheDarkSign", "Mods", "ER", "menu", "hi", "00_solo.tpfbdt");
+        Assert.Contains("01_common.tpf.dcx", setup.IconFilesProblem());
+        foreach (var file in EldenRingSetup.IconFiles)
+            Touch("TheDarkSign", "Mods", "ER", "menu", "hi", file);
+        Assert.Null(setup.IconFilesProblem());
+        Assert.False(setup.NeedsContentBuild("1.0.9"));
+
         var settings = new LauncherSettings { GameExePaths = { [GameId.EldenRing] = exe } };
         var start = EldenRingSetup.LaunchInfo(LaunchPlanner.Plan(settings, _root, GameId.EldenRing),
             Path.Combine(_root, "TheDarkSign", "Tools", "ModEngine2", "modengine2_launcher.exe"), setup.ConfigPath,

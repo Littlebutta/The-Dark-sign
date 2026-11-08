@@ -42,17 +42,92 @@ public static class IconPort
         }
 
         var sheets = BuildSheets(images);
+        // Every menu file is written to Work\staging\menu first and moved into the mod only once all eight are
+        // written, so a failure (the game holding a file open, a full disk) never leaves the hi and low menus out of
+        // step or a .tpfbhd without its .tpfbdt: the game then reads its own menus against our files and the DS3
+        // icons vanish.
+        var staging = Path.GetDirectoryName(Path.GetDirectoryName(ctx.WorkPath("staging", "menu", "hi", "x")))!;
+        if (Directory.Exists(staging))
+            Directory.Delete(staging, recursive: true);
+        string Staged(string quality, string file) => ctx.WorkPath("staging", "menu", quality, file);
         // The two menu qualities write different files: side by side.
         Parallel.ForEach(new[] { "hi", "low" }, Parallelism.Options, quality =>
         {
-            AddSheets(ctx, er, quality, sheets);
-            AddLayouts(ctx, er, quality, sheets);
-            AddKnowledge(ctx, er, quality, images);
+            AddSheets(er, quality, sheets, Staged(quality, "01_common.tpf.dcx"));
+            AddLayouts(er, quality, sheets, Staged(quality, "01_common.sblytbnd.dcx"));
+            AddKnowledge(er, quality, images, Staged(quality, "00_solo.tpfbhd"), Staged(quality, "00_solo.tpfbdt"));
         });
+        Install(ctx, Staged);
+        Directory.Delete(staging, recursive: true);
         Console.WriteLine($"icons: {images.Count} added on {sheets.Count} sheet(s)" + (missing.Count > 0 ? $", {missing.Count} DS3 icons not found ({string.Join(", ", missing.Take(10))})" : ""));
     }
 
     private sealed record Sheet(string Name, byte[] Dds, Dictionary<int, (int X, int Y)> Positions);
+
+    /// <summary>The menu files the icons write, per quality (menu\hi, menu\low). They only work as a set.</summary>
+    public static readonly string[] Files = ["01_common.tpf.dcx", "01_common.sblytbnd.dcx", "00_solo.tpfbhd", "00_solo.tpfbdt"];
+
+    /// <summary>
+    /// Moves the staged menu files into the mod. Each target is first opened for exclusive writing, so a file the game
+    /// (or anything else) holds stops the install before a single file is replaced.
+    /// </summary>
+    private static void Install(PorterContext ctx, Func<string, string, string> staged)
+    {
+        var moves = new[] { "hi", "low" }.SelectMany(q => Files.Select(f => (From: staged(q, f), To: ctx.ModPath("menu", q, f)))).ToList();
+        foreach (var (_, to) in moves)
+            if (File.Exists(to))
+                try
+                {
+                    using var _ = new FileStream(to, FileMode.Open, FileAccess.ReadWrite, FileShare.None);
+                }
+                catch (IOException e)
+                {
+                    throw new IOException($"{to} is open in another program (is Elden Ring running?); no menu file was changed. {e.Message}", e);
+                }
+        foreach (var (from, to) in moves)
+            File.Move(from, to, overwrite: true);
+    }
+
+    /// <summary>
+    /// Removes the icon menu files from the mod after a failed icon step, so the game uses its own menus. Every file is
+    /// tried even if one can't be deleted; returns the ones still there.
+    /// </summary>
+    public static List<string> RemoveFromMod(PorterContext ctx)
+    {
+        var left = new List<string>();
+        foreach (var quality in new[] { "hi", "low" })
+            foreach (var file in Files)
+            {
+                var path = ctx.ModPath("menu", quality, file);
+                try
+                {
+                    if (File.Exists(path))
+                        File.Delete(path);
+                }
+                catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+                {
+                    left.Add(path);
+                }
+            }
+        return left;
+    }
+
+    /// <summary>
+    /// What is wrong with the mod's icon menu files, or null when they are fine: each quality must hold all four files
+    /// or none, and hi and low must agree. Anything else makes the game mix its own menus with ours (missing icons).
+    /// </summary>
+    public static string? SetProblem(string modDir)
+    {
+        var present = new Dictionary<string, List<string>>();
+        foreach (var quality in new[] { "hi", "low" })
+            present[quality] = Files.Where(f => File.Exists(Path.Combine(modDir, "menu", quality, f))).ToList();
+        foreach (var (quality, files) in present)
+            if (files.Count is > 0 and < 4)
+                return $"menu\\{quality} has {string.Join(", ", files)} but not {string.Join(", ", Files.Except(files))}";
+        if (present["hi"].Count != present["low"].Count)
+            return present["hi"].Count == 0 ? "menu\\low has the icon files but menu\\hi has none" : "menu\\hi has the icon files but menu\\low has none";
+        return null;
+    }
 
     /// <summary>The DS3 icon's DDS, if it is a 512x512 BC7 image as expected.</summary>
     private static byte[]? Ds3Icon(GameArchives ds3, int iconId)
@@ -135,7 +210,7 @@ public static class IconPort
         return result;
     }
 
-    private static void AddSheets(PorterContext ctx, GameArchives er, string quality, List<Sheet> sheets)
+    private static void AddSheets(GameArchives er, string quality, List<Sheet> sheets, string output)
     {
         var path = $"/menu/{quality}/01_common.tpf.dcx";
         var (bytes, compression) = er.ReadWithCompression(path);
@@ -143,11 +218,11 @@ public static class IconPort
         tpf.Textures.RemoveAll(t => t.Name.StartsWith(SheetPrefix, StringComparison.Ordinal));
         foreach (var sheet in sheets)
             tpf.Textures.Add(new TPF.Texture(sheet.Name, TpfBc7, 0, sheet.Dds, TPF.TPFPlatform.PC));
-        File.WriteAllBytes(ctx.ModPath("menu", quality, "01_common.tpf.dcx"), DCX.Compress(tpf.Write(), compression));
+        File.WriteAllBytes(output, DCX.Compress(tpf.Write(), compression));
     }
 
     /// <summary>Adds a layout per sheet, written like Elden Ring's own SB_Icon_00.layout.</summary>
-    private static void AddLayouts(PorterContext ctx, GameArchives er, string quality, List<Sheet> sheets)
+    private static void AddLayouts(GameArchives er, string quality, List<Sheet> sheets, string output)
     {
         var path = $"/menu/{quality}/01_common.sblytbnd.dcx";
         var (bytes, compression) = er.ReadWithCompression(path);
@@ -171,11 +246,11 @@ public static class IconPort
                 layout = [.. Encoding.UTF8.Preamble, .. layout];
             bnd.Files.Add(new BinderFile(template.Flags, bnd.Files.Max(f => f.ID) + 1, folder + sheet.Name + ".layout", layout));
         }
-        File.WriteAllBytes(ctx.ModPath("menu", quality, "01_common.sblytbnd.dcx"), DCX.Compress(bnd.Write(), compression));
+        File.WriteAllBytes(output, DCX.Compress(bnd.Write(), compression));
     }
 
     /// <summary>Adds MENU_Knowledge_NNNNN (the large item image) for each new icon to 00_solo.</summary>
-    private static void AddKnowledge(PorterContext ctx, GameArchives er, string quality, List<(int NewIconId, byte[] Dds)> images)
+    private static void AddKnowledge(GameArchives er, string quality, List<(int NewIconId, byte[] Dds)> images, string bhdOutput, string bdtOutput)
     {
         var bhdPath = $"/menu/{quality}/00_solo.tpfbhd";
         var bxf = BXF4.Read(er.Read(bhdPath), er.Read(bhdPath[..^3] + "bdt"));
@@ -198,7 +273,7 @@ public static class IconPort
             bxf.Files.RemoveAll(f => f.Name == fileName);
             bxf.Files.Add(new BinderFile(template.Flags, nextId++, fileName, packed[i]));
         }
-        bxf.Write(ctx.ModPath("menu", quality, "00_solo.tpfbhd"), ctx.ModPath("menu", quality, "00_solo.tpfbdt"));
+        bxf.Write(bhdOutput, bdtOutput);
     }
 
     // A DDS with a DX10 header: 4 magic + 124 header + 20 DX10 bytes before the data.
