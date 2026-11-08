@@ -30,14 +30,54 @@ public static class WeaponDiag
     public static int Run(PorterContext ctx, IReadOnlyList<string> args)
     {
         var ids = args.Select(a => int.TryParse(a, out var v) ? v : -1).Where(v => v > 0).ToList();
-        if (ids.Count == 0)
+        // weapon-diag tae 2 92 ds3:0 ...   dumps whole TAE sections (Elden Ring's a002 / a092; ds3:N for DS3's aN);
+        // weapon-diag flver 454 ds3:1616 ... dumps weapon models (Elden Ring's wp_a_0454; ds3:N for DS3's).
+        string mode = args.Count > 0 ? args[0].ToLowerInvariant() : "";
+        if (ids.Count == 0 && mode is not ("tae" or "flver"))
         {
-            Console.WriteLine("usage: weapon-diag <Elden Ring weapon row ID> [more IDs]  (ported weapons are 80000000 + 10000 * n)");
+            Console.WriteLine("usage: weapon-diag <Elden Ring weapon row ID> [more IDs]  (ported weapons are 80000000 + 10000 * n)\n" +
+                              "       weapon-diag tae <section> [ds3:<section>] ...    weapon-diag flver <model> [ds3:<model>] ...");
             return 1;
         }
         TAE.ValidateEventBank = false;
         var er = ctx.OpenArchives(PorterGame.EldenRing);
         var ds3 = ctx.OpenArchives(PorterGame.DarkSouls3);
+        if (mode is "tae" or "flver")
+        {
+            var r = new StringBuilder();
+            void Log(string line) => r.AppendLine(line);
+            BND4? erMainLazy = null;
+            BND4? ds3MainLazy = null;
+            foreach (var arg in args.Skip(1))
+            {
+                bool fromDs3 = arg.StartsWith("ds3:", StringComparison.OrdinalIgnoreCase);
+                if (!int.TryParse(fromDs3 ? arg[4..] : arg, out var n))
+                    continue;
+                try
+                {
+                    if (mode == "tae")
+                    {
+                        var main = fromDs3 ? ds3MainLazy ??= BND4.Read(ds3.Read("/chr/c0000.anibnd.dcx")) : erMainLazy ??= BND4.Read(er.Read("/chr/c0000.anibnd.dcx"));
+                        DumpTae(Log, fromDs3 ? "DS3" : "vanilla", main, n, a => true, fromDs3);
+                    }
+                    else
+                    {
+                        var archives = fromDs3 ? ds3 : er;
+                        var path = ModelPort.PartsPath(n);
+                        DumpModel(Log, fromDs3 ? "DS3" : "vanilla", archives.Contains(path) ? BND4.Read(archives.Read(path)) : null, n);
+                    }
+                }
+                catch (Exception e) when (e is not OutOfMemoryException)
+                {
+                    Log($"### {arg}: FAILED {e}");
+                }
+            }
+            Directory.CreateDirectory(ctx.WorkPath("reports", "diag"));
+            var outPath = ctx.WorkPath("reports", "diag", $"{mode}-{string.Join("-", args.Skip(1).Select(a => a.Replace(':', '_')))}.txt");
+            File.WriteAllText(outPath, r.ToString());
+            Console.WriteLine($"weapon-diag: {mode} -> {outPath} ({r.Length / 1024} KB)");
+            return 0;
+        }
         var vanilla = ctx.LoadParams(PorterGame.EldenRing);
         var ds3Params = ctx.LoadParams(PorterGame.DarkSouls3);
         var mod = ParamStore.Load(PorterGame.EldenRing, Path.GetDirectoryName(ctx.ModPath("regulation.bin"))!, ctx.Data);
