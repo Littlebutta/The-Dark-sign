@@ -21,8 +21,11 @@ namespace DarkSign.Porter;
 /// and a SwordArtsParam row (a copy of the template weapon's, with the FP costs of DS3's SwordArtsParam row) the ported weapon points at.
 /// Stance arts need c0000.hks to list their ID: ividyon's EldenRingHKS (the community's decompiled hks) is fetched and
 /// written to Mods\ER\action\script\c0000.hks with our IDs added to IsStanceArts.
+/// Most DS3 weapons (spAtkCategory 0) do their class's skill: those come from the class's moveset section. One-shot
+/// skills with follow-ups (FPCostLight / FpCostStrong) get them as ComboEnd (R1) / ComboEnd_2 (R2) behind the hks's
+/// combo window SpEffects. Every ported weapon is locked to its art like Elden Ring's unique weapons.
 /// Fallback "weapon-arts": DARKSIGN_WEAPON_ARTS=nohks (no hks; stance arts become a one-shot of their light attack),
-/// 0 (off: ported weapons keep their template's Elden Ring Ash of War, as before).
+/// unlocked (Ashes of War allowed), 0 (off: ported weapons keep their template's Elden Ring Ash of War, as before).
 /// </summary>
 public static partial class MovesetPort
 {
@@ -45,13 +48,25 @@ public static partial class MovesetPort
     // Elden Ring stance arts with light and heavy follow-ups, the template for DS3's: Unsheathe, Square Off, ...
     private static readonly int[] StanceTemplates = [614, 615, 610, 611, 625];
 
-    private sealed record ArtJob(int Ds3Section, int ClassSection, bool Stance, int Ds3Start, List<WeaponPlan> Weapons);
+    private sealed record ArtJob(int Ds3Section, int ClassSection, bool Stance, int Ds3Start, List<WeaponPlan> Weapons, List<int> Skill, string Source);
+
+    private sealed record ArtBuild(bool Stance, int Start, int? Light, int? Heavy, int TemplateSection, int Moves, int Clips);
+
+    /// <summary>An Elden Ring TAE event that holds an art combo window SpEffect (100050-100055): type, bytes, group.</summary>
+    internal sealed record WindowEvent(int Type, byte[] Bytes, TAE.EventGroup Group);
+
+    // DS3 art names whose block is known, for class skills no weapon with its own section teaches.
+    private static readonly Dictionary<string, int> Kinds = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ["Stomp"] = 360, ["Stance"] = 362, ["Spin Slash"] = 364, ["Charge"] = 367, ["Warcry"] = 376,
+    };
 
     public sealed record ArtResult(int Arts, int Weapons, Dictionary<int, string> Names, List<int> StanceIds);
 
     /// <summary>The DS3 art sections whose effects and sounds the arts need (so they are ported with the movesets').</summary>
     private static IEnumerable<int> ArtSections(IEnumerable<WeaponPlan> ports, PARAM ds3Weapons) => !ArtsEnabled ? []
-        : ports.Select(p => Convert.ToInt32(ds3Weapons[p.Ds3Id]!["spAtkCategory"].Value)).Where(s => s > 0).Distinct();
+        : ports.SelectMany(p => new[] { Convert.ToInt32(ds3Weapons[p.Ds3Id]!["spAtkCategory"].Value), Convert.ToInt32(ds3Weapons[p.Ds3Id]!["wepmotionCategory"].Value) })
+            .Where(s => s > 0).Distinct();
 
     private static ArtResult PortArts(PorterContext ctx, GameArchives erArchives, GameArchives ds3Archives, ParamStore er, ParamStore ds3,
         IReadOnlyList<WeaponPlan> ports, BND4 erMain, BND4 erAnims, BND4 ds3Main, Func<int, TAE?> ds3Tae, Ds3AnimFiles ds3Hkx,
@@ -90,29 +105,109 @@ public static partial class MovesetPort
             .Concat(extra)
             .Where(id => !usedIds.Contains(id) && !taeSections.Contains(600 + id) && !clipsBySection.ContainsKey(600 + id)));
 
-        // One art per DS3 art section; weapons whose DS3 art has no skill animations (talismans, bows) are left alone.
-        var jobs = new List<ArtJob>();
-        foreach (var g in ports.GroupBy(p => Convert.ToInt32(ds3Weapons[p.Ds3Id]!["spAtkCategory"].Value)).Where(g => g.Key > 0))
+        // Which DS3 moves make each weapon's art. A weapon with its own art section (spAtkCategory, Friede's a232) uses
+        // that; every other weapon (spAtkCategory 0: Vordt's Great Hammer, the Dragonslayer Greataxe, most weapons) does
+        // its class's skill, in its moveset section (wepmotionCategory). A section can hold several skills, one block
+        // of 100 IDs each (360xx Stomp, 362xx stance, 364xx Spin Slash, 367xx Charge, 3767x Warcry, ...): the block is
+        // the one weapons with their own section use for the same DS3 art (by its SwordArtsParam ActionId, then its
+        // name), else Kinds below. Weapons without skill animations (talismans, most catalysts) are left alone.
+        var ds3ArtParam = ds3.Get("SwordArtsParam");
+        var skillCache = new Dictionary<int, List<int>>();
+        List<int> SkillIds(int section) => skillCache.TryGetValue(section, out var s) ? s
+            : skillCache[section] = section <= 0 || ds3Tae(section) is not { } t ? []
+                : t.Animations.Select(a => (int)a.ID).Where(id => id is >= 36000 and < 38000 && id / 100 != 369).Distinct().Order().ToList();
+        (string? Name, int Action) Kind(WeaponPlan p)
         {
-            if (ds3Tae(g.Key) is not { } artTae)
-                continue;
-            int cls = Convert.ToInt32(ds3Weapons[g.First().Ds3Id]!["wepmotionCategory"].Value);
-            var skill = artTae.Animations.Select(a => (int)a.ID).Where(id => id is >= 36000 and < 38000 && id / 100 != 369).Order().ToList();
-            if (skill.Count == 0)
-                continue;
+            var row = ds3ArtParam?[Convert.ToInt32(ds3Weapons[p.Ds3Id]!["swordArtId"].Value)];
+            return (row?.Name?.Trim(), row?["ActionId"]?.Value is { } v and not byte[] ? Convert.ToInt32(v) : -1);
+        }
+        ArtJob MakeJob(int section, int cls, List<int> skill, List<WeaponPlan> weapons, string source)
+        {
             bool stance = skill.Contains(36200);
-            // One-shot: the first move of the skill (its x00 animation). Without the hks, a stance plays its light attack.
+            // One-shot: the block's first move (its x00 animation). Without the hks, a stance plays its light attack.
             int start = stance && hks is null ? 36230 : stance ? 36200 : skill.FirstOrDefault(id => id % 100 == 0, skill[0]);
-            jobs.Add(new ArtJob(g.Key, cls, stance && hks is not null, start, g.ToList()));
+            return new ArtJob(section, cls, stance && hks is not null, start, weapons, skill, source);
+        }
+        var jobs = new List<ArtJob>();
+        var classWeapons = new List<WeaponPlan>();
+        foreach (var g in ports.GroupBy(p => Convert.ToInt32(ds3Weapons[p.Ds3Id]!["spAtkCategory"].Value)))
+        {
+            var skill = SkillIds(g.Key);
+            if (g.Key <= 0 || skill.Count == 0)
+            {
+                classWeapons.AddRange(g);
+                continue;
+            }
+            jobs.Add(MakeJob(g.Key, Convert.ToInt32(ds3Weapons[g.First().Ds3Id]!["wepmotionCategory"].Value), skill, g.ToList(), "own"));
+        }
+        // What the weapons with their own section teach about blocks: DS3 art ActionId / name -> block.
+        var blockByAction = new Dictionary<int, Dictionary<int, int>>();
+        var blockByName = new Dictionary<string, Dictionary<int, int>>(StringComparer.OrdinalIgnoreCase);
+        void Learn<TK>(Dictionary<TK, Dictionary<int, int>> map, TK key, int block) where TK : notnull
+        {
+            if (!map.TryGetValue(key, out var counts))
+                map[key] = counts = [];
+            counts[block] = counts.GetValueOrDefault(block) + 1;
+        }
+        foreach (var job in jobs)
+            foreach (var p in job.Weapons)
+            {
+                var (name, action) = Kind(p);
+                if (action >= 0)
+                    Learn(blockByAction, action, job.Ds3Start / 100);
+                if (!string.IsNullOrEmpty(name))
+                    Learn(blockByName, name, job.Ds3Start / 100);
+            }
+        int noClassSkill = 0;
+        var unknownBlocks = new List<string>();
+        foreach (var g in classWeapons.GroupBy(p => Convert.ToInt32(ds3Weapons[p.Ds3Id]!["wepmotionCategory"].Value)))
+        {
+            var skill = SkillIds(g.Key);
+            if (skill.Count == 0)
+            {
+                noClassSkill += g.Count();
+                continue;
+            }
+            var blocks = skill.Select(id => id / 100).Distinct().ToList();
+            foreach (var byBlock in g.GroupBy(p =>
+                     {
+                         if (blocks.Count == 1)
+                             return blocks[0];
+                         var (name, action) = Kind(p);
+                         int? Pick<TK>(Dictionary<TK, Dictionary<int, int>> map, TK? key) where TK : notnull =>
+                             key is not null && map.TryGetValue(key, out var counts)
+                                 ? counts.Where(c => blocks.Contains(c.Key)).OrderByDescending(c => c.Value).Select(c => (int?)c.Key).FirstOrDefault()
+                                 : null;
+                         return (action >= 0 ? Pick(blockByAction, action) : null) ?? Pick(blockByName, name)
+                                ?? (name is not null && Kinds.TryGetValue(name, out var known) && blocks.Contains(known) ? known : -1);
+                     }))
+            {
+                if (byBlock.Key < 0)
+                {
+                    unknownBlocks.Add($"{string.Join(", ", byBlock.Select(p => p.Name))} (DS3 a{g.Key} blocks {string.Join("/", blocks.Select(b => b * 100))}, " +
+                                      $"art '{Kind(byBlock.First()).Name}' action {Kind(byBlock.First()).Action})");
+                    continue;
+                }
+                jobs.Add(MakeJob(g.Key, g.Key, skill.Where(id => id / 100 == byBlock.Key).ToList(), byBlock.ToList(), "class"));
+            }
         }
         jobs = jobs.OrderByDescending(j => j.Weapons.Any(p => p.Ds3Id == 10180000)).ThenByDescending(j => j.Weapons.Count).ThenBy(j => j.Ds3Section).ToList();
-        Console.WriteLine($"arts: {jobs.Count} DS3 weapon arts with skill animations ({jobs.Count(j => j.Stance)} stances), {free.Count} free art IDs");
+        Console.WriteLine($"arts: {jobs.Count} DS3 weapon arts with skill animations ({jobs.Count(j => j.Stance)} stances, " +
+                          $"{jobs.Count(j => j.Source == "class")} class skills for {jobs.Where(j => j.Source == "class").Sum(j => j.Weapons.Count)} weapons), " +
+                          $"{free.Count} free art IDs; {noClassSkill} weapons have no skill animations");
+        foreach (var line in unknownBlocks)
+            Console.WriteLine($"arts: skipped {line}: can't tell which of its class's skills it does");
+
+        // The art combo windows: Elden Ring's hks lets R1 / R2 continue a one-shot art while the move holds SpEffect
+        // 100054 / 100050 (into ComboEnd, 40010) or 100055 / 100051 (into ComboEnd_2, 40020), set by a TAE event.
+        // The event's type and layout come from an Elden Ring art that has one.
+        var windowProto = FindWindowEvent(erMain, artSelectors.Count > 0 ? clipsBySection.Keys.Where(s => s is >= 600 and < 1000) : []);
 
         var ds3Captions = new Dictionary<int, string>();
         var names = new Dictionary<int, string>();
         var stanceIds = new List<int>();
         var portedIds = new List<int>();
-        int arts = 0, weapons = 0, nextRow = FirstArtRow;
+        int arts = 0, weapons = 0, nextRow = FirstArtRow, followUps = 0, internalIdNext = nextInternalId;
         foreach (var job in jobs)
         {
             var label = string.Join(", ", job.Weapons.Select(p => p.Name).Take(3)) + (job.Weapons.Count > 3 ? $" +{job.Weapons.Count - 3}" : "");
@@ -121,27 +216,135 @@ public static partial class MovesetPort
                 Console.WriteLine($"arts: skipped {label} (DS3 a{job.Ds3Section}): no free art ID left, keeps its Elden Ring Ash of War");
                 continue;
             }
-            // The template art: an Elden Ring stance art for stances; for one-shots the template weapon's own art when
-            // it has a one-shot clip, else Lion's Claw's section (600).
             var templateWeapon = erWeapons[job.Weapons[0].TemplateId!.Value]!;
             int templateRowId = Convert.ToInt32(templateWeapon["swordArtsParamId"].Value);
             var templateArtRow = artParam[templateRowId] ?? artParam.Rows.First(r => r.ID > 10);
-            int templateSection = job.Stance
-                ? StanceTemplates.FirstOrDefault(s => clipsBySection.TryGetValue(s, out var ids) && ids.Contains(40050) && taeSections.Contains(s), -1)
-                : clipsBySection.TryGetValue(600 + ArtId(templateArtRow), out var own) && own.Contains(40000) && taeSections.Contains(600 + ArtId(templateArtRow))
-                    ? 600 + ArtId(templateArtRow) : 600;
-            if (templateSection < 0 || BinderLeaf(erMain, $"a{templateSection}.tae") is not { } templateTaeFile)
-            {
-                Console.WriteLine($"arts: skipped {label}: no Elden Ring art to start from");
-                continue;
-            }
+            var (fp, fpLight, fpHeavy, ds3ArtName) = Ds3Art(ds3, ds3Weapons, job.Weapons[0].Ds3Id);
             int artId = free.Peek(), section = 600 + artId;
-            var map = job.Stance ? StanceMap : [(40000, job.Ds3Start), (40005, job.Ds3Start)];
-            var templateIds = clipsBySection[templateSection];
             var ds3Taes = new List<(int Section, TAE? Tae)> { (job.Ds3Section, ds3Tae(job.Ds3Section)), (job.ClassSection, ds3Tae(job.ClassSection)) }
-                .Where(t => t.Tae is not null).ToList();
+                .Where(t => t.Tae is not null).DistinctBy(t => t.Section).ToList();
+
+            // Tries in order: the stance (stance skills), the block's first move, then its other moves; the first that
+            // builds wins. Each failure says why, so the log tells what to fix next.
+            var attempts = new List<(bool Stance, int Start)>();
+            if (job.Stance)
+                attempts.Add((true, 36200));
+            var block = job.Skill.Where(id => id / 100 == job.Ds3Start / 100).ToList();
+            foreach (var start in new[] { job.Stance ? 36230 : job.Ds3Start }.Concat(block.Where(id => id % 100 == 0)).Concat(job.Skill.Where(id => id % 100 == 0)).Concat(block)
+                         .Where(id => !(id / 100 == 362 && id % 100 < 30))) // never the stance's own start, loop or end alone
+                if (!attempts.Contains((false, start)) && attempts.Count < 5)
+                    attempts.Add((false, start));
+            var reasons = new List<string>();
+            ArtBuild? built = null;
             try
             {
+                foreach (var (stance, start) in attempts)
+                {
+                    built = BuildArt(stance, start, out var reason);
+                    if (built is not null)
+                        break;
+                    reasons.Add($"{(stance ? "stance" : start.ToString())}: {reason}");
+                }
+            }
+            catch (Exception e) when (e is not OutOfMemoryException)
+            {
+                Console.WriteLine($"arts: skipped {label}: {e.GetType().Name}: {e.Message}");
+                continue;
+            }
+            if (built is null)
+            {
+                Console.WriteLine($"arts: skipped {label} (DS3 a{job.Ds3Section}): no move fits ({string.Join("; ", reasons)})");
+                continue;
+            }
+
+            // The Ash of War row: the template weapon's, with the new art ID and DS3's FP cost.
+            while (artParam[nextRow] is not null)
+                nextRow += 10;
+            var row = new PARAM.Row(nextRow, "", artParam.AppliedParamdef);
+            for (int i = 0; i < row.Cells.Count; i++)
+                row.Cells[i].Value = templateArtRow.Cells[i].Value is byte[] b ? b.Clone() : templateArtRow.Cells[i].Value;
+            SetArtId(row, artId);
+            if (fp >= 0)
+                SetCell(row, "useMagicPoint_L2", fp);
+            if (built.Stance || built.Light is not null || built.Heavy is not null)
+            {
+                // DS3 charges the follow-ups separately (FPCostLight, FpCostStrong; -1 = the skill's cost).
+                SetCell(row, "useMagicPoint_R1", fpLight >= 0 ? fpLight : Math.Max(fp, 0));
+                SetCell(row, "useMagicPoint_R2", fpHeavy >= 0 ? fpHeavy : Math.Max(fp, 0));
+            }
+            SetCell(row, "textId", nextRow);
+            artParam.Rows.Add(row);
+            artParam.Rows.Sort((a, c) => a.ID.CompareTo(c.ID));
+            if (ds3Captions.Count == 0)
+                foreach (var (k, v) in ItemText.Load(ds3Archives, "WeaponCaption"))
+                    ds3Captions[k] = v;
+            names[nextRow] = SkillName(ds3Captions.GetValueOrDefault(job.Weapons[0].Ds3Id))
+                             ?? (string.IsNullOrWhiteSpace(ds3ArtName) ? null : ds3ArtName) ?? $"{job.Weapons[0].Name} Skill";
+            foreach (var plan in job.Weapons)
+                foreach (var w in erWeapons.Rows.Where(r => r.ID >= plan.NewId!.Value && r.ID < plan.NewId.Value + 10000))
+                    SetCell(w, "swordArtsParamId", nextRow);
+            if (built.Stance)
+                stanceIds.Add(artId);
+            portedIds.Add(artId);
+            free.Dequeue();
+            arts++;
+            weapons += job.Weapons.Count;
+            if (built.Light is not null || built.Heavy is not null)
+                followUps++;
+            var followText = (built.Light is { } l ? $", R1 follow-up {l}" : "") + (built.Heavy is { } h ? $", R2 follow-up {h}" : "");
+            Console.WriteLine($"arts: {label} -> art {artId} (a{section}, SwordArtsParam {nextRow} '{names[nextRow]}', FP {fp}/{fpLight}/{fpHeavy}) from DS3 a{job.Ds3Section} " +
+                              $"{(job.Source == "class" ? "class skill " : "")}{(built.Stance ? "stance" : $"one-shot {built.Start}")}{followText} on Elden Ring a{built.TemplateSection}: " +
+                              $"{built.Moves} moves, {built.Clips} behaviour clips{(reasons.Count > 0 ? $" (after {string.Join("; ", reasons)})" : "")}");
+            nextRow += 10;
+            continue;
+
+            ArtBuild? BuildArt(bool stance, int start, out string reason)
+            {
+                // Follow-ups (one-shots): DS3 gives the skill a light (R1) and / or heavy (R2) follow-up when its
+                // SwordArtsParam has an FP cost for one; they are the block's next moves, in order.
+                var next = stance ? new List<int>() : job.Skill.Where(id => id / 100 == start / 100 && id > start).ToList();
+                int? light = !stance && fpLight >= 0 && next.Count > 0 ? next[0] : null;
+                int? heavy = !stance && fpHeavy >= 0 && next.Count > (light is null ? 0 : 1) ? next[light is null ? 0 : 1] : null;
+                if (windowProto is null)
+                    light = heavy = null;
+                // The template art: an Elden Ring stance art for stances; for one-shots the template weapon's own art
+                // when it has every clip needed, else Lion's Claw's section (600), else any art that has them.
+                int templateSection = -1;
+                if (stance)
+                    templateSection = StanceTemplates.FirstOrDefault(s => clipsBySection.TryGetValue(s, out var ids) && ids.Contains(40050) && taeSections.Contains(s), -1);
+                else
+                {
+                    var own = 600 + ArtId(templateArtRow);
+                    var candidates = new[] { own, 600 }.Concat(clipsBySection.Keys.Where(s => s is >= 600 and < 1000).Order()).Where(taeSections.Contains).ToList();
+                    // Every follow-up first, then without the heavy one, then none.
+                    var options = new List<(int? L, int? H)> { (light, heavy) };
+                    if (heavy is not null)
+                        options.Add((light, null));
+                    if (light is not null || heavy is not null)
+                        options.Add((null, null));
+                    foreach (var (l, h) in options)
+                    {
+                        var need = new List<int> { 40000 };
+                        if (l is not null) need.Add(40010);
+                        if (h is not null) need.Add(40020);
+                        templateSection = candidates.FirstOrDefault(c => clipsBySection.TryGetValue(c, out var ids) && need.All(ids.Contains), -1);
+                        if (templateSection < 0)
+                            continue;
+                        (light, heavy) = (l, h);
+                        break;
+                    }
+                }
+                if (templateSection < 0 || BinderLeaf(erMain, $"a{templateSection}.tae") is not { } templateTaeFile)
+                {
+                    reason = "no Elden Ring art to start from";
+                    return null;
+                }
+                var map = stance ? StanceMap.ToList() : new List<(int Er, int Ds3)> { (40000, start), (40005, start) };
+                if (light is { } li)
+                    map.AddRange([(40010, li), (40015, li)]);
+                if (heavy is { } hi)
+                    map.AddRange([(40020, hi), (40025, hi)]);
+                var templateIds = clipsBySection[templateSection];
                 TAE.ValidateEventBank = false;
                 var templateTae = TAE.Read(templateTaeFile.Bytes);
                 var tae = TAE.Read(templateTaeFile.Bytes);
@@ -152,12 +355,34 @@ public static partial class MovesetPort
                     .GroupBy(e => e.Type).ToDictionary(g => g.Key, g => g.First().Group!);
                 var stretches = new Dictionary<int, MoveTiming.Stretch>();
                 var kept = new List<TAE.Animation>();
+                var why = new List<string>();
+                var sources = new Dictionary<int, (List<TAE.Event> Events, float Duration)>();
                 foreach (var (erId, ds3Id) in map)
                 {
                     var anim = tae.Animations.FirstOrDefault(a => a.ID == erId);
-                    if (anim is null || !templateIds.Contains(erId) || FindDs3(ds3Taes, ds3Main, ds3Id) is not { } source
-                        || ds3Hkx.Read(source.HkxName) is not { } ds3Bytes)
+                    if (anim is null || !templateIds.Contains(erId))
+                    {
+                        if (erId is 40000 or 40010 or 40020 or 40050)
+                            why.Add($"a{templateSection} has no {erId}");
                         continue;
+                    }
+                    if (FindDs3(ds3Taes, ds3Main, ds3Id) is not { } source)
+                    {
+                        why.Add($"DS3 {ds3Id} not in a{string.Join("/a", ds3Taes.Select(t => t.Section))}");
+                        continue;
+                    }
+                    var ds3Bytes = ds3Hkx.Read(source.HkxName);
+                    if (ds3Bytes is null && source.FileName is { } alt && alt != source.HkxName)
+                    {
+                        ds3Bytes = ds3Hkx.Read(alt);
+                        if (ds3Bytes is not null)
+                            source = source with { HkxName = alt };
+                    }
+                    if (ds3Bytes is null)
+                    {
+                        why.Add($"no DS3 file {source.HkxName}");
+                        continue;
+                    }
                     var template = ErAnimFile(erArchives, $"a{templateSection:D3}_{erId:D6}")
                                    ?? ErAnimFile(erArchives, AnimSourceName(anim, templateSection, erId))
                                    ?? ErAnimFile(erArchives, "a000_000000")!;
@@ -168,15 +393,26 @@ public static partial class MovesetPort
                     anim.AnimFileName = newName + ".hkt";
                     float ds3Duration = AnimPort.Duration(ds3Bytes);
                     anim.Events = MergeEvents(source.Events, anim, templateGroups, erEventLengths, effectEvents, effects, soundPort, ds3Duration, out var stretch);
+                    sources[erId] = (source.Events, ds3Duration);
                     stretches[erId] = stretch;
                     timing.Add(TimingLine(section, label, erId, source, ds3Duration, erDuration, stretch));
                     kept.Add(anim);
                 }
-                if (kept.Count == 0 || (job.Stance && !kept.Any(a => a.ID == 40050)) || (!job.Stance && !kept.Any(a => a.ID == 40000)))
+                if (kept.Count == 0 || (stance && !kept.Any(a => a.ID == 40050)) || (!stance && !kept.Any(a => a.ID == 40000)))
                 {
-                    Console.WriteLine($"arts: skipped {label} (DS3 a{job.Ds3Section}): none of its skill animations fit Elden Ring a{templateSection}");
-                    continue;
+                    reason = why.Count > 0 ? string.Join(", ", why.Distinct().Take(3)) : $"Elden Ring a{templateSection} has none of its moves";
+                    return null;
                 }
+                // A follow-up that didn't build isn't offered.
+                if (light is not null && !kept.Any(a => a.ID == 40010))
+                    light = null;
+                if (heavy is not null && !kept.Any(a => a.ID == 40020))
+                    heavy = null;
+                // The art's own combo windows: only the follow-ups this art has (a template's would lead to clips
+                // the new section doesn't have).
+                if (!stance && windowProto is not null)
+                    foreach (var a in kept.Where(a => a.ID is 40000 or 40005))
+                        SetComboWindows(a, windowProto, sources[(int)a.ID].Events, sources[(int)a.ID].Duration, light is not null, heavy is not null);
                 tae.Animations = kept;
                 AddFile(erMain, $"a{section}.tae", tae.Write(), templateTaeFile);
 
@@ -192,7 +428,7 @@ public static partial class MovesetPort
                             continue;
                         var name = $"a{section:D3}_{m.Groups[2].Value}";
                         if (!internalIds.TryGetValue(name, out var internalId))
-                            internalIds[name] = internalId = checked((short)nextInternalId++);
+                            internalIds[name] = internalId = checked((short)internalIdNext++);
                         var copy = HavokGraph.ShallowCopy(clip);
                         copy.m_animationName = name;
                         copy.m_name = clip.m_name?.Replace(clip.m_animationName!, name, StringComparison.Ordinal);
@@ -203,49 +439,16 @@ public static partial class MovesetPort
                         registered++;
                     }
                 }
-
-                // The Ash of War row: the template weapon's, with the new art ID and DS3's FP cost.
-                while (artParam[nextRow] is not null)
-                    nextRow += 10;
-                var row = new PARAM.Row(nextRow, "", artParam.AppliedParamdef);
-                for (int i = 0; i < row.Cells.Count; i++)
-                    row.Cells[i].Value = templateArtRow.Cells[i].Value is byte[] b ? b.Clone() : templateArtRow.Cells[i].Value;
-                SetArtId(row, artId);
-                var (fp, fpLight, fpHeavy, ds3ArtName) = Ds3Art(ds3, ds3Weapons, job.Weapons[0].Ds3Id);
-                if (fp >= 0)
-                    SetCell(row, "useMagicPoint_L2", fp);
-                if (job.Stance)
-                {
-                    // DS3 charges the stance's follow-ups separately (FPCostLight, FpCostStrong; -1 = the skill's cost).
-                    SetCell(row, "useMagicPoint_R1", fpLight >= 0 ? fpLight : Math.Max(fp, 0));
-                    SetCell(row, "useMagicPoint_R2", fpHeavy >= 0 ? fpHeavy : Math.Max(fp, 0));
-                }
-                SetCell(row, "textId", nextRow);
-                artParam.Rows.Add(row);
-                artParam.Rows.Sort((a, c) => a.ID.CompareTo(c.ID));
-                if (ds3Captions.Count == 0)
-                    foreach (var (k, v) in ItemText.Load(ds3Archives, "WeaponCaption"))
-                        ds3Captions[k] = v;
-                names[nextRow] = SkillName(ds3Captions.GetValueOrDefault(job.Weapons[0].Ds3Id))
-                                 ?? (string.IsNullOrWhiteSpace(ds3ArtName) ? null : ds3ArtName) ?? $"{job.Weapons[0].Name} Skill";
-                foreach (var plan in job.Weapons)
-                    foreach (var w in erWeapons.Rows.Where(r => r.ID >= plan.NewId!.Value && r.ID < plan.NewId.Value + 10000))
-                        SetCell(w, "swordArtsParamId", nextRow);
-                if (job.Stance)
-                    stanceIds.Add(artId);
-                portedIds.Add(artId);
-                free.Dequeue();
-                arts++;
-                weapons += job.Weapons.Count;
-                Console.WriteLine($"arts: {label} -> art {artId} (a{section}, SwordArtsParam {nextRow} '{names[nextRow]}', FP {fp}/{fpLight}/{fpHeavy}) from DS3 a{job.Ds3Section} " +
-                                  $"{(job.Stance ? "stance" : $"one-shot {job.Ds3Start}")} on Elden Ring a{templateSection}: {kept.Count} moves, {registered} behaviour clips");
-                nextRow += 10;
-            }
-            catch (Exception e) when (e is not OutOfMemoryException)
-            {
-                Console.WriteLine($"arts: skipped {label}: {e.GetType().Name}: {e.Message}");
+                reason = "";
+                return new ArtBuild(stance, start, light, heavy, templateSection, kept.Count, registered);
             }
         }
+        if (followUps > 0 || windowProto is null)
+            Console.WriteLine(windowProto is null
+                ? "arts: no Elden Ring art has an R1/R2 combo window event, ported one-shots get no follow-ups"
+                : $"arts: {followUps} arts have R1/R2 follow-ups (combo window event type {windowProto.Type})");
+        nextInternalId = internalIdNext;
+        LockArts(er, ports, erWeapons);
         // The hks goes with every build that has arts (the extra IDs rely on it), and is removed otherwise.
         bool hksWritten = false;
         if (hks is not null && arts > 0)
@@ -258,6 +461,88 @@ public static partial class MovesetPort
             File.Delete(HksPath(ctx));
         Console.WriteLine($"arts: {arts} DS3 weapon arts for {weapons} weapons ({stanceIds.Count} stances{(hksWritten ? ", c0000.hks written" : ", no c0000.hks")})");
         return new ArtResult(arts, weapons, names, stanceIds);
+    }
+
+    private static int? WindowId(TAE.Event e) =>
+        e.GetParameterBytes(false) is { Length: >= 4 } b && BitConverter.ToInt32(b, 0) is >= 100050 and <= 100055 and var id ? id : null;
+
+    /// <summary>The first art combo window event (SpEffect 100050-100055) in the given Elden Ring art sections.</summary>
+    private static WindowEvent? FindWindowEvent(BND4 erMain, IEnumerable<int> sections)
+    {
+        TAE.ValidateEventBank = false;
+        foreach (var section in sections.Order().Take(150))
+        {
+            if (BinderLeaf(erMain, $"a{section}.tae") is not { } file)
+                continue;
+            var e = TAE.Read(file.Bytes).Animations.SelectMany(a => a.Events).FirstOrDefault(e => e.Group is not null && WindowId(e) is not null);
+            if (e is not null)
+                return new WindowEvent(e.Type, (byte[])e.GetParameterBytes(false).Clone(), e.Group!);
+        }
+        return null;
+    }
+
+    /// <summary>
+    /// Gives a one-shot art move the combo windows for its follow-ups only: R1 (SpEffect 100054, into ComboEnd 40010)
+    /// for the light one, R2 (100051, into ComboEnd_2 40020) for the heavy one. The window is DS3's own when the DS3
+    /// move sets one of these SpEffects, else the second half of the move. Other windows (the template's) are removed.
+    /// </summary>
+    internal static void SetComboWindows(TAE.Animation anim, WindowEvent proto, List<TAE.Event>? ds3Events, float duration, bool light, bool heavy)
+    {
+        anim.Events.RemoveAll(e => e.Type == proto.Type && WindowId(e) is not null);
+        if (!light && !heavy)
+            return;
+        var ds3Window = ds3Events?.FirstOrDefault(e => e.Type == proto.Type && WindowId(e) is not null);
+        float start = ds3Window?.StartTime ?? duration * 0.45f, end = ds3Window?.EndTime ?? duration * 0.9f;
+        if (end <= start)
+            end = start + 0.5f;
+        var group = anim.Events.FirstOrDefault(e => e.Type == proto.Type && e.Group is not null)?.Group;
+        if (group is null)
+        {
+            group = proto.Group.GetClone();
+            anim.EventGroups ??= [];
+            anim.EventGroups.Add(group);
+        }
+        foreach (var id in new[] { light ? 100054 : 0, heavy ? 100051 : 0 }.Where(id => id > 0))
+        {
+            var bytes = (byte[])proto.Bytes.Clone();
+            BitConverter.GetBytes(id).CopyTo(bytes, 0);
+            anim.Events.Add(new TAE.Event(start, end, proto.Type, 0, bytes, false) { Group = group });
+        }
+    }
+
+    /// <summary>
+    /// Ties every ported weapon to its art, as DS3 does: no Ash of War can be put on it or its affinity changed, like
+    /// Elden Ring's unique weapons (their gemMountType, read from the weapons whose art no Ash of War gives).
+    /// DARKSIGN_WEAPON_ARTS=unlocked keeps the template's (Ashes of War allowed).
+    /// </summary>
+    private static void LockArts(ParamStore er, IReadOnlyList<WeaponPlan> ports, PARAM erWeapons)
+    {
+        if (ArtsMode == "unlocked")
+        {
+            Console.WriteLine("arts: weapons not locked (unlocked fallback), Ashes of War can replace the ported arts");
+            return;
+        }
+        var arts = er.Get("SwordArtsParam")!;
+        var gemArts = er.Get("EquipParamGem")?.Rows.Select(r => Convert.ToInt32(r["swordArtsParamId"]?.Value ?? -1)).ToHashSet() ?? [];
+        var ported = ports.Where(p => p.NewId is not null).Select(p => p.NewId!.Value).ToList();
+        bool IsPorted(int id) => ported.Any(n => id >= n && id < n + 10000);
+        var uniques = erWeapons.Rows.Where(r => r.ID % 10000 == 0 && !IsPorted(r.ID) && r["gemMountType"] is not null)
+            .Where(r => Convert.ToInt32(r["swordArtsParamId"].Value) is var a && a > 0 && !gemArts.Contains(a) && arts[a] is { } row && ArtId(row) > 0)
+            .Select(r => Convert.ToInt32(r["gemMountType"]!.Value)).Where(v => v != 2).ToList();
+        if (uniques.Count == 0)
+        {
+            Console.WriteLine("arts: weapons not locked: no Elden Ring unique weapon to copy gemMountType from");
+            return;
+        }
+        int lockValue = uniques.GroupBy(v => v).OrderByDescending(g => g.Count()).First().Key;
+        int rows = 0;
+        foreach (var w in erWeapons.Rows.Where(r => IsPorted(r.ID)))
+        {
+            SetCell(w, "gemMountType", lockValue);
+            SetCell(w, "disableGemAttr", 1);
+            rows++;
+        }
+        Console.WriteLine($"arts: {ported.Count} ported weapons locked to their art ({rows} rows, gemMountType {lockValue} like {uniques.Count} Elden Ring unique weapons, affinity fixed)");
     }
 
     private static string AnimSourceName(TAE.Animation anim, int section, int id) =>
@@ -440,6 +725,18 @@ public static class ArtSelfTest
         Check(withDefault.Contains("function GetSwordArtsDiffCategory(artID, idleCat, wepCat)\n    if artID == 26 or artID == 27 then"), "hks: ported IDs below 300 get the default animations");
         Check(MovesetPort.SkillName("A great scythe.\n\nSkill: Spin Sweep\nSpin the scythe.") == "Spin Sweep", "skill name read from a DS3 description");
         Check(MovesetPort.SkillName("No skill here.") is null, "no skill name when the description names none");
+        // Combo windows: a template's window is replaced by the ported art's own follow-ups (R1 -> 100054, R2 -> 100051).
+        var group = new SoulsFormats.TAE.EventGroup(67);
+        byte[] Win(int id) { var b = new byte[16]; BitConverter.GetBytes(id).CopyTo(b, 0); return b; }
+        var proto = new MovesetPort.WindowEvent(67, Win(100050), group);
+        var move = new SoulsFormats.TAE.Animation(40000, new SoulsFormats.TAE.Animation.AnimMiniHeader.Standard(), "a906_040000.hkt")
+            { Events = [new SoulsFormats.TAE.Event(0.2f, 0.9f, 67, 0, Win(100055), false) { Group = group }, new SoulsFormats.TAE.Event(0, 0.1f, 67, 0, Win(100280), false) { Group = group }] };
+        MovesetPort.SetComboWindows(move, proto, [new SoulsFormats.TAE.Event(0.5f, 1.2f, 67, 0, Win(100050), false)], 2f, light: true, heavy: true);
+        var ids = move.Events.Select(e => BitConverter.ToInt32(e.GetParameterBytes(false), 0)).Order().ToList();
+        Check(ids.SequenceEqual([100051, 100054, 100280]), $"arts: one-shot gets R1 and R2 follow-up windows, the template's is dropped, other effects stay (got {string.Join(" ", ids)})");
+        Check(move.Events.Where(e => BitConverter.ToInt32(e.GetParameterBytes(false), 0) is 100051 or 100054).All(e => e.StartTime == 0.5f && e.EndTime == 1.2f), "arts: follow-up windows use DS3's own timing");
+        MovesetPort.SetComboWindows(move, proto, null, 2f, light: false, heavy: false);
+        Check(move.Events.Count == 1, "arts: a one-shot without follow-ups has no combo window");
         // Bitfield fillers (ParamStore.FillBitfields): Elden Ring 2.7.2's SpEffectParam sets flags in bits Paramdex leaves unnamed.
         var xml = Path.Combine(Path.GetTempPath(), $"darksign-bits-{Environment.ProcessId}.xml");
         File.WriteAllText(xml, """
