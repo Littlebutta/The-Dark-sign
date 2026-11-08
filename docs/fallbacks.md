@@ -88,6 +88,7 @@ Try the next option if: DS3 moves look broken (twisting limbs, jitter, sliding) 
 
 - **A: Spline-compressed (default).** DS3 animations re-encoded as Havok spline animations, like Elden Ring's own.
 - **B: Interleaved (uncompressed).** Every frame stored as is (DARKSIGN_ANIM_INTERLEAVED=1). Exact, but about 5x bigger: the first build like this hung loading. (`DARKSIGN_ANIM_INTERLEAVED=1`)
+- **C: A, weapon bones from DS3.** A, but every shared bone takes DS3's rotation, including end bones (R_Weapon, L_Weapon) that rest differently in the two skeletons (DARKSIGN_WEAPON_BONES=ds3). Builds up to 1.0.221 did this: the Ringed Knight pair's left blade pointed backwards in its dual-wield swings. Try it if a weapon no longer turns in the hand as it did in DS3. (`DARKSIGN_WEAPON_BONES=ds3`)
 
 ### Jump attacks (`jump-attacks`, rebuilds the content)
 
