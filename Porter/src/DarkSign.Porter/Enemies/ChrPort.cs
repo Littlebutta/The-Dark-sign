@@ -632,7 +632,14 @@ public static partial class ChrPort
         public int TemplateVariation;
     }
 
-    private static readonly string[] ClonedFolders = ["/chr/", "/sfx/"];
+    /// <summary>
+    /// Where a template's files live: its character binders, its effects and its behaviour script
+    /// (action\script\cXXXX.hks). The script is cloned too: the behaviour graph's script loader is handed a null
+    /// buffer when action\script has no file for the character's ID, and Havok Script asserts on it, so every spawn of
+    /// a ported character whose template has a script crashed right after its behbnd loaded (2026-11-08 evening,
+    /// RVA 0x14e34d1, hksi_hksL_loadbuffer "Parameter 'buff' must not be NULL").
+    /// </summary>
+    private static readonly string[] ClonedFolders = ["/chr/", "/sfx/", "/action/script/"];
 
     private static ChrFiles BuildFiles(PorterContext ctx, GameArchives er, GameArchives ds3, Plan plan)
     {
@@ -660,12 +667,13 @@ public static partial class ChrPort
                 binders[Rename(entry.Path!, t, n)] = (bnd, compression);
             }
             else
-                files.Outputs.Add((Rename(entry.Path!, t, n), DCX.Compress(bytes, compression)));
+                files.Outputs.Add((Rename(entry.Path!, t, n), compression.Type == DCX.Type.None ? bytes : DCX.Compress(bytes, compression)));
         }
         var chrbndPath = $"/chr/c{n:D4}.chrbnd.dcx";
         if (!binders.ContainsKey(chrbndPath))
             throw new InvalidDataException($"template c{t:D4} has no chrbnd");
         notes.Add(binders.ContainsKey($"/chr/c{n:D4}.behbnd.dcx") ? $"{renamedInside} Havok names renamed" : $"template c{t:D4} has no behbnd; {renamedInside} Havok names renamed");
+        notes.Add(files.Outputs.Any(o => o.Path.Equals($"/action/script/c{n:D4}.hks", StringComparison.OrdinalIgnoreCase)) ? "behaviour script cloned" : $"template c{t:D4} has no behaviour script");
 
         // The DS3 model, on the template's binder.
         var ds3Chrbnd = BND4.Read(ds3.Read($"/chr/c{x:D4}.chrbnd.dcx"));
