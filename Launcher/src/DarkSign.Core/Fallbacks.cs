@@ -127,6 +127,15 @@ public static class Fallbacks
             new("B", "Interleaved (uncompressed)", "Every frame stored as is (DARKSIGN_ANIM_INTERLEAVED=1). Exact, but about 5x bigger: the first build like this hung loading.")
                 { PorterEnv = Env("DARKSIGN_ANIM_INTERLEAVED", "1") },
         ]),
+        new("weapon-hits", "Weapon movesets", "Hitboxes of DS3 swings", Stage.Build,
+            "A ported weapon goes through enemies and walls, does no or odd damage, or staggers wrongly.",
+        [
+            new("A", "DS3 attack over the template's (default)", "Each swing's DS3 attack row (hit spheres on the weapon's dummy polys, motion value, damage type, wall hits) laid over the Elden Ring template weapon's attack for the same move, which fills the fields DS3 doesn't have."),
+            new("B", "DS3 attack only", "The DS3 attack row alone; fields only Elden Ring has stay at their defaults (DARKSIGN_ATTACKS=ds3).")
+                { PorterEnv = Env("DARKSIGN_ATTACKS", "ds3") },
+            new("C", "Elden Ring template's attacks", "Every swing DS3 has uses the template weapon's own attack row for the same move (DARKSIGN_ATTACKS=template): Elden Ring hitboxes and damage. Tells whether DS3's attack rows or the dummy polys on the DS3 model are the problem.")
+                { PorterEnv = Env("DARKSIGN_ATTACKS", "template") },
+        ]),
         new("jump-attacks", "Weapon movesets", "Jump attacks", Stage.Build,
             "A ported weapon's jump attack plays again when you land, or the landing freezes.",
         [

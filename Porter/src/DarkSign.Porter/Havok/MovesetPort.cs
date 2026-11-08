@@ -987,6 +987,12 @@ public sealed class AttackParamPort(ParamStore er, ParamStore ds3, string behavi
     private readonly PARAM _erAttack = er.Get(attackParam)!, _ds3Attack = ds3.Get(attackParam)!;
     private int _behaviors, _attacks, _effectBehaviors;
 
+    // Fallback weapon-hits: A (unset) DS3 attack fields over the template's attack, B "ds3" DS3 fields only (unnamed
+    // Elden Ring fields at their defaults), C "template" the template weapon's own attack row for each judge DS3 has.
+    private static readonly string? AttackMode = Environment.GetEnvironmentVariable("DARKSIGN_ATTACKS");
+    private static bool AttacksFromTemplate => AttackMode == "template";
+    private static bool AttacksDs3Only => AttackMode == "ds3";
+
     /// <summary>When set, DS3 SpEffect references (behaviours that cast an effect, attacks that apply one) are ported
     /// with it instead of standing in the template's or being dropped.</summary>
     public SpEffectPort? Effects { get; init; }
@@ -1033,10 +1039,14 @@ public sealed class AttackParamPort(ParamStore er, ParamStore ds3, string behavi
                 continue;
             int refType = Convert.ToInt32(source["refType"].Value);
             PARAM.Row row;
-            if (refType == 0)
+            if (refType == 0 && AttacksFromTemplate && templateRows.TryGetValue(judge, out var templateHit))
+                row = CopyRow(templateHit, id);
+            else if (refType == 0)
             {
                 row = CopyByName(source, new PARAM.Row(id, source.Name ?? "", _erBehavior.AppliedParamdef));
-                row["refId"].Value = Convert.ChangeType(PortAttack(Convert.ToInt32(source["refId"].Value)), row["refId"].Value!.GetType());
+                // Elden Ring-only attack fields start from the template's attack for this judge (or any of its attacks).
+                var baseAttack = TemplateAttack(templateRows.GetValueOrDefault(judge)) ?? templateRows.Values.Select(TemplateAttack).FirstOrDefault(a => a is not null);
+                row["refId"].Value = Convert.ChangeType(PortAttack(Convert.ToInt32(source["refId"].Value), baseAttack), row["refId"].Value!.GetType());
             }
             // SpEffects (2): the DS3 effect ported under its new ID (weapon art buffs).
             else if (refType == 2 && Effects?.Port(Convert.ToInt32(source["refId"].Value)) is > 0 and var effect)
@@ -1081,7 +1091,10 @@ public sealed class AttackParamPort(ParamStore er, ParamStore ds3, string behavi
 
     private readonly Dictionary<int, int> _attackIds = new();
 
-    private int PortAttack(int ds3Id)
+    private PARAM.Row? TemplateAttack(PARAM.Row? behavior) =>
+        behavior is not null && Convert.ToInt32(behavior["refType"].Value) == 0 ? _erAttack[Convert.ToInt32(behavior["refId"].Value)] : null;
+
+    private int PortAttack(int ds3Id, PARAM.Row? erBase = null)
     {
         if (ds3Id <= 0 || _ds3Attack[ds3Id] is not { } source)
             return ds3Id;
@@ -1090,8 +1103,18 @@ public sealed class AttackParamPort(ParamStore er, ParamStore ds3, string behavi
         int id = _erAttack[ds3Id] is null ? ds3Id : 700_000_000 + ds3Id % 100_000_000;
         while (_erAttack[id] is not null)
             id++;
-        var row = CopyByName(source, new PARAM.Row(id, source.Name ?? "", _erAttack.AppliedParamdef));
+        // Start from an Elden Ring attack of the template weapon (its fields DS3 lacks: isAddBaseAtk, regain, decals,
+        // dmgLevel_vsPlayer...), then lay every DS3 field over it.
+        var row = new PARAM.Row(id, source.Name ?? "", _erAttack.AppliedParamdef);
+        if (erBase is not null && !AttacksDs3Only && StructurallyEqual(erBase, row))
+            for (int i = 0; i < row.Cells.Count; i++)
+                row.Cells[i].Value = erBase.Cells[i].Value is byte[] b ? b.Clone() : erBase.Cells[i].Value;
+        row = CopyByName(source, row);
         // DS3 names these spEffect0-4, Elden Ring spEffectId0-4: the effect a hit applies (an art's frost or poison).
+        // The template's own hit effects (its status build-up) don't belong to the DS3 weapon.
+        for (int i = 0; i < 5; i++)
+            if (row[$"spEffectId{i}"] is { } cleared)
+                cleared.Value = Convert.ChangeType(-1, cleared.Value!.GetType());
         if (Effects is not null)
             for (int i = 0; i < 5; i++)
                 if (source[$"spEffect{i}"] is { } from && row[$"spEffectId{i}"] is { } to && Convert.ToInt32(from.Value) > 0
@@ -1103,10 +1126,43 @@ public sealed class AttackParamPort(ParamStore er, ParamStore ds3, string behavi
         return _attackIds[ds3Id] = id;
     }
 
+    private static bool StructurallyEqual(PARAM.Row a, PARAM.Row b) => a.Cells.Count == b.Cells.Count;
+
+    /// <summary>
+    /// DS3 field names (Paramdex DS3 ATK_PARAM_ST) that Elden Ring's Paramdex def spells differently. Everything else
+    /// matches ignoring case (DS3 "Hit0_Radius", "AtkPhys", "HitSourceType" = Elden Ring "hit0_Radius", "atkPhys",
+    /// "hitSourceType"). Before this, names were matched case-sensitively and only 21 of DS3's 189 attack fields were
+    /// copied: every ported hit had radius 0, no attack power and default dummy polys, so DS3 weapons hit nothing (not
+    /// enemies, not walls).
+    /// </summary>
+    internal static readonly IReadOnlyDictionary<string, string> Aliases = BuildAliases();
+
+    private static Dictionary<string, string> BuildAliases()
+    {
+        var map = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["Blowing"] = "blowingCorrection",
+            ["damageLevel"] = "dmgLevel",
+            ["DefMaterial"] = "defSeMaterial1",
+            ["DefSfxMaterial"] = "defSfxMaterial1",
+            ["atkPowForSfxSe"] = "atkPow_forSfx",
+            ["atkDirForSfxSe"] = "atkDir_forSfx",
+            ["spawnAiSoundId"] = "AppearAiSoundId",
+        };
+        for (int i = 0; i < 16; i++)
+            map[$"hit{i}_Priority"] = $"hti{i}_Priority";
+        // Not mapped: DS3's Hit<N>_VfxId / DummyPolyId (the swing trail) name DS3 effect IDs that mean other effects in
+        // Elden Ring, so the template's trail stays; spEffect0-4 are ported by ID in PortAttack.
+        return map;
+    }
+
     private static PARAM.Row CopyByName(PARAM.Row from, PARAM.Row to)
     {
-        // Only names a paramdef uses once: unnamed padding fields share names like "0x81".
-        var fields = Unique(from).ToDictionary(c => c.Def.InternalName, c => c.Value, StringComparer.Ordinal);
+        // Only names a paramdef uses once: unnamed padding fields share names like "0x81". Names match ignoring case
+        // (Paramdex's DS3 defs capitalise many fields Elden Ring's don't), plus the renames in Aliases.
+        var fields = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
+        foreach (var c in Unique(from))
+            fields.TryAdd(Aliases.TryGetValue(c.Def.InternalName, out var renamed) ? renamed : c.Def.InternalName, c.Value);
         foreach (var cell in Unique(to))
         {
             if (!fields.TryGetValue(cell.Def.InternalName, out var value) || value is null || cell.Value is null)

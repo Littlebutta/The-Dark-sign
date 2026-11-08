@@ -77,6 +77,7 @@ public static partial class ModValidate
         // 2. Params each ported row points at.
         var sections = new Dictionary<int, List<int>>(); // moveset section -> base rows using it
         var soundOffsets = new Dictionary<int, int>();
+        var hitVariations = new HashSet<int>();
         foreach (var row in ported)
         {
             int section = Field(row, MovesetPort.UseWeaponMotionCategory ? "wepmotionCategory" : "spAtkcategory");
@@ -103,6 +104,27 @@ public static partial class ModValidate
             if (variation > 0 && mod.Get("BehaviorParam_PC") is { } behaviour
                 && !behaviour.Rows.Any(b => b.ID >= variation * 1000 && b.ID < variation * 1000 + 1000))
                 r.Error($"weapon {row.ID}: behaviorVariationId {variation} has no BehaviorParam_PC rows ({variation * 1000}-{variation * 1000 + 999}); its hits would do nothing");
+            else if (variation > 0)
+                hitVariations.Add(variation);
+        }
+        // Ported hits need a hitbox: an attack row with a sphere/capsule (radius > 0 on a dummy poly). 1.0.183 copied
+        // DS3 attack rows with radius 0 and DS3 weapons hit nothing (enemies or walls).
+        if (mod.Get("BehaviorParam_PC") is { } behaviours && mod.Get("AtkParam_Pc") is { } attacks)
+        {
+            int checkedHits = 0, empty = 0;
+            foreach (var b in behaviours.Rows.Where(b => hitVariations.Contains(b.ID / 1000) && Field(b, "refType") == 0))
+            {
+                if (attacks[Field(b, "refId")] is not { } atk)
+                    continue;
+                checkedHits++;
+                bool hitbox = Enumerable.Range(0, 16).Any(i => atk[$"hit{i}_Radius"] is { } rad && Convert.ToSingle(rad.Value) > 0
+                    && atk[$"hit{i}_DmyPoly1"] is { } dmy && Convert.ToInt32(dmy.Value) >= 0);
+                if (!hitbox && ++empty <= 20)
+                    r.Error($"behaviour {b.ID}: attack {atk.ID} has no hitbox (every hit radius 0 or no dummy poly); this swing hits nothing");
+            }
+            if (empty > 20)
+                r.Error($"... {empty - 20} more ported swings without a hitbox");
+            Console.WriteLine($"validate: {checkedHits - empty}/{checkedHits} ported weapon hits have a hitbox");
         }
         if (!MovesetPort.UseWeaponMotionCategory)
             foreach (var row in bases.Where(row => Field(row, "spAtkcategory") is > 0 and < 50 or > 999))
