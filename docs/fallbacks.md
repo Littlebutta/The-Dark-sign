@@ -140,6 +140,14 @@ Try the next option if: Ported weapons look dark grey and untextured, or metal p
 - **off: Off (flat, not metal).** The old way: a flat black metallic map and DS3's diffuse map (DARKSIGN_WEAPON_PBR=0). Metal blades render dark grey. (`DARKSIGN_WEAPON_PBR=0`)
 
 
+### DS3 weapon model node roles (`weapon-nodes`, rebuilds the content)
+
+Try the next option if: A ported weapon's swings do no damage, or its hit effect and sound play away from the blade (in the sky on big swings).
+
+- **A: Elden Ring node flags (default).** Each converted model's nodes get the role flags Elden Ring's own weapon models carry: the nodes dummy polys hang on are marked dummy owners, the mesh's node mesh and bone. DS3 models carry none, and 1.0.225 kept none, so the game had no owner for the hit spheres.
+- **B: Keep DS3's (none).** The 1.0.225 behaviour: node flags left 0 as DS3 wrote them (DARKSIGN_NODE_FLAGS=0). (`DARKSIGN_NODE_FLAGS=0`)
+
+
 ### DS3 weapon glow and detail layers (`weapon-materials`, rebuilds the content)
 
 Try the next option if: A ported weapon looks rusty, patchy or grey over its own texture, or a glowing DS3 part (Friede's frozen blade) doesn't glow.

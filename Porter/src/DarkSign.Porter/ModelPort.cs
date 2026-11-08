@@ -156,6 +156,8 @@ public static class ModelPort
         // One GX list from the template (Elden Ring's single GX00 v102 entry) for every material.
         flver.GXLists = [template.GXLists[0]];
 
+        SetNodeFlags(flver);
+
         var templateMaterial = template.Materials[0];
         var templateMatbin = MatbinName(templateMaterial.MTD);
         for (int i = 0; i < flver.Materials.Count; i++)
@@ -248,6 +250,37 @@ public static class ModelPort
             foreach (var vertex in flver.Meshes.SelectMany(m => m.Vertices))
                 for (int c = 0; c < vertex.Colors.Count; c++)
                     vertex.Colors[c] = new FLVER.VertexColor(color.A, color.R, color.G, color.B);
+        }
+    }
+
+    /// <summary>
+    /// Elden Ring's FLVER (0x2001A) flags every node with its role: DummyOwner on the nodes dummy polys hang on
+    /// (Dummy_Plan, Dummy_SFX), Mesh and Bone on the node the mesh is bound to (its own weapon models: WP_A_0612's
+    /// "WP_A_0612" is Mesh | Bone, its dummy nodes DummyOwner). DS3's FLVER (0x20014) left the field 0 on every node
+    /// but a Disabled one, and the converted models kept 0, so the game had no owner for the hit spheres (dummy
+    /// polys 100-140) and weapon effects: ported weapons hit nothing and their hit effects played off the weapon.
+    /// DARKSIGN_NODE_FLAGS=0 keeps DS3's.
+    /// </summary>
+    internal static void SetNodeFlags(FLVER2 flver)
+    {
+        if (Environment.GetEnvironmentVariable("DARKSIGN_NODE_FLAGS") is "0" or "off")
+            return;
+        var dummyOwners = flver.Dummies.SelectMany(d => new[] { (int)d.ParentBoneIndex, (int)d.AttachBoneIndex }).Where(i => i >= 0).ToHashSet();
+        var meshNodes = flver.Meshes.Select(m => m.NodeIndex).Where(i => i >= 0).ToHashSet();
+        var bones = flver.Meshes.SelectMany(m => m.BoneIndices).Where(i => i >= 0).ToHashSet();
+        for (int i = 0; i < flver.Nodes.Count; i++)
+        {
+            var node = flver.Nodes[i];
+            if (node.Flags.HasFlag(FLVER.Node.NodeFlags.Disabled))
+                continue;
+            var flags = (FLVER.Node.NodeFlags)0;
+            if (dummyOwners.Contains(i))
+                flags |= FLVER.Node.NodeFlags.DummyOwner;
+            if (meshNodes.Contains(i))
+                flags |= FLVER.Node.NodeFlags.Mesh | FLVER.Node.NodeFlags.Bone;
+            if (bones.Contains(i))
+                flags |= FLVER.Node.NodeFlags.Bone;
+            node.Flags = flags;
         }
     }
 
