@@ -511,7 +511,13 @@ public static partial class MovesetPort
     /// <summary>
     /// Gives a one-shot art move the combo windows for its follow-ups only: R1 (SpEffect 100054, into ComboEnd 40010)
     /// for the light one, R2 (100051, into ComboEnd_2 40020) for the heavy one. The window is DS3's own when the DS3
-    /// move sets one of these SpEffects, else the second half of the move. Other windows (the template's) are removed.
+    /// move sets one of these SpEffects. Otherwise it opens where DS3 first lets the move be left after its last hit
+    /// (its first JumpTable cancel; DS3's own art windows are per-weapon hks SpEffects such as 100570 "Harald Curved
+    /// Greatsword", so they can't be read by ID) and stays open to the end of the DS3 move: the hks starts the
+    /// follow-up at once when R1/R2 is pressed inside the window (SwordArtsOneShot_onUpdate), so a window that opened
+    /// at 45% of the move, as before, either came before the swing could be cancelled or after the player had pressed
+    /// R1 (which then played a plain R1: the Ringed Knight pair's art "didn't chain"). Without a cancel, the second half
+    /// of the move, as before. Other windows (the template's) are removed.
     /// </summary>
     internal static void SetComboWindows(TAE.Animation anim, WindowEvent proto, List<TAE.Event>? ds3Events, float duration, bool light, bool heavy)
     {
@@ -519,7 +525,9 @@ public static partial class MovesetPort
         if (!light && !heavy)
             return;
         var ds3Window = ds3Events?.FirstOrDefault(e => e.Type == proto.Type && WindowId(e) is not null);
-        float start = ds3Window?.StartTime ?? duration * 0.45f, end = ds3Window?.EndTime ?? duration * 0.9f;
+        float? exit = MoveTiming.Guard && ds3Window is null && ds3Events is not null ? MoveTiming.Recovery(ds3Events, HitStarts(ds3Events)) : null;
+        float start = ds3Window?.StartTime ?? exit ?? duration * 0.45f;
+        float end = ds3Window?.EndTime ?? (exit is not null ? Math.Max(duration, start + 0.5f) : duration * 0.9f);
         if (end <= start)
             end = start + 0.5f;
         var group = anim.Events.FirstOrDefault(e => e.Type == proto.Type && e.Group is not null)?.Group;
@@ -774,6 +782,17 @@ public static class ArtSelfTest
         Check(move.Events.Where(e => BitConverter.ToInt32(e.GetParameterBytes(false), 0) is 100051 or 100054).All(e => e.StartTime == 0.5f && e.EndTime == 1.2f), "arts: follow-up windows use DS3's own timing");
         MovesetPort.SetComboWindows(move, proto, null, 2f, light: false, heavy: false);
         Check(move.Events.Count == 1, "arts: a one-shot without follow-ups has no combo window");
+        // No DS3 window of these IDs (DS3 uses per-weapon hks SpEffects): the window opens at DS3's first cancel after
+        // the last hit (JumpTable at 1.567 s) and stays open to the end of the DS3 move (3.0 s); before it was 45-90%.
+        byte[] Jt(int id) { var b = new byte[16]; BitConverter.GetBytes(id).CopyTo(b, 0); return b; }
+        var rkpg = new List<SoulsFormats.TAE.Event>
+        {
+            new(0.9f, 1.1f, 1, 0, new byte[16], false), new(0.767f, 2.933f, 67, 0, Win(100570), false), new(1.567f, 3.0f, 0, 0, Jt(4), false),
+        };
+        MovesetPort.SetComboWindows(move, proto, rkpg, 3f, light: true, heavy: true);
+        var windows = move.Events.Where(e => BitConverter.ToInt32(e.GetParameterBytes(false), 0) is 100051 or 100054).ToList();
+        Check(windows.Count == 2 && windows.All(w => Math.Abs(w.StartTime - 1.567f) < 0.001f && Math.Abs(w.EndTime - 3f) < 0.001f),
+            $"arts: without a DS3 window of its own, the follow-up window runs from DS3's first cancel to the move's end (got {string.Join(" ", windows.Select(w => $"{w.StartTime:0.000}-{w.EndTime:0.000}"))})");
         var engine = MovesetPort.HksEffectIds("if env(GetSpEffectID, 102355) == TRUE then\nelseif env( GetSpEffectID , 30) == TRUE then end");
         Check(engine.Contains(102355) && engine.Contains(30) && engine.Contains(100280) && engine.Contains(100054) && !engine.Contains(6340),
             "effects: the hks's own SpEffect IDs (and charge / combo windows) are kept, others are ported");
