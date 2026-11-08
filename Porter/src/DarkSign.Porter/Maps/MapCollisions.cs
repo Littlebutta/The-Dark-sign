@@ -1,3 +1,4 @@
+using DarkSign.Porter.Havok;
 using SoulsFormats;
 
 namespace DarkSign.Porter.Maps;
@@ -11,6 +12,9 @@ namespace DarkSign.Porter.Maps;
 /// </summary>
 public static class MapCollisions
 {
+    /// <summary>Peak memory of converting a DS3 collision file, per byte of the file (measured: 4.7 MB peaked at 3.8 GB).</summary>
+    private const long BytesPerDs3Byte = 1000;
+
     public sealed record Result(string Summary, HashSet<string> Ported);
 
     public static string Ds3BinderPath(MapId id, string kind) => $"/map/{id}/{kind}{id.Digits}.hkxbhd";
@@ -67,11 +71,21 @@ public static class MapCollisions
         // Each collision file converts on its own thread; they're added in DS3's order, so every build is the same.
         var files = ds3Binder.Files.Where(f => f.Name.EndsWith(".hkx.dcx", StringComparison.OrdinalIgnoreCase)).ToList();
         var results = new (byte[]? Bytes, int Triangles, string? Error)[files.Count];
-        Parallel.For(0, files.Count, Parallelism.Options, i =>
+        // Serializing is the slow part and HKLib can only do it on every core once its caches are warm (see
+        // CollisionPort.WarmUp). Big files go first, so the end of the stage isn't one core finishing a large file
+        // alone, and the memory budget keeps the XML of the files in flight (about 800 times the DS3 file's size)
+        // within a share of the PC's memory.
+        var warmNote = CollisionPort.WarmUp(template, !options.BinaryCollision, options.KeepSimdTree);
+        var cachesBefore = HavokCaches.Count;
+        var order = Enumerable.Range(0, files.Count).OrderByDescending(i => files[i].Bytes.Length).ToList();
+        var budget = MemoryBudget.Share();
+        Parallel.ForEach(order, Parallelism.Options, i =>
         {
             try
             {
-                var result = CollisionPort.Convert(DCX.Decompress(files[i].Bytes), template, !options.BinaryCollision, options.KeepSimdTree);
+                var raw = DCX.Decompress(files[i].Bytes);
+                using var _ = budget.Take(raw.LongLength * BytesPerDs3Byte);
+                var result = CollisionPort.Convert(raw, template, !options.BinaryCollision, options.KeepSimdTree);
                 results[i] = (DCX.Compress(result.Bytes, compression), result.Triangles, null);
             }
             catch (Exception ex)
@@ -79,6 +93,12 @@ public static class MapCollisions
                 results[i] = (null, 0, ex.Message);
             }
         });
+        // A cache that grew while files serialized on every core means a type the warm-up missed: the files still
+        // read back and compared, but the race is possible, so say so.
+        var cachesAfter = HavokCaches.Count;
+        if (warmNote is not null && cachesAfter != cachesBefore)
+            Console.WriteLine($"collision: WARN HKLib cached {cachesAfter - cachesBefore} more types while converting {ItemText.Leaf(source)} in parallel; "
+                              + "the warm-up (CollisionPort.WarmUp) misses a type. Rebuild with DARKSIGN_COLLISION_LOCK=1 if a map's collision misbehaves.");
         for (int i = 0; i < files.Count; i++)
         {
             var leaf = ItemText.Leaf(files[i].Name);
@@ -96,7 +116,7 @@ public static class MapCollisions
         var target = ErBinderPath(erId, kind);
         output.Write(ctx.ModPath(MapPorter.ModParts(target)), ctx.ModPath(MapPorter.ModParts(target[..^3] + "bdt")));
         var summary = $"{ported.Count} files, {triangles} triangles into {ItemText.Leaf(target)}"
-                      + $" ({(options.BinaryCollision ? "binary" : "XML")} tagfiles){templateNote}";
+                      + $" ({(options.BinaryCollision ? "binary" : "XML")} tagfiles, {(warmNote is null ? "serialized one at a time" : $"on {Parallelism.Threads} threads")}){templateNote}";
         if (failed.Count > 0)
             summary += $"; {failed.Count} failed: {string.Join("; ", failed.Take(5))}{(failed.Count > 5 ? "; ..." : "")}";
         return new Result(summary, ported);
