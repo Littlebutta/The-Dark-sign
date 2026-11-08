@@ -128,6 +128,15 @@ Try the next option if: Ported weapons look dark grey and untextured, or metal p
 - **off: Off (flat, not metal).** The old way: a flat black metallic map and DS3's diffuse map (DARKSIGN_WEAPON_PBR=0). Metal blades render dark grey. (`DARKSIGN_WEAPON_PBR=0`)
 
 
+### DS3 weapon glow and detail layers (`weapon-materials`, rebuilds the content)
+
+Try the next option if: A ported weapon looks rusty, patchy or grey over its own texture, or a glowing DS3 part (Friede's frozen blade) doesn't glow.
+
+- **A: Elden Ring vertex colours and emissive materials (default).** Ported meshes take the template weapon's vertex colour, so Elden Ring's detail layers (rust, bone, leather) don't mix over the DS3 texture, and DS3 materials with their own glow map get a copy of an Elden Ring glowing weapon material.
+- **B: Keep DS3 vertex colours.** Glowing materials as in A, but DS3's own vertex colours are kept (DARKSIGN_VCOLOR=keep). (`DARKSIGN_VCOLOR=keep`)
+- **C: No glowing materials.** Vertex colours as in A, but every material uses the plain template material, no glow (DARKSIGN_EMISSIVE=0). (`DARKSIGN_EMISSIVE=0`)
+
+
 ## Weapon sounds and effects
 
 ### DS3 weapon sounds (`sounds`, rebuilds the content)

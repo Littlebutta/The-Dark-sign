@@ -47,6 +47,32 @@ public static class TextureCheck
         foreach (var f in BND4.Read(File.ReadAllBytes(modMaterials)).Files)
             matbins.TryAdd(Path.GetFileNameWithoutExtension(ItemText.Leaf(f.Name)), MATBIN.Read(f.Bytes));
 
+        // --convert: the models and materials this porter would build, in memory, checked instead of the mod's files.
+        var converted = new ConcurrentDictionary<string, byte[]>(StringComparer.OrdinalIgnoreCase);
+        if (convert)
+        {
+            var erWeapons = ctx.LoadParams(PorterGame.EldenRing).Get("EquipParamWeapon")!;
+            var mats = new ConcurrentBag<(int Order, List<ModelPort.NewMaterial> List)>();
+            Parallel.For(0, plans.Count, Parallelism.Options, i =>
+            {
+                var plan = plans[i];
+                int ds3Model = Convert.ToInt32(ds3Weapons[plan.Ds3Id]!["equipModelId"].Value);
+                int templateModel = Convert.ToInt32(erWeapons[plan.TemplateId!.Value]!["equipModelId"].Value);
+                var mine = new List<ModelPort.NewMaterial>();
+                foreach (var lod in new[] { false, true })
+                    if (ModelPort.Convert(ds3, er, ds3Model, templateModel, plan.NewModelId!.Value, lod) is { } model)
+                    {
+                        converted[ModelPort.PartsPath(plan.NewModelId.Value, lod)] = model.Binder.Write();
+                        mine.AddRange(model.Materials);
+                    }
+                mats.Add((i, mine));
+            });
+            matbins.Clear();
+            foreach (var (file, matbin) in ModelPort.BuildMaterials(er, mats.OrderBy(m => m.Order).SelectMany(m => m.List)))
+                matbins[Path.GetFileNameWithoutExtension(ItemText.Leaf(file.Name))] = matbin;
+            Console.WriteLine($"converted in memory: {converted.Count} binders, {matbins.Count} materials");
+        }
+
         var rows = new ConcurrentBag<(int Order, string Line)>();
         var bad = new ConcurrentBag<(int Order, string Line)>();
         Parallel.For(0, plans.Count, Parallelism.Options, i =>
@@ -73,12 +99,14 @@ public static class TextureCheck
                         }
 
                 var modPath = ctx.ModPath(["parts", ModelPort.PartsPath(plan.NewModelId!.Value, lod)[7..]]);
-                if (!File.Exists(modPath))
+                byte[]? modBytes = convert ? converted.GetValueOrDefault(ModelPort.PartsPath(plan.NewModelId.Value, lod))
+                    : File.Exists(modPath) ? File.ReadAllBytes(modPath) : null;
+                if (modBytes is null)
                 {
-                    problems.Add($"no mod file {Path.GetFileName(modPath)}");
+                    problems.Add($"no {(convert ? "converted" : "mod")} file {Path.GetFileName(modPath)}");
                     continue;
                 }
-                var mod = BND4.Read(File.ReadAllBytes(modPath));
+                var mod = BND4.Read(modBytes);
                 var modTex = mod.Files.Where(f => TPF.Is(f.Bytes)).SelectMany(f => TPF.Read(f.Bytes).Textures)
                     .Select(t => t.Name).ToHashSet(StringComparer.OrdinalIgnoreCase);
                 foreach (var f in mod.Files.Where(f => FLVER2.Is(f.Bytes)))

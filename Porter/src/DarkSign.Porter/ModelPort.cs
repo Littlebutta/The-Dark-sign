@@ -16,7 +16,84 @@ public static class ModelPort
     /// A material the converted model needs: a copy of a template MATBIN pointed at the textures (TPF names) the
     /// DS3 material used.
     /// </summary>
-    public sealed record NewMaterial(string TemplateMatbin, string NewMatbin, string Albedo, string Normal, string Metallic);
+    public sealed record NewMaterial(string TemplateMatbin, string NewMatbin, string Albedo, string Normal, string Metallic,
+        string? Emissive = null);
+
+    /// <summary>
+    /// An Elden Ring weapon material that glows (its MATBIN samples an emissive map of the weapon's own), with the
+    /// FLVER material and GX list its weapon uses for it. DS3 materials that glow (Friede's frozen blade, _em maps)
+    /// get a copy of it, since the plain template material has no emissive slot and drops the glow.
+    /// </summary>
+    public sealed record EmissiveTemplate(string Matbin, FLVER2.Material Material, FLVER2.GXList GX);
+
+    private static readonly object EmissiveLock = new();
+    private static EmissiveTemplate? _emissive;
+    private static bool _emissiveSearched;
+
+    /// <summary>
+    /// Finds the emissive template once per run (DARKSIGN_EMISSIVE=0 turns glowing materials off).
+    /// </summary>
+    public static EmissiveTemplate? Emissive(GameArchives er)
+    {
+        lock (EmissiveLock)
+        {
+            if (_emissiveSearched)
+                return _emissive;
+            _emissiveSearched = true;
+            if (Environment.GetEnvironmentVariable("DARKSIGN_EMISSIVE") is "0" or "off")
+                return null;
+            var candidates = new List<(string Name, string Tag, int Score)>();
+            foreach (var binder in Explore.MaterialBinders)
+                foreach (var f in BND4.Read(er.Read(binder)).Files)
+                {
+                    var name = Path.GetFileNameWithoutExtension(ItemText.Leaf(f.Name));
+                    if (!name.StartsWith("P[WP_A_", StringComparison.OrdinalIgnoreCase))
+                        continue;
+                    var tag = TagIn(name);
+                    if (tag.Length != 9)
+                        continue;
+                    var own = MATBIN.Read(f.Bytes).Samplers
+                        .Where(smp => smp.Path.Contains(tag[..9], StringComparison.OrdinalIgnoreCase)).Select(smp => smp.Type).ToList();
+                    bool Has(string kind) => own.Any(t => t.Contains(kind, StringComparison.OrdinalIgnoreCase));
+                    // Only the slots the port fills may point at the weapon's own textures.
+                    if (Has("Emissive") && Has("Albedo") && Has("Normal")
+                        && own.All(t => SlotKind(t) is not null))
+                    {
+                        // Prefer Elden Ring's plain glowing weapon shader (C[AMSN]_Glow[Int], 2026-11-08 survey: 41
+                        // candidates, mostly this one) with a metallic map of its own, over rune/crystal/detail shaders.
+                        var shader = Path.GetFileNameWithoutExtension(MATBIN.Read(f.Bytes).ShaderPath);
+                        int score = (shader.Equals("C[AMSN]_Glow[Int]", StringComparison.OrdinalIgnoreCase) ? 2 : 0) + (Has("Metallic") ? 1 : 0);
+                        candidates.Add((name, tag[..9], score));
+                    }
+                }
+            foreach (var (name, tag, _) in candidates.DistinctBy(c => c.Name).OrderByDescending(c => c.Score).ThenBy(c => c.Name, StringComparer.Ordinal))
+            {
+                var path = PartsPath(int.Parse(tag[5..]));
+                if (!er.Contains(path))
+                    continue;
+                foreach (var f in BND4.Read(er.Read(path)).Files.Where(f => FLVER2.Is(f.Bytes)))
+                {
+                    var flver = FLVER2.Read(f.Bytes);
+                    var mat = flver.Materials.FirstOrDefault(m => MatbinName(m.MTD).Equals(name, StringComparison.OrdinalIgnoreCase));
+                    if (mat is null || mat.GXIndex < 0 || mat.GXIndex >= flver.GXLists.Count)
+                        continue;
+                    _emissive = new EmissiveTemplate(name, mat, flver.GXLists[mat.GXIndex]);
+                    Console.WriteLine($"models: glowing DS3 materials use Elden Ring's {name} ({candidates.Count} candidates)");
+                    return _emissive;
+                }
+            }
+            Console.WriteLine("models: no Elden Ring emissive weapon material found; glowing DS3 materials stay plain");
+            return null;
+        }
+    }
+
+    /// <summary>Which of the port's textures a MATBIN sampler type takes, or null if none.</summary>
+    public static string? SlotKind(string samplerType) =>
+        samplerType.Contains("Emissive", StringComparison.OrdinalIgnoreCase) ? "emissive"
+        : samplerType.Contains("Albedo", StringComparison.OrdinalIgnoreCase) ? "albedo"
+        : samplerType.Contains("Normal", StringComparison.OrdinalIgnoreCase) ? "normal"
+        : samplerType.Contains("Metallic", StringComparison.OrdinalIgnoreCase) ? "metallic"
+        : null;
 
     public static string PartsPath(int modelId, bool lod = false) =>
         $"/parts/wp_a_{modelId:D4}{(lod ? "_l" : "")}.partsbnd.dcx";
@@ -45,7 +122,7 @@ public static class ModelPort
             {
                 var flver = FLVER2.Read(file.Bytes);
                 var stem = Path.GetFileNameWithoutExtension(leaf);
-                ConvertFlver(flver, templateFlver, stem, oldTag, newTag, materials);
+                ConvertFlver(flver, templateFlver, stem, oldTag, newTag, materials, Emissive(er));
                 files.Add(new BinderFile(file.Flags, file.ID, folder + leaf, flver.Write()));
             }
             else if (TPF.Is(file.Bytes))
@@ -60,7 +137,7 @@ public static class ModelPort
     }
 
     private static void ConvertFlver(FLVER2 flver, FLVER2 template, string stem, string oldTag, string newTag,
-        List<NewMaterial> materials)
+        List<NewMaterial> materials, EmissiveTemplate? emissive)
     {
         var bboxMin = flver.Header.BoundingBoxMin;
         var bboxMax = flver.Header.BoundingBoxMax;
@@ -101,13 +178,30 @@ public static class ModelPort
                 ? specular[..^2] + "_m"
                 : stem + "_m";
 
+            // A DS3 glow map of the weapon's own (not a SYSTEX dummy) means the material glows.
+            var glow = m.Textures.Where(t => t.Path.Length > 0 && t.ParamName.Contains("Emissive", StringComparison.OrdinalIgnoreCase))
+                .Select(t => Path.GetFileNameWithoutExtension(ItemText.Leaf(t.Path)))
+                .FirstOrDefault(n => !n.StartsWith("SYSTEX", StringComparison.OrdinalIgnoreCase));
+
             m.Name = stem + suffix;
-            m.MTD = templateMaterial.MTD.Replace(TagIn(templateMatbin), stem + suffix);
             m.GXIndex = 0;
-            m.Textures = templateMaterial.Textures
+            var source = templateMaterial;
+            var sourceMatbin = templateMatbin;
+            if (glow is not null && emissive is not null)
+            {
+                source = emissive.Material;
+                sourceMatbin = emissive.Matbin;
+                newMatbin = sourceMatbin.Replace(TagIn(sourceMatbin), stem + suffix);
+                if (flver.GXLists.Count == 1)
+                    flver.GXLists.Add(emissive.GX);
+                m.GXIndex = 1;
+            }
+            m.MTD = source.MTD.Replace(TagIn(sourceMatbin), stem + suffix);
+            m.Textures = source.Textures
                 .Select(t => new FLVER2.Texture(t.ParamName, "", t.TilingScale, t.TilingTypeU, t.TilingTypeV, t.Unk14, t.Unk18, t.Unk1C))
                 .ToList();
-            materials.Add(new NewMaterial(templateMatbin, newMatbin, albedo, normal, metallic));
+            materials.Add(new NewMaterial(sourceMatbin, newMatbin, albedo, normal, metallic,
+                glow is null ? null : TextureName(glow, oldTag, newTag)));
         }
 
         // Elden Ring vertices carry one tangent; DS3's second tangent (and its layout member) is dropped.
@@ -141,6 +235,19 @@ public static class ModelPort
             foreach (var vertex in mesh.Vertices)
                 while (vertex.Colors.Count < colors)
                     vertex.Colors.Add(new FLVER.VertexColor(1f, 1f, 1f, 1f));
+        }
+
+        // Elden Ring's weapon shader blends its detail layers (rust, bone, leather...) by vertex colour, and its own
+        // weapons all carry one colour (1,0,0,1). DS3's vertex colours mean something else (most are (1,0,0.41,1)),
+        // which mixed a detail layer over the DS3 texture (Friede's scythe came out rust grey). Every ported vertex
+        // takes the template weapon's colour (DARKSIGN_VCOLOR=keep keeps DS3's).
+        if (Environment.GetEnvironmentVariable("DARKSIGN_VCOLOR") is not ("keep" or "0")
+            && template.Meshes.SelectMany(m => m.Vertices).FirstOrDefault(v => v.Colors.Count > 0) is { } tv)
+        {
+            var color = tv.Colors[0];
+            foreach (var vertex in flver.Meshes.SelectMany(m => m.Vertices))
+                for (int c = 0; c < vertex.Colors.Count; c++)
+                    vertex.Colors[c] = new FLVER.VertexColor(color.A, color.R, color.G, color.B);
         }
     }
 
@@ -208,17 +315,30 @@ public static class ModelPort
     /// </summary>
     public static void WriteMaterials(PorterContext ctx, GameArchives er, IEnumerable<NewMaterial> materials)
     {
+        const string Target = "/material/allmaterial_dlc02.matbinbnd.dcx";
+        var (bytes, compression) = er.ReadWithCompression(Target);
+        var bnd = BND4.Read(bytes);
+        int nextId = bnd.Files.Max(f => f.ID) + 1;
+        var built = BuildMaterials(er, materials);
+        foreach (var (file, _) in built)
+        {
+            file.ID = nextId++;
+            bnd.Files.Add(file);
+        }
+        File.WriteAllBytes(ctx.ModPath(["material", ItemText.Leaf(Target)]), DCX.Compress(bnd.Write(), compression));
+        Console.WriteLine($"materials: {built.Count} added to {ItemText.Leaf(Target)}");
+    }
+
+    /// <summary>The new MATBINs (binder files without IDs yet, and the MATBIN itself) for the ported materials.</summary>
+    public static List<(BinderFile File, MATBIN Matbin)> BuildMaterials(GameArchives er, IEnumerable<NewMaterial> materials)
+    {
         // Every template MATBIN, by name, from all three binders.
         var templates = new Dictionary<string, BinderFile>(StringComparer.OrdinalIgnoreCase);
         foreach (var binder in Explore.MaterialBinders)
             foreach (var f in BND4.Read(er.Read(binder)).Files)
                 templates.TryAdd(Path.GetFileNameWithoutExtension(ItemText.Leaf(f.Name)), f);
 
-        const string Target = "/material/allmaterial_dlc02.matbinbnd.dcx";
-        var (bytes, compression) = er.ReadWithCompression(Target);
-        var bnd = BND4.Read(bytes);
-        int nextId = bnd.Files.Max(f => f.ID) + 1;
-        int added = 0;
+        var built = new List<(BinderFile, MATBIN)>();
         foreach (var m in materials.DistinctBy(m => m.NewMatbin, StringComparer.OrdinalIgnoreCase))
         {
             if (!templates.TryGetValue(m.TemplateMatbin, out var templateFile))
@@ -230,10 +350,14 @@ public static class ModelPort
             var templateTag = TagIn(m.TemplateMatbin);
             foreach (var sampler in matbin.Samplers.Where(smp => smp.Path.Contains(templateTag, StringComparison.OrdinalIgnoreCase)))
             {
-                var texture = sampler.Type.Contains("Albedo", StringComparison.OrdinalIgnoreCase) ? m.Albedo
-                    : sampler.Type.Contains("Normal", StringComparison.OrdinalIgnoreCase) ? m.Normal
-                    : sampler.Type.Contains("Metallic", StringComparison.OrdinalIgnoreCase) ? m.Metallic
-                    : null;
+                var texture = SlotKind(sampler.Type) switch
+                {
+                    "emissive" => m.Emissive,
+                    "albedo" => m.Albedo,
+                    "normal" => m.Normal,
+                    "metallic" => m.Metallic,
+                    _ => null,
+                };
                 if (texture is null)
                     continue;
                 var leaf = ItemText.Leaf(sampler.Path);
@@ -242,11 +366,9 @@ public static class ModelPort
             }
             matbin.SourcePath = matbin.SourcePath.Replace(templateTag, TagIn(m.NewMatbin), StringComparison.OrdinalIgnoreCase);
             var name = templateFile.Name.Replace(m.TemplateMatbin, m.NewMatbin, StringComparison.OrdinalIgnoreCase);
-            bnd.Files.Add(new BinderFile(templateFile.Flags, nextId++, name, matbin.Write()));
-            added++;
+            built.Add((new BinderFile(templateFile.Flags, 0, name, matbin.Write()), matbin));
         }
-        File.WriteAllBytes(ctx.ModPath(["material", ItemText.Leaf(Target)]), DCX.Compress(bnd.Write(), compression));
-        Console.WriteLine($"materials: {added} added to {ItemText.Leaf(Target)}");
+        return built;
     }
 
     // "N:\GR\...\matxml\P[WP_A_0200]_Metal.matxml" -> "P[WP_A_0200]_Metal"
