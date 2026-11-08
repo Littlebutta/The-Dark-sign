@@ -49,6 +49,26 @@ public static partial class MovesetPort
     /// <summary>The effect port for SpEffect events in DS3 moves (set by Apply; null = DS3 IDs are left as they were).</summary>
     private static SpEffectPort? TaeEffects;
 
+    /// <summary>TAE events that cast SpEffects: Elden Ring's parameter length and where the effect IDs are
+    /// (DSAnimStudio's DS3 and ER templates: 66 AddSpEffect_Multiplayer, 67 AddSpEffect, 302 AddSpEffect_DragonForm,
+    /// 331 AddSpEffect_WeaponArts with its low-FP effect, 401 AddSpEffect_Multiplayer_401).</summary>
+    private static readonly Dictionary<int, (int Length, int[] Ids)> SpEffectEvents = new()
+    {
+        [66] = (8, [0]), [67] = (8, [0]), [302] = (16, [0]), [331] = (16, [0, 4]), [401] = (8, [0]),
+    };
+
+    /// <summary>Effect IDs the game's own scripts look for (Elden Ring's hks GetSpEffectID checks), kept as they are.</summary>
+    private static HashSet<int> EngineEffects = [];
+
+    internal static HashSet<int> HksEffectIds(string? hks)
+    {
+        var ids = new HashSet<int>(Enumerable.Range(100050, 6)) { 100280 };
+        if (hks is not null)
+            foreach (Match m in Regex.Matches(hks, @"GetSpEffectID\s*,\s*(\d+)"))
+                ids.Add(int.Parse(m.Groups[1].Value));
+        return ids;
+    }
+
     private static int _taeEffectEvents;
     private static readonly bool Ds3JumpTables = Environment.GetEnvironmentVariable("DARKSIGN_DS3_JUMPTABLES") == "1";
     // Event types Elden Ring keeps from its own template animation: sounds, effects and other references to IDs that
@@ -108,6 +128,7 @@ public static partial class MovesetPort
         var ds3Weapons = ds3.Get("EquipParamWeapon")!;
         var attackPort = new AttackParamPort(er, ds3) { Effects = spEffects };
         TaeEffects = spEffects;
+        EngineEffects = HksEffectIds(spEffects is null ? null : LoadHks(ctx));
         _taeEffectEvents = 0;
         // Param changes wait until every file is written, so a failure leaves the weapons on their template moveset.
         var pointWeapons = new List<Action>();
@@ -672,17 +693,30 @@ public static partial class MovesetPort
                 continue;
             }
             var bytes = e.GetParameterBytes(false);
-            // SpEffects a move casts (66, 67; the buff of Perseverance, Warcry, Ember): DS3's ID names an unrelated
-            // Elden Ring effect or none, so an effect Elden Ring lacks is ported (SpEffectPort) under its new ID. IDs
-            // both games have (the engine's: charge 100280, art combo windows 100050-100055) stay as they are.
-            if (TaeEffects is { } fx && e.Type is 66 or 67 && bytes.Length >= 4
-                && erLengths.TryGetValue(e.Type, out var fxLength) && fxLength == bytes.Length
-                && BitConverter.ToInt32(bytes, 0) is > 0 and var ds3Effect && !fx.ErHas(ds3Effect))
+            // SpEffects a move casts: 66 / 67 (DS3 16 bytes, Elden Ring 8), 302, 401, and 331, the weapon art's buff
+            // with its not-enough-FP twin (Perseverance 120750 / 120760). DS3's IDs name nothing in Elden Ring, or an
+            // unrelated effect (DS3's Stomp 6340 is something else there), so each is ported (SpEffectPort) under a new
+            // ID. Only the engine's IDs, the ones Elden Ring's hks checks (charge 100280, art combo windows 100050-100055,
+            // ...), stay as they are. An event whose effect can't be ported is left out.
+            if (TaeEffects is { } fx && SpEffectEvents.TryGetValue(e.Type, out var fxLayout))
             {
-                if (fx.Port(ds3Effect) is > 0 and var ported && TryGroup(e.Type, out var fxGroup))
+                var fxBytes = new byte[fxLayout.Length];
+                bool any = false;
+                foreach (var offset in fxLayout.Ids)
                 {
-                    var fxBytes = (byte[])bytes.Clone();
-                    BitConverter.GetBytes(ported).CopyTo(fxBytes, 0);
+                    int ds3Effect = offset + 4 <= bytes.Length ? BitConverter.ToInt32(bytes, offset) : -1;
+                    int mapped = ds3Effect <= 0 ? ds3Effect : EngineEffects.Contains(ds3Effect) ? ds3Effect : fx.Port(ds3Effect) is > 0 and var portedId ? portedId : -1;
+                    BitConverter.GetBytes(mapped).CopyTo(fxBytes, offset);
+                    any |= offset == fxLayout.Ids[0] && mapped > 0;
+                }
+                if (any)
+                {
+                    if (!TryGroup(e.Type, out var fxGroup))
+                    {
+                        fxGroup = new TAE.EventGroup(e.Type);
+                        anim.EventGroups.Add(fxGroup);
+                        groupOf[e.Type] = fxGroup;
+                    }
                     merged.Add(new TAE.Event(e.StartTime, e.EndTime, e.Type, e.Unk04, fxBytes, false) { Group = fxGroup });
                     _taeEffectEvents++;
                 }

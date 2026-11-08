@@ -761,6 +761,9 @@ public static class ArtSelfTest
         Check(move.Events.Where(e => BitConverter.ToInt32(e.GetParameterBytes(false), 0) is 100051 or 100054).All(e => e.StartTime == 0.5f && e.EndTime == 1.2f), "arts: follow-up windows use DS3's own timing");
         MovesetPort.SetComboWindows(move, proto, null, 2f, light: false, heavy: false);
         Check(move.Events.Count == 1, "arts: a one-shot without follow-ups has no combo window");
+        var engine = MovesetPort.HksEffectIds("if env(GetSpEffectID, 102355) == TRUE then\nelseif env( GetSpEffectID , 30) == TRUE then end");
+        Check(engine.Contains(102355) && engine.Contains(30) && engine.Contains(100280) && engine.Contains(100054) && !engine.Contains(6340),
+            "effects: the hks's own SpEffect IDs (and charge / combo windows) are kept, others are ported");
         // Bitfield fillers (ParamStore.FillBitfields): Elden Ring 2.7.2's SpEffectParam sets flags in bits Paramdex leaves unnamed.
         var xml = Path.Combine(Path.GetTempPath(), $"darksign-bits-{Environment.ProcessId}.xml");
         File.WriteAllText(xml, """
