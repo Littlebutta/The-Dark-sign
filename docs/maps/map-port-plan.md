@@ -142,7 +142,9 @@ jump, guard counter and the rest. Patrol routes and DS3's boss name text aren't 
    nearest collision. A save left inside a crashing map loads nothing else: the launcher's **Rescue save…** button
    starts the game once with the ported maps moved out of the mod folder (`SaveRescue`), so the vanilla colosseum
    loads under the same ID and Ctrl+Shift+F2 (or a death) gets the character back; the next PLAY restores the maps.
-   A save in a new-ID slot (m50-m52) has no vanilla map to fall back to.
+   Only the layouts and map folders move: the slots' empty event scripts stay, because with the vanilla arena script
+   running the player was left in the colosseum lobby state (enemies ignored them and took no damage until a restart,
+   1.0.221 test). A save in a new-ID slot (m50-m52) has no vanilla map to fall back to.
 2. ~~Do Elden Ring map textures live in `map/m45/m45_0000.tpfbhd` like DS3's?~~ No (2026-11-08 test): Elden Ring has none, its map textures are in `asset/aet`. Textures now go to `map/m45/common/m45_0000.tpfbhd` the way JortPob ships them.
 3. Does the game accept collision as XML tagfiles inside the binder (JortPob says yes), or does it need binary?
 4. Is the simd tree needed (`--simd` keeps DS3's)?

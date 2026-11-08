@@ -8,10 +8,13 @@ namespace DarkSign.Core;
 /// the same map ID, the player falls or rests back to an Elden Ring grace, and Ctrl+Shift+F2 (Leave DS3 run) warps
 /// them to Roundtable Hold. The next normal PLAY or rebuild puts the files back first (<see cref="Restore"/>).
 ///
-/// Only files port-maps writes are moved: the slot layouts (msb), the map folders (models, textures, collision,
-/// navmesh) and the slots' event scripts. common.emevd stays, so the run's leave warp still works, and so do the
-/// weapons and enemies. A map ID the game doesn't ship (m50-m52) has no arena to fall back to, so a save left there
-/// can't be rescued this way; the launcher says so.
+/// Only the slot layouts (msb) and the map folders (models, textures, collision, navmesh) are moved. The slots' event
+/// scripts stay: port-maps writes an empty script for each slot so the game's own colosseum events never run, and
+/// with the ported script hidden the vanilla arena script ran instead and put the player in the colosseum's lobby
+/// state, where Elden Ring's enemies ignored the player and took no damage until the game was restarted (Devin's
+/// 1.0.221 test). common.emevd stays too, so the run's leave warp still works, and so do the weapons and enemies.
+/// A map ID the game doesn't ship (m50-m52) has no arena to fall back to, so a save left there can't be rescued
+/// this way; the launcher says so.
 /// </summary>
 public static class SaveRescue
 {
@@ -23,14 +26,11 @@ public static class SaveRescue
     /// <summary>Where the hidden files wait: TheDarkSign\Work\rescue-hidden-maps, mirroring the mod folder.</summary>
     public static string HiddenDir(string root) => Path.Combine(root, "TheDarkSign", "Work", HiddenFolderName);
 
-    /// <summary>Mod-relative paths (files or folders) of everything a rescue hides.</summary>
+    /// <summary>Mod-relative paths (files or folders) of everything a rescue hides: the slot layouts and map folders.</summary>
     public static IEnumerable<string> RelativePaths()
     {
         foreach (var id in MapIds)
-        {
             yield return Path.Combine("map", "mapstudio", $"{id}.msb.dcx");
-            yield return Path.Combine("event", $"{id}.emevd.dcx");
-        }
         foreach (var area in MapIds.Select(id => id[..3]).Distinct())
             yield return Path.Combine("map", area);
     }
@@ -61,41 +61,29 @@ public static class SaveRescue
         return moved;
     }
 
-    /// <summary>Puts hidden maps back; returns what came back (mod-relative). Nothing hidden: nothing happens.</summary>
+    /// <summary>
+    /// Puts every hidden file back (whatever an earlier launcher version hid); returns what came back (mod-relative
+    /// files). A file a rebuild wrote meanwhile wins over the hidden copy. Nothing hidden: nothing happens.
+    /// </summary>
     public static List<string> Restore(string modDir, string hiddenDir)
     {
         var restored = new List<string>();
         if (!Directory.Exists(hiddenDir))
             return restored;
-        foreach (var rel in RelativePaths())
+        foreach (var file in Directory.EnumerateFiles(hiddenDir, "*", SearchOption.AllDirectories).ToList())
         {
-            var hidden = Path.Combine(hiddenDir, rel);
+            var rel = Path.GetRelativePath(hiddenDir, file);
             var to = Path.Combine(modDir, rel);
-            if (Directory.Exists(hidden))
+            if (File.Exists(to))
+                File.Delete(file);
+            else
             {
-                if (Directory.Exists(to))
-                    MergeInto(hidden, to); // a rebuild wrote new files meanwhile: the new ones win
-                else
-                {
-                    Directory.CreateDirectory(Path.GetDirectoryName(to)!);
-                    Directory.Move(hidden, to);
-                }
-                restored.Add(rel);
+                Directory.CreateDirectory(Path.GetDirectoryName(to)!);
+                File.Move(file, to);
             }
-            else if (File.Exists(hidden))
-            {
-                if (File.Exists(to))
-                    File.Delete(hidden);
-                else
-                {
-                    Directory.CreateDirectory(Path.GetDirectoryName(to)!);
-                    File.Move(hidden, to);
-                }
-                restored.Add(rel);
-            }
+            restored.Add(rel);
         }
-        if (Directory.Exists(hiddenDir) && !Directory.EnumerateFiles(hiddenDir, "*", SearchOption.AllDirectories).Any())
-            Directory.Delete(hiddenDir, recursive: true);
+        Directory.Delete(hiddenDir, recursive: true);
         return restored;
     }
 
