@@ -12,6 +12,8 @@ public static class ChrModel
 {
     public static List<ChrMaterial> Convert(FLVER2 flver, FLVER2 template, int ds3Chr, int newChr)
     {
+        if (!ChrPort.HasBody(template) || flver.Materials.Count == 0)
+            throw new InvalidDataException("the template or the DS3 model has nothing to draw");
         var bboxMin = flver.Header.BoundingBoxMin;
         var bboxMax = flver.Header.BoundingBoxMax;
         flver.Header = template.Header;
