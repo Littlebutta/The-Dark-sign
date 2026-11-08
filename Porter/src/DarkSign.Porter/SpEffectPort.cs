@@ -333,12 +333,22 @@ public sealed class SpEffectPort
     /// </summary>
     public void ApplyWeapons(IEnumerable<WeaponPlan> plans, PARAM ds3Weapons, PARAM erWeapons)
     {
-        // The menu text Elden Ring's own weapons show for an effect row ("Causes blood loss buildup").
-        var messages = new Dictionary<int, int>();
+        // The menu text Elden Ring's own weapons show for each status ("Causes blood loss buildup" is spEffectMsgId 0,
+        // so 0 counts): the most common spEffectMsgId among Elden Ring weapons whose effect in that slot has the
+        // status. Before, a slot the template weapon left empty kept the template's text byte (0, blood loss) when a
+        // ported frost effect was put in it, and Vordt's Great Hammer listed "Blood loss buildup (0)".
+        var messageVotes = new Dictionary<string, Dictionary<int, int>>();
         foreach (var r in erWeapons.Rows.Where(r => r.ID < WeaponPort.FirstNewId))
             for (int s = 0; s < 3; s++)
-                if (Int(r, $"spEffectBehaviorId{s}") is > 0 and var id && Int(r, $"spEffectMsgId{s}") is > 0 and var msg)
-                    messages.TryAdd(id, msg);
+                if (Int(r, $"spEffectBehaviorId{s}") is > 0 and var id && _er[id] is { } effect && StatusOf(effect) is { } kind
+                    && Int(r, $"spEffectMsgId{s}") is >= 0 and var msg)
+                {
+                    if (!messageVotes.TryGetValue(kind, out var votes))
+                        messageVotes[kind] = votes = [];
+                    votes[msg] = votes.GetValueOrDefault(msg) + 1;
+                }
+        var messages = messageVotes.ToDictionary(v => v.Key, v => v.Value.MaxBy(x => x.Value).Key);
+        Console.WriteLine("weapon effects: menu text per status (spEffectMsgId): " + string.Join(", ", messages.OrderBy(m => m.Key).Select(m => $"{m.Key} {m.Value}")));
 
         int weapons = 0, slots = 0;
         foreach (var plan in plans.Where(p => p.Status == "port"))
@@ -359,9 +369,8 @@ public sealed class SpEffectPort
                     if (slot < 0)
                         break;
                     Set(row[$"spEffectBehaviorId{slot}"]!, erId);
-                    var template = _statusTemplates.Values.FirstOrDefault(t => _er[erId] is { } e && _er[t] is { } te && StatusOf(e) == StatusOf(te), -1);
-                    if (row[$"spEffectMsgId{slot}"] is { } msgCell && messages.TryGetValue(template, out var msg))
-                        Set(msgCell, msg);
+                    if (row[$"spEffectMsgId{slot}"] is { } msgCell)
+                        Set(msgCell, _er[erId] is { } e && StatusOf(e) is { } kind && messages.TryGetValue(kind, out var msg) ? msg : -1);
                     slots++;
                 }
                 var residentFields = new[] { "residentSpEffectId", "residentSpEffectId1", "residentSpEffectId2" };

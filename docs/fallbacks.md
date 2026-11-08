@@ -44,6 +44,7 @@ Try the next option if: The content build fails or gives different results from 
 
 - **A: Every core (default).** port-weapons and port-maps run side by side, each on every core.
 - **B: One core.** Everything one step at a time (DARKSIGN_THREADS=1), as builds were before 1.0.12x. Slower, but rules out a threading bug. (`DARKSIGN_THREADS=1`)
+- **C: Collision one file at a time.** Every core, but map collision files are serialized one at a time under a lock (DARKSIGN_COLLISION_LOCK=1), as builds before 1.0.23x did. Minutes slower per map; rules the lock-free Havok serialization out if a map's collision misbehaves. (`DARKSIGN_COLLISION_LOCK=1`)
 
 
 ## Weapon movesets
@@ -88,6 +89,7 @@ Try the next option if: DS3 moves look broken (twisting limbs, jitter, sliding) 
 
 - **A: Spline-compressed (default).** DS3 animations re-encoded as Havok spline animations, like Elden Ring's own.
 - **B: Interleaved (uncompressed).** Every frame stored as is (DARKSIGN_ANIM_INTERLEAVED=1). Exact, but about 5x bigger: the first build like this hung loading. (`DARKSIGN_ANIM_INTERLEAVED=1`)
+- **C: A, weapon bones from DS3.** A, but every shared bone takes DS3's rotation, including end bones (R_Weapon, L_Weapon) that rest differently in the two skeletons (DARKSIGN_WEAPON_BONES=ds3). Builds up to 1.0.221 did this: the Ringed Knight pair's left blade pointed backwards in its dual-wield swings. Try it if a weapon no longer turns in the hand as it did in DS3. (`DARKSIGN_WEAPON_BONES=ds3`)
 
 ### Jump attacks (`jump-attacks`, rebuilds the content)
 
@@ -195,7 +197,7 @@ Try the next option if: A ported weapon builds up no status (Friede's scythe no 
 Try the next option if: Warping into a DS3 map fails (nothing happens, endless loading, crash, or you land in the colosseum).
 
 - **A: Colosseum slots (default).** Firelink/Cemetery of Ash, High Wall and Undead Settlement replace the three colosseum arenas (m45_00-02), which single-player never visits; plus an m50 test copy of the Cemetery.
-- **B: New map IDs.** Each DS3 map gets a map ID Elden Ring doesn't ship (m50_00, m51_00, m52_00), built from the colosseums' file formats. Works if the F1 menu's m50 test warp works. (`DARKSIGN_MAP_SLOTS=new`)
+- **B: New map IDs.** Each DS3 map gets a map ID Elden Ring doesn't ship (m50_00, m51_00, m52_00), built from the colosseums' file formats, and listed in the game's flag allocation list so its flags are kept. Works if the F1 menu's m50 test warp (Ctrl+Shift+4) works; see `docs/maps/own-map-ids.md`. (`DARKSIGN_MAP_SLOTS=new`)
 
 ### Getting into the DS3 run (`run-start`, rebuilds the content)
 

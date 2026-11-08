@@ -164,6 +164,49 @@ public static partial class ModValidate
             if (empty > 20)
                 r.Error($"... {empty - 20} more ported swings without a hitbox");
             Console.WriteLine($"validate: {checkedHits - empty}/{checkedHits} ported weapon hits have a hitbox");
+
+            // Where the hit spheres sit: the dummy polys the attack rows name against the dummy polys the weapon's own
+            // model (ported from DS3) carries. The games place weapon hit dummies as 10000 + dummy (right hand) /
+            // 11000 + dummy (left); a weapon whose attack rows name dummies its model doesn't have swings without
+            // hitting anything (1.0.221: DS3 weapons did no damage while their rows passed the radius check above).
+            int reported = 0, missing = 0;
+            foreach (var row in bases)
+            {
+                int variation = Field(row, "behaviorVariationId"), model = Field(row, "equipModelId");
+                if (variation <= 0 || model < WeaponPort.FirstNewModelId)
+                    continue;
+                var parts = Binder("parts", $"wp_a_{model:D4}.partsbnd.dcx");
+                if (parts is null)
+                    continue;
+                var modelDummies = new SortedSet<int>();
+                foreach (var f in parts.Files.Where(f => FLVER2.Is(f.Bytes)))
+                    try { modelDummies.UnionWith(FLVER2.Read(f.Bytes).Dummies.Select(d => (int)d.ReferenceID)); }
+                    catch (Exception e) when (e is InvalidDataException or EndOfStreamException) { }
+                var hitDummies = new SortedSet<int>();
+                foreach (var b in behaviours.Rows.Where(b => b.ID / 1000 == variation && Field(b, "refType") == 0))
+                    if (attacks[Field(b, "refId")] is { } atk)
+                        for (int i = 0; i < 16; i++)
+                            if (atk[$"hit{i}_Radius"] is { } rad && Convert.ToSingle(rad.Value) > 0)
+                                foreach (var field in new[] { $"hit{i}_DmyPoly1", $"hit{i}_DmyPoly2" })
+                                    if (atk[field] is { } dmy && Convert.ToInt32(dmy.Value) is >= 0 and var v)
+                                        hitDummies.Add(v);
+                if (hitDummies.Count == 0)
+                    continue;
+                bool OnModel(int v) => modelDummies.Contains(v) || modelDummies.Contains(v % 1000) || (v >= 10000 && modelDummies.Contains(v - 10000)) || (v >= 11000 && modelDummies.Contains(v - 11000));
+                var found = hitDummies.Where(OnModel).ToList();
+                var line = $"weapon {row.ID} (wp_a_{model:D4}): attack dummy polys {string.Join(" ", hitDummies)}; model dummy polys {string.Join(" ", modelDummies.Take(24))}{(modelDummies.Count > 24 ? " ..." : "")}; {found.Count}/{hitDummies.Count} on the model";
+                if (found.Count == 0)
+                {
+                    missing++;
+                    if (missing <= 10)
+                        r.Warn(line + " (its hit spheres have nowhere to sit)");
+                }
+                else if (reported++ < 8)
+                    r.Info(line);
+            }
+            if (missing > 10)
+                r.Warn($"... {missing - 10} more ported weapons whose attack dummy polys are not on their model");
+            Console.WriteLine($"validate: {missing} ported weapons name hit dummy polys their model doesn't carry");
         }
         if (!MovesetPort.UseWeaponMotionCategory)
             foreach (var row in bases.Where(row => Field(row, "spAtkcategory") is > 0 and < 50 or > 999))

@@ -92,7 +92,8 @@ public static class MapValidate
         try
         {
             var flags = FlagMap.Load(ctx.ModPath(MapEvents.FlagFile));
-            FlagAlloc.Check(er, report, listed.Select(l => l.Er), flags.Flags.Values.Concat(flags.Events.Values));
+            FlagAlloc.Check(er, report, listed.Select(l => l.Er), flags.Flags.Values.Concat(flags.Events.Values),
+                ctx.ModPath(MapPorter.ModParts(FlagAlloc.LegacyList)));
             // The in-game check (dksign_testmenu.dll) asks the game itself about these blocks.
             File.WriteAllLines(ctx.ModPath(FlagAlloc.ProbeFile),
                 FlagAlloc.ProbeLines(listed.Select(l => l.Er), flags.Flags.Values, slotFlags: !MapFlags.Common));

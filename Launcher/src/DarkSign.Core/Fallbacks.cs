@@ -79,6 +79,8 @@ public static class Fallbacks
             new("A", "Every core (default)", "port-weapons and port-maps run side by side, each on every core."),
             new("B", "One core", "Everything one step at a time (DARKSIGN_THREADS=1), as builds were before 1.0.12x. Slower, but rules out a threading bug.")
                 { PorterEnv = Env("DARKSIGN_THREADS", "1") },
+            new("C", "Collision one file at a time", "Every core, but map collision files are serialized one at a time under a lock (DARKSIGN_COLLISION_LOCK=1), as builds before 1.0.23x did. Minutes slower per map; rules the lock-free Havok serialization out if a map's collision misbehaves.")
+                { PorterEnv = Env("DARKSIGN_COLLISION_LOCK", "1") },
         ]),
 
         // ---- Weapon movesets ----
@@ -128,6 +130,8 @@ public static class Fallbacks
             new("A", "Spline-compressed (default)", "DS3 animations re-encoded as Havok spline animations, like Elden Ring's own."),
             new("B", "Interleaved (uncompressed)", "Every frame stored as is (DARKSIGN_ANIM_INTERLEAVED=1). Exact, but about 5x bigger: the first build like this hung loading.")
                 { PorterEnv = Env("DARKSIGN_ANIM_INTERLEAVED", "1") },
+            new("C", "A, weapon bones from DS3", "A, but every shared bone takes DS3's rotation, including end bones (R_Weapon, L_Weapon) that rest differently in the two skeletons (DARKSIGN_WEAPON_BONES=ds3). Builds up to 1.0.221 did this: the Ringed Knight pair's left blade pointed backwards in its dual-wield swings. Try it if a weapon no longer turns in the hand as it did in DS3.")
+                { PorterEnv = Env("DARKSIGN_WEAPON_BONES", "ds3") },
         ]),
         new("weapon-hits", "Weapon movesets", "Hitboxes of DS3 swings", Stage.Build,
             "A ported weapon goes through enemies and walls, does no or odd damage, or staggers wrongly.",
@@ -248,7 +252,7 @@ public static class Fallbacks
             "Warping into a DS3 map fails (nothing happens, endless loading, crash, or you land in the colosseum).",
         [
             new("A", "Colosseum slots (default)", "Firelink/Cemetery of Ash, High Wall and Undead Settlement replace the three colosseum arenas (m45_00-02), which single-player never visits; plus an m50 test copy of the Cemetery."),
-            new("B", "New map IDs", "Each DS3 map gets a map ID Elden Ring doesn't ship (m50_00, m51_00, m52_00), built from the colosseums' file formats. Works if the F1 menu's m50 test warp works.")
+            new("B", "New map IDs", "Each DS3 map gets a map ID Elden Ring doesn't ship (m50_00, m51_00, m52_00), built from the colosseums' file formats and listed in the game's flag allocation list. Works if the F1 menu's m50 test warp (Ctrl+Shift+4) works.")
                 { PorterEnv = Env("DARKSIGN_MAP_SLOTS", "new") },
         ]),
         new("run-start", "DS3 maps", "Getting into the DS3 run", Stage.Build,

@@ -150,16 +150,42 @@ public static partial class FxrPort
         }
         result.Failed.AddRange(failed.Order().Select(id => $"f{id}"));
 
+        // Compressing the common effect binder (Kraken, one thread, ~200 MB) takes minutes; nothing else in the build
+        // reads it, so it is written in the background while the movesets convert. FinishWrites joins it.
         foreach (var b in erBinders.Where(b => b.Changed))
         {
             var path = ctx.ModPath(b.Path.TrimStart('/').Split('/'));
-            File.WriteAllBytes(path, DCX.Compress(b.Bnd.Write(), b.Compression));
+            var binder = b;
+            Pending.Add((path, Task.Run(() => File.WriteAllBytes(path, DCX.Compress(binder.Bnd.Write(), binder.Compression)))));
         }
         foreach (var (reason, ids) in reasons)
             Console.WriteLine($"effects: left out ({reason}): {ids.Count}, e.g. {string.Join(" ", ids.Take(6))}");
         Console.WriteLine($"effects: {result.Effects.Count} DS3 effects ported ({string.Join(", ", added.Select(a => $"{a.Value} {a.Key}"))}), " +
                           $"{failed.Count} left out (missing, with models, or unconvertible)");
         return result;
+    }
+
+    private static readonly List<(string Path, Task Write)> Pending = [];
+
+    /// <summary>
+    /// Waits for the effect binders <see cref="Apply"/> left writing in the background. Must run before the build
+    /// ends or deletes the moveset's outputs; a failed write is reported and its half-written file removed.
+    /// </summary>
+    public static void FinishWrites()
+    {
+        foreach (var (path, write) in Pending)
+        {
+            try
+            {
+                write.GetAwaiter().GetResult();
+            }
+            catch (Exception e) when (e is not OutOfMemoryException)
+            {
+                Console.WriteLine($"effects: could not write {path} ({e.GetType().Name}: {e.Message}); the moves keep Elden Ring effects");
+                try { File.Delete(path); } catch (IOException) { }
+            }
+        }
+        Pending.Clear();
     }
 
     /// <summary>The common effect binders in the mod folder (Mods\ER\sfx\*commoneffects*.ffxbnd.dcx).</summary>

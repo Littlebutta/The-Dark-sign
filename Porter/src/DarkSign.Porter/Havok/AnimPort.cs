@@ -19,12 +19,58 @@ public static class AnimPort
     {
         public required List<string> Names;
         public required List<NewBlendableTransform> ReferencePose;
+        public List<short> Parents = [];
     }
 
     public sealed class ErSkeleton
     {
         public required List<string> Names;
         public required List<hkQsTransform> ReferencePose;
+        public List<short> Parents = [];
+        /// <summary>Bones that keep Elden Ring's reference pose instead of DS3's track (see <see cref="RestDifferent"/>);
+        /// the moveset port sets it for the player, the enemy port leaves it unset.</summary>
+        public HashSet<int>? Frozen;
+    }
+
+    // DARKSIGN_WEAPON_BONES=ds3: every shared bone takes DS3's rotation, as builds up to 1.0.221 did.
+    private static readonly bool FreezeRestDifferent = Environment.GetEnvironmentVariable("DARKSIGN_WEAPON_BONES") != "ds3";
+    private const float RestAngleDegrees = 10f;
+
+    /// <summary>
+    /// Shared end bones (no children: the weapon bones, R_Weapon / L_Weapon, and the like) whose reference-pose
+    /// rotation differs between the two skeletons by more than <see cref="RestAngleDegrees"/>. A ported move copies
+    /// each bone's DS3 rotation, which is right where the two skeletons rest alike; where they don't, the DS3
+    /// rotation turns the Elden Ring part the wrong way (the Ringed Knight pair's left blade pointed backwards in
+    /// DS3's dual-wield swings, 1.0.221, while Elden Ring's own moves held it right). Such a bone keeps Elden Ring's
+    /// reference pose, which is Elden Ring's grip on the parent hand; DS3 moves rarely turn a weapon in the hand.
+    /// Bones with children are left alone: freezing a spine or arm bone would break the move. The list is logged once.
+    /// </summary>
+    public static HashSet<int> RestDifferent(Ds3Skeleton ds3, ErSkeleton er)
+    {
+        var result = new HashSet<int>();
+        if (!FreezeRestDifferent || er.Parents.Count != er.Names.Count || ds3.Parents.Count != ds3.Names.Count)
+            return result;
+        var ds3Index = ds3.Names.Select((n, i) => (n, i)).GroupBy(x => x.n, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(g => g.Key, g => g.First().i, StringComparer.OrdinalIgnoreCase);
+        var hasChildren = er.Parents.Where(p => p >= 0).Select(p => (int)p).ToHashSet();
+        var notes = new List<string>();
+        for (int b = 0; b < er.Names.Count; b++)
+        {
+            if (hasChildren.Contains(b) || !ds3Index.TryGetValue(er.Names[b], out var d))
+                continue;
+            var qEr = Quaternion.Normalize(er.ReferencePose[b].m_rotation);
+            var qDs3 = Quaternion.Normalize(ds3.ReferencePose[d].Rotation);
+            float dot = MathF.Min(1, MathF.Abs(Quaternion.Dot(qEr, qDs3)));
+            float degrees = 2 * MathF.Acos(dot) * 180 / MathF.PI;
+            if (degrees <= RestAngleDegrees)
+                continue;
+            result.Add(b);
+            notes.Add($"{er.Names[b]} {degrees:0}°");
+        }
+        Console.WriteLine(result.Count == 0
+            ? "moveset: every shared end bone rests alike in both skeletons; all take DS3's rotation"
+            : $"moveset: {result.Count} shared end bones rest differently in the two skeletons and keep Elden Ring's pose in ported moves: {string.Join(", ", notes)} [DARKSIGN_WEAPON_BONES=ds3 gives them DS3's rotation]");
+        return result;
     }
 
     public static Ds3Skeleton ReadDs3Skeleton(byte[] bytes)
@@ -36,6 +82,7 @@ public static class AnimPort
         {
             Names = Enumerable.Range(0, count).Select(i => skeleton.Bones[i].Name.GetString()).ToList(),
             ReferencePose = Enumerable.Range(0, count).Select(i => NewBlendableTransform.FromHKXTransform(skeleton.Transforms[i])).ToList(),
+            Parents = (int)skeleton.ParentIndices.Size == count ? Enumerable.Range(0, count).Select(i => skeleton.ParentIndices[i].data).ToList() : [],
         };
     }
 
@@ -43,7 +90,7 @@ public static class AnimPort
     {
         var root = (hkRootLevelContainer)ReadEr(bytes, compendium);
         var skeleton = Container(root).m_skeletons.First()!;
-        return new ErSkeleton { Names = skeleton.m_bones.Select(b => b.m_name ?? "").ToList(), ReferencePose = skeleton.m_referencePose };
+        return new ErSkeleton { Names = skeleton.m_bones.Select(b => b.m_name ?? "").ToList(), ReferencePose = skeleton.m_referencePose, Parents = skeleton.m_parentIndices };
     }
 
     /// <summary>
@@ -91,9 +138,10 @@ public static class AnimPort
         int erBones = er.Names.Count, mapped = 0;
         var ds3TrackOf = new int[erBones];
         var offsets = new Vector3[erBones];
+        var frozen = er.Frozen ?? [];
         for (int b = 0; b < erBones; b++)
         {
-            ds3TrackOf[b] = ds3TrackByName.TryGetValue(er.Names[b], out var t) ? t : -1;
+            ds3TrackOf[b] = ds3TrackByName.TryGetValue(er.Names[b], out var t) && !frozen.Contains(b) ? t : -1;
             if (ds3TrackOf[b] < 0)
                 continue;
             var erRef = er.ReferencePose[b].m_translation;
