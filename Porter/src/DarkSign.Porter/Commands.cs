@@ -99,13 +99,18 @@ public static class Commands
     /// <summary>Decides which DS3 weapons to port and how; writes Work\reports\weapons-plan.json.</summary>
     public static List<WeaponPlan> WeaponsPlan(PorterContext ctx)
     {
-        var ds3Params = ctx.LoadParams(PorterGame.DarkSouls3).Get("EquipParamWeapon")!;
-        var erParams = ctx.LoadParams(PorterGame.EldenRing).Get("EquipParamWeapon")!;
-        Dictionary<int, string> ds3Names, erNames;
-        using (var a = ctx.OpenArchives(PorterGame.DarkSouls3))
-            ds3Names = ItemText.LoadNamesOrRowNames(a, ds3Params);
-        using (var a = ctx.OpenArchives(PorterGame.EldenRing))
-            erNames = ItemText.LoadNamesOrRowNames(a, erParams);
+        using var ds3Archives = ctx.OpenArchives(PorterGame.DarkSouls3);
+        using var erArchives = ctx.OpenArchives(PorterGame.EldenRing);
+        return WeaponsPlan(ctx, ctx.LoadParams(PorterGame.DarkSouls3), ctx.LoadParams(PorterGame.EldenRing), ds3Archives, erArchives);
+    }
+
+    /// <summary>The plan from params and archives already open: port-weapons decrypts and indexes them once, not twice.</summary>
+    public static List<WeaponPlan> WeaponsPlan(PorterContext ctx, ParamStore ds3Store, ParamStore erStore, GameArchives ds3Archives, GameArchives erArchives)
+    {
+        var ds3Params = ds3Store.Get("EquipParamWeapon")!;
+        var erParams = erStore.Get("EquipParamWeapon")!;
+        var ds3Names = ItemText.LoadNamesOrRowNames(ds3Archives, ds3Params);
+        var erNames = ItemText.LoadNamesOrRowNames(erArchives, erParams);
 
         var plans = WeaponPort.Plan(ds3Params, erParams, ds3Names, erNames);
         var path = ctx.WorkPath("reports", "weapons-plan.json");
@@ -125,18 +130,27 @@ public static class Commands
     public static int PortWeapons(PorterContext ctx)
     {
         using var total = Timing.Stage("port-weapons total");
-        var plans = WeaponsPlan(ctx);
+        // The regulations (decrypted and parsed) and the archive indexes (RSA-decrypted headers) are loaded once,
+        // side by side, and shared by the plan and every stage below; earlier builds loaded each of them twice.
+        var openTime = Timing.Stage("game files");
+        ParamStore ds3Store = null!, erStore = null!;
+        GameArchives erArchives = null!, ds3Archives = null!;
+        Parallel.Invoke(
+            () => ds3Store = ctx.LoadParams(PorterGame.DarkSouls3),
+            () => erStore = ctx.LoadParams(PorterGame.EldenRing),
+            () => erArchives = ctx.OpenArchives(PorterGame.EldenRing),
+            () => ds3Archives = ctx.OpenArchives(PorterGame.DarkSouls3));
+        using var _erArchives = erArchives;
+        using var _ds3Archives = ds3Archives;
+        openTime.Dispose();
+        var plans = WeaponsPlan(ctx, ds3Store, erStore, ds3Archives, erArchives);
         var paramsTime = Timing.Stage("params");
-        var ds3Store = ctx.LoadParams(PorterGame.DarkSouls3);
         var ds3 = ds3Store.Get("EquipParamWeapon")!;
-        var erStore = ctx.LoadParams(PorterGame.EldenRing);
         var erWeapons = erStore.Get("EquipParamWeapon")!;
         var added = WeaponPort.Apply(plans, ds3, erWeapons);
         paramsTime.Dispose();
         Console.WriteLine($"added {added} weapon rows ({plans.Count(p => p.Status == "port")} weapons with their affinities)");
 
-        using var erArchives = ctx.OpenArchives(PorterGame.EldenRing);
-        using var ds3Archives = ctx.OpenArchives(PorterGame.DarkSouls3);
         Dictionary<int, string> newNames;
         using (Timing.Stage("text and shop"))
         {
@@ -206,9 +220,12 @@ public static class Commands
             // Weapons keep their template movesets; the rest of the content still builds.
             Console.WriteLine($"moveset: failed, weapons keep Elden Ring movesets ({e.GetType().Name}: {e.Message})");
             Console.WriteLine(e.StackTrace);
+            FxrPort.FinishWrites();
             foreach (var file in MovesetPort.OutputFiles(ctx).Where(File.Exists))
                 File.Delete(file);
         }
+        using (Timing.Stage("waiting for effects"))
+            FxrPort.FinishWrites();
 
         using (Timing.Stage("waiting for icons"))
         {

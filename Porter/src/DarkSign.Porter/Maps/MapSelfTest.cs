@@ -32,6 +32,7 @@ public static class MapSelfTest
         Check("collision: DS3 packfile -> Elden Ring XML tagfile keeps every triangle", () => CollisionRoundTrip(xml: true));
         Check("collision: DS3 packfile -> Elden Ring binary tagfile keeps every triangle", () => CollisionRoundTrip(xml: false));
         Check("collision: template settings from an Elden Ring file are applied", CollisionTemplate);
+        Check("collision: after WarmUp, converting files on every core adds no HKLib cache entries", CollisionWarmUp);
         foreach (var (name, test) in MapPortChecks.All().Concat(MapPortChecks.EventChecks()).Concat(MapPortChecks.EnemyChecks()))
             Check(name, test);
 
@@ -58,6 +59,24 @@ public static class MapSelfTest
             throw new Exception("body name or position lost");
     }
 
+    private static void CollisionWarmUp()
+    {
+        if (!Havok.HavokCaches.Available)
+            throw new Exception("HKLib's caches can't be seen (did HKLib rename ReflectorCache or ArrayFormatHandlers?); collision stays one file at a time");
+        var template = ErCollisionTemplate.FromFile(CollisionPort.Write(CollisionPort.Read(CollisionPort.Convert(SyntheticDs3Collision(), null, xml: false).Bytes), xml: false));
+        foreach (var xml in new[] { true, false })
+        {
+            if (CollisionPort.WarmUp(template, xml, keepSimdTree: false) is null)
+                throw new Exception("WarmUp declined (is DARKSIGN_COLLISION_LOCK set?)");
+            var warmed = Havok.HavokCaches.Count;
+            // Plain and full files, both templates, serialized in parallel without the lock, as port-maps does.
+            var inputs = new[] { SyntheticDs3Collision(), SyntheticDs3Collision(everything: true) };
+            Parallel.ForEach(Enumerable.Range(0, 8), i => CollisionPort.Convert(inputs[i % 2], i < 4 ? template : null, xml));
+            if (Havok.HavokCaches.Count != warmed)
+                throw new Exception($"HKLib cached {Havok.HavokCaches.Count - warmed} more types after the warm-up ({(xml ? "XML" : "binary")}); WarmUp's synthetic file misses a type");
+        }
+    }
+
     private static void CollisionTemplate()
     {
         // An "Elden Ring file" made by the converter itself, with settings changed the way a game file would have them.
@@ -75,10 +94,13 @@ public static class MapSelfTest
 
     /// <summary>
     /// A DS3-style collision file: one body, one section with a triangle and a quad, three packed vertices and two
-    /// shared ones, written as a Havok 2014 packfile by HKX2 the way DS3's own files are laid out.
+    /// shared ones, written as a Havok 2014 packfile by HKX2 the way DS3's own files are laid out. With
+    /// <paramref name="everything"/>, every optional array holds an entry too (a material, motion properties, hit
+    /// material data, a SIMD tree node, bit field words), so one conversion touches every type a real file can.
     /// </summary>
-    public static byte[] SyntheticDs3Collision()
+    public static byte[] SyntheticDs3Collision(bool everything = false)
     {
+        var one = everything ? 1 : 0;
         var min = new Vector3(0, 0, 0);
         var max = new Vector3(10, 4, 10);
         var verts = new[] { new Vector3(0, 0, 0), new Vector3(10, 0, 0), new Vector3(0, 4, 0), new Vector3(0, 0, 10), new Vector3(10, 0, 10) };
@@ -145,24 +167,38 @@ public static class MapSelfTest
             m_properties = null,
             m_edgeWeldingMap = new Ds3.hknpSparseCompactMapunsignedshort { m_primaryKeyToIndex = [], m_valueAndSecondaryKeys = [] },
             m_shapeTagCodecInfo = 0xFFFFFFFF,
-            m_data = new Ds3.hknpCompressedMeshShapeData { m_meshTree = tree, m_simdTree = new Ds3.hkcdSimdTree { m_nodes = [] } },
-            m_quadIsFlat = EmptyBits(),
-            m_triangleIsInterior = EmptyBits(),
+            m_data = new Ds3.hknpCompressedMeshShapeData
+            {
+                m_meshTree = tree,
+                m_simdTree = new Ds3.hkcdSimdTree
+                {
+                    m_nodes = Enumerable.Range(0, one).Select(_ => new Ds3.hkcdSimdTreeNode
+                    {
+                        m_lx = Vector4.Zero, m_hx = Vector4.One, m_ly = Vector4.Zero, m_hy = Vector4.One, m_lz = Vector4.Zero, m_hz = Vector4.One,
+                    }).ToList(),
+                },
+            },
+            m_quadIsFlat = EmptyBits(one),
+            m_triangleIsInterior = EmptyBits(one),
             m_pParam = new Ds3.fsnpCustomMeshParameter
             {
-                m_triangleDataArray = [],
+                m_triangleDataArray = Enumerable.Range(0, one).Select(_ => new Ds3.fsnpCustomMeshParameterTriangleData
+                {
+                    m_primitiveDataIndex = 0, m_triangleDataIndex = 0, m_vertexIndexA = 0, m_vertexIndexB = 1, m_vertexIndexC = 2,
+                }).ToList(),
                 m_primitiveDataArray =
                 [
                     new Ds3.fsnpCustomMeshParameterPrimitiveData
                     {
-                        m_vertexData = [], m_triangleData = [], m_primitiveData = [], m_materialNameData = 7,
+                        m_vertexData = Enumerable.Repeat((byte)1, one).ToList(), m_triangleData = Enumerable.Repeat((byte)2, one).ToList(),
+                        m_primitiveData = Enumerable.Repeat((byte)3, one).ToList(), m_materialNameData = 7,
                     },
                 ],
                 m_vertexDataStride = 0,
                 m_triangleDataStride = 0,
                 m_version = 2,
             },
-            m_triangleIndexToShapeKey = [],
+            m_triangleIndexToShapeKey = Enumerable.Repeat(0u, one).ToList(),
         };
         var body = new Ds3.hknpBodyCinfo
         {
@@ -179,8 +215,12 @@ public static class MapSelfTest
         };
         var system = new Ds3.hknpPhysicsSystemData
         {
-            m_materials = [],
-            m_motionProperties = [],
+            m_materials = Enumerable.Range(0, one).Select(_ => new Ds3.hknpMaterial
+            {
+                m_name = "test", m_triggerManifoldTolerance = new Ds3.hkUFloat8 { m_value = 255 },
+                m_softContactSeperationVelocity = new Ds3.hkUFloat8 { m_value = 0 },
+            }).ToList(),
+            m_motionProperties = Enumerable.Range(0, one).Select(_ => new Ds3.hknpMotionProperties { m_timeFactor = 1 }).ToList(),
             m_motionCinfos = [],
             m_bodyCinfos = [body],
             m_constraintCinfos = [],
@@ -206,8 +246,11 @@ public static class MapSelfTest
         return stream.ToArray();
     }
 
-    private static Ds3.hkBitField EmptyBits() => new()
+    private static Ds3.hkBitField EmptyBits(int words = 0) => new()
     {
-        m_storage = new Ds3.hkBitFieldStoragehkArrayunsignedinthkContainerHeapAllocator { m_words = [], m_numBits = 0 },
+        m_storage = new Ds3.hkBitFieldStoragehkArrayunsignedinthkContainerHeapAllocator
+        {
+            m_words = Enumerable.Repeat(0u, words).ToList(), m_numBits = 32 * words,
+        },
     };
 }

@@ -44,6 +44,7 @@ Try the next option if: The content build fails or gives different results from 
 
 - **A: Every core (default).** port-weapons and port-maps run side by side, each on every core.
 - **B: One core.** Everything one step at a time (DARKSIGN_THREADS=1), as builds were before 1.0.12x. Slower, but rules out a threading bug. (`DARKSIGN_THREADS=1`)
+- **C: Collision one file at a time.** Every core, but map collision files are serialized one at a time under a lock (DARKSIGN_COLLISION_LOCK=1), as builds before 1.0.23x did. Minutes slower per map; rules the lock-free Havok serialization out if a map's collision misbehaves. (`DARKSIGN_COLLISION_LOCK=1`)
 
 
 ## Weapon movesets
