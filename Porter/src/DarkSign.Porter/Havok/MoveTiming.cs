@@ -21,12 +21,21 @@ namespace DarkSign.Porter;
 ///    before DS3's last hit ends): a ported move can never be left earlier than DS3 itself allowed.
 /// 3. The template's behaviour clip can carry an enforced duration, crop or trigger times measured on the Elden Ring
 ///    animation; those are cleared or moved onto the DS3 timeline for converted moves (see MovesetPort).
+/// 4. Elden Ring writes 100.000 s as "until the animation ends" on one event of most moves (e.g. the 605 that holds a
+///    stance from 2.0 to 100.0). The end anchor took that as the template's length, so every window after the last
+///    anchor was squeezed by 3 s / 100 s: Friede's stance loop opened its attack window for 0.08 s instead of 2.3 s
+///    (the stance attacks only came out while mashing). The end anchor now comes from the finite events, and a
+///    sentinel end stays a sentinel.
 ///
-/// DARKSIGN_TIMING_GUARD=0 (launcher fallback "combo-windows" D) turns all three off: exactly the 1.0.89 timing.
+/// DARKSIGN_TIMING_GUARD=0 (launcher fallback "combo-windows" D) turns all four off: exactly the 1.0.89 timing.
 /// </summary>
 internal static class MoveTiming
 {
     public static bool Guard = Environment.GetEnvironmentVariable("DARKSIGN_TIMING_GUARD") != "0";
+
+    /// <summary>Elden Ring's "until the animation ends" event end (written as 100.000 s).</summary>
+    public const float Sentinel = 99.9f;
+    public static bool IsSentinel(float t) => Guard && t >= Sentinel;
 
     /// <summary>One move's stretch from the template's timeline onto DS3's.</summary>
     public sealed class Stretch
@@ -57,7 +66,7 @@ internal static class MoveTiming
         /// <summary>Where a template behaviour event lands on the DS3 move.</summary>
         public (float Start, float End) Place(TAE.Event e)
         {
-            float start = Warp(e.StartTime), end = Math.Max(start, Warp(e.EndTime));
+            float start = Warp(e.StartTime), end = IsSentinel(e.EndTime) ? e.EndTime : Math.Max(start, Warp(e.EndTime));
             bool afterHit = e.Type == 0 && ErLastHit is { } hit && e.StartTime >= hit - 0.001f;
             if (afterHit && Recovery is { } floor && start < floor - 0.001f)
             {
@@ -87,7 +96,8 @@ internal static class MoveTiming
             if (ds3Jt.TryGetValue(g.Key, out var ds3Start) && g.Min(j => j.Start) is var erStart && erStart > 0.05f && ds3Start > 0.05f)
                 candidates.Add((erStart, ds3Start));
         // The DS3 end is the animation's own length: its events can stop well before it (Friede's R1 ended at 0.625 s).
-        float erEnd = erEvents.Select(e => e.EndTime).DefaultIfEmpty(0).Max();
+        var erEnds = erEvents.Select(e => e.EndTime).Where(t => !IsSentinel(t)).ToList();
+        float erEnd = (erEnds.Count > 0 ? erEnds : erEvents.Select(e => e.EndTime)).DefaultIfEmpty(0).Max();
         float ds3End = Math.Max(ds3Duration, ds3Events.Select(e => e.EndTime).DefaultIfEmpty(0).Max());
         candidates.Add((erEnd, ds3End));
         // Keep the anchors in order on both timelines; one that would run backwards is dropped.
@@ -185,6 +195,19 @@ internal static class MoveTiming
             ds3 = [Ev(0.3f, 1.0f, 0, 4)];
             now = Build(ds3, er, Hits(ds3), Hits(er), h => 0, 1.6f);
             Check("no hits: no guard", now.Recovery is null && now.Place(er[0]).Start > 0.29f);
+
+            // 5. Elden Ring's "until the end" sentinel (100 s) on a stance loop: the attack window (67 100150, 0-2.33 s on
+            //    a 2.5 s template) must cover the 3.33 s DS3 loop, not 0.08 s of it; the sentinel end stays 100.
+            er = [Ev(0.0f, 2.33f, 67, 100150), Ev(0.0f, 100.0f, 605, 0), Ev(2.4f, 2.5f, 0, 4)];
+            ds3 = [Ev(0.0f, 3.2f, 67, 100150), Ev(3.3f, 3.333f, 0, 30)];
+            Guard = false;
+            old = Build(ds3, er, Hits(ds3), Hits(er), h => 0, 3.333f);
+            var oldWindow = old.Place(er[0]);
+            Guard = true;
+            now = Build(ds3, er, Hits(ds3), Hits(er), h => 0, 3.333f);
+            var window = now.Place(er[0]);
+            Check($"sentinel end: stance window {oldWindow.End:0.00}s long before, {window.End:0.00}s now (DS3 loop 3.33s)", oldWindow.End < 0.2f && window.End > 3.0f);
+            Check($"sentinel end: the until-the-end event keeps its 100s end ({now.Place(er[1]).End:0})", now.Place(er[1]).End >= 99.9f);
         }
         finally
         {

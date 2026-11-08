@@ -278,7 +278,10 @@ public static partial class MovesetPort
                     .Select(s => (Section: s, Tae: BinderLeaf(ds3Main, $"a{s:D2}.tae") is { } f ? TAE.Read(f.Bytes) : null))
                     .Where(t => t.Tae is not null).ToList();
 
-                int converted = 0, copied = 0;
+                int converted = 0, copied = 0, dualMoves = 0;
+                // A paired weapon's two-handed attacks are DS3's dual-wield set (033xxx), not its 034xxx two-handed
+                // set: see PairedTwoHanded.
+                bool pairedGroup = PairedTwoHanded && group.Any(IsPairedPort);
                 // Each converted move's stretch onto the DS3 timeline, for its behaviour clips below.
                 var stretches = new Dictionary<int, MoveTiming.Stretch>();
                 // Elden Ring's own imports show the ID scheme (section * 1,000,000 + ID) and the unknown field.
@@ -294,6 +297,13 @@ public static partial class MovesetPort
                 {
                     var erId = (int)anims[i].ID;
                     var source = erToDs3.TryGetValue(erId, out var ds3Id) ? FindDs3(ds3Taes!, ds3Main, ds3Id) : null;
+                    if (pairedGroup && erId is >= 32000 and < 33000 && ds3Id is >= 34000 and < 35000
+                        && FindDs3(ds3Taes!, ds3Main, ds3Id - 1000) is { } dual)
+                    {
+                        source = dual;
+                        ds3Id -= 1000;
+                        dualMoves++;
+                    }
                     var ds3File = source is { } found ? ds3Hkx.Read(found.HkxName) : null;
                     if (group.Any(p => p.Ds3Id == 10180000) && erToDs3.ContainsKey(erId))
                         Console.WriteLine($"moveset: Friede's {erId} <- DS3 {ds3Id}: " +
@@ -394,7 +404,8 @@ public static partial class MovesetPort
                 }
 
                 Console.WriteLine($"moveset: {groupName} -> motion category {section} (from Elden Ring {templateSection}, DS3 {ds3Section}/{ds3ArtSection}): " +
-                                  $"{converted} DS3 animations, {copied} kept from Elden Ring ({(CopyErAnims ? "copied" : "imported")}), {registered} behaviour clips, {(DateTime.UtcNow - started).TotalSeconds:0}s");
+                                  $"{converted} DS3 animations, {copied} kept from Elden Ring ({(CopyErAnims ? "copied" : "imported")}), {registered} behaviour clips, {(DateTime.UtcNow - started).TotalSeconds:0}s" +
+                                  (pairedGroup ? $"; paired: {dualMoves} two-handed moves from DS3's dual-wield set (033xxx)" : ""));
             }
             // Any failure (HKLib, a converter's NullReference or IndexOutOfRange, ...) skips this moveset only: it used
             // to escape for anything but these types, which dropped every weapon's moveset and the effects and sounds.
@@ -518,6 +529,18 @@ public static partial class MovesetPort
 
     // DARKSIGN_TWOHAND_MAP=0: two-handed moves are paired by behaviour selector names only, as before.
     private static readonly bool TwoHandMap = Environment.GetEnvironmentVariable("DARKSIGN_TWOHAND_MAP") != "0";
+
+    /// <summary>
+    /// A paired weapon's two-handed attacks come from DS3's dual-wield set. In DS3 a paired weapon (Ringed Knight Paired
+    /// Greatswords, Farron Greatsword, Sellsword Twinblades, fists) two-hands into its L1 dual attacks, which live in
+    /// its own section as 033xxx (a253_033000/010/020, run 033500, roll 033900); its 034xxx two-handed entries only import
+    /// the class's one-handed swings (a253_034000 -> a026_030000). Elden Ring plays a paired weapon's (isDualBlade)
+    /// dual attacks through the ordinary two-handed selectors, 032xxx. So, in a paired weapon's moveset, Elden Ring
+    /// 032yyy takes DS3 033yyy wherever the DS3 sections have it (the offsets inside the block are the same as the
+    /// 034xxx pairing's), else the 034xxx pair as before. Without this (builds up to 1.0.217) the Ringed Knight pair
+    /// and the Farron Greatsword two-handed like a one-handed Ultra Greatsword. DARKSIGN_PAIRED_2H=0 turns it off.
+    /// </summary>
+    private static readonly bool PairedTwoHanded = Environment.GetEnvironmentVariable("DARKSIGN_PAIRED_2H") != "0";
 
     /// <summary>
     /// Two-handed moves the selector names didn't pair: each one-handed pair (Elden Ring 030xxx = DS3 030xxx) gives

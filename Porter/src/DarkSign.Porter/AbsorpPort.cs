@@ -28,6 +28,8 @@ public static class AbsorpPort
     private const int LeftWeaponDummy = 21;
     // DARKSIGN_FRIEDE_OVERRIDE=keep: no left-hand slot for the art's second blade (as DS3's row has it).
     private static readonly bool FriedeLeftHand = Environment.GetEnvironmentVariable("DARKSIGN_FRIEDE_OVERRIDE") != "keep";
+    // DARKSIGN_FRIEDE_OVERRIDE=both: the 1.0.206 layout, the second blade in the left hand when two-handed as well.
+    private static readonly bool FriedeBothHands = Environment.GetEnvironmentVariable("DARKSIGN_FRIEDE_OVERRIDE") == "both";
     // DARKSIGN_PAIRED_GRIP=0: paired weapons keep the template's isDualBlade and hold motions (positions still DS3's).
     private static readonly bool PairedGrip = Environment.GetEnvironmentVariable("DARKSIGN_PAIRED_GRIP") != "0";
 
@@ -131,11 +133,23 @@ public static class AbsorpPort
             // hardcoded by weapon ID, unknown to Elden Ring) moves it. MovesetPort turns that into "move to the 1H
             // left-weapon location", so that one location is the left hand; everything else stays DS3's.
             // (1.0.206 also moved it to the left hand when two-handed; Devin's test: it belongs on the back.)
+            // DS3's display byte for that location (dispPosType_left_k, DS3 Unk31 + 6k) is 3 like every slot of a
+            // part DS3 never shows in a hand, so 1.0.217 moved the scythe to a location where it stays hidden. The
+            // location is marked 1, the value Elden Ring's paired weapons (and 1.0.206's two-handed slots, where the
+            // scythe did show) carry for a part displayed in a hand.
             if (!paired && ds3Display && FriedeLeftHand && models >= 2)
             {
                 for (int k = 1; k < Math.Min(models, 4); k++)
-                    if (row[$"left_{k}"] is { } cell)
-                        cell.Value = Convert.ChangeType(LeftWeaponDummy, cell.Value!.GetType());
+                {
+                    foreach (var field in FriedeBothHands ? new[] { $"left_{k}", $"both_{k}", $"leftBoth_{k}" } : [$"left_{k}"])
+                        if (row[field] is { } cell)
+                            cell.Value = Convert.ChangeType(LeftWeaponDummy, cell.Value!.GetType());
+                    foreach (var field in FriedeBothHands ? new[] { $"dispPosType_left_{k}", $"dispPosType_rightBoth_{k}", $"dispPosType_leftBoth_{k}" } : [$"dispPosType_left_{k}"])
+                        if (row[field] is { } cell)
+                            cell.Value = Convert.ChangeType(1, cell.Value!.GetType());
+                }
+                if (FriedeBothHands)
+                    paired = true;
                 friedeCount++;
             }
             // Every Elden Ring paired row marks model 0 in the left hand as 1 (DS3 wrote 0 there).
@@ -161,12 +175,13 @@ public static class AbsorpPort
                 notes.Add($"{plan.Name}: {models} models, row {row.ID} from DS3 {ds3AbsorpId} on template {templateAbsorpId}: " +
                           string.Join(" ", Enumerable.Range(0, Math.Min(models, 4)).Select(k =>
                               $"m{k} R{row[$"right_{k}"].Value} L{row[$"left_{k}"].Value} 2H{row[$"both_{k}"].Value} L2H{row[$"leftBoth_{k}"].Value}" +
-                              $" show{row[$"wepInvisibleType_{k}"].Value} disp2H{row[$"dispPosType_rightBoth_{k}"].Value}")) +
+                              $" show{row[$"wepInvisibleType_{k}"].Value} dispL{row[$"dispPosType_left_{k}"].Value} disp2H{row[$"dispPosType_rightBoth_{k}"].Value}")) +
                           gripNote + (unmapped.Count > 0 ? $"; DS3 dummies with no Elden Ring match: {string.Join(",", unmapped)}" : ""));
         }
         erAbsorp.Rows.Sort((a, b) => a.ID.CompareTo(b.ID));
         Console.WriteLine($"absorp: {added} split weapons got DS3 model positions ({map.Count} DS3 dummy polys matched), " +
-                          $"{pairedCount} paired (left blade in the left hand two-handed; plus {friedeCount} Friede-style: second blade on the back, left hand only in the art)" + (PairedGrip ? "" : " [grip/isDualBlade off: DARKSIGN_PAIRED_GRIP=0]"));
+                          $"{pairedCount} paired (left blade in the left hand two-handed; plus {friedeCount} Friede-style: second blade on the back, " +
+                          (FriedeBothHands ? "left hand two-handed and in the art [DARKSIGN_FRIEDE_OVERRIDE=both])" : "left hand only in the art, shown there: dispPosType_left 1)") + (PairedGrip ? "" : " [grip/isDualBlade off: DARKSIGN_PAIRED_GRIP=0]"));
         foreach (var note in notes.Take(12))
             Console.WriteLine("  " + note);
     }

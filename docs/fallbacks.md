@@ -64,15 +64,16 @@ Try the next option if: Some moves of a ported weapon are DS3 but others (often 
 - **B: Names, then neighbours' offsets.** Moves the names don't pair take the ID offset their paired neighbours share (e.g. Elden Ring 0305xx -> DS3 0303xx), when that DS3 animation exists for the weapon. (`DARKSIGN_ANIM_MAP=offsets`)
 - **C: B plus the hand-checked heavy table.** B, plus the heavy-attack pairs found while porting Friede's scythe (Elden Ring 030500/030501/030505 = DS3 030320/030330/030321, two-handed 032xxx = DS3 034xxx), which win. (`DARKSIGN_ANIM_MAP=table`)
 - **D: Names only, no two-handed twins.** A, without pairing two-handed moves through their one-handed twins (Elden Ring 032xxx = DS3 034xxx) when the names don't pair them (DARKSIGN_TWOHAND_MAP=0). (`DARKSIGN_TWOHAND_MAP=0`)
+- **E: A without the paired dual-wield set.** A, but a paired weapon's two-handed moves (Elden Ring 032xxx) take DS3's 034xxx two-handed entries, which import the class's one-handed swings, instead of DS3's own dual-wield attacks (033xxx) (DARKSIGN_PAIRED_2H=0). Builds up to 1.0.217 did this: the Ringed Knight pair two-handed like one Ultra Greatsword. (`DARKSIGN_PAIRED_2H=0`)
 
 ### When the next attack can start (R1 chains) (`combo-windows`, rebuilds the content)
 
 Try the next option if: R1 doesn't chain to the second swing, swings are cut short, or you can act too early or too late.
 
-- **A: Elden Ring windows, stretched (default).** Elden Ring's combo and cancel windows from the template move, stretched onto the DS3 swing between matching hits and recovery points. No window after the last hit opens before DS3's own first one, multi-hit DS3 swings anchor on their last hit, and the template clip's length limits are cleared, so no move is cut short.
+- **A: Elden Ring windows, stretched (default).** Elden Ring's combo and cancel windows from the template move, stretched onto the DS3 swing between matching hits and recovery points. No window after the last hit opens before DS3's own first one, multi-hit DS3 swings anchor on their last hit, the template clip's length limits are cleared, Elden Ring's "until the end" (100 s) event ends don't count as the template's length, and a one-shot art's follow-up window (R1/R2) runs from DS3's first cancel after the last hit to the end of the DS3 move, so no move is cut short.
 - **B: DS3's own windows.** DS3's JumpTable events copied as they are (DARKSIGN_DS3_JUMPTABLES=1). Some DS3 IDs mean different things in Elden Ring. (`DARKSIGN_DS3_JUMPTABLES=1`)
 - **C: Elden Ring windows, shifted.** Elden Ring's windows moved to the first DS3 hit and not stretched (DARKSIGN_SWING_ALIGN=0), as the first moveset builds did. (`DARKSIGN_SWING_ALIGN=0`)
-- **D: As Friede's first clean R1 (1.0.89).** A without the 2026-11-05 guard (DARKSIGN_TIMING_GUARD=0): windows may open before DS3's own recovery, and the template clip's length limits stay. Use it if A makes chains feel late. (`DARKSIGN_TIMING_GUARD=0`)
+- **D: As Friede's first clean R1 (1.0.89).** A without the 2026-11-05 guard (DARKSIGN_TIMING_GUARD=0): windows may open before DS3's own recovery, the template clip's length limits stay, the 100 s event ends count as the template's length (stance attack windows shrink to a fraction of a second) and art follow-up windows sit at 45-90% of the move. Use it if A makes chains feel late. (`DARKSIGN_TIMING_GUARD=0`)
 
 ### Moves DS3 doesn't have (Elden Ring-only actions) (`er-moves`, rebuilds the content)
 
@@ -122,6 +123,7 @@ Try the next option if: Two-handing a split weapon doesn't split it, or the seco
 - **C: DS3 dummy IDs as they are.** DS3's dummy poly IDs copied without matching them through the bones (both games number most hand and back dummies alike). (`DARKSIGN_ABSORP=raw`)
 - **D: A without the paired grip.** A's positions, but paired weapons keep the template's isDualBlade and hold motions (DARKSIGN_PAIRED_GRIP=0). Try it if two-handing a paired weapon looks wrong or crashes. (`DARKSIGN_PAIRED_GRIP=0`)
 - **E: A without the Friede layout.** A, but Friede's art keeps its DS3-only "Friede override" event as DS3 wrote it and the scythe's row is DS3's own (no left-hand slot for the art's second blade) (DARKSIGN_FRIEDE_OVERRIDE=keep). (`DARKSIGN_FRIEDE_OVERRIDE=keep`)
+- **F: Friede's second scythe in the left hand two-handed too.** The 1.0.206 layout (DARKSIGN_FRIEDE_OVERRIDE=both): the second scythe sits in the left hand whenever the scythe is two-handed, and in the art, and the weapon is marked paired. The scythe showed in the art with this layout; try it if A still hides it. (`DARKSIGN_FRIEDE_OVERRIDE=both`)
 - **off: Off (template positions).** Ported weapons keep their template's WepAbsorpPosParam row (DARKSIGN_ABSORP=0): no split. Tells whether the split is what breaks something. (`DARKSIGN_ABSORP=0`)
 
 
