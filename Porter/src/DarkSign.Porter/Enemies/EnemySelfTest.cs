@@ -50,6 +50,12 @@ public static class EnemySelfTest
         Check("archive paths are renamed to the new ID",
             ChrPort.Rename(@"/chr/c4300_h.texbnd.dcx", 4300, 7000) == "/chr/c7000_h.texbnd.dcx"
             && ChrPort.Rename(@"N:\GR\data\INTERROOT_win64\chr\C4300\c4300.flver", 4300, 7000) == @"N:\GR\data\INTERROOT_win64\chr\c7000\c7000.flver");
+        // Havok files name the character inside: the project data its Characters\c4300.hkx and Behaviors\c4300.hkx, the
+        // character its animations. Renamed in place (same length), case kept, longer names and numbers left alone.
+        var hkx = System.Text.Encoding.ASCII.GetBytes("Characters\\c4300.hkx\0..\\..\\chr\\C4300\\hkx\\a000_003000.hkx\0c43000\0xc4300\0c4300");
+        int renamed = ChrPort.RenameInside(hkx, 4300, 7000);
+        Check("Havok names inside a cloned file get the new ID (3 renamed, c43000 and xc4300 kept)",
+            renamed == 3 && System.Text.Encoding.ASCII.GetString(hkx) == "Characters\\c7000.hkx\0..\\..\\chr\\C7000\\hkx\\a000_003000.hkx\0c43000\0xc4300\0c7000");
         Check("texture names move to the new ID", ChrModel.TextureName("C1100_body_a", "c1100", "c7000") == "c7000_body_a");
         Check("model names give their character ID", ChrPort.ChrId("c4300") == 4300 && ChrPort.ChrId("m10_00") == -1);
 

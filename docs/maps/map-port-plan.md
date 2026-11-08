@@ -101,7 +101,10 @@ What the enemy porter does, for every DS3 character placed in DS3's maps (one ru
 1. **Template.** The Elden Ring enemy (from the legacy-dungeon catalog) whose skeleton shares the most bone names with
    the DS3 model, with a small bonus for the same kind and boss-ness. Below 25% shared bones it uses method C.
 2. **ID.** A new character ID from c7000 up, in DS3 ID order, skipping IDs Elden Ring has, so every PC gets the same.
-3. **Files.** Every `/chr/` and `/sfx/` file of the template is copied under the new ID. The FLVER becomes DS3's model
+3. **Files.** Every `/chr/` and `/sfx/` file of the template is copied under the new ID, and so is the ID inside every
+   Havok file's own strings (the behbnd's project data names its `Characters\cXXXX.hkx` and `Behaviors\cXXXX.hkx`,
+   the character its skeleton and animations; the game resolves them by name when the behbnd loads, and with the
+   template's ID left inside every spawn crashed right after the behbnd loaded, 2026-11-08). The FLVER becomes DS3's model
    (template header and GX list, skin indices into the node list, one tangent, vertex colours), each material a copy
    of the template's closest MATBIN pointed at DS3's textures (DLC02 material binder), DS3's textures go into the
    `_h` texbnd. Method A also gives the template skeleton DS3's bind pose and replaces each template animation that
