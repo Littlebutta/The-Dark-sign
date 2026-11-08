@@ -481,6 +481,11 @@ public static class CollisionPort
             for (var i = 0; i < section.m_numPrimitives; i++)
             {
                 var p = tree.m_primitives[(int)(section.m_firstPrimitiveIndex + i)].m_indices;
+                // Havok pads a section's primitive list with 0xDE 0xAD 0xDE 0xAD ("dead") primitives, which point at
+                // no vertex of the section. The game skips them; decoding them read past the section's vertices in
+                // one or two files per DS3 map (h003000 in the Cemetery of Ash), which were then left out.
+                if (p[0] == 0xDE && p[1] == 0xAD && p[2] == 0xDE && p[3] == 0xAD)
+                    continue;
                 triangles.Add((Vertex(p[0]), Vertex(p[1]), Vertex(p[2])));
                 if (p[2] != p[3])
                     triangles.Add((Vertex(p[0]), Vertex(p[2]), Vertex(p[3])));
