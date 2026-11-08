@@ -2,6 +2,7 @@ using System.Numerics;
 using HKLib.hk2018;
 using HKLib.Serialization.hk2018.Binary;
 using HKLib.Serialization.hk2018.Xml;
+using DarkSign.Porter.Havok;
 using SoulsFormats;
 using Ds3 = HKX2;
 
@@ -43,18 +44,64 @@ public static class CollisionPort
 
         // HKLib's serializers keep type caches in unsynchronised static dictionaries (see AnimPort.HavokLock): with
         // the map's collision files converting on every core, the first build lost 15 of Cemetery of Ash's 45 files
-        // to "An item with the same key has already been added" and corrupted-collection errors. The conversion and
-        // the decode checks above run in parallel; only serializing is one file at a time.
+        // to "An item with the same key has already been added" and corrupted-collection errors. Writing the XML
+        // tagfile and reading it back is nearly all of a file's time (a 4.7 MB DS3 file becomes 260 MB of XML), so
+        // one file at a time made a map's collision take minutes on one core. After WarmUp has filled the caches with
+        // every type a converted collision file holds, serializing only reads them and runs on every core.
         byte[] bytes;
         hkRootLevelContainer reread;
-        lock (AnimPort.HavokLock)
+        if (LockFree)
         {
             bytes = Write(er, xml);
-            // Read the written file back, so a serializer problem shows up here and not in the game.
             reread = Read(bytes);
         }
+        else
+            lock (AnimPort.HavokLock)
+            {
+                bytes = Write(er, xml);
+                // Read the written file back, so a serializer problem shows up here and not in the game.
+                reread = Read(bytes);
+            }
         Compare(before, Decode(reread));
         return new Result(bytes, after.Count, after.Sum(b => b.Triangles.Count), notes);
+    }
+
+    /// <summary>
+    /// True once <see cref="WarmUp"/> has filled HKLib's caches for collision files: serializing then needs no lock.
+    /// Only valid while nothing else uses HKLib on another thread (AnimPort and the enemy port keep the lock and run
+    /// before the maps). DARKSIGN_COLLISION_LOCK=1 keeps the lock for every file, as builds before 1.0.23x did.
+    /// </summary>
+    public static bool LockFree { get; private set; }
+
+    private static readonly bool KeepLock = Environment.GetEnvironmentVariable("DARKSIGN_COLLISION_LOCK") == "1";
+
+    /// <summary>
+    /// Serializes, under the lock, one collision file that holds every kind of object <see cref="Convert(byte[], ErCollisionTemplate?, bool, bool)"/>
+    /// can produce (a material, motion properties, a body with hit materials and a mesh tree with every array filled),
+    /// so HKLib has cached every type before the real files convert in parallel. Returns a line for the report; null
+    /// when the lock has to stay (the caches can't be seen, or DARKSIGN_COLLISION_LOCK=1).
+    /// </summary>
+    public static string? WarmUp(ErCollisionTemplate? template, bool xml, bool keepSimdTree)
+    {
+        LockFree = false;
+        if (KeepLock || !HavokCaches.Available)
+            return null;
+        var ds3 = ReadDs3(MapSelfTest.SyntheticDs3Collision(everything: true));
+        lock (AnimPort.HavokLock)
+        {
+            // Both templates: the body and material settings differ between a template from the game and the default.
+            foreach (var t in new[] { template ?? ErCollisionTemplate.Default, ErCollisionTemplate.Default })
+            {
+                var notes = new List<string>();
+                var er = Convert(ds3, t, keepSimdTree, notes);
+                var written = Write(er, xml);
+                Compare(Decode(ds3), Decode(Read(written)));
+                // The other format too: MapValidate reads binary files from the game's binders beside ours.
+                Compare(Decode(ds3), Decode(Read(Write(er, !xml))));
+            }
+        }
+        LockFree = true;
+        return $"HKLib caches warmed ({HavokCaches.Count} types); collision files serialize on every core";
     }
 
     public static byte[] Write(hkRootLevelContainer root, bool xml)
@@ -71,7 +118,9 @@ public static class CollisionPort
     public static hkRootLevelContainer Read(byte[] bytes, byte[]? compendium = null)
     {
         var isXml = bytes.Length > 0 && (bytes[0] == (byte)'<' || (bytes.Length > 3 && bytes[0] == 0xEF && bytes[3] == (byte)'<'));
-        if (isXml)
+        // Only files with a negative value parameter need the rewrite below; scanning the bytes for one is far
+        // cheaper than decoding and re-encoding hundreds of MB of XML.
+        if (isXml && bytes.AsSpan().IndexOf("<valueparam value=\"-"u8) >= 0)
         {
             // HKLib writes negative template value parameters (e.g. -1) but reads them back as unsigned; give the
             // reader the same 32 bits as an unsigned number.
