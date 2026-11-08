@@ -67,7 +67,9 @@ public static partial class MovesetPort
         foreach (var (name, ds3Ids) in ds3Selectors)
             if (ds3Ids.Count == 1 && erSelectors.TryGetValue(name, out var erIds) && erIds.Count == 1)
                 erToDs3.TryAdd(erIds.First(), ds3Ids.First());
-        ExtendMap(erToDs3, erSelectors.Values.SelectMany(v => v).ToHashSet());
+        var erSelectorIds = erSelectors.Values.SelectMany(v => v).ToHashSet();
+        ExtendMap(erToDs3, erSelectorIds);
+        AddTwoHanded(erToDs3, erSelectorIds);
 
         // Each binder is read once (decompressing the large animation binder took a while).
         var (erMainBytes, erMainCompression) = erArchives.ReadWithCompression("/chr/c0000.anibnd.dcx");
@@ -124,6 +126,7 @@ public static partial class MovesetPort
             return overridesClass[(cls, art)] = mappedDs3.Where(id => artTae.Animations.Any(a => a.ID == id))
                 .Any(id => FindDs3(withArt, ds3Main, id)?.HkxName != FindDs3(classOnly, ds3Main, id)?.HkxName);
         }
+        bool IsPairedPort(WeaponPlan p) => erWeapons[p.NewId!.Value]?["isDualBlade"] is { } dual && Convert.ToInt32(dual.Value) == 1;
         (int Ds3Section, int Ds3ArtSection, int TemplateSection) Key(WeaponPlan p, bool withArt)
         {
             int cls = Convert.ToInt32(ds3Weapons[p.Ds3Id]!["wepmotionCategory"].Value);
@@ -148,8 +151,15 @@ public static partial class MovesetPort
         var classes = ports.GroupBy(p => Key(p, false)).ToList();
         var order = own.Where(g => g.Any(p => p.Ds3Id == 10180000)).Select(g => g.Key)
             .Concat(classes.OrderByDescending(g => g.Count()).Select(g => g.Key))
+            // Paired weapons next (AbsorpPort marked them isDualBlade): their art section holds their own two-handed
+            // set, which their class doesn't have (the Ringed Knight Paired Greatswords two-hand with DS3 a253's moves;
+            // as part of the Ultra Greatsword class moveset they two-handed like a Fume Ultra Greatsword).
+            .Concat(own.Where(g => g.Key.Ds3ArtSection != 0 && g.Any(IsPairedPort)).OrderByDescending(g => g.Count()).Select(g => g.Key))
             .Concat(own.Where(g => g.Key.Ds3ArtSection != 0).OrderByDescending(g => g.Count()).Select(g => g.Key))
             .Distinct().Take(freeSections.Count).ToHashSet();
+        foreach (var g in own.Where(g => g.Key.Ds3ArtSection != 0 && g.Any(IsPairedPort)))
+            Console.WriteLine($"moveset: paired {string.Join(", ", g.Select(p => p.Name))}: own DS3 moveset {g.Key.Ds3Section}/{g.Key.Ds3ArtSection} " +
+                              (order.Contains(g.Key) ? "built" : "did not fit, class moveset used"));
         var groups = ports.GroupBy(p => order.Contains(Key(p, true)) ? Key(p, true) : Key(p, false))
             .OrderByDescending(g => g.Any(p => p.Ds3Id == 10180000)).ThenByDescending(g => g.Count()).ToList();
         // DS3's effects: every effect the DS3 sections of these movesets spawn is converted under a new ID first.
@@ -474,6 +484,28 @@ public static partial class MovesetPort
         Console.WriteLine($"moveset: anim map '{mode}' added {erToDs3.Count - before} pairs to the {before} from behaviour selectors");
     }
 
+    // DARKSIGN_TWOHAND_MAP=0: two-handed moves are paired by behaviour selector names only, as before.
+    private static readonly bool TwoHandMap = Environment.GetEnvironmentVariable("DARKSIGN_TWOHAND_MAP") != "0";
+
+    /// <summary>
+    /// Two-handed moves the selector names didn't pair: each one-handed pair (Elden Ring 030xxx = DS3 030xxx) gives
+    /// its two-handed twin, Elden Ring 032xxx = DS3 034xxx (found on Friede's scythe: DS3's two-handed R1 chain is
+    /// 034000/034010/034020, Elden Ring's 032000/032010/032020). Without it two-handed swings kept the Elden Ring
+    /// template's animations (the Ringed Knight Paired Greatswords two-handed like an Elden Ring greatsword). As with
+    /// every pair, a weapon whose DS3 sections lack the animation keeps Elden Ring's move.
+    /// </summary>
+    internal static int AddTwoHanded(Dictionary<int, int> erToDs3, IReadOnlySet<int> erIds)
+    {
+        if (!TwoHandMap)
+            return 0;
+        int added = 0;
+        foreach (var (er, ds3) in erToDs3.Where(p => p.Key is >= 30000 and < 31000 && p.Value is >= 30000 and < 31000).ToList())
+            if (erIds.Contains(er + 2000) && erToDs3.TryAdd(er + 2000, ds3 + 4000))
+                added++;
+        Console.WriteLine($"moveset: {added} two-handed moves paired through their one-handed twins (Elden Ring 032xxx = DS3 034xxx)");
+        return added;
+    }
+
     /// <summary>
     /// DARKSIGN_MOVESET_FIELD=wmc puts the new section in wepmotionCategory, as builds up to 1.0.1xx did. By default it
     /// goes in spAtkcategory ("Special Motion Category"), the way Elden Ring's own unique movesets and the community's
@@ -553,6 +585,32 @@ public static partial class MovesetPort
         CustomManualSelectorGenerator.OffsetType.WeaponCategoryRight or CustomManualSelectorGenerator.OffsetType.WeaponCategoryLeft
         or CustomManualSelectorGenerator.OffsetType.WeaponCategoryHandStyle;
 
+    // TAE 712 OverrideWeaponModelLocations, same layout in both games (DSAnimStudio templates): 4 right-hand models then
+    // 4 left-hand models, each (u8 AbsorpPosParamCondition, s8 ChangeType), then IsEnabledWhile1Handing / 2Handing R / L.
+    private const int OverrideWeaponModelLocations = 712;
+    // ChangeType 5 is "Friede's Scythe Override", hardcoded in DS3's engine by weapon ID: it is how Friede's art takes the
+    // second scythe off the back into the left hand. Elden Ring doesn't know the ported weapon's ID, so the event did
+    // nothing. DARKSIGN_FRIEDE_OVERRIDE=keep leaves it as DS3 wrote it.
+    private static readonly bool KeepFriedeOverride = Environment.GetEnvironmentVariable("DARKSIGN_FRIEDE_OVERRIDE") == "keep";
+
+    /// <summary>
+    /// Turns DS3's Friede-only ChangeType 5 into a plain move: a right-hand model goes to its "1H left weapon"
+    /// location (AbsorpPort puts the left hand there for Friede's model 1), a left-hand model to its "1H right" one.
+    /// </summary>
+    internal static int FixModelOverride(byte[] bytes)
+    {
+        if (KeepFriedeOverride || bytes.Length < 16)
+            return 0;
+        int fixedCount = 0;
+        for (int slot = 0; slot < 8; slot++)
+            if ((sbyte)bytes[2 * slot + 1] == 5)
+            {
+                bytes[2 * slot + 1] = slot < 4 ? (byte)1 : (byte)0;
+                fixedCount++;
+            }
+        return fixedCount;
+    }
+
     /// <summary>DS3's events for a move, with Elden Ring's sound and effect events moved to DS3's first hit.</summary>
     private static List<TAE.Event> MergeEvents(List<TAE.Event> ds3Events, TAE.Animation anim, Dictionary<int, TAE.EventGroup> templateGroups,
         Dictionary<int, int> erLengths, EffectEvents effectEvents, FxrPort.Result effects, SoundEvents sounds, float ds3Duration, out MoveTiming.Stretch stretch)
@@ -607,7 +665,10 @@ public static partial class MovesetPort
                 continue;
             if (!TryGroup(e.Type, out var group))
                 continue;
-            merged.Add(new TAE.Event(e.StartTime, e.EndTime, e.Type, e.Unk04, (byte[])bytes.Clone(), false) { Group = group });
+            var copy = (byte[])bytes.Clone();
+            if (e.Type == OverrideWeaponModelLocations)
+                FixModelOverride(copy);
+            merged.Add(new TAE.Event(e.StartTime, e.EndTime, e.Type, e.Unk04, copy, false) { Group = group });
         }
 
         // Each kept Elden Ring event follows the hit it belongs to (the nearest one): hits are paired in order, spread

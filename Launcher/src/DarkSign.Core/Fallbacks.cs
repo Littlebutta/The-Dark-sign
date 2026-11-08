@@ -94,11 +94,13 @@ public static class Fallbacks
         new("anim-map", "Weapon movesets", "Which DS3 animation replaces each move (R2, charged R2)", Stage.Build,
             "Some moves of a ported weapon are DS3 but others (often R2, charged R2 or two-handed attacks) still look like Elden Ring.",
         [
-            new("A", "Behaviour selector names (default)", "An Elden Ring move gets the DS3 animation whose behaviour selector has the same name, when each game's selector holds exactly one animation."),
+            new("A", "Behaviour selector names (default)", "An Elden Ring move gets the DS3 animation whose behaviour selector has the same name, when each game's selector holds exactly one animation; a two-handed move the names miss follows its one-handed twin."),
             new("B", "Names, then neighbours' offsets", "Moves the names don't pair take the ID offset their paired neighbours share (e.g. Elden Ring 0305xx -> DS3 0303xx), when that DS3 animation exists for the weapon.")
                 { PorterEnv = Env("DARKSIGN_ANIM_MAP", "offsets") },
             new("C", "B plus the hand-checked heavy table", "B, plus the heavy-attack pairs found while porting Friede's scythe (Elden Ring 030500/030501/030505 = DS3 030320/030330/030321, two-handed 032xxx = DS3 034xxx), which win.")
                 { PorterEnv = Env("DARKSIGN_ANIM_MAP", "table") },
+            new("D", "Names only, no two-handed twins", "A, without pairing two-handed moves through their one-handed twins (Elden Ring 032xxx = DS3 034xxx) when the names don't pair them (DARKSIGN_TWOHAND_MAP=0).")
+                { PorterEnv = Env("DARKSIGN_TWOHAND_MAP", "0") },
         ]),
         new("combo-windows", "Weapon movesets", "When the next attack can start (R1 chains)", Stage.Build,
             "R1 doesn't chain to the second swing, swings are cut short, or you can act too early or too late.",
@@ -151,6 +153,8 @@ public static class Fallbacks
                 { PorterEnv = Env("DARKSIGN_ABSORP", "raw") },
             new("D", "A without the paired grip", "A's positions, but paired weapons keep the template's isDualBlade and hold motions (DARKSIGN_PAIRED_GRIP=0). Try it if two-handing a paired weapon looks wrong or crashes.")
                 { PorterEnv = Env("DARKSIGN_PAIRED_GRIP", "0") },
+            new("E", "A without the Friede layout", "A, but Friede's scythe keeps DS3's own row (second scythe on the back in every grip) and its art's DS3-only \"Friede override\" event as DS3 wrote it (DARKSIGN_FRIEDE_OVERRIDE=keep).")
+                { PorterEnv = Env("DARKSIGN_FRIEDE_OVERRIDE", "keep") },
             new("off", "Off (template positions)", "Ported weapons keep their template's WepAbsorpPosParam row (DARKSIGN_ABSORP=0): no split. Tells whether the split is what breaks something.")
                 { PorterEnv = Env("DARKSIGN_ABSORP", "0") },
         ]),
