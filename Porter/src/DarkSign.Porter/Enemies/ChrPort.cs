@@ -369,7 +369,7 @@ public static partial class ChrPort
         using var er = ctx.OpenArchives(PorterGame.EldenRing);
         var result = Build(ctx, er, ds3);
         Console.WriteLine(ApplyParams(ctx, er, result));
-        var check = CheckOutputs(ctx);
+        var check = CheckOutputs(ctx, model => er.Contains($"/chr/{model}.chrbnd.dcx"));
         foreach (var line in check)
             Console.WriteLine(line);
         foreach (var note in result.Notes.Where(n => n.Contains("failed") || n.Contains("not ported")).Take(15))
@@ -378,7 +378,8 @@ public static partial class ChrPort
     }
 
     /// <summary>The read-back of port-enemies (and of validate tools): missing rows and incomplete models are FAIL lines.</summary>
-    public static List<string> CheckOutputs(PorterContext ctx)
+    /// <param name="gameHas">Whether Elden Ring itself has a model (those are bodies the port borrows, not models it made).</param>
+    public static List<string> CheckOutputs(PorterContext ctx, Func<string, bool> gameHas)
     {
         var lines = new List<string>();
         var mapPath = ctx.ModPath(EnemyPort.ChrMap.FileName);
@@ -391,7 +392,7 @@ public static partial class ChrPort
             ? $"check: ok   all {rows.Select(p => p[3]).Distinct().Count()} NpcParam rows the maps and spawn list use are in regulation.bin"
             : $"FAIL check: {missing.Count} NpcParam rows missing from regulation.bin (the game crashes loading them): {string.Join(", ", missing.Take(8))}");
         int bad = 0;
-        foreach (var model in rows.Select(p => p[2]).Where(m => ChrId(m) >= FirstNewChr).Distinct())
+        foreach (var model in rows.Select(p => p[2]).Where(m => ChrId(m) is >= FirstNewChr and <= LastNewChr && !gameHas(m)).Distinct())
         {
             var problems = new List<string>();
             foreach (var kind in new[] { "chrbnd", "anibnd", "behbnd" })
