@@ -117,6 +117,7 @@ public static class SoundPort
         var reasons = new Dictionary<string, int>();
         var events = new List<uint>();
         int bytes = 0, variantsLost = 0;
+        List<string> missing = [], undecodable = [];
         foreach (var (kind, id) in todo)
         {
             char letter = Letter(kind)!.Value;
@@ -126,7 +127,7 @@ public static class SoundPort
             var present = new[] { "", "b", "c", "d", "e", "f", "g", "h" }
                 .Select(v => (Suffix: v, Sample: samples.GetValueOrDefault(name + v))).Where(x => x.Sample is not null).ToList();
             uint eventId = FxSoundExplore.Fnv1($"Play_{letter}{IdBase + id:D9}");
-            if (present.Count == 0) { reasons["no DS3 sample"] = reasons.GetValueOrDefault("no DS3 sample") + 1; continue; }
+            if (present.Count == 0) { reasons["no DS3 sample"] = reasons.GetValueOrDefault("no DS3 sample") + 1; missing.Add(name); continue; }
             if (bank.Has(eventId)) { reasons["event ID taken"] = reasons.GetValueOrDefault("event ID taken") + 1; continue; }
             var decoded = new List<(string Suffix, Fsb5.Sample Sample, short[] Pcm)>();
             string? failure = null;
@@ -137,9 +138,10 @@ public static class SoundPort
                 {
                     // One undecodable sample (NVorbis throws its own types too) must not cost every other sound.
                     failure ??= $"decode: {e.Message.Split(' ').Take(4).Aggregate((a, b) => a + " " + b)}";
+                    if (e.Message.Contains("CRC")) failure += $" {s!.SetupCrc} ({s.Channels} ch, {s.Rate} Hz)";
                 }
             }
-            if (decoded.Count == 0) { reasons[failure!] = reasons.GetValueOrDefault(failure!) + 1; continue; }
+            if (decoded.Count == 0) { reasons[failure!] = reasons.GetValueOrDefault(failure!) + 1; undecodable.Add($"{name} ({failure})"); continue; }
             if (failure is not null) variantsLost++;
             var (_, sample, pcm) = decoded[0];
             if (DllSounds)
@@ -174,6 +176,11 @@ public static class SoundPort
             result.Add(kind, id);
             bytes += wem.Length;
         }
+        // Which ones, so the next pass can look for them under other names (e.g. FEV events whose waves are named apart).
+        if (missing.Count > 0)
+            Console.WriteLine($"sounds: no DS3 sample named like: {string.Join(", ", missing)}");
+        if (undecodable.Count > 0)
+            Console.WriteLine($"sounds: not decodable: {string.Join(", ", undecodable)}");
         if (DllSounds)
         {
             Console.WriteLine($"sounds: {result.Count} DS3 sounds written as WAV files to {DllSoundFolder} for the DLL to play " +
