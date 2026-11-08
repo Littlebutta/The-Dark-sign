@@ -12,8 +12,8 @@ after `port-weapons`. If it fails, the weapons still load and the game starts; t
 | Piece | DS3 | Elden Ring | Code |
 |---|---|---|---|
 | Layout | `map/mapstudio/m40_00_00_00.msb.dcx` (MSB3) | `map/mapstudio/m45_00_00_00.msb.dcx` (MSBE); each part is a copy of a vanilla part of the same kind with DS3's name, model, transform and entity ID | `Maps/MsbPort.cs` |
-| Map pieces | `map/m40_00_00_00/m40_00_00_00_NNNNNN.mapbnd.dcx` | `map/m45/m45_00_00_00/...`; materials become cloned Elden Ring map matbins (`DKS_40_00_00_00_NNNN`) in `allmaterial_dlc01` | `Maps/MapModelPort.cs` |
-| Textures | `map/m40/m40_000N.tpfbhd/.tpfbdt` | added to `map/m45/m45_0000.tpfbhd/.tpfbdt`, plus a flat metallic map | `Maps/MapTextures.cs` |
+| Map pieces | `map/m40_00_00_00/m40_00_00_00_NNNNNN.mapbnd.dcx` | `map/m45/m45_00_00_00/...`; materials become cloned Elden Ring matbins (`DKS_40_00_00_00_NNNN`) in `allmaterial_dlc01`, copied from a plain one-layer material of a legacy dungeon's map pieces (the colosseums are built from assets, and most legacy dungeon pieces use terrain blend materials), or from JortPob's albedo-only asset material `AEG006_030_ID001`; samplers name the DS3 texture by bare name, as JortPob's do | `Maps/MapModelPort.cs` |
+| Textures | `map/m40/m40_000N.tpfbhd/.tpfbdt` | a new `map/m45/common/m45_0000.tpfbhd/.tpfbdt` (Elden Ring has no map area texture binders, but loads this one: JortPob's approach), one uncompressed TPF per texture plus its `_l` copy, plus a flat metallic map | `Maps/MapTextures.cs` |
 | Collision | `h40_00_00_00.hkxbhd` (Havok 2014 packfile) | `h45_00_00_00.hkxbhd` (Havok 2018 XML tagfile, same compressed-mesh tree); every triangle is checked after conversion | `Maps/CollisionPort.cs`, `Maps/MapCollisions.cs` |
 | Navmesh | `map/m40_00_00_00/m40_00_00_00.nvmhktbnd.dcx` (Havok AI 2014) | `map/m45/m45_00_00_00/m45_00_00_00.nvmhktbnd.dcx` (Havok AI 2018 tagfiles); faces, edges, cluster graph and AABB tree copied as-is, costs hkHalf → float | `Maps/NavmeshPort.cs`, `Maps/MapNavmesh.cs` |
 | Map events | `event/m40_00_00_00.emevd.dcx` | `event/m45_00_00_00.emevd.dcx`, converted instruction by instruction (see "Event scripts" below); the slot's own Elden Ring events no longer run | `Maps/EventPort.cs`, `Maps/MapEvents.cs` |
@@ -130,7 +130,7 @@ jump, guard counter and the rest. Patrol routes and DS3's boss name text aren't 
 ## Open questions (answered by the first `map-survey` and in-game test)
 
 1. Does WarpPlayer into m45_00 work offline, and does the arena load with our layout?
-2. Do Elden Ring map textures live in `map/m45/m45_0000.tpfbhd` like DS3's?
+2. ~~Do Elden Ring map textures live in `map/m45/m45_0000.tpfbhd` like DS3's?~~ No (2026-11-08 test): Elden Ring has none, its map textures are in `asset/aet`. Textures now go to `map/m45/common/m45_0000.tpfbhd` the way JortPob ships them.
 3. Does the game accept collision as XML tagfiles inside the binder (JortPob says yes), or does it need binary?
 4. Is the simd tree needed (`--simd` keeps DS3's)?
 5. Do the cloned map materials draw the DS3 textures correctly (opaque, alpha, two-layer)?

@@ -119,9 +119,9 @@ public static class MapValidate
     private static HashSet<string> TextureNames(PorterContext ctx, GameArchives er, MapId erId, Report report)
     {
         var names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        foreach (var n in Enumerable.Range(0, 10))
+        foreach (var bhd in Enumerable.Range(0, 10).Select(n => $"/map/{erId.AreaFolder}/{erId.AreaFolder}_{n:D4}.tpfbhd")
+                     .Prepend(MapTextures.CommonBinder(erId.AreaFolder)))
         {
-            var bhd = $"/map/{erId.AreaFolder}/{erId.AreaFolder}_{n:D4}.tpfbhd";
             var mod = ctx.ModPath(MapPorter.ModParts(bhd));
             BXF4? bxf = null;
             if (File.Exists(mod))
@@ -130,7 +130,7 @@ public static class MapValidate
                 catch (Exception ex) { report.Fail($"{ItemText.Leaf(bhd)} doesn't read: {ex.Message}"); }
                 if (er.Contains(bhd))
                     CompareFormat(report, er, bhd, mod, split: true);
-                else
+                else if (bhd != MapTextures.CommonBinder(erId.AreaFolder))
                     report.Warn($"{ItemText.Leaf(bhd)} is new (Elden Ring has no such file); if map textures are missing in game, this binder is not loaded");
             }
             else if (er.Contains(bhd))

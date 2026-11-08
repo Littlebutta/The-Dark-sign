@@ -6,8 +6,9 @@ namespace DarkSign.Porter.Maps;
 /// <summary>
 /// Converts Dark Souls III map piece models (mapbnd FLVERs) into Elden Ring ones. Built on the weapon model port
 /// (<see cref="ModelPort"/>), which already runs in game: Elden Ring's FLVER header, GX list and material slots come
-/// from a vanilla Elden Ring model of the same kind (here a map piece of the host map), geometry from DS3, and each
-/// DS3 material becomes a copy of a vanilla Elden Ring MATBIN whose texture samplers point at the DS3 textures.
+/// from a vanilla Elden Ring model of the same kind (a legacy dungeon's map pieces, or a plain asset), geometry from
+/// DS3, and each DS3 material becomes a copy of a vanilla Elden Ring MATBIN whose texture samplers name the DS3
+/// textures (by bare name, as JortPob does; <see cref="MapTextures"/> puts them where Elden Ring loads them).
 /// </summary>
 public sealed class MapModelPort
 {
@@ -22,7 +23,6 @@ public sealed class MapModelPort
 
     private readonly Dictionary<string, MaterialTemplate> _templates;
     private readonly FLVER2 _templateFlver;
-    private readonly string _textureFolder;
     private readonly Dictionary<string, NewMaterial> _materials = new(StringComparer.OrdinalIgnoreCase);
 
     /// <summary>Every DS3 texture (by name) some converted material uses.</summary>
@@ -30,64 +30,78 @@ public sealed class MapModelPort
     public IEnumerable<NewMaterial> Materials => _materials.Values;
     public List<string> Notes { get; } = [];
 
-    private MapModelPort(Dictionary<string, MaterialTemplate> templates, FLVER2 templateFlver, string textureFolder)
+    private MapModelPort(Dictionary<string, MaterialTemplate> templates, FLVER2 templateFlver)
     {
         _templates = templates;
         _templateFlver = templateFlver;
-        _textureFolder = textureFolder;
     }
 
-    public string TemplateSummary =>
-        string.Join(", ", _templates.Select(t => $"{t.Key}={t.Value.Matbin}")) + $"; textures in {_textureFolder}";
+    /// <summary>A new port with the same templates and none of this one's materials (one per map).</summary>
+    public MapModelPort Fresh() => new(_templates, _templateFlver);
+
+    public string TemplateSummary => string.Join(", ", _templates.Select(t => $"{t.Key}={t.Value.Matbin}"));
 
     /// <summary>
-    /// Picks material templates from the host map's own map pieces: an opaque one-layer material, and where the host
-    /// has them, an alpha-tested one and a two-layer (blended) one.
+    /// Picks material templates from vanilla Elden Ring models, earlier ones first: an opaque one-layer material, and
+    /// where there are any, an alpha-tested one and a two-layer one. A template with a normal map wins over one
+    /// without. <paramref name="headerFlver"/> gives the FLVER header (a map piece); the first model when null.
     /// </summary>
-    public static MapModelPort Create(IReadOnlyList<FLVER2> hostFlvers, IReadOnlyDictionary<string, BinderFile> matbins, MapId er)
+    public static MapModelPort Create(IReadOnlyList<FLVER2> flvers, IReadOnlyDictionary<string, BinderFile> matbins, FLVER2? headerFlver = null)
     {
-        if (hostFlvers.Count == 0)
-            throw new InvalidDataException("the host map has no map piece model to copy");
+        if (flvers.Count == 0)
+            throw new InvalidDataException("no Elden Ring model to copy materials from");
         var templates = new Dictionary<string, MaterialTemplate>();
-        string? folder = null;
-        foreach (var flver in hostFlvers)
+        var withNormal = new HashSet<string>();
+        foreach (var flver in flvers)
             foreach (var material in flver.Materials)
             {
                 var name = ModelPort.MatbinName(material.MTD);
                 if (!matbins.TryGetValue(name, out var file) || material.GXIndex < 0 || material.GXIndex >= flver.GXLists.Count)
                     continue;
-                var matbin = MATBIN.Read(file.Bytes);
-                folder ??= matbin.Samplers.Select(s => MapTextureFolder(s.Path)).FirstOrDefault(f => f is not null);
+                MATBIN matbin;
+                try { matbin = MATBIN.Read(file.Bytes); }
+                catch (Exception) { continue; }
                 var kind = Classify(matbin);
-                if (kind is null || templates.ContainsKey(kind))
+                if (kind is null || withNormal.Contains(kind))
+                    continue;
+                var normal = matbin.Samplers.Any(x => Role(x.Type) is ("normal", 0));
+                if (templates.ContainsKey(kind) && !normal)
                     continue;
                 templates[kind] = new MaterialTemplate(kind, name, file, material, flver.GXLists[material.GXIndex]);
+                if (normal)
+                    withNormal.Add(kind);
             }
         if (!templates.ContainsKey("opaque"))
-            throw new InvalidDataException("no plain albedo+normal material among the host map's pieces to use as a template");
-        folder = folder is null
-            ? $@"N:\GR\data\Model\map\{er.AreaFolder}\tex\"
-            : Regex.Replace(folder, @"\\m\d\d\\tex\\", $@"\{er.AreaFolder}\tex\", RegexOptions.IgnoreCase);
-        return new MapModelPort(templates, hostFlvers[0], folder);
+            throw new InvalidDataException("no plain one-layer material among these models to use as a template");
+        return new MapModelPort(templates, headerFlver ?? flvers[0]);
     }
 
-    // "N:\GR\data\Model\map\m10\tex\m10_00_x_a.tif" -> "N:\GR\data\Model\map\m10\tex\"
-    private static string? MapTextureFolder(string path)
+    private static readonly Regex SamplerRole = new(@"(GSBlendMap_)?(Albedo|Normal|Metallic)Map(?:_(\d))?$", RegexOptions.IgnoreCase);
+
+    /// <summary>
+    /// What an Elden Ring sampler holds: ("albedo"|"normal"|"metallic", layer), or ("blend", n) for a terrain blend
+    /// layer (GSBlendMap), null for anything else. "M_A__snp_Texture2D_0_AlbedoMap_0" is ("albedo", 0).
+    /// </summary>
+    public static (string Role, int Layer)? Role(string samplerType)
     {
-        var m = Regex.Match(path ?? "", @"^(.*\\map\\m\d\d\\tex\\)", RegexOptions.IgnoreCase);
-        return m.Success ? m.Groups[1].Value : null;
+        var m = SamplerRole.Match(samplerType ?? "");
+        if (!m.Success)
+            return null;
+        var layer = m.Groups[3].Success ? m.Groups[3].Value[0] - '0' : 0;
+        return m.Groups[1].Success ? ("blend", layer) : (m.Groups[2].Value.ToLowerInvariant(), layer);
     }
 
-    /// <summary>"opaque", "alpha" or "twolayer" for a usable Elden Ring map MATBIN, null for anything else.</summary>
+    /// <summary>"opaque", "alpha" or "twolayer" for a usable Elden Ring MATBIN, null for anything else.</summary>
     public static string? Classify(MATBIN matbin)
     {
-        bool Has(string type) => matbin.Samplers.Any(s => s.Type.Contains(type, StringComparison.OrdinalIgnoreCase));
-        if (!Has("AlbedoMap_0") || !Has("NormalMap_0"))
+        var roles = matbin.Samplers.Select(x => Role(x.Type)).Where(r => r is not null).Select(r => r!.Value).ToList();
+        // Terrain blend materials (most of Elden Ring's legacy dungeon pieces) mix layers through a mask: not usable.
+        if (roles.Any(r => r.Role == "blend") || !roles.Contains(("albedo", 0)))
             return null;
         var shader = (matbin.ShaderPath ?? "") + "|" + (matbin.SourcePath ?? "");
-        if (Regex.IsMatch(shader, "water|fog|light|decal|glass|emissive|cloth|grass|tree|leaf|leaves", RegexOptions.IgnoreCase))
+        if (Regex.IsMatch(shader, "water|fog|light|decal|glass|emissive|cloth|grass|tree|leaf|leaves|lava|swamp|sea_", RegexOptions.IgnoreCase))
             return null;
-        if (Has("AlbedoMap_1"))
+        if (roles.Contains(("albedo", 1)))
             return "twolayer";
         if (Regex.IsMatch(shader, "_Alp|Alpha", RegexOptions.IgnoreCase))
             return "alpha";
@@ -256,19 +270,18 @@ public sealed class MapModelPort
             var matbin = MATBIN.Read(material.Template.File.Bytes);
             foreach (var sampler in matbin.Samplers)
             {
-                var texture = sampler.Type switch
+                var texture = Role(sampler.Type) switch
                 {
-                    var t when t.Contains("AlbedoMap_0", StringComparison.OrdinalIgnoreCase) => material.Albedo,
-                    var t when t.Contains("NormalMap_0", StringComparison.OrdinalIgnoreCase) => material.Normal,
-                    var t when t.Contains("AlbedoMap_1", StringComparison.OrdinalIgnoreCase) => material.Albedo2 ?? material.Albedo,
-                    var t when t.Contains("NormalMap_1", StringComparison.OrdinalIgnoreCase) => material.Normal2 ?? material.Normal,
-                    var t when t.Contains("MetallicMap", StringComparison.OrdinalIgnoreCase) => BlackMetallic,
+                    ("albedo", 0) => material.Albedo,
+                    ("normal", 0) => material.Normal,
+                    ("albedo", 1) => material.Albedo2 ?? material.Albedo,
+                    ("normal", 1) => material.Normal2 ?? material.Normal,
+                    ("metallic", _) => BlackMetallic,
                     _ => null,
                 };
-                if (string.IsNullOrEmpty(texture))
-                    continue;
-                var extension = Path.GetExtension(ItemText.Leaf(sampler.Path));
-                sampler.Path = _textureFolder + texture + (extension.Length > 0 ? extension : ".tif");
+                // The bare texture name, the way JortPob's materials name the textures it adds.
+                if (!string.IsNullOrEmpty(texture))
+                    sampler.Path = texture;
             }
             matbin.SourcePath = ReplaceStem(matbin.SourcePath, material.Template.Matbin, material.Name);
             var name = ReplaceStem(material.Template.File.Name, material.Template.Matbin, material.Name);
