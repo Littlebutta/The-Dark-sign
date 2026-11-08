@@ -101,7 +101,10 @@ What the enemy porter does, for every DS3 character placed in DS3's maps (one ru
 1. **Template.** The Elden Ring enemy (from the legacy-dungeon catalog) whose skeleton shares the most bone names with
    the DS3 model, with a small bonus for the same kind and boss-ness. Below 25% shared bones it uses method C.
 2. **ID.** A new character ID from c7000 up, in DS3 ID order, skipping IDs Elden Ring has, so every PC gets the same.
-3. **Files.** Every `/chr/` and `/sfx/` file of the template is copied under the new ID. The FLVER becomes DS3's model
+3. **Files.** Every `/chr/` and `/sfx/` file of the template is copied under the new ID, and so is the ID inside every
+   Havok file's own strings (the behbnd's project data names its `Characters\cXXXX.hkx` and `Behaviors\cXXXX.hkx`,
+   the character its skeleton and animations; the game resolves them by name when the behbnd loads, and with the
+   template's ID left inside every spawn crashed right after the behbnd loaded, 2026-11-08). The FLVER becomes DS3's model
    (template header and GX list, skin indices into the node list, one tangent, vertex colours), each material a copy
    of the template's closest MATBIN pointed at DS3's textures (DLC02 material binder), DS3's textures go into the
    `_h` texbnd. Method A also gives the template skeleton DS3's bind pose and replaces each template animation that
@@ -129,7 +132,19 @@ jump, guard counter and the rest. Patrol routes and DS3's boss name text aren't 
 
 ## Open questions (answered by the first `map-survey` and in-game test)
 
-1. Does WarpPlayer into m45_00 work offline, and does the arena load with our layout?
+1. Does WarpPlayer into m45_00 work offline, and does the arena load with our layout? Partly answered 2026-11-08:
+   the warp happens (the save then holds m45_00 / m45_01 as the last map), and the load crashed. The map check of that
+   build listed 6530 meshes in 2098 map piece models whose `mesh.NodeIndex` pointed past the FLVER's one node (DS3's
+   exporter left Maya node indices there, up to 12; Dark Souls III ignores them). Ported map pieces are now laid out
+   the way JortPob builds Elden Ring map pieces (one root node, every mesh on node 0, no per-mesh bone list, NormalW
+   0; `MapModelPort.MakeStatic`). The same build also lost 15 Cemetery of Ash collisions to HKLib's serializers
+   running on several threads at once (now under the shared Havok lock), which left the run start 745 m from the
+   nearest collision. A save left inside a crashing map loads nothing else: the launcher's **Rescue save…** button
+   starts the game once with the ported maps moved out of the mod folder (`SaveRescue`), so the vanilla colosseum
+   loads under the same ID and Ctrl+Shift+F2 (or a death) gets the character back; the next PLAY restores the maps.
+   Only the layouts and map folders move: the slots' empty event scripts stay, because with the vanilla arena script
+   running the player was left in the colosseum lobby state (enemies ignored them and took no damage until a restart,
+   1.0.221 test). A save in a new-ID slot (m50-m52) has no vanilla map to fall back to.
 2. ~~Do Elden Ring map textures live in `map/m45/m45_0000.tpfbhd` like DS3's?~~ No (2026-11-08 test): Elden Ring has none, its map textures are in `asset/aet`. Textures now go to `map/m45/common/m45_0000.tpfbhd` the way JortPob ships them.
 3. Does the game accept collision as XML tagfiles inside the binder (JortPob says yes), or does it need binary?
 4. Is the simd tree needed (`--simd` keeps DS3's)?

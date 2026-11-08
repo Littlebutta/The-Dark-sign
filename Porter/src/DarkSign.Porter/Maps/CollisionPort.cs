@@ -41,9 +41,18 @@ public static class CollisionPort
         var after = Decode(er);
         Compare(before, after);
 
-        var bytes = Write(er, xml);
-        // Read the written file back, so a serializer problem shows up here and not in the game.
-        var reread = Read(bytes);
+        // HKLib's serializers keep type caches in unsynchronised static dictionaries (see AnimPort.HavokLock): with
+        // the map's collision files converting on every core, the first build lost 15 of Cemetery of Ash's 45 files
+        // to "An item with the same key has already been added" and corrupted-collection errors. The conversion and
+        // the decode checks above run in parallel; only serializing is one file at a time.
+        byte[] bytes;
+        hkRootLevelContainer reread;
+        lock (AnimPort.HavokLock)
+        {
+            bytes = Write(er, xml);
+            // Read the written file back, so a serializer problem shows up here and not in the game.
+            reread = Read(bytes);
+        }
         Compare(before, Decode(reread));
         return new Result(bytes, after.Count, after.Sum(b => b.Triangles.Count), notes);
     }

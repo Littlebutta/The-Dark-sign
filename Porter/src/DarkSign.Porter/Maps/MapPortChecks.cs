@@ -424,6 +424,12 @@ public static partial class MapPortChecks
         var ds3Flver = SyntheticFlver(0x20014, @"N:\FDP\data\Material\mtd\map\M[ARSN].mtd",
             ("g_DiffuseTexture", @"N:\FDP\data\Model\map\m40\tex\m40_00_stone_a.tga"),
             ("g_BumpmapTexture", @"N:\FDP\data\Model\map\m40\tex\m40_00_stone_n.tga"));
+        // DS3 map pieces point meshes at nodes the file doesn't hold (a Maya node index) and carry NormalW 127;
+        // Elden Ring map pieces sit on node 0 with NormalW 0 (JortPob).
+        ds3Flver.Meshes[0].NodeIndex = 3;
+        ds3Flver.Meshes[0].BoneIndices = [3];
+        ds3Flver = FLVER2.Read(ds3Flver.Write());
+        Expect(ds3Flver.Meshes[0].NodeIndex == 3 && ds3Flver.Meshes[0].Vertices.All(v => v.NormalW == 127), "DS3 test model keeps its bad node index");
         var ds3Bnd = new BND4();
         ds3Bnd.Files.Add(new BinderFile(Binder.FileFlags.Flag1, 0, @"N:\FDP\data\Model\map\m40_00_00_00\sib\m40_00_00_00_000100.flver", ds3Flver.Write()));
         var hostBnd = new BND4();
@@ -441,6 +447,12 @@ public static partial class MapPortChecks
         var material = flver.Materials.Single();
         Expect(material.Name.StartsWith("DKS_40_00_00_00_") && ModelPort.MatbinName(material.MTD) == material.Name, $"material {material.Name} / {material.MTD}");
         Expect(flver.Meshes[0].Vertices.All(v => v.Tangents.Count == 1 && v.Colors.Count >= 1), "one tangent and a vertex color per vertex");
+        Expect(flver.Meshes[0].NodeIndex == 0 && flver.Meshes[0].BoneIndices.Count == 0 && flver.Nodes.Count == 1, "every mesh on the root node, no per-mesh bone list");
+        Expect(flver.Meshes[0].Vertices.All(v => v.NormalWs.All(w => w == 0)), "NormalW 0 on a static mesh, as JortPob writes it");
+        var noNodes = SyntheticFlver(0x20014, @"N:\FDP\data\Material\mtd\map\M[ARSN].mtd");
+        noNodes.Nodes.Clear();
+        MapModelPort.MakeStatic(noNodes);
+        Expect(noNodes.Nodes.Count == 1 && noNodes.Meshes[0].NodeIndex == 0, "a model without nodes gets a root");
         Expect(port.Textures.SetEquals(["m40_00_stone_a", "m40_00_stone_n"]), $"textures {string.Join(",", port.Textures)}");
 
         var newMatbin = port.MatbinFiles(100).Single();

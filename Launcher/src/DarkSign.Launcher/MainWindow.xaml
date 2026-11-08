@@ -81,6 +81,8 @@
             <Button Content="Pre-flight check…" Margin="4,2,0,2" Click="OnPreflight"
                     ToolTip="Checks the game paths, me3 profile, sound banks and event flags before you test, and saves a zip of every log and report after a test." />
             <Button Content="Open mod folder" Margin="4,2,0,2" Click="OnOpenModFolder" />
+            <Button x:Name="RescueButton" Content="Rescue save…" Margin="4,2,0,2" Click="OnRescueSave"
+                    ToolTip="For a save that crashes on every load because it was left inside a Dark Souls III map: starts the game once with the DS3 maps hidden, so the save loads the game's own arena instead. The next PLAY puts the maps back." />
             <Button x:Name="UninstallButton" Content="Uninstall…" Margin="4,2,0,2" Click="OnUninstall"
                     ToolTip="Removes the mod and everything the launcher downloaded or built. Your games are not changed; you choose whether to keep your saves." />
           </WrapPanel>
