@@ -33,6 +33,7 @@ install, and no game files are distributed.
 | Work | Author | License | How we use it |
 |---|---|---|---|
 | [Cinzel](https://github.com/NDISCOVER/Cinzel) | Natanael Gama, The Cinzel Project Authors | SIL OFL 1.1 (Launcher/src/DarkSign.Launcher/Assets/Cinzel-OFL.txt) | The percentage inside the build Darksign and the build panel title; a free font in the style of Elden Ring's titles (Elden Ring's own font is not used) |
+| [EB Garamond](https://github.com/octaviopardo/EBGaramond12) | Georg Duffner, Octavio Pardo | SIL OFL 1.1 (Launcher/src/DarkSign.Launcher/Assets/EBGaramond-OFL.txt) | The launcher's menu text, in the style of Dark Souls III's menus |
 | Darksign ring-of-fire image | supplied by Devin | personal use | The build progress ring (Assets/darksign.png, background made transparent) |
 
 ## Tools the launcher runs

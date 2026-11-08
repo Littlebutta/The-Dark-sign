@@ -79,6 +79,7 @@ internal static class FallbacksWindow
 
         var window = new Window
         {
+            Style = Theme.WindowStyle,
             Title = "Fallback methods",
             Owner = owner,
             Content = root,

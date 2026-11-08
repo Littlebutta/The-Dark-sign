@@ -48,6 +48,7 @@ public partial class MainWindow : Window
             _log.Write($"{row.DisplayName}: {(string.IsNullOrEmpty(row.ExePath) ? "(not set)" : row.ExePath)} [{row.Status}]");
 
         Title = $"The Dark Sign  v{SelfUpdater.CurrentVersion.ToString(3)}";
+        VersionText.Text = $"v{SelfUpdater.CurrentVersion.ToString(3)}";
         Loaded += async (_, _) => await UpdateLauncherAsync();
     }
 
