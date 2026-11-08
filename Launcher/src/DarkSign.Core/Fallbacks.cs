@@ -166,6 +166,16 @@ public static class Fallbacks
                 { PorterEnv = Env("DARKSIGN_WEAPON_PBR", "0") },
         ]),
 
+        new("weapon-materials", "Weapon models", "DS3 weapon glow and detail layers", Stage.Build,
+            "A ported weapon looks rusty, patchy or grey over its own texture, or a glowing DS3 part (Friede's frozen blade) doesn't glow.",
+        [
+            new("A", "Elden Ring vertex colours and emissive materials (default)", "Ported meshes take the template weapon's vertex colour, so Elden Ring's detail layers (rust, bone, leather) don't mix over the DS3 texture, and DS3 materials with their own glow map get a copy of an Elden Ring glowing weapon material."),
+            new("B", "Keep DS3 vertex colours", "Glowing materials as in A, but DS3's own vertex colours are kept (DARKSIGN_VCOLOR=keep).")
+                { PorterEnv = Env("DARKSIGN_VCOLOR", "keep") },
+            new("C", "No glowing materials", "Vertex colours as in A, but every material uses the plain template material, no glow (DARKSIGN_EMISSIVE=0).")
+                { PorterEnv = Env("DARKSIGN_EMISSIVE", "0") },
+        ]),
+
         // ---- Weapon sounds and effects ----
         new("sounds", "Weapon sounds and effects", "DS3 weapon sounds", Stage.Build,
             "Swings are silent, play the wrong sound, or sound pitched down or muffled.",
