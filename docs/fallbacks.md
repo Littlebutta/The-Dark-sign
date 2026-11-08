@@ -95,6 +95,14 @@ Try the next option if: A ported weapon's jump attack plays again when you land,
 - **A: Template clip settings (default).** Each new behaviour clip shares its Elden Ring template clip's variable bindings, as copied.
 - **B: Start Time bound to TimeActEditor_10.** Every new clip of a jump attack (animation ID ending in 70) gets its own binding of Start Time to TimeActEditor_10, as Themyys' moveset guide says jump attacks need. (`DARKSIGN_JUMP_BINDING=1`)
 
+### Hitboxes of DS3 swings (`weapon-hits`, rebuilds the content)
+
+Try the next option if: A ported weapon goes through enemies and walls, does no or odd damage, or staggers wrongly.
+
+- **A: DS3 attack over the template's (default).** Each swing's DS3 attack row (hit spheres on the weapon's dummy polys, motion value, damage type, wall hits) laid over the Elden Ring template weapon's attack for the same move, which fills the fields DS3 doesn't have.
+- **B: DS3 attack only.** The DS3 attack row alone; fields only Elden Ring has stay at their defaults (DARKSIGN_ATTACKS=ds3). (`DARKSIGN_ATTACKS=ds3`)
+- **C: Elden Ring template's attacks.** Every swing DS3 has uses the template weapon's own attack row for the same move (DARKSIGN_ATTACKS=template): Elden Ring hitboxes and damage. Tells whether DS3's attack rows or the dummy polys on the DS3 model are the problem. (`DARKSIGN_ATTACKS=template`)
+
 ### TAE event groups for new DS3 events (`event-groups`, rebuilds the content)
 
 Try the next option if: DS3 effects or sounds of some moves never happen while others do, or a move freezes the character.
