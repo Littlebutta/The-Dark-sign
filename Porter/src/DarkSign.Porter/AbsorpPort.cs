@@ -126,24 +126,16 @@ public static class AbsorpPort
             // Starscourge Greatsword both use 2). With the template's two-handed grip the hands meet on one hilt,
             // which pulled the left-hand blade into the right hand.
             bool paired = IsPaired(source, ds3Bones);
-            // Friede's scythe: DS3's row keeps model 1 on the back in every grip (35/36) because DS3's engine moves it by
-            // weapon ID ("Friede's Scythe Override": two-handed, and in the art through TAE 712 ChangeType 5). Elden Ring
-            // has no such hardcode, so the 1.0.183 test swung Friede's two-scythe animations with the second scythe
-            // still on the back. It is laid out like the Ringed Knight Paired Greatswords instead (which hold correctly):
-            // two-handed and "1H left weapon" (where MovesetPort points the art's override) at the left-weapon dummy,
-            // shown there, and the weapon is marked paired (isDualBlade) below.
+            // Friede's scythe: the second scythe stays on the back (DS3's row: 35/36 in every grip, two-handed too) and
+            // only comes into the left hand during the art, where DS3's TAE 712 "Friede's Scythe Override" (ChangeType 5,
+            // hardcoded by weapon ID, unknown to Elden Ring) moves it. MovesetPort turns that into "move to the 1H
+            // left-weapon location", so that one location is the left hand; everything else stays DS3's.
+            // (1.0.206 also moved it to the left hand when two-handed; Devin's test: it belongs on the back.)
             if (!paired && ds3Display && FriedeLeftHand && models >= 2)
             {
                 for (int k = 1; k < Math.Min(models, 4); k++)
-                {
-                    foreach (var field in new[] { $"left_{k}", $"both_{k}", $"leftBoth_{k}" })
-                        if (row[field] is { } cell)
-                            cell.Value = Convert.ChangeType(LeftWeaponDummy, cell.Value!.GetType());
-                    foreach (var field in new[] { $"dispPosType_rightBoth_{k}", $"dispPosType_leftBoth_{k}" })
-                        if (row[field] is { } cell)
-                            cell.Value = Convert.ChangeType(1, cell.Value!.GetType());
-                }
-                paired = true;
+                    if (row[$"left_{k}"] is { } cell)
+                        cell.Value = Convert.ChangeType(LeftWeaponDummy, cell.Value!.GetType());
                 friedeCount++;
             }
             // Every Elden Ring paired row marks model 0 in the left hand as 1 (DS3 wrote 0 there).
@@ -174,7 +166,7 @@ public static class AbsorpPort
         }
         erAbsorp.Rows.Sort((a, b) => a.ID.CompareTo(b.ID));
         Console.WriteLine($"absorp: {added} split weapons got DS3 model positions ({map.Count} DS3 dummy polys matched), " +
-                          $"{pairedCount} paired (left blade in the left hand two-handed; {friedeCount} of them Friede-style, moved by DS3's engine)" + (PairedGrip ? "" : " [grip/isDualBlade off: DARKSIGN_PAIRED_GRIP=0]"));
+                          $"{pairedCount} paired (left blade in the left hand two-handed; plus {friedeCount} Friede-style: second blade on the back, left hand only in the art)" + (PairedGrip ? "" : " [grip/isDualBlade off: DARKSIGN_PAIRED_GRIP=0]"));
         foreach (var note in notes.Take(12))
             Console.WriteLine("  " + note);
     }
