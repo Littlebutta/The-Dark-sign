@@ -69,6 +69,49 @@ public static partial class MovesetPort
         return ids;
     }
 
+    internal enum TaeEffect { Keep, Drop, Port }
+
+    /// <summary>
+    /// What becomes of a SpEffect ID a DS3 move casts (TAE 66/67/331...). Both games' scripts (hks) look for marker
+    /// effects named "[HKS] ...", and number them differently: DS3's 100500 "[HKS] Non-generator Transition" (the
+    /// window Friede's stance attacks chain in) is Elden Ring's 100500 "[HKS] Sword Arts - Raptor Dodge", so a copied
+    /// ID made the game dodge when a stance attack was hit (1.0.225 kept every ID Elden Ring's hks checks). A marker is
+    /// kept only when both games name it the same (100280 "[HKS] Is Charging Heavy Attack"), otherwise dropped: a DS3
+    /// marker means nothing to Elden Ring's scripts and a ported copy of it would do nothing either. Any other effect
+    /// is kept when Elden Ring's hks checks the ID, else ported under a new ID.
+    /// </summary>
+    internal static TaeEffect TaeEffectFate(int id, string? ds3Name, string? erName, bool hksChecksId)
+    {
+        static string Norm(string? n) => Regex.Replace(n ?? "", @"\s+", " ").Trim().ToLowerInvariant();
+        bool marker = Norm(ds3Name).StartsWith("[hks]", StringComparison.Ordinal);
+        if (marker)
+            return erName is not null && Norm(ds3Name) == Norm(erName) ? TaeEffect.Keep : TaeEffect.Drop;
+        return hksChecksId ? TaeEffect.Keep : TaeEffect.Port;
+    }
+
+    /// <summary>
+    /// Both games open a parry as a TAE attack event (type 1, 0x40 flag, the behaviour judge at offset 8) whose
+    /// behaviour is a parry: DS3's judges are 450 (two-handed, the Farron Greatsword's a161 38400) and 600, every DS3
+    /// class default variation names them "... - Parry"; Elden Ring's is 591 ("Default - Greatsword - Parry" and
+    /// the like, which the game falls back to when the weapon's own variation has no 591, as for its own weapons).
+    /// A DS3 parry judge copied as is found no behaviour, so the Farron Greatsword's parry parried nothing.
+    /// </summary>
+    internal static HashSet<int> Ds3ParryJudges = [];
+    internal const int ErParryJudge = 591;
+
+    internal static HashSet<int> ParryJudges(PARAM? ds3Behavior) =>
+        ds3Behavior is null ? [] : ds3Behavior.Rows.Where(r => (r.Name ?? "").Trim() is var n && (n.Equals("Parry", StringComparison.OrdinalIgnoreCase) || n.EndsWith("- Parry", StringComparison.OrdinalIgnoreCase)))
+            .Select(r => Convert.ToInt32(r["behaviorJudgeId"].Value)).ToHashSet();
+
+    /// <summary>Rewrites a DS3 parry judge in a copied attack event (judge at offset 8) to Elden Ring's.</summary>
+    internal static bool RemapParryJudge(byte[] attackEvent)
+    {
+        if (attackEvent.Length < 12 || !Ds3ParryJudges.Contains(BitConverter.ToInt32(attackEvent, 8)))
+            return false;
+        BitConverter.GetBytes(ErParryJudge).CopyTo(attackEvent, 8);
+        return true;
+    }
+
     private static int _taeEffectEvents;
     private static readonly bool Ds3JumpTables = Environment.GetEnvironmentVariable("DARKSIGN_DS3_JUMPTABLES") == "1";
     // Event types Elden Ring keeps from its own template animation: sounds, effects and other references to IDs that
@@ -128,6 +171,8 @@ public static partial class MovesetPort
         var erWeapons = er.Get("EquipParamWeapon")!;
         var ds3Weapons = ds3.Get("EquipParamWeapon")!;
         var attackPort = new AttackParamPort(er, ds3) { Effects = spEffects };
+        Ds3ParryJudges = ParryJudges(ds3.Get("BehaviorParam_PC"));
+        Console.WriteLine($"moveset: DS3 parry judges {string.Join(" ", Ds3ParryJudges.Order())} -> Elden Ring {ErParryJudge}");
         TaeEffects = spEffects;
         EngineEffects = HksEffectIds(spEffects is null ? null : LoadHks(ctx));
         _taeEffectEvents = 0;
@@ -733,7 +778,12 @@ public static partial class MovesetPort
                 foreach (var offset in fxLayout.Ids)
                 {
                     int ds3Effect = offset + 4 <= bytes.Length ? BitConverter.ToInt32(bytes, offset) : -1;
-                    int mapped = ds3Effect <= 0 ? ds3Effect : EngineEffects.Contains(ds3Effect) ? ds3Effect : fx.Port(ds3Effect) is > 0 and var portedId ? portedId : -1;
+                    int mapped = ds3Effect <= 0 ? ds3Effect : TaeEffectFate(ds3Effect, fx.Ds3Name(ds3Effect), fx.ErName(ds3Effect), EngineEffects.Contains(ds3Effect)) switch
+                    {
+                        TaeEffect.Keep => ds3Effect,
+                        TaeEffect.Drop => -1,
+                        _ => fx.Port(ds3Effect) is > 0 and var portedId ? portedId : -1,
+                    };
                     BitConverter.GetBytes(mapped).CopyTo(fxBytes, offset);
                     any |= offset == fxLayout.Ids[0] && mapped > 0;
                 }
@@ -757,6 +807,8 @@ public static partial class MovesetPort
             var copy = (byte[])bytes.Clone();
             if (e.Type == OverrideWeaponModelLocations)
                 FixModelOverride(copy);
+            if (e.Type == 1)
+                RemapParryJudge(copy);
             merged.Add(new TAE.Event(e.StartTime, e.EndTime, e.Type, e.Unk04, copy, false) { Group = group });
         }
 

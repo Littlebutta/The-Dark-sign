@@ -187,6 +187,14 @@ public static class Fallbacks
                 { PorterEnv = Env("DARKSIGN_WEAPON_PBR", "0") },
         ]),
 
+        new("weapon-nodes", "Weapon models", "DS3 weapon model node roles", Stage.Build,
+            "A ported weapon's swings do no damage, or its hit effect and sound play away from the blade (in the sky on big swings).",
+        [
+            new("A", "Elden Ring node flags (default)", "Each converted model's nodes get the role flags Elden Ring's own weapon models carry: the nodes dummy polys hang on are marked dummy owners, the mesh's node mesh and bone. DS3 models carry none, and 1.0.225 kept none, so the game had no owner for the hit spheres."),
+            new("B", "Keep DS3's (none)", "The 1.0.225 behaviour: node flags left 0 as DS3 wrote them (DARKSIGN_NODE_FLAGS=0).")
+                { PorterEnv = Env("DARKSIGN_NODE_FLAGS", "0") },
+        ]),
+
         new("weapon-materials", "Weapon models", "DS3 weapon glow and detail layers", Stage.Build,
             "A ported weapon looks rusty, patchy or grey over its own texture, or a glowing DS3 part (Friede's frozen blade) doesn't glow.",
         [
