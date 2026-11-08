@@ -104,7 +104,7 @@ port-weapons, via `--after-pid`, only before its events step, which edits the re
 inside port-weapons the weapon models, icons and animation conversions run in parallel. `DARKSIGN_THREADS=1` runs
 every loop one item at a time, to rule threading out when a build looks wrong. Map collision files serialize on every
 core too, after `CollisionPort.WarmUp` has filled HKLib's type caches (the only shared state its serializers have);
-`DARKSIGN_COLLISION_LOCK=1` serializes them one at a time again, as builds before 1.0.23x did.
+`DARKSIGN_COLLISION_LOCK=1` (Fallbacks: build-threads C) serializes them one at a time again, as builds before 1.0.23x did.
 
 ```
 git submodule update --init      # SoulsFormatsNEXT, pinned
