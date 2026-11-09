@@ -93,15 +93,21 @@ public static class MapValidate
         {
             var flags = FlagMap.Load(ctx.ModPath(MapEvents.FlagFile));
             var registered = MapRegistry.Registered(er);
-            var modRegistry = ctx.ModPath(MapPorter.ModParts(MapRegistry.ListPath));
-            if (File.Exists(modRegistry))
-                foreach (var e in MapRegistry.Parse(DCX.Decompress(File.ReadAllBytes(modRegistry))))
-                    registered.Add(e.Map);
+            // The game's own registry only: a mod copy naming an ID the game doesn't ship crashed every boot
+            // (1.0.238, eldenring.exe+0xAED000), so the porter writes none and a leftover one is a failure.
+            foreach (var path in MapRegistry.Lists)
+            {
+                var modRegistry = ctx.ModPath(MapPorter.ModParts(path));
+                if (File.Exists(modRegistry))
+                    report.Fail($"the mod overrides Elden Ring's map registry ({Path.GetFileName(modRegistry)}): the game crashes at boot "
+                                + "when the list names a map ID it doesn't ship (1.0.238). Rebuild the content; a full port-maps run deletes it");
+            }
             foreach (var (_, erId) in listed)
                 if (registered.Contains(erId))
-                    report.Ok($"{erId}: in the map registry (worldmsblist{(File.Exists(modRegistry) ? ", the mod's copy" : "")})");
+                    report.Ok($"{erId}: in Elden Ring's map registry (worldmsblist)");
                 else
-                    report.Fail($"{erId}: not in the map registry (worldmsblist.worldloadlistlist); the game won't load it (endless loading screen)");
+                    report.Fail($"{erId}: not in Elden Ring's map registry (worldmsblist.worldloadlistlist); the game never loads it "
+                                + "(endless loading screen) and registering it crashes the boot. Use a registered ID");
             FlagAlloc.Check(er, report, listed.Select(l => l.Er), flags.Flags.Values.Concat(flags.Events.Values),
                 ctx.ModPath(MapPorter.ModParts(FlagAlloc.LegacyList)), registered);
             // The in-game check (dksign_testmenu.dll) asks the game itself about these blocks.

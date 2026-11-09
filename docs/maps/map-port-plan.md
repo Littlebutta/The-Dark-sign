@@ -165,10 +165,12 @@ jump, guard counter and the rest. Patrol routes and DS3's boss name text aren't 
    are plain text too (`index,mAA_BB_CC_DD,type`, indices 0-148, 150-186, 200-332, 350-358) but don't name the
    colosseums, whose flags the game keeps anyway, so the registry decides a map's flag blocks. The in-game check
    (dksign_testmenu.dll `flagcheck:` lines, shown by the pre-flight) found blocks 45000-45029 kept except 45006,
-   45016, 45026, the m50 slot's none, and the JortPob-style sea-tile blocks kept. port-maps now registers every slot
-   whose map ID the game doesn't ship (`MapRegistry.WriteForNewIds`), copies the template's other per-map files under
-   it (`NewIdFiles.Copy`) and mirrors the flag lists (`FlagAlloc.WriteForNewIds`); the map check reads all of them.
-   See `docs/maps/own-map-ids.md`.
+   45016, 45026, the m50 slot's none, and the JortPob-style sea-tile blocks kept. Registering m50 in that list
+   (PR #95) then crashed the game at boot on every launch of 1.0.238 (eldenring.exe+0xAED000, a null per-map entry):
+   the executable keeps its own table of map IDs, and the registry only selects among them. So port-maps never writes
+   the registry, skips a slot whose ID the shipped registry doesn't name, and map-slots B uses the registry's
+   file-less IDs (m11_70, m11_72, m19_70). The template's other per-map files (`NewIdFiles.Copy`) and flag-list lines
+   (`FlagAlloc.WriteForNewIds`) are still copied under such a slot. See `docs/maps/own-map-ids.md`.
 8. The vanilla colosseum's other per-map files (`.nva`, `.mfr`, `.btl` lights, envmaps, ivinfo, `map/onav`,
    `breakgeom`) stay as they are and describe the colosseum, not the DS3 map. SoulsFormats can't write Elden Ring's NVA.
 

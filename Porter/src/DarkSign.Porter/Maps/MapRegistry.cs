@@ -1,6 +1,5 @@
 using System.Text;
 using System.Text.RegularExpressions;
-using SoulsFormats;
 
 namespace DarkSign.Porter.Maps;
 
@@ -11,7 +10,9 @@ namespace DarkSign.Porter.Maps;
 /// the game ships is listed, the colosseums m45_00-02 included, and so are IDs with no files at all (m11_70,
 /// m19_70, test maps m70/m80/m88). A warp to the unlisted m50 test slot sat on the loading screen for ever while
 /// the game asked for none of its files (me3 log, 1.0.230), and the flag manager had no blocks for it, so this list
-/// is the gate a new map ID has to pass; <see cref="WriteForNewIds"/> adds a line for every new-ID slot of a build.
+/// is the gate a new map ID has to pass. Adding a line for an ID the game doesn't ship (the m50 probe, 1.0.234 to
+/// 1.0.238) crashed the game at boot on every launch, so the mod never writes this file: a slot's ID has to be one
+/// the shipped lists name (<see cref="Unregistered"/>).
 /// </summary>
 public static class MapRegistry
 {
@@ -52,48 +53,19 @@ public static class MapRegistry
     }
 
     /// <summary>
-    /// The list with a line for each map it (or another list) doesn't name yet, inserted after its last map line
-    /// in the file's own line ending and shape ("map:/MapStudio/m50_00_00_00.msb " with the trailing space the
-    /// shipped lines carry). The rest of the text is kept byte for byte.
+    /// The slots whose Elden Ring map ID the registry doesn't name. The porter skips them: the registry is a list the
+    /// game reads, not a table it is built from. Adding a line for an ID the executable doesn't know (the m50 probe,
+    /// PR #95, 1.0.234-1.0.238) crashed the game at boot on every launch, twice on 2026-11-09, right after the
+    /// registry loaded and before any character or map: access violation at eldenring.exe+0xAED000, a virtual call
+    /// through the null vtable of the per-map entry the ID should have had (fault address 0xC0, rax 0). And an ID
+    /// the registry doesn't name is never looked up (endless loading screen, 1.0.230). So the mod never writes this
+    /// file, and a slot has to use an ID the shipped lists already carry.
     /// </summary>
-    public static (byte[] Data, List<MapId> Added) WithMaps(byte[] list, IEnumerable<byte[]> otherLists, IEnumerable<MapId> maps)
-    {
-        var known = Parse(list).Select(e => e.Map).ToHashSet();
-        foreach (var other in otherLists)
-            foreach (var e in Parse(other))
-                known.Add(e.Map);
-        var added = new List<MapId>();
-        var text = Text(list);
-        var newline = text.Contains("\r\n") ? "\r\n" : "\n";
-        var lines = text.Split('\n').Select(l => l.TrimEnd('\r')).ToList();
-        var last = lines.FindLastIndex(l => Line.IsMatch(l));
-        foreach (var map in maps.Distinct())
-        {
-            if (known.Contains(map))
-                continue;
-            known.Add(map);
-            added.Add(map);
-            lines.Insert(last + 1, $"map:/MapStudio/{map}.msb ");
-            last++;
-        }
-        return (added.Count == 0 ? list : Encoding.UTF8.GetBytes(string.Join(newline, lines)), added);
-    }
+    public static List<MapSlots.Slot> Unregistered(HashSet<MapId> registered, IEnumerable<MapSlots.Slot> slots) =>
+        slots.Where(s => !registered.Contains(s.Er)).ToList();
 
-    /// <summary>
-    /// port-maps step: writes Mods\ER\map\worldmsblist.worldloadlistlist.dcx with every new-ID slot's map added, so the
-    /// game loads it like a map it ships. Returns the report line.
-    /// </summary>
-    public static string WriteForNewIds(PorterContext ctx, GameArchives er, IEnumerable<MapSlots.Slot> slots)
-    {
-        var maps = slots.Where(s => s.Host != s.Er).Select(s => s.Er).Distinct().ToList();
-        if (maps.Count == 0)
-            return "map registry: every slot is a map Elden Ring ships; nothing to add";
-        var (list, compression) = er.ReadWithCompression(ListPath);
-        var others = Lists.Skip(1).Where(er.Contains).Select(er.Read).ToList();
-        var (data, added) = WithMaps(list, others, maps);
-        if (added.Count == 0)
-            return "map registry: the new map IDs are already listed; nothing to add";
-        File.WriteAllBytes(ctx.ModPath(MapPorter.ModParts(ListPath)), DCX.Compress(data, compression));
-        return $"map registry: {string.Join(", ", added)} added to worldmsblist.worldloadlistlist";
-    }
+    public static string SkipReason(MapSlots.Slot slot) =>
+        $"{slot.Ds3} -> {slot.Er}: SKIPPED: {slot.Er} is not in Elden Ring's map registry (worldmsblist.worldloadlistlist). "
+        + "The game only knows the map IDs it ships: registering another one crashed every boot (1.0.238, "
+        + "eldenring.exe+0xAED000), and an unregistered one never loads. Use a registered ID.";
 }

@@ -308,7 +308,7 @@ public partial class MainWindow : Window
             "Elden Ring starts once with the DS3 maps hidden, so the save loads the game's own arena under that map ID instead. " +
             "Load the character, then press Ctrl+Shift+F2 (Leave DS3 run) to warp to Roundtable Hold, or let the character fall and respawn at its last grace. " +
             "Quit the game, then press PLAY as usual: the maps are put back before every normal launch.\n\n" +
-            "A character saved in a new-map-ID slot (map-slots method B, m50-m52) has no arena to fall back to and can't be rescued this way.\n\n" +
+            "A character saved in a spare-map-ID slot (map-slots method B, m11_70, m11_72, m19_70) has no arena to fall back to and can't be rescued this way.\n\n" +
             "Start Elden Ring in rescue mode now?",
             "Rescue save", MessageBoxButton.YesNo, MessageBoxImage.Question);
         if (answer == MessageBoxResult.Yes)

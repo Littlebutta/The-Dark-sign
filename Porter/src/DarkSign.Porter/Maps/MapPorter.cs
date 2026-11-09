@@ -91,8 +91,18 @@ public static class MapPorter
             Time(report, "enemy port", enemyClock);
         }
 
+        // Only map IDs the game ships: a registry line for any other crashed every boot (1.0.238), and an unregistered
+        // ID never loads, so such a slot is reported and left out rather than built.
+        var registered = MapRegistry.Registered(er);
+        var slots = MapSlots.All.Where(s => options.Only.Count == 0 || options.Only.Contains(s.Ds3.ToString())).ToList();
+        foreach (var slot in MapRegistry.Unregistered(registered, slots))
+        {
+            report.AppendLine(MapRegistry.SkipReason(slot));
+            Console.Error.WriteLine("  " + MapRegistry.SkipReason(slot));
+            slots.Remove(slot);
+        }
         // Probe slots last: they copy their main slot's converted map pieces.
-        foreach (var slot in MapSlots.All.Where(s => options.Only.Count == 0 || options.Only.Contains(s.Ds3.ToString())).OrderBy(s => s.Probe))
+        foreach (var slot in slots.OrderBy(s => s.Probe))
         {
             Console.WriteLine($"map {slot.Ds3} ({slot.Name}) -> Elden Ring {slot.Er}");
             var mapClock = System.Diagnostics.Stopwatch.StartNew();
@@ -125,13 +135,11 @@ public static class MapPorter
         if (ported.Count > 0)
             Step(report, "events", () => MapEvents.Port(ctx, ds3, er, ported.Select(p => p.Slot).ToList()));
 
-        // A map ID Elden Ring doesn't ship (the m50 probe, map-slots B) is registered the way the game's own maps are:
-        // a line in the map registry (without it the 1.0.230 warp sat on the loading screen and the game asked for no
-        // m50 file), the template's per-map files under the new ID, and a flag allocation line where the template
-        // has one.
+        // A slot under a registered ID that ships no map (map-slots B) gets what the game's own maps have: the
+        // template's per-map files under the new ID, and a flag allocation line where the template has one. The map
+        // registry itself is never written (see MapRegistry: a line for an unshipped ID crashed every boot).
         if (ported.Any(p => p.Slot.Host != p.Slot.Er))
         {
-            Step(report, "map registry", () => MapRegistry.WriteForNewIds(ctx, er, ported.Select(p => p.Slot)));
             Step(report, "new map ID files", () => NewIdFiles.Copy(ctx, er, ported.Select(p => p.Slot)));
             Step(report, "flag allocation", () => FlagAlloc.WriteForNewIds(ctx, er, ported.Select(p => p.Slot)));
         }
@@ -185,7 +193,8 @@ public static class MapPorter
             }
         }
 
-        var ids = MapSlots.Colosseums.Concat(MapSlots.NewIdSlots()).Select(s => s.Er).Distinct().ToList();
+        var every = MapSlots.Colosseums.Concat(MapSlots.NewIdSlots()).Concat(MapSlots.LegacyNewIdSlots()).ToList();
+        var ids = every.Select(s => s.Er).Distinct().ToList();
         foreach (var id in ids)
         {
             Delete(Local(MsbPath(id)));
@@ -203,11 +212,12 @@ public static class MapPorter
             foreach (var ext in new[] { "tpfbhd", "tpfbdt" })
                 Delete(Local(MapTextures.CommonBinder(area)[..^6] + ext));
         // The per-map copies of a new-ID slot outside its map folder (breakgeom, onav, draw params).
-        foreach (var slot in MapSlots.Colosseums.Concat(MapSlots.NewIdSlots()).Where(s => s.Host != s.Er))
+        foreach (var slot in every.Where(s => s.Host != s.Er))
             foreach (var path in NewIdFiles.OutputPaths(
                          [$"/map/breakgeom/lod0/{slot.Host}_lod0.breakgeom.dcx", $"/map/onav/{slot.Host}.onav.dcx",
                           $"/param/drawparam/m{slot.Host.Area:D2}_{slot.Host.Block:D2}_0000.gparam.dcx"], slot.Host, slot.Er))
                 Delete(Local(path));
+        // MapRegistry.ListPath: builds 1.0.234-1.0.238 wrote it for the m50 probe and it crashed the boot; never again.
         foreach (var path in new[] { "/event/common.emevd.dcx", MapEvents.CommonFunc, MaterialBinder, ActionButtons.ModMenu, FlagAlloc.LegacyList, MapRegistry.ListPath })
             Delete(Local(path));
         foreach (var file in new[] { MapEvents.FlagFile, "darksign_maps.tsv", "darksign_maps_check.txt", FlagAlloc.ProbeFile,
