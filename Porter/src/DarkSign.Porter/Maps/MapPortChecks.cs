@@ -19,10 +19,10 @@ public static partial class MapPortChecks
         yield return ("events: run events have DarkScript3's Elden Ring layouts and survive a write", RunEventLayout);
         yield return ("events: adding the run events twice leaves one copy", RunEventsIdempotent);
         yield return ("events: one warp event per ported map, started from the constructor, replaced on a rerun", PerMapWarps);
-        yield return ("slots: the new-map-ID test slot uses a template map and doesn't hijack the real m40 slot", ProbeSlot);
+        yield return ("slots: every default slot is a map ID Elden Ring ships (no probe under an unshipped ID)", DefaultSlots);
         yield return ("events: the return point prefers a Roundtable Hold warp", ReturnPoint);
         yield return ("fallbacks: auto-start adds one start request per load outside a run, and a rerun without it removes it", AutoStartRun);
-        yield return ("fallbacks: the new-map-ID slots give each DS3 map its own unshipped ID, built from a colosseum", NewIdSlots);
+        yield return ("fallbacks: the new-map-ID slots give each DS3 map a registered file-less ID, built from a colosseum", NewIdSlots);
         yield return ("names: collision and texture binder entries", Names);
         yield return ("navmesh: DS3 Havok AI 2014 -> Elden Ring 2018 keeps faces, edges, graph and tree (XML)", () => Navmesh(xml: true));
         yield return ("navmesh: DS3 Havok AI 2014 -> Elden Ring 2018 keeps faces, edges, graph and tree (binary)", () => Navmesh(xml: false));
@@ -32,7 +32,7 @@ public static partial class MapPortChecks
         yield return ("navmesh: binder entries are renamed to the host map and keep the host's compendium", NavmeshBinder);
         yield return ("rebuild: a full run deletes port-maps' own old outputs (both slot methods) and keeps the other steps' files", CleanStale);
         yield return ("flags: the allocation lists parse, blocks map to their maps, and a new map ID gets a line", FlagAllocProbe);
-        yield return ("map registry: worldmsblist parses and a new map ID is inserted after the last map line", MapRegistryList);
+        yield return ("map registry: worldmsblist parses, and a slot under an ID it doesn't name is skipped, never registered", MapRegistryList);
         yield return ("new map IDs: the template's per-map files are found, renamed and the port's own outputs skipped", NewIdFileSet);
         yield return ("flags: in-game probe flags are each block's last number, and map-flags B uses JortPob's saved ranges", FlagProbesAndLocalFlags);
     }
@@ -45,6 +45,8 @@ public static partial class MapPortChecks
             Directory.CreateDirectory(root);
             var ctx = new PorterContext(root);
             string[] ours = [ctx.ModPath("map", "mapstudio", "m50_00_00_00.msb.dcx"), ctx.ModPath("map", "m45", "m45_01_00_00", "h45_01_00_00.hkxbhd"),
+                ctx.ModPath("map", "mapstudio", "m11_70_00_00.msb.dcx"), ctx.ModPath("map", "m11", "m11_70_00_00", "f11_70_00_00.hkxbhd"),
+                ctx.ModPath("map", "worldmsblist.worldloadlistlist.dcx"), ctx.ModPath("map", "breakgeom", "lod0", "m50_00_00_00_lod0.breakgeom.dcx"),
                 ctx.ModPath("map", "m45", "m45_0000.tpfbhd"), ctx.ModPath("event", "common.emevd.dcx"), ctx.ModPath("event", "common_func.emevd.dcx"),
                 ctx.ModPath("event", "m51_00_00_00.emevd.dcx"), ctx.ModPath("material", "allmaterial_dlc01.matbinbnd.dcx"),
                 ctx.ModPath("msg", "engus", "menu_dlc02.msgbnd.dcx"), ctx.ModPath("darksign_flags.tsv"), ctx.ModPath("darksign_maps.tsv")];
@@ -102,15 +104,14 @@ public static partial class MapPortChecks
         var entries = MapRegistry.Parse(list);
         Expect(entries.Count == 5 && entries[1].Options == ",testmap=1" && entries[3].Map == ErId && entries[3].Options == "",
             "parse: " + string.Join(" ", entries));
-        var dlc = System.Text.Encoding.UTF8.GetBytes("\r\nmap:/MapStudio/m20_00_00_00.msb \r\n");
-        var probe = MapId.Parse("m50_00_00_00");
-        var (data, added) = MapRegistry.WithMaps(list, [dlc], [probe, probe, ErId, MapId.Parse("m20_00_00_00")]);
-        Expect(added.SequenceEqual([probe]), "added: " + string.Join(" ", added));
-        var result = System.Text.Encoding.UTF8.GetString(data);
-        Expect(result == text.Replace("m45_01_00_00.msb \r\n", "m45_01_00_00.msb \r\nmap:/MapStudio/m50_00_00_00.msb \r\n"),
-            "line inserted after the last map line, rest kept: " + result.Replace("\r\n", "|"));
-        Expect(MapRegistry.Parse(data).Select(e => e.Map).Contains(probe), "reads back");
-        Expect(MapRegistry.WithMaps(data, [dlc], [probe]).Added.Count == 0, "nothing added twice");
+        var registered = entries.Select(e => e.Map).ToHashSet();
+        var probe = new MapSlots.Slot(Ds3Id, MapId.Parse("m50_00_00_00"), "probe", Template: ErId, Probe: true);
+        var real = MapSlots.Colosseums[0];
+        var skipped = MapRegistry.Unregistered(registered, [real, probe, MapSlots.Colosseums[1]]);
+        Expect(skipped.SequenceEqual([probe]), "only the unshipped ID is skipped: " + string.Join(" ", skipped.Select(s => s.Er)));
+        Expect(MapRegistry.SkipReason(probe).Contains("m50_00_00_00") && MapRegistry.SkipReason(probe).Contains("SKIPPED"), "skip reason names the ID");
+        // Nothing in the porter writes the registry any more (the 1.0.238 boot crash).
+        Expect(typeof(MapRegistry).GetMethods().All(m => !m.Name.StartsWith("Write")), "the registry must never be written");
     }
 
     private static void NewIdFileSet()
@@ -140,7 +141,9 @@ public static partial class MapPortChecks
         var probe = MapId.Parse("m50_00_00_00");
         Expect(NewIdFiles.Renamed("/map/m45/m45_00_00_00/f45_00_00_00.hkxbhd", template, probe) == "/map/m50/m50_00_00_00/f50_00_00_00.hkxbhd"
                && NewIdFiles.Renamed("/param/drawparam/m45_00_0000.gparam.dcx", template, probe) == "/param/drawparam/m50_00_0000.gparam.dcx"
-               && NewIdFiles.Renamed("m45_00_00_00_high.ivinfo", template, probe) == "m50_00_00_00_high.ivinfo", "renamed paths");
+               && NewIdFiles.Renamed("m45_00_00_00_high.ivinfo", template, probe) == "m50_00_00_00_high.ivinfo"
+               && NewIdFiles.Renamed("/map/m45/m45_00_00_00/f45_00_00_00.hkxbhd", template, MapId.Parse("m11_70_00_00")) == "/map/m11/m11_70_00_00/f11_70_00_00.hkxbhd"
+               && NewIdFiles.Renamed("/param/drawparam/m45_00_0000.gparam.dcx", template, MapId.Parse("m19_70_00_00")) == "/param/drawparam/m19_70_0000.gparam.dcx", "renamed paths");
         var outputs = NewIdFiles.OutputPaths(files, template, probe).ToList();
         Expect(outputs.Count == expected.Length + 1 && outputs.Contains("/map/m50/m50_00_00_00/f50_00_00_00.hkxbdt"), "outputs include the bdt");
     }
@@ -618,18 +621,24 @@ public static partial class MapPortChecks
         Expect(MapValidate.CheckRunEvents(common, ErId).Count() == 0, "run events still valid");
     }
 
+    // Every map ID Elden Ring 2.7.2's registry names (worldmsblist + _dlc02, read 2026-11-08) that single-player
+    // never visits and the game ships no files for: the only IDs a slot may use besides the colosseums.
+    private static readonly HashSet<string> RegisteredFileless =
+        ["m11_70_00_00", "m11_72_00_00", "m19_70_00_00", "m70_51_54_00", "m80_50_50_00", "m88_50_52_00"];
+
     private static void NewIdSlots()
     {
         var slots = MapSlots.NewIdSlots();
-        Expect(slots.Select(s => s.Ds3).SequenceEqual(MapSlots.Colosseums.Where(s => !s.Probe).Select(s => s.Ds3)), "same DS3 maps");
-        Expect(slots.All(s => s.Template is { Area: 45 } && s.Er.Area >= 50 && !s.Probe), "colosseum templates, IDs from m50");
+        Expect(slots.Select(s => s.Ds3).SequenceEqual(MapSlots.Colosseums.Select(s => s.Ds3)), "same DS3 maps");
+        Expect(slots.All(s => s.Template is { Area: 45 } && s.Host != s.Er && !s.Probe), "colosseum templates, own IDs");
+        Expect(slots.All(s => RegisteredFileless.Contains(s.Er.ToString())), "every new ID is one the game's registry names: " + string.Join(" ", slots.Select(s => s.Er)));
         Expect(slots.Select(s => s.Er).Distinct().Count() == slots.Count, "one ID each");
+        Expect(MapSlots.LegacyNewIdSlots().All(s => s.Er.Area >= 50), "the legacy m50-m52 IDs stay known for cleaning");
     }
 
-    private static void ProbeSlot()
+    private static void DefaultSlots()
     {
-        var probe = MapSlots.All.Single(s => s.Probe);
-        Expect(probe.Host == ErId && probe.Er != ErId, $"probe host {probe.Host}");
+        Expect(MapSlots.All.All(s => !s.Probe && s.Template is null && s.Er.Area == 45), "default slots are the colosseums only: " + string.Join(" ", MapSlots.All.Select(s => s.Er)));
         Expect(MapSlots.ForDs3(Ds3Id)?.Er == ErId, "ForDs3 must return the real slot");
         Expect(MapSlots.All.Select(s => s.Er).Distinct().Count() == MapSlots.All.Count, "slots must not share an Elden Ring map");
     }

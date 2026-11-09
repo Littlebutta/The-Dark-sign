@@ -24,7 +24,7 @@ Dark Souls III is only read as source data. Its Seamless mod only needs to keep 
 1. **Boot and connect.** Launch with Seamless ticked on both PCs. `dksign_saveredirect.log` should say `co-op mode, sockets left open`. Use the Seamless item to host and join.
 2. **Ported weapons.** Equip a DS3 weapon, for example Friede's Great Scythe. The partner should see the model, the DS3 moveset and the sounds. Seamless only syncs IDs, and both players have the same files.
 3. **`start_online`.** If Seamless refuses to connect while me3 starts the game in offline mode, the launcher should write `start_online = true` in co-op mode only. The me3 docs' own Seamless example sets it. Our winsock block is already off in co-op mode, so this would be a one-line change.
-4. **DS3 maps (colosseum slots m45_00–02, m50 probe).** These are vanilla multiplayer arena slots. Test whether a client can follow the host there with the F1 "DS3 run" warp, and whether Seamless's player-location sync is fine with the new map IDs.
+4. **DS3 maps (colosseum slots m45_00–02).** These are vanilla multiplayer arena slots. Test whether a client can follow the host there with the F1 "DS3 run" warp, and whether Seamless's player-location sync is fine with the new map IDs.
 5. **Event flags.** Seamless shares the host's world. Our run flags (`1039290100`, the `10392921xx/22xx` requests) and the converted DS3 flags (`1030290000`–`1038290000`) are set by the host's scripts. Test whether a client's own save picks up DS3 boss kills the way it does vanilla boss kills.
 6. **F1 test menu hooks.** Both mods hook game code. Watch for a "Could not find signature" or a crash on load. If one appears, try Seamless last in the natives list.
 

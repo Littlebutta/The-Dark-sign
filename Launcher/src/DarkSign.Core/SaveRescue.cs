@@ -3,7 +3,7 @@ namespace DarkSign.Core;
 /// <summary>
 /// Gets a save out of a Dark Souls III map that crashes on load. Elden Ring keeps the player's last map in the save
 /// and loads it before any event script runs, so a save left in a ported map (the colosseum slots m45_00-02, or the
-/// m50-m52 new-ID slots) crashes on every load until that map loads again. "Rescue save" starts the game once with
+/// spare-ID slots of map-slots B) crashes on every load until that map loads again. "Rescue save" starts the game once with
 /// the ported maps hidden (moved out of the mod folder): the save then loads the game's own colosseum arena under
 /// the same map ID, the player falls or rests back to an Elden Ring grace, and Ctrl+Shift+F2 (Leave DS3 run) warps
 /// them to Roundtable Hold. The next normal PLAY or rebuild puts the files back first (<see cref="Restore"/>).
@@ -13,15 +13,19 @@ namespace DarkSign.Core;
 /// with the ported script hidden the vanilla arena script ran instead and put the player in the colosseum's lobby
 /// state, where Elden Ring's enemies ignored the player and took no damage until the game was restarted (Devin's
 /// 1.0.221 test). common.emevd stays too, so the run's leave warp still works, and so do the weapons and enemies.
-/// A map ID the game doesn't ship (m50-m52) has no arena to fall back to, so a save left there can't be rescued
-/// this way; the launcher says so.
+/// A spare map ID the game ships no map for (m11_70, m11_72, m19_70 under map-slots B) has no arena to fall back
+/// to, so a save left there can't be rescued this way; the launcher says so.
 /// </summary>
 public static class SaveRescue
 {
     public const string HiddenFolderName = "rescue-hidden-maps";
 
-    /// <summary>The ported map IDs: colosseum slots and the new-ID slots (Porter MapSlots).</summary>
-    public static readonly string[] MapIds = ["m45_00_00_00", "m45_01_00_00", "m45_02_00_00", "m50_00_00_00", "m51_00_00_00", "m52_00_00_00"];
+    /// <summary>
+    /// The ported map IDs: colosseum slots, the spare-ID slots of map-slots B (Porter MapSlots.NewIdSlots) and the
+    /// m50-m52 IDs builds up to 1.0.238 used, so an older build's leftovers are hidden too.
+    /// </summary>
+    public static readonly string[] MapIds =
+        ["m45_00_00_00", "m45_01_00_00", "m45_02_00_00", "m11_70_00_00", "m11_72_00_00", "m19_70_00_00", "m50_00_00_00", "m51_00_00_00", "m52_00_00_00"];
 
     /// <summary>Where the hidden files wait: TheDarkSign\Work\rescue-hidden-maps, mirroring the mod folder.</summary>
     public static string HiddenDir(string root) => Path.Combine(root, "TheDarkSign", "Work", HiddenFolderName);

@@ -56,10 +56,13 @@ public readonly record struct MapId(int Area, int Block, int Region, int Index)
 }
 
 /// <summary>
-/// Which Elden Ring map slot hosts each Dark Souls III map. Elden Ring loads maps by ID, and whether the game
-/// accepts IDs it doesn't ship is unconfirmed (JortPob, the Morrowind port, only reuses existing IDs), so ported
-/// maps take over existing slots the single-player game never visits: the three colosseum arenas (m45_00-02), which
-/// are only reached through online colosseum matchmaking.
+/// Which Elden Ring map slot hosts each Dark Souls III map. Elden Ring loads maps by ID, and the executable keeps a
+/// table of the IDs it ships: a map ID outside it crashes the game at boot the moment the map registry
+/// (<see cref="MapRegistry"/>) names it (1.0.238, 2026-11-09: access violation at eldenring.exe+0xAED000 on a
+/// null per-map entry, twice, before any character loaded), and an ID the registry doesn't name sits on the loading
+/// screen for ever (1.0.230). JortPob, the Morrowind port, only reuses existing IDs for the same reason. So ported
+/// maps take over IDs the game ships and the single-player game never visits: the three colosseum arenas
+/// (m45_00-02), reached only through online matchmaking, or (method B) the registry's file-less IDs.
 /// </summary>
 public static class MapSlots
 {
@@ -67,8 +70,8 @@ public static class MapSlots
     /// The Elden Ring map whose files give the formats and template parts when <paramref name="Er"/> is a map ID
     /// Elden Ring doesn't ship (null: <paramref name="Er"/> itself).
     /// </param>
-    /// <param name="Probe">A test slot: the same DS3 map again under a new map ID, to find out whether the game
-    /// loads map IDs it doesn't ship. If it does, every DS3 map can get its own slot.</param>
+    /// <param name="Probe">A test slot: the same DS3 map again under another map ID. None is built by default since
+    /// 2026-11-09: the m50 probe's registry line crashed the game at boot (see the class summary).</param>
     public sealed record Slot(MapId Ds3, MapId Er, string Name, MapId? Template = null, bool Probe = false)
     {
         public MapId Host => Template ?? Er;
@@ -85,11 +88,24 @@ public static class MapSlots
     private static IReadOnlyList<Slot>? _all;
 
     /// <summary>
-    /// Fallback: every DS3 map under a map ID of its own that Elden Ring doesn't ship (m50_00, m51_00, m52_00, the
-    /// IDs the m50 probe tests), built from the colosseum's formats. For when the colosseum slots won't load or their
-    /// own settings get in the way. Each map's entities, events and flags move to that ID's range.
+    /// Fallback: every DS3 map under a map ID of its own, built from the colosseum's formats. For when the colosseum
+    /// slots won't load or their own settings get in the way. The IDs are ones Elden Ring's map registry names but
+    /// ships no map for (the Souls Modding map list calls them "Unknown": m11_70, m11_72, m19_70), because an ID
+    /// outside the executable's table crashes the game at boot (the m50 probe, 1.0.238). Untested in game. Each
+    /// map's entities, events and flags move to that ID's range.
     /// </summary>
     public static IReadOnlyList<Slot> NewIdSlots() =>
+    [
+        new(MapId.Parse("m40_00_00_00"), MapId.Parse("m11_70_00_00"), "Firelink Shrine / Cemetery of Ash", Template: MapId.Parse("m45_00_00_00")),
+        new(MapId.Parse("m30_00_00_00"), MapId.Parse("m11_72_00_00"), "High Wall of Lothric", Template: MapId.Parse("m45_01_00_00")),
+        new(MapId.Parse("m31_00_00_00"), MapId.Parse("m19_70_00_00"), "Undead Settlement", Template: MapId.Parse("m45_02_00_00")),
+    ];
+
+    /// <summary>
+    /// The new-ID slots builds up to 1.0.238 wrote (m50-m52, IDs the game doesn't ship): still cleaned out of the mod
+    /// folder by a full run, so a mod folder built before 2026-11-09 doesn't keep the files that crashed the boot.
+    /// </summary>
+    public static IReadOnlyList<Slot> LegacyNewIdSlots() =>
     [
         new(MapId.Parse("m40_00_00_00"), MapId.Parse("m50_00_00_00"), "Firelink Shrine / Cemetery of Ash", Template: MapId.Parse("m45_00_00_00")),
         new(MapId.Parse("m30_00_00_00"), MapId.Parse("m51_00_00_00"), "High Wall of Lothric", Template: MapId.Parse("m45_01_00_00")),
@@ -101,9 +117,7 @@ public static class MapSlots
         new(MapId.Parse("m40_00_00_00"), MapId.Parse("m45_00_00_00"), "Firelink Shrine / Cemetery of Ash"),
         new(MapId.Parse("m30_00_00_00"), MapId.Parse("m45_01_00_00"), "High Wall of Lothric"),
         new(MapId.Parse("m31_00_00_00"), MapId.Parse("m45_02_00_00"), "Undead Settlement"),
-        // DS3's Dreg Heap ID, which Elden Ring doesn't use; built from the colosseum's file formats.
-        new(MapId.Parse("m40_00_00_00"), MapId.Parse("m50_00_00_00"), "Cemetery of Ash (new map ID test)",
-            Template: MapId.Parse("m45_00_00_00"), Probe: true),
+        // No m50 probe any more: registering an ID the game doesn't ship crashed every boot (1.0.238).
     ];
 
     /// <summary>Every DS3 map the single-player game uses, for reports of what still has no slot.</summary>

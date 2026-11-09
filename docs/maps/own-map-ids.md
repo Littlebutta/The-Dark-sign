@@ -1,5 +1,11 @@
 # Loading the DS3 maps under their own map IDs
 
+**Answered 2026-11-09: the executable gates map IDs.** Registering an ID Elden Ring doesn't ship (the m50 probe)
+crashed the game at boot on every launch of 1.0.238; an unregistered one sits on the loading screen for ever
+(1.0.230). The default build has no probe any more, the porter never writes the map registry, and map-slots B now
+uses IDs the registry already names (m11_70, m11_72, m19_70). Details in "Second probe result" below; the sections
+before it are the history.
+
 Devin's question (2026-11-08): would the ported maps load better as their own maps, instead of taking over the
 colosseum arenas (m45_00-02) and their names and logic? This note is the assessment and the plan. It is written
 before any rewrite; the decisive facts come from one in-game test described below.
@@ -90,7 +96,7 @@ no flag allocation list`. Reading the lists out of the game archives (porter `ex
   lists mean something else (open-world tiles carry types 1 and 2). PR #93's "add a line" fix was aimed at the wrong
   file; it now only mirrors the template (no line when the template has none).
 
-**Attempt 2 (this PR)** registers a new-ID slot the way the game's own maps are set up: a registry line
+**Attempt 2 (PR #95; it crashed the boot, see "Second probe result")** registered a new-ID slot the way the game's own maps are set up: a registry line
 (`MapRegistry.WriteForNewIds`), the template's per-map files the port doesn't write (f-collision binder, mfr, nva,
 btl, ivinfo binders, breakgeom, onav, draw params) copied under the new ID with binder entry names renamed
 (`NewIdFiles.Copy`), and the map check fails a slot that isn't registered. If the m50 warp still doesn't load after
@@ -98,7 +104,38 @@ this, the game keeps a map table in the executable as well, and own map IDs stop
 slots then come from IDs the registry already names and single-player never visits (m11_70, m11_72, m19_70, the
 m70/m80/m88 test maps) or from sea tiles.
 
-## Recommendation
+## Second probe result (1.0.238, 2026-11-09): the registry line crashes the boot
+
+Devin's two launches of 1.0.238 (10:49 and 10:50 local, a fresh character on the second) crashed before any
+character or map loaded. The me3 logs end on the last file the game asked for: `map\worldmsblist.worldloadlistlist.dcx`,
+the registry copy with the m50 line. The 1.0.230 log, with no registry override, goes straight on from
+`chr\c0000.behbnd.dcx` to `event\common_func.emevd.dcx`. The crash dumps (`%LOCALAPPDATA%\CrashDumps\eldenring.exe.3716.dmp`
+and `.5620.dmp`, read with `Porter/tools/parse_minidump.py`) agree with each other:
+
+| | |
+|---|---|
+| Exception | access violation reading address **0xC0**, `rax = 0` |
+| Site | eldenring.exe+**0xAED000**, called straight from the task runner (+0x1ED97EE) |
+| Code before the site | `mov rax,[rcx]; mov rdx,rsi; call [rax+0xC0]` on the object at big-manager+0xB3630 |
+
+That is a virtual call through a null vtable: the per-map entry the registry line told the game to use was never
+constructed, because the executable's own table of maps doesn't have m50. So Elden Ring knows its map IDs from the
+executable, and the registry only selects among them: an ID outside the table crashes the boot when registered and
+never loads when not. The porter therefore:
+
+- builds no probe by default (`MapSlots.Colosseums` is the three arenas),
+- never writes `worldmsblist*.worldloadlistlist.dcx`; a full `port-maps` run deletes the copy an older build left,
+  and `map-validate` fails if one is still in the mod folder,
+- skips any slot whose ID the shipped registry doesn't name (a `SKIPPED` line in the report),
+- gives map-slots B the registry's file-less IDs instead of m50-m52: **m11_70, m11_72, m19_70** (the Souls Modding
+  map list's "Unknown" maps). The template's per-map files and flag-list lines are copied under them as before.
+  Whether the executable's table has anything odd for those three IDs is untested; the m70/m80/m88 `testmap=1`
+  IDs and the sea tiles are the next candidates if it does.
+
+The second crash of the day was then not the map-load crash at all: the Cemetery and High Wall loads (PR #98's
+motion-properties fix) are untested on 1.0.238 and later, because the game never got that far.
+
+## Recommendation (2026-11-08, superseded above)
 
 Don't rewrite anything yet. Decide with one test, on a **throwaway character** (a save stuck on the loading screen
 is deleted, not rescued), in the next playtest build:

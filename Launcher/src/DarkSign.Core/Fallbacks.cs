@@ -259,8 +259,8 @@ public static class Fallbacks
         new("map-slots", "DS3 maps", "Which Elden Ring map IDs hold the DS3 maps", Stage.Build,
             "Warping into a DS3 map fails (nothing happens, endless loading, crash, or you land in the colosseum).",
         [
-            new("A", "Colosseum slots (default)", "Firelink/Cemetery of Ash, High Wall and Undead Settlement replace the three colosseum arenas (m45_00-02), which single-player never visits; plus an m50 test copy of the Cemetery."),
-            new("B", "New map IDs", "Each DS3 map gets a map ID Elden Ring doesn't ship (m50_00, m51_00, m52_00), built from the colosseums' file formats and listed in the game's flag allocation list. Works if the F1 menu's m50 test warp (Ctrl+Shift+4) works.")
+            new("A", "Colosseum slots (default)", "Firelink/Cemetery of Ash, High Wall and Undead Settlement replace the three colosseum arenas (m45_00-02), which single-player never visits."),
+            new("B", "Spare map IDs", "Each DS3 map gets a map ID of its own that Elden Ring lists but ships no map for (m11_70, m11_72, m19_70), built from the colosseums' file formats. Untested; IDs the game doesn't list at all crash it at boot.")
                 { PorterEnv = Env("DARKSIGN_MAP_SLOTS", "new") },
         ]),
         new("run-start", "DS3 maps", "Getting into the DS3 run", Stage.Build,
