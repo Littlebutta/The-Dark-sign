@@ -178,6 +178,8 @@ public static class CollisionPort
             system.m_materials.AddRange(template.Materials());
         foreach (var motion in ds3.m_motionProperties ?? [])
             system.m_motionProperties.Add(ConvertMotionProperties(motion));
+        if (system.m_motionProperties.Count == 0)
+            system.m_motionProperties.AddRange(template.MotionProperties());
 
         foreach (var body in ds3.m_bodyCinfos ?? [])
         {
@@ -203,7 +205,40 @@ public static class CollisionPort
             }
             system.m_bodyCinfos.Add(erBody);
         }
+        ReferenceIds(system, notes);
         return system;
+    }
+
+    /// <summary>
+    /// Every body's material and motion-properties ids must point inside the system's own arrays. Elden Ring
+    /// (hknpPhysicsSystem's constructor, eldenring.exe+0x18BE9C0 in 2.7.2) looks each body's
+    /// <c>m_motionPropertiesId</c> up in <c>m_motionProperties</c> unless it is 0xFFFF, with no bounds check, and
+    /// registers the record it finds in a world library (+0x18C0380). The host template's body carries id 0 while a
+    /// DS3 static collision ships no motion properties at all, so the game dereferenced a null array and crashed on
+    /// every ported map load (access violation at eldenring.exe+0x18C038A, 1.0.217 to 1.0.230). Static bodies need
+    /// no motion properties: an id past the array becomes 0xFFFF, and a material id past the array becomes 0.
+    /// </summary>
+    internal static void ReferenceIds(hknpPhysicsSystemData system, List<string> notes)
+    {
+        int motions = 0, materials = 0;
+        foreach (var body in system.m_bodyCinfos)
+        {
+            if (body is null) continue;
+            if (body.m_motionPropertiesId != 0xFFFF && body.m_motionPropertiesId >= system.m_motionProperties.Count)
+            {
+                body.m_motionPropertiesId = 0xFFFF;
+                motions++;
+            }
+            if (body.m_materialId >= system.m_materials.Count)
+            {
+                body.m_materialId = 0;
+                materials++;
+            }
+        }
+        if (motions > 0)
+            notes.Add($"{motions} bodies pointed past the {system.m_motionProperties.Count} motion properties, now none (0xFFFF)");
+        if (materials > 0)
+            notes.Add($"{materials} bodies pointed past the {system.m_materials.Count} materials, now material 0");
     }
 
     // Havok stores these as hkHalf16: the top 16 bits of a float.
@@ -541,6 +576,7 @@ public sealed class ErCollisionTemplate
     public hknpCollisionDispatchType.Enum DispatchType { get; private init; } = hknpCollisionDispatchType.Enum.COMPOSITE;
     private hknpPhysicsSystemData.bodyCinfoWithAttachment? _body;
     private List<hknpMaterial> _materials = [];
+    private List<hknpMotionProperties> _motionProperties = [];
 
     public static ErCollisionTemplate Default { get; } = new();
 
@@ -562,11 +598,13 @@ public sealed class ErCollisionTemplate
                                 DispatchType = shape.m_dispatchType,
                                 _body = body,
                                 _materials = system.m_materials,
+                                _motionProperties = system.m_motionProperties,
                             };
         return null;
     }
 
     public IEnumerable<hknpMaterial> Materials() => _materials;
+    public IEnumerable<hknpMotionProperties> MotionProperties() => _motionProperties;
 
     public hknpPhysicsSystemData.bodyCinfoWithAttachment NewBody()
     {

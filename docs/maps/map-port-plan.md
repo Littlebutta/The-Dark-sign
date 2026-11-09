@@ -146,6 +146,13 @@ jump, guard counter and the rest. Patrol routes and DS3's boss name text aren't 
    Only the layouts and map folders move: the slots' empty event scripts stay, because with the vanilla arena script
    running the player was left in the colosseum lobby state (enemies ignored them and took no damage until a restart,
    1.0.221 test). A save in a new-ID slot (m50-m52) has no vanilla map to fall back to.
+   The node fix did not stop the crash (same `eldenring.exe+0x18C038A` on 1.0.230). The two minidumps show the real
+   cause: the game's hknpPhysicsSystem constructor looks every body's `m_motionPropertiesId` up in the system's
+   `m_motionProperties` array unless it is 0xFFFF, without a bounds check. Our bodies took the id (0) from the vanilla
+   host collision's body while DS3 static collisions ship no motion properties, so the game read a null array right
+   after the h45/l45 binders loaded. `CollisionPort` now carries the host's motion properties over when the DS3 file
+   has none and points every body id that still falls outside its array at nothing (0xFFFF for motion properties,
+   material 0), with a self-test for each case.
 2. ~~Do Elden Ring map textures live in `map/m45/m45_0000.tpfbhd` like DS3's?~~ No (2026-11-08 test): Elden Ring has none, its map textures are in `asset/aet`. Textures now go to `map/m45/common/m45_0000.tpfbhd` the way JortPob ships them.
 3. Does the game accept collision as XML tagfiles inside the binder (JortPob says yes), or does it need binary?
 4. Is the simd tree needed (`--simd` keeps DS3's)?
