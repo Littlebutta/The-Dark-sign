@@ -26,10 +26,12 @@ public static class AbsorpPort
     private static readonly bool Enabled = Mode != "0";
     // Elden Ring c0000's left-weapon dummy (L_Weapon, as in DS3), where paired rows hold model 1 two-handed.
     private const int LeftWeaponDummy = 21;
-    // DARKSIGN_FRIEDE_OVERRIDE=keep: no left-hand slot for the art's second blade (as DS3's row has it).
-    private static readonly bool FriedeLeftHand = Environment.GetEnvironmentVariable("DARKSIGN_FRIEDE_OVERRIDE") != "keep";
-    // DARKSIGN_FRIEDE_OVERRIDE=both: the 1.0.206 layout, the second blade in the left hand when two-handed as well.
-    private static readonly bool FriedeBothHands = Environment.GetEnvironmentVariable("DARKSIGN_FRIEDE_OVERRIDE") == "both";
+    // Friede's second scythe (see Apply): DARKSIGN_FRIEDE_OVERRIDE unset / "both" = Elden Ring's paired layout (the
+    // second scythe in the left hand two-handed and in the art), "back" = DS3's layout plus a left-hand slot the art
+    // moves it to (1.0.221-1.0.238), "keep" = DS3's row and DS3's override event as they are.
+    internal static readonly string FriedeMode = (Environment.GetEnvironmentVariable("DARKSIGN_FRIEDE_OVERRIDE") ?? "").ToLowerInvariant();
+    private static readonly bool FriedeLeftHand = FriedeMode != "keep";
+    private static readonly bool FriedeBothHands = FriedeMode != "keep" && FriedeMode != "back";
     // DARKSIGN_PAIRED_GRIP=0: paired weapons keep the template's isDualBlade and hold motions (positions still DS3's).
     private static readonly bool PairedGrip = Environment.GetEnvironmentVariable("DARKSIGN_PAIRED_GRIP") != "0";
 
@@ -128,15 +130,20 @@ public static class AbsorpPort
             // Starscourge Greatsword both use 2). With the template's two-handed grip the hands meet on one hilt,
             // which pulled the left-hand blade into the right hand.
             bool paired = IsPaired(source, ds3Bones);
-            // Friede's scythe: the second scythe stays on the back (DS3's row: 35/36 in every grip, two-handed too) and
-            // only comes into the left hand during the art, where DS3's TAE 712 "Friede's Scythe Override" (ChangeType 5,
-            // hardcoded by weapon ID, unknown to Elden Ring) moves it. MovesetPort turns that into "move to the 1H
-            // left-weapon location", so that one location is the left hand; everything else stays DS3's.
-            // (1.0.206 also moved it to the left hand when two-handed; Devin's test: it belongs on the back.)
-            // DS3's display byte for that location (dispPosType_left_k, DS3 Unk31 + 6k) is 3 like every slot of a
-            // part DS3 never shows in a hand, so 1.0.217 moved the scythe to a location where it stays hidden. The
-            // location is marked 1, the value Elden Ring's paired weapons (and 1.0.206's two-handed slots, where the
-            // scythe did show) carry for a part displayed in a hand.
+            // Friede's scythe: in DS3 the second scythe stays on the back (DS3's row: 35/36 in every grip, two-handed
+            // too) and only comes into the left hand during the art, where DS3's TAE 712 "Friede's Scythe Override"
+            // (ChangeType 5, hardcoded by weapon ID, unknown to Elden Ring) moves it.
+            // Elden Ring has no such hardcode. What it does have: its paired weapons (Rellana's twin blades, the
+            // Starscourge Greatsword) carry the second blade on the back one-handed (right_1 / left_1 35/36) and in the
+            // left hand two-handed (both_1 = 21, dispPosType_rightBoth_1 = 1), and their one-handed arts bring it out
+            // with a 712 event that moves model 1 to its *two-handed* location (condition 2, ChangeType 2) and put it
+            // back with ChangeType 3. So the default here is that layout: the second scythe in the left hand two-handed
+            // (the 1.0.206 look Devin preferred on the back; Elden Ring has no slot for "back two-handed, left hand in
+            // the art") and MovesetPort converts DS3's override to ChangeType 2. The 1.0.221-1.0.238 layout (second
+            // scythe on the back two-handed, a left-hand slot in left_1 the art moves it to with ChangeType 1, which
+            // no Elden Ring move uses on a right-hand model) stays as DARKSIGN_FRIEDE_OVERRIDE=back: it never showed
+            // the scythe in three builds (1.0.217 kept DS3's display byte 3, 1.0.221 marked it 1, 1.0.225 wrote the
+            // slot's condition byte 0, which matches no model of a part shown only in use).
             if (!paired && ds3Display && FriedeLeftHand && models >= 2)
             {
                 for (int k = 1; k < Math.Min(models, 4); k++)
@@ -181,7 +188,7 @@ public static class AbsorpPort
         erAbsorp.Rows.Sort((a, b) => a.ID.CompareTo(b.ID));
         Console.WriteLine($"absorp: {added} split weapons got DS3 model positions ({map.Count} DS3 dummy polys matched), " +
                           $"{pairedCount} paired (left blade in the left hand two-handed; plus {friedeCount} Friede-style: second blade on the back, " +
-                          (FriedeBothHands ? "left hand two-handed and in the art [DARKSIGN_FRIEDE_OVERRIDE=both])" : "left hand only in the art, shown there: dispPosType_left 1)") + (PairedGrip ? "" : " [grip/isDualBlade off: DARKSIGN_PAIRED_GRIP=0]"));
+                          (FriedeBothHands ? "left hand two-handed and in the art, as Elden Ring's paired weapons)" : "left hand only in the art, shown there: dispPosType_left 1 [DARKSIGN_FRIEDE_OVERRIDE=back])") + (PairedGrip ? "" : " [grip/isDualBlade off: DARKSIGN_PAIRED_GRIP=0]"));
         foreach (var note in notes.Take(12))
             Console.WriteLine("  " + note);
     }

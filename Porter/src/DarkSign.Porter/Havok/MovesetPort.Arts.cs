@@ -32,6 +32,8 @@ public static partial class MovesetPort
     public static readonly string ArtsMode = (Environment.GetEnvironmentVariable("DARKSIGN_WEAPON_ARTS") ?? "").ToLowerInvariant();
     private static bool ArtsEnabled => ArtsMode != "0";
     private static bool ArtsWithHks => ArtsMode != "nohks";
+    // DARKSIGN_STANCE_CHAIN=0: stance light attacks don't chain (R1 after the first stance attack is a plain R1).
+    private static readonly bool StanceChain = Environment.GetEnvironmentVariable("DARKSIGN_STANCE_CHAIN") != "0";
 
     /// <summary>First SwordArtsParam row of the ported arts (Elden Ring's own end at 5600).</summary>
     public const int FirstArtRow = 90000;
@@ -50,7 +52,19 @@ public static partial class MovesetPort
 
     private sealed record ArtJob(int Ds3Section, int ClassSection, bool Stance, int Ds3Start, List<WeaponPlan> Weapons, List<int> Skill, string Source);
 
-    private sealed record ArtBuild(bool Stance, int Start, int? Light, int? Heavy, int TemplateSection, int Moves, int Clips);
+    private sealed record ArtBuild(bool Stance, int Start, int? Light, int? Heavy, int TemplateSection, int Moves, int Clips, List<int> Chain, int ChainTemplate);
+
+    /// <summary>
+    /// The stance light attacks after the first that a DS3 stance chains through (Friede's a232: 36230, then 36250,
+    /// then 36290; the x1 IDs are the no-FP copies, 36240 the heavy attack): the block's x0 moves above 36230 other
+    /// than the heavy, at most two (Elden Ring's chain has two more states). A stance with only 36230 chains nothing.
+    /// </summary>
+    internal static List<int> StanceChainMoves(IEnumerable<int> skill) =>
+        skill.Where(id => id / 100 == 362 && id > 36230 && id % 10 == 0 && id != 36240).Order().Take(2).ToList();
+
+    // Elden Ring's chain states and the clips they play: W_SwordArtsOneShotComboEnd_MesmerSowrdArts (the hks's state
+    // for Rellana's second stance hit) selects animation 40010 like ComboEnd, W_SwordArtsOneShotComboEnd_2 40020.
+    private static readonly (int Er, int NoMp)[] ChainSlots = [(40010, 40015), (40020, 40025)];
 
     /// <summary>An Elden Ring TAE event that holds an art combo window SpEffect (100050-100055): type, bytes, group.</summary>
     internal sealed record WindowEvent(int Type, byte[] Bytes, TAE.EventGroup Group);
@@ -256,9 +270,16 @@ public static partial class MovesetPort
         // The event's type and layout come from an Elden Ring art that has one.
         var windowProto = FindWindowEvent(erMain, artSelectors.Count > 0 ? clipsBySection.Keys.Where(s => s is >= 600 and < 1000) : []);
 
+        // Stance chains need the hks's art-318 chain (see PatchHks) and a combo window event to copy.
+        bool chainHks = hks is not null && StanceChain && windowProto is not null && CanChainStances(hks);
+        if (hks is not null && !chainHks)
+            Console.WriteLine(StanceChain ? "arts: stance light attacks won't chain (the hks has no art-318 chain to reuse, or no combo window event was found)"
+                                          : "arts: stance light attacks won't chain (DARKSIGN_STANCE_CHAIN=0)");
+
         var ds3Captions = new Dictionary<int, string>();
         var names = new Dictionary<int, string>();
         var stanceIds = new List<int>();
+        var chainIds = new List<int>();
         var portedIds = new List<int>();
         int arts = 0, weapons = 0, nextRow = FirstArtRow, followUps = 0, internalIdNext = nextInternalId;
         foreach (var job in jobs)
@@ -338,13 +359,16 @@ public static partial class MovesetPort
                     SetCell(w, "swordArtsParamId", nextRow);
             if (built.Stance)
                 stanceIds.Add(artId);
+            if (built.Chain.Count > 0)
+                chainIds.Add(artId);
             portedIds.Add(artId);
             free.Dequeue();
             arts++;
             weapons += job.Weapons.Count;
             if (built.Light is not null || built.Heavy is not null)
                 followUps++;
-            var followText = (built.Light is { } l ? $", R1 follow-up {l}" : "") + (built.Heavy is { } h ? $", R2 follow-up {h}" : "");
+            var followText = (built.Light is { } l ? $", R1 follow-up {l}" : "") + (built.Heavy is { } h ? $", R2 follow-up {h}" : "")
+                             + (built.Chain.Count > 0 ? $", stance light chain {string.Join(" -> ", built.Chain)} (on Elden Ring a{built.ChainTemplate})" : "");
             Console.WriteLine($"arts: {label} -> art {artId} (a{section}, SwordArtsParam {nextRow} '{names[nextRow]}', FP {fp}/{fpLight}/{fpHeavy}) from DS3 a{job.Ds3Section} " +
                               $"{(job.Source == "class" ? "class skill " : "")}{(built.Stance ? "stance" : $"one-shot {built.Start}")}{followText} on Elden Ring a{built.TemplateSection}: " +
                               $"{built.Moves} moves, {built.Clips} behaviour clips{(reasons.Count > 0 ? $" (after {string.Join("; ", reasons)})" : "")}");
@@ -397,11 +421,37 @@ public static partial class MovesetPort
                     map.AddRange([(40010, li), (40015, li)]);
                 if (heavy is { } hi)
                     map.AddRange([(40020, hi), (40025, hi)]);
+                // A stance's further light attacks (DS3: R1 again after the stance attack) go through Elden Ring's own
+                // chain for Rellana's stance (hks art 318): stance light -> ComboEnd (40010) -> ComboEnd_2 (40020),
+                // opened by combo window SpEffects 100054 / 100055. The stance template (Unsheathe's a614) has no
+                // 40010/40020 clips, so those two moves start from an art that has them (the one-shot template).
+                var chain = stance && chainHks ? StanceChainMoves(job.Skill) : [];
+                int chainTemplate = -1;
+                var chainOf = new Dictionary<int, int>(); // Elden Ring move -> its template section, when not templateSection
+                if (chain.Count > 0)
+                {
+                    var need = ChainSlots.Take(chain.Count).Select(c => c.Er).ToList();
+                    chainTemplate = new[] { 600 + ArtId(templateArtRow), 600 }.Concat(clipsBySection.Keys.Where(k => k is >= 600 and < 1000).Order())
+                        .Where(taeSections.Contains).FirstOrDefault(c => clipsBySection.TryGetValue(c, out var ids) && need.All(ids.Contains), -1);
+                    if (chainTemplate < 0)
+                        chain.Clear();
+                    for (int i = 0; i < chain.Count; i++)
+                    {
+                        map.AddRange([(ChainSlots[i].Er, chain[i]), (ChainSlots[i].NoMp, chain[i])]);
+                        chainOf[ChainSlots[i].Er] = chainOf[ChainSlots[i].NoMp] = chainTemplate;
+                    }
+                }
+                int SectionOf(int erId) => chainOf.GetValueOrDefault(erId, templateSection);
                 var templateIds = clipsBySection[templateSection];
+                if (chainTemplate > 0)
+                    templateIds = [.. templateIds, .. clipsBySection[chainTemplate].Where(chainOf.ContainsKey)];
                 TAE.ValidateEventBank = false;
                 var templateTae = TAE.Read(templateTaeFile.Bytes);
                 var tae = TAE.Read(templateTaeFile.Bytes);
                 tae.ID = 2000 + section;
+                if (chainTemplate > 0 && BinderLeaf(erMain, $"a{chainTemplate}.tae") is { } chainTaeFile)
+                    foreach (var a in TAE.Read(chainTaeFile.Bytes).Animations.Where(a => chainOf.ContainsKey((int)a.ID) && tae.Animations.All(t => t.ID != a.ID)))
+                        tae.Animations.Add(a);
                 var erEventLengths = templateTae.Animations.SelectMany(a => a.Events).GroupBy(e => e.Type)
                     .ToDictionary(g => g.Key, g => g.First().GetParameterBytes(false).Length);
                 var templateGroups = templateTae.Animations.SelectMany(a => a.Events).Where(e => e.Group is not null)
@@ -436,8 +486,8 @@ public static partial class MovesetPort
                         why.Add($"no DS3 file {source.HkxName}");
                         continue;
                     }
-                    var template = ErAnimFile(erArchives, $"a{templateSection:D3}_{erId:D6}")
-                                   ?? ErAnimFile(erArchives, AnimSourceName(anim, templateSection, erId))
+                    var template = ErAnimFile(erArchives, $"a{SectionOf(erId):D3}_{erId:D6}")
+                                   ?? ErAnimFile(erArchives, AnimSourceName(anim, SectionOf(erId), erId))
                                    ?? ErAnimFile(erArchives, "a000_000000")!;
                     var (hkx, _, erDuration) = AnimPort.ConvertTimed(ds3Bytes, ds3Skeleton, erSkeleton, template.Bytes, template.Compendium, AnimPort.Spline);
                     var newName = $"a{section:D3}_{erId:D6}";
@@ -466,6 +516,22 @@ public static partial class MovesetPort
                 if (!stance && windowProto is not null)
                     foreach (var a in kept.Where(a => a.ID is 40000 or 40005))
                         SetComboWindows(a, windowProto, sources[(int)a.ID].Events, sources[(int)a.ID].Duration, light is not null, heavy is not null);
+                // The stance chain's windows: the stance light attack opens 100054 (-> 40010) when the second light
+                // attack built, 40010 opens 100055 (-> 40020) when the third did; the last move opens nothing. The
+                // window is DS3's own transition marker (SpEffect 100500) when the move has one.
+                if (stance && chain.Count > 0 && windowProto is not null)
+                {
+                    bool second = kept.Any(a => a.ID == ChainSlots[0].Er), third = kept.Any(a => a.ID == ChainSlots[1].Er);
+                    foreach (var a in kept.Where(a => a.ID is 40060 or 40065))
+                        SetComboWindows(a, windowProto, sources[(int)a.ID].Events, sources[(int)a.ID].Duration, second, false, ds3Marker: true);
+                    foreach (var a in kept.Where(a => a.ID == ChainSlots[0].Er || a.ID == ChainSlots[0].NoMp))
+                        SetComboWindows(a, windowProto, sources[(int)a.ID].Events, sources[(int)a.ID].Duration, third, false, lightWindow: 100055, ds3Marker: true);
+                    foreach (var a in kept.Where(a => a.ID == ChainSlots[1].Er || a.ID == ChainSlots[1].NoMp))
+                        SetComboWindows(a, windowProto, sources[(int)a.ID].Events, sources[(int)a.ID].Duration, false, false);
+                    chain = chain.Take(third ? 2 : second ? 1 : 0).ToList();
+                    if (!second)
+                        kept.RemoveAll(a => chainOf.ContainsKey((int)a.ID));
+                }
                 tae.Animations = kept;
                 AddFile(erMain, $"a{section}.tae", tae.Write(), templateTaeFile);
 
@@ -477,7 +543,7 @@ public static partial class MovesetPort
                     foreach (var clip in selector.m_generators.OfType<hkbClipGenerator>().ToList())
                     {
                         var m = AnimName().Match(clip.m_animationName ?? "");
-                        if (!m.Success || int.Parse(m.Groups[1].Value) != templateSection)
+                        if (!m.Success || int.Parse(m.Groups[1].Value) != SectionOf(int.Parse(m.Groups[2].Value)))
                             continue;
                         var name = $"a{section:D3}_{m.Groups[2].Value}";
                         if (!internalIds.TryGetValue(name, out var internalId))
@@ -493,7 +559,7 @@ public static partial class MovesetPort
                     }
                 }
                 reason = "";
-                return new ArtBuild(stance, start, light, heavy, templateSection, kept.Count, registered);
+                return new ArtBuild(stance, start, light, heavy, templateSection, kept.Count, registered, chain, chainTemplate);
             }
         }
         if (followUps > 0 || windowProto is null)
@@ -507,12 +573,12 @@ public static partial class MovesetPort
         if (hks is not null && arts > 0)
         {
             Directory.CreateDirectory(Path.GetDirectoryName(HksPath(ctx))!);
-            File.WriteAllText(HksPath(ctx), PatchHks(hks, stanceIds, portedIds.Where(id => id < 300).ToList()), new System.Text.UTF8Encoding(false));
+            File.WriteAllText(HksPath(ctx), PatchHks(hks, stanceIds, portedIds.Where(id => id < 300).ToList(), chainIds), new System.Text.UTF8Encoding(false));
             hksWritten = true;
         }
         else if (File.Exists(HksPath(ctx)))
             File.Delete(HksPath(ctx));
-        Console.WriteLine($"arts: {arts} DS3 weapon arts for {weapons} weapons ({stanceIds.Count} stances{(hksWritten ? ", c0000.hks written" : ", no c0000.hks")})");
+        Console.WriteLine($"arts: {arts} DS3 weapon arts for {weapons} weapons ({stanceIds.Count} stances, {chainIds.Count} with a light chain{(hksWritten ? ", c0000.hks written" : ", no c0000.hks")})");
         return new ArtResult(arts, weapons, names, stanceIds);
     }
 
@@ -545,12 +611,17 @@ public static partial class MovesetPort
     /// R1 (which then played a plain R1: the Ringed Knight pair's art "didn't chain"). Without a cancel, the second half
     /// of the move, as before. Other windows (the template's) are removed.
     /// </summary>
-    internal static void SetComboWindows(TAE.Animation anim, WindowEvent proto, List<TAE.Event>? ds3Events, float duration, bool light, bool heavy)
+    internal static void SetComboWindows(TAE.Animation anim, WindowEvent proto, List<TAE.Event>? ds3Events, float duration, bool light, bool heavy,
+        int lightWindow = 100054, bool ds3Marker = false)
     {
         anim.Events.RemoveAll(e => e.Type == proto.Type && WindowId(e) is not null);
         if (!light && !heavy)
             return;
         var ds3Window = ds3Events?.FirstOrDefault(e => e.Type == proto.Type && WindowId(e) is not null);
+        // Stance chains: DS3's stance attacks mark when the next one may start with SpEffect 100500 ("[HKS] Non-generator
+        // Transition", Friede's 36230: 2.5-3.9 s, after 100490 0-2.5 s), read by DS3's per-weapon hks; that is the window.
+        if (ds3Marker)
+            ds3Window ??= ds3Events?.FirstOrDefault(e => e.Type == 66 && e.GetParameterBytes(false) is { Length: >= 4 } b && BitConverter.ToInt32(b, 0) == Ds3ChainMarker);
         float? exit = MoveTiming.Guard && ds3Window is null && ds3Events is not null ? MoveTiming.Recovery(ds3Events, HitStarts(ds3Events)) : null;
         float start = ds3Window?.StartTime ?? exit ?? duration * 0.45f;
         float end = ds3Window?.EndTime ?? (exit is not null ? Math.Max(duration, start + 0.5f) : duration * 0.9f);
@@ -563,7 +634,7 @@ public static partial class MovesetPort
             anim.EventGroups ??= [];
             anim.EventGroups.Add(group);
         }
-        foreach (var id in new[] { light ? 100054 : 0, heavy ? 100051 : 0 }.Where(id => id > 0))
+        foreach (var id in new[] { light ? lightWindow : 0, heavy ? 100051 : 0 }.Where(id => id > 0))
         {
             var bytes = (byte[])proto.Bytes.Clone();
             BitConverter.GetBytes(id).CopyTo(bytes, 0);
@@ -584,6 +655,9 @@ public static partial class MovesetPort
 
     /// <summary>TAE JumpTable (type 0) ID Elden Ring opens over an art's R1/R2 follow-up window (a606, a614).</summary>
     internal const int FollowUpJumpTable = 116;
+
+    /// <summary>DS3 SpEffect "[HKS] Non-generator Transition": a DS3 stance attack carries it while its hks lets the next one start.</summary>
+    internal const int Ds3ChainMarker = 100500;
 
     /// <summary>
     /// Ties every ported weapon to its art, as DS3 does: no Ash of War can be put on it or its affinity changed, like
@@ -732,7 +806,27 @@ public static partial class MovesetPort
         return ids;
     }
 
-    internal static string PatchHks(string hks, IReadOnlyList<int> stanceIds, IReadOnlyCollection<int>? defaultIds = null)
+    private const string ChainState = "W_SwordArtsOneShotComboEnd_MesmerSowrdArts";
+    private const string ChainTest = "c_SwordArtsID == 318";
+    private const string ChainFunction = "DarkSignIsStanceChain";
+
+    /// <summary>Whether the hks has the art-318 chain to generalise: a test of art 318 next to the chain state.</summary>
+    internal static bool CanChainStances(string hks) => ChainLines(hks.Split('\n')).Any();
+
+    private static IEnumerable<int> ChainLines(string[] lines) =>
+        Enumerable.Range(0, lines.Length).Where(i => lines[i].Contains(ChainTest, StringComparison.Ordinal)
+                                                     && lines.Skip(i).Take(3).Any(l => l.Contains(ChainState, StringComparison.Ordinal)));
+
+    /// <summary>
+    /// Adds the ported arts to ividyon's c0000.hks: stance IDs into IsStanceArts' list; IDs below 300 as plain default
+    /// animations; and the stance light chain. Elden Ring's hks chains a stance's light attacks for one art only,
+    /// Rellana's Moon-and-Fire Stance (318): in DrawStanceRightAttackLight_onUpdate, R1 with SpEffect 100054 goes to
+    /// W_SwordArtsOneShotComboEnd_MesmerSowrdArts (animation 40010) and with 100055 to W_SwordArtsOneShotComboEnd_2
+    /// (40020); ArtsCommonFunction charges those as the R1 art attack. Every test of "c_SwordArtsID == 318" that
+    /// names that state is widened to the ported arts in chainIds (a DarkSignIsStanceChain function added before
+    /// IsStanceArts); the 318 tests about where the stance itself charges FP are left alone.
+    /// </summary>
+    internal static string PatchHks(string hks, IReadOnlyList<int> stanceIds, IReadOnlyCollection<int>? defaultIds = null, IReadOnlyCollection<int>? chainIds = null)
     {
         const string fn = "function IsStanceArts(arts_id)";
         int at = hks.IndexOf(fn, StringComparison.Ordinal);
@@ -742,6 +836,20 @@ public static partial class MovesetPort
         int insert = hks.IndexOf('\n', list) + 1;
         var lines = string.Concat(stanceIds.Select(id => $"        {id}, -- The Dark Sign: DS3 stance art\n"));
         hks = hks[..insert] + lines + hks[insert..];
+        if (chainIds is { Count: > 0 })
+        {
+            var text = hks.Split('\n');
+            var chainLines = ChainLines(text).ToList();
+            if (chainLines.Count == 0)
+                throw new InvalidDataException("c0000.hks has no art-318 stance chain to widen");
+            foreach (int i in chainLines)
+                text[i] = text[i].Replace(ChainTest, $"({ChainTest} or {ChainFunction}(c_SwordArtsID))", StringComparison.Ordinal);
+            hks = string.Join('\n', text);
+            var test = string.Join(" or ", chainIds.Order().Select(id => $"arts_id == {id}"));
+            at = hks.IndexOf(fn, StringComparison.Ordinal);
+            hks = hks[..at] + $"-- The Dark Sign: DS3 stance arts whose light attacks chain like Rellana's (art 318)\nfunction {ChainFunction}(arts_id)\n" +
+                  $"    if {test} then\n        return TRUE\n    end\n    return FALSE\nend\n\n" + hks[at..];
+        }
         // Ported arts on IDs below 300 that SwordArtsCategory has a row for: plain default animations, like Elden Ring's
         // own IDs from 300 up (the row would ask for per-weapon-class variants the DS3 art doesn't have).
         if (defaultIds is { Count: > 0 })
@@ -885,6 +993,56 @@ public static class ArtSelfTest
         File.Delete(xml);
         int size = def.GetRowSize(), filled = ParamStore.FillBitfields(def);
         Check(filled == 3 && def.GetRowSize() == size && def.Fields.Count == 7, $"params: unnamed bits of a bitfield byte get a filler, row size unchanged ({filled} bits, {size} -> {def.GetRowSize()} bytes)");
+        // Friede's 712 override (DS3 ChangeType 5 on slots RH1 and LH1, condition 2): Elden Ring's paired-art move
+        // (ChangeType 2) by default, the 1.0.221 move (1 / 0) with "back", untouched with "keep"; the condition stays 2.
+        byte[] Override() { var b = new byte[24]; b[1] = 0xFF; b[2] = 2; b[3] = 5; b[5] = 0xFF; b[7] = 0xFF; b[8] = 0; b[9] = 3; b[10] = 2; b[11] = 5; b[16] = 1; b[17] = 1; return b; }
+        var ov = Override();
+        Check(MovesetPort.FixModelOverride(ov, "") == 2 && ov[2] == 2 && ov[3] == 2 && ov[10] == 2 && ov[11] == 2 && ov[9] == 3 && ov[16] == 1,
+            $"712: Friede's override becomes 'two-handed location' (condition 2, ChangeType 2) on both slots, other slots and tail untouched (got RH1 {ov[2]}/{(sbyte)ov[3]} LH1 {ov[10]}/{(sbyte)ov[11]})");
+        ov = Override();
+        Check(MovesetPort.FixModelOverride(ov, "back") == 2 && ov[2] == 2 && ov[3] == 1 && ov[10] == 2 && ov[11] == 0,
+            $"712: 'back' keeps condition 2 and moves right-hand models to the 1H-left location, left-hand ones to 1H-right (got RH1 {ov[2]}/{(sbyte)ov[3]} LH1 {ov[10]}/{(sbyte)ov[11]})");
+        ov = Override();
+        Check(MovesetPort.FixModelOverride(ov, "keep") == 0 && ov[3] == 5, "712: 'keep' leaves DS3's override as it is");
+        // The stance chain: Friede's block gives two more light attacks, a plain DS3 stance none.
+        Check(MovesetPort.StanceChainMoves([36200, 36210, 36215, 36220, 36230, 36231, 36240, 36241, 36250, 36251, 36290, 36291]).SequenceEqual([36250, 36290]),
+            "chain: Friede's stance chains 36230 -> 36250 -> 36290 (no-FP copies and the heavy attack left out)");
+        Check(MovesetPort.StanceChainMoves([36200, 36210, 36220, 36230, 36240, 36241, 36300, 36310]).Count == 0, "chain: a stance with one light attack chains nothing");
+        // Its hks: the three art-318 tests that name the chain state are widened, the FP-charging ones aren't.
+        const string chainHks = "function IsStanceArts(arts_id)\n    local aow_list = {\n    }\nend\n" +
+                                "    if c_SwordArtsID == 318 then\n        SetSwordArtsPointInfo(ACTION_ARM_R1, TRUE)\n    else\n" +
+                                "        if c_SwordArtsID == 318 then\n            if r1 == \"W_SwordArtsOneShotComboEnd_MesmerSowrdArts\" then\n" +
+                                "        if c_SwordArtsID == 318 and r1 == \"W_SwordArtsOneShotComboEnd_MesmerSowrdArts\" then\n" +
+                                "    if c_SwordArtsID == 318 then\n        if env(GetSpEffectID, 100054) == TRUE then\n            r1 = \"W_SwordArtsOneShotComboEnd_MesmerSowrdArts\"\n";
+        Check(MovesetPort.CanChainStances(chainHks) && !MovesetPort.CanChainStances("if c_SwordArtsID == 318 then\n    SetSwordArtsPointInfo(ACTION_ARM_R1, TRUE)\n"),
+            "chain: the hks is usable when an art-318 test names the chain state");
+        var chained = MovesetPort.PatchHks(chainHks, [300], null, [300, 301]);
+        int widened = chained.Split("(c_SwordArtsID == 318 or DarkSignIsStanceChain(c_SwordArtsID))").Length - 1;
+        Check(widened == 3 && chained.Contains("    if c_SwordArtsID == 318 then\n        SetSwordArtsPointInfo(ACTION_ARM_R1, TRUE)"),
+            $"chain: the 3 art-318 tests naming the chain state are widened to the ported stances, the FP one stays (got {widened})");
+        Check(chained.Contains("function DarkSignIsStanceChain(arts_id)\n    if arts_id == 300 or arts_id == 301 then\n        return TRUE") && chained.IndexOf("function DarkSignIsStanceChain", StringComparison.Ordinal) < chained.IndexOf("function IsStanceArts", StringComparison.Ordinal),
+            "chain: DarkSignIsStanceChain lists the chained arts, before IsStanceArts");
+        Check(MovesetPort.PatchHks(chainHks, [300], null, []) == MovesetPort.PatchHks(chainHks, [300]), "chain: no chained arts, no hks change");
+        // Its windows: the stance light attack opens 100054 over DS3's own transition marker (100500); the second
+        // light attack opens 100055; the template's window goes.
+        var stanceLight = new SoulsFormats.TAE.Animation(40060, new SoulsFormats.TAE.Animation.AnimMiniHeader.Standard(), "a906_040060.hkt")
+            { Events = [new SoulsFormats.TAE.Event(0.1f, 0.5f, 67, 0, Win(100050), false) { Group = group }, new SoulsFormats.TAE.Event(0, 0.3f, 0, 0, Jump(7), false) { Group = jumpGroup }] };
+        var friede = new List<SoulsFormats.TAE.Event>
+        {
+            new(0.833f, 1.633f, 1, 0, new byte[16], false), new(0f, 2.5f, 66, 0, Win(100490), false), new(2.5f, 3.9f, 66, 0, Win(100500), false), new(1.6f, 4.033f, 0, 0, Jt(4), false),
+        };
+        MovesetPort.SetComboWindows(stanceLight, proto, friede, 4.033f, true, false, ds3Marker: true);
+        var w = stanceLight.Events.Where(e => e.Type == 67).ToList();
+        Check(w.Count == 1 && BitConverter.ToInt32(w[0].GetParameterBytes(false), 0) == 100054 && Math.Abs(w[0].StartTime - 2.5f) < 0.001f && Math.Abs(w[0].EndTime - 3.9f) < 0.001f,
+            $"chain: the stance light attack opens 100054 over DS3's transition marker 2.5-3.9 s (got {string.Join(" ", w.Select(e => $"{BitConverter.ToInt32(e.GetParameterBytes(false), 0)} {e.StartTime:0.###}-{e.EndTime:0.###}"))})");
+        Check(stanceLight.Events.Any(e => e.Type == 0 && BitConverter.ToInt32(e.GetParameterBytes(false), 0) == MovesetPort.FollowUpJumpTable && Math.Abs(e.StartTime - 2.5f) < 0.001f),
+            "chain: cancel JumpTable 116 opens with the chain window");
+        MovesetPort.SetComboWindows(stanceLight, proto, friede, 4.033f, true, false, lightWindow: 100055, ds3Marker: true);
+        Check(stanceLight.Events.Count(e => e.Type == 67) == 1 && stanceLight.Events.Any(e => e.Type == 67 && BitConverter.ToInt32(e.GetParameterBytes(false), 0) == 100055),
+            "chain: the second light attack opens 100055 (into ComboEnd_2) instead");
+        MovesetPort.SetComboWindows(stanceLight, proto, friede, 4.033f, true, false);
+        Check(stanceLight.Events.Single(e => e.Type == 67).StartTime > 1.5f && stanceLight.Events.Single(e => e.Type == 67).StartTime < 2.5f,
+            "windows: without ds3Marker the DS3 transition marker is not read (one-shot follow-ups keep their timing)");
         Console.WriteLine(failures == 0 ? "arts-selftest: all checks passed" : $"arts-selftest: {failures} failed");
         return failures == 0 ? 0 : 1;
     }

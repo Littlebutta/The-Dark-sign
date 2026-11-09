@@ -150,11 +150,19 @@ public static partial class ModValidate
         // DS3 attack rows with radius 0 and DS3 weapons hit nothing (enemies or walls).
         if (mod.Get("BehaviorParam_PC") is { } behaviours && mod.Get("AtkParam_Pc") is { } attacks)
         {
-            int checkedHits = 0, empty = 0;
+            int checkedHits = 0, empty = 0, throws = 0;
             foreach (var b in behaviours.Rows.Where(b => hitVariations.Contains(b.ID / 1000) && Field(b, "refType") == 0))
             {
                 if (attacks[Field(b, "refId")] is not { } atk)
                     continue;
+                // DS3's throw and critical rows (backstabs, ripostes, "Hammer - Large Throw": ThrowTypeID / ThrowFlag set,
+                // copied by name into Elden Ring's throwTypeId / throwFlag) hit through the throw, not a sphere: DS3 gives
+                // them no hitbox either, and 1.0.225-1.0.238 listed 460 of them as swings that hit nothing.
+                if (Field(atk, "throwTypeId") > 0 || Field(atk, "throwFlag") > 0)
+                {
+                    throws++;
+                    continue;
+                }
                 checkedHits++;
                 bool hitbox = Enumerable.Range(0, 16).Any(i => atk[$"hit{i}_Radius"] is { } rad && Convert.ToSingle(rad.Value) > 0
                     && atk[$"hit{i}_DmyPoly1"] is { } dmy && Convert.ToInt32(dmy.Value) >= 0);
@@ -163,7 +171,7 @@ public static partial class ModValidate
             }
             if (empty > 20)
                 r.Error($"... {empty - 20} more ported swings without a hitbox");
-            Console.WriteLine($"validate: {checkedHits - empty}/{checkedHits} ported weapon hits have a hitbox");
+            Console.WriteLine($"validate: {checkedHits - empty}/{checkedHits} ported weapon hits have a hitbox ({throws} throw/critical rows not counted)");
 
             // Node flags: Elden Ring marks the nodes dummy polys hang on (DummyOwner) and the mesh's node (Mesh, Bone);
             // DS3 models carry none, and a converted model that kept 0 gives the game no owner for its hit spheres.

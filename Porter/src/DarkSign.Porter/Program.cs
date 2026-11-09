@@ -26,6 +26,7 @@ const string Usage = """
       sound-probe [all|undo]                   point the ported sounds at an Elden Ring swing in the built bank (one-launch test)
       explore-fx-sound                         report both games' effect and sound files and the TAE events that use them
       matbin-info <name filter>                show Elden Ring material definitions
+      effect-models [DS3 fxr id...]            report the DS3 effects that use models (and their materials) next to Elden Ring's effect models
       weapons-plan                 decide which DS3 weapons to port and as which Elden Ring class
       port-weapons                 build the weapon rows into TheDarkSign\Mods\ER\regulation.bin
       validate-mod                 check the built mod offline: params, TAE, animations, clips, sounds, effects
@@ -129,6 +130,7 @@ try
         "anim-id-map" => AnimIdMap.Run(ctx),
         "behavior-roundtrip" => BehaviorRoundTrip.Run(ctx),
         "explore-fx-sound" => FxSoundExplore.Run(ctx),
+        "effect-models" => EffectModelSurvey.Run(ctx, argList[1..]),
         "check-sound-bank" => SoundBankCheck.Run(ctx),
         "sound-probe" => SoundProbe.Run(ctx, argList[1..]),
         "chr-roundtrip" => ChrRoundTrip.Run(ctx),

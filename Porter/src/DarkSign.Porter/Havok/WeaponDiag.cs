@@ -48,6 +48,7 @@ public static class WeaponDiag
             void Log(string line) => r.AppendLine(line);
             BND4? erMainLazy = null;
             BND4? ds3MainLazy = null;
+            List<CustomManualSelectorGenerator>? erSelectors = null;
             foreach (var arg in args.Skip(1))
             {
                 bool fromDs3 = arg.StartsWith("ds3:", StringComparison.OrdinalIgnoreCase);
@@ -59,6 +60,19 @@ public static class WeaponDiag
                     {
                         var main = fromDs3 ? ds3MainLazy ??= BND4.Read(ds3.Read("/chr/c0000.anibnd.dcx")) : erMainLazy ??= BND4.Read(er.Read("/chr/c0000.anibnd.dcx"));
                         DumpTae(Log, fromDs3 ? "DS3" : "vanilla", main, n, a => true, fromDs3);
+                        // Which of Elden Ring's own behaviour selectors play the section's clips (the states an art's
+                        // moves belong to: a918's 40010 is under SwordArtsOneShotComboEnd_MesmerSowrdArts_CMSG).
+                        if (!fromDs3)
+                        {
+                            erSelectors ??= LoadSelectors(BND4.Read(er.Read("/chr/c0000.behbnd.dcx")));
+                            var prefix = $"a{n:D3}_";
+                            foreach (var sel in erSelectors)
+                            {
+                                var clips = sel.m_generators.OfType<hkbClipGenerator>().Where(c => (c.m_animationName ?? "").StartsWith(prefix, StringComparison.OrdinalIgnoreCase)).ToList();
+                                if (clips.Count > 0)
+                                    Log($"  selector '{sel.m_name}' {sel.m_offsetType} animId {sel.m_animId} ({sel.m_generators.Count} generators): {string.Join(" ", clips.Select(c => $"{c.m_animationName}#{c.m_animationInternalId} {c.m_mode}"))}");
+                            }
+                        }
                     }
                     else
                     {
@@ -84,10 +98,7 @@ public static class WeaponDiag
         var modMain = BND4.Read(DCX.Decompress(File.ReadAllBytes(ctx.ModPath("chr", "c0000.anibnd.dcx"))));
         var erMain = BND4.Read(er.Read("/chr/c0000.anibnd.dcx"));
         var ds3Main = BND4.Read(ds3.Read("/chr/c0000.anibnd.dcx"));
-        var behbnd = BND4.Read(DCX.Decompress(File.ReadAllBytes(ctx.ModPath("chr", "c0000.behbnd.dcx"))));
-        var behaviorFile = behbnd.Files.Where(f => f.Name.EndsWith(".hkx", StringComparison.OrdinalIgnoreCase)).MaxBy(f => f.Bytes.Length)!;
-        var graph = HavokGraph.All((hkRootLevelContainer)new HavokBinarySerializer().Read(new MemoryStream(behaviorFile.Bytes)));
-        var selectors = graph.OfType<CustomManualSelectorGenerator>().ToList();
+        var selectors = LoadSelectors(BND4.Read(DCX.Decompress(File.ReadAllBytes(ctx.ModPath("chr", "c0000.behbnd.dcx")))));
         var plans = JsonSerializer.Deserialize<List<WeaponPlan>>(File.ReadAllText(ctx.WorkPath("reports", "weapons-plan.json")))
             ?? throw new InvalidOperationException("weapons-plan.json is empty; run weapons-plan first");
         Directory.CreateDirectory(ctx.WorkPath("reports", "diag"));
@@ -229,6 +240,13 @@ public static class WeaponDiag
         log($"{label} {row.ID}: " + string.Join(", ", names.Where(n => row.Cells.Any(c => c.Def.InternalName == n)).Select(n => $"{n} {Cell(row, n)}")));
 
     private static string Cell(PARAM.Row row, string name) => row[name].Value is byte[] b ? Convert.ToHexString(b) : row[name].Value?.ToString() ?? "";
+
+    private static List<CustomManualSelectorGenerator> LoadSelectors(BND4 behbnd)
+    {
+        var behaviorFile = behbnd.Files.Where(f => f.Name.EndsWith(".hkx", StringComparison.OrdinalIgnoreCase)).MaxBy(f => f.Bytes.Length)!;
+        var graph = HavokGraph.All((hkRootLevelContainer)new HavokBinarySerializer().Read(new MemoryStream(behaviorFile.Bytes)));
+        return graph.OfType<CustomManualSelectorGenerator>().ToList();
+    }
 
     private static void DumpTae(Action<string> log, string source, BND4 main, int section, Func<TAE.Animation, bool> which, bool ds3 = false)
     {
