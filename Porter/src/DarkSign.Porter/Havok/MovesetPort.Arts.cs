@@ -122,27 +122,40 @@ public static partial class MovesetPort
         // the one weapons with their own section use for the same DS3 art (by its SwordArtsParam ActionId, then its
         // name), else Kinds below. Weapons without skill animations (talismans, most catalysts) are left alone.
         var ds3ArtParam = ds3.Get("SwordArtsParam");
-        var skillCache = new Dictionary<int, List<int>>();
-        List<int> SkillIds(int section) => skillCache.TryGetValue(section, out var s) ? s
-            : skillCache[section] = section <= 0 || ds3Tae(section) is not { } t ? []
-                : t.Animations.Select(a => (int)a.ID).Where(id => id is >= 36000 and < 38000 && id / 100 != 369).Distinct().Order().ToList();
+        var skillCache = new Dictionary<(int, bool), List<int>>();
+        List<int> SkillIds(int section, bool own = false) => skillCache.TryGetValue((section, own), out var s) ? s
+            : skillCache[(section, own)] = section <= 0 || ds3Tae(section) is not { } t ? []
+                // 36000-37999 are DS3's skill moves; a weapon's own section can keep its skill at 38400 instead (the
+                // Moonlight Greatsword's Moonlight Vortex, the Farron Greatsword's parry: a158 / a161 hold nothing in
+                // 36xxx-37xxx but a Stomp left over from development), which 1.0.225 never looked at, so those weapons
+                // did their class's skill. 369xx is the parry block (not a skill of its own). Class sections keep to
+                // 36000-37999: their 38xxx moves (a20's 38020, 38700) aren't the class skill.
+                : t.Animations.Select(a => (int)a.ID).Where(id => id is >= 36000 and < 38000 || (own && id is >= 38000 and < 39000)).Where(id => id / 100 != 369).Distinct().Order().ToList();
         (string? Name, int Action) Kind(WeaponPlan p)
         {
             var row = ds3ArtParam?[Convert.ToInt32(ds3Weapons[p.Ds3Id]!["swordArtId"].Value)];
             return (row?.Name?.Trim(), row is not null && Field(row, "ActionId")?.Value is { } v and not byte[] ? Convert.ToInt32(v) : -1);
         }
+        // A DS3 parry skill (the Farron Greatsword's "Parry"): its move is the one that opens a parry (an attack event
+        // with a DS3 parry judge, a161 38400), not the section's first skill move (a161 36000, a Stomp left over from
+        // development, which 1.0.225 played: "looks like an Elden Ring parry" with nothing behind it).
+        bool HasParryHit(int section, int animId) => ds3Tae(section)?.Animations.FirstOrDefault(a => a.ID == animId)?.Events
+            .Any(e => e.Type == 1 && e.GetParameterBytes(false) is { Length: >= 12 } b && Ds3ParryJudges.Contains(BitConverter.ToInt32(b, 8))) == true;
         ArtJob MakeJob(int section, int cls, List<int> skill, List<WeaponPlan> weapons, string source)
         {
             bool stance = skill.Contains(36200);
             // One-shot: the block's first move (its x00 animation). Without the hks, a stance plays its light attack.
             int start = stance && hks is null ? 36230 : stance ? 36200 : skill.FirstOrDefault(id => id % 100 == 0, skill[0]);
+            if (!stance && weapons.Any(p => (Kind(p).Name ?? "").Trim().Equals("Parry", StringComparison.OrdinalIgnoreCase))
+                && skill.FirstOrDefault(id => HasParryHit(section, id)) is > 0 and var parry)
+                start = parry;
             return new ArtJob(section, cls, stance && hks is not null, start, weapons, skill, source);
         }
         var jobs = new List<ArtJob>();
         var classWeapons = new List<WeaponPlan>();
         foreach (var g in ports.GroupBy(p => Convert.ToInt32(ds3Weapons[p.Ds3Id]!["spAtkCategory"].Value)))
         {
-            var skill = SkillIds(g.Key);
+            var skill = SkillIds(g.Key, own: true);
             if (g.Key <= 0 || skill.Count == 0)
             {
                 classWeapons.AddRange(g);
@@ -556,7 +569,21 @@ public static partial class MovesetPort
             BitConverter.GetBytes(id).CopyTo(bytes, 0);
             anim.Events.Add(new TAE.Event(start, end, proto.Type, 0, bytes, false) { Group = group });
         }
+        // The window alone did nothing in 1.0.221 (the hks fired the follow-up, the behaviour didn't take it). Elden
+        // Ring's own R2 follow-up art (Stamp (Upward Cut), a606 40000: window 100050 0.33-1.43 s) opens cancel
+        // JumpTable 116 with the window (0.40-2.17 s), as do its stance attacks; the one-shots that chain by L2 only
+        // (a612, the template our arts copied their JumpTables from) never have 116, and neither did the ported move.
+        // 116 is the cancel set the ComboEnd transitions belong to, so it opens with the window here.
+        if (anim.Events.FirstOrDefault(e => e.Type == 0 && e.Group is not null && e.GetParameterBytes(false).Length >= 4) is { } jumpProto)
+        {
+            var bytes = (byte[])jumpProto.GetParameterBytes(false).Clone();
+            BitConverter.GetBytes(FollowUpJumpTable).CopyTo(bytes, 0);
+            anim.Events.Add(new TAE.Event(start, end, 0, jumpProto.Unk04, bytes, false) { Group = jumpProto.Group });
+        }
     }
+
+    /// <summary>TAE JumpTable (type 0) ID Elden Ring opens over an art's R1/R2 follow-up window (a606, a614).</summary>
+    internal const int FollowUpJumpTable = 116;
 
     /// <summary>
     /// Ties every ported weapon to its art, as DS3 does: no Ash of War can be put on it or its affinity changed, like
@@ -789,12 +816,20 @@ public static class ArtSelfTest
         var proto = new MovesetPort.WindowEvent(67, Win(100050), group);
         var move = new SoulsFormats.TAE.Animation(40000, new SoulsFormats.TAE.Animation.AnimMiniHeader.Standard(), "a906_040000.hkt")
             { Events = [new SoulsFormats.TAE.Event(0.2f, 0.9f, 67, 0, Win(100055), false) { Group = group }, new SoulsFormats.TAE.Event(0, 0.1f, 67, 0, Win(100280), false) { Group = group }] };
+        var jumpGroup = new SoulsFormats.TAE.EventGroup(0);
+        byte[] Jump(int id) { var b = new byte[16]; BitConverter.GetBytes(id).CopyTo(b, 0); BitConverter.GetBytes(-1).CopyTo(b, 8); BitConverter.GetBytes(6).CopyTo(b, 12); return b; }
+        move.Events.Add(new SoulsFormats.TAE.Event(0, 0.3f, 0, 0, Jump(7), false) { Group = jumpGroup });
         MovesetPort.SetComboWindows(move, proto, [new SoulsFormats.TAE.Event(0.5f, 1.2f, 67, 0, Win(100050), false)], 2f, light: true, heavy: true);
-        var ids = move.Events.Select(e => BitConverter.ToInt32(e.GetParameterBytes(false), 0)).Order().ToList();
+        var ids = move.Events.Where(e => e.Type == 67).Select(e => BitConverter.ToInt32(e.GetParameterBytes(false), 0)).Order().ToList();
         Check(ids.SequenceEqual([100051, 100054, 100280]), $"arts: one-shot gets R1 and R2 follow-up windows, the template's is dropped, other effects stay (got {string.Join(" ", ids)})");
+        var jump116 = move.Events.Where(e => e.Type == 0 && BitConverter.ToInt32(e.GetParameterBytes(false), 0) == MovesetPort.FollowUpJumpTable).ToList();
+        Check(jump116.Count == 1 && jump116[0].StartTime == 0.5f && jump116[0].EndTime == 1.2f && jump116[0].Group == jumpGroup && jump116[0].GetParameterBytes(false)[12] == 6,
+            $"arts: cancel JumpTable 116 opens with the follow-up window, in the move's JumpTable group (got {jump116.Count})");
+        move.Events.RemoveAll(e => e.Type == 0 && BitConverter.ToInt32(e.GetParameterBytes(false), 0) == MovesetPort.FollowUpJumpTable);
         Check(move.Events.Where(e => BitConverter.ToInt32(e.GetParameterBytes(false), 0) is 100051 or 100054).All(e => e.StartTime == 0.5f && e.EndTime == 1.2f), "arts: follow-up windows use DS3's own timing");
         MovesetPort.SetComboWindows(move, proto, null, 2f, light: false, heavy: false);
-        Check(move.Events.Count == 1, "arts: a one-shot without follow-ups has no combo window");
+        Check(move.Events.Count(e => e.Type == 67) == 1 && !move.Events.Any(e => e.Type == 0 && BitConverter.ToInt32(e.GetParameterBytes(false), 0) == MovesetPort.FollowUpJumpTable),
+            "arts: a one-shot without follow-ups has no combo window and no 116");
         // No DS3 window of these IDs (DS3 uses per-weapon hks SpEffects): the window opens at DS3's first cancel after
         // the last hit (JumpTable at 1.567 s) and stays open to the end of the DS3 move (3.0 s); before it was 45-90%.
         byte[] Jt(int id) { var b = new byte[16]; BitConverter.GetBytes(id).CopyTo(b, 0); return b; }
@@ -803,12 +838,40 @@ public static class ArtSelfTest
             new(0.9f, 1.1f, 1, 0, new byte[16], false), new(0.767f, 2.933f, 67, 0, Win(100570), false), new(1.567f, 3.0f, 0, 0, Jt(4), false),
         };
         MovesetPort.SetComboWindows(move, proto, rkpg, 3f, light: true, heavy: true);
-        var windows = move.Events.Where(e => BitConverter.ToInt32(e.GetParameterBytes(false), 0) is 100051 or 100054).ToList();
+        var windows = move.Events.Where(e => e.Type == 67 && BitConverter.ToInt32(e.GetParameterBytes(false), 0) is 100051 or 100054).ToList();
         Check(windows.Count == 2 && windows.All(w => Math.Abs(w.StartTime - 1.567f) < 0.001f && Math.Abs(w.EndTime - 3f) < 0.001f),
             $"arts: without a DS3 window of its own, the follow-up window runs from DS3's first cancel to the move's end (got {string.Join(" ", windows.Select(w => $"{w.StartTime:0.000}-{w.EndTime:0.000}"))})");
         var engine = MovesetPort.HksEffectIds("if env(GetSpEffectID, 102355) == TRUE then\nelseif env( GetSpEffectID , 30) == TRUE then end");
         Check(engine.Contains(102355) && engine.Contains(30) && engine.Contains(100280) && engine.Contains(100054) && !engine.Contains(6340),
             "effects: the hks's own SpEffect IDs (and charge / combo windows) are kept, others are ported");
+        // Parry: a DS3 parry judge in an attack event becomes Elden Ring's 591; other judges stay.
+        MovesetPort.Ds3ParryJudges = [450, 600];
+        byte[] Atk(int judge) { var b = new byte[16]; b[0] = 0x40; BitConverter.GetBytes(judge).CopyTo(b, 8); b[12] = 0xFF; return b; }
+        var parry = Atk(450); var hit = Atk(700);
+        Check(MovesetPort.RemapParryJudge(parry) && BitConverter.ToInt32(parry, 8) == 591 && parry[0] == 0x40 && !MovesetPort.RemapParryJudge(hit) && BitConverter.ToInt32(hit, 8) == 700,
+            "parry: DS3 parry judges 450/600 become Elden Ring's 591, other judges and the event's flags stay");
+        MovesetPort.Ds3ParryJudges = [];
+        // DS3 hks markers in TAE SpEffect events: kept only when Elden Ring names the ID the same, else dropped; other
+        // effects are kept when Elden Ring's hks checks them, else ported.
+        Check(MovesetPort.TaeEffectFate(100280, "[HKS] Is Charging Heavy Attack", "[HKS] Is Charging Heavy Attack", true) == MovesetPort.TaeEffect.Keep, "effects: a marker both games name the same is kept");
+        Check(MovesetPort.TaeEffectFate(100500, "[HKS] Non-generator Transition", "[HKS] Sword Arts - Raptor Dodge", true) == MovesetPort.TaeEffect.Drop, "effects: a DS3 marker Elden Ring's hks reads as something else is dropped");
+        Check(MovesetPort.TaeEffectFate(100490, "[HKS] Non-generator Transition - Friede's Great Scythe", null, false) == MovesetPort.TaeEffect.Drop, "effects: a DS3 marker Elden Ring lacks is dropped, not ported");
+        Check(MovesetPort.TaeEffectFate(31, "Counter damage (puncture)", "Behavior - Counter Frames", false) == MovesetPort.TaeEffect.Port, "effects: a real DS3 effect is ported");
+        Check(MovesetPort.TaeEffectFate(6340, "Weapon Art - Stomp", "Toughness Unk - Damage Level Small", true) == MovesetPort.TaeEffect.Keep, "effects: a real effect the hks checks by ID is kept");
+        // Node flags (ModelPort.SetNodeFlags): dummy owners, mesh node; a Disabled node is left alone.
+        var flver = new SoulsFormats.FLVER2();
+        flver.Nodes.Add(new SoulsFormats.FLVER.Node { Name = "Dummy_SFX" });
+        flver.Nodes.Add(new SoulsFormats.FLVER.Node { Name = "Dummy_Plan" });
+        flver.Nodes.Add(new SoulsFormats.FLVER.Node { Name = "WP_A_1616" });
+        flver.Nodes.Add(new SoulsFormats.FLVER.Node { Name = "WP_A_1616_old", Flags = SoulsFormats.FLVER.Node.NodeFlags.Disabled });
+        flver.Dummies.Add(new SoulsFormats.FLVER.Dummy { ReferenceID = 100, ParentBoneIndex = 1, AttachBoneIndex = -1 });
+        flver.Dummies.Add(new SoulsFormats.FLVER.Dummy { ReferenceID = 300, ParentBoneIndex = 0, AttachBoneIndex = -1 });
+        flver.Meshes.Add(new SoulsFormats.FLVER2.Mesh { NodeIndex = 2 });
+        ModelPort.SetNodeFlags(flver);
+        Check(flver.Nodes[0].Flags == SoulsFormats.FLVER.Node.NodeFlags.DummyOwner && flver.Nodes[1].Flags == SoulsFormats.FLVER.Node.NodeFlags.DummyOwner,
+            $"model: nodes dummy polys hang on are DummyOwner (got {flver.Nodes[0].Flags}, {flver.Nodes[1].Flags})");
+        Check(flver.Nodes[2].Flags == (SoulsFormats.FLVER.Node.NodeFlags.Mesh | SoulsFormats.FLVER.Node.NodeFlags.Bone), $"model: the mesh's node is Mesh | Bone (got {flver.Nodes[2].Flags})");
+        Check(flver.Nodes[3].Flags == SoulsFormats.FLVER.Node.NodeFlags.Disabled, "model: a Disabled node keeps its flag");
         // Bitfield fillers (ParamStore.FillBitfields): Elden Ring 2.7.2's SpEffectParam sets flags in bits Paramdex leaves unnamed.
         var xml = Path.Combine(Path.GetTempPath(), $"darksign-bits-{Environment.ProcessId}.xml");
         File.WriteAllText(xml, """

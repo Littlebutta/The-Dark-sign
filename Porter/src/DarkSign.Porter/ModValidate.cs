@@ -165,6 +165,38 @@ public static partial class ModValidate
                 r.Error($"... {empty - 20} more ported swings without a hitbox");
             Console.WriteLine($"validate: {checkedHits - empty}/{checkedHits} ported weapon hits have a hitbox");
 
+            // Node flags: Elden Ring marks the nodes dummy polys hang on (DummyOwner) and the mesh's node (Mesh, Bone);
+            // DS3 models carry none, and a converted model that kept 0 gives the game no owner for its hit spheres.
+            int flaggedModels = 0, unflagged = 0;
+            foreach (int model in bases.Select(row => Field(row, "equipModelId")).Where(m => m >= WeaponPort.FirstNewModelId).Distinct().Order())
+            {
+                var parts = Binder("parts", $"wp_a_{model:D4}.partsbnd.dcx");
+                if (parts is null)
+                    continue;
+                foreach (var f in parts.Files.Where(f => FLVER2.Is(f.Bytes)))
+                {
+                    FLVER2 flver;
+                    try { flver = FLVER2.Read(f.Bytes); }
+                    catch (Exception e) when (e is InvalidDataException or EndOfStreamException) { continue; }
+                    var owners = flver.Dummies.SelectMany(d => new[] { (int)d.ParentBoneIndex, (int)d.AttachBoneIndex }).Where(i => i >= 0 && i < flver.Nodes.Count).Distinct()
+                        .Where(i => !flver.Nodes[i].Flags.HasFlag(FLVER.Node.NodeFlags.DummyOwner)).ToList();
+                    var meshes = flver.Meshes.Select(m => m.NodeIndex).Where(i => i >= 0 && i < flver.Nodes.Count).Distinct()
+                        .Where(i => !flver.Nodes[i].Flags.HasFlag(FLVER.Node.NodeFlags.Mesh)).ToList();
+                    if (owners.Count + meshes.Count == 0)
+                    {
+                        flaggedModels++;
+                        continue;
+                    }
+                    if (++unflagged <= 10)
+                        r.Error($"{ItemText.Leaf(f.Name)}: nodes without their Elden Ring role flag: " +
+                                string.Join(", ", owners.Select(i => $"{flver.Nodes[i].Name} (dummy owner)").Concat(meshes.Select(i => $"{flver.Nodes[i].Name} (mesh)"))) +
+                                "; the game places this model's hit spheres and effects nowhere");
+                }
+            }
+            if (unflagged > 10)
+                r.Error($"... {unflagged - 10} more ported weapon models without node flags");
+            Console.WriteLine($"validate: {flaggedModels} ported weapon models carry Elden Ring node flags, {unflagged} don't");
+
             // Where the hit spheres sit: the dummy polys the attack rows name against the dummy polys the weapon's own
             // model (ported from DS3) carries. The games place weapon hit dummies as 10000 + dummy (right hand) /
             // 11000 + dummy (left); a weapon whose attack rows name dummies its model doesn't have swings without

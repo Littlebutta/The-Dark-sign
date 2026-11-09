@@ -92,8 +92,18 @@ public static class MapValidate
         try
         {
             var flags = FlagMap.Load(ctx.ModPath(MapEvents.FlagFile));
+            var registered = MapRegistry.Registered(er);
+            var modRegistry = ctx.ModPath(MapPorter.ModParts(MapRegistry.ListPath));
+            if (File.Exists(modRegistry))
+                foreach (var e in MapRegistry.Parse(DCX.Decompress(File.ReadAllBytes(modRegistry))))
+                    registered.Add(e.Map);
+            foreach (var (_, erId) in listed)
+                if (registered.Contains(erId))
+                    report.Ok($"{erId}: in the map registry (worldmsblist{(File.Exists(modRegistry) ? ", the mod's copy" : "")})");
+                else
+                    report.Fail($"{erId}: not in the map registry (worldmsblist.worldloadlistlist); the game won't load it (endless loading screen)");
             FlagAlloc.Check(er, report, listed.Select(l => l.Er), flags.Flags.Values.Concat(flags.Events.Values),
-                ctx.ModPath(MapPorter.ModParts(FlagAlloc.LegacyList)));
+                ctx.ModPath(MapPorter.ModParts(FlagAlloc.LegacyList)), registered);
             // The in-game check (dksign_testmenu.dll) asks the game itself about these blocks.
             File.WriteAllLines(ctx.ModPath(FlagAlloc.ProbeFile),
                 FlagAlloc.ProbeLines(listed.Select(l => l.Er), flags.Flags.Values, slotFlags: !MapFlags.Common));
