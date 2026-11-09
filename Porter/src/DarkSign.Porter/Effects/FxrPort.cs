@@ -349,7 +349,7 @@ public static partial class FxrPort
     private static string Short(Exception e) => (e is Jint.Runtime.JavaScriptException js ? js.Message : $"{e.GetType().Name}: {e.Message}").Split('\n')[0];
 
     /// <summary>The fxr library, loaded once into a Jint engine.</summary>
-    private sealed class FxrScript
+    internal sealed class FxrScript
     {
         public sealed record Info(int[] Sfx, int[] Textures, int[] Models, int[] Anibnds, int[] Sounds);
 

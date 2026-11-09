@@ -161,7 +161,7 @@ public static class Fallbacks
         new("two-hand", "Two-handed split", "Split weapons (Friede's scythe, twinblades)", Stage.Build,
             "Two-handing a split weapon doesn't split it, or the second blade floats, sticks to the body or sits in the wrong hand.",
         [
-            new("A", "DS3 positions, matched by bone (default)", "Each model's DS3 dummy poly translated to the Elden Ring player dummy with the same ID at the same spot (else on the same bone), with DS3's show/hide bytes; paired weapons (left blade in the left hand) also get isDualBlade and DS3's two-handed grip."),
+            new("A", "DS3 positions, matched by bone (default)", "Each model's DS3 dummy poly translated to the Elden Ring player dummy with the same ID at the same spot (else on the same bone), with DS3's show/hide bytes; paired weapons (left blade in the left hand) also get isDualBlade and DS3's two-handed grip. Friede's second scythe takes Elden Ring's paired layout (left hand when two-handed and in the art, as Rellana's twin blades), the one pattern Elden Ring's own arts bring a second blade out with."),
             new("B", "An Elden Ring split layout", "The weapon takes a whole WepAbsorpPosParam row from an Elden Ring weapon that already holds a second model in the left hand when two-handed (the game's own working layout).")
                 { PorterEnv = Env("DARKSIGN_ABSORP", "er") },
             new("C", "DS3 dummy IDs as they are", "DS3's dummy poly IDs copied without matching them through the bones (both games number most hand and back dummies alike).")
@@ -170,8 +170,8 @@ public static class Fallbacks
                 { PorterEnv = Env("DARKSIGN_PAIRED_GRIP", "0") },
             new("E", "A without the Friede layout", "A, but Friede's art keeps its DS3-only \"Friede override\" event as DS3 wrote it and the scythe's row is DS3's own (no left-hand slot for the art's second blade) (DARKSIGN_FRIEDE_OVERRIDE=keep).")
                 { PorterEnv = Env("DARKSIGN_FRIEDE_OVERRIDE", "keep") },
-            new("F", "Friede's second scythe in the left hand two-handed too", "The 1.0.206 layout (DARKSIGN_FRIEDE_OVERRIDE=both): the second scythe sits in the left hand whenever the scythe is two-handed, and in the art, and the weapon is marked paired. The scythe showed in the art with this layout; try it if A still hides it.")
-                { PorterEnv = Env("DARKSIGN_FRIEDE_OVERRIDE", "both") },
+            new("F", "Friede's second scythe on the back two-handed", "The 1.0.221-1.0.238 layout (DARKSIGN_FRIEDE_OVERRIDE=back): the second scythe stays on the back when two-handing, as in DS3, and the art moves it to a left-hand slot with a move Elden Ring's own animations never make (ChangeType 1 on a right-hand model). It never showed the scythe in the art in those builds; keep it only if A's two-handed look is worse than no second scythe.")
+                { PorterEnv = Env("DARKSIGN_FRIEDE_OVERRIDE", "back") },
             new("off", "Off (template positions)", "Ported weapons keep their template's WepAbsorpPosParam row (DARKSIGN_ABSORP=0): no split. Tells whether the split is what breaks something.")
                 { PorterEnv = Env("DARKSIGN_ABSORP", "0") },
         ]),
@@ -242,6 +242,8 @@ public static class Fallbacks
                 { PorterEnv = Env("DARKSIGN_WEAPON_ARTS", "nohks") },
             new("C", "DS3 arts, Ashes of War allowed", "Same as A, but ported weapons aren't locked to their art (DARKSIGN_WEAPON_ARTS=unlocked): Ashes of War and affinities can be put on them as on the Elden Ring weapon they're built from.")
                 { PorterEnv = Env("DARKSIGN_WEAPON_ARTS", "unlocked") },
+            new("D", "DS3 arts, stance attacks don't chain", "Same as A, but a stance's light attack doesn't chain into DS3's second and third (DARKSIGN_STANCE_CHAIN=0): R1 after the first stance attack is a plain R1, as in builds up to 1.0.238. Try it if the stance's second hit plays the wrong move or freezes the character.")
+                { PorterEnv = Env("DARKSIGN_STANCE_CHAIN", "0") },
             new("off", "Off (Elden Ring Ashes of War)", "Ported weapons keep their template's Elden Ring Ash of War (DARKSIGN_WEAPON_ARTS=0), as in builds up to 1.0.169.")
                 { PorterEnv = Env("DARKSIGN_WEAPON_ARTS", "0") },
         ]),
