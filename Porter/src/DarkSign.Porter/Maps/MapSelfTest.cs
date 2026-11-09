@@ -88,8 +88,36 @@ public static class MapSelfTest
                        ?? throw new Exception("template not found");
         var ported = CollisionPort.Read(CollisionPort.Convert(SyntheticDs3Collision(), template).Bytes);
         var portedBody = ((HKLib.hk2018.hknpPhysicsSceneData)ported.m_namedVariants[0].m_variant!).m_systemDatas[0]!.m_bodyCinfos[0];
-        if (portedBody.m_collisionFilterInfo != 0x1234 || portedBody.m_motionPropertiesId != 3)
+        if (portedBody.m_collisionFilterInfo != 0x1234)
             throw new Exception("template body settings were not applied");
+        // The template's body names motion properties 3 but neither file holds any: the game would read a null
+        // array (eldenring.exe+0x18C038A), so the ported body must reference none.
+        if (portedBody.m_motionPropertiesId != 0xFFFF)
+            throw new Exception($"ported body references motion properties {portedBody.m_motionPropertiesId} of none");
+
+        // A host file with motion properties and a body that uses them: the ported file carries them along, and the
+        // body keeps its id, as every DS3 static collision would from a vanilla Elden Ring host.
+        var host = CollisionPort.Read(CollisionPort.Convert(SyntheticDs3Collision(everything: true), null, xml: false).Bytes);
+        var hostSystem = ((HKLib.hk2018.hknpPhysicsSceneData)host.m_namedVariants[0].m_variant!).m_systemDatas[0]!;
+        hostSystem.m_bodyCinfos[0].m_motionPropertiesId = 0;
+        hostSystem.m_bodyCinfos[0].m_materialId = 0;
+        var fullTemplate = ErCollisionTemplate.FromFile(CollisionPort.Write(host, xml: false))
+                           ?? throw new Exception("full template not found");
+        var portedFull = CollisionPort.Read(CollisionPort.Convert(SyntheticDs3Collision(), fullTemplate).Bytes);
+        var fullSystem = ((HKLib.hk2018.hknpPhysicsSceneData)portedFull.m_namedVariants[0].m_variant!).m_systemDatas[0]!;
+        if (fullSystem.m_motionProperties.Count != 1 || fullSystem.m_bodyCinfos[0].m_motionPropertiesId != 0)
+            throw new Exception($"host motion properties not carried over ({fullSystem.m_motionProperties.Count} entries, body id {fullSystem.m_bodyCinfos[0].m_motionPropertiesId})");
+        if (fullSystem.m_materials.Count != 1 || fullSystem.m_bodyCinfos[0].m_materialId != 0)
+            throw new Exception("host materials not carried over");
+
+        // Ids past the arrays are repaired whatever their source.
+        var broken = new HKLib.hk2018.hknpPhysicsSystemData();
+        broken.m_bodyCinfos.Add(new HKLib.hk2018.hknpPhysicsSystemData.bodyCinfoWithAttachment { m_motionPropertiesId = 7, m_materialId = 2 });
+        broken.m_materials.Add(new HKLib.hk2018.hknpMaterial());
+        var notes = new List<string>();
+        CollisionPort.ReferenceIds(broken, notes);
+        if (broken.m_bodyCinfos[0].m_motionPropertiesId != 0xFFFF || broken.m_bodyCinfos[0].m_materialId != 0 || notes.Count != 2)
+            throw new Exception("out-of-range body ids were not repaired: " + string.Join("; ", notes));
     }
 
     /// <summary>
