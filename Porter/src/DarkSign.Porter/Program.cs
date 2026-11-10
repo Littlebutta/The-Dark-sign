@@ -39,6 +39,8 @@ const string Usage = """
       timing-selftest              offline checks that ported moves' combo/cancel windows don't cut DS3 swings short
       enemy-selftest               offline checks of the enemy porter (templates, IDs, skin indices, chr map, TAE merge)
       arts-selftest                offline checks of the weapon art port (hks patch, skill names)
+      anim-selftest                offline checks of the bone retargeting (rest-pose corrections) and spline rotation rewrite
+      weapon-diag bones            how each shared player bone rests in both games and how its DS3 rotation is carried over
       map-survey [map ids]         report both games' map files for the ported slots (layouts, binders, textures, events)
       event-coverage <ds3.emedf.json> <er.emedf.json>  which DS3 event instructions convert to Elden Ring, and how
       port-enemies                 port DS3's enemies only (port-maps does this too) and check what the game will load
@@ -91,6 +93,8 @@ try
         return DarkSign.Porter.Enemies.EnemySelfTest.Run();
     if (argList[0].Equals("arts-selftest", StringComparison.OrdinalIgnoreCase))
         return ArtSelfTest.Run();
+    if (argList[0].Equals("anim-selftest", StringComparison.OrdinalIgnoreCase))
+        return AnimSelfTest.Run();
     if (argList[0].Equals("event-coverage", StringComparison.OrdinalIgnoreCase) && argList.Count == 3)
         return DarkSign.Porter.Maps.EventPort.CoverageReport(argList[1], argList[2]);
     // Build methods chosen in the launcher's Fallbacks window (DarkSign.Core.Fallbacks); "" = every default.

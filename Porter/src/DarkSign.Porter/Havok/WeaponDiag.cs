@@ -33,10 +33,12 @@ public static class WeaponDiag
         // weapon-diag tae 2 92 ds3:0 ...   dumps whole TAE sections (Elden Ring's a002 / a092; ds3:N for DS3's aN);
         // weapon-diag flver 454 ds3:1616 ... dumps weapon models (Elden Ring's wp_a_0454; ds3:N for DS3's).
         string mode = args.Count > 0 ? args[0].ToLowerInvariant() : "";
+        if (mode == "bones")
+            return BoneDiag.Run(ctx);
         if (ids.Count == 0 && mode is not ("tae" or "flver"))
         {
             Console.WriteLine("usage: weapon-diag <Elden Ring weapon row ID> [more IDs]  (ported weapons are 80000000 + 10000 * n)\n" +
-                              "       weapon-diag tae <section> [ds3:<section>] ...    weapon-diag flver <model> [ds3:<model>] ...");
+                              "       weapon-diag tae <section> [ds3:<section>] ...    weapon-diag flver <model> [ds3:<model>] ...    weapon-diag bones");
             return 1;
         }
         TAE.ValidateEventBank = false;

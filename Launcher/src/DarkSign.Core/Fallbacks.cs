@@ -127,11 +127,13 @@ public static class Fallbacks
         new("anim-format", "Weapon movesets", "DS3 animation format", Stage.Build,
             "DS3 moves look broken (twisting limbs, jitter, sliding) or the game hangs while loading.",
         [
-            new("A", "Spline-compressed (default)", "DS3 animations re-encoded as Havok spline animations, like Elden Ring's own."),
+            new("A", "Spline-compressed (default)", "DS3 animations re-encoded as Havok spline animations, like Elden Ring's own. Each bone's DS3 rotation is carried over relative to its own rest pose, so a bone that rests differently in the two skeletons (L_Weapon: 180° about X) moves the Elden Ring model as DS3's bone moved DS3's."),
             new("B", "Interleaved (uncompressed)", "Every frame stored as is (DARKSIGN_ANIM_INTERLEAVED=1). Exact, but about 5x bigger: the first build like this hung loading.")
                 { PorterEnv = Env("DARKSIGN_ANIM_INTERLEAVED", "1") },
-            new("C", "A, weapon bones from DS3", "A, but every shared bone takes DS3's rotation, including end bones (R_Weapon, L_Weapon) that rest differently in the two skeletons (DARKSIGN_WEAPON_BONES=ds3). Builds up to 1.0.221 did this: the Ringed Knight pair's left blade pointed backwards in its dual-wield swings. Try it if a weapon no longer turns in the hand as it did in DS3.")
+            new("C", "A, weapon bones from DS3", "A, but every shared bone copies DS3's bone rotation as it is (DARKSIGN_WEAPON_BONES=ds3), including L_Weapon, which rests turned 180° in DS3 and not in Elden Ring. Builds up to 1.0.221 did this: the Ringed Knight pair's left blade and Friede's second scythe pointed backwards in every DS3 move. Try it only to compare.")
                 { PorterEnv = Env("DARKSIGN_WEAPON_BONES", "ds3") },
+            new("D", "A, rest-different end bones frozen", "The way of 1.0.225 up to the previous build (DARKSIGN_WEAPON_BONES=freeze): shared end bones that rest differently keep Elden Ring's pose, every other bone copies DS3's rotation. It missed L_Weapon (not an end bone in Elden Ring), so the off-hand model stayed backwards; A instead carries every bone's rotation over relative to its rest pose.")
+                { PorterEnv = Env("DARKSIGN_WEAPON_BONES", "freeze") },
         ]),
         new("weapon-hits", "Weapon movesets", "Hitboxes of DS3 swings", Stage.Build,
             "A ported weapon goes through enemies and walls, does no or odd damage, or staggers wrongly.",
@@ -161,7 +163,7 @@ public static class Fallbacks
         new("two-hand", "Two-handed split", "Split weapons (Friede's scythe, twinblades)", Stage.Build,
             "Two-handing a split weapon doesn't split it, or the second blade floats, sticks to the body or sits in the wrong hand.",
         [
-            new("A", "DS3 positions, matched by bone (default)", "Each model's DS3 dummy poly translated to the Elden Ring player dummy with the same ID at the same spot (else on the same bone), with DS3's show/hide bytes; paired weapons (left blade in the left hand) also get isDualBlade and DS3's two-handed grip. Friede's second scythe takes Elden Ring's paired layout (left hand when two-handed and in the art, as Rellana's twin blades), the one pattern Elden Ring's own arts bring a second blade out with."),
+            new("A", "DS3 positions, matched by bone (default)", "Each model's DS3 dummy poly translated to the Elden Ring player dummy with the same ID at the same spot (else on the same bone), with DS3's show/hide bytes; paired weapons (left blade in the left hand) also get isDualBlade and DS3's two-handed grip. Friede's second scythe stays on the back one- and two-handed, as in DS3, and comes into the left hand only during the art: its hang slot is the left hand and the art moves it there with the 712 move Elden Ring's own arts make (ChangeType 3, as a612)."),
             new("B", "An Elden Ring split layout", "The weapon takes a whole WepAbsorpPosParam row from an Elden Ring weapon that already holds a second model in the left hand when two-handed (the game's own working layout).")
                 { PorterEnv = Env("DARKSIGN_ABSORP", "er") },
             new("C", "DS3 dummy IDs as they are", "DS3's dummy poly IDs copied without matching them through the bones (both games number most hand and back dummies alike).")
@@ -170,8 +172,10 @@ public static class Fallbacks
                 { PorterEnv = Env("DARKSIGN_PAIRED_GRIP", "0") },
             new("E", "A without the Friede layout", "A, but Friede's art keeps its DS3-only \"Friede override\" event as DS3 wrote it and the scythe's row is DS3's own (no left-hand slot for the art's second blade) (DARKSIGN_FRIEDE_OVERRIDE=keep).")
                 { PorterEnv = Env("DARKSIGN_FRIEDE_OVERRIDE", "keep") },
-            new("F", "Friede's second scythe on the back two-handed", "The 1.0.221-1.0.238 layout (DARKSIGN_FRIEDE_OVERRIDE=back): the second scythe stays on the back when two-handing, as in DS3, and the art moves it to a left-hand slot with a move Elden Ring's own animations never make (ChangeType 1 on a right-hand model). It never showed the scythe in the art in those builds; keep it only if A's two-handed look is worse than no second scythe.")
+            new("F", "Friede's art moves the scythe with ChangeType 1", "The 1.0.221-1.0.238 layout (DARKSIGN_FRIEDE_OVERRIDE=back): the second scythe stays on the back when two-handing and the art moves it to a left-hand slot with a move Elden Ring's own animations never make (ChangeType 1 on a right-hand model). It never showed the scythe in the art in those builds.")
                 { PorterEnv = Env("DARKSIGN_FRIEDE_OVERRIDE", "back") },
+            new("G", "Friede's second scythe in the left hand two-handed", "The previous build's layout (DARKSIGN_FRIEDE_OVERRIDE=both): Elden Ring's paired layout, the second scythe in the left hand when two-handing and in the art (ChangeType 2, as Rellana's twin blades). Try it if A's art shows no second scythe.")
+                { PorterEnv = Env("DARKSIGN_FRIEDE_OVERRIDE", "both") },
             new("off", "Off (template positions)", "Ported weapons keep their template's WepAbsorpPosParam row (DARKSIGN_ABSORP=0): no split. Tells whether the split is what breaks something.")
                 { PorterEnv = Env("DARKSIGN_ABSORP", "0") },
         ]),

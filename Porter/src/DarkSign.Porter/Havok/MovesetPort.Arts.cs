@@ -993,12 +993,18 @@ public static class ArtSelfTest
         File.Delete(xml);
         int size = def.GetRowSize(), filled = ParamStore.FillBitfields(def);
         Check(filled == 3 && def.GetRowSize() == size && def.Fields.Count == 7, $"params: unnamed bits of a bitfield byte get a filler, row size unchanged ({filled} bits, {size} -> {def.GetRowSize()} bytes)");
-        // Friede's 712 override (DS3 ChangeType 5 on slots RH1 and LH1, condition 2): Elden Ring's paired-art move
-        // (ChangeType 2) by default, the 1.0.221 move (1 / 0) with "back", untouched with "keep"; the condition stays 2.
+        // Friede's 712 override (DS3 ChangeType 5 on slots RH1 and LH1, condition 2): a612's "hang location" move
+        // (ChangeType 3) by default, Elden Ring's paired-art move (ChangeType 2) with "both", the 1.0.221 move (1 / 0)
+        // with "back", untouched with "keep"; the condition stays 2.
         byte[] Override() { var b = new byte[24]; b[1] = 0xFF; b[2] = 2; b[3] = 5; b[5] = 0xFF; b[7] = 0xFF; b[8] = 0; b[9] = 3; b[10] = 2; b[11] = 5; b[16] = 1; b[17] = 1; return b; }
         var ov = Override();
-        Check(MovesetPort.FixModelOverride(ov, "") == 2 && ov[2] == 2 && ov[3] == 2 && ov[10] == 2 && ov[11] == 2 && ov[9] == 3 && ov[16] == 1,
-            $"712: Friede's override becomes 'two-handed location' (condition 2, ChangeType 2) on both slots, other slots and tail untouched (got RH1 {ov[2]}/{(sbyte)ov[3]} LH1 {ov[10]}/{(sbyte)ov[11]})");
+        Check(MovesetPort.FixModelOverride(ov, "") == 2 && ov[2] == 2 && ov[3] == 3 && ov[10] == 2 && ov[11] == 3 && ov[9] == 3 && ov[16] == 1,
+            $"712: Friede's override becomes 'hang location' (condition 2, ChangeType 3, a612's bytes) on both slots, other slots and tail untouched (got RH1 {ov[2]}/{(sbyte)ov[3]} LH1 {ov[10]}/{(sbyte)ov[11]})");
+        ov = Override();
+        Check(MovesetPort.FixModelOverride(ov, "art") == 2 && ov[3] == 3 && ov[11] == 3, "712: 'art' is the default");
+        ov = Override();
+        Check(MovesetPort.FixModelOverride(ov, "both") == 2 && ov[2] == 2 && ov[3] == 2 && ov[10] == 2 && ov[11] == 2,
+            $"712: 'both' moves the models to their two-handed location (ChangeType 2) (got RH1 {ov[2]}/{(sbyte)ov[3]} LH1 {ov[10]}/{(sbyte)ov[11]})");
         ov = Override();
         Check(MovesetPort.FixModelOverride(ov, "back") == 2 && ov[2] == 2 && ov[3] == 1 && ov[10] == 2 && ov[11] == 0,
             $"712: 'back' keeps condition 2 and moves right-hand models to the 1H-left location, left-hand ones to 1H-right (got RH1 {ov[2]}/{(sbyte)ov[3]} LH1 {ov[10]}/{(sbyte)ov[11]})");
