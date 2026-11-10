@@ -26,8 +26,136 @@ public static partial class EnemyDiag
             return Unpack(ctx, args.Skip(1).ToList());
         if (args.Count == 1 && args[0].Equals("survey", StringComparison.OrdinalIgnoreCase))
             return Survey(ctx);
-        Console.Error.WriteLine("enemy-diag survey | enemy-diag unpack <file>...");
+        if (args.Count >= 1 && args[0].Equals("plan", StringComparison.OrdinalIgnoreCase))
+            return Plan(ctx, args.Skip(1).ToList());
+        if (args.Count >= 2 && args[0].Equals("binder", StringComparison.OrdinalIgnoreCase))
+            return Binder(ctx, args.Skip(1).ToList());
+        if (args.Count >= 3 && args[0].Equals("matbin", StringComparison.OrdinalIgnoreCase))
+            return Matbin(ctx, args[1], args.Skip(2).ToList());
+        Console.Error.WriteLine("enemy-diag survey | plan [build <DS3 chr>...] | binder <file>... | matbin <binder> <name part>... | unpack <file>...");
         return 1;
+    }
+
+    /// <summary>
+    /// The template choice for every DS3 character with the runners-up (Work\reports\enemy-diag\plan.tsv and, short,
+    /// the console); "plan build c2230 c1280" also builds those characters' files without writing them and prints
+    /// their notes (skeleton, animations, textures).
+    /// </summary>
+    private static int Plan(PorterContext ctx, List<string> args)
+    {
+        using var er = ctx.OpenArchives(PorterGame.EldenRing);
+        using var ds3 = ctx.OpenArchives(PorterGame.DarkSouls3);
+        var notes = new List<string>();
+        var catalog = EnemyPort.BuildCatalog(er, ctx.LoadParams(PorterGame.EldenRing).Get("NpcParam"), notes);
+        var characters = ChrPort.Ds3Characters(ds3, ctx.LoadParams(PorterGame.DarkSouls3).Get("NpcParam"));
+        TAE.ValidateEventBank = false;
+        var ranks = new Dictionary<int, string>();
+        var plans = ChrPort.MakePlans(er, ds3, characters, catalog, ChrPort.CurrentMethod, notes, null, (c, ranked) =>
+            ranks[c.Chr] = string.Join(" | ", ranked.Take(4).Select(r => FormattableString.Invariant(
+                $"{r.Template.Model} {Short(r.Template.Name)} b{r.Match:0.00} s{r.Size:0.00} ={r.Score:0.00}"))));
+        var lines = new List<string> { "DS3 chr\tname\tboss\tmethod\ttemplate files\tbest four (model name, b = share of DS3 bones, s = size match, = score)" };
+        foreach (var p in plans)
+            lines.Add(string.Join('\t', $"c{p.Ds3.Chr:D4}", Short(p.Ds3.Name), p.Ds3.Boss ? 1 : 0, p.Method, $"c{p.TemplateChr:D4}", ranks.GetValueOrDefault(p.Ds3.Chr, "")));
+        var path = ctx.WorkPath("reports", "enemy-diag", "plan.tsv");
+        File.WriteAllLines(path, lines);
+        foreach (var line in lines)
+            Console.WriteLine(line);
+        Console.WriteLine("templates used: " + string.Join(", ", plans.GroupBy(p => $"{p.Template.Model} {Short(p.Template.Name)} ({p.Method})")
+            .OrderByDescending(g => g.Count()).Select(g => $"{g.Count()} x {g.Key}")));
+        foreach (var n in notes)
+            Console.WriteLine($"note: {n}");
+        if (args.Count >= 2 && args[0].Equals("build", StringComparison.OrdinalIgnoreCase))
+            foreach (var plan in plans.Where(p => args.Skip(1).Any(a => a.Equals($"c{p.Ds3.Chr:D4}", StringComparison.OrdinalIgnoreCase))))
+                try
+                {
+                    var files = ChrPort.BuildFiles(ctx, er, ds3, plan);
+                    Console.WriteLine($"build c{plan.Ds3.Chr:D4} on c{plan.TemplateChr:D4} ({plan.Method}): {files.Outputs.Count} files, {files.Outputs.Sum(o => (long)o.Bytes.Length)} bytes; {files.Note}");
+                }
+                catch (Exception ex) when (ex is not OutOfMemoryException)
+                {
+                    Console.WriteLine($"build c{plan.Ds3.Chr:D4} FAILED: {ChrPort.Describe(ex)}");
+                }
+        return 0;
+    }
+
+    private static string Short(string name) => name.Replace('\t', ' ').Length > 34 ? name.Replace('\t', ' ')[..34] : name.Replace('\t', ' ');
+
+    private static byte[] ReadAny(string path)
+    {
+        var raw = File.ReadAllBytes(path);
+        return DCX.Is(raw) ? DCX.Decompress(raw) : raw;
+    }
+
+    /// <summary>What is inside binder files on disk (built or extracted): files, textures of each TPF, materials of each model.</summary>
+    private static int Binder(PorterContext ctx, List<string> paths)
+    {
+        using var er = ctx.OpenArchives(PorterGame.EldenRing); // makes Oodle available
+        foreach (var path in paths)
+        {
+            Console.WriteLine($"== {path}");
+            try
+            {
+                var bnd = BND4.Read(ReadAny(path));
+                Console.WriteLine($"   binder format {bnd.Format} unicode {bnd.Unicode} bigendian {bnd.BigEndian} extended {bnd.Extended} unk04 {bnd.Unk04} unk05 {bnd.Unk05} version {bnd.Version}; {bnd.Files.Count} files");
+                foreach (var f in bnd.Files.Take(40))
+                {
+                    Console.WriteLine($"   {f.ID} flags {f.Flags} {f.Name} ({f.Bytes.Length} bytes)");
+                    if (TPF.Is(f.Bytes))
+                    {
+                        var t = TPF.Read(f.Bytes);
+                        Console.WriteLine($"      tpf platform {t.Platform} encoding {t.Encoding} flag2 {t.Flag2}, {t.Textures.Count} textures");
+                        foreach (var x in t.Textures.Take(12))
+                            Console.WriteLine($"      {x.Name} format {x.Format} type {x.Type} mips {x.Mipmaps} flags1 {x.Flags1} {x.Bytes.Length} bytes {Dds(x.Bytes)}");
+                        if (t.Textures.Count > 12)
+                            Console.WriteLine($"      ... names: {string.Join(" ", t.Textures.Skip(12).Take(60).Select(x => x.Name))}");
+                    }
+                    else if (FLVER2.Is(f.Bytes))
+                    {
+                        var fl = FLVER2.Read(f.Bytes);
+                        Console.WriteLine($"      model version {fl.Header.Version:X} {fl.Meshes.Count} meshes {fl.Nodes.Count} nodes {fl.Materials.Count} materials");
+                        foreach (var m in fl.Materials.Take(10))
+                            Console.WriteLine($"      material {m.Name} | {m.MTD} | {string.Join(" ; ", m.Textures.Select(x => $"{x.ParamName}={x.Path}"))}");
+                    }
+                }
+                if (bnd.Files.Count > 40)
+                    Console.WriteLine($"   ... {bnd.Files.Count - 40} more: {string.Join(" ", bnd.Files.Skip(40).Take(40).Select(f => ItemText.Leaf(f.Name)))}");
+            }
+            catch (Exception ex) when (ex is not OutOfMemoryException)
+            {
+                Console.WriteLine($"   FAILED {ex.GetType().Name}: {ex.Message}");
+            }
+        }
+        return 0;
+    }
+
+    private static string Dds(byte[] b)
+    {
+        if (b.Length < 128 || b[0] != 'D')
+            return "(no DDS header)";
+        var fourCc = System.Text.Encoding.ASCII.GetString(b, 84, 4).TrimEnd('\0');
+        return $"{BitConverter.ToInt32(b, 16)}x{BitConverter.ToInt32(b, 12)} {fourCc}{(fourCc == "DX10" && b.Length >= 148 ? $" dxgi {BitConverter.ToInt32(b, 128)}" : "")}";
+    }
+
+    /// <summary>The materials in a material binder whose name contains one of the parts: shader, samplers, a few values.</summary>
+    private static int Matbin(PorterContext ctx, string binder, List<string> parts)
+    {
+        using var er = ctx.OpenArchives(PorterGame.EldenRing);
+        var bnd = BND4.Read(ReadAny(binder));
+        Console.WriteLine($"== {binder}: {bnd.Files.Count} files");
+        int shown = 0;
+        foreach (var f in bnd.Files.Where(f => parts.Any(p => f.Name.Contains(p, StringComparison.OrdinalIgnoreCase))))
+        {
+            if (shown++ >= 12)
+                break;
+            var m = MATBIN.Read(f.Bytes);
+            Console.WriteLine($"   {f.ID} {f.Name}");
+            Console.WriteLine($"      shader {m.ShaderPath} source {m.SourcePath} key {m.Key}");
+            foreach (var x in m.Samplers)
+                Console.WriteLine($"      sampler {x.Type} = {x.Path} key {x.Key}");
+            Console.WriteLine("      " + string.Join(" ", m.Params.Where(x => x.Name is "g_AlphaRef" or "g_BlendMode").Select(x => $"{x.Name}={(x.Value is Array a ? string.Join(",", a.Cast<object>()) : x.Value)}")));
+        }
+        Console.WriteLine($"   {bnd.Files.Count(f => parts.Any(p => f.Name.Contains(p, StringComparison.OrdinalIgnoreCase)))} match");
+        return 0;
     }
 
     private static int Unpack(PorterContext ctx, List<string> paths)
