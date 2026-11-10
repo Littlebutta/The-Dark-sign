@@ -28,6 +28,53 @@ public static class EffectSelfTest
         return row;
     }
 
+    /// <summary>A one-triangle effect model: one mesh per material, with or without tangents.</summary>
+    private static byte[] Model(int version, bool tangents, params (string Mtd, (string Slot, string Path)[] Textures)[] materials)
+    {
+        var flver = new FLVER2();
+        flver.Header.Version = version;
+        flver.Nodes.Add(new FLVER.Node { Name = "Master" });
+        var layout = new FLVER2.BufferLayout
+        {
+            new FLVER.LayoutMember(FLVER.LayoutType.Float3, FLVER.LayoutSemantic.Position, 0),
+            new FLVER.LayoutMember(FLVER.LayoutType.UByte4, FLVER.LayoutSemantic.Normal, 0),
+        };
+        if (tangents)
+            layout.Add(new FLVER.LayoutMember(FLVER.LayoutType.UByte4, FLVER.LayoutSemantic.Tangent, 0));
+        layout.Add(new FLVER.LayoutMember(FLVER.LayoutType.UByte4Norm, FLVER.LayoutSemantic.VertexColor, 1));
+        layout.Add(new FLVER.LayoutMember(FLVER.LayoutType.Short2, FLVER.LayoutSemantic.UV, 0));
+        flver.BufferLayouts.Add(layout);
+        if (version >= 0x2001A)
+        {
+            flver.GXLists.Add([]);
+            flver.Skeletons = new FLVER2.SkeletonSet { BaseSkeleton = [new FLVER2.SkeletonSet.Bone(0)], AllSkeletons = [new FLVER2.SkeletonSet.Bone(0)] };
+        }
+        foreach (var (mtd, textures) in materials)
+        {
+            var material = new FLVER2.Material("m", mtd, 0) { GXIndex = version >= 0x2001A ? 0 : -1 };
+            foreach (var (slot, path) in textures)
+                material.Textures.Add(new FLVER2.Texture(slot, path, System.Numerics.Vector2.One, default, default, 0, 0, 0));
+            var mesh = new FLVER2.Mesh { MaterialIndex = flver.Materials.Count, NodeIndex = 0, BoundingBox = new FLVER2.Mesh.BoundingBoxes() };
+            for (int i = 0; i < 3; i++)
+            {
+                var vertex = new FLVER.Vertex();
+                vertex.Positions.Add(new System.Numerics.Vector3(i, 0, 0));
+                vertex.Normals.Add(System.Numerics.Vector3.UnitY);
+                vertex.NormalWs.Add(0);
+                if (tangents)
+                    vertex.Tangents.Add(new System.Numerics.Vector4(1, 0, 0, 1));
+                vertex.Colors.Add(new FLVER.VertexColor(1f, 1f, 1f, 1f));
+                vertex.UVs.Add(System.Numerics.Vector3.Zero);
+                mesh.Vertices.Add(vertex);
+            }
+            mesh.FaceSets.Add(new FLVER2.FaceSet { Indices = [0, 1, 2] });
+            mesh.VertexBuffers.Add(new FLVER2.VertexBuffer(0));
+            flver.Materials.Add(material);
+            flver.Meshes.Add(mesh);
+        }
+        return flver.Write();
+    }
+
     public static int Run()
     {
         int failures = 0;
@@ -119,6 +166,29 @@ public static class EffectSelfTest
         converted.Effects[303151] = FxrPort.IdBase + 303151;
         Check(MovesetPort.ResidentEffects([plan], ds3Weapons, erWeapons, converted) == 1 && ParamDefaults.Int(ported, "residentSfxId_2") == FxrPort.IdBase + 303151
               && ParamDefaults.Int(ported, "residentSfx_DmyId_2") == 301, "resident effects: converted effects go on the same dummy polys of the ported weapon");
+
+        // Effect models.
+        var erModel = Model(0x2001A, true, (@"N:\GR\data\Material\mtd\sfx\matxml\S[A]_add_Soft.matxml", [("M_A__snp_Texture2D_0_AlbedoMap_0", @"N:\GR\data\Sfx\Tex\s00001_a.tif")]),
+            (@"N:\GR\data\Material\mtd\sfx\matxml\S[ARSN]_em.matxml", [("S_ARSN__snp_Texture2D_2_AlbedoMap_0", ""), ("S_ARSN__snp_Texture2D_7_NormalMap_4", ""), ("S_ARSN__snp_Texture2D_1_EmissiveMap", "")]));
+        var own = Model(0x2001A, true, (@"N:\GR\data\Material\mtd\sfx\matxml\s80010_S[AMSN]_em.matxml", [("x_AlbedoMap_0", "")]));
+        var modelPort = new EffectModelPort([("s80201.flver", erModel), ("s80010.flver", own)]);
+        Check(modelPort.TemplateCount == 2, "effect models: Elden Ring's general effect materials are the templates, not one model's own");
+        Check(EffectModelPort.Candidates(@"N:\FDP\data\Material\mtd\sfx\S[ARSN]_glow_al _Soft.mtd").SequenceEqual(["s[arsn]_glow_al_soft", "s[amsn]_glow_al_soft", "s[arsn]_al", "s[amsn]_al"])
+              && EffectModelPort.Candidates("S[A]_add.mtd").Contains("s[a]_add_soft") && EffectModelPort.Candidates("S[ARSN]_e.mtd").Contains("s[amsn]_em"),
+            "effect models: a DS3 material takes Elden Ring's of the same name, then the nearest one");
+        var frost = Model(0x20014, false, (@"N:\FDP\data\Material\mtd\sfx\S[A]_add_Soft.mtd", [("g_DiffuseTexture", @"N:\FDP\data\Sfx\Tex\s11655.tif")]),
+            (@"N:\FDP\data\Material\mtd\sfx\S[ARSN]_em_Soft.mtd", [("g_DiffuseTexture", @"N:\FDP\data\Sfx\Tex\s08120_a.tif"), ("g_BumpmapTexture", @"N:\FDP\data\Sfx\Tex\s08120_n.tif"),
+                ("g_EmissiveTexture", @"N:\FDP\data\Sfx\Tex\s00004.tif"), ("g_DisplacementTexture", @"N:\LiveTokyo\data\model\common\tex\dummy128.tga")]));
+        Check(EffectModelPort.TextureIds(frost).Order().SequenceEqual([4, 8120, 11655]), "effect models: a model's effect textures are found from its materials (not shared dummies)");
+        Check(modelPort.Unsupported(frost) is null && modelPort.Unsupported(Model(0x20014, false, (@"N:\FDP\data\Material\mtd\map\M[ARSN].mtd", [("g_DiffuseTexture", "")]))) is not null,
+            "effect models: a model is convertible only when every material has an Elden Ring equivalent");
+        var portedModel = FLVER2.Read(modelPort.Convert(frost, t => t == 4 ? null : 900000 + t));
+        Check(portedModel.Header.Version == 0x2001A && portedModel.Skeletons?.AllSkeletons.Count == portedModel.Nodes.Count, "effect models: Elden Ring's FLVER version, with a skeleton set");
+        Check(portedModel.Materials[0].MTD.EndsWith("S[A]_add_Soft.matxml") && portedModel.Materials[1].MTD.EndsWith("S[ARSN]_em.matxml"), "effect models: materials are Elden Ring's");
+        Check(portedModel.Materials[0].Textures.Single().Path == @"N:\GR\data\Sfx\Tex\s911655.tif"
+              && portedModel.Materials[1].Textures.Select(t => t.Path).SequenceEqual([@"N:\GR\data\Sfx\Tex\s908120_a.tif", @"N:\GR\data\Sfx\Tex\s908120_n.tif", ""]),
+            "effect models: textures go into the Elden Ring slots of the same kind under their new names; an unported one stays the default");
+        Check(portedModel.Meshes.All(m => m.Vertices.All(v => v.Tangents.Count == 1)) && portedModel.Meshes[0].Vertices[1].Position.X == 1f, "effect models: DS3's geometry, with the tangent Elden Ring's layout carries");
 
         Console.WriteLine(failures == 0 ? "effects-selftest: all checks passed" : $"effects-selftest: {failures} FAILED");
         return failures == 0 ? 0 : 1;

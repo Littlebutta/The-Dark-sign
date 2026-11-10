@@ -207,6 +207,7 @@ Try the next option if: A ported weapon shows no glow, buff effect or projectile
 - **A: Effect visuals and projectiles (default).** What DS3's effects look like (SpEffectVfxParam rows: blade glows, weapon-art buffs, worn effects) and the projectiles DS3 moves fire (Bullet rows with their effects, attacks and follow-up bullets), ported as new Elden Ring rows that play the converted DS3 effects. Report per weapon: `TheDarkSign\Work\reports\weapon-fx.tsv` (which effects each weapon has, how many were converted, why the rest were left out).
 - **B: Effect visuals, no projectiles.** Glows and buff visuals as in A; moves that fire a projectile use the template weapon's bullet or none (DARKSIGN_BULLETS=0), as in builds up to 1.0.242. (`DARKSIGN_BULLETS=0`)
 - **C: Projectiles, no effect visuals.** Projectiles as in A; ported effects have no visuals of their own (DARKSIGN_EFFECT_VISUALS=0), as in builds up to 1.0.242. (`DARKSIGN_EFFECT_VISUALS=0`)
+- **D: No effects with 3D models.** As A, but DS3 effects that draw a 3D model (the Moonlight Greatsword's wave, Friede's ice) are left out (DARKSIGN_EFFECT_MODELS=0), as in builds up to 1.0.249. Try this first if the game crashes or shows a broken shape when such an effect plays. (`DARKSIGN_EFFECT_MODELS=0`)
 - **off: Off.** Neither (DARKSIGN_BULLETS=0 and DARKSIGN_EFFECT_VISUALS=0): only the effects in a move's own effect events show, as in builds up to 1.0.242. (`DARKSIGN_BULLETS=0`, `DARKSIGN_EFFECT_VISUALS=0`)
 
 

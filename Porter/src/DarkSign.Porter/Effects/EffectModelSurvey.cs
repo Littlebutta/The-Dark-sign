@@ -75,6 +75,13 @@ public static class EffectModelSurvey
             try { bnd = BND4.Read(er.Read(entry.Path!)); }
             catch (Exception e) { Log($"{entry.Path}: unreadable ({e.Message})"); continue; }
             var flvers = bnd.Files.Where(f => ItemText.Leaf(f.Name).EndsWith(".flver", StringComparison.OrdinalIgnoreCase)).ToList();
+            // The effects' resource lists: how many are empty, and what the biggest say (the port writes its own like them).
+            var lists = bnd.Files.Where(f => ItemText.Leaf(f.Name).EndsWith(".ffxreslist", StringComparison.OrdinalIgnoreCase)).ToList();
+            Console.WriteLine($"effect-models: {entry.Path}: {lists.Count} resource lists, {lists.Count(f => f.Bytes.Length == 0)} empty, " +
+                              $"{lists.Count(f => f.Bytes.Length > 0 && f.Bytes.Contains((byte)0))} with zero bytes (not plain ASCII)");
+            foreach (var list in lists.OrderByDescending(f => f.Bytes.Length).Take(2).Concat(lists.Where(f => f.Bytes.Length > 0).OrderBy(f => f.Bytes.Length).Take(2)))
+                Console.WriteLine($"effect-models:   {ItemText.Leaf(list.Name)} ({list.Bytes.Length} bytes) hex {Convert.ToHexString(list.Bytes, 0, Math.Min(64, list.Bytes.Length))} " +
+                                  $"text {System.Text.Json.JsonSerializer.Serialize(Encoding.ASCII.GetString(list.Bytes, 0, Math.Min(600, list.Bytes.Length)))}");
             Log($"\n## {entry.Path}: {bnd.Files.Count} files, {flvers.Count} models");
             foreach (var f in flvers)
             {
