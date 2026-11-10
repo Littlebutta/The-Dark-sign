@@ -36,27 +36,53 @@ static uintptr_t g_event_flag_man_slot;
 static SetEventFlagFn g_set_event_flag;
 static IsEventFlagFn g_is_event_flag;
 
+/* Earlier sessions' logs are kept as dksign_testmenu.1.log (the last session) to .5.log: the log used to be
+   overwritten on every launch, so after a crash followed by one more launch nobody could tell what had been pressed
+   in the session that crashed (the 1.0.242 playtest, 2026-11-09). All of them end in .log, so "Save test report"
+   picks them up. */
+#define DKS_LOG_KEEP 5
+
 void dks_open_log(void)
 {
-    wchar_t dir[MAX_PATH], path[MAX_PATH];
+    wchar_t dir[MAX_PATH], path[MAX_PATH], older[MAX_PATH], newer[MAX_PATH];
     if (!GetEnvironmentVariableW(L"DKSIGN_SAVE_DIR", dir, MAX_PATH))
         return;
     _snwprintf(path, MAX_PATH, L"%ls\\dksign_testmenu.log", dir);
     path[MAX_PATH - 1] = 0;
+    for (int i = DKS_LOG_KEEP; i >= 1; i--) {
+        _snwprintf(older, MAX_PATH, L"%ls\\dksign_testmenu.%d.log", dir, i);
+        older[MAX_PATH - 1] = 0;
+        if (i == 1)
+            wcscpy(newer, path);
+        else {
+            _snwprintf(newer, MAX_PATH, L"%ls\\dksign_testmenu.%d.log", dir, i - 1);
+            newer[MAX_PATH - 1] = 0;
+        }
+        MoveFileExW(newer, older, MOVEFILE_REPLACE_EXISTING); /* fails when there is no such session yet: fine */
+    }
     g_log = CreateFileW(path, GENERIC_WRITE, FILE_SHARE_READ, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+    SYSTEMTIME t;
+    GetLocalTime(&t);
+    dks_log("session started %04d-%02d-%02d (local time; earlier sessions: dksign_testmenu.1.log to .%d.log)",
+            t.wYear, t.wMonth, t.wDay, DKS_LOG_KEEP);
 }
 
 void dks_log(const char *fmt, ...)
 {
     if (g_log == INVALID_HANDLE_VALUE)
         return;
+    /* Every line carries the local time, so a line can be matched to the me3 log and to a crash dump's time. */
     char buf[512];
+    SYSTEMTIME t;
+    GetLocalTime(&t);
+    int head = snprintf(buf, sizeof buf, "%02d:%02d:%02d ", t.wHour, t.wMinute, t.wSecond);
     va_list args;
     va_start(args, fmt);
-    int n = vsnprintf(buf, sizeof buf - 2, fmt, args);
+    int n = vsnprintf(buf + head, sizeof buf - 2 - head, fmt, args);
     va_end(args);
-    if (n < 0 || n > (int)sizeof buf - 3)
-        n = (int)sizeof buf - 3;
+    if (n < 0 || n > (int)sizeof buf - 3 - head)
+        n = (int)sizeof buf - 3 - head;
+    n += head;
     buf[n++] = '\r';
     buf[n++] = '\n';
     DWORD written;
