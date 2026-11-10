@@ -284,7 +284,7 @@ public static class ModelPort
         }
     }
 
-    private static List<FLVER2.SkeletonSet.Bone> SkeletonFromNodes(FLVER2 flver) =>
+    internal static List<FLVER2.SkeletonSet.Bone> SkeletonFromNodes(FLVER2 flver) =>
         flver.Nodes.Select((n, i) => new FLVER2.SkeletonSet.Bone(i)
         {
             ParentIndex = n.ParentIndex,

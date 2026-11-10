@@ -78,6 +78,8 @@ public static partial class FxrPort
 
         // 1. Follow references from the wanted effects, recording what each one needs.
         var effects = new Dictionary<int, (byte[] Bytes, FxrScript.Info Info)>();
+        EffectModelPort? modelPort = null;
+        var modelWhy = new Dictionary<int, string?>();
         while (queue.TryDequeue(out var id))
         {
             if (effects.ContainsKey(id) || failed.Contains(id))
@@ -90,11 +92,34 @@ public static partial class FxrPort
             FxrScript.Info info;
             try { info = js.Inspect(file.File.Bytes); }
             catch (Exception e) { Fail(id, "unreadable"); Console.WriteLine($"effects: can't read DS3 f{id:D9}: {Short(e)}"); continue; }
-            // DS3 effect models use DS3 materials (MTD) that Elden Ring doesn't have, so effects with models wait.
-            if (info.Models.Any(m => m > 0) || info.Anibnds.Any(m => m > 0))
+            // Models are converted onto Elden Ring's effect materials (EffectModelPort); animated ones (anibnd, DS3's
+            // Havok) are not, and neither is a model whose material Elden Ring has nothing like.
+            if (info.Anibnds.Any(m => m > 0))
             {
-                Fail(id, "uses models");
+                Fail(id, "uses animated models");
                 continue;
+            }
+            if (info.Models.Any(m => m > 0))
+            {
+                if (!EffectModelPort.Enabled)
+                {
+                    Fail(id, "uses models");
+                    continue;
+                }
+                modelPort ??= new EffectModelPort(erBinders.SelectMany(b => b.Bnd.Files).Where(f => Ext(f.Name) == ".flver").Select(f => (f.Name, f.Bytes)));
+                string? why = null;
+                foreach (var m in info.Models.Where(m => m > 0).Distinct())
+                {
+                    if (!modelWhy.TryGetValue(m, out var reason))
+                        modelWhy[m] = reason = ds3.Resources.TryGetValue((Kind.Model, m), out var model)
+                            ? modelPort.Unsupported(model.File.Bytes) : $"model s{m} missing";
+                    why ??= reason;
+                }
+                if (why is not null)
+                {
+                    Fail(id, why);
+                    continue;
+                }
             }
             if (info.Textures.FirstOrDefault(t => t > 0 && !ds3.Resources.ContainsKey((Kind.Texture, t))) is var missing and > 0)
             {
@@ -110,23 +135,54 @@ public static partial class FxrPort
         // 2. New IDs: effects by offset, textures counted up from ResourceBase past anything Elden Ring has.
         var textures = new Dictionary<int, int>();
         int next = ResourceBase;
-        foreach (var t in effects.Values.SelectMany(e => e.Info.Textures).Where(t => t > 0).Distinct().Order())
+        // A model's own textures (named in its materials) come along with it; one DS3 doesn't ship keeps the
+        // material's default.
+        var models = new Dictionary<int, int>();
+        var modelTextures = new Dictionary<int, List<int>>();
+        foreach (var m in effects.Values.SelectMany(e => e.Info.Models).Where(m => m > 0).Distinct().Order())
+            modelTextures[m] = EffectModelPort.TextureIds(ds3.Resources[(Kind.Model, m)].File.Bytes)
+                .Where(t => ds3.Resources.ContainsKey((Kind.Texture, t))).ToList();
+        foreach (var t in effects.Values.SelectMany(e => e.Info.Textures).Concat(modelTextures.Values.SelectMany(t => t)).Where(t => t > 0).Distinct().Order())
         {
             while (erIds.Contains((".tpf", next)))
                 next++;
             textures[t] = next++;
         }
+        int nextModel = ResourceBase;
+        foreach (var m in modelTextures.Keys.Order())
+        {
+            while (erIds.Contains((".flver", nextModel)))
+                nextModel++;
+            models[m] = nextModel++;
+        }
+        // Every texture file an effect needs: its own and its models'.
+        IEnumerable<int> TexturesOf(FxrScript.Info info) =>
+            info.Textures.Concat(info.Models.Where(modelTextures.ContainsKey).SelectMany(m => modelTextures[m])).Where(textures.ContainsKey).Distinct();
         var mapJson = JsonSerializer.Serialize(new Dictionary<string, Dictionary<string, int>>
         {
             ["sfx"] = effects.Keys.ToDictionary(id => id.ToString(), id => IdBase + id),
             [((int)Kind.Texture).ToString()] = textures.ToDictionary(t => t.Key.ToString(), t => t.Value),
+            [((int)Kind.Model).ToString()] = models.ToDictionary(t => t.Key.ToString(), t => t.Value),
             // DS3 effect sounds are DS3 s-sounds: they play the ported copy (SoundPort, same ID base). Unmapped they
             // played whatever Elden Ring sound has that number. DARKSIGN_FXR_SOUNDS=0 leaves them as they were.
             [((int)Kind.Sound).ToString()] = PortFxrSounds ? FxrSounds(effects.Values.SelectMany(e => e.Info.Sounds))
                 .ToDictionary(id => id.ToString(), id => SoundPort.IdBase + id) : [],
         });
 
-        // 3. Convert every effect; a failed one takes the effects that reference it out too.
+        // 3. Convert every model and effect; a failed one takes the effects that reference it out too.
+        var convertedModels = new Dictionary<int, byte[]>();
+        foreach (var (old, _) in models.OrderBy(m => m.Key))
+        {
+            try { convertedModels[old] = modelPort!.Convert(ds3.Resources[(Kind.Model, old)].File.Bytes, t => textures.TryGetValue(t, out var id) ? id : null); }
+            catch (Exception e) when (e is not OutOfMemoryException)
+            {
+                Console.WriteLine($"effects: can't convert DS3 model s{old:D5}: {Short(e)}");
+                foreach (var (id, _) in effects.Where(x => x.Value.Info.Models.Contains(old)).ToList())
+                    Fail(id, $"model s{old} conversion failed");
+            }
+        }
+        foreach (var id in failed)
+            effects.Remove(id);
         var converted = new Dictionary<int, byte[]>();
         foreach (var (id, (bytes, _)) in effects.OrderBy(e => e.Key))
         {
@@ -145,9 +201,19 @@ public static partial class FxrPort
             if (PortFxrSounds)
                 result.Sounds.UnionWith(FxrSounds(effects[id].Info.Sounds));
             Add(erBinders, ".fxr", $"f{IdBase + id:D9}.fxr", converted[id], added);
-            AddResourceList(erBinders, IdBase + id, effects[id].Info.Textures.Where(textures.ContainsKey).Select(t => textures[t]), added);
+            AddResourceList(erBinders, IdBase + id, TexturesOf(effects[id].Info).Select(t => textures[t]),
+                effects[id].Info.Models.Where(models.ContainsKey).Distinct().Select(m => models[m]), added);
         }
-        foreach (var (old, newId) in textures.Where(t => effects.Values.Any(e => e.Info.Textures.Contains(t.Key))).OrderBy(t => t.Value))
+        foreach (var (old, newId) in models.Where(m => effects.Values.Any(e => e.Info.Models.Contains(m.Key))).OrderBy(m => m.Value))
+        {
+            var leaf = Digits().Replace(ItemText.Leaf(ds3.Resources[(Kind.Model, old)].File.Name), newId.ToString(), 1);
+            Add(erBinders, ".flver", leaf, convertedModels[old], added);
+        }
+        if (modelPort is not null)
+            foreach (var (ds3Material, erMaterial) in modelPort.Used)
+                Console.WriteLine($"effects: model material {ds3Material} -> {(erMaterial.Length > 0 ? erMaterial : "no Elden Ring equivalent")}");
+        var usedTextures = effects.Values.SelectMany(e => TexturesOf(e.Info)).ToHashSet();
+        foreach (var (old, newId) in textures.Where(t => usedTextures.Contains(t.Key)).OrderBy(t => t.Value))
         {
             var file = ds3.Resources[(Kind.Texture, old)].File;
             var leaf = Digits().Replace(ItemText.Leaf(file.Name), newId.ToString(), 1);
@@ -167,7 +233,7 @@ public static partial class FxrPort
         foreach (var (reason, ids) in reasons)
             Console.WriteLine($"effects: left out ({reason}): {ids.Count}, e.g. {string.Join(" ", ids.Take(6))}");
         Console.WriteLine($"effects: {result.Effects.Count} DS3 effects ported ({string.Join(", ", added.Select(a => $"{a.Value} {a.Key}"))}), " +
-                          $"{failed.Count} left out (missing, with models, or unconvertible)");
+                          $"{failed.Count} left out (missing, with animated or unconvertible models, or unconvertible)");
         return result;
     }
 
@@ -220,7 +286,7 @@ public static partial class FxrPort
     // Each Elden Ring effect has a resource list next to it (sfx\ResourceList\f*.ffxreslist). The new ones copy the
     // format of an existing list: when it is text naming texture files, the new list names the effect's textures the
     // same way; otherwise the effect's list is a copy of one for an effect without resources.
-    private static void AddResourceList(List<ErBinder> binders, int fxrId, IEnumerable<int> textures, Dictionary<string, int> added)
+    private static void AddResourceList(List<ErBinder> binders, int fxrId, IEnumerable<int> textures, IEnumerable<int> models, Dictionary<string, int> added)
     {
         const string ext = ".ffxreslist";
         var binder = binders.MaxBy(b => b.Bnd.Files.Count(f => f.Name.EndsWith(ext, StringComparison.OrdinalIgnoreCase)))!;
@@ -231,17 +297,31 @@ public static partial class FxrPort
         if (!added.ContainsKey(ext))
             Console.WriteLine($"effects: resource list format, e.g. {ItemText.Leaf(smallest.Name)} = {Convert.ToHexString(smallest.Bytes, 0, Math.Min(48, smallest.Bytes.Length))}");
         byte[] bytes = smallest.Bytes;
-        var withTexture = lists.FirstOrDefault(f => IsText(f.Bytes) && System.Text.Encoding.ASCII.GetString(f.Bytes).Contains(".tpf", StringComparison.OrdinalIgnoreCase));
-        if (withTexture is not null && textures.Any())
+        // One line per resource, written like a line of an Elden Ring list that names a file of that kind.
+        var text = new System.Text.StringBuilder();
+        foreach (var (kind, ids) in new[] { (".tpf", textures.ToList()), (".flver", models.ToList()) })
         {
-            var sample = System.Text.Encoding.ASCII.GetString(withTexture.Bytes);
-            var line = sample.Split('\n').First(l => l.Contains(".tpf", StringComparison.OrdinalIgnoreCase)).TrimEnd('\r');
+            if (ids.Count == 0)
+                continue;
+            var with = lists.FirstOrDefault(f => IsText(f.Bytes) && System.Text.Encoding.ASCII.GetString(f.Bytes).Contains(kind, StringComparison.OrdinalIgnoreCase));
+            if (with is null)
+            {
+                if (ReportedNoSample.Add(kind))
+                    Console.WriteLine($"effects: no Elden Ring resource list names a {kind}; ported effects' lists leave theirs out");
+                continue;
+            }
+            var sample = System.Text.Encoding.ASCII.GetString(with.Bytes);
+            var line = sample.Split('\n').First(l => l.Contains(kind, StringComparison.OrdinalIgnoreCase)).TrimEnd('\r');
             var newline = sample.Contains("\r\n") ? "\r\n" : "\n";
-            var text = string.Concat(textures.Select(t => ReplaceLastNumber(line, t) + newline));
-            bytes = System.Text.Encoding.ASCII.GetBytes(text);
+            foreach (var id in ids)
+                text.Append(ReplaceLastNumber(line, id)).Append(newline);
         }
+        if (text.Length > 0)
+            bytes = System.Text.Encoding.ASCII.GetBytes(text.ToString());
         Add(binders, ext, $"f{fxrId:D9}{ext}", bytes, added);
     }
+
+    private static readonly HashSet<string> ReportedNoSample = [];
 
     private static string ReplaceLastNumber(string line, int value)
     {
