@@ -236,7 +236,9 @@ public static partial class MapPortChecks
         var piece = msb.Parts.MapPieces.Single();
         Expect(piece.Name == "m000100_0000" && piece.ModelName == "m000100" && piece.Position == new Vector3(1, 2, 3), "map piece fields");
         Expect(piece.EntityID == 45000100, $"map piece entity {piece.EntityID}");
-        Expect(piece.Unk1.DisplayGroups.All(g => g == 0xFFFFFFFF), "AllVisible must show every group");
+        Expect(piece.Unk1.DisplayGroups.Concat(piece.Unk1.DrawGroups).Concat(piece.Unk1.CollisionMask).All(g => g == 0)
+               && piece.Unk1.Condition1 == 0 && piece.Unk1.Condition2 == 0, "map pieces carry no group masks by default");
+        Expect(piece.isUsePartsDrawParamID == 1 && piece.PartsDrawParamID == MapDrawParams.VanillaRow, "map pieces name a PartsDrawParam row");
         var collision = msb.Parts.Collisions.Single();
         Expect((int)collision.HitFilterID == 8 && collision.Rotation == new Vector3(0, 90, 0), "collision fields");
         Expect(msb.Models.MapPieces.Single().SibPath.Contains("m000100") && !msb.Models.MapPieces.Single().SibPath.Contains("m001000"),

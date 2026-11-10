@@ -199,6 +199,22 @@ public static class MapValidate
             report.Fail($"{erId}: {hidden.Count} of {msb.Parts.MapPieces.Count} map pieces won't be drawn ({hidden[0].Name}: {hidden[0].Issue})");
         else
             report.Ok($"{erId}: every map piece part has ordinary draw flags");
+        // The PartsDrawParam rows the pieces name must exist, or the game has no draw distance for them.
+        var drawRows = msb.Parts.MapPieces.Select(p => (int)p.PartsDrawParamID).Distinct().Order().ToList();
+        if (MapDrawParams.RowsInRegulation(ctx) is { } regulationRows)
+        {
+            var missingRows = drawRows.Where(r => !regulationRows.Contains(r)).ToList();
+            if (missingRows.Count > 0)
+                report.Fail($"{erId}: map pieces name PartsDrawParam rows the regulation doesn't have: {string.Join(", ", missingRows)}");
+            else
+                report.Ok($"{erId}: map pieces name PartsDrawParam row {string.Join(", ", drawRows)}, which the regulation has");
+        }
+        else
+            report.Warn($"{erId}: the regulation couldn't be read to check PartsDrawParam row {string.Join(", ", drawRows)}");
+        var probes = msb.Parts.MapPieces.Where(p => p.InstanceID == MsbPort.ProbeInstance).ToList();
+        foreach (var probe in probes)
+            report.Ok($"{erId}: diagnostic map piece {probe.Name} (Elden Ring's own model) at {probe.Position}");
+        var probeModels = probes.Select(p => p.ModelName).ToHashSet();
         var layoutsPath = ctx.ModPath(MapPorter.LayoutsFile);
         var accepted = File.Exists(layoutsPath) ? File.ReadAllLines(layoutsPath).Where(l => l.Length > 0).ToHashSet() : null;
         var drawIssues = new List<string>();
@@ -206,7 +222,7 @@ public static class MapValidate
         var missingMatbins = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var missingTextures = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var checkedFormat = false;
-        foreach (var model in msb.Models.MapPieces)
+        foreach (var model in msb.Models.MapPieces.Where(m => !probeModels.Contains(m.Name)))
         {
             var path = MapPorter.ErMapBndPath(erId, MapPorter.ModelNumber(model.Name));
             if (!File.Exists(Mod(path)))
@@ -371,6 +387,9 @@ public static class MapValidate
     public static string? CheckPieceDraw(MSBE.Part.MapPiece part) =>
         part.DrawOnlyReflectCam ? "drawn only in reflections (DrawOnlyReflectCam)"
         : part.IsShadowOnly ? "drawn only into shadows (IsShadowOnly)"
+        : part.isUsePartsDrawParamID == 0 ? "names no PartsDrawParam row (isUsePartsDrawParamID 0), as only reflection proxies do"
+        : part.Unk1 is { } u && u.Condition2 == 0 && u.DisplayGroups.Concat(u.DrawGroups).Any(g => g != 0)
+            ? "has group masks without Condition2, a state no vanilla map piece is in"
         : null;
 
     /// <summary>
@@ -651,6 +670,20 @@ public static class MapValidate
             return;
         }
         CompareFormat(report, er, vanilla, modPath);
+        // The model's file ID inside the binder (200 in vanilla): the game may look files up by it.
+        try
+        {
+            var vanillaId = BND4.Read(er.Read(vanilla)).Files.FirstOrDefault(f => FLVER2.Is(f.Bytes))?.ID;
+            var modId = BND4.Read(DCX.Decompress(File.ReadAllBytes(modPath))).Files.FirstOrDefault(f => FLVER2.Is(f.Bytes))?.ID;
+            if (vanillaId != modId)
+                report.Fail($"{ItemText.Leaf(modPath)}: the model's binder file ID is {modId}, vanilla's is {vanillaId}");
+            else
+                report.Ok($"{ItemText.Leaf(modPath)}: the model's binder file ID is {modId}, as in vanilla");
+        }
+        catch (Exception ex)
+        {
+            report.Warn($"{ItemText.Leaf(modPath)}: binder file ID not compared ({ex.Message})");
+        }
     }
 
     private static string Sample(IEnumerable<string> items)

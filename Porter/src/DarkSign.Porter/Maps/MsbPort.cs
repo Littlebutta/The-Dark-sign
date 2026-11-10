@@ -31,7 +31,20 @@ public static class MsbPort
         /// Wins over <see cref="AllVisible"/>. Fallback "map-groups" C.
         /// </summary>
         public bool NoGroups { get; init; }
+
+        /// <summary>The PartsDrawParam row every map piece names (see <see cref="MapDrawParams"/>).</summary>
+        public short DrawParamId { get; init; } = MapDrawParams.VanillaRow;
+
+        /// <summary>
+        /// Also place the host's own vanilla map piece, drawn normally, at the run start: a known-good model and
+        /// material. If it shows and the DS3 pieces don't, the fault is in the converted models; if it doesn't
+        /// show either, it is in how map pieces are placed. Diagnostic; "--no-probe" turns it off.
+        /// </summary>
+        public bool Probe { get; init; }
     }
+
+    /// <summary>The name of the diagnostic piece <see cref="Options.Probe"/> adds.</summary>
+    public const int ProbeInstance = 9900;
 
     public sealed record Result(MSBE Msb, int MapPieces, int Collisions, int Players, int StartEntityId,
         List<string> Notes);
@@ -67,8 +80,8 @@ public static class MsbPort
         {
             var part = (MSBE.Part.MapPiece)mapPieceTemplate.DeepCopy();
             CopyCommon(src, part, ds3Id, erId);
-            ApplyGroups(src, part.Unk1, options);
-            DrawNormally(part);
+            ApplyPieceGroups(src, part.Unk1, options);
+            DrawNormally(part, options.DrawParamId);
             msb.Parts.MapPieces.Add(part);
             AddModel(msb.Models.MapPieces, src.ModelName, mapPieceModel, erId);
         }
@@ -134,6 +147,24 @@ public static class MsbPort
         if (start is null)
             notes.Add("DS3 map has no player start point; the run warp has nowhere to land");
 
+        // The diagnostic piece: the host's vanilla model with the same part settings as the DS3 pieces.
+        if (options.Probe && start is not null && host.Parts.MapPieces.FirstOrDefault() is { } hostPiece && mapPieceModel is not null
+            && msb.Models.MapPieces.All(m => m.Name != hostPiece.ModelName))
+        {
+            var probe = (MSBE.Part.MapPiece)hostPiece.DeepCopy();
+            probe.Name = $"{hostPiece.ModelName}_{ProbeInstance}";
+            probe.InstanceID = ProbeInstance;
+            probe.Position = start.Position;
+            probe.Rotation = Vector3.Zero;
+            probe.Scale = Vector3.One;
+            probe.EntityID = 0;
+            ClearGroups(probe.Unk1);
+            DrawNormally(probe, options.DrawParamId);
+            msb.Parts.MapPieces.Add(probe);
+            msb.Models.MapPieces.Add((MSBE.Model.MapPiece)mapPieceModel.DeepCopy());
+            notes.Add($"diagnostic: Elden Ring's own map piece {hostPiece.ModelName} is placed at the run start, drawn like the DS3 pieces");
+        }
+
         // Elden Ring's MSBs have one layer table entry list and reference models by index; SoulsFormats rebuilds
         // indices from names on write.
         return new Result(msb, msb.Parts.MapPieces.Count, msb.Parts.Collisions.Count, msb.Parts.Players.Count,
@@ -168,8 +199,11 @@ public static class MsbPort
     /// receiving shadows. The colosseums' only map piece, the template every ported piece was copied from, is a
     /// reflection proxy (DrawOnlyReflectCam), which left every DS3 map invisible (2026-11-09 playtest).
     /// </summary>
-    internal static void DrawNormally(MSBE.Part part)
+    internal static void DrawNormally(MSBE.Part part, short drawParamId = MapDrawParams.VanillaRow)
     {
+        // Every vanilla map piece names a PartsDrawParam row (draw distance, LOD distances); the proxy names none.
+        part.isUsePartsDrawParamID = 1;
+        part.PartsDrawParamID = drawParamId;
         part.DrawOnlyReflectCam = false;
         part.DrawByReflectCam = false;
         part.IsShadowOnly = false;
@@ -185,15 +219,37 @@ public static class MsbPort
         return underscore >= 0 && int.TryParse(name[(underscore + 1)..], out var n) ? n : 0;
     }
 
+    private static void ClearGroups(MSBE.Part.UnkStruct1? unk1)
+    {
+        if (unk1 is null)
+            return;
+        Array.Clear(unk1.DisplayGroups);
+        Array.Clear(unk1.DrawGroups);
+        Array.Clear(unk1.CollisionMask);
+        unk1.Condition1 = 0;
+        unk1.Condition2 = 0;
+    }
+
+    /// <summary>
+    /// Map pieces carry no group masks unless DS3's are asked for: every part the colosseums draw (483 assets) has
+    /// all three arrays zero with both conditions 0, and so do JortPob's map pieces. All-ones masks, which draw
+    /// enemies, are not a state any vanilla map piece is in.
+    /// </summary>
+    internal static void ApplyPieceGroups(MSB3.Part src, MSBE.Part.UnkStruct1? unk1, Options options)
+    {
+        if (options.NoGroups || options.AllVisible)
+            ClearGroups(unk1);
+        else
+            ApplyGroups(src, unk1, options);
+    }
+
     internal static void ApplyGroups(MSB3.Part src, MSBE.Part.UnkStruct1? unk1, Options options)
     {
         if (unk1 is null)
             return;
         if (options.NoGroups)
         {
-            Array.Clear(unk1.DisplayGroups);
-            Array.Clear(unk1.DrawGroups);
-            Array.Clear(unk1.CollisionMask);
+            ClearGroups(unk1);
             return;
         }
         if (options.AllVisible)
@@ -210,6 +266,8 @@ public static class MsbPort
         src.DrawGroups.AsSpan(0, Math.Min(8, src.DrawGroups.Length)).CopyTo(unk1.DisplayGroups);
         src.DispGroups.AsSpan(0, Math.Min(8, src.DispGroups.Length)).CopyTo(unk1.DrawGroups);
         src.BackreadGroups.AsSpan(0, Math.Min(8, src.BackreadGroups.Length)).CopyTo(unk1.CollisionMask);
+        // Vanilla parts with masks have Condition2 = 1 (340 of Stormveil's 343 map pieces); parts without have 0.
+        unk1.Condition2 = (byte)(unk1.DisplayGroups.Concat(unk1.DrawGroups).Any(g => g != 0) ? 1 : 0);
     }
 
     internal static void AddModel<T>(List<T> models, string name, T? template, MapId erId) where T : MSBE.Model, new()

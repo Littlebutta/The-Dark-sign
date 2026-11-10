@@ -22,6 +22,10 @@ public static class MapPorter
         public bool NoGroups { get; set; }
         /// <summary>Only the albedo-only material JortPob uses (fallback "map-materials" B).</summary>
         public bool PlainMaterials { get; set; }
+        /// <summary>Leave out the diagnostic vanilla map piece at the run start (see <see cref="MsbPort.Options.Probe"/>).</summary>
+        public bool NoProbe { get; set; }
+        /// <summary>Map pieces name vanilla PartsDrawParam row 2046 instead of the port's own (fallback "map-draw" B).</summary>
+        public bool VanillaDrawParam { get; set; }
         public bool BinaryCollision { get; set; }
         public bool KeepSimdTree { get; set; }
 
@@ -44,6 +48,8 @@ public static class MapPorter
                     case "--ds3-groups": o.Ds3Groups = true; break;
                     case "--no-groups": o.NoGroups = true; break;
                     case "--plain-materials": o.PlainMaterials = true; break;
+                    case "--no-probe": o.NoProbe = true; break;
+                    case "--vanilla-draw-param": o.VanillaDrawParam = true; break;
                     case "--binary-collision": o.BinaryCollision = true; break;
                     case "--simd": o.KeepSimdTree = true; break;
                     case "--enemies" when i + 1 < list.Count: o.Enemies = EnemyPort.ParseMethod(list[i + 1]); i++; break;
@@ -137,6 +143,17 @@ public static class MapPorter
         // Event scripts last: they need every ported map, to send warps and IDs to the right slot. A failure leaves
         // the empty scripts written with each map.
         WaitForWeapons(options.AfterPid);
+        // The PartsDrawParam row the map pieces name goes into the regulation port-weapons wrote. If it can't be
+        // added, the pieces are pointed at a vanilla row, so they never name a row that doesn't exist.
+        if (ported.Count > 0 && !options.VanillaDrawParam)
+            Step(report, "map piece draw settings", () =>
+            {
+                var (row, note) = MapDrawParams.Write(ctx);
+                if (row != MapDrawParams.FirstRow)
+                    foreach (var p in ported)
+                        Repoint(ctx, p.Slot.Er, row);
+                return note;
+            });
         if (enemyPort is not null)
             Step(report, "enemy params", () => ChrPort.ApplyParams(ctx, er, enemyPort));
         if (ported.Count > 0)
@@ -235,6 +252,16 @@ public static class MapPorter
             Delete(Path.Combine(root, file));
     }
 
+    /// <summary>Points every map piece of a written layout at another PartsDrawParam row.</summary>
+    private static void Repoint(PorterContext ctx, MapId erId, short row)
+    {
+        var path = ctx.ModPath(ModParts(MsbPath(erId)));
+        var msb = MSBE.Read(DCX.Decompress(File.ReadAllBytes(path), out var compression));
+        foreach (var piece in msb.Parts.MapPieces)
+            piece.PartsDrawParamID = row;
+        File.WriteAllBytes(path, DCX.Compress(msb.Write(), compression));
+    }
+
     /// <summary>Waits for the port-weapons process (see <see cref="Options.AfterPid"/>) to finish writing regulation.bin.</summary>
     private static void WaitForWeapons(int pid)
     {
@@ -302,7 +329,11 @@ public static class MapPorter
 
         var slots = MapSlots.All.Where(s => !s.Probe && (options.Only.Count == 0 || options.Only.Contains(s.Ds3.ToString())))
             .Select(s => (s.Ds3, s.Er)).ToList();
-        var layout = MsbPort.Convert(ds3Msb, host, ds3Id, erId, new MsbPort.Options { AllVisible = !options.Ds3Groups, NoGroups = options.NoGroups },
+        var layout = MsbPort.Convert(ds3Msb, host, ds3Id, erId, new MsbPort.Options
+            {
+                AllVisible = !options.Ds3Groups, NoGroups = options.NoGroups, Probe = !options.NoProbe && !slot.Probe,
+                DrawParamId = options.VanillaDrawParam ? MapDrawParams.VanillaRow : MapDrawParams.FirstRow,
+            },
             slots, ConnectTemplate(er));
         report.AppendLine($"{ds3Id} -> {erId}: {layout.MapPieces} map pieces, {layout.Collisions} collisions, {layout.Players} player points");
         foreach (var note in layout.Notes)
@@ -339,7 +370,9 @@ public static class MapPorter
         // Every map piece binder converts in parallel (thousands per map). A probe slot copies what its main slot
         // already converted from the same DS3 map, renamed to its own map ID, instead of converting it again.
         var clock = System.Diagnostics.Stopwatch.StartNew();
-        var mapPieces = layout.Msb.Models.MapPieces.ToList();
+        // The diagnostic piece's model is Elden Ring's own file; there is nothing to convert for it.
+        var probeModels = layout.Msb.Parts.MapPieces.Where(p => p.InstanceID == MsbPort.ProbeInstance).Select(p => p.ModelName).ToHashSet();
+        var mapPieces = layout.Msb.Models.MapPieces.Where(m => !probeModels.Contains(m.Name)).ToList();
         var failures = new string?[mapPieces.Count];
         _converted.TryGetValue(ds3Id, out var main);
         int copied = 0;
@@ -422,6 +455,12 @@ public static class MapPorter
         var msb = layout.Msb;
         msb.Parts.MapPieces.RemoveAll(p => missingModels.Contains(p.ModelName));
         msb.Models.MapPieces.RemoveAll(m => missingModels.Contains(m.Name));
+        // The diagnostic piece only where Elden Ring ships its model under this map ID.
+        foreach (var name in probeModels.Where(n => !er.Contains(ErMapBndPath(erId, ModelNumber(n)))).ToList())
+        {
+            msb.Parts.MapPieces.RemoveAll(p => p.ModelName == name);
+            msb.Models.MapPieces.RemoveAll(m => m.Name == name);
+        }
         msb.Parts.Collisions.RemoveAll(p => missingCollisions.Contains(p.ModelName));
         msb.Parts.ConnectCollisions.RemoveAll(p => missingCollisions.Contains(p.ModelName)
                                                    || msb.Parts.Collisions.All(c => c.Name != p.CollisionName));
