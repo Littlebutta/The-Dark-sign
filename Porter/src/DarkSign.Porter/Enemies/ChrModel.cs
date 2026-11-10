@@ -123,6 +123,22 @@ public static class ChrModel
         return materials;
     }
 
+    /// <summary>The texture names (no folder, no extension) a DS3 model's materials use.</summary>
+    public static HashSet<string> TextureNames(FLVER2 flver) =>
+        flver.Materials.SelectMany(m => m.Textures).Where(t => t.Path.Length > 0)
+            .Select(t => Path.GetFileNameWithoutExtension(ItemText.Leaf(t.Path))).ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>The other characters whose textures a DS3 model uses, from its texture paths (chr\c2029\tex) and names (c6089_n).</summary>
+    public static List<int> TextureOwners(FLVER2 flver, int ownChr)
+    {
+        var owners = new SortedSet<int>();
+        foreach (var t in flver.Materials.SelectMany(m => m.Textures).Where(t => t.Path.Length > 0))
+            foreach (System.Text.RegularExpressions.Match match in System.Text.RegularExpressions.Regex.Matches(t.Path, @"(?:^|[\\/])c(\d{4})[\\/_]", System.Text.RegularExpressions.RegexOptions.IgnoreCase))
+                if (int.Parse(match.Groups[1].Value) is var chr && chr != ownChr)
+                    owners.Add(chr);
+        return owners.ToList();
+    }
+
     /// <summary>The "#NN#" a material name starts with (its display mask), or "".</summary>
     public static string MaskPrefix(string materialName) =>
         System.Text.RegularExpressions.Regex.Match(materialName, @"^\s*(#\d+#)").Groups[1].Value;

@@ -347,13 +347,15 @@ public static class Fallbacks
                 { PorterEnv = Env("DARKSIGN_ENEMY_PORT", "0") },
         ]),
         new("enemy-model", "DS3 maps", "Materials and model data of ported DS3 enemies", Stage.Build,
-            "A ported DS3 enemy is invisible, black, shiny or wears the wrong textures, shows all its weapons at once, vanishes at some camera angles, or cannot be hit or locked on to.",
+            "A ported DS3 enemy is invisible, black, shiny or wears the wrong textures, shows all its weapons at once, has parts that stand still or stretch while it moves, vanishes at some camera angles, or cannot be hit or locked on to.",
         [
-            new("A", "Plain Elden Ring character materials (default)", "Every DS3 material is drawn with Elden Ring's plain character shader (albedo, metallic, normal) and DS3's own textures; the model carries Elden Ring's node flags and culling boxes, and DS3's display masks pick its weapon and armour variants."),
+            new("A", "Plain Elden Ring character materials (default)", "Every DS3 material is drawn with Elden Ring's plain character shader (albedo, metallic, normal) and DS3's own textures; the model carries Elden Ring's node flags and culling boxes, DS3's display masks pick its weapon and armour variants, and the skeleton carries every DS3 bone (weapons, skirts, hats) next to the template's."),
             new("B", "The template enemy's materials", "As A, but each DS3 material is a copy of the Elden Ring template enemy's material with DS3's textures in it (DARKSIGN_ENEMY_MATERIALS=template), as builds up to 1.0.255 meant to do. Use when ported enemies are invisible, black or flicker with A.")
                 { PorterEnv = Env("DARKSIGN_ENEMY_MATERIALS", "template") },
             new("C", "DS3's node flags and mesh boxes", "As A, but the model keeps DS3's node flags and mesh boxes (DARKSIGN_ENEMY_NODES=0), as in builds up to 1.0.255. Use when ported enemies crash on spawn, vanish at some camera angles or are stretched with A.")
                 { PorterEnv = Env("DARKSIGN_ENEMY_NODES", "0") },
+            new("D", "Template skeleton only", "As A, but the ported skeleton keeps only the Elden Ring template's bones (DARKSIGN_ENEMY_BONES=template), as in builds up to 1.0.263: DS3 weapons, skirts, hats and capes don't follow the animation. Use when ported enemies crash on spawn or when hit, or fold up, with A.")
+                { PorterEnv = Env("DARKSIGN_ENEMY_BONES", "template") },
         ]),
         new("map-flags", "DS3 maps", "Where the DS3 maps' own flags are kept", Stage.Build,
             "In a DS3 map, bosses come back, opened doors and shortcuts close again or picked-up items return after a reload, or the pre-flight check says a map flag block is MISSING.",
