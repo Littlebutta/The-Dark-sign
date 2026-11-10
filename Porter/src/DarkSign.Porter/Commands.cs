@@ -224,6 +224,10 @@ public static class Commands
             foreach (var file in MovesetPort.OutputFiles(ctx).Where(File.Exists))
                 File.Delete(file);
         }
+        // A build whose effect port never ran (the moveset port failed first) leaves the ported visual rows without
+        // effects rather than waiting for IDs that never come.
+        if (spEffects is { VisualsBound: false })
+            spEffects.BindVisuals(new FxrPort.Result());
         using (Timing.Stage("waiting for effects"))
             FxrPort.FinishWrites();
 

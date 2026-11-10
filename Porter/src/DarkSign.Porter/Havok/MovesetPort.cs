@@ -57,6 +57,43 @@ public static partial class MovesetPort
         [66] = (8, [0]), [67] = (8, [0]), [302] = (16, [0]), [331] = (16, [0, 4]), [401] = (8, [0]),
     };
 
+    /// <summary>
+    /// Gives each ported weapon (every affinity row) its DS3 resident effects under their converted IDs. A slot whose
+    /// effect wasn't converted keeps what the template row had (nothing, for almost every template).
+    /// </summary>
+    internal static int ResidentEffects(IEnumerable<WeaponPlan> ports, PARAM ds3Weapons, PARAM erWeapons, FxrPort.Result effects)
+    {
+        int weapons = 0;
+        foreach (var plan in ports)
+        {
+            var slots = Ds3EffectRefs.Resident(ds3Weapons[plan.Ds3Id]!).Select(r => (r.Slot, Fxr: effects.Map(r.Fxr), r.Dummy)).Where(r => r.Fxr is not null).ToList();
+            if (slots.Count == 0)
+                continue;
+            weapons++;
+            foreach (var row in erWeapons.Rows.Where(r => r.ID >= plan.NewId!.Value && r.ID < plan.NewId.Value + 10000))
+                foreach (var (slot, fxr, dummy) in slots)
+                {
+                    ParamDefaults.Set(row, $"residentSfxId_{slot}", fxr!.Value);
+                    ParamDefaults.Set(row, $"residentSfx_DmyId_{slot}", dummy);
+                }
+        }
+        return weapons;
+    }
+
+    /// <summary>The SpEffect IDs DS3 events cast (66 / 67 / 302 / 331 / 401).</summary>
+    internal static IEnumerable<int> TaeSpEffects(IEnumerable<TAE.Event> events)
+    {
+        foreach (var e in events)
+        {
+            if (!SpEffectEvents.TryGetValue(e.Type, out var layout))
+                continue;
+            var bytes = e.GetParameterBytes(false);
+            foreach (var offset in layout.Ids)
+                if (offset + 4 <= bytes.Length && BitConverter.ToInt32(bytes, offset) is > 0 and var id)
+                    yield return id;
+        }
+    }
+
     /// <summary>Effect IDs the game's own scripts look for (Elden Ring's hks GetSpEffectID checks), kept as they are.</summary>
     private static HashSet<int> EngineEffects = [];
 
@@ -112,7 +149,10 @@ public static partial class MovesetPort
         return true;
     }
 
-    private static int _taeEffectEvents;
+    private static int _taeEffectEvents, _bulletEvents;
+    private const int BulletEvent = 2;
+    /// <summary>The parameter lengths of Elden Ring's own bullet events (empty: bullets off, DS3's are not copied).</summary>
+    private static HashSet<int> ErBulletLengths = [];
     private static readonly bool Ds3JumpTables = Environment.GetEnvironmentVariable("DARKSIGN_DS3_JUMPTABLES") == "1";
     // Event types Elden Ring keeps from its own template animation: sounds, effects and other references to IDs that
     // DS3 numbers differently. Every other type comes from DS3 when both games lay it out the same.
@@ -171,11 +211,19 @@ public static partial class MovesetPort
         var erWeapons = er.Get("EquipParamWeapon")!;
         var ds3Weapons = ds3.Get("EquipParamWeapon")!;
         var attackPort = new AttackParamPort(er, ds3) { Effects = spEffects };
+        BulletPort? bullets = null;
+        if (BulletPort.Enabled)
+            try { bullets = attackPort.Bullets = new BulletPort(er, ds3, spEffects, attackPort.PortBulletAttack); }
+            catch (Exception e) when (e is InvalidDataException or FileNotFoundException)
+            {
+                Console.WriteLine($"bullets: off, bullet behaviours keep the template's ({e.Message})");
+            }
         Ds3ParryJudges = ParryJudges(ds3.Get("BehaviorParam_PC"));
         Console.WriteLine($"moveset: DS3 parry judges {string.Join(" ", Ds3ParryJudges.Order())} -> Elden Ring {ErParryJudge}");
         TaeEffects = spEffects;
         EngineEffects = HksEffectIds(spEffects is null ? null : LoadHks(ctx));
-        _taeEffectEvents = 0;
+        _taeEffectEvents = _bulletEvents = 0;
+        ErBulletLengths = [];
         // Param changes wait until every file is written, so a failure leaves the weapons on their template moveset.
         var pointWeapons = new List<Action>();
 
@@ -241,9 +289,27 @@ public static partial class MovesetPort
         var ds3EffectFiles = FxrPort.Ds3Index(ds3Archives);
         var effectEvents = EffectEvents.Find(ds3Main, erMain, ds3EffectFiles);
         var artSections = ArtSections(ports, ds3Weapons).ToList();
-        var wantedEffects = groups.Where(g => order.Contains(g.Key)).SelectMany(g => new[] { g.Key.Ds3Section, g.Key.Ds3ArtSection })
-            .Concat(artSections).Distinct().Where(s => s > 0).Select(Ds3Tae).Where(t => t is not null)
-            .SelectMany(t => effectEvents.Ids(t!.Animations.SelectMany(a => a.Events))).ToHashSet();
+        var ds3SectionEvents = groups.Where(g => order.Contains(g.Key)).SelectMany(g => new[] { g.Key.Ds3Section, g.Key.Ds3ArtSection })
+            .Concat(artSections).Distinct().Where(s => s > 0).Select(Ds3Tae).Where(t => t is not null).SelectMany(t => t!.Animations.SelectMany(a => a.Events)).ToList();
+        var wantedEffects = effectEvents.Ids(ds3SectionEvents).ToHashSet();
+        // The effects that aren't in a move's own effect events: what the weapons' SpEffects look like (worn, on hit,
+        // cast by a move or a behaviour) and what their bullets show. These rows are ported as the moves convert, after
+        // the effects, so DS3's params are followed here first to know which effects to convert.
+        var effectRefs = new Ds3EffectRefs(ds3);
+        var weaponRefs = effectRefs.Fresh();
+        foreach (var p in ports)
+            weaponRefs.AddWeapon(ds3Weapons[p.Ds3Id]!);
+        foreach (var id in TaeSpEffects(ds3SectionEvents))
+            weaponRefs.AddSpEffect(id);
+        if (spEffects?.Visuals is not null)
+            wantedEffects.UnionWith(weaponRefs.VisualFxr);
+        if (bullets is not null)
+            wantedEffects.UnionWith(weaponRefs.BulletFxr);
+        if (SpEffectPort.VisualsEnabled)
+            wantedEffects.UnionWith(weaponRefs.ResidentFxr);
+        Console.WriteLine($"effects: {wantedEffects.Count} DS3 effects wanted: move events, {weaponRefs.VisualFxr.Count} shown by {weaponRefs.SpEffects.Count} SpEffects" +
+                          $"{(spEffects?.Visuals is null ? " (visuals off)" : "")}, {weaponRefs.BulletFxr.Count} by {weaponRefs.Bullets.Count} bullets{(bullets is null ? " (bullets off)" : "")}, " +
+                          $"{weaponRefs.ResidentFxr.Count} on weapon models{(SpEffectPort.VisualsEnabled ? "" : " (off)")}");
         FxrPort.Result effects;
         try { effects = FxrPort.Apply(ctx, erArchives, ds3EffectFiles, wantedEffects); }
         catch (Exception e) when (e is not OutOfMemoryException)
@@ -252,18 +318,28 @@ public static partial class MovesetPort
             Console.WriteLine($"effects: failed, moves keep Elden Ring effects ({e.GetType().Name}: {e.Message})");
             effects = new FxrPort.Result();
         }
+        // The visual rows ported so far (the weapons' worn and on-hit effects) and every one ported from here on get
+        // their converted effects.
+        spEffects?.BindVisuals(effects);
+        bullets?.Bind(effects);
+        // The effects a DS3 weapon plays on its own model while held (the Dancer's Enchanted Swords' fire and dark, the
+        // Demon's Scar's flame blade), on the same dummy polys of the ported model.
+        if (SpEffectPort.VisualsEnabled)
+            pointWeapons.Add(() => Console.WriteLine($"effects: {ResidentEffects(ports, ds3Weapons, erWeapons, effects)} weapons play DS3 effects on their model"));
         effectsTime.Dispose();
 
         // DS3's sounds, the same way: every character and effect sound the sections play, under new IDs.
         var soundsTime = Timing.Stage("sounds");
-        var ds3SectionEvents = groups.Where(g => order.Contains(g.Key)).SelectMany(g => new[] { g.Key.Ds3Section, g.Key.Ds3ArtSection })
-            .Concat(artSections).Distinct().Where(s => s > 0).Select(Ds3Tae).Where(t => t is not null).SelectMany(t => t!.Animations.SelectMany(a => a.Events)).ToList();
         var erMainEvents = erMain.Files.Where(f => f.Name.EndsWith(".tae", StringComparison.OrdinalIgnoreCase))
             .SelectMany(f => { try { return TAE.Read(f.Bytes).Animations.SelectMany(a => a.Events).ToList(); } catch (Exception) { return []; } }).ToList();
         var soundSample = erMainEvents.Where(e => e.Type == 128).Select(e => e.GetParameterBytes(false))
             .GroupBy(Convert.ToHexString).MaxBy(g => g.Count())?.First();
         var templateSounds = erMainEvents.Select(SoundPort.Sound).Where(s => s is { Kind: 1 }).GroupBy(s => s!.Value.Id)
             .OrderByDescending(g => g.Count()).Select(g => g.Key).Take(50).ToList();
+        if (bullets is not null)
+            ErBulletLengths = erMainEvents.Where(e => e.Type == BulletEvent).Select(e => e.GetParameterBytes(false).Length).ToHashSet();
+        Console.WriteLine($"bullets: Elden Ring bullet event lengths {string.Join(" ", ErBulletLengths.Order())}, DS3's in these movesets " +
+                          string.Join(" ", ds3SectionEvents.Where(e => e.Type == BulletEvent).GroupBy(e => e.GetParameterBytes(false).Length).OrderBy(g => g.Key).Select(g => $"{g.Key}x{g.Count()}")));
         SoundPort.Result sounds;
         try
         {
@@ -512,6 +588,18 @@ public static partial class MovesetPort
         Console.WriteLine($"moveset: event switches: DS3 effect events {Ds3EffectEvents}, DS3 sound events {Ds3SoundEvents}, swing align {SwingAlign}");
         Console.WriteLine($"moveset: {portedGroups} movesets ported, {skippedGroups} skipped; attacks: {attackPort.Summary}; {_taeEffectEvents} DS3 SpEffect events with ported effects; " +
                           $"{wideCategories.Count} weapons on categories above 255 (mod DLL)");
+        if (bullets is not null)
+            Console.WriteLine($"bullets: {bullets.Summary}; {_bulletEvents} DS3 bullet events copied into the moves");
+        if (spEffects?.Visuals is { } visualRows)
+            Console.WriteLine($"effect visuals: {visualRows.Summary}");
+        try
+        {
+            EffectCoverage.Write(ctx, ports, ds3Weapons, Ds3Tae, effectEvents, effectRefs, effects, spEffects?.Visuals is not null, bullets is not null);
+        }
+        catch (Exception e) when (e is not OutOfMemoryException)
+        {
+            Console.WriteLine($"effect coverage: report failed ({e.GetType().Name}: {e.Message})");
+        }
         var table = ctx.ModPath(WideTable);
         if (wideCategories.Count > 0)
             File.WriteAllLines(table, new[] { "# weapon base row\tmotion category, read by dksign_testmenu.dll" }
@@ -802,6 +890,23 @@ public static partial class MovesetPort
                     merged.Add(new TAE.Event(e.StartTime, e.EndTime, e.Type, e.Unk04, fxBytes, false) { Group = fxGroup });
                     _taeEffectEvents++;
                 }
+                continue;
+            }
+            // A move that fires a bullet (type 2: dummy poly, behaviour judge): the weapon's ported behaviour row for
+            // that judge names the ported DS3 bullet. The generic rule below only copies a type the template's own
+            // section uses, and a plain weapon class never fires anything, so every DS3 projectile event was dropped
+            // there (the Moonlight Greatsword's waves on a greatsword template). Both games lay the event out the
+            // same; it is copied when Elden Ring has bullet events of the same length anywhere in the player's TAE.
+            if (e.Type == BulletEvent && ErBulletLengths.Contains(bytes.Length))
+            {
+                if (!TryGroup(e.Type, out var bulletGroup))
+                {
+                    bulletGroup = new TAE.EventGroup(e.Type);
+                    anim.EventGroups.Add(bulletGroup);
+                    groupOf[e.Type] = bulletGroup;
+                }
+                merged.Add(new TAE.Event(e.StartTime, e.EndTime, e.Type, e.Unk04, (byte[])bytes.Clone(), false) { Group = bulletGroup });
+                _bulletEvents++;
                 continue;
             }
             if (ErOwned(e.Type) || !erLengths.TryGetValue(e.Type, out var length) || length != bytes.Length)
@@ -1144,7 +1249,29 @@ public sealed class AttackParamPort(ParamStore er, ParamStore ds3, string behavi
     /// with it instead of standing in the template's or being dropped.</summary>
     public SpEffectPort? Effects { get; init; }
 
-    public string Summary => $"{_behaviors} behaviour rows ({_templateBehaviors} more from the templates, {_effectBehaviors} casting ported DS3 effects), {_attacks} attack rows";
+    /// <summary>When set, DS3 bullet references (behaviours that fire a projectile) are ported with it instead of
+    /// standing in the template's or being dropped.</summary>
+    public BulletPort? Bullets { get; set; }
+
+    public string Summary => $"{_behaviors} behaviour rows ({_templateBehaviors} more from the templates, {_effectBehaviors} casting ported DS3 effects, " +
+                             $"{_bulletBehaviors} firing ported DS3 bullets), {_attacks} attack rows";
+
+    private int _bulletBehaviors;
+
+    /// <summary>
+    /// Ports the attack a DS3 bullet deals. Elden Ring-only attack fields start from the attack of an Elden Ring
+    /// bullet a player behaviour fires (the first one, by ID), then DS3's fields are laid over it.
+    /// </summary>
+    public int PortBulletAttack(int ds3Id)
+    {
+        _bulletAttackBase ??= er.Get("Bullet") is { } bullets
+            ? _erBehavior.Rows.Where(r => Convert.ToInt32(r["refType"].Value) == 1).Select(r => bullets[Convert.ToInt32(r["refId"].Value)])
+                .Where(b => b is not null).Select(b => _erAttack[Convert.ToInt32(b!["atkId_Bullet"].Value)]).FirstOrDefault(a => a is not null)
+            : null;
+        return PortAttack(ds3Id, _bulletAttackBase);
+    }
+
+    private PARAM.Row? _bulletAttackBase;
 
     /// <summary>
     /// Copies a DS3 behaviour variation under a new Elden Ring variation ID and returns it (0 if DS3 has none). The
@@ -1202,7 +1329,14 @@ public sealed class AttackParamPort(ParamStore er, ParamStore ds3, string behavi
                 row["refId"].Value = Convert.ChangeType(effect, row["refId"].Value!.GetType());
                 _effectBehaviors++;
             }
-            // Bullets (1) and unported SpEffects are DS3 IDs, which name unrelated Elden Ring bullets and effects (or
+            // Bullets (1): the DS3 bullet ported under its new ID (the Moonlight Greatsword's wave).
+            else if (refType == 1 && Bullets?.Port(Convert.ToInt32(source["refId"].Value)) is > 0 and var bullet)
+            {
+                row = CopyByName(source, new PARAM.Row(id, source.Name ?? "", _erBehavior.AppliedParamdef));
+                row["refId"].Value = Convert.ChangeType(bullet, row["refId"].Value!.GetType());
+                _bulletBehaviors++;
+            }
+            // Unported bullets and SpEffects are DS3 IDs, which name unrelated Elden Ring bullets and effects (or
             // none): the template's row for the same judge stands in, else the row is left out.
             else if (templateRows.TryGetValue(judge, out var er))
                 row = CopyRow(er, id);

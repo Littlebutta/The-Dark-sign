@@ -28,6 +28,8 @@ public static partial class FxrPort
     {
         public Dictionary<int, int> Effects { get; } = [];
         public List<string> Failed { get; } = [];
+        /// <summary>Why each DS3 effect that was asked for (or referenced by one) was left out.</summary>
+        public Dictionary<int, string> Reasons { get; } = [];
         /// <summary>DS3 sound IDs (type s) the ported effects play, renamed to SoundPort.IdBase + ID in them.</summary>
         public HashSet<int> Sounds { get; } = [];
 
@@ -65,6 +67,7 @@ public static partial class FxrPort
         void Fail(int id, string reason)
         {
             failed.Add(id);
+            result.Reasons[id] = reason;
             if (!reasons.TryGetValue(reason, out var list))
                 reasons[reason] = list = [];
             list.Add(id);
@@ -99,7 +102,7 @@ public static partial class FxrPort
             foreach (var child in info.Sfx.Where(c => c > 0))
                 queue.Enqueue(child);
         }
-        DropDependents(effects, failed);
+        DropDependents(effects, failed, result.Reasons);
 
         // 2. New IDs: effects by offset, textures counted up from ResourceBase past anything Elden Ring has.
         var textures = new Dictionary<int, int>();
@@ -129,7 +132,7 @@ public static partial class FxrPort
         }
         foreach (var id in failed)
             effects.Remove(id);
-        DropDependents(effects, failed);
+        DropDependents(effects, failed, result.Reasons);
 
         // 4. Add the effects, their resource lists and their textures to Elden Ring's common effect binder.
         var added = new Dictionary<string, int>();
@@ -195,16 +198,17 @@ public static partial class FxrPort
         return Directory.EnumerateFiles(dir, "*commoneffects*.ffxbnd.dcx").ToList();
     }
 
-    private static void DropDependents(Dictionary<int, (byte[] Bytes, FxrScript.Info Info)> effects, HashSet<int> failed)
+    private static void DropDependents(Dictionary<int, (byte[] Bytes, FxrScript.Info Info)> effects, HashSet<int> failed, Dictionary<int, string> reasons)
     {
         for (bool changed = true; changed;)
         {
             changed = false;
             foreach (var (id, (_, info)) in effects.ToList())
-                if (info.Sfx.Any(c => c > 0 && !effects.ContainsKey(c)))
+                if (info.Sfx.FirstOrDefault(c => c > 0 && !effects.ContainsKey(c)) is var child and > 0)
                 {
                     effects.Remove(id);
                     failed.Add(id);
+                    reasons[id] = $"plays f{child} ({reasons.GetValueOrDefault(child, "left out")})";
                     changed = true;
                 }
         }
