@@ -711,21 +711,27 @@ public static partial class MovesetPort
             BitConverter.GetBytes(id).CopyTo(bytes, 0);
             anim.Events.Add(new TAE.Event(start, end, proto.Type, 0, bytes, false) { Group = group });
         }
-        // The window alone did nothing in 1.0.221 (the hks fired the follow-up, the behaviour didn't take it). Elden
-        // Ring's own R2 follow-up art (Stamp (Upward Cut), a606 40000: window 100050 0.33-1.43 s) opens cancel
-        // JumpTable 116 with the window (0.40-2.17 s), as do its stance attacks; the one-shots that chain by L2 only
-        // (a612, the template our arts copied their JumpTables from) never have 116, and neither did the ported move.
-        // 116 is the cancel set the ComboEnd transitions belong to, so it opens with the window here.
+        // The window alone did nothing in 1.0.221 (the hks fired the follow-up, the behaviour didn't take it): the game
+        // accepts the follow-up input only while the matching cancel JumpTable is open. Every vanilla art says which
+        // (c0000.anibnd, all a6xx-a9xx): an R2 window (100050/100051) comes with JumpTable 116 (Stamp (Upward Cut),
+        // a606 40000: window 0.33-1.43 s, 116 0.40-2.17 s), an R1 window (100054/100055) with JumpTable 115 (Rellana's
+        // stance light a918 40060: 100054 1.17-1.67 s, 115 1.17-1.37 s; a848/a964 with both windows have both). 1.0.251
+        // to 1.0.259 opened 116 for every window, so R2 follow-ups chained and R1 ones (Ember's thrust, every stance
+        // light chain) were never accepted. Each window now opens its own cancel for the whole window.
         if (anim.Events.FirstOrDefault(e => e.Type == 0 && e.Group is not null && e.GetParameterBytes(false).Length >= 4) is { } jumpProto)
-        {
-            var bytes = (byte[])jumpProto.GetParameterBytes(false).Clone();
-            BitConverter.GetBytes(FollowUpJumpTable).CopyTo(bytes, 0);
-            anim.Events.Add(new TAE.Event(start, end, 0, jumpProto.Unk04, bytes, false) { Group = jumpProto.Group });
-        }
+            foreach (var jump in new[] { light ? LightFollowUpJumpTable : 0, heavy ? HeavyFollowUpJumpTable : 0 }.Where(id => id > 0))
+            {
+                var bytes = (byte[])jumpProto.GetParameterBytes(false).Clone();
+                BitConverter.GetBytes(jump).CopyTo(bytes, 0);
+                anim.Events.Add(new TAE.Event(start, end, 0, jumpProto.Unk04, bytes, false) { Group = jumpProto.Group });
+            }
     }
 
-    /// <summary>TAE JumpTable (type 0) ID Elden Ring opens over an art's R1/R2 follow-up window (a606, a614).</summary>
-    internal const int FollowUpJumpTable = 116;
+    /// <summary>TAE JumpTable (type 0) ID Elden Ring opens over an art's R1 follow-up window (100054/100055: a918, a848).</summary>
+    internal const int LightFollowUpJumpTable = 115;
+
+    /// <summary>TAE JumpTable (type 0) ID Elden Ring opens over an art's R2 follow-up window (100050/100051: a606, a848).</summary>
+    internal const int HeavyFollowUpJumpTable = 116;
 
     /// <summary>DS3 SpEffect "[HKS] Non-generator Transition": a DS3 stance attack carries it while its hks lets the next one start.</summary>
     internal const int Ds3ChainMarker = 100500;
@@ -1008,14 +1014,18 @@ public static class ArtSelfTest
         MovesetPort.SetComboWindows(move, proto, [new SoulsFormats.TAE.Event(0.5f, 1.2f, 67, 0, Win(100050), false)], 2f, light: true, heavy: true);
         var ids = move.Events.Where(e => e.Type == 67).Select(e => BitConverter.ToInt32(e.GetParameterBytes(false), 0)).Order().ToList();
         Check(ids.SequenceEqual([100051, 100054, 100280]), $"arts: one-shot gets R1 and R2 follow-up windows, the template's is dropped, other effects stay (got {string.Join(" ", ids)})");
-        var jump116 = move.Events.Where(e => e.Type == 0 && BitConverter.ToInt32(e.GetParameterBytes(false), 0) == MovesetPort.FollowUpJumpTable).ToList();
+        int JumpId(SoulsFormats.TAE.Event e) => BitConverter.ToInt32(e.GetParameterBytes(false), 0);
+        var jump116 = move.Events.Where(e => e.Type == 0 && JumpId(e) == MovesetPort.HeavyFollowUpJumpTable).ToList();
+        var jump115 = move.Events.Where(e => e.Type == 0 && JumpId(e) == MovesetPort.LightFollowUpJumpTable).ToList();
         Check(jump116.Count == 1 && jump116[0].StartTime == 0.5f && jump116[0].EndTime == 1.2f && jump116[0].Group == jumpGroup && jump116[0].GetParameterBytes(false)[12] == 6,
-            $"arts: cancel JumpTable 116 opens with the follow-up window, in the move's JumpTable group (got {jump116.Count})");
-        move.Events.RemoveAll(e => e.Type == 0 && BitConverter.ToInt32(e.GetParameterBytes(false), 0) == MovesetPort.FollowUpJumpTable);
+            $"arts: cancel JumpTable 116 opens with the R2 follow-up window, in the move's JumpTable group (got {jump116.Count})");
+        Check(jump115.Count == 1 && jump115[0].StartTime == 0.5f && jump115[0].EndTime == 1.2f && jump115[0].Group == jumpGroup,
+            $"arts: cancel JumpTable 115 opens with the R1 follow-up window (got {jump115.Count})");
+        move.Events.RemoveAll(e => e.Type == 0 && JumpId(e) is MovesetPort.HeavyFollowUpJumpTable or MovesetPort.LightFollowUpJumpTable);
         Check(move.Events.Where(e => BitConverter.ToInt32(e.GetParameterBytes(false), 0) is 100051 or 100054).All(e => e.StartTime == 0.5f && e.EndTime == 1.2f), "arts: follow-up windows use DS3's own timing");
         MovesetPort.SetComboWindows(move, proto, null, 2f, light: false, heavy: false);
-        Check(move.Events.Count(e => e.Type == 67) == 1 && !move.Events.Any(e => e.Type == 0 && BitConverter.ToInt32(e.GetParameterBytes(false), 0) == MovesetPort.FollowUpJumpTable),
-            "arts: a one-shot without follow-ups has no combo window and no 116");
+        Check(move.Events.Count(e => e.Type == 67) == 1 && !move.Events.Any(e => e.Type == 0 && JumpId(e) is MovesetPort.HeavyFollowUpJumpTable or MovesetPort.LightFollowUpJumpTable),
+            "arts: a one-shot without follow-ups has no combo window and no 115/116");
         // No DS3 window of these IDs (DS3 uses per-weapon hks SpEffects): the window opens at DS3's first cancel after
         // the last hit (JumpTable at 1.567 s) and stays open to the end of the DS3 move (3.0 s); before it was 45-90%.
         byte[] Jt(int id) { var b = new byte[16]; BitConverter.GetBytes(id).CopyTo(b, 0); return b; }
@@ -1123,8 +1133,9 @@ public static class ArtSelfTest
         var w = stanceLight.Events.Where(e => e.Type == 67).ToList();
         Check(w.Count == 1 && BitConverter.ToInt32(w[0].GetParameterBytes(false), 0) == 100054 && Math.Abs(w[0].StartTime - 2.5f) < 0.001f && Math.Abs(w[0].EndTime - 3.9f) < 0.001f,
             $"chain: the stance light attack opens 100054 over DS3's transition marker 2.5-3.9 s (got {string.Join(" ", w.Select(e => $"{BitConverter.ToInt32(e.GetParameterBytes(false), 0)} {e.StartTime:0.###}-{e.EndTime:0.###}"))})");
-        Check(stanceLight.Events.Any(e => e.Type == 0 && BitConverter.ToInt32(e.GetParameterBytes(false), 0) == MovesetPort.FollowUpJumpTable && Math.Abs(e.StartTime - 2.5f) < 0.001f),
-            "chain: cancel JumpTable 116 opens with the chain window");
+        Check(stanceLight.Events.Any(e => e.Type == 0 && BitConverter.ToInt32(e.GetParameterBytes(false), 0) == MovesetPort.LightFollowUpJumpTable && Math.Abs(e.StartTime - 2.5f) < 0.001f)
+              && !stanceLight.Events.Any(e => e.Type == 0 && BitConverter.ToInt32(e.GetParameterBytes(false), 0) == MovesetPort.HeavyFollowUpJumpTable),
+            "chain: cancel JumpTable 115 (R1), not 116, opens with the chain window");
         MovesetPort.SetComboWindows(stanceLight, proto, friede, 4.033f, true, false, lightWindow: 100055, ds3Marker: true);
         Check(stanceLight.Events.Count(e => e.Type == 67) == 1 && stanceLight.Events.Any(e => e.Type == 67 && BitConverter.ToInt32(e.GetParameterBytes(false), 0) == 100055),
             "chain: the second light attack opens 100055 (into ComboEnd_2) instead");
