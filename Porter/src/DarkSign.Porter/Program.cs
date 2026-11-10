@@ -19,6 +19,7 @@ const string Usage = """
       explore-behavior [section...]            report how Elden Ring's player behaviour selects weapon animations
       behavior-roundtrip                       write Elden Ring's player behaviour back unchanged, to test the round trip
       tae-dump <DS3|ER> <section>              list every event of a section's TAE with raw parameters
+      attack-events <DS3|ER> [bullets] [aNNN:id ...]  survey the attack / bullet events that look up behaviour rows
       anim-id-map                              pair DS3 and Elden Ring animation IDs by behaviour selector name
       chr-roundtrip                            write Elden Ring's player binders unchanged (raw, and re-written) to try in game
       binder-diff <file a> <file b>            compare two binder files on disk (compression, files, TAE events)
@@ -145,6 +146,7 @@ try
         "chr-roundtrip" => ChrRoundTrip.Run(ctx),
         "binder-diff" when argList.Count == 3 => BinderDiff.Run(argList[1], argList[2]),
         "chr-survey" when argList.Count >= 3 => ChrSurvey.Run(ctx, PorterGame.Parse(argList[1]), argList[2..]),
+        "attack-events" when argList.Count >= 2 => AttackEventSurvey.Run(ctx, PorterGame.Parse(argList[1]), argList[2..]),
         "tae-dump" when argList.Count == 3 => TaeDump.Run(ctx, PorterGame.Parse(argList[1]), int.Parse(argList[2])),
         _ => Fail(Usage),
     };
