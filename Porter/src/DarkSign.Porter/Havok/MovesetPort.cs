@@ -953,7 +953,7 @@ public static partial class MovesetPort
                     anim.EventGroups.Add(bulletGroup);
                     groupOf[e.Type] = bulletGroup;
                 }
-                merged.Add(new TAE.Event(e.StartTime, e.EndTime, e.Type, e.Unk04, (byte[])bytes.Clone(), false) { Group = bulletGroup });
+                merged.Add(new TAE.Event(e.StartTime, e.EndTime, e.Type, e.Unk04, BulletPort.ConvertEvent(bytes), false) { Group = bulletGroup });
                 _bulletEvents++;
                 continue;
             }
