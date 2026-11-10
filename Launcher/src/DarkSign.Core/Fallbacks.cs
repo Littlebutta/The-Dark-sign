@@ -260,6 +260,17 @@ public static class Fallbacks
             new("off", "Off", "No DS3 effects (DARKSIGN_WEAPON_EFFECTS=0): ported weapons build up nothing, as in builds before 1.0.17x.")
                 { PorterEnv = Env("DARKSIGN_WEAPON_EFFECTS", "0") },
         ]),
+        new("weapon-visuals", "Weapon sounds and effects", "DS3 weapon glows, buff visuals and projectiles", Stage.Build,
+            "A ported weapon shows no glow, buff effect or projectile where DS3 has one (the Moonlight Greatsword's wave), shows a wrong one, a projectile does odd damage, or the game crashes when one appears.",
+        [
+            new("A", "Effect visuals and projectiles (default)", "What DS3's effects look like (SpEffectVfxParam rows: blade glows, weapon-art buffs, worn effects) and the projectiles DS3 moves fire (Bullet rows with their effects, attacks and follow-up bullets), ported as new Elden Ring rows that play the converted DS3 effects."),
+            new("B", "Effect visuals, no projectiles", "Glows and buff visuals as in A; moves that fire a projectile use the template weapon's bullet or none (DARKSIGN_BULLETS=0), as in builds up to 1.0.242.")
+                { PorterEnv = Env("DARKSIGN_BULLETS", "0") },
+            new("C", "Projectiles, no effect visuals", "Projectiles as in A; ported effects have no visuals of their own (DARKSIGN_EFFECT_VISUALS=0), as in builds up to 1.0.242.")
+                { PorterEnv = Env("DARKSIGN_EFFECT_VISUALS", "0") },
+            new("off", "Off", "Neither (DARKSIGN_BULLETS=0 and DARKSIGN_EFFECT_VISUALS=0): only the effects in a move's own effect events show, as in builds up to 1.0.242.")
+                { PorterEnv = Env("DARKSIGN_BULLETS", "0", "DARKSIGN_EFFECT_VISUALS", "0") },
+        ]),
 
         // ---- DS3 maps ----
         new("map-slots", "DS3 maps", "Which Elden Ring map IDs hold the DS3 maps", Stage.Build,

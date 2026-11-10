@@ -49,7 +49,16 @@ int main(void)
     CHECK(dks_parse_spawn_line("DS3\tc7000\t70000000\t43000000\t0\tLothric Knight\r\n", &sp));
     CHECK(strcmp(sp.game, "DS3") == 0 && sp.chr == 7000 && sp.npc_param == 70000000 && sp.think_param == 43000000);
     CHECK(!sp.boss && strcmp(sp.name, "Lothric Knight") == 0);
+    CHECK(sp.body == DKS_BODY_UNKNOWN && dks_spawn_has_own_model(&sp)); /* old list: the ID range decides */
     CHECK(dks_parse_spawn_line("ER\tc2275\t22750020\t22750000\t1\tGiant Crab", &sp) && sp.boss && sp.chr == 2275);
+    CHECK(dks_spawn_has_own_model(&sp));
+    /* The body column: Elden Ring ships c7000 itself, so a DS3 entry left on it is an Elden Ring body. */
+    CHECK(dks_parse_spawn_line("DS3\tc7000\t71260000\t70001000\t0\tTree Woman - Ariandel\ter\r\n", &sp));
+    CHECK(sp.body == DKS_BODY_ER && !dks_spawn_has_own_model(&sp) && strcmp(sp.name, "Tree Woman - Ariandel") == 0);
+    CHECK(dks_parse_spawn_line("DS3\tc7031\t70310000\t43000000\t0\tBoreal Outrider Knight\tds3\n", &sp));
+    CHECK(sp.body == DKS_BODY_DS3 && dks_spawn_has_own_model(&sp));
+    CHECK(dks_parse_spawn_line("DS3\tc3061\t70310000\t43000000\t0\tBoreal Outrider Knight\ter", &sp) && !dks_spawn_has_own_model(&sp));
+    CHECK(dks_parse_spawn_line("ER\tc7000\t70001065\t70001000\t0\tFallen Hawks Soldier\ter", &sp) && dks_spawn_has_own_model(&sp));
     CHECK(!dks_parse_spawn_line("# game\tmodel\tNpcParam\tThinkParam\tboss\tname", &sp));
     CHECK(!dks_parse_spawn_line("BB\tc2275\t22750020\t22750000\t0\tX", &sp));
     CHECK(!dks_parse_spawn_line("ER\tx2275\t22750020\t22750000\t0\tX", &sp));

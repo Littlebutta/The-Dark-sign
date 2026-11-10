@@ -27,6 +27,7 @@ const string Usage = """
       explore-fx-sound                         report both games' effect and sound files and the TAE events that use them
       matbin-info <name filter>                show Elden Ring material definitions
       effect-models [DS3 fxr id...]            report the DS3 effects that use models (and their materials) next to Elden Ring's effect models
+      effect-refs [DS3 weapon id...]           report the effects DS3's params tie to each weapon (SpEffect visuals, bullets) and dry-run their port; params only
       weapons-plan                 decide which DS3 weapons to port and as which Elden Ring class
       port-weapons                 build the weapon rows into TheDarkSign\Mods\ER\regulation.bin
       validate-mod                 check the built mod offline: params, TAE, animations, clips, sounds, effects
@@ -41,6 +42,7 @@ const string Usage = """
       arts-selftest                offline checks of the weapon art port (hks patch, skill names)
       anim-selftest                offline checks of the bone retargeting (rest-pose corrections) and spline rotation rewrite
       weapon-diag bones            how each shared player bone rests in both games and how its DS3 rotation is carried over
+      effects-selftest             offline checks of the effect visual, bullet and resident effect ports
       map-survey [map ids]         report both games' map files for the ported slots (layouts, binders, textures, events)
       event-coverage <ds3.emedf.json> <er.emedf.json>  which DS3 event instructions convert to Elden Ring, and how
       port-enemies                 port DS3's enemies only (port-maps does this too) and check what the game will load
@@ -95,6 +97,8 @@ try
         return ArtSelfTest.Run();
     if (argList[0].Equals("anim-selftest", StringComparison.OrdinalIgnoreCase))
         return AnimSelfTest.Run();
+    if (argList[0].Equals("effects-selftest", StringComparison.OrdinalIgnoreCase))
+        return EffectSelfTest.Run();
     if (argList[0].Equals("event-coverage", StringComparison.OrdinalIgnoreCase) && argList.Count == 3)
         return DarkSign.Porter.Maps.EventPort.CoverageReport(argList[1], argList[2]);
     // Build methods chosen in the launcher's Fallbacks window (DarkSign.Core.Fallbacks); "" = every default.
@@ -135,6 +139,7 @@ try
         "behavior-roundtrip" => BehaviorRoundTrip.Run(ctx),
         "explore-fx-sound" => FxSoundExplore.Run(ctx),
         "effect-models" => EffectModelSurvey.Run(ctx, argList[1..]),
+        "effect-refs" => EffectRefsReport.Run(ctx, argList[1..]),
         "check-sound-bank" => SoundBankCheck.Run(ctx),
         "sound-probe" => SoundProbe.Run(ctx, argList[1..]),
         "chr-roundtrip" => ChrRoundTrip.Run(ctx),

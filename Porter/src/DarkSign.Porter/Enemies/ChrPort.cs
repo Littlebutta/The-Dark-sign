@@ -202,8 +202,51 @@ public static partial class ChrPort
         /// <summary>What the params step adds once port-weapons has written regulation.bin.</summary>
         public List<(Plan Plan, Dictionary<int, int> NpcRows)> Params = [];
         public List<ChrMaterial> Materials = [];
+        /// <summary>
+        /// What went wrong when DS3 models that should have been built weren't: how many, and the reason most of them
+        /// share (one cause usually fails them all). Null when every planned model was built. Printed as a FAIL line
+        /// by the build and by map-validate, so a build with no DS3 enemy models can't pass for a good one
+        /// (1.0.234-1.0.242 did: 93 of 93 failed and the report still read "0 FAIL").
+        /// </summary>
+        public string? Problem => FailureSummary(Failed, Full + Model, Notes);
+
         public string Summary => $"{Characters} DS3 characters: {Full} with DS3 model and animations, {Model} with the DS3 model, " +
                                  $"{Stats} on an Elden Ring body, {Failed} fell back; {Animations} DS3 animations, {NpcRows} NpcParam rows";
+    }
+
+    /// <summary>The marker of a "files failed" note (<see cref="Build"/> writes them, <see cref="FailureSummary"/> reads them).</summary>
+    public const string FilesFailed = ": files failed (";
+
+    /// <summary><see cref="Result.Problem"/>, from the counts and notes (also read back from the report by map-validate).</summary>
+    public static string? FailureSummary(int failed, int built, IEnumerable<string> notes)
+    {
+        if (failed <= 0)
+            return null;
+        const string tail = "); using the template's body";
+        var reasons = notes.Where(n => n.Contains(FilesFailed, StringComparison.Ordinal))
+            .Select(n => n[(n.IndexOf(FilesFailed, StringComparison.Ordinal) + FilesFailed.Length)..])
+            .Select(r => r.EndsWith(tail, StringComparison.Ordinal) ? r[..^tail.Length] : r)
+            .GroupBy(r => r).OrderByDescending(g => g.Count()).FirstOrDefault();
+        return $"{failed} of {failed + built} DS3 enemy models could not be built and are on Elden Ring bodies" +
+               (reasons is null ? "" : $" ({reasons.Count()} with: {reasons.Key})");
+    }
+
+    /// <summary><see cref="FailureSummary"/> from the lines of Work\reports\enemy-port.tsv (what map-validate has to go on).</summary>
+    public static string? ReportProblem(IEnumerable<string> reportLines)
+    {
+        int built = 0;
+        var notes = new List<string>();
+        foreach (var line in reportLines)
+        {
+            if (line.StartsWith("# ", StringComparison.Ordinal))
+            {
+                if (line.Contains(FilesFailed, StringComparison.Ordinal))
+                    notes.Add(line[2..]);
+            }
+            else if (line.Split('\t') is { Length: >= 8 } p && p[7] is "full" or "model")
+                built++;
+        }
+        return FailureSummary(notes.Count, built, notes);
     }
 
     /// <summary>
@@ -222,7 +265,7 @@ public static partial class ChrPort
         if (method == Method.Off)
         {
             Console.WriteLine("enemies: off (Fallbacks enemy-port); DS3 maps use stand-ins");
-            WriteSpawnList(ctx, [], catalog, new HashSet<string>());
+            WriteSpawnList(ctx, [], catalog, new HashSet<string>(), new HashSet<string>());
             return result;
         }
         TAE.ValidateEventBank = false;
@@ -264,6 +307,7 @@ public static partial class ChrPort
 
         var mapLines = new List<string> { "# kind\tDS3\tElden Ring model\tNpcParam\tThinkParam\tname (written by DarkSignPorter port-maps, enemy port)" };
         var written = new List<string>();
+        var portedModels = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         // Files are built side by side; the Havok serializer is used one thread at a time (AnimPort.HavokLock).
         var built = new ConcurrentDictionary<int, (ChrFiles? Files, string? Error)>();
         Parallel.ForEach(plans.Where(p => p.Method != Method.Stats), Parallelism.Options, plan =>
@@ -288,7 +332,7 @@ public static partial class ChrPort
                 if (b.Files is null)
                 {
                     // Files failed: this character falls back to the template's body (C) instead of a stand-in.
-                    notes.Add($"c{plan.Ds3.Chr:D4} {plan.Ds3.Name}: files failed ({b.Error}); using the template's body");
+                    notes.Add($"c{plan.Ds3.Chr:D4} {plan.Ds3.Name}{FilesFailed}{b.Error}); using the template's body");
                     result.Failed++;
                     effective = plan with { Method = Method.Stats };
                 }
@@ -311,6 +355,7 @@ public static partial class ChrPort
                     written.Add(full);
                 }
                 result.Materials.AddRange(files.Materials);
+                portedModels.Add($"c{plan.NewChr:D4}");
             }
             result.Params.Add((effective, npcRows));
             mapLines.AddRange(MapLines(effective, npcRows, effective.Template.ThinkParam));
@@ -328,10 +373,12 @@ public static partial class ChrPort
         }
 
         File.WriteAllLines(ctx.ModPath(EnemyPort.ChrMap.FileName), mapLines);
-        WriteSpawnList(ctx, mapLines, catalog, plans.Where(p => p.Ds3.Boss).Select(p => $"c{p.Ds3.Chr:D4}").ToHashSet());
+        WriteSpawnList(ctx, mapLines, catalog, plans.Where(p => p.Ds3.Boss).Select(p => $"c{p.Ds3.Chr:D4}").ToHashSet(), portedModels);
         File.WriteAllLines(ctx.ModPath(ManifestFile), written.Select(w => Path.GetRelativePath(ctx.ModPath(), w)));
         WriteReport(ctx, result);
         Console.WriteLine($"enemies: {result.Summary} (report: Work\\reports\\{ReportFile})");
+        if (result.Problem is { } problem)
+            Console.WriteLine($"enemies: FAIL: {problem}");
         foreach (var note in notes.Take(10))
             Console.WriteLine($"enemies: note: {note}");
         return result;
@@ -383,11 +430,12 @@ public static partial class ChrPort
     }
 
     /// <summary>The F1 menu's spawn list; a failure only costs the menu its list (it falls back to a built-in one).</summary>
-    private static void WriteSpawnList(PorterContext ctx, IEnumerable<string> mapLines, IEnumerable<EnemyPort.ErEnemy> catalog, ISet<string> ds3Bosses)
+    private static void WriteSpawnList(PorterContext ctx, IEnumerable<string> mapLines, IEnumerable<EnemyPort.ErEnemy> catalog, ISet<string> ds3Bosses,
+        ISet<string> portedModels)
     {
         try
         {
-            SpawnList.Write(ctx, mapLines, catalog, ds3Bosses);
+            SpawnList.Write(ctx, mapLines, catalog, ds3Bosses, portedModels);
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {

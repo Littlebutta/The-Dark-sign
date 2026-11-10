@@ -24,6 +24,14 @@ public sealed class SpEffectPort
     public static readonly string Mode = (Environment.GetEnvironmentVariable("DARKSIGN_WEAPON_EFFECTS") ?? "").ToLowerInvariant();
     public static bool Enabled => Mode != "0";
     private static bool StatusOnly => Mode == "status";
+    /// <summary>Fallback "effect-visuals": DARKSIGN_EFFECT_VISUALS=0 ports effects without what they look like, as before.</summary>
+    public static bool VisualsEnabled => Environment.GetEnvironmentVariable("DARKSIGN_EFFECT_VISUALS") != "0";
+
+    /// <summary>What ported effects look like (SpEffectVfxParam rows); null when off or a game lacks the param.</summary>
+    public VfxPort? Visuals { get; }
+
+    private static readonly string[] Ds3VfxFields = [.. Enumerable.Range(0, 8).Select(k => $"EffectVfx{k}")];
+    private static string ErVfxField(int k) => k == 0 ? "vfxId" : $"vfxId{k}";
 
     /// <summary>First ID of the ported effects; each takes a block of 100.</summary>
     public const int FirstNewId = 690_000_000;
@@ -84,6 +92,13 @@ public sealed class SpEffectPort
     {
         _er = er.Get("SpEffectParam") ?? throw new InvalidDataException("Elden Ring has no SpEffectParam");
         _ds3 = ds3.Get("SpEffectParam") ?? throw new InvalidDataException("DS3 has no SpEffectParam");
+        _erVfx = er.Get("SpEffectVfxParam");
+        if (VisualsEnabled)
+            try { Visuals = new VfxPort(er, ds3); }
+            catch (Exception e) when (e is InvalidDataException or FileNotFoundException)
+            {
+                Console.WriteLine($"weapon effects: visuals off ({e.Message})");
+            }
         // The row Elden Ring's own weapons use most for each status (their base rows; upgrades add offsets to them).
         var weapons = er.Get("EquipParamWeapon")!;
         _statusTemplates = weapons.Rows.Where(r => r.ID < WeaponPort.FirstNewId)
@@ -105,7 +120,8 @@ public sealed class SpEffectPort
     public int Count => _ported.Count(p => p.Value > 0);
 
     public string Summary => $"{Count} DS3 effects ported ({_report.Count(l => l.Contains("\tstatus\t"))} status, " +
-                             $"{_report.Count(l => l.Contains("\tvalues\t"))} other), {_report.Count(l => l.Contains("\tskipped\t"))} skipped; " +
+                             $"{_report.Count(l => l.Contains("\tvalues\t"))} other, {_report.Count(l => l.Contains("\tvisuals\t"))} visual only), " +
+                             $"{_report.Count(l => l.Contains("\tskipped\t"))} skipped; " +
                              $"status templates: {string.Join(", ", _statusTemplates.Select(t => $"{t.Key} {t.Value}"))}";
 
     /// <summary>The Elden Ring ID for a DS3 effect, porting it on first use; -1 when it can't be ported.</summary>
@@ -150,7 +166,7 @@ public sealed class SpEffectPort
             Note(ds3Id, source.Name, -1, "skipped", $"no Elden Ring weapon builds up {kind}");
             return -1;
         }
-        if (kind is null && !HasValues(source) && ErBase(source.Name) < 0)
+        if (kind is null && !HasValues(source) && !HasVisuals(source) && ErBase(source.Name) < 0)
         {
             Note(ds3Id, source.Name, -1, "skipped", "nothing Elden Ring can use (state, visuals or fields without an equivalent)");
             return -1;
@@ -169,7 +185,7 @@ public sealed class SpEffectPort
             _er.Rows.Add(row);
         }
         _er.Rows.Sort((a, b) => a.ID.CompareTo(b.ID));
-        Note(ds3Id, source.Name, baseId, kind is not null ? "status" : "values",
+        Note(ds3Id, source.Name, baseId, kind is not null ? "status" : HasValues(source) || ErBase(source.Name) > 0 ? "values" : "visuals",
             kind is not null ? $"{kind} {Int(source, status[0].Ds3)} (copy of Elden Ring {_statusTemplates[kind]}), DS3 upgrade rows {offsets}"
                 : $"DS3 upgrade rows {offsets}{(_erBased.Contains(baseId) ? $", based on Elden Ring {ErBase(source.Name)}" : "")}");
         // Chains point at their own ported rows (after the block is taken, so a loop ends).
@@ -249,8 +265,51 @@ public sealed class SpEffectPort
         foreach (var (d, e) in StatusFields)
             if (Int(ds3, d) > 0 && row[e] is { } cell)
                 Set(cell, Int(ds3, d));
+        // What the effect looks like: DS3's visual rows under new IDs (their effects are filled in by BindVisuals).
+        if (Visuals is not null)
+        {
+            for (int k = 0; k < 8; k++)
+                if (ParamDefaults.Cell(row, ErVfxField(k)) is { } vfx)
+                    Set(vfx, Visuals.Port(ParamDefaults.Int(ds3, Ds3VfxFields[k])));
+            // A weapon enchant is only drawn while the effect is in an enchant state (stateInfo: 28 magic weapon, 62
+            // fire, 151 lightning, 152 resin, 158 shield...). The two games share those numbers; a DS3 state is kept
+            // only when Elden Ring's own enchants use the same one, so no DS3-only state reaches the game.
+            int state = Int(ds3, "stateInfo");
+            if (state > 0 && EnchantStates.Contains(state) && Ds3VfxFields.Any(f => Visuals.IsEnchant(ParamDefaults.Int(ds3, f)))
+                && ParamDefaults.Cell(row, "stateInfo") is { } stateCell)
+                Set(stateCell, state);
+        }
         return row;
     }
+
+    private HashSet<int>? _enchantStates;
+
+    /// <summary>The stateInfo values of Elden Ring's own SpEffects whose visual rows draw a weapon enchant.</summary>
+    private HashSet<int> EnchantStates
+    {
+        get
+        {
+            if (_enchantStates is not null)
+                return _enchantStates;
+            var enchantRows = _erVfx?.Rows.Where(v => ParamDefaults.Int(v, "effectType") is 1 or 2).Select(v => v.ID).ToHashSet() ?? [];
+            return _enchantStates = _er.Rows.Where(r => r.ID < FirstNewId && Enumerable.Range(0, 8).Any(k => enchantRows.Contains(ParamDefaults.Int(r, ErVfxField(k)))))
+                .Select(r => Int(r, "stateInfo")).Where(s => s > 0).ToHashSet();
+        }
+    }
+
+    private readonly PARAM? _erVfx;
+
+    private bool HasVisuals(PARAM.Row ds3) =>
+        Visuals is not null && Ds3VfxFields.Any(f => Visuals.Visible(ParamDefaults.Int(ds3, f)));
+
+    /// <summary>
+    /// Gives the ported visual rows the Elden Ring IDs of their converted effects. The effect port runs after the
+    /// weapons' own effects are ported, so the rows wait for it; a build whose effect port never ran calls this with
+    /// an empty result, which leaves every row without an effect rather than with a DS3 number.
+    /// </summary>
+    public void BindVisuals(FxrPort.Result effects) => Visuals?.Bind(effects);
+
+    public bool VisualsBound => Visuals is null || Visuals.IsBound;
 
     private static bool HasValues(PARAM.Row ds3)
     {

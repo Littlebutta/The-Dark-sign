@@ -126,6 +126,9 @@ jobs:
       # Offline checks of the bone retargeting (rest-pose corrections: the off-hand weapon's orientation) and the spline rotation rewrite (no game files needed).
       - if: steps.cache.outputs.cache-hit != 'true'
         run: porter-publish/DarkSignPorter.exe anim-selftest
+      # Offline checks of the effect visual, bullet and resident effect ports (params built in memory).
+      - if: steps.cache.outputs.cache-hit != 'true'
+        run: porter-publish/DarkSignPorter.exe effects-selftest
       # The randomizer's data ships with the porter: make one checked world in a scratch root (no game files needed).
       - if: steps.cache.outputs.cache-hit != 'true'
         run: porter-publish/DarkSignPorter.exe --root "$env:RUNNER_TEMP\rando-smoke" randomize --profile CI --seed 1

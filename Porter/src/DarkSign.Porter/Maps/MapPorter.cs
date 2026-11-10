@@ -82,6 +82,8 @@ public static class MapPorter
             {
                 enemyPort = ChrPort.Build(ctx, er, ds3);
                 report.AppendLine($"enemy port: {enemyPort.Summary} (Work\\reports\\{ChrPort.ReportFile})");
+                if (enemyPort.Problem is { } problem)
+                    report.AppendLine($"enemy port: FAIL: {problem}");
             }
             catch (Exception ex) when (ex is not OutOfMemoryException)
             {
