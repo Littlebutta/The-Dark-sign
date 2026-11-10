@@ -62,7 +62,9 @@ int dks_level_for(const int attributes[DKS_ATTRIBUTES]);
 int dks_name_matches(const char *name, const char *query);
 
 /* One line of darksign_spawn_list.tsv (Porter Enemies/SpawnList.cs):
-   "<game DS3|ER>\t<model cNNNN>\t<NpcParam>\t<ThinkParam>\t<boss 0|1>\t<name>". Returns 1 if valid. */
+   "<game DS3|ER>\t<model cNNNN>\t<NpcParam>\t<ThinkParam>\t<boss 0|1>\t<name>\t<body ds3|er>". Returns 1 if valid.
+   The body column says whose model the character wears; a list written before it existed has none (DKS_BODY_UNKNOWN). */
+enum { DKS_BODY_UNKNOWN = 0, DKS_BODY_ER = 1, DKS_BODY_DS3 = 2 };
 typedef struct {
     char game[8];
     int chr;             /* 2275 for c2275 */
@@ -70,7 +72,13 @@ typedef struct {
     int think_param;
     int boss;
     char name[DKS_NAME_MAX];
+    int body;            /* DKS_BODY_* */
 } DksSpawnable;
+
+/* 1 when a spawn list entry wears the model its name says: every Elden Ring entry, and a DS3 entry whose model the
+   port built (body "ds3"). A DS3 entry on an Elden Ring body looks like that Elden Ring enemy. Lists without the body
+   column fall back to the port's ID range (c7000-c7999), which Elden Ring's own c7000 also falls in. */
+int dks_spawn_has_own_model(const DksSpawnable *s);
 
 int dks_parse_spawn_line(const char *line, DksSpawnable *out);
 

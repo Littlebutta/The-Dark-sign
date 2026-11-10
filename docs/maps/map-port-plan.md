@@ -115,6 +115,10 @@ What the enemy porter does, for every DS3 character placed in DS3's maps (one ru
    row (new ID * 10000 and up, a copy of the template's named "[DS3] ..." with DS3's HP, souls, stamina and FP) and,
    for method A, DS3's BehaviorParam/AtkParam_Npc rows under a new variation.
 5. **Report.** `Work\reports\enemy-port.tsv` (template, bone match, method, failures); the pre-flight check sums it up.
+   Models that were planned and not built are a `FAIL` line in the build log and in `darksign_maps_check.txt`
+   (builds 1.0.234-1.0.242 lost all 93 to an uncompressed behaviour script read as DCX and still read "0 FAIL").
+   `darksign_spawn_list.tsv` carries a body column (`ds3`/`er`) so the F1 menu knows which entries wear their DS3
+   model without guessing from the ID (Elden Ring ships its own c7000).
 
 A character whose files fail falls back to C (the template's body with DS3's stats), never to nothing. The written
 files are listed in `darksign_chr_files.txt` and deleted at the start of the next run. Fallbacks `enemy-port`: A model

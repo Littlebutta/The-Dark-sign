@@ -4,17 +4,22 @@ namespace DarkSign.Porter.Enemies;
 
 /// <summary>
 /// darksign_spawn_list.tsv: the characters the F1 menu's "Spawn enemies" tab can spawn, written by the enemy port
-/// next to darksign_chr_map.tsv. One line per character: "game&lt;TAB&gt;model&lt;TAB&gt;NpcParam&lt;TAB&gt;ThinkParam&lt;TAB&gt;boss 0|1&lt;TAB&gt;name",
+/// next to darksign_chr_map.tsv. One line per character:
+/// "game&lt;TAB&gt;model&lt;TAB&gt;NpcParam&lt;TAB&gt;ThinkParam&lt;TAB&gt;boss 0|1&lt;TAB&gt;name&lt;TAB&gt;body ds3|er",
 /// game "DS3" (the ported characters, the same rows the DS3 maps place) or "ER" (Elden Ring's own map enemies, the
-/// enemy port's template catalog). The test menu (TestMenu/src/spawn.c) reads it; keep the two in step.
+/// enemy port's template catalog). The body says whose model the character wears: "ds3" only for a model the port
+/// built and wrote, "er" for an Elden Ring body (every ER line, and a DS3 character left on its template). The menu
+/// used to guess this from the model's number (c7000-c7999), and Elden Ring ships characters in that range itself
+/// (c7000, the Fallen Hawks Soldier): a DS3 character left on that body was listed as having its DS3 model.
+/// The test menu (TestMenu/src/spawn.c) reads it; keep the two in step.
 /// </summary>
 public static class SpawnList
 {
     public const string FileName = "darksign_spawn_list.tsv";
-    public const string Header = "# game\tmodel\tNpcParam\tThinkParam\tboss\tname (written by DarkSignPorter port-maps, enemy port; read by the F1 menu)";
+    public const string Header = "# game\tmodel\tNpcParam\tThinkParam\tboss\tname\tbody (written by DarkSignPorter port-maps, enemy port; read by the F1 menu)";
 
-    public static string Line(string game, string model, int npc, int think, bool boss, string name) =>
-        string.Join('\t', game, model, npc, think, boss ? 1 : 0, Clean(name));
+    public static string Line(string game, string model, int npc, int think, bool boss, string name, bool ds3Body) =>
+        string.Join('\t', game, model, npc, think, boss ? 1 : 0, Clean(name), ds3Body ? "ds3" : "er");
 
     private static string Clean(string name) => name.Replace('\t', ' ').Replace('\r', ' ').Replace('\n', ' ').Trim();
 
@@ -22,7 +27,9 @@ public static class SpawnList
     /// The list: the ported DS3 characters (the "chr" lines of the chr map: one per DS3 character) first, then Elden
     /// Ring's, one per model and name, bosses after the rest, each part sorted by name.
     /// </summary>
-    public static List<string> Lines(IEnumerable<string> chrMapLines, IEnumerable<EnemyPort.ErEnemy> erCatalog, ISet<string> ds3Bosses)
+    /// <param name="portedModels">The models the port built and wrote (c7xxx); any other DS3 line is on an Elden Ring body.</param>
+    public static List<string> Lines(IEnumerable<string> chrMapLines, IEnumerable<EnemyPort.ErEnemy> erCatalog, ISet<string> ds3Bosses,
+        ISet<string> portedModels)
     {
         var lines = new List<string> { Header };
         var ds3 = new List<(bool Boss, string Name, string Line)>();
@@ -33,7 +40,7 @@ public static class SpawnList
             if (line.StartsWith('#') || p.Length < 6 || p[0] != "chr" || !int.TryParse(p[3], out var npc) || !int.TryParse(p[4], out var think))
                 continue;
             var boss = ds3Bosses.Contains(p[1]);
-            ds3.Add((boss, p[5], Line("DS3", p[2], npc, think, boss, p[5])));
+            ds3.Add((boss, p[5], Line("DS3", p[2], npc, think, boss, p[5], portedModels.Contains(p[2]))));
         }
         lines.AddRange(ds3.OrderBy(d => d.Boss).ThenBy(d => d.Name, StringComparer.OrdinalIgnoreCase).Select(d => d.Line));
 
@@ -43,16 +50,18 @@ public static class SpawnList
         {
             if (e.NpcParam <= 0 || !seen.Add((e.Model.ToLowerInvariant(), e.Name)))
                 continue;
-            er.Add((e.Boss, e.Name, Line("ER", e.Model, e.NpcParam, e.ThinkParam, e.Boss, e.Name)));
+            er.Add((e.Boss, e.Name, Line("ER", e.Model, e.NpcParam, e.ThinkParam, e.Boss, e.Name, false)));
         }
         lines.AddRange(er.OrderBy(d => d.Boss).ThenBy(d => d.Name, StringComparer.OrdinalIgnoreCase).Select(d => d.Line));
         return lines;
     }
 
-    public static void Write(PorterContext ctx, IEnumerable<string> chrMapLines, IEnumerable<EnemyPort.ErEnemy> erCatalog, ISet<string> ds3Bosses)
+    public static void Write(PorterContext ctx, IEnumerable<string> chrMapLines, IEnumerable<EnemyPort.ErEnemy> erCatalog, ISet<string> ds3Bosses,
+        ISet<string> portedModels)
     {
-        var lines = Lines(chrMapLines, erCatalog, ds3Bosses);
+        var lines = Lines(chrMapLines, erCatalog, ds3Bosses, portedModels);
         File.WriteAllLines(ctx.ModPath(FileName), lines);
-        Console.WriteLine($"enemies: F1 spawn list: {lines.Count(l => l.StartsWith("DS3\t"))} DS3, {lines.Count(l => l.StartsWith("ER\t"))} Elden Ring characters");
+        Console.WriteLine($"enemies: F1 spawn list: {lines.Count(l => l.StartsWith("DS3\t"))} DS3 ({lines.Count(l => l.StartsWith("DS3\t") && l.EndsWith("\tds3"))} with their DS3 model), " +
+                          $"{lines.Count(l => l.StartsWith("ER\t"))} Elden Ring characters");
     }
 }

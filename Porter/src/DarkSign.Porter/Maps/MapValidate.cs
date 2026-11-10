@@ -118,6 +118,17 @@ public static class MapValidate
         {
             report.Warn($"flag allocation check didn't run: {ex.Message}");
         }
+
+        // The enemy port: DS3 models that should have been built and weren't leave every such enemy looking like its
+        // Elden Ring template, which the maps and the spawn menu can't tell from a good build on their own.
+        var enemyReport = ctx.WorkPath("reports", Enemies.ChrPort.ReportFile);
+        if (File.Exists(enemyReport) && File.Exists(ctx.ModPath(EnemyPort.ChrMap.FileName)))
+        {
+            if (Enemies.ChrPort.ReportProblem(File.ReadLines(enemyReport)) is { } problem)
+                report.Fail($"enemy port: {problem}. See Work\\reports\\{Enemies.ChrPort.ReportFile}");
+            else
+                report.Ok("enemy port: every DS3 enemy model it planned was built");
+        }
         return report;
     }
 

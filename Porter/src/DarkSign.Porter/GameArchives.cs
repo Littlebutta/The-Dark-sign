@@ -100,9 +100,19 @@ public sealed class GameArchives : IDisposable
     }
 
     /// <summary>The file's bytes without DCX compression, plus the compression to use when writing it back.</summary>
-    public (byte[] Bytes, DCX.CompressionInfo Compression) ReadWithCompression(string path)
+    public (byte[] Bytes, DCX.CompressionInfo Compression) ReadWithCompression(string path) => SplitCompression(ReadRaw(path));
+
+    /// <summary>
+    /// A stored file as its plain bytes and the compression it was stored with: none (<see cref="DCX.Type.None"/>)
+    /// for a file the game keeps uncompressed, such as a behaviour script (action\script\cXXXX.hks). DCX.Decompress
+    /// throws "Unknown DCX format Unknown" on those: from 1.0.234 to 1.0.242 that failed every ported enemy on its
+    /// template's script, so all of them fell back to Elden Ring bodies.
+    /// </summary>
+    public static (byte[] Bytes, DCX.CompressionInfo Compression) SplitCompression(byte[] raw)
     {
-        var bytes = DCX.Decompress(ReadRaw(path), out var compression);
+        if (!DCX.Is(raw))
+            return (raw, new DCX.NoCompressionInfo());
+        var bytes = DCX.Decompress(raw, out var compression);
         return (bytes, compression);
     }
 

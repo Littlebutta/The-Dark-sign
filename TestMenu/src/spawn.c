@@ -166,9 +166,9 @@ static int g_list_len, g_list_from_file, g_list_loaded;
 
 /* Elden Ring's own enemies that stand in when there's no spawn list yet (from souls-client's spawn_name). */
 static const DksSpawnable BUILT_IN[] = {
-    {"ER", 2275, 22750020, 22750000, 0, "Giant Crab"},
-    {"ER", 4351, 43510010, 43510000, 0, "Knight (First Step test spawn)"},
-    {"ER", 5130, 51300099, 51300000, 1, "Messmer the Impaler"},
+    {"ER", 2275, 22750020, 22750000, 0, "Giant Crab", DKS_BODY_ER},
+    {"ER", 4351, 43510010, 43510000, 0, "Knight (First Step test spawn)", DKS_BODY_ER},
+    {"ER", 5130, 51300099, 51300000, 1, "Messmer the Impaler", DKS_BODY_ER},
 };
 
 static void set_status(const char *fmt, ...)
