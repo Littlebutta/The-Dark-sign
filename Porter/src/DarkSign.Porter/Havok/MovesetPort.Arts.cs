@@ -62,6 +62,15 @@ public static partial class MovesetPort
     internal static List<int> StanceChainMoves(IEnumerable<int> skill) =>
         skill.Where(id => id / 100 == 362 && id > 36230 && id % 10 == 0 && id != 36240).Order().Take(2).ToList();
 
+    /// <summary>
+    /// The moves a DS3 one-shot art continues into on R1 then R2: the block's x0 moves after the one-shot (Ember's
+    /// a253: 36400, then 36410 thrust, 36420 slam). The x1 IDs are the no-FP copies of the move before them (36401 is
+    /// 36400 again, without the buff), not follow-ups: 1.0.257 offered 36401 as the R1 follow-up, so R1 inside the art
+    /// replayed the art itself and the thrust sat on R2.
+    /// </summary>
+    internal static List<int> OneShotFollowUps(IEnumerable<int> skill, int start) =>
+        skill.Where(id => id / 100 == start / 100 && id > start && id % 10 == 0).Order().ToList();
+
     // Elden Ring's chain states and the clips they play: W_SwordArtsOneShotComboEnd_MesmerSowrdArts (the hks's state
     // for Rellana's second stance hit) selects animation 40010 like ComboEnd, W_SwordArtsOneShotComboEnd_2 40020.
     private static readonly (int Er, int NoMp)[] ChainSlots = [(40010, 40015), (40020, 40025)];
@@ -88,7 +97,9 @@ public static partial class MovesetPort
     /// in section order, so the DLC weapons' signature arts (a239-a267: the Ringed Knight pair's Ember, Gael's, the
     /// Demon's Scar) were the ones left without and fell back to their template's Ash of War. Now the unique arts get
     /// IDs first; a generic class skill is ported while IDs last and otherwise takes Elden Ring's own Ash of War of
-    /// the same kind (by its GemName text), never a random template's.
+    /// the same kind (by its GemName text), never a random template's. A skill two weapons share by name but that is
+    /// theirs alone (Falling Bolt on the Dragonslayer Greataxe and Swordspear, Guiding Light on the candlesticks) is
+    /// unique, not generic: 1.0.257 left the Dragonslayer Greataxe with its template's Barbaric Roar.
     /// </summary>
     internal static readonly Dictionary<string, string?> GenericArts = new(StringComparer.OrdinalIgnoreCase)
     {
@@ -96,7 +107,7 @@ public static partial class MovesetPort
         ["Stance"] = "Square Off", ["Perseverance"] = "Endure", ["Quickstep"] = "Quickstep", ["Shield Bash"] = "Shield Bash",
         ["Parry"] = "Parry", ["Spin Sweep"] = "Spinning Strikes", ["Spin Bash"] = "Spinning Strikes", ["Hold"] = "Unsheathe",
         ["Shield Splitter"] = "Impaling Thrust", ["Weapon Skill"] = "No Skill", ["Steady Chant"] = null, ["Puncturing Arrow"] = "Mighty Shot",
-        ["Falling Bolt"] = null, ["Guiding Light"] = null, ["Unfaltering Prayer"] = null, ["Gentle Prayer"] = null,
+        ["Unfaltering Prayer"] = null, ["Gentle Prayer"] = null,
     };
 
     internal static bool IsGenericArt(string? name) => name is not null && GenericArts.ContainsKey(name.Trim());
@@ -438,7 +449,7 @@ public static partial class MovesetPort
             {
                 // Follow-ups (one-shots): DS3 gives the skill a light (R1) and / or heavy (R2) follow-up when its
                 // SwordArtsParam has an FP cost for one; they are the block's next moves, in order.
-                var next = stance ? new List<int>() : job.Skill.Where(id => id / 100 == start / 100 && id > start).ToList();
+                var next = stance ? new List<int>() : OneShotFollowUps(job.Skill, start);
                 int? light = !stance && fpLight >= 0 && next.Count > 0 ? next[0] : null;
                 int? heavy = !stance && fpHeavy >= 0 && next.Count > (light is null ? 0 : 1) ? next[light is null ? 0 : 1] : null;
                 if (windowProto is null)
@@ -1081,6 +1092,10 @@ public static class ArtSelfTest
         Check(MovesetPort.StanceChainMoves([36200, 36210, 36215, 36220, 36230, 36231, 36240, 36241, 36250, 36251, 36290, 36291]).SequenceEqual([36250, 36290]),
             "chain: Friede's stance chains 36230 -> 36250 -> 36290 (no-FP copies and the heavy attack left out)");
         Check(MovesetPort.StanceChainMoves([36200, 36210, 36220, 36230, 36240, 36241, 36300, 36310]).Count == 0, "chain: a stance with one light attack chains nothing");
+        Check(MovesetPort.OneShotFollowUps([36400, 36401, 36410, 36411, 36420, 36421], 36400).SequenceEqual([36410, 36420]),
+            "arts: a one-shot's follow-ups are the block's next x0 moves, never the x1 no-FP copies (Ember: 36410 thrust, 36420 slam)");
+        Check(MovesetPort.OneShotFollowUps([36520, 36521], 36520).Count == 0, "arts: a one-shot with only its no-FP copy has no follow-up");
+        Check(!MovesetPort.IsGenericArt("Falling Bolt") && !MovesetPort.IsGenericArt("Guiding Light"), "arts: Falling Bolt and Guiding Light are unique arts");
         // Its hks: the three art-318 tests that name the chain state are widened, the FP-charging ones aren't.
         const string chainHks = "function IsStanceArts(arts_id)\n    local aow_list = {\n    }\nend\n" +
                                 "    if c_SwordArtsID == 318 then\n        SetSwordArtsPointInfo(ACTION_ARM_R1, TRUE)\n    else\n" +
