@@ -37,6 +37,9 @@ public static partial class FxrPort
         public int? Map(int ds3Id) => Effects.TryGetValue(ds3Id, out var id) ? id : null;
     }
 
+    /// <summary>The reason recorded for an effect DS3's params or moves name but DS3 ships no FXR for.</summary>
+    public const string NoDs3File = "no DS3 file";
+
     internal enum Kind { Texture = 0, Model = 1, Anibnd = 2, Sound = 3 }
 
     private static readonly bool PortFxrSounds = Environment.GetEnvironmentVariable("DARKSIGN_FXR_SOUNDS") != "0";
@@ -81,7 +84,7 @@ public static partial class FxrPort
                 continue;
             if (!ds3.Fxr.TryGetValue(id, out var file) || id >= IdBase / 9 || erIds.Contains((".fxr", IdBase + id)))
             {
-                Fail(id, "no DS3 file");
+                Fail(id, NoDs3File);
                 continue;
             }
             FxrScript.Info info;

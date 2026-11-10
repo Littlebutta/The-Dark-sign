@@ -47,7 +47,10 @@ public static class EffectCoverage
             var bulletFx = bullets ? r.BulletFxr : [];
             var residentFx = visuals ? r.ResidentFxr : [];
             string Share(IReadOnlyCollection<int> ids) => ids.Count == 0 ? "" : $"{ids.Count(id => effects.Map(id) is not null)}/{ids.Count}";
-            var ownFx = artFx.Concat(r.VisualFxr).Concat(r.BulletFxr).Concat(r.ResidentFxr).Distinct().ToList();
+            // An effect DS3 itself ships no file for (f4020 on nearly every weapon) shows nothing in DS3 either: it is
+            // listed in the last column but doesn't count for or against a weapon.
+            var ownFx = artFx.Concat(r.VisualFxr).Concat(r.BulletFxr).Concat(r.ResidentFxr).Distinct()
+                .Where(id => effects.Reasons.GetValueOrDefault(id) != FxrPort.NoDs3File).ToList();
             var missing = classFx.Concat(artFx).Concat(visualFx).Concat(bulletFx).Concat(residentFx).Distinct().Where(id => effects.Map(id) is null).Order().ToList();
             var ownMissing = ownFx.Where(id => effects.Map(id) is null).ToList();
             if (ownFx.Count > 0)
