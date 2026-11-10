@@ -1337,37 +1337,73 @@ public sealed class AttackParamPort(ParamStore er, ParamStore ds3, string behavi
 
     private static int Judge(PARAM.Row row) => Convert.ToInt32(row["behaviorJudgeId"].Value);
 
+    /// <summary>
+    /// Both games look a hit's behaviour row up by its row ID, not by its variationId / behaviorJudgeId fields:
+    /// prefix * 100,000,000 + variation * 1000 + judge. The prefix is 1 for a player weapon's ordinary hits (TAE judge
+    /// 0-999), 2 for every enemy row, and in Elden Ring 3, 4, 6 and 7 for Ash of War and special rows, which a move
+    /// asks for with a four-digit TAE judge (vanilla a613 plays judge 3830 and the row is 300000830, variation 0,
+    /// judge field 830). Builds 1.0.183-1.0.271 numbered every ported row variation * 1000 + judge, prefix 0, where
+    /// the game never looks: no ported weapon's hit or projectile and no ported enemy's attack found its row, so DS3
+    /// weapons dealt no damage and DS3 enemies could not hurt the player.
+    /// </summary>
+    public const int PrefixUnit = 100_000_000;
+
+    /// <summary>The prefix of a row numbered the games' way, else -1 (the few shared rows numbered on their own).</summary>
+    public static int Prefix(PARAM.Row row)
+    {
+        long rest = row.ID - (Convert.ToInt64(row["variationId"].Value) * 1000 + Judge(row));
+        return rest >= 0 && rest % PrefixUnit == 0 ? (int)(rest / PrefixUnit) : -1;
+    }
+
+    /// <summary>The row ID the game computes for a hit, or -1 when it does not fit a row ID.</summary>
+    public static int RowId(int prefix, int variation, int judge)
+    {
+        long id = (long)prefix * PrefixUnit + (long)variation * 1000 + judge;
+        return id is > 0 and <= int.MaxValue ? (int)id : -1;
+    }
+
+    // The prefix this param's rows of real variations carry: 1 in BehaviorParam_PC, 2 in BehaviorParam.
+    private int MainPrefix => _mainPrefix ??= _erBehavior.Rows.Where(r => Convert.ToInt32(r["variationId"].Value) > 0).Select(Prefix)
+        .Where(p => p > 0).GroupBy(p => p).OrderByDescending(g => g.Count()).Select(g => g.Key).FirstOrDefault(1);
+
+    private int? _mainPrefix;
+
     private int PortNewVariation(int ds3Variation, int templateVariation, int? newVariation)
     {
         var rows = _ds3Behavior.Rows.Where(r => Convert.ToInt32(r["variationId"].Value) == ds3Variation).ToList();
         if (ds3Variation <= 0 || rows.Count == 0)
             return 0;
         // The template's own rows, then its base variation's (XX00, which the game falls back to) for judges it lacks.
-        var templateRows = new Dictionary<int, PARAM.Row>();
+        // Keyed by prefix and judge: a variation holds the same judge under several prefixes (ordinary hit 1, Ash of
+        // War 3, ...), and each copy must keep its own.
+        var templateRows = new Dictionary<(int Prefix, int Judge), PARAM.Row>();
         if (templateVariation > 0)
             foreach (var v in new[] { templateVariation, templateVariation / 100 * 100 }.Distinct())
-                foreach (var r in _erBehavior.Rows.Where(r => Convert.ToInt32(r["variationId"].Value) == v))
-                    templateRows.TryAdd(Judge(r), r);
+                foreach (var r in _erBehavior.Rows.Where(r => Convert.ToInt32(r["variationId"].Value) == v && Prefix(r) > 0))
+                    templateRows.TryAdd((Prefix(r), Judge(r)), r);
         var used = _erBehavior.Rows.Select(r => Convert.ToInt32(r["variationId"].Value)).ToHashSet();
         // Weapons take the first free variation from 9000; an enemy names its own (its new character ID * 100, the
         // way Elden Ring numbers enemy variations).
         int variation = newVariation is { } wanted && !used.Contains(wanted) ? wanted : Enumerable.Range(9000, 1000).First(v => !used.Contains(v));
-        var ds3Judges = new HashSet<int>();
+        var ds3Judges = new HashSet<(int Prefix, int Judge)>();
         foreach (var source in rows)
         {
-            int judge = Judge(source), id = variation * 1000 + judge;
-            ds3Judges.Add(judge);
-            if (_erBehavior[id] is not null)
+            // A DS3 row keeps its own prefix (1 for weapons, 2 for enemies: the same in both games).
+            int judge = Judge(source), prefix = Prefix(source) > 0 ? Prefix(source) : MainPrefix, id = RowId(prefix, variation, judge);
+            ds3Judges.Add((prefix, judge));
+            if (id < 0 || _erBehavior[id] is not null)
                 continue;
+            var templateRow = templateRows.GetValueOrDefault((prefix, judge));
             int refType = Convert.ToInt32(source["refType"].Value);
             PARAM.Row row;
-            if (refType == 0 && AttacksFromTemplate && templateRows.TryGetValue(judge, out var templateHit))
-                row = CopyRow(templateHit, id);
+            if (refType == 0 && AttacksFromTemplate && templateRow is not null)
+                row = CopyRow(templateRow, id);
             else if (refType == 0)
             {
                 row = CopyByName(source, new PARAM.Row(id, source.Name ?? "", _erBehavior.AppliedParamdef));
                 // Elden Ring-only attack fields start from the template's attack for this judge (or any of its attacks).
-                var baseAttack = TemplateAttack(templateRows.GetValueOrDefault(judge)) ?? templateRows.Values.Select(TemplateAttack).FirstOrDefault(a => a is not null);
+                var baseAttack = TemplateAttack(templateRow)
+                                 ?? templateRows.OrderBy(t => t.Key).Select(t => TemplateAttack(t.Value)).FirstOrDefault(a => a is not null);
                 row["refId"].Value = Convert.ChangeType(PortAttack(Convert.ToInt32(source["refId"].Value), baseAttack), row["refId"].Value!.GetType());
             }
             // SpEffects (2): the DS3 effect ported under its new ID (weapon art buffs).
@@ -1386,18 +1422,18 @@ public sealed class AttackParamPort(ParamStore er, ParamStore ds3, string behavi
             }
             // Unported bullets and SpEffects are DS3 IDs, which name unrelated Elden Ring bullets and effects (or
             // none): the template's row for the same judge stands in, else the row is left out.
-            else if (templateRows.TryGetValue(judge, out var er))
-                row = CopyRow(er, id);
+            else if (templateRow is not null)
+                row = CopyRow(templateRow, id);
             else
                 continue;
             row["variationId"].Value = Convert.ChangeType(variation, row["variationId"].Value!.GetType());
             _erBehavior.Rows.Add(row);
             _behaviors++;
         }
-        foreach (var (judge, er) in templateRows.OrderBy(t => t.Key))
+        foreach (var ((prefix, judge), er) in templateRows.OrderBy(t => t.Key))
         {
-            int id = variation * 1000 + judge;
-            if (ds3Judges.Contains(judge) || judge < 0 || judge >= 1000 || _erBehavior[id] is not null)
+            int id = RowId(prefix, variation, judge);
+            if (ds3Judges.Contains((prefix, judge)) || judge < 0 || judge >= 1000 || id < 0 || _erBehavior[id] is not null)
                 continue;
             var row = CopyRow(er, id);
             row["variationId"].Value = Convert.ChangeType(variation, row["variationId"].Value!.GetType());
