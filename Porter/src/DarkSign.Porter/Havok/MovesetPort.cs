@@ -171,6 +171,10 @@ public static partial class MovesetPort
     private const int BulletEvent = 2;
     /// <summary>The parameter lengths of Elden Ring's own bullet events (empty: bullets off, DS3's are not copied).</summary>
     private static HashSet<int> ErBulletLengths = [];
+
+    /// <summary>An event group of each type from anywhere in Elden Ring's player TAE (see MergeEvents.TryPlayerGroup).</summary>
+    private static Dictionary<int, TAE.EventGroup> PlayerEffectGroups = [];
+    private static int _effectGroupsAdded;
     private static readonly bool Ds3JumpTables = Environment.GetEnvironmentVariable("DARKSIGN_DS3_JUMPTABLES") == "1";
     // Event types Elden Ring keeps from its own template animation: sounds, effects and other references to IDs that
     // DS3 numbers differently. Every other type comes from DS3 when both games lay it out the same.
@@ -354,6 +358,8 @@ public static partial class MovesetPort
             .GroupBy(Convert.ToHexString).MaxBy(g => g.Count())?.First();
         var templateSounds = erMainEvents.Select(SoundPort.Sound).Where(s => s is { Kind: 1 }).GroupBy(s => s!.Value.Id)
             .OrderByDescending(g => g.Count()).Select(g => g.Key).Take(50).ToList();
+        PlayerEffectGroups = erMainEvents.Where(e => e.Group is not null).GroupBy(e => e.Type).ToDictionary(g => g.Key, g => g.First().Group!);
+        _effectGroupsAdded = 0;
         if (bullets is not null)
             ErBulletLengths = erMainEvents.Where(e => e.Type == BulletEvent).Select(e => e.GetParameterBytes(false).Length).ToHashSet();
         Console.WriteLine($"bullets: Elden Ring bullet event lengths {string.Join(" ", ErBulletLengths.Order())}, DS3's in these movesets " +
@@ -606,6 +612,7 @@ public static partial class MovesetPort
         Console.WriteLine($"moveset: event switches: DS3 effect events {Ds3EffectEvents}, DS3 sound events {Ds3SoundEvents}, swing align {SwingAlign}");
         Console.WriteLine($"moveset: {portedGroups} movesets ported, {skippedGroups} skipped; attacks: {attackPort.Summary}; {_taeEffectEvents} DS3 SpEffect events with ported effects; " +
                           $"{wideCategories.Count} weapons on categories above 255 (mod DLL)");
+        Console.WriteLine($"effects: {_effectGroupsAdded} moves got an effect event group their template section has none of (DS3 effects there were dropped before)");
         if (bullets is not null)
             Console.WriteLine($"bullets: {bullets.Summary}; {_bulletEvents} DS3 bullet events copied into the moves");
         if (spEffects?.Visuals is { } visualRows)
@@ -857,6 +864,21 @@ public static partial class MovesetPort
             groupOf[type] = group;
             return true;
         }
+        // An effect event in a move whose whole template section has no event of that type (Elden Ring's stance art
+        // a614 plays no effect at all, so every effect of a DS3 stance built on it was dropped: Friede's ice blade,
+        // 440501, showed only in the two chain moves built on a612). It takes a copy of the group any move of the
+        // player's TAE files that type under. DARKSIGN_ADD_EVENT_GROUPS=0 turns this off with the template's groups.
+        bool TryPlayerGroup(int type, out TAE.EventGroup? group)
+        {
+            group = null;
+            if (!AddGroups || !PlayerEffectGroups.TryGetValue(type, out var proto))
+                return false;
+            group = proto.GetClone();
+            anim.EventGroups.Add(group);
+            groupOf[type] = group;
+            _effectGroupsAdded++;
+            return true;
+        }
         // Effect types this move now spawns DS3's own effects with; Elden Ring's of those types are dropped.
         var ds3Effects = new HashSet<int>();
         bool ds3Sounds = false;
@@ -876,7 +898,7 @@ public static partial class MovesetPort
             }
             if (Ds3EffectEvents && effectEvents.IsEffect(e.Type))
             {
-                if (effectEvents.Convert(e, effects) is { } converted && TryGroup(e.Type, out var effectGroup))
+                if (effectEvents.Convert(e, effects) is { } converted && (TryGroup(e.Type, out var effectGroup) || TryPlayerGroup(e.Type, out effectGroup)))
                 {
                     merged.Add(new TAE.Event(e.StartTime, e.EndTime, e.Type, e.Unk04, converted, false) { Group = effectGroup });
                     ds3Effects.Add(e.Type);
