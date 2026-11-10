@@ -128,8 +128,8 @@ public static partial class MovesetPort
 
     /// <summary>
     /// What becomes of a SpEffect ID a DS3 move casts (TAE 66/67/331...). Both games' scripts (hks) look for marker
-    /// effects named "[HKS] ...", and number them differently: DS3's 100500 "[HKS] Non-generator Transition" (the
-    /// window Friede's stance attacks chain in) is Elden Ring's 100500 "[HKS] Sword Arts - Raptor Dodge", so a copied
+    /// effects named "[HKS] ...", and number them differently: DS3's 100500 "[HKS] Non-generator Transition" (on
+    /// Friede's stance attacks after their chain window) is Elden Ring's 100500 "[HKS] Sword Arts - Raptor Dodge", so a copied
     /// ID made the game dodge when a stance attack was hit (1.0.225 kept every ID Elden Ring's hks checks). A marker is
     /// kept only when both games name it the same (100280 "[HKS] Is Charging Heavy Attack"), otherwise dropped: a DS3
     /// marker means nothing to Elden Ring's scripts and a ported copy of it would do nothing either. Any other effect
