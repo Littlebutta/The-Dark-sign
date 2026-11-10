@@ -8,10 +8,11 @@ namespace DarkSign.Porter;
 
 /// <summary>
 /// Converts Dark Souls III player animations (Havok 2014, spline-compressed, 110-bone skeleton) into Elden Ring ones
-/// (Havok 2018, 150-bone skeleton). The two skeletons share 103 bones by name. Each shared bone keeps DS3's rotation
-/// and scale, and its translation is DS3's moved by the difference between the two skeletons' reference poses, so
-/// motion carries over while bone lengths stay Elden Ring's. Bones only Elden Ring has hold their reference pose.
-/// Root motion (the reference frame) carries over as it is. The result is written uncompressed (interleaved).
+/// (Havok 2018, 150-bone skeleton). The two skeletons share 103 bones by name. Each shared bone takes DS3's rotation
+/// carried over relative to its rest pose (<see cref="PlanRetarget"/>) and DS3's scale, and its translation is DS3's
+/// moved by the difference between the two skeletons' reference poses, so motion carries over while bone lengths
+/// stay Elden Ring's. Bones only Elden Ring has hold their reference pose. Root motion (the reference frame) carries
+/// over as it is. The result is spline-compressed (<see cref="SplineTranscode"/>) or, on request, uncompressed.
 /// </summary>
 public static class AnimPort
 {
@@ -27,28 +28,147 @@ public static class AnimPort
         public required List<string> Names;
         public required List<hkQsTransform> ReferencePose;
         public List<short> Parents = [];
-        /// <summary>Bones that keep Elden Ring's reference pose instead of DS3's track (see <see cref="RestDifferent"/>);
+        /// <summary>Bones that keep Elden Ring's reference pose instead of DS3's track (see <see cref="PlanRetarget"/>);
         /// the moveset port sets it for the player, the enemy port leaves it unset.</summary>
         public HashSet<int>? Frozen;
+        /// <summary>Per Elden Ring bone, the rotations put before and after DS3's (see <see cref="PlanRetarget"/>):
+        /// the ported rotation is Pre, then DS3's, then Post. Null, or identity for a bone, copies DS3's rotation.</summary>
+        public Quaternion[]? Pre, Post;
     }
 
-    // DARKSIGN_WEAPON_BONES=ds3: every shared bone takes DS3's rotation, as builds up to 1.0.221 did.
-    private static readonly bool FreezeRestDifferent = Environment.GetEnvironmentVariable("DARKSIGN_WEAPON_BONES") != "ds3";
+    /// <summary>
+    /// DARKSIGN_WEAPON_BONES: unset, every shared bone's rotation is carried over relative to its own rest pose
+    /// (<see cref="PlanRetarget"/>); "freeze" keeps Elden Ring's rest pose on the end bones whose rest differs, as
+    /// 1.0.225 did; "ds3" copies DS3's rotation into every shared bone, as builds up to 1.0.221 did.
+    /// </summary>
+    public static readonly string BoneMode = (Environment.GetEnvironmentVariable("DARKSIGN_WEAPON_BONES") ?? "").Trim().ToLowerInvariant();
     private const float RestAngleDegrees = 10f;
+    /// <summary>Rest differences under this are noise and leave the DS3 rotation bytes untouched.</summary>
+    private const float CorrectAngleDegrees = 0.5f;
 
     /// <summary>
-    /// Shared end bones (no children: the weapon bones, R_Weapon / L_Weapon, and the like) whose reference-pose
-    /// rotation differs between the two skeletons by more than <see cref="RestAngleDegrees"/>. A ported move copies
-    /// each bone's DS3 rotation, which is right where the two skeletons rest alike; where they don't, the DS3
-    /// rotation turns the Elden Ring part the wrong way (the Ringed Knight pair's left blade pointed backwards in
-    /// DS3's dual-wield swings, 1.0.221, while Elden Ring's own moves held it right). Such a bone keeps Elden Ring's
-    /// reference pose, which is Elden Ring's grip on the parent hand; DS3 moves rarely turn a weapon in the hand.
-    /// Bones with children are left alone: freezing a spine or arm bone would break the move. The list is logged once.
+    /// Decides how each Elden Ring bone takes its rotation from the DS3 track of the same name, and records it on
+    /// <paramref name="er"/> (<see cref="ErSkeleton.Pre"/>, <see cref="ErSkeleton.Post"/>, <see cref="ErSkeleton.Frozen"/>).
+    /// <para>The game moves a skinned vertex, and a dummy point a weapon hangs on, by the bone's current world
+    /// transform times the inverse of its rest (bind) world transform. Copying DS3's bone rotation into Elden Ring's
+    /// bone gives the bone DS3's world orientation, which is right only where the two skeletons rest alike. Where
+    /// they don't, the part is turned by the rest difference: DS3's L_Weapon rests turned 180° about its X axis
+    /// relative to L_Hand while Elden Ring's rests at identity, so every DS3 move showed the left-hand weapon model
+    /// (the Ringed Knight pair's second blade, Friede's small scythe) pointing backwards, while Elden Ring's own
+    /// moves held it right (1.0.221, 1.0.225).</para>
+    /// <para>Carrying the rotation over relative to rest makes the Elden Ring bone move the mesh and dummies exactly
+    /// as DS3's bone moves DS3's: with W(b) a bone's rest world rotation and p its parent, the ported local rotation
+    /// is Pre · L_ds3 · Post, Pre = W_er(b) · W_ds3(b)⁻¹ and Post = W_ds3(p) · W_er(p)⁻¹ (apply left to right). Where
+    /// the two skeletons rest alike both are identity and the rotation is copied unchanged; where only the bone's
+    /// own rest differs (L_Weapon) Pre is Elden Ring's rest times the inverse of DS3's. Both are constant per bone,
+    /// so spline control points can be rewritten without resampling. A shared bone whose parent is a different bone
+    /// in the two skeletons (Elden Ring hangs L_Shield under L_Weapon, DS3 under L_Hand) can't take a single
+    /// DS3 track and keeps Elden Ring's rest pose. anim-selftest checks the formula against matrices.</para>
+    /// </summary>
+    public static void PlanRetarget(Ds3Skeleton ds3, ErSkeleton er)
+    {
+        er.Frozen = null;
+        er.Pre = er.Post = null;
+        if (BoneMode == "ds3")
+        {
+            Console.WriteLine("moveset: DARKSIGN_WEAPON_BONES=ds3: every shared bone copies DS3's rotation");
+            return;
+        }
+        if (BoneMode == "freeze")
+        {
+            er.Frozen = RestDifferent(ds3, er);
+            return;
+        }
+        if (er.Parents.Count != er.Names.Count || ds3.Parents.Count != ds3.Names.Count)
+        {
+            Console.WriteLine("moveset: a skeleton has no parent indices; every shared bone copies DS3's rotation");
+            return;
+        }
+        var ds3Index = ds3.Names.Select((n, i) => (n, i)).GroupBy(x => x.n, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(g => g.Key, g => g.First().i, StringComparer.OrdinalIgnoreCase);
+        var wDs3 = WorldRest(ds3.Names.Count, ds3.Parents, i => ds3.ReferencePose[i].Rotation);
+        var wEr = WorldRest(er.Names.Count, er.Parents, i => er.ReferencePose[i].m_rotation);
+        int n = er.Names.Count;
+        var pre = new Quaternion[n];
+        var post = new Quaternion[n];
+        var frozen = new HashSet<int>();
+        var corrected = new List<string>();
+        var kept = new List<string>();
+        for (int b = 0; b < n; b++)
+        {
+            pre[b] = post[b] = Quaternion.Identity;
+            if (!ds3Index.TryGetValue(er.Names[b], out var d))
+                continue;
+            int p = er.Parents[b], dp = ds3.Parents[d];
+            bool sameParent = p < 0 ? dp < 0 : dp >= 0 && er.Names[p].Equals(ds3.Names[dp], StringComparison.OrdinalIgnoreCase);
+            if (!sameParent)
+            {
+                frozen.Add(b);
+                kept.Add($"{er.Names[b]} (under {(p < 0 ? "the root" : er.Names[p])} here, {(dp < 0 ? "the root" : ds3.Names[dp])} in DS3)");
+                continue;
+            }
+            var (a, c) = Corrections(wEr[b], wDs3[d], p < 0 ? Quaternion.Identity : wEr[p], dp < 0 ? Quaternion.Identity : wDs3[dp]);
+            float degrees = Math.Max(Degrees(a), Degrees(c));
+            if (degrees < CorrectAngleDegrees)
+                continue;
+            pre[b] = a;
+            post[b] = c;
+            corrected.Add($"{er.Names[b]} {Degrees(Quaternion.Normalize(er.ReferencePose[b].m_rotation), Quaternion.Normalize(ds3.ReferencePose[d].Rotation)):0.#}°");
+        }
+        er.Pre = pre;
+        er.Post = post;
+        er.Frozen = frozen;
+        Console.WriteLine(corrected.Count == 0
+            ? "moveset: every shared bone rests alike in both skeletons; all take DS3's rotation"
+            : $"moveset: {corrected.Count} shared bones rest differently in the two skeletons; their DS3 rotation is carried over relative to rest: {string.Join(", ", corrected)} [DARKSIGN_WEAPON_BONES=freeze or ds3 for the old behaviours]");
+        if (kept.Count > 0)
+            Console.WriteLine($"moveset: {kept.Count} shared bones hang from a different parent in the two skeletons and keep Elden Ring's rest pose: {string.Join(", ", kept)}");
+    }
+
+    /// <summary>Pre and Post for one bone (see <see cref="PlanRetarget"/>): its rest world rotation in both skeletons, and its parent's.</summary>
+    internal static (Quaternion Pre, Quaternion Post) Corrections(Quaternion erBone, Quaternion ds3Bone, Quaternion erParent, Quaternion ds3Parent) =>
+        (Quaternion.Normalize(Quaternion.Concatenate(erBone, Quaternion.Inverse(ds3Bone))),
+         Quaternion.Normalize(Quaternion.Concatenate(ds3Parent, Quaternion.Inverse(erParent))));
+
+    /// <summary>The ported rotation of one sample: Pre, then DS3's rotation, then Post (apply left to right).</summary>
+    public static Quaternion Apply(Quaternion pre, Quaternion ds3, Quaternion post) =>
+        Quaternion.Normalize(Quaternion.Concatenate(Quaternion.Concatenate(pre, ds3), post));
+
+    /// <summary>Each bone's rest world rotation: its local rotation, then its parent's world rotation.</summary>
+    public static Quaternion[] WorldRest(int count, IReadOnlyList<short> parents, Func<int, Quaternion> local)
+    {
+        var world = new Quaternion?[count];
+        Quaternion Of(int i)
+        {
+            if (world[i] is { } w)
+                return w;
+            var q = Quaternion.Normalize(local(i));
+            w = parents[i] >= 0 && parents[i] != i ? Quaternion.Normalize(Quaternion.Concatenate(q, Of(parents[i]))) : q;
+            world[i] = w;
+            return w;
+        }
+        return Enumerable.Range(0, count).Select(Of).ToArray();
+    }
+
+    public static float Degrees(Quaternion q) => Degrees(q, Quaternion.Identity);
+    public static float Degrees(Quaternion a, Quaternion b)
+    {
+        // Through the chord, not acos of the dot product, which float can't resolve under about 0.05°.
+        a = Quaternion.Normalize(a);
+        b = Quaternion.Normalize(b);
+        float chord = MathF.Min((a - b).Length(), (a + b).Length());
+        return 4 * MathF.Asin(MathF.Min(1, chord / 2)) * 180 / MathF.PI;
+    }
+
+    /// <summary>
+    /// 1.0.225's way (DARKSIGN_WEAPON_BONES=freeze): shared end bones (no children) whose reference-pose rotation
+    /// differs between the two skeletons by more than <see cref="RestAngleDegrees"/> keep Elden Ring's reference pose;
+    /// every other shared bone copies DS3's rotation. It missed L_Weapon, which has a child (L_Shield) in Elden Ring.
     /// </summary>
     public static HashSet<int> RestDifferent(Ds3Skeleton ds3, ErSkeleton er)
     {
         var result = new HashSet<int>();
-        if (!FreezeRestDifferent || er.Parents.Count != er.Names.Count || ds3.Parents.Count != ds3.Names.Count)
+        if (er.Parents.Count != er.Names.Count || ds3.Parents.Count != ds3.Names.Count)
             return result;
         var ds3Index = ds3.Names.Select((n, i) => (n, i)).GroupBy(x => x.n, StringComparer.OrdinalIgnoreCase)
             .ToDictionary(g => g.Key, g => g.First().i, StringComparer.OrdinalIgnoreCase);
@@ -58,18 +178,15 @@ public static class AnimPort
         {
             if (hasChildren.Contains(b) || !ds3Index.TryGetValue(er.Names[b], out var d))
                 continue;
-            var qEr = Quaternion.Normalize(er.ReferencePose[b].m_rotation);
-            var qDs3 = Quaternion.Normalize(ds3.ReferencePose[d].Rotation);
-            float dot = MathF.Min(1, MathF.Abs(Quaternion.Dot(qEr, qDs3)));
-            float degrees = 2 * MathF.Acos(dot) * 180 / MathF.PI;
+            float degrees = Degrees(er.ReferencePose[b].m_rotation, ds3.ReferencePose[d].Rotation);
             if (degrees <= RestAngleDegrees)
                 continue;
             result.Add(b);
             notes.Add($"{er.Names[b]} {degrees:0}°");
         }
         Console.WriteLine(result.Count == 0
-            ? "moveset: every shared end bone rests alike in both skeletons; all take DS3's rotation"
-            : $"moveset: {result.Count} shared end bones rest differently in the two skeletons and keep Elden Ring's pose in ported moves: {string.Join(", ", notes)} [DARKSIGN_WEAPON_BONES=ds3 gives them DS3's rotation]");
+            ? "moveset: DARKSIGN_WEAPON_BONES=freeze: every shared end bone rests alike in both skeletons; all take DS3's rotation"
+            : $"moveset: DARKSIGN_WEAPON_BONES=freeze: {result.Count} shared end bones keep Elden Ring's pose in ported moves: {string.Join(", ", notes)}");
         return result;
     }
 
@@ -139,6 +256,8 @@ public static class AnimPort
         var ds3TrackOf = new int[erBones];
         var offsets = new Vector3[erBones];
         var frozen = er.Frozen ?? [];
+        var pre = er.Pre ?? Enumerable.Repeat(Quaternion.Identity, erBones).ToArray();
+        var post = er.Post ?? Enumerable.Repeat(Quaternion.Identity, erBones).ToArray();
         for (int b = 0; b < erBones; b++)
         {
             ds3TrackOf[b] = ds3TrackByName.TryGetValue(er.Names[b], out var t) && !frozen.Contains(b) ? t : -1;
@@ -153,8 +272,9 @@ public static class AnimPort
         // the other bones keep the reference pose.
         var bound = spline ? Enumerable.Range(0, erBones).Where(b => ds3TrackOf[b] >= 0).ToArray() : Enumerable.Range(0, erBones).ToArray();
         hkaAnimation animation = spline
-            ? SplineTranscode.Build(source, bound.Select(b => ds3TrackOf[b]).ToArray(), bound.Select(b => offsets[b]).ToArray(), bound.Select(b => er.ReferencePose[b]).ToList())
-            : Interleaved(source, tracks, frames, ds3TrackOf, offsets, er);
+            ? SplineTranscode.Build(source, bound.Select(b => ds3TrackOf[b]).ToArray(), bound.Select(b => offsets[b]).ToArray(), bound.Select(b => er.ReferencePose[b]).ToList(),
+                bound.Select(b => pre[b]).ToArray(), bound.Select(b => post[b]).ToArray())
+            : Interleaved(source, tracks, frames, ds3TrackOf, offsets, pre, post, er);
         animation.m_annotationTracks = bound.Select(b => new hkaAnnotationTrack { m_trackName = er.Names[b] }).ToList();
         if (refFrame is not null)
             animation.m_extractedMotion = new hkaDefaultAnimatedReferenceFrame
@@ -187,7 +307,7 @@ public static class AnimPort
         return (output.ToArray(), summary, templateDuration);
     }
 
-    private static hkaInterleavedUncompressedAnimation Interleaved(HKX.HKASplineCompressedAnimation source, int tracks, int frames, int[] ds3TrackOf, Vector3[] offsets, ErSkeleton er)
+    private static hkaInterleavedUncompressedAnimation Interleaved(HKX.HKASplineCompressedAnimation source, int tracks, int frames, int[] ds3TrackOf, Vector3[] offsets, Quaternion[] pre, Quaternion[] post, ErSkeleton er)
     {
         var samples = SplineCompressedAnimation.ReadSplCmpAnimBytesAndSampleToUncomp(source.GetData(), tracks, source.BlockCount, frames, source.FramesPerBlock);
         int erBones = er.Names.Count;
@@ -202,7 +322,7 @@ public static class AnimPort
                     transforms.Add(new hkQsTransform
                     {
                         m_translation = new Vector4(s.Translation + offsets[b], 0),
-                        m_rotation = Quaternion.Normalize(s.Rotation),
+                        m_rotation = Apply(pre[b], s.Rotation, post[b]),
                         m_scale = new Vector4(s.Scale, 0),
                     });
                 }

@@ -199,7 +199,7 @@ public static partial class MovesetPort
         var ds3Main = BND4.Read(ds3Archives.Read("/chr/c0000.anibnd.dcx"));
         var ds3Skeleton = AnimPort.ReadDs3Skeleton(BinderLeaf(ds3Main, "skeleton.hkx")!.Bytes);
         var erSkeleton = AnimPort.ReadErSkeleton(BinderLeaf(erMain, "skeleton.hkx")!.Bytes, Compendium(erMain));
-        erSkeleton.Frozen = AnimPort.RestDifferent(ds3Skeleton, erSkeleton);
+        AnimPort.PlanRetarget(ds3Skeleton, erSkeleton);
         var ds3Hkx = new Ds3AnimFiles(ds3Archives);
 
         var usedSections = clips.Select(c => AnimName().Match(c.m_animationName ?? "")).Where(m => m.Success)
@@ -779,18 +779,21 @@ public static partial class MovesetPort
     private const int OverrideWeaponModelLocations = 712;
     // ChangeType 5 is "Friede's Scythe Override", hardcoded in DS3's engine by weapon ID: it is how Friede's art takes the
     // second scythe off the back into the left hand. Elden Ring doesn't know the ported weapon's ID, so the event did
-    // nothing. DARKSIGN_FRIEDE_OVERRIDE=keep leaves it as DS3 wrote it.
+    // nothing. DARKSIGN_FRIEDE_OVERRIDE=keep leaves it as DS3 wrote it; see FixModelOverride for the other modes.
     /// <summary>
     /// Turns DS3's Friede-only ChangeType 5 (TAE 712 OverrideWeaponModelLocations, per slot: AbsorpPosParamCondition
-    /// byte, ChangeType byte) into a move Elden Ring knows. Elden Ring's own paired weapons bring the second blade out
-    /// in a one-handed art with ChangeType 2, "the model's two-handed location" (Rellana's a918, the Starscourge
-    /// Greatsword's a913: slot RH1 condition 2, ChangeType 2; condition 2 matches a model shown only in use,
-    /// wepInvisibleType 2, which Friede's model 1 is in DS3's row and ours), and AbsorpPort puts the left hand there
-    /// for Friede's model 1. That is the default. DARKSIGN_FRIEDE_OVERRIDE=back keeps the second scythe on the back
-    /// two-handed and moves it with ChangeType 1 ("1H left location", AbsorpPort's left_1 = left hand), which no
-    /// Elden Ring move uses on a right-hand model and never showed the scythe in 1.0.221 (condition 2) or 1.0.225 and
-    /// 1.0.238 (condition 0, which matches no model of a part shown only in use). A left-hand model's slot goes the
-    /// other way (ChangeType 0, 1H right). The condition byte stays DS3's (2) in every mode.
+    /// byte, ChangeType byte) into a move Elden Ring knows. Elden Ring's own player animations move a right-hand
+    /// model 1 with two ChangeTypes only (every c0000 TAE section counted): 2, "the model's two-handed location"
+    /// (Rellana's a918 and the Starscourge Greatsword's a913 bring the second blade out one-handed: slot RH1
+    /// condition 2, ChangeType 2), and 3, "the model's hang location" (a612's art sends model 1 there: slot RH1
+    /// condition 2, ChangeType 3; the paired arts put the blade back with it). Condition 2 matches a model shown only
+    /// in use (wepInvisibleType 2), which Friede's model 1 is in DS3's row and ours.
+    /// Default ("art"): ChangeType 3, and AbsorpPort makes model 1's hang slot the left hand, so the second scythe
+    /// stays on the back until the art (a612's bytes exactly). "both" (the previous build): ChangeType 2, with AbsorpPort's
+    /// Elden Ring paired layout (left hand two-handed and in the art). "back" (1.0.221-1.0.238): ChangeType 1
+    /// ("1H left location", left_1 = left hand), which no Elden Ring move uses on a right-hand model and never showed
+    /// the scythe; a left-hand model's slot goes the other way (ChangeType 0). "keep": untouched. The condition byte
+    /// stays DS3's (2) in every mode.
     /// </summary>
     internal static int FixModelOverride(byte[] bytes) => FixModelOverride(bytes, AbsorpPort.FriedeMode);
 
@@ -802,7 +805,12 @@ public static partial class MovesetPort
         for (int slot = 0; slot < 8; slot++)
             if ((sbyte)bytes[2 * slot + 1] == 5)
             {
-                bytes[2 * slot + 1] = mode == "back" ? (slot < 4 ? (byte)1 : (byte)0) : (byte)2;
+                bytes[2 * slot + 1] = mode switch
+                {
+                    "back" => slot < 4 ? (byte)1 : (byte)0,
+                    "both" => 2,
+                    _ => 3,
+                };
                 fixedCount++;
             }
         return fixedCount;

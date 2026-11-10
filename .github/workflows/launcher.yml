@@ -123,6 +123,9 @@ jobs:
       # Offline checks of the weapon art port (hks patch, skill names; no game files needed).
       - if: steps.cache.outputs.cache-hit != 'true'
         run: porter-publish/DarkSignPorter.exe arts-selftest
+      # Offline checks of the bone retargeting (rest-pose corrections: the off-hand weapon's orientation) and the spline rotation rewrite (no game files needed).
+      - if: steps.cache.outputs.cache-hit != 'true'
+        run: porter-publish/DarkSignPorter.exe anim-selftest
       # Offline checks of the effect visual, bullet and resident effect ports (params built in memory).
       - if: steps.cache.outputs.cache-hit != 'true'
         run: porter-publish/DarkSignPorter.exe effects-selftest

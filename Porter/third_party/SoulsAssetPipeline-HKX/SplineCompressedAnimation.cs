@@ -257,7 +257,7 @@ namespace SoulsAssetPipeline.Animation
 
         }
 
-        static Quaternion ReadQuantizedQuaternion(BinaryReaderEx br, RotationQuantizationType type)
+        internal static Quaternion ReadQuantizedQuaternion(BinaryReaderEx br, RotationQuantizationType type)
         {
             switch (type)
             {

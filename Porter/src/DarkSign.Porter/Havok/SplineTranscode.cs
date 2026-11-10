@@ -20,7 +20,10 @@ public static class SplineTranscode
 
     /// <param name="ds3TrackOf">For each Elden Ring bone, the DS3 track that animates it, or -1.</param>
     /// <param name="offsets">For each Elden Ring bone, what to add to the DS3 track's translation.</param>
-    public static hkaSplineCompressedAnimation Build(HKX.HKASplineCompressedAnimation src, int[] ds3TrackOf, Vector3[] offsets, IReadOnlyList<hkQsTransform> erReference)
+    /// <param name="pre">For each Elden Ring bone, the rotation put before DS3's (<see cref="AnimPort.PlanRetarget"/>); null or identity leaves the rotation bytes as DS3's.</param>
+    /// <param name="post">For each Elden Ring bone, the rotation put after DS3's.</param>
+    public static hkaSplineCompressedAnimation Build(HKX.HKASplineCompressedAnimation src, int[] ds3TrackOf, Vector3[] offsets, IReadOnlyList<hkQsTransform> erReference,
+        Quaternion[]? pre = null, Quaternion[]? post = null)
     {
         var data = src.GetData();
         int ds3Tracks = src.TransformTrackCount, erTracks = ds3TrackOf.Length;
@@ -46,7 +49,10 @@ public static class SplineTranscode
                     mask = (byte[])t.Mask.Clone();
                     mask[1] = AppendPosition(body, t, offsets[b]);
                     Pad(body, 4);
-                    body.AddRange(t.Rotation);
+                    if (pre is not null && post is not null && (pre[b] != Quaternion.Identity || post[b] != Quaternion.Identity))
+                        (mask[0], mask[2]) = AppendRotation(body, t, pre[b], post[b]);
+                    else
+                        body.AddRange(t.Rotation);
                     Pad(body, 4);
                     body.AddRange(t.Scale);
                     Pad(body, 4);
@@ -195,6 +201,96 @@ public static class SplineTranscode
         body.AddRange(src.AsSpan(at).ToArray()); // the quantized control points, unchanged
         return result;
     }
+
+    /// <summary>
+    /// Writes the track's rotation data with every rotation replaced by Pre · rotation · Post (<see cref="AnimPort.Apply"/>),
+    /// as 48-bit rotations; returns the new quantization byte and rotation flags. A spline is a weighted sum of its
+    /// control points, normalized, and multiplying by a fixed rotation is a length-keeping linear map, so turning each
+    /// control point turns every sampled rotation the same way: the knots and degree are kept and nothing is resampled.
+    /// A rotation quantization this decoder doesn't read (24-bit, 16-bit; neither game's player files use them) is
+    /// copied unchanged, with a warning once.
+    /// </summary>
+    private static (byte Quant, byte Flags) AppendRotation(List<byte> body, Track t, Quaternion pre, Quaternion post)
+    {
+        byte quant = t.Mask[0], flags = t.Mask[2];
+        var type = (SplineCompressedAnimation.RotationQuantizationType)((quant >> 2) & 0xF);
+        byte newQuant = (byte)((quant & ~(0xF << 2)) | (RotThreeComp48 << 2));
+        var src = t.Rotation;
+        if ((flags & SplineRot) == 0 && (flags & StaticRot) == 0)
+        {
+            // Absent: the rotation is identity on every frame, so the result is the fixed rotation Pre · Post.
+            body.AddRange(ThreeComp48(AnimPort.Apply(pre, Quaternion.Identity, post)));
+            return (newQuant, StaticRot);
+        }
+        if (type is SplineCompressedAnimation.RotationQuantizationType.THREECOMP24 or SplineCompressedAnimation.RotationQuantizationType.STRAIGHT16)
+        {
+            if (!warnedQuantization)
+            {
+                warnedQuantization = true;
+                Console.WriteLine($"moveset: WARNING a DS3 track stores rotations as {type}, which the porter can't re-orient; its bytes are copied unchanged");
+            }
+            body.AddRange(src);
+            return (quant, flags);
+        }
+        var br = new BinaryReaderEx(false, src);
+        if ((flags & SplineRot) != 0)
+        {
+            int items = br.ReadInt16();
+            int degree = br.ReadByte();
+            var knots = br.ReadBytes(items + degree + 2);
+            br.Pad(RotationAlign(type));
+            var points = new Quaternion[items + 1];
+            for (int i = 0; i <= items; i++)
+                points[i] = AnimPort.Apply(pre, SplineCompressedAnimation.ReadQuantizedQuaternion(br, type), post);
+            body.AddRange(BitConverter.GetBytes((short)items));
+            body.Add((byte)degree);
+            body.AddRange(knots);
+            Pad(body, 2);
+            foreach (var q in points)
+                body.AddRange(ThreeComp48(q));
+            return (newQuant, flags);
+        }
+        br.Pad(RotationAlign(type));
+        body.AddRange(ThreeComp48(AnimPort.Apply(pre, SplineCompressedAnimation.ReadQuantizedQuaternion(br, type), post)));
+        return (newQuant, flags);
+    }
+
+    private static bool warnedQuantization;
+
+    /// <summary><see cref="AppendRotation"/> on one track's mask and rotation bytes, for anim-selftest: the new mask and the rotation bytes written.</summary>
+    internal static (byte[] Mask, byte[] Rotation) RewriteRotation(byte[] mask, byte[] rotation, Quaternion pre, Quaternion post)
+    {
+        var body = new List<byte>();
+        var newMask = (byte[])mask.Clone();
+        (newMask[0], newMask[2]) = AppendRotation(body, new Track { Mask = mask, Position = [], Rotation = rotation, Scale = [] }, pre, post);
+        return (newMask, body.ToArray());
+    }
+
+    private static int RotationAlign(SplineCompressedAnimation.RotationQuantizationType type) => (int)type switch { 0 => 4, 2 => 2, 4 => 2, 5 => 4, _ => 1 };
+
+    /// <summary>Reads back the rotations of one DS3 or built track (static: one; spline: its control points), for anim-selftest.</summary>
+    internal static Quaternion[] ReadRotations(byte[] mask, byte[] rotation)
+    {
+        byte flags = mask[2];
+        var type = (SplineCompressedAnimation.RotationQuantizationType)((mask[0] >> 2) & 0xF);
+        if ((flags & (SplineRot | StaticRot)) == 0)
+            return [Quaternion.Identity];
+        var br = new BinaryReaderEx(false, rotation);
+        int count = 1;
+        if ((flags & SplineRot) != 0)
+        {
+            int items = br.ReadInt16();
+            int degree = br.ReadByte();
+            br.ReadBytes(items + degree + 2);
+            count = items + 1;
+        }
+        br.Pad(RotationAlign(type));
+        return Enumerable.Range(0, count).Select(_ => SplineCompressedAnimation.ReadQuantizedQuaternion(br, type)).ToArray();
+    }
+
+    /// <summary>Builds one block's track table from raw DS3 data, for anim-selftest.</summary>
+    internal static (byte[] Mask, byte[] Rotation)[] ReadTracks(byte[] data, int count) =>
+        ReadBlock(data, 0, count).Tracks.Select(t => (t.Mask, t.Rotation)).ToArray();
 
     /// <summary>Writes a track holding <paramref name="pose"/> still; returns its mask.</summary>
     private static byte[] AppendStatic(List<byte> body, hkQsTransform pose)
