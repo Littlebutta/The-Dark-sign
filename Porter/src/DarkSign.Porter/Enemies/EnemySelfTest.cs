@@ -91,10 +91,43 @@ public static class EnemySelfTest
         Check("method C (stats) points the map at the template's model", stats[2] == "c4300");
 
         // The F1 menu's spawn list (TestMenu/src/spawn.c parses these lines).
-        var spawn = SpawnList.Lines(ChrPort.MapLines(plan, rows, 43000000), [knight, knight, hound with { Boss = true }], new HashSet<string>());
+        var spawn = SpawnList.Lines(ChrPort.MapLines(plan, rows, 43000000), [knight, knight, hound with { Boss = true }], new HashSet<string>(),
+            new HashSet<string> { "c7000" });
         Check("spawn list: header, one DS3 line per ported character on the new model, Elden Ring deduplicated, bosses last",
-            spawn.Count == 4 && spawn[0].StartsWith('#') && spawn[1] == "DS3\tc7000\t70000000\t43000000\t0\tLothric Knight"
-            && spawn[2] == "ER\tc4300\t43000000\t43000000\t0\tBanished Knight" && spawn[3] == "ER\tc4410\t44100000\t44100000\t1\tWolf");
+            spawn.Count == 4 && spawn[0].StartsWith('#') && spawn[1] == "DS3\tc7000\t70000000\t43000000\t0\tLothric Knight\tds3"
+            && spawn[2] == "ER\tc4300\t43000000\t43000000\t0\tBanished Knight\ter" && spawn[3] == "ER\tc4410\t44100000\t44100000\t1\tWolf\ter");
+        // Elden Ring ships c7000 itself (Fallen Hawks Soldier): a DS3 character left on that body is an Elden Ring
+        // body, whatever its number (1.0.242: "Tree Woman" on c7000 was the one enemy listed as having its DS3 model).
+        var hawk = new EnemyPort.ErEnemy("c7000", 70001065, 70001000, "Fallen Hawks Soldier", false, "test");
+        var onHawk = new ChrPort.Plan(new ChrPort.Ds3Chr(6060, "Tree Woman", false, [606000]), hawk, 7000, 0.1, ChrPort.Method.Stats, 7093);
+        var hawkSpawn = SpawnList.Lines(ChrPort.MapLines(onHawk, ChrPort.NpcRowIds(onHawk, []), 70001000), [], new HashSet<string>(), new HashSet<string>());
+        Check("spawn list: a DS3 character left on Elden Ring's own c7000 is marked as an Elden Ring body",
+            hawkSpawn.Count == 2 && hawkSpawn[1] == "DS3\tc7000\t70930000\t70001000\t0\tTree Woman\ter");
+
+        // Files the game stores uncompressed (behaviour scripts) are read as they are; compressed ones are unpacked.
+        var plainScript = "\u001bLuaS plain behaviour script"u8.ToArray();
+        var (plainBytes, plainCompression) = GameArchives.SplitCompression(plainScript);
+        Check("an uncompressed game file (action\\script\\cXXXX.hks) is read as it is, with no compression to write back",
+            plainBytes.SequenceEqual(plainScript) && plainCompression.Type == DCX.Type.None);
+        var packed = DCX.Compress(plainScript, new DCX.DcxDfltCompressionInfo(DCX.DfltCompressionPreset.DCX_DFLT_10000_44_9));
+        var (unpacked, packedCompression) = GameArchives.SplitCompression(packed);
+        Check("a compressed game file is unpacked and keeps its compression for writing back",
+            unpacked.SequenceEqual(plainScript) && packedCompression.Type == DCX.Type.DCX_DFLT);
+
+        // A build whose DS3 models all failed says so (1.0.234-1.0.242: 93 of 93 failed, the report read 0 FAIL).
+        var failNotes = Enumerable.Range(0, 3).Select(i => $"c110{i} Hollow{ChrPort.FilesFailed}FormatException: Unknown DCX format Unknown. at X); using the template's body")
+            .Append($"c1200 Dog{ChrPort.FilesFailed}InvalidDataException: no model); using the template's body").ToList();
+        var problemText = ChrPort.FailureSummary(4, 1, failNotes);
+        Check($"failed models are summed up with the reason most share ({problemText})",
+            problemText is not null && problemText.StartsWith("4 of 5 DS3 enemy models", StringComparison.Ordinal)
+            && problemText.Contains("(3 with: FormatException: Unknown DCX format Unknown. at X)", StringComparison.Ordinal)
+            && ChrPort.FailureSummary(0, 5, []) is null);
+        var reportLines = new[] { "DS3 chr\tname\tboss\ttemplate\ttemplate name\tbone match\tnew chr\tmethod\tnotes",
+            "c1300\tRat\t0\tc4410\tWolf\t0.50\tc7002\tfull\t", "c1100\tHollow\t0\tc4300\tKnight\t0.50\t\tstats\t" }
+            .Concat(failNotes.Select(n => "# " + n)).Append("# some other note").ToList();
+        Check("map-validate reads the same failure back from the enemy report, and none from a clean one",
+            ChrPort.ReportProblem(reportLines)?.StartsWith("4 of 5 DS3 enemy models", StringComparison.Ordinal) == true
+            && ChrPort.ReportProblem(reportLines.Take(3)) is null);
 
         // TAE keys.
         Check("TAE sections: a000.tae -> 0, a061.tae -> 61, c1100.tae -> 0",

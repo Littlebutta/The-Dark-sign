@@ -286,9 +286,9 @@ char g_spawn_search[96];
 bool g_spawn_bosses = true;
 bool g_spawn_ds3_models_only = true; // hide DS3 enemies the port could only put on an Elden Ring body (method C)
 
-// A DS3 entry with its own ported model has a new character ID (Porter ChrPort: c7000-c7999); any other model is the
-// Elden Ring template it was put on, so it looks like an Elden Ring enemy.
-bool has_ds3_model(const DksSpawnable &s) { return strcmp(s.game, "DS3") != 0 || (s.chr >= 7000 && s.chr <= 7999); }
+// A DS3 entry either wears the model the port built for it or the Elden Ring template it was left on, in which case
+// it looks like that Elden Ring enemy. The spawn list says which (items.c).
+bool has_ds3_model(const DksSpawnable &s) { return dks_spawn_has_own_model(&s) != 0; }
 
 void draw_spawn()
 {
@@ -342,7 +342,7 @@ void draw_spawn()
     }
     if (!shown)
         ImGui::TextWrapped(g_spawn_game == 0 && from_file
-                               ? "No Dark Souls III enemies are ported yet (Fallbacks: enemy port is off, or it failed). See Work\\reports\\enemy-port.tsv."
+                               ? "No Dark Souls III enemy has its own model in this build (Fallbacks: enemy port is off, or it failed). See Work\\reports\\enemy-port.tsv."
                            : g_spawn_game == 0
                                ? "No spawn list yet. Press Rebuild content in the launcher (the enemy port writes it), then restart the game."
                                : "Nothing matches.");

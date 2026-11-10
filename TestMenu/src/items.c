@@ -119,13 +119,15 @@ int dks_level_for(const int attributes[DKS_ATTRIBUTES])
 
 int dks_parse_spawn_line(const char *line, DksSpawnable *out)
 {
-    char model[16], npc[16], think[16], boss[4];
+    char model[16], npc[16], think[16], boss[4], body[8] = "";
     memset(out, 0, sizeof *out);
     if (line[0] == '#' || !(line = next_field(line, out->game, sizeof out->game)) || !(line = next_field(line, model, sizeof model)) ||
         !(line = next_field(line, npc, sizeof npc)) || !(line = next_field(line, think, sizeof think)) ||
         !(line = next_field(line, boss, sizeof boss)))
         return 0;
-    next_field(line, out->name, sizeof out->name);
+    if ((line = next_field(line, out->name, sizeof out->name)))
+        next_field(line, body, sizeof body);
+    out->body = strcmp(body, "ds3") == 0 ? DKS_BODY_DS3 : strcmp(body, "er") == 0 ? DKS_BODY_ER : DKS_BODY_UNKNOWN;
     char *end;
     if ((model[0] != 'c' && model[0] != 'C') || !model[1])
         return 0;
@@ -143,6 +145,15 @@ int dks_parse_spawn_line(const char *line, DksSpawnable *out)
     if (!out->name[0])
         snprintf(out->name, sizeof out->name, "c%04d", out->chr);
     return strcmp(out->game, "DS3") == 0 || strcmp(out->game, "ER") == 0;
+}
+
+int dks_spawn_has_own_model(const DksSpawnable *s)
+{
+    if (strcmp(s->game, "DS3") != 0)
+        return 1;
+    if (s->body != DKS_BODY_UNKNOWN)
+        return s->body == DKS_BODY_DS3;
+    return s->chr >= 7000 && s->chr <= 7999;
 }
 
 void dks_spawn_position(const float player[3], const float q[4], int n, float out[3])
