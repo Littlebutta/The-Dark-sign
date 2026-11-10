@@ -59,7 +59,7 @@ up to its level, which would mean a game update moved them.
 While it is open the game's keyboard and mouse input and its cursor lock are held back. It finds the game's
 item-give function and rune counter by the byte patterns [Erd-Tools](https://github.com/Nordgaren/Erd-Tools) uses;
 if a game update moves them, the menu says so instead of crashing. It is a testing aid for offline play only.
-Its log is `dksign_testmenu.log` in the profile's save folder.
+Its log is `dksign_testmenu.log` in the profile's save folder (every line has the local time; the five sessions before it are kept as `dksign_testmenu.1.log` to `.5.log`).
 
 ## Save isolation
 

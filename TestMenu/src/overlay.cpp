@@ -1021,5 +1021,9 @@ BOOL WINAPI DllMain(HINSTANCE inst, DWORD reason, LPVOID)
         if (HANDLE thread = CreateThread(nullptr, 0, start, nullptr, 0, nullptr))
             CloseHandle(thread);
     }
+    // The game unloading us means it shut down in an orderly way (quit from the menu, the window closed, or the game
+    // ending its own main loop after an error). A hard crash never gets here, so this line tells the two apart.
+    else if (reason == DLL_PROCESS_DETACH && is_elden_ring())
+        dks_log("exit: the game is shutting down in an orderly way (no hard crash up to here)");
     return TRUE;
 }
