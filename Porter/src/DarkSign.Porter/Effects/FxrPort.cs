@@ -201,8 +201,6 @@ public static partial class FxrPort
             if (PortFxrSounds)
                 result.Sounds.UnionWith(FxrSounds(effects[id].Info.Sounds));
             Add(erBinders, ".fxr", $"f{IdBase + id:D9}.fxr", converted[id], added);
-            AddResourceList(erBinders, IdBase + id, TexturesOf(effects[id].Info).Select(t => textures[t]),
-                effects[id].Info.Models.Where(models.ContainsKey).Distinct().Select(m => models[m]), added);
         }
         foreach (var (old, newId) in models.Where(m => effects.Values.Any(e => e.Info.Models.Contains(m.Key))).OrderBy(m => m.Value))
         {
@@ -213,13 +211,25 @@ public static partial class FxrPort
             foreach (var (ds3Material, erMaterial) in modelPort.Used)
                 Console.WriteLine($"effects: model material {ds3Material} -> {(erMaterial.Length > 0 ? erMaterial : "no Elden Ring equivalent")}");
         var usedTextures = effects.Values.SelectMany(e => TexturesOf(e.Info)).ToHashSet();
+        var textureNames = new Dictionary<int, List<string>>();
         foreach (var (old, newId) in textures.Where(t => usedTextures.Contains(t.Key)).OrderBy(t => t.Value))
         {
             var file = ds3.Resources[(Kind.Texture, old)].File;
             var leaf = Digits().Replace(ItemText.Leaf(file.Name), newId.ToString(), 1);
-            var bytes = TPF.Is(file.Bytes) ? RenameTextures(TPF.Read(file.Bytes), old, newId).Write() : file.Bytes;
+            var bytes = file.Bytes;
+            textureNames[old] = [];
+            if (TPF.Is(file.Bytes))
+            {
+                var tpf = RenameTextures(TPF.Read(file.Bytes), old, newId);
+                textureNames[old] = tpf.Textures.Select(t => t.Name).ToList();
+                bytes = tpf.Write();
+            }
             Add(erBinders, ".tpf", leaf, bytes, added);
         }
+        foreach (var id in effects.Keys.Order())
+            AddResourceList(erBinders, IdBase + id,
+                TexturesOf(effects[id].Info).SelectMany(t => textureNames[t]).Select(n => n + ".tif")
+                    .Concat(effects[id].Info.Models.Where(models.ContainsKey).Distinct().Select(m => $"s{models[m]:D5}.sib")), added);
         result.Failed.AddRange(failed.Order().Select(id => $"f{id}"));
 
         // Compressing the common effect binder (Kraken, one thread, ~200 MB) takes minutes; nothing else in the build
@@ -283,54 +293,25 @@ public static partial class FxrPort
         }
     }
 
-    // Each Elden Ring effect has a resource list next to it (sfx\ResourceList\f*.ffxreslist). The new ones copy the
-    // format of an existing list: when it is text naming texture files, the new list names the effect's textures the
-    // same way; otherwise the effect's list is a copy of one for an effect without resources.
-    private static void AddResourceList(List<ErBinder> binders, int fxrId, IEnumerable<int> textures, IEnumerable<int> models, Dictionary<string, int> added)
+    // Each Elden Ring effect has a resource list next to it (sfx\ResourceList\f*.ffxreslist) naming what it draws
+    // with: every texture by name with ".tif" (s10011_a.tif) and every model with ".sib" (s84005.sib), whatever the
+    // files are called in the binder (probe on 1.16, 2026-11-10: 7157 lists, 2130 empty). The ported effects' lists
+    // name their ported textures and models the same way. Until 1.0.249 they were written empty.
+    private static void AddResourceList(List<ErBinder> binders, int fxrId, IEnumerable<string> lines, Dictionary<string, int> added)
     {
         const string ext = ".ffxreslist";
-        var binder = binders.MaxBy(b => b.Bnd.Files.Count(f => f.Name.EndsWith(ext, StringComparison.OrdinalIgnoreCase)))!;
-        var lists = binder.Bnd.Files.Where(f => f.Name.EndsWith(ext, StringComparison.OrdinalIgnoreCase)).ToList();
-        if (lists.Count == 0)
-            return;
-        var smallest = lists.MinBy(f => f.Bytes.Length)!;
-        if (!added.ContainsKey(ext))
-            Console.WriteLine($"effects: resource list format, e.g. {ItemText.Leaf(smallest.Name)} = {Convert.ToHexString(smallest.Bytes, 0, Math.Min(48, smallest.Bytes.Length))}");
-        byte[] bytes = smallest.Bytes;
-        // One line per resource, written like a line of an Elden Ring list that names a file of that kind.
-        var text = new System.Text.StringBuilder();
-        foreach (var (kind, ids) in new[] { (".tpf", textures.ToList()), (".flver", models.ToList()) })
+        // Plain ASCII, one resource per CRLF line; an effect without resources has an empty list.
+        var bytes = System.Text.Encoding.ASCII.GetBytes(string.Concat(lines.Distinct().Select(l => l + "\r\n")));
+        // The first list that names a model is shown, so a build log says what the lists look like.
+        if (!_listShown && bytes.AsSpan().IndexOf(".sib"u8) >= 0)
         {
-            if (ids.Count == 0)
-                continue;
-            var with = lists.FirstOrDefault(f => IsText(f.Bytes) && System.Text.Encoding.ASCII.GetString(f.Bytes).Contains(kind, StringComparison.OrdinalIgnoreCase));
-            if (with is null)
-            {
-                if (ReportedNoSample.Add(kind))
-                    Console.WriteLine($"effects: no Elden Ring resource list names a {kind}; ported effects' lists leave theirs out");
-                continue;
-            }
-            var sample = System.Text.Encoding.ASCII.GetString(with.Bytes);
-            var line = sample.Split('\n').First(l => l.Contains(kind, StringComparison.OrdinalIgnoreCase)).TrimEnd('\r');
-            var newline = sample.Contains("\r\n") ? "\r\n" : "\n";
-            foreach (var id in ids)
-                text.Append(ReplaceLastNumber(line, id)).Append(newline);
+            _listShown = true;
+            Console.WriteLine($"effects: resource list, e.g. f{fxrId:D9} = {System.Text.Encoding.ASCII.GetString(bytes).Replace("\r\n", " ").TrimEnd()}");
         }
-        if (text.Length > 0)
-            bytes = System.Text.Encoding.ASCII.GetBytes(text.ToString());
         Add(binders, ext, $"f{fxrId:D9}{ext}", bytes, added);
     }
 
-    private static readonly HashSet<string> ReportedNoSample = [];
-
-    private static string ReplaceLastNumber(string line, int value)
-    {
-        var matches = Digits().Matches(line);
-        var last = matches[^1];
-        return line[..last.Index] + value + line[(last.Index + last.Length)..];
-    }
-
-    private static bool IsText(byte[] bytes) => bytes.Length > 0 && bytes.All(b => b is >= 0x20 and < 0x7F or (byte)'\r' or (byte)'\n' or (byte)'\t');
+    private static bool _listShown;
 
     private sealed class ErBinder(string path, BND4 bnd, DCX.CompressionInfo compression)
     {
