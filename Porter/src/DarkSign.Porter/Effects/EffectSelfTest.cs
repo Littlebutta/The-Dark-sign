@@ -156,16 +156,20 @@ public static class EffectSelfTest
 
         // Resident effects on the weapon model.
         var ds3Weapons = Param([.. Enumerable.Range(0, 8).Select(k => ($"weaponVfx{k}", S32))]);
-        var friede = Add(ds3Weapons, 10180000, ("weaponVfx0", 303151), ("weaponVfx1", 303151), ("weaponVfx2", -1), ("weaponVfx4", 300), ("weaponVfx5", 301));
+        var friede = Add(ds3Weapons, 16040000, ("weaponVfx0", 303151), ("weaponVfx1", 303151), ("weaponVfx2", -1), ("weaponVfx4", 300), ("weaponVfx5", 301));
         var resident = Ds3EffectRefs.Resident(friede).ToList();
         Check(resident.SequenceEqual([(1, 303151, 300), (2, 303151, 301)]), "resident effects: DS3's weaponVfx0-3 are the effects, weaponVfx4-7 their dummy polys");
         var erWeapons = Param(("residentSfxId_1", S32), ("residentSfxId_2", S32), ("residentSfx_DmyId_1", S32), ("residentSfx_DmyId_2", S32));
         var ported = Add(erWeapons, 80000000, ("residentSfxId_1", -1), ("residentSfxId_2", -1), ("residentSfx_DmyId_1", -1), ("residentSfx_DmyId_2", -1));
-        var plan = new WeaponPlan(10180000, "Friede's Great Scythe", 50, 1, "t", 80000000, 9000, "port");
+        var plan = new WeaponPlan(16040000, "Dancer's Enchanted Swords", 50, 1, "t", 80000000, 9000, "port");
         Check(MovesetPort.ResidentEffects([plan], ds3Weapons, erWeapons, converted) == 0 && ParamDefaults.Int(ported, "residentSfxId_1") == -1, "resident effects: an unconverted effect leaves the row as it was");
         converted.Effects[303151] = FxrPort.IdBase + 303151;
         Check(MovesetPort.ResidentEffects([plan], ds3Weapons, erWeapons, converted) == 1 && ParamDefaults.Int(ported, "residentSfxId_2") == FxrPort.IdBase + 303151
               && ParamDefaults.Int(ported, "residentSfx_DmyId_2") == 301, "resident effects: converted effects go on the same dummy polys of the ported weapon");
+        Add(ds3Weapons, 10180000, ("weaponVfx0", 303151), ("weaponVfx4", 300));
+        var scythe = Add(erWeapons, 81190000, ("residentSfxId_1", -1), ("residentSfxId_2", -1), ("residentSfx_DmyId_1", -1), ("residentSfx_DmyId_2", -1));
+        Check(MovesetPort.ResidentEffects([new WeaponPlan(10180000, "Friede's Great Scythe", 50, 1, "t", 81190000, 9119, "port")], ds3Weapons, erWeapons, converted) == 0
+              && ParamDefaults.Int(scythe, "residentSfxId_1") == -1, "resident effects: Friede's Great Scythe keeps no always-on frost on its main scythe");
 
         // Effect models.
         var erModel = Model(0x2001A, true, (@"N:\GR\data\Material\mtd\sfx\matxml\S[A]_add_Soft.matxml", [("M_A__snp_Texture2D_0_AlbedoMap_0", @"N:\GR\data\Sfx\Tex\s00001_a.tif")]),
