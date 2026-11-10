@@ -295,6 +295,51 @@ public static class EnemySelfTest
             && beast.Samplers[0].Path == @"N:\GR\data\Model\chr\c3060\tex\c7031_a.tif" && beast.Samplers[1].Path.EndsWith("AAT100_Bone_01_a.tif", StringComparison.Ordinal)
             && ((int[])beast.Params[0].Value).SequenceEqual([128, 128]) && ds3Model2.Nodes.All(n => n.Flags == 0));
 
+        // The skeleton: every DS3 bone gets a bone to follow.
+        HKLib.hk2018.hkaSkeleton Template()
+        {
+            var sk = new HKLib.hk2018.hkaSkeleton();
+            foreach (var (name, parent) in new[] { ("Master", -1), ("Pelvis", 0), ("Neck", 1), ("Head", 2), ("Jaw", 3), ("Chain", 1) })
+            {
+                sk.m_bones.Add(new HKLib.hk2018.hkaBone { m_name = name });
+                sk.m_parentIndices.Add((short)parent);
+                sk.m_referencePose.Add(new HKLib.hk2018.hkQsTransform { m_rotation = System.Numerics.Quaternion.Identity });
+            }
+            return sk;
+        }
+        var ds3Bones = new[] { ("Master", -1), ("Pelvis", 0), ("Neck", 1), ("Neck1", 2), ("Head", 3), ("Jaw", 4), ("R_weapon", 1) };
+        var ds3Sk = new AnimPort.Ds3Skeleton
+        {
+            Names = ds3Bones.Select(b => b.Item1).ToList(),
+            Parents = ds3Bones.Select(b => (short)b.Item2).ToList(),
+            ReferencePose = ds3Bones.Select((_, i) => new SoulsAssetPipeline.Animation.NewBlendableTransform
+                { Translation = new System.Numerics.Vector3(i, 0, 0), Rotation = System.Numerics.Quaternion.Identity, Scale = System.Numerics.Vector3.One }).ToList(),
+        };
+        var merged1 = Template();
+        var mergeResult = ChrPort.MergeSkeleton(merged1, ds3Sk, addBones: true);
+        var mergedNames = merged1.m_bones.Select(b => b.m_name).ToList();
+        Check($"DS3 bones the template lacks are added under their DS3 parent; a bone under another parent is set aside ({string.Join(",", mergedNames)})",
+            mergeResult == new ChrPort.SkeletonMerge(3, 4, 2)
+            && mergedNames.SequenceEqual(["Master", "Pelvis", "Neck", "Head_er", "Jaw_er", "Chain", "Neck1", "Head", "Jaw", "R_weapon"])
+            && merged1.m_parentIndices.SequenceEqual(new short[] { -1, 0, 1, 2, 3, 1, 2, 6, 7, 1 })
+            && merged1.m_referencePose[9].m_translation.X == 6 && merged1.m_referencePose[2].m_translation.X == 2
+            && Enumerable.Range(0, merged1.m_bones.Count).All(i => merged1.m_parentIndices[i] < i));
+        var merged2 = Template();
+        Check("fallback enemy-model D: only shared bones take DS3's rest position, none added",
+            ChrPort.MergeSkeleton(merged2, ds3Sk, addBones: false) == new ChrPort.SkeletonMerge(5, 0, 0) && merged2.m_bones.Count == 6
+            && merged2.m_referencePose[3].m_translation.X == 4);
+
+        // Textures under another character's ID.
+        var dogModel = new FLVER2();
+        dogModel.Materials.Add(new FLVER2.Material { Name = "body", MTD = "C[ARSN].mtd", Textures =
+        [
+            new FLVER2.Texture("g_DiffuseTexture", @"N:\FDP\data\Model\chr\c2029\tex\c2029_body_a.tif", System.Numerics.Vector2.One, 0, 0, 0, 0, 0),
+            new FLVER2.Texture("g_BumpmapTexture", @"N:\FDP\data\Model\chr\c2020\tex\c2020_n.tif", System.Numerics.Vector2.One, 0, 0, 0, 0, 0),
+            new FLVER2.Texture("g_DetailBumpmapTexture", @"N:\FDP\data\Other\SysTex\SYSTEX_DummyNormal.tga", System.Numerics.Vector2.One, 0, 0, 0, 0, 0),
+        ] });
+        Check("textures a model names under another character's ID are found (c2020 wears c2029's)",
+            ChrModel.TextureOwners(dogModel, 2020).SequenceEqual([2029]) && ChrModel.TextureNames(dogModel).SetEquals(["c2029_body_a", "c2020_n", "SYSTEX_DummyNormal"]));
+
         Console.WriteLine(failures == 0 ? "enemy-selftest: all checks passed" : $"enemy-selftest: {failures} check(s) FAILED");
         return failures == 0 ? 0 : 1;
     }

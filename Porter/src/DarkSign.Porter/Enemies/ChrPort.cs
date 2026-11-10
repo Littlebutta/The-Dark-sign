@@ -660,6 +660,77 @@ public static partial class ChrPort
         }
     }
 
+    /// <summary>False with DARKSIGN_ENEMY_BONES=template: the skeleton keeps only the template's bones, as builds up to 1.0.263 did.</summary>
+    public static bool AddDs3Bones => Environment.GetEnvironmentVariable("DARKSIGN_ENEMY_BONES")?.Trim().ToLowerInvariant() != "template";
+
+    public readonly record struct SkeletonMerge(int Shared, int Added, int Replaced);
+
+    /// <summary>
+    /// Makes the template's animation skeleton carry DS3's whole skeleton. A bone both have, under the same parent,
+    /// stays where it is in the template's list (the template's other animations, ragdoll and behaviour name bones by
+    /// number) and takes DS3's rest position. Every other DS3 bone (weapons, skirts, hats, capes, a boss's second
+    /// body) is added at the end under its DS3 parent: until 1.0.263 those had no bone to follow, so the meshes
+    /// skinned to them stood still or stretched while the rest of the body moved, and the dummy points on them
+    /// (weapon hit boxes) never left their rest place. A bone both have under different parents can't take DS3's
+    /// track where it is: the template's is renamed (name + "_er") and DS3's is added like a new one.
+    /// </summary>
+    public static SkeletonMerge MergeSkeleton(hkaSkeleton skeleton, AnimPort.Ds3Skeleton ds3) => MergeSkeleton(skeleton, ds3, AddDs3Bones);
+
+    public static SkeletonMerge MergeSkeleton(hkaSkeleton skeleton, AnimPort.Ds3Skeleton ds3, bool addBones)
+    {
+        var index = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        for (int b = 0; b < skeleton.m_bones.Count; b++)
+            index.TryAdd(skeleton.m_bones[b].m_name ?? "", b);
+        hkQsTransform Pose(int d) => new()
+        {
+            m_translation = new Vector4(ds3.ReferencePose[d].Translation, 0),
+            m_rotation = ds3.ReferencePose[d].Rotation,
+            m_scale = new Vector4(ds3.ReferencePose[d].Scale, 0),
+        };
+        bool hierarchy = addBones && ds3.Parents.Count == ds3.Names.Count;
+        var target = new int[ds3.Names.Count];
+        int shared = 0, added = 0, replaced = 0;
+        for (int d = 0; d < ds3.Names.Count && d < ds3.ReferencePose.Count; d++)
+        {
+            target[d] = -1;
+            bool has = index.TryGetValue(ds3.Names[d], out var b) && b < skeleton.m_referencePose.Count;
+            if (!hierarchy)
+            {
+                if (!has)
+                    continue;
+                skeleton.m_referencePose[b] = Pose(d);
+                shared++;
+                continue;
+            }
+            int ds3Parent = ds3.Parents[d];
+            int parent = ds3Parent >= 0 && ds3Parent < d ? target[ds3Parent] : -1;
+            if (ds3Parent >= 0 && parent < 0)
+                continue; // its parent could not be placed (a malformed DS3 skeleton): left out
+            if (has && skeleton.m_parentIndices[b] == parent)
+            {
+                skeleton.m_referencePose[b] = Pose(d);
+                target[d] = b;
+                shared++;
+                continue;
+            }
+            if (skeleton.m_bones.Count >= short.MaxValue)
+                continue;
+            if (has)
+            {
+                skeleton.m_bones[b].m_name += "_er";
+                index.Remove(ds3.Names[d]);
+                replaced++;
+            }
+            skeleton.m_bones.Add(new hkaBone { m_name = ds3.Names[d], m_lockTranslation = false });
+            skeleton.m_parentIndices.Add((short)parent);
+            skeleton.m_referencePose.Add(Pose(d));
+            target[d] = skeleton.m_bones.Count - 1;
+            index[ds3.Names[d]] = target[d];
+            added++;
+        }
+        return new SkeletonMerge(shared, added, replaced);
+    }
+
     /// <summary>
     /// DS3's ModelDispMask0-31 onto Elden Ring's modelDispMask0-31 (same meaning: mask N shows the meshes whose
     /// material name starts with "#NN#"). Returns how many were copied.
@@ -746,6 +817,8 @@ public static partial class ChrPort
         var templateFlverFile = chrbnd.Files.FirstOrDefault(f => FLVER2.Is(f.Bytes)) ?? throw new InvalidDataException($"template c{t:D4} has no model");
         var templateFlver = FLVER2.Read(templateFlverFile.Bytes);
         var flver = FLVER2.Read(ds3FlverFile.Bytes);
+        var textureNames = ChrModel.TextureNames(flver);
+        var textureOwners = ChrModel.TextureOwners(flver, x);
         int glowing = flver.Materials.Count(m => m.Textures.Any(tx => tx.Path.Length > 0 && tx.ParamName.Contains("Emissive", StringComparison.OrdinalIgnoreCase)
                                                                     && !ItemText.Leaf(tx.Path).StartsWith("SYSTEX", StringComparison.OrdinalIgnoreCase)));
         var made = ChrModel.Convert(flver, templateFlver, x, n);
@@ -760,6 +833,18 @@ public static partial class ChrPort
         var ds3Textures = ds3.Entries.Where(e => e.Path is { } p && p.StartsWith($"/chr/c{x:D4}", StringComparison.OrdinalIgnoreCase)
                                                  && p.EndsWith(".texbnd.dcx", StringComparison.OrdinalIgnoreCase)).Select(e => e.Path!).ToList();
         var tpfs = new List<TPF>();
+        // Textures the model names under another character's ID (the Undead Dog c2020 wears c2029's, c6080 some of
+        // c6089's): that character's binders, only the textures named. Without them the mesh draws nothing.
+        foreach (int owner in textureOwners)
+            foreach (var path in ds3.Entries.Where(e => e.Path is { } p && p.StartsWith($"/chr/c{owner:D4}", StringComparison.OrdinalIgnoreCase)
+                                                         && p.EndsWith(".texbnd.dcx", StringComparison.OrdinalIgnoreCase)).Select(e => e.Path!).ToList())
+                foreach (var f in BND4.Read(ds3.Read(path)).Files.Where(f => TPF.Is(f.Bytes)))
+                {
+                    var tpf = TPF.Read(f.Bytes);
+                    tpf.Textures.RemoveAll(tx => !textureNames.Contains(tx.Name));
+                    if (tpf.Textures.Count > 0)
+                        tpfs.Add(ChrModel.ConvertTpf(tpf, x, n));
+                }
         foreach (var path in ds3Textures)
             foreach (var f in BND4.Read(ds3.Read(path)).Files.Where(f => TPF.Is(f.Bytes)))
                 tpfs.Add(ChrModel.ConvertTpf(TPF.Read(f.Bytes), x, n));
@@ -775,8 +860,12 @@ public static partial class ChrPort
             var like = target.Files.FirstOrDefault(f => TPF.Is(f.Bytes)) ?? target.Files[0];
             var folder = like.Name[..^ItemText.Leaf(like.Name).Length];
             target.Files.Add(new BinderFile(like.Flags, target.Files.Max(f => f.ID) + 1, $"{folder}c{n:D4}_ds3.tpf", merged.Write()));
-            notes.Add($"{merged.Textures.Count} DS3 textures");
+            notes.Add($"{merged.Textures.Count} DS3 textures" + (textureOwners.Count > 0 ? $" (some from {string.Join(", ", textureOwners.Select(o => $"c{o:D4}"))})" : ""));
         }
+        var have = tpfs.SelectMany(p => p.Textures).Select(tx => tx.Name).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var lacking = made.SelectMany(m => new[] { m.Albedo, m.Normal }).Where(t => t is not null && !have.Contains(t)).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+        if (lacking.Count > 0)
+            notes.Add($"FAIL textures: {lacking.Count} named by the model are in no DS3 binder ({string.Join(", ", lacking.Take(4))}{(lacking.Count > 4 ? ", ..." : "")}); those meshes draw wrong or not at all");
 
         if (plan.Method == Method.Full)
         {
@@ -834,27 +923,13 @@ public static partial class ChrPort
             // The template's skeleton with DS3's bone positions, so DS3's animations and model need no stretching.
             var root = (hkRootLevelContainer)AnimPort.ReadEr(skeletonFile.Bytes, compendium);
             var skeleton = AnimPort.Container(root).m_skeletons.First()!;
-            var ds3Index = ds3Skeleton.Names.Select((name, i) => (name, i)).GroupBy(p => p.name, StringComparer.OrdinalIgnoreCase)
-                .ToDictionary(g => g.Key, g => g.First().i, StringComparer.OrdinalIgnoreCase);
-            int moved = 0;
-            for (int b = 0; b < skeleton.m_bones.Count && b < skeleton.m_referencePose.Count; b++)
-            {
-                if (!ds3Index.TryGetValue(skeleton.m_bones[b].m_name ?? "", out var d) || d >= ds3Skeleton.ReferencePose.Count)
-                    continue;
-                var pose = ds3Skeleton.ReferencePose[d];
-                skeleton.m_referencePose[b] = new hkQsTransform
-                {
-                    m_translation = new Vector4(pose.Translation, 0),
-                    m_rotation = pose.Rotation,
-                    m_scale = new Vector4(pose.Scale, 0),
-                };
-                moved++;
-            }
+            var merge = MergeSkeleton(skeleton, ds3Skeleton);
             using var output = new MemoryStream();
             new HavokBinarySerializer().Write(root, output);
             skeletonFile.Bytes = output.ToArray();
-            erSkeleton = new AnimPort.ErSkeleton { Names = skeleton.m_bones.Select(bone => bone.m_name ?? "").ToList(), ReferencePose = skeleton.m_referencePose };
-            notes.Add($"{moved}/{skeleton.m_bones.Count} skeleton bones from DS3");
+            erSkeleton = new AnimPort.ErSkeleton { Names = skeleton.m_bones.Select(bone => bone.m_name ?? "").ToList(), ReferencePose = skeleton.m_referencePose, Parents = skeleton.m_parentIndices };
+            notes.Add($"skeleton: {merge.Shared} bones shared with the template, {merge.Added} DS3 bones added"
+                      + (merge.Replaced > 0 ? $", {merge.Replaced} template bones set aside (other parent in DS3)" : "") + $", {skeleton.m_bones.Count} in all");
         }
 
         int replaced = 0, failed = 0;
