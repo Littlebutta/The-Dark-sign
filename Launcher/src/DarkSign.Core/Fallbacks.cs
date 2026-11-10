@@ -270,6 +270,8 @@ public static class Fallbacks
                 { PorterEnv = Env("DARKSIGN_EFFECT_VISUALS", "0") },
             new("D", "No effects with 3D models", "As A, but DS3 effects that draw a 3D model (the Moonlight Greatsword's wave, Friede's ice) are left out (DARKSIGN_EFFECT_MODELS=0), as in builds up to 1.0.249. Try this first if the game crashes or shows a broken shape when such an effect plays.")
                 { PorterEnv = Env("DARKSIGN_EFFECT_MODELS", "0") },
+            new("E", "Every DS3 on-model effect", "As A, and Friede's Great Scythe keeps the frost mist DS3 plays on its main scythe at all times (DARKSIGN_RESIDENT_ALL=1), as in 1.0.249-1.0.255.")
+                { PorterEnv = Env("DARKSIGN_RESIDENT_ALL", "1") },
             new("off", "Off", "Neither (DARKSIGN_BULLETS=0 and DARKSIGN_EFFECT_VISUALS=0): only the effects in a move's own effect events show, as in builds up to 1.0.242.")
                 { PorterEnv = Env("DARKSIGN_BULLETS", "0", "DARKSIGN_EFFECT_VISUALS", "0") },
         ]),

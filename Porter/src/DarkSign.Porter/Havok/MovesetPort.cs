@@ -58,6 +58,19 @@ public static partial class MovesetPort
     };
 
     /// <summary>
+    /// DS3 weapons whose resident effects are not carried over, with the reason. Friede's Great Scythe: DS3's row
+    /// plays 303151 (a frost mist and a blue light, always on) on the main scythe's dummy polys 300-303; in the port
+    /// it read as frost on the wrong scythe (Devin, 1.0.255 playtest: the frost belongs on the second scythe's ice
+    /// blade in the art, which the art's own events draw on model 1's dummy 800).
+    /// </summary>
+    internal static readonly Dictionary<int, string> ResidentLeftOut = new()
+    {
+        [10180000] = "its frost mist sits on the main scythe, where the playtest found it wrong",
+    };
+
+    private static bool KeepAllResident => Environment.GetEnvironmentVariable("DARKSIGN_RESIDENT_ALL") == "1";
+
+    /// <summary>
     /// Gives each ported weapon (every affinity row) its DS3 resident effects under their converted IDs. A slot whose
     /// effect wasn't converted keeps what the template row had (nothing, for almost every template).
     /// </summary>
@@ -66,6 +79,11 @@ public static partial class MovesetPort
         int weapons = 0;
         foreach (var plan in ports)
         {
+            if (ResidentLeftOut.TryGetValue(plan.Ds3Id, out var why) && !KeepAllResident)
+            {
+                Console.WriteLine($"effects: {plan.Name} keeps no DS3 effect on its model ({why}; DARKSIGN_RESIDENT_ALL=1 puts it back)");
+                continue;
+            }
             var slots = Ds3EffectRefs.Resident(ds3Weapons[plan.Ds3Id]!).Select(r => (r.Slot, Fxr: effects.Map(r.Fxr), r.Dummy)).Where(r => r.Fxr is not null).ToList();
             if (slots.Count == 0)
                 continue;

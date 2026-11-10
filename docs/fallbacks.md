@@ -208,6 +208,7 @@ Try the next option if: A ported weapon shows no glow, buff effect or projectile
 - **B: Effect visuals, no projectiles.** Glows and buff visuals as in A; moves that fire a projectile use the template weapon's bullet or none (DARKSIGN_BULLETS=0), as in builds up to 1.0.242. (`DARKSIGN_BULLETS=0`)
 - **C: Projectiles, no effect visuals.** Projectiles as in A; ported effects have no visuals of their own (DARKSIGN_EFFECT_VISUALS=0), as in builds up to 1.0.242. (`DARKSIGN_EFFECT_VISUALS=0`)
 - **D: No effects with 3D models.** As A, but DS3 effects that draw a 3D model (the Moonlight Greatsword's wave, Friede's ice) are left out (DARKSIGN_EFFECT_MODELS=0), as in builds up to 1.0.249. Try this first if the game crashes or shows a broken shape when such an effect plays. (`DARKSIGN_EFFECT_MODELS=0`)
+- **E: Every DS3 on-model effect.** As A, and Friede's Great Scythe keeps the frost mist DS3 plays on its main scythe at all times (DARKSIGN_RESIDENT_ALL=1), as in 1.0.249-1.0.255. (`DARKSIGN_RESIDENT_ALL=1`)
 - **off: Off.** Neither (DARKSIGN_BULLETS=0 and DARKSIGN_EFFECT_VISUALS=0): only the effects in a move's own effect events show, as in builds up to 1.0.242. (`DARKSIGN_BULLETS=0`, `DARKSIGN_EFFECT_VISUALS=0`)
 
 
