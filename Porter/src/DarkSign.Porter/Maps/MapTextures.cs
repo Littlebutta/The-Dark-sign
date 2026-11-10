@@ -83,17 +83,22 @@ public sealed class MapTextures
         var missing = new List<string>();
         foreach (var name in _needed.Keys)
         {
-            if (!sources.TryGetValue(name, out var source))
+            TPF.Texture? texture = null;
+            if (sources.TryGetValue(name, out var source))
             {
-                missing.Add(name);
-                continue;
-            }
-            var tpf = TPF.Read(DCX.Is(source.Bytes) ? DCX.Decompress(source.Bytes) : source.Bytes);
-            var texture = tpf.Textures.FirstOrDefault(t => t.Name.Equals(name, StringComparison.OrdinalIgnoreCase))
+                var tpf = TPF.Read(DCX.Is(source.Bytes) ? DCX.Decompress(source.Bytes) : source.Bytes);
+                texture = tpf.Textures.FirstOrDefault(t => t.Name.Equals(name, StringComparison.OrdinalIgnoreCase))
                           ?? tpf.Textures.FirstOrDefault();
+            }
             if (texture is null)
             {
+                // Not in DS3's map binders (object and character textures some map pieces borrow, system textures).
+                // A material must never name a texture that doesn't exist: nothing confirms Elden Ring gives up on
+                // one instead of waiting for it while the map loads. It gets a flat mid-grey stand-in under its name
+                // (the same 4x4 block serves as a flat normal map), unless an earlier run already wrote the real one.
                 missing.Add(name);
+                if (!textures.ContainsKey(name))
+                    textures[name] = new TPF.Texture(name, 0, 0, ModelPort.FlatNormalDds(), TPF.TPFPlatform.PC);
                 continue;
             }
             texture.Name = name;
@@ -109,7 +114,7 @@ public sealed class MapTextures
         bxf.Write(bhdPath, bdtPath);
         var summary = $"textures {area}: {added} DS3 textures, {textures.Count} in all, in {target.TrimStart('/')}";
         if (missing.Count > 0)
-            summary += $"; {missing.Count} not found in DS3 ({string.Join(", ", missing.Take(10))}{(missing.Count > 10 ? ", ..." : "")})";
+            summary += $"; {missing.Count} not found in DS3 and given a grey stand-in ({string.Join(", ", missing.Take(10))}{(missing.Count > 10 ? ", ..." : "")})";
         return summary;
     }
 

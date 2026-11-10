@@ -211,10 +211,6 @@ public static class MapValidate
         }
         else
             report.Warn($"{erId}: the regulation couldn't be read to check PartsDrawParam row {string.Join(", ", drawRows)}");
-        var probes = msb.Parts.MapPieces.Where(p => p.InstanceID == MsbPort.ProbeInstance).ToList();
-        foreach (var probe in probes)
-            report.Ok($"{erId}: diagnostic map piece {probe.Name} (Elden Ring's own model) at {probe.Position}");
-        var probeModels = probes.Select(p => p.ModelName).ToHashSet();
         var layoutsPath = ctx.ModPath(MapPorter.LayoutsFile);
         var accepted = File.Exists(layoutsPath) ? File.ReadAllLines(layoutsPath).Where(l => l.Length > 0).ToHashSet() : null;
         var drawIssues = new List<string>();
@@ -222,7 +218,7 @@ public static class MapValidate
         var missingMatbins = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var missingTextures = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var checkedFormat = false;
-        foreach (var model in msb.Models.MapPieces.Where(m => !probeModels.Contains(m.Name)))
+        foreach (var model in msb.Models.MapPieces)
         {
             var path = MapPorter.ErMapBndPath(erId, MapPorter.ModelNumber(model.Name));
             if (!File.Exists(Mod(path)))
@@ -282,7 +278,7 @@ public static class MapValidate
         if (missingMatbins.Count > 0)
             report.Fail($"{erId}: {missingMatbins.Count} materials name a MATBIN that doesn't exist: {Sample(missingMatbins)}");
         if (missingTextures.Count > 0)
-            report.Warn($"{erId}: {missingTextures.Count} textures used by ported materials aren't in the area's texture binders (they'll draw grey): {Sample(missingTextures)}");
+            report.Warn($"{erId}: {missingTextures.Count} textures used by ported materials aren't in the area's texture binders (the game may wait for them while the map loads): {Sample(missingTextures)}");
 
         // Collision.
         foreach (var kind in new[] { "h", "l" })

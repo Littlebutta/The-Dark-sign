@@ -310,13 +310,13 @@ public static class Fallbacks
                 { MapsArgs = ["--no-groups"] },
         ]),
         new("map-draw", "DS3 maps", "Draw distance settings of the DS3 map pieces", Stage.Build,
-            "DS3 map geometry is invisible, pops in only when close, or a large low-poly arena shell sits at the start of the DS3 run.",
+            "DS3 map geometry is invisible or pops in only when close, or the second and third DS3 maps should be the real maps instead of test maps.",
         [
-            new("A", "The port's own row, with the diagnostic piece (default)", "Every map piece names a PartsDrawParam row the port adds (unlimited draw distance, no LOD switching, as JortPob's maps have). Elden Ring's own colosseum map piece is also placed at the run start with the same settings: if it shows and the DS3 pieces don't, the converted models are at fault; if neither shows, the way pieces are placed is."),
+            new("A", "The port's own row, with two test maps (default)", "Every map piece names a PartsDrawParam row the port adds (unlimited draw distance, no LOD switching, as JortPob's maps have). The first DS3 map is the real port. The second and third are tests that tell apart what stalls a map load: in the second every map piece is Elden Ring's own colosseum model, in the third DS3's geometry is drawn with Elden Ring's own plain material."),
             new("B", "A vanilla row", "Map pieces name Stormveil Castle's most common PartsDrawParam row, 2046 (port-maps --vanilla-draw-param), and nothing is added to the regulation.")
                 { MapsArgs = ["--vanilla-draw-param"] },
-            new("C", "Without the diagnostic piece", "As A, but the colosseum map piece at the run start is left out (port-maps --no-probe). Use once the DS3 pieces are confirmed to draw.")
-                { MapsArgs = ["--no-probe"] },
+            new("C", "Without the test maps", "As A, but all three DS3 maps are the real port (port-maps --no-piece-test). Use once the first DS3 map is confirmed to load and draw.")
+                { MapsArgs = ["--no-piece-test"] },
         ]),
         new("map-materials", "DS3 maps", "Materials of the DS3 map pieces", Stage.Build,
             "DS3 map geometry is invisible, black, far too dark or shiny, or foliage and fences are solid cards.",

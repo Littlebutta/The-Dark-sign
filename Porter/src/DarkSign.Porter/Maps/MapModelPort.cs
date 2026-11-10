@@ -51,7 +51,17 @@ public sealed class MapModelPort
     }
 
     /// <summary>A new port with the same templates and none of this one's materials (one per map).</summary>
-    public MapModelPort Fresh() => new(_templates, _templateFlver);
+    public MapModelPort Fresh() => new(_templates, _templateFlver) { VanillaMaterials = VanillaMaterials };
+
+    /// <summary>
+    /// Piece test "vanilla-material" (see MapPorter.PieceTest): every converted mesh keeps its template's own vanilla
+    /// material, untouched (name, MATBIN and textures are Elden Ring's), so the model depends on nothing the port
+    /// writes but its geometry. No MATBIN or texture is added for such a model.
+    /// </summary>
+    public bool VanillaMaterials { get; private init; }
+
+    /// <summary>This port's templates with <see cref="VanillaMaterials"/> on.</summary>
+    public MapModelPort WithVanillaMaterials() => new(_templates, _templateFlver) { VanillaMaterials = true };
 
     /// <summary>"Position0:Float3 Normal0:UByte4 ..." for a vertex layout.</summary>
     public static string LayoutText(IEnumerable<FLVER.LayoutMember> layout) =>
@@ -216,14 +226,7 @@ public sealed class MapModelPort
     public BND4 ConvertBinder(BND4 ds3, BND4 hostTemplate, MapId ds3Id, MapId erId, string modelNumber, MapId? hostId = null)
     {
         var templateFile = hostTemplate.Files.First(f => FLVER2.Is(f.Bytes));
-        var templateLeaf = ItemText.Leaf(templateFile.Name);
-        var folder = templateFile.Name[..^templateLeaf.Length];
-        var templateStem = templateLeaf[..templateLeaf.IndexOf('.')];
-        var newStem = $"{erId}_{modelNumber}";
-        // The folder can itself name the template model ("...\m45_00_00_00_000100\sib\").
-        folder = folder.Replace(templateStem, newStem, StringComparison.OrdinalIgnoreCase);
-        if (hostId is { } host && host != erId)
-            folder = folder.Replace(host.ToString(), erId.ToString(), StringComparison.OrdinalIgnoreCase);
+        var folder = ModelFolder(templateFile, erId, modelNumber, hostId);
 
         var files = new List<BinderFile>();
         foreach (var file in ds3.Files.Where(f => FLVER2.Is(f.Bytes)))
@@ -256,6 +259,41 @@ public sealed class MapModelPort
             Files = files,
         };
         return binder;
+    }
+
+    /// <summary>The folder a model's FLVER sits in inside its binder: the template's, renamed to the new model.</summary>
+    private static string ModelFolder(BinderFile templateFile, MapId erId, string modelNumber, MapId? hostId)
+    {
+        var templateLeaf = ItemText.Leaf(templateFile.Name);
+        var folder = templateFile.Name[..^templateLeaf.Length];
+        var templateStem = templateLeaf[..templateLeaf.IndexOf('.')];
+        // The folder can itself name the template model ("...\m45_00_00_00_000100\sib\").
+        folder = folder.Replace(templateStem, $"{erId}_{modelNumber}", StringComparison.OrdinalIgnoreCase);
+        if (hostId is { } host && host != erId)
+            folder = folder.Replace(host.ToString(), erId.ToString(), StringComparison.OrdinalIgnoreCase);
+        return folder;
+    }
+
+    /// <summary>
+    /// Piece test "vanilla-model" (see MapPorter.PieceTest): the host's own vanilla map piece binder under another
+    /// model's name. The FLVER's bytes are Elden Ring's, untouched; only the file's name inside the binder changes.
+    /// </summary>
+    public static BND4 VanillaBinder(BND4 hostTemplate, MapId erId, string modelNumber, MapId? hostId = null)
+    {
+        var templateFile = hostTemplate.Files.First(f => FLVER2.Is(f.Bytes));
+        var name = ModelFolder(templateFile, erId, modelNumber, hostId) + $"{erId}_{modelNumber}.flver";
+        return new BND4
+        {
+            Version = hostTemplate.Version,
+            Format = hostTemplate.Format,
+            BigEndian = hostTemplate.BigEndian,
+            BitBigEndian = hostTemplate.BitBigEndian,
+            Unicode = hostTemplate.Unicode,
+            Extended = hostTemplate.Extended,
+            Unk04 = hostTemplate.Unk04,
+            Unk05 = hostTemplate.Unk05,
+            Files = [new BinderFile(templateFile.Flags, templateFile.ID, name, templateFile.Bytes)],
+        };
     }
 
     private void ConvertFlver(FLVER2 flver, MapId ds3Id)
@@ -309,6 +347,17 @@ public sealed class MapModelPort
         {
             var template = TemplateFor(Ds3Kind(m)) ?? _templates["opaque"];
             var kind = template.Kind;
+            if (VanillaMaterials)
+            {
+                var vanilla = template.Material;
+                m.Name = vanilla.Name;
+                m.MTD = vanilla.MTD;
+                m.GXIndex = kinds.IndexOf(kind);
+                m.Textures = vanilla.Textures
+                    .Select(t => new FLVER2.Texture(t.ParamName, t.Path, t.TilingScale, t.TilingTypeU, t.TilingTypeV, t.Unk14, t.Unk18, t.Unk1C))
+                    .ToList();
+                continue;
+            }
 
             static string? NameOf(FLVER2.Texture? t) => t is null ? null : Path.GetFileNameWithoutExtension(ItemText.Leaf(t.Path));
             var albedoTexture = Ds3Texture(m, "albedo");

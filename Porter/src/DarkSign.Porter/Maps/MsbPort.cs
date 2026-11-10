@@ -34,17 +34,7 @@ public static class MsbPort
 
         /// <summary>The PartsDrawParam row every map piece names (see <see cref="MapDrawParams"/>).</summary>
         public short DrawParamId { get; init; } = MapDrawParams.VanillaRow;
-
-        /// <summary>
-        /// Also place the host's own vanilla map piece, drawn normally, at the run start: a known-good model and
-        /// material. If it shows and the DS3 pieces don't, the fault is in the converted models; if it doesn't
-        /// show either, it is in how map pieces are placed. Diagnostic; "--no-probe" turns it off.
-        /// </summary>
-        public bool Probe { get; init; }
     }
-
-    /// <summary>The name of the diagnostic piece <see cref="Options.Probe"/> adds.</summary>
-    public const int ProbeInstance = 9900;
 
     public sealed record Result(MSBE Msb, int MapPieces, int Collisions, int Players, int StartEntityId,
         List<string> Notes);
@@ -146,24 +136,6 @@ public static class MsbPort
         }
         if (start is null)
             notes.Add("DS3 map has no player start point; the run warp has nowhere to land");
-
-        // The diagnostic piece: the host's vanilla model with the same part settings as the DS3 pieces.
-        if (options.Probe && start is not null && host.Parts.MapPieces.FirstOrDefault() is { } hostPiece && mapPieceModel is not null
-            && msb.Models.MapPieces.All(m => m.Name != hostPiece.ModelName))
-        {
-            var probe = (MSBE.Part.MapPiece)hostPiece.DeepCopy();
-            probe.Name = $"{hostPiece.ModelName}_{ProbeInstance}";
-            probe.InstanceID = ProbeInstance;
-            probe.Position = start.Position;
-            probe.Rotation = Vector3.Zero;
-            probe.Scale = Vector3.One;
-            probe.EntityID = 0;
-            ClearGroups(probe.Unk1);
-            DrawNormally(probe, options.DrawParamId);
-            msb.Parts.MapPieces.Add(probe);
-            msb.Models.MapPieces.Add((MSBE.Model.MapPiece)mapPieceModel.DeepCopy());
-            notes.Add($"diagnostic: Elden Ring's own map piece {hostPiece.ModelName} is placed at the run start, drawn like the DS3 pieces");
-        }
 
         // Elden Ring's MSBs have one layer table entry list and reference models by index; SoulsFormats rebuilds
         // indices from names on write.

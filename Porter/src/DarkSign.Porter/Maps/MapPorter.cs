@@ -22,8 +22,10 @@ public static class MapPorter
         public bool NoGroups { get; set; }
         /// <summary>Only the albedo-only material JortPob uses (fallback "map-materials" B).</summary>
         public bool PlainMaterials { get; set; }
-        /// <summary>Leave out the diagnostic vanilla map piece at the run start (see <see cref="MsbPort.Options.Probe"/>).</summary>
-        public bool NoProbe { get; set; }
+        /// <summary>--no-piece-test: build every slot normally (no test maps; see <see cref="PieceTest"/>).</summary>
+        public bool NoPieceTest { get; set; }
+        /// <summary>--piece-test &lt;Elden Ring map id&gt;=&lt;vanilla-model|vanilla-material|none&gt;: a slot's test, instead of the default.</summary>
+        public Dictionary<string, PieceTest> PieceTests { get; } = new(StringComparer.OrdinalIgnoreCase);
         /// <summary>Map pieces name vanilla PartsDrawParam row 2046 instead of the port's own (fallback "map-draw" B).</summary>
         public bool VanillaDrawParam { get; set; }
         public bool BinaryCollision { get; set; }
@@ -48,7 +50,9 @@ public static class MapPorter
                     case "--ds3-groups": o.Ds3Groups = true; break;
                     case "--no-groups": o.NoGroups = true; break;
                     case "--plain-materials": o.PlainMaterials = true; break;
-                    case "--no-probe": o.NoProbe = true; break;
+                    case "--no-piece-test": o.NoPieceTest = true; break;
+                    case "--piece-test" when i + 1 < list.Count && list[i + 1].Split('=') is [var map, var test]:
+                        o.PieceTests[MapId.Parse(map).ToString()] = ParsePieceTest(test); i++; break;
                     case "--vanilla-draw-param": o.VanillaDrawParam = true; break;
                     case "--binary-collision": o.BinaryCollision = true; break;
                     case "--simd": o.KeepSimdTree = true; break;
@@ -60,9 +64,52 @@ public static class MapPorter
         }
     }
 
-    // Elden Ring keeps the map materials this port adds in the DLC01 binder; the weapon port uses DLC02, so the two
-    // never overwrite each other's work.
-    private const string MaterialBinder = "/material/allmaterial_dlc01.matbinbnd.dcx";
+    // The map materials this port adds go into Elden Ring's main material binder, where JortPob puts the materials
+    // of its map pieces (Bind.cs BindMaterials). The weapon and enemy ports use DLC02, so the steps never overwrite
+    // each other's work. Builds up to 1.0.263 used the DLC01 binder, which is empty in the game's own files: nothing
+    // shows the game looks a map piece's material up there, and those builds never drew a DS3 map piece.
+    private const string MaterialBinder = "/material/allmaterial.matbinbnd.dcx";
+    private const string OldMaterialBinder = "/material/allmaterial_dlc01.matbinbnd.dcx";
+
+    /// <summary>
+    /// What a slot's map pieces are made of. The 1.0.259 build was the first whose converted models the game read
+    /// (their file ID inside the binder became 200), and its map load never finished: the game opened every map piece
+    /// binder and then waited. Which layer it waits on can't be told offline, so one build holds the three layers
+    /// side by side, each a strict subset of the next:
+    /// <list type="bullet">
+    /// <item><see cref="VanillaModel"/>: every DS3 map piece is the host's own vanilla model (Elden Ring's bytes).
+    /// Loads: binders, layout parts and draw settings are fine.</item>
+    /// <item><see cref="VanillaMaterial"/>: DS3's geometry with the host model's own vanilla material. Loads: the
+    /// converted geometry is fine too.</item>
+    /// <item><see cref="None"/>: the real port (DS3 geometry, ported materials and textures).</item>
+    /// </list>
+    /// By default the first slot is the real port and the second and third are the two tests ("--no-piece-test"
+    /// builds all of them normally; launcher Fallbacks "map-draw" C).
+    /// </summary>
+    public enum PieceTest { None, VanillaModel, VanillaMaterial }
+
+    public static PieceTest ParsePieceTest(string text) => text.ToLowerInvariant() switch
+    {
+        "vanilla-model" => PieceTest.VanillaModel,
+        "vanilla-material" => PieceTest.VanillaMaterial,
+        "none" => PieceTest.None,
+        _ => throw new ArgumentException($"unknown piece test '{text}' (vanilla-model, vanilla-material or none)"),
+    };
+
+    /// <summary>The test a slot is built as: what "--piece-test" says, else by the slot's place in the slot list.</summary>
+    public static PieceTest PieceTestFor(MapSlots.Slot slot, Options options)
+    {
+        if (options.PieceTests.TryGetValue(slot.Er.ToString(), out var asked))
+            return asked;
+        if (options.NoPieceTest || slot.Probe)
+            return PieceTest.None;
+        return MapSlots.All.Where(s => !s.Probe).ToList().IndexOf(slot) switch
+        {
+            1 => PieceTest.VanillaModel,
+            2 => PieceTest.VanillaMaterial,
+            _ => PieceTest.None,
+        };
+    }
 
     public static int Run(PorterContext ctx, IEnumerable<string> args)
     {
@@ -138,7 +185,7 @@ public static class MapPorter
         foreach (var areaTextures in textures.Values)
             Step(report, "textures", () => areaTextures.Write(ctx, ds3, er));
         if (materials.Count > 0)
-            Step(report, "materials", () => WriteMaterials(ctx, er, materials));
+            Step(report, "materials", () => WriteMaterials(ctx, er, materials, keepExisting: options.Only.Count > 0));
 
         // Event scripts last: they need every ported map, to send warps and IDs to the right slot. A failure leaves
         // the empty scripts written with each map.
@@ -245,7 +292,7 @@ public static class MapPorter
                           $"/param/drawparam/m{slot.Host.Area:D2}_{slot.Host.Block:D2}_0000.gparam.dcx"], slot.Host, slot.Er))
                 Delete(Local(path));
         // MapRegistry.ListPath: builds 1.0.234-1.0.238 wrote it for the m50 probe and it crashed the boot; never again.
-        foreach (var path in new[] { "/event/common.emevd.dcx", MapEvents.CommonFunc, MaterialBinder, ActionButtons.ModMenu, FlagAlloc.LegacyList, MapRegistry.ListPath })
+        foreach (var path in new[] { "/event/common.emevd.dcx", MapEvents.CommonFunc, MaterialBinder, OldMaterialBinder, ActionButtons.ModMenu, FlagAlloc.LegacyList, MapRegistry.ListPath })
             Delete(Local(path));
         foreach (var file in new[] { MapEvents.FlagFile, "darksign_maps.tsv", "darksign_maps_check.txt", FlagAlloc.ProbeFile,
                      DarkSign.Randomizer.Data.EnemyTables.PlacedFile, DarkSign.Randomizer.Data.EnemyTables.ErFile })
@@ -331,7 +378,7 @@ public static class MapPorter
             .Select(s => (s.Ds3, s.Er)).ToList();
         var layout = MsbPort.Convert(ds3Msb, host, ds3Id, erId, new MsbPort.Options
             {
-                AllVisible = !options.Ds3Groups, NoGroups = options.NoGroups, Probe = !options.NoProbe && !slot.Probe,
+                AllVisible = !options.Ds3Groups, NoGroups = options.NoGroups,
                 DrawParamId = options.VanillaDrawParam ? MapDrawParams.VanillaRow : MapDrawParams.FirstRow,
             },
             slots, ConnectTemplate(er));
@@ -363,6 +410,25 @@ public static class MapPorter
 
         // Models. The material templates and binder layout come from vanilla map pieces (see MaterialTemplates).
         var (models, hostBnd, bndCompression, binderMap) = MaterialTemplates(er, hostId, host, options.PlainMaterials);
+        // A test slot (see PieceTest) swaps the models' materials, or the models themselves, for the host's own.
+        var test = PieceTestFor(slot, options);
+        if (test == PieceTest.VanillaMaterial)
+        {
+            try
+            {
+                var hostFlver = FLVER2.Read(hostBnd.Files.First(f => FLVER2.Is(f.Bytes)).Bytes);
+                models = MapModelPort.Create([hostFlver], AllMatbins(er), hostFlver, plain: true).WithVanillaMaterials();
+            }
+            catch (InvalidDataException ex)
+            {
+                report.AppendLine($"  piece test vanilla-material: not possible here ({ex.Message}); the map is built normally");
+                test = PieceTest.None;
+            }
+        }
+        if (test != PieceTest.None)
+            report.AppendLine(test == PieceTest.VanillaModel
+                ? $"  TEST MAP (vanilla-model): every map piece is Elden Ring's own model from {binderMap}, not DS3's. It loads: binders, layout and draw settings are fine"
+                : $"  TEST MAP (vanilla-material): DS3 geometry drawn with Elden Ring's own material {models.TemplateSummary}. It loads: the converted geometry is fine");
         report.AppendLine($"  material templates: {models.TemplateSummary} (binder layout from {binderMap})");
         lock (_layouts)
             _layouts.UnionWith(models.TemplateLayouts());
@@ -370,9 +436,7 @@ public static class MapPorter
         // Every map piece binder converts in parallel (thousands per map). A probe slot copies what its main slot
         // already converted from the same DS3 map, renamed to its own map ID, instead of converting it again.
         var clock = System.Diagnostics.Stopwatch.StartNew();
-        // The diagnostic piece's model is Elden Ring's own file; there is nothing to convert for it.
-        var probeModels = layout.Msb.Parts.MapPieces.Where(p => p.InstanceID == MsbPort.ProbeInstance).Select(p => p.ModelName).ToHashSet();
-        var mapPieces = layout.Msb.Models.MapPieces.Where(m => !probeModels.Contains(m.Name)).ToList();
+        var mapPieces = layout.Msb.Models.MapPieces.ToList();
         var failures = new string?[mapPieces.Count];
         _converted.TryGetValue(ds3Id, out var main);
         int copied = 0;
@@ -382,6 +446,11 @@ public static class MapPorter
             var target = ctx.ModPath(ModParts(ErMapBndPath(erId, number)));
             try
             {
+                if (test == PieceTest.VanillaModel)
+                {
+                    File.WriteAllBytes(target, DCX.Compress(MapModelPort.VanillaBinder(hostBnd, erId, number, binderMap).Write(), bndCompression));
+                    return;
+                }
                 if (main.Er != erId && main.Er != default && File.Exists(ctx.ModPath(ModParts(ErMapBndPath(main.Er, number)))))
                 {
                     var bnd = BND4.Read(DCX.Decompress(File.ReadAllBytes(ctx.ModPath(ModParts(ErMapBndPath(main.Er, number)))), out var c));
@@ -418,7 +487,7 @@ public static class MapPorter
         materials.AddRange(models.MatbinFiles(0));
         if (copied > 0)
             textures.Need(main.Textures, ds3Id);
-        else if (!slot.Probe)
+        else if (!slot.Probe && test == PieceTest.None)
             _converted[ds3Id] = (erId, models.Textures);
         report.AppendLine($"  time: {mapPieces.Count} map piece binders in {clock.Elapsed.TotalSeconds:F0} s"
                           + (copied > 0 ? $" ({copied} copied from {main.Er})" : "") + $" on {Parallelism.Threads} threads");
@@ -455,12 +524,6 @@ public static class MapPorter
         var msb = layout.Msb;
         msb.Parts.MapPieces.RemoveAll(p => missingModels.Contains(p.ModelName));
         msb.Models.MapPieces.RemoveAll(m => missingModels.Contains(m.Name));
-        // The diagnostic piece only where Elden Ring ships its model under this map ID.
-        foreach (var name in probeModels.Where(n => !er.Contains(ErMapBndPath(erId, ModelNumber(n)))).ToList())
-        {
-            msb.Parts.MapPieces.RemoveAll(p => p.ModelName == name);
-            msb.Models.MapPieces.RemoveAll(m => m.Name == name);
-        }
         msb.Parts.Collisions.RemoveAll(p => missingCollisions.Contains(p.ModelName));
         msb.Parts.ConnectCollisions.RemoveAll(p => missingCollisions.Contains(p.ModelName)
                                                    || msb.Parts.Collisions.All(c => c.Name != p.CollisionName));
@@ -690,22 +753,32 @@ public static class MapPorter
         return all;
     }
 
-    private static string WriteMaterials(PorterContext ctx, GameArchives er, List<BinderFile> materials)
+    private static string WriteMaterials(PorterContext ctx, GameArchives er, List<BinderFile> materials, bool keepExisting = false)
     {
         var (bytes, compression) = er.ReadWithCompression(MaterialBinder);
         var bnd = BND4.Read(bytes);
+        // A partial (--only) run keeps the materials an earlier run added for the other maps.
+        var modPath = ctx.ModPath(ModParts(MaterialBinder));
+        if (keepExisting && File.Exists(modPath))
+            bnd = BND4.Read(DCX.Decompress(File.ReadAllBytes(modPath)));
         var names = bnd.Files.Select(f => ItemText.Leaf(f.Name)).ToHashSet(StringComparer.OrdinalIgnoreCase);
         var nextId = bnd.Files.Count == 0 ? 0 : bnd.Files.Max(f => f.ID) + 1;
         var added = 0;
         foreach (var file in materials)
         {
             if (!names.Add(ItemText.Leaf(file.Name)))
+            {
+                // Same name as one already there (an earlier partial run's): the new one replaces it.
+                if (keepExisting && bnd.Files.FirstOrDefault(f => ItemText.Leaf(f.Name).Equals(ItemText.Leaf(file.Name), StringComparison.OrdinalIgnoreCase)) is { } old)
+                    old.Bytes = file.Bytes;
                 continue;
+            }
             file.ID = nextId++;
             bnd.Files.Add(file);
             added++;
         }
-        File.WriteAllBytes(ctx.ModPath(ModParts(MaterialBinder)), DCX.Compress(bnd.Write(), compression));
+        Directory.CreateDirectory(Path.GetDirectoryName(modPath)!);
+        File.WriteAllBytes(modPath, DCX.Compress(bnd.Write(), compression));
         return $"materials: {added} map materials added to {ItemText.Leaf(MaterialBinder)}";
     }
 
