@@ -192,6 +192,109 @@ public static class EnemySelfTest
             ChrPort.ParseMethod(null) == ChrPort.Method.Full && ChrPort.ParseMethod("model") == ChrPort.Method.Model
             && ChrPort.ParseMethod("stats") == ChrPort.Method.Stats && ChrPort.ParseMethod("0") == ChrPort.Method.Off);
 
+        // The model: Elden Ring's node flags, culling boxes and a plain character material per set of DS3 textures.
+        Check("DS3 cut-out materials are told by the words after the shader's name",
+            ChrModel.IsAlphaTested(@"N:\FDP\data\Material\mtd\character\C[ARSN]_e_Decal.mtd") && ChrModel.IsAlphaTested("C[ARSN]_Edge.mtd")
+            && !ChrModel.IsAlphaTested("C[ARSN]_em_Glow.mtd") && !ChrModel.IsAlphaTested("C[ARSN]_Decal.mtd") && !ChrModel.IsAlphaTested("C[ARSN].mtd"));
+        Check("a character's own textures are told from shared detail maps",
+            ChrMaterial.IsOwnTexture(@"N:\GR\data\Model\chr\c3060\tex\c3060_Skeleton_a.tif") && !ChrMaterial.IsOwnTexture(@"N:\GR\data\Model\parts\tex\AAT100_Bone_01_a.tif"));
+
+        FLVER.Vertex Skinned(int bone, float x)
+        {
+            var sv = new FLVER.Vertex();
+            sv.Positions.Add(new System.Numerics.Vector3(x, 1, 2));
+            sv.BoneIndices[0] = bone;
+            sv.BoneWeights[0] = 1;
+            return sv;
+        }
+        FLVER2 Model(string mtd)
+        {
+            var model = new FLVER2();
+            // 0 Master, 1 Pelvis (skinned, dummy), 2 Spine (skinned), 3 unused, 4 Dummy holder under 3... no: under 0, 5 mesh node.
+            foreach (var (name, parent) in new[] { ("Master", -1), ("Pelvis", 0), ("Spine", 1), ("Unused", 0), ("Holder", 0), ("body", -1) })
+                model.Nodes.Add(new FLVER.Node { Name = name, ParentIndex = (short)parent });
+            model.Dummies.Add(new FLVER.Dummy { ReferenceID = 220, ParentBoneIndex = 4, AttachBoneIndex = 1 });
+            model.GXLists.Add(new FLVER2.GXList());
+            foreach (var matName in new[] { "body", "cloak" })
+                model.Materials.Add(new FLVER2.Material { Name = matName, MTD = mtd, Textures =
+                [
+                    new FLVER2.Texture("g_DiffuseTexture", @"N:\FDP\chr\c1310\tex\c1310_a.tif", System.Numerics.Vector2.One, 0, 0, 0, 0, 0),
+                    new FLVER2.Texture("g_SpecularTexture", @"N:\FDP\chr\c1310\tex\c1310_r.tif", System.Numerics.Vector2.One, 0, 0, 0, 0, 0),
+                    new FLVER2.Texture("g_BumpmapTexture", @"N:\FDP\chr\c1310\tex\c1310_n.tif", System.Numerics.Vector2.One, 0, 0, 0, 0, 0),
+                ] });
+            for (int mi = 0; mi < 2; mi++)
+            {
+                var body = new FLVER2.Mesh { MaterialIndex = mi, NodeIndex = 5, UseBoneWeights = true, BoneIndices = [1, 2] };
+                body.Vertices.AddRange([Skinned(0, -1), Skinned(1, 3), Skinned(1, 1)]);
+                body.FaceSets.Add(new FLVER2.FaceSet { Indices = [0, 1, 2] });
+                model.Meshes.Add(body);
+            }
+            return model;
+        }
+        var erTemplate = Model(@"N:\GR\data\Material\mtd\Chr\matxml\C[c3060]_Body.matxml");
+        erTemplate.Header.Version = 0x2001A;
+        var ds3Model = Model(@"N:\FDP\data\Material\mtd\character\C[ARSN]_e_Decal.mtd");
+        var plainMaterials = ChrModel.Convert(ds3Model, erTemplate, 1310, 7031, plainMaterials: true, erNodes: true);
+        Check("node flags as Elden Ring has them: carrier 8, skinned + dummy 10, skinned 8, unused 1, dummy holder 2, mesh node 4 ("
+              + string.Join(",", ds3Model.Nodes.Select(n => (int)n.Flags)) + ")",
+            ds3Model.Nodes.Select(n => (int)n.Flags).SequenceEqual([8, 10, 8, 1, 2, 4]));
+        var box = ds3Model.Meshes[0].BoundingBox;
+        Check("mesh boxes are half size, no rotation, centre",
+            box.Min == new System.Numerics.Vector3(2, 0, 0) && box.Max == System.Numerics.Vector3.Zero && box.Unk == new System.Numerics.Vector3(1, 1, 2));
+        Check("meshes with the same DS3 textures share one plain character material",
+            plainMaterials.Count == 1 && plainMaterials[0] is { Plain: true, AlphaTest: true, NewMatbin: "C[c7031]_ds3_0", Albedo: "c7031_a", Normal: "c7031_n", Metallic: "c7031_m" }
+            && ds3Model.Materials.All(m => m.MTD == @"N:\GR\data\Material\mtd\Chr\matxml\C[c7031]_ds3_0.matxml"
+                && m.Textures.Select(t => t.ParamName).SequenceEqual([ChrModel.PlainAlbedo, ChrModel.PlainMetallic, ChrModel.PlainNormal])));
+
+        Check("display mask prefixes stay on material names", ChrModel.MaskPrefix("#01# spear") == "#01#" && ChrModel.MaskPrefix("c1280_body_mat") == ""
+            && ChrModel.MaskPrefix("#00#  body") == "#00#");
+        var ds3Masks = new PARAMDEF { ParamType = "NPC_PARAM_ST", Fields = [] };
+        var erMasks = new PARAMDEF { ParamType = "NPC_PARAM_ST", Fields = [] };
+        for (int k = 0; k < 3; k++)
+        {
+            ds3Masks.Fields.Add(new PARAMDEF.Field(ds3Masks, PARAMDEF.DefType.u8, $"ModelDispMask{k}"));
+            erMasks.Fields.Add(new PARAMDEF.Field(erMasks, PARAMDEF.DefType.u8, $"modelDispMask{k}"));
+        }
+        var ds3MaskRow = new PARAM.Row(1, "ds3", ds3Masks);
+        ds3MaskRow["ModelDispMask2"]!.Value = (byte)1;
+        var erMaskRow = new PARAM.Row(2, "er", erMasks);
+        erMaskRow["modelDispMask0"]!.Value = (byte)1;
+        Check("DS3's display masks replace the template's (0,0,1)",
+            ChrPort.CopyDisplayMasks(ds3MaskRow, erMaskRow) == 3
+            && Enumerable.Range(0, 3).Select(k => System.Convert.ToInt32(erMaskRow[$"modelDispMask{k}"]!.Value)).SequenceEqual([0, 0, 1]));
+
+        MATBIN Matbin(string source, params (string Type, string Path)[] samplers)
+        {
+            var mb = new MATBIN { ShaderPath = @"N:\GR\data\Material\sat\OutputData\SPX\C[AMSN].spx", SourcePath = source, Params = [], Samplers = [] };
+            mb.Params.Add(new MATBIN.Param { Name = "g_AlphaRef", Type = MATBIN.ParamType.Int2, Value = new[] { 128, 128 } });
+            mb.Params.Add(new MATBIN.Param { Name = "C_AMSN__snp_0_color_0", Type = MATBIN.ParamType.Float5, Value = new[] { 0.2f, 0.2f, 0.2f, 1f, 3f } });
+            foreach (var (type, path) in samplers)
+                mb.Samplers.Add(new MATBIN.Sampler { Type = type, Path = path });
+            return mb;
+        }
+        var horse = Matbin(@"N:\GR\data\Material\mtd\Chr\matxml\C[c3250]_Horse_Body.matxml",
+            (ChrModel.PlainAlbedo, @"N:\GR\data\Model\chr\c3250\tex\c3250_Horse_a.tif"), (ChrModel.PlainMetallic, @"N:\GR\data\Model\chr\c3250\tex\c3250_Horse_m.tif"),
+            (ChrModel.PlainNormal, @"N:\GR\data\Model\chr\c3250\tex\c3250_Horse_n.tif"));
+        int named = (plainMaterials[0] with { Metallic = null }).Apply(horse);
+        Check("a plain material names DS3's textures, clears what DS3 lacks, resets the colour and cuts out at 50",
+            named == 2 && horse.Samplers[0].Path == @"N:\GR\data\Model\chr\c7031\tex\c7031_a.tif" && horse.Samplers[1].Path == ""
+            && horse.Samplers[2].Path == @"N:\GR\data\Model\chr\c7031\tex\c7031_n.tif"
+            && ((int[])horse.Params[0].Value).SequenceEqual([50, 0]) && ((float[])horse.Params[1].Value).SequenceEqual([1f, 1f, 1f, 1f, 1f])
+            && horse.SourcePath == @"N:\GR\data\Material\mtd\Chr\matxml\C[c7031]_ds3_0.matxml");
+
+        // Fallback enemy-model B: the template's material, with its own textures swapped and shared detail maps kept
+        // (up to 1.0.255 nothing was swapped: every ported enemy wore its template's textures).
+        var ds3Model2 = Model(@"N:\FDP\data\Material\mtd\character\C[ARSN]_Decal.mtd");
+        var templateMaterials = ChrModel.Convert(ds3Model2, erTemplate, 1310, 7031, plainMaterials: false, erNodes: false);
+        var beast = Matbin(@"N:\GR\data\Material\mtd\Chr\matxml\C[c3060]_Body.matxml",
+            ("C_DetailBlend__snp_Texture2D_7_AlbedoMap", @"N:\GR\data\Model\chr\c3060\tex\c3060_Skeleton_a.tif"),
+            ("C_DetailBlend__snp_Texture2D_1_AlbedoMap", @"N:\GR\data\Model\parts\tex\AAT100_Bone_01_a.tif"));
+        int swapped = templateMaterials[0].Apply(beast);
+        Check("template materials: one per DS3 material, own textures swapped, detail maps and values kept, DS3 node flags kept",
+            templateMaterials.Count == 2 && !templateMaterials[0].Plain && templateMaterials[0].NewMatbin == "C[c3060]_Body_c7031_0" && swapped == 1
+            && beast.Samplers[0].Path == @"N:\GR\data\Model\chr\c3060\tex\c7031_a.tif" && beast.Samplers[1].Path.EndsWith("AAT100_Bone_01_a.tif", StringComparison.Ordinal)
+            && ((int[])beast.Params[0].Value).SequenceEqual([128, 128]) && ds3Model2.Nodes.All(n => n.Flags == 0));
+
         Console.WriteLine(failures == 0 ? "enemy-selftest: all checks passed" : $"enemy-selftest: {failures} check(s) FAILED");
         return failures == 0 ? 0 : 1;
     }
