@@ -15,7 +15,7 @@ public sealed class MapModelPort
 {
     /// <summary>One new MATBIN: a copy of <see cref="Template"/> with its own textures.</summary>
     public sealed record NewMaterial(string Name, MaterialTemplate Template, string Albedo, string Normal, string? Albedo2,
-        string? Normal2, Vector2 Scale = default);
+        string? Normal2, Vector2 Scale = default, bool TemplateTextures = false);
 
     /// <summary>
     /// A vanilla Elden Ring map material used as a pattern, with an example of it in a FLVER: the material slot, its
@@ -51,7 +51,7 @@ public sealed class MapModelPort
     }
 
     /// <summary>A new port with the same templates and none of this one's materials (one per map).</summary>
-    public MapModelPort Fresh() => new(_templates, _templateFlver) { VanillaMaterials = VanillaMaterials };
+    public MapModelPort Fresh() => new(_templates, _templateFlver) { VanillaMaterials = VanillaMaterials, TemplateTextures = TemplateTextures };
 
     /// <summary>
     /// Piece test "vanilla-material" (see MapPorter.PieceTest): every converted mesh keeps its template's own vanilla
@@ -62,6 +62,16 @@ public sealed class MapModelPort
 
     /// <summary>This port's templates with <see cref="VanillaMaterials"/> on.</summary>
     public MapModelPort WithVanillaMaterials() => new(_templates, _templateFlver) { VanillaMaterials = true };
+
+    /// <summary>
+    /// Piece test "ported-material" (see MapPorter.PieceTest): every DS3 material still becomes a MATBIN of its own
+    /// (a renamed copy of its template, added to the material binder), but the copy keeps the template's vanilla
+    /// textures. The model then depends on the port's MATBINs and on none of its textures.
+    /// </summary>
+    public bool TemplateTextures { get; private init; }
+
+    /// <summary>This port's templates with <see cref="TemplateTextures"/> on.</summary>
+    public MapModelPort WithTemplateTextures() => new(_templates, _templateFlver) { TemplateTextures = true };
 
     /// <summary>"Position0:Float3 Normal0:UByte4 ..." for a vertex layout.</summary>
     public static string LayoutText(IEnumerable<FLVER.LayoutMember> layout) =>
@@ -368,9 +378,10 @@ public sealed class MapModelPort
                 scale = Vector2.One;
             if (albedo is null)
                 Notes.Add($"{ItemText.Leaf(m.MTD)} ({m.Name}) has no albedo texture; it keeps the template's");
-            foreach (var t in new[] { albedo, normal })
-                if (t is not null)
-                    Textures.Add(t);
+            if (!TemplateTextures)
+                foreach (var t in new[] { albedo, normal })
+                    if (t is not null)
+                        Textures.Add(t);
 
             var key = string.Join("|", template.Matbin, albedo, normal, scale.X.ToString("R", System.Globalization.CultureInfo.InvariantCulture),
                 scale.Y.ToString("R", System.Globalization.CultureInfo.InvariantCulture));
@@ -379,7 +390,7 @@ public sealed class MapModelPort
                 // Named from what it holds, not from the order binders converted in, so every build names it the same.
                 // A DS3 material with no normal map (sky domes, some foliage) gets a flat one, not the template's own.
                 material = new NewMaterial($"DKS_{ds3Id.Digits}_{StableHash(key)}", template, albedo ?? "", normal ?? FlatNormal,
-                    null, null, scale);
+                    null, null, scale, TemplateTextures);
                 _materials[key] = material;
             }
 
@@ -577,7 +588,7 @@ public sealed class MapModelPort
         foreach (var material in _materials.Values.OrderBy(m => m.Name, StringComparer.Ordinal))
         {
             var matbin = MATBIN.Read(material.Template.File.Bytes);
-            foreach (var sampler in matbin.Samplers)
+            foreach (var sampler in material.TemplateTextures ? [] : matbin.Samplers)
             {
                 var texture = Role(sampler.Type) switch
                 {

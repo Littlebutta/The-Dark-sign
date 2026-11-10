@@ -567,9 +567,15 @@ public static partial class MapPortChecks
         Expect(MapModelPort.Classify(assetOnly) == "opaque", "JortPob's albedo-only asset material is an opaque template");
 
         // The texture binder, laid out like JortPob's.
-        var bxf = MapTextures.BuildBinder([new TPF.Texture("m40_00_stone_a", 0, 0, ModelPort.BlackBc4Dds(), TPF.TPFPlatform.PC)]);
+        // (Deflate here: Kraken needs the game's own Oodle library, which the self test doesn't have.)
+        var bxf = MapTextures.BuildBinder([new TPF.Texture("m40_00_stone_a", 103, 0, ModelPort.BlackBc4Dds(), TPF.TPFPlatform.PC)],
+            new DCX.DcxDfltCompressionInfo(DCX.DfltCompressionPreset.DCX_DFLT_11000_44_9));
         Expect(bxf.Version == "07D7R6" && bxf.Files.Select(f => f.Name).SequenceEqual(["m40_00_stone_a.tpf.dcx", "m40_00_stone_a_l.tpf.dcx"]), "texture binder entries");
-        Expect(TPF.Read(bxf.Files[0].Bytes).Textures.Single().Name == "m40_00_stone_a", "texture binder TPF");
+        Expect(bxf.Files.All(f => DCX.Is(f.Bytes)), "texture binder entries are DCX compressed, as their names say");
+        var inner = bxf.Files.Select(f => TPF.Read(f.Bytes).Textures.Single()).ToList();
+        Expect(inner[0].Name == "m40_00_stone_a" && inner[1].Name == "m40_00_stone_a_l", "the low detail entry's texture is named with _l");
+        Expect(inner.All(t => t.Format == 103 && t.Bytes.AsSpan().SequenceEqual(ModelPort.BlackBc4Dds())), "texture binder TPF keeps the format and pixels");
+        Expect(MapTextures.EntryCompression.Type == DCX.Type.DCX_KRAK, "the game's builds compress the entries with Kraken");
         Expect(MapTextures.CommonBinder("m45") == "/map/m45/common/m45_0000.tpfbhd", "texture binder path");
     }
 

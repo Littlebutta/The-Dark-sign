@@ -108,6 +108,13 @@ test. The next build changes the first two and measures the third:
     (`vanilla-material`) DS3's geometry is drawn with the colosseum model's own vanilla material. Second loads:
     binders, layout and draw settings are fine. Third loads too: so is the converted geometry, and what is left is
     the ported materials and textures. Fallback `map-draw` C builds all three normally.
+12. **1.0.271 playtest: both tests loaded, the real port still hung.** So the wait is on the ported MATBINs or the
+    textures they name. Compared again with JortPob, the texture binder differed in two ways: its entries
+    (`name.tpf.dcx`) are DCX (Kraken) compressed TPFs, where the port wrote bare TPFs under those `.dcx` names, and
+    its low detail entry holds a texture named `name_l`, where the port's held `name`. `MapTextures.BuildBinder` now
+    writes both the way JortPob does. The second slot's test is now `ported-material` (the port's MATBINs keeping
+    their template's vanilla textures): if the first map still hangs and the second loads, the textures are still
+    at fault; if the second hangs too, the added MATBINs are.
 
 Materials are sorted into kinds, each with its own vanilla template found in the legacy dungeons: opaque
 (`M[AMSN_V]`), alpha tested (`_Edge`), blended (`_Alpha`) and unlit (`_NoLight`, DS3's sky domes). A kind with no
