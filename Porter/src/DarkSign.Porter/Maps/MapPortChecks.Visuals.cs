@@ -16,7 +16,7 @@ public static partial class MapPortChecks
         yield return ("visuals: DS3 materials sort into kinds; effect, decal, water and shadow meshes are left out", MaterialKinds);
         yield return ("visuals: UVs that a short can't hold are rescaled or moved by whole tiles", UvRange);
         yield return ("visuals: pieces name a PartsDrawParam row, carry no masks", DrawSettings);
-        yield return ("visuals: test maps hold the host's own model, or DS3 geometry with the host's own material", PieceTests);
+        yield return ("visuals: test maps hold the host's own model, its own material, or the port's materials with vanilla textures", PieceTests);
         yield return ("visuals: fallbacks map-groups C and map-materials B", VisualFallbacks);
     }
 
@@ -89,7 +89,7 @@ public static partial class MapPortChecks
         var slots = MapSlots.All.Where(s => !s.Probe).ToList();
         var none = new MapPorter.Options();
         Expect(MapPorter.PieceTestFor(slots[0], none) == MapPorter.PieceTest.None, "the first slot is the real port");
-        Expect(slots.Count < 3 || (MapPorter.PieceTestFor(slots[1], none) == MapPorter.PieceTest.VanillaModel
+        Expect(slots.Count < 3 || (MapPorter.PieceTestFor(slots[1], none) == MapPorter.PieceTest.PortedMaterial
                                    && MapPorter.PieceTestFor(slots[2], none) == MapPorter.PieceTest.VanillaMaterial), "the second and third slots are the tests");
         var off = MapPorter.Options.Parse(["--no-piece-test"]);
         Expect(slots.All(s => MapPorter.PieceTestFor(s, off) == MapPorter.PieceTest.None), "--no-piece-test builds every slot normally");
@@ -113,6 +113,17 @@ public static partial class MapPortChecks
         Expect(result.Meshes.Count == 1 && result.Meshes[0].Vertices.Count == vertices, "vanilla-material: DS3's geometry");
         Expect(!vanilla.Materials.Any() && vanilla.Textures.Count == 0 && !vanilla.MatbinFiles(0).Any(), "vanilla-material: no MATBIN or texture added");
         Expect(vanilla.Fresh().VanillaMaterials, "a fresh port keeps the test mode");
+
+        // ported-material: the port's own MATBIN (renamed copy of the template) with the template's textures.
+        Expect(MapPorter.ParsePieceTest("ported-material") == MapPorter.PieceTest.PortedMaterial, "--piece-test ported-material");
+        var kept = port.WithTemplateTextures();
+        var keptResult = ConvertOne(kept, hostBnd, SyntheticFlver(0x20014, @"N:\FDP\data\Material\mtd\map\M[ARSN].mtd"));
+        var keptMaterial = kept.Materials.Single();
+        var keptMatbin = MATBIN.Read(kept.MatbinFiles(0).Single().Bytes);
+        var templateMatbin = MATBIN.Read(keptMaterial.Template.File.Bytes);
+        Expect(keptResult.Materials.All(m => m.Name == keptMaterial.Name && m.Name != hostMaterial.Name), "ported-material: the model names the port's own material");
+        Expect(keptMatbin.Samplers.Select(s => s.Path).SequenceEqual(templateMatbin.Samplers.Select(s => s.Path)), "ported-material: the MATBIN keeps the template's textures");
+        Expect(kept.Textures.Count == 0 && kept.Fresh().TemplateTextures, "ported-material: no texture asked for, and a fresh port keeps the mode");
     }
 
     private static (MapModelPort Port, BND4 HostBnd) VisualPort(bool plain = false)

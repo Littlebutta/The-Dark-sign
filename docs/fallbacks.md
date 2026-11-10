@@ -248,7 +248,7 @@ Try the next option if: Parts of a DS3 map are invisible or flicker in and out a
 
 Try the next option if: DS3 map geometry is invisible or pops in only when close, or the second and third DS3 maps should be the real maps instead of test maps.
 
-- **A: The port's own row, with two test maps (default).** Every map piece names a PartsDrawParam row the port adds (unlimited draw distance, no LOD switching, as JortPob's maps have). The first DS3 map is the real port. The second and third are tests that tell apart what stalls a map load: in the second every map piece is Elden Ring's own colosseum model, in the third DS3's geometry is drawn with Elden Ring's own plain material.
+- **A: The port's own row, with two test maps (default).** Every map piece names a PartsDrawParam row the port adds (unlimited draw distance, no LOD switching, as JortPob's maps have). The first DS3 map is the real port. The second and third are tests that tell apart what stalls a map load: in the second DS3's geometry is drawn with the port's own materials holding Elden Ring's textures, in the third with Elden Ring's own plain material (the one known to load).
 - **B: A vanilla row.** Map pieces name Stormveil Castle's most common PartsDrawParam row, 2046 (port-maps --vanilla-draw-param), and nothing is added to the regulation. (`port-maps --vanilla-draw-param`)
 - **C: Without the test maps.** As A, but all three DS3 maps are the real port (port-maps --no-piece-test). Use once the first DS3 map is confirmed to load and draw. (`port-maps --no-piece-test`)
 

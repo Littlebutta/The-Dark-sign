@@ -109,7 +109,7 @@ public sealed class MapTextures
         textures[MapModelPort.BlackMetallic] = new TPF.Texture(MapModelPort.BlackMetallic, 103, 0, ModelPort.BlackBc4Dds(), TPF.TPFPlatform.PC);
         textures[MapModelPort.FlatNormal] = new TPF.Texture(MapModelPort.FlatNormal, 0, 0, ModelPort.FlatNormalDds(), TPF.TPFPlatform.PC);
 
-        var bxf = BuildBinder(textures.Values);
+        var bxf = BuildBinder(textures.Values, EntryCompression);
         Directory.CreateDirectory(Path.GetDirectoryName(bhdPath)!);
         bxf.Write(bhdPath, bdtPath);
         var summary = $"textures {area}: {added} DS3 textures, {textures.Count} in all, in {target.TrimStart('/')}";
@@ -119,23 +119,40 @@ public sealed class MapTextures
     }
 
     /// <summary>
-    /// A texture binder laid out the way JortPob writes the ones Elden Ring loads: BXF4 version 07D7R6, one
-    /// uncompressed TPF per texture named "{name}.tpf.dcx", and the same texture again as its low detail "{name}_l".
+    /// A texture binder laid out the way JortPob writes the ones Elden Ring loads (its Bind.cs BindTPF and
+    /// Model/MaterialContext.cs): BXF4 version 07D7R6, and per texture a "{name}.tpf.dcx" holding one texture named
+    /// "{name}" and a low detail "{name}_l.tpf.dcx" holding one named "{name}_l". Each entry is a DCX compressed
+    /// TPF, as its ".dcx" name says: JortPob writes them Kraken compressed and its binder keeps them that way.
+    /// (Up to 1.0.271 the port wrote bare TPFs under the ".dcx" names, with the low detail copy's inner name
+    /// lacking "_l"; every map whose materials named these textures stopped loading while the game waited for them.)
     /// </summary>
-    public static BXF4 BuildBinder(IEnumerable<TPF.Texture> textures)
+    public static BXF4 BuildBinder(IEnumerable<TPF.Texture> textures, DCX.CompressionInfo compression)
     {
+        var list = textures.ToList();
+        var entries = new (byte[] Full, byte[] Low)[list.Count];
+        Parallel.For(0, list.Count, Parallelism.Options, i =>
+        {
+            var t = list[i];
+            byte[] Entry(string name)
+            {
+                var tpf = new TPF { Platform = TPF.TPFPlatform.PC, Encoding = 1, Flag2 = 3 };
+                tpf.Textures.Add(new TPF.Texture(name, t.Format, t.Flags1, t.Bytes, TPF.TPFPlatform.PC) { Type = t.Type, Mipmaps = t.Mipmaps });
+                return DCX.Compress(tpf.Write(), compression);
+            }
+            entries[i] = (Entry(t.Name), Entry(t.Name + "_l"));
+        });
         var bxf = new BXF4 { Version = "07D7R6" };
         var id = 0;
-        foreach (var texture in textures)
+        for (int i = 0; i < list.Count; i++)
         {
-            var tpf = new TPF { Platform = TPF.TPFPlatform.PC, Encoding = 1, Flag2 = 3 };
-            tpf.Textures.Add(texture);
-            var bytes = tpf.Write();
-            bxf.Files.Add(new BinderFile { ID = id++, Name = $"{texture.Name}.tpf.dcx", Bytes = bytes });
-            bxf.Files.Add(new BinderFile { ID = id++, Name = $"{texture.Name}_l.tpf.dcx", Bytes = bytes });
+            bxf.Files.Add(new BinderFile { ID = id++, Name = $"{list[i].Name}.tpf.dcx", Bytes = entries[i].Full });
+            bxf.Files.Add(new BinderFile { ID = id++, Name = $"{list[i].Name}_l.tpf.dcx", Bytes = entries[i].Low });
         }
         return bxf;
     }
+
+    /// <summary>Elden Ring's own compression (Kraken), which JortPob's texture entries use.</summary>
+    public static readonly DCX.CompressionInfo EntryCompression = new DCX.DcxKrakCompressionInfo(DCX.KrakCompressionPreset.EldenRing);
 
     // "m40_00_wall_a.tpf.dcx" -> "m40_00_wall_a"
     public static string TextureNameOf(string binderName)

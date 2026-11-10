@@ -47,7 +47,7 @@ const string Usage = """
       event-coverage <ds3.emedf.json> <er.emedf.json>  which DS3 event instructions convert to Elden Ring, and how
       port-enemies                 port DS3's enemies only (port-maps does this too) and check what the game will load
       map-validate                 read back the ported maps in the mod folder and check them (port-maps runs this too)
-      port-maps [map ids] [--ds3-groups|--no-groups] [--plain-materials] [--vanilla-draw-param] [--no-piece-test] [--piece-test <er map id>=<vanilla-model|vanilla-material|none>] [--binary-collision] [--simd] [--after-pid <port-weapons pid>]
+      port-maps [map ids] [--ds3-groups|--no-groups] [--plain-materials] [--vanilla-draw-param] [--no-piece-test] [--piece-test <er map id>=<vanilla-model|vanilla-material|ported-material|none>] [--binary-collision] [--simd] [--after-pid <port-weapons pid>]
                                    port the DS3 maps that have an Elden Ring slot, and the F1 menu's DS3 run events
       randomize [--profile <name>] [--seed <n>]
                                    make a profile's cross-game randomized world (checked finishable) and its spoiler log
