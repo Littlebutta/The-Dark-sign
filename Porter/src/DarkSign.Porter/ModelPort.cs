@@ -341,6 +341,28 @@ public static class ModelPort
         return ms.ToArray();
     }
 
+    /// <summary>A 4x4 DXT1 texture of one colour, (128, 128, 128): a normal map that bends nothing, mid roughness.</summary>
+    public static byte[] FlatNormalDds()
+    {
+        using var ms = new MemoryStream();
+        using var w = new BinaryWriter(ms);
+        w.Write(Encoding.ASCII.GetBytes("DDS "));
+        w.Write(124);                          // header size
+        w.Write(0x1 | 0x2 | 0x4 | 0x1000 | 0x80000); // caps | height | width | pixelformat | linearsize
+        w.Write(4); w.Write(4);                // height, width
+        w.Write(8);                            // linear size: one DXT1 block
+        w.Write(0); w.Write(1);                // depth, mip count
+        for (int i = 0; i < 11; i++) w.Write(0);
+        w.Write(32); w.Write(0x4);             // pixel format: size, FOURCC
+        w.Write(Encoding.ASCII.GetBytes("DXT1"));
+        for (int i = 0; i < 5; i++) w.Write(0);
+        w.Write(0x1000);                       // caps: texture
+        for (int i = 0; i < 4; i++) w.Write(0);
+        w.Write((ushort)0x8410); w.Write((ushort)0x8410); // both endpoints R5G6B5 (16, 32, 16)
+        w.Write(0);                            // every pixel the first endpoint
+        return ms.ToArray();
+    }
+
     /// <summary>
     /// Adds a MATBIN for each new material to Elden Ring's DLC02 material binder: a copy of the template weapon's
     /// MATBIN whose own-texture samplers (albedo, normal, metallic) point at the new model's textures. Shared detail

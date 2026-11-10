@@ -102,6 +102,7 @@ public sealed class MapTextures
         }
         // The flat metallic map every ported map material points at (Elden Ring reads metallic, DS3 had none).
         textures[MapModelPort.BlackMetallic] = new TPF.Texture(MapModelPort.BlackMetallic, 103, 0, ModelPort.BlackBc4Dds(), TPF.TPFPlatform.PC);
+        textures[MapModelPort.FlatNormal] = new TPF.Texture(MapModelPort.FlatNormal, 0, 0, ModelPort.FlatNormalDds(), TPF.TPFPlatform.PC);
 
         var bxf = BuildBinder(textures.Values);
         Directory.CreateDirectory(Path.GetDirectoryName(bhdPath)!);

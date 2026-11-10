@@ -240,6 +240,14 @@ Try the next option if: Parts of a DS3 map are invisible or flicker in and out a
 
 - **A: Everything visible (default).** Every map part draws everywhere in the map (Elden Ring's draw groups ignored).
 - **B: DS3's draw groups.** Parts keep DS3's draw and display groups (port-maps --ds3-groups), as DS3 culls them. (`port-maps --ds3-groups`)
+- **C: No draw groups.** Parts carry no draw or display groups at all (port-maps --no-groups), as the colosseums' own parts and JortPob's maps have them. (`port-maps --no-groups`)
+
+### Materials of the DS3 map pieces (`map-materials`, rebuilds the content)
+
+Try the next option if: DS3 map geometry is invisible, black, far too dark or shiny, or foliage and fences are solid cards.
+
+- **A: Elden Ring's map shaders by kind (default).** Each DS3 material is drawn with a copy of an Elden Ring map material of its kind: normal-mapped opaque, alpha-tested (foliage, grates), blended, and unlit (sky domes), each mesh rebuilt in that material's vertex layout.
+- **B: Albedo only.** Every DS3 material uses the albedo-only material JortPob builds its maps on (port-maps --plain-materials): no normal maps, cut-outs or unlit sky, but the simplest shader there is. (`port-maps --plain-materials`)
 
 ### Enemies and bosses in the DS3 maps (`map-enemies`, rebuilds the content)
 
