@@ -25,6 +25,12 @@ public static class MsbPort
         /// hides the map. Off: DS3's masks are copied by position (DrawGroups -> DisplayGroups and so on).
         /// </summary>
         public bool AllVisible { get; init; } = true;
+
+        /// <summary>
+        /// No group masks at all (every array zero), the way JortPob's parts and the colosseum's own parts have them.
+        /// Wins over <see cref="AllVisible"/>. Fallback "map-groups" C.
+        /// </summary>
+        public bool NoGroups { get; init; }
     }
 
     public sealed record Result(MSBE Msb, int MapPieces, int Collisions, int Players, int StartEntityId,
@@ -42,7 +48,12 @@ public static class MsbPort
         var notes = new List<string>();
         var msb = new MSBE();
 
-        var mapPieceTemplate = host.Parts.MapPieces.FirstOrDefault() ?? NewMapPiece();
+        // An ordinary piece when the host has one. The colosseums hold a single map piece, a proxy drawn only in
+        // reflections, so whatever is copied is then set to draw normally (DrawNormally).
+        var mapPieceTemplate = host.Parts.MapPieces.FirstOrDefault(p => !p.DrawOnlyReflectCam && !p.IsShadowOnly)
+                               ?? host.Parts.MapPieces.FirstOrDefault() ?? NewMapPiece();
+        if (mapPieceTemplate.DrawOnlyReflectCam || mapPieceTemplate.IsShadowOnly)
+            notes.Add("the host's map pieces are drawn only in reflections or shadows; the ported pieces get ordinary draw flags");
         var collisionTemplate = host.Parts.Collisions.FirstOrDefault() ?? NewCollision();
         var playerTemplate = host.Parts.Players.FirstOrDefault() ?? NewPlayer();
         if (host.Parts.MapPieces.Count == 0 || host.Parts.Collisions.Count == 0 || host.Parts.Players.Count == 0)
@@ -57,6 +68,7 @@ public static class MsbPort
             var part = (MSBE.Part.MapPiece)mapPieceTemplate.DeepCopy();
             CopyCommon(src, part, ds3Id, erId);
             ApplyGroups(src, part.Unk1, options);
+            DrawNormally(part);
             msb.Parts.MapPieces.Add(part);
             AddModel(msb.Models.MapPieces, src.ModelName, mapPieceModel, erId);
         }
@@ -68,7 +80,7 @@ public static class MsbPort
             ApplyGroups(src, part.Unk1, options);
             if (part.Unk2 is { } unk2)
                 for (int i = 0; i < unk2.DispGroups.Length; i++)
-                    unk2.DispGroups[i] = options.AllVisible ? 0xFFFFFFFF : i < src.DispGroups.Length ? src.DispGroups[i] : 0;
+                    unk2.DispGroups[i] = options.NoGroups ? 0 : options.AllVisible ? 0xFFFFFFFF : i < src.DispGroups.Length ? src.DispGroups[i] : 0;
             // Same numbering in both games (8 = normal floor and walls).
             part.HitFilterID = (MSBE.Part.Collision.HitFilterType)src.HitFilterID;
             // Online/region IDs from the colosseum would only confuse the game; Elden Ring treats 0/-1 as unset.
@@ -151,6 +163,21 @@ public static class MsbPort
             part.EntityGroupIDs[i] = src.EntityGroups[i] > 0 ? (uint)ds3Id.MoveEntity(src.EntityGroups[i], erId) : 0;
     }
 
+    /// <summary>
+    /// The draw flags of an ordinary Elden Ring map piece (314 of Stormveil's 343): drawn by the main camera and
+    /// receiving shadows. The colosseums' only map piece, the template every ported piece was copied from, is a
+    /// reflection proxy (DrawOnlyReflectCam), which left every DS3 map invisible (2026-11-09 playtest).
+    /// </summary>
+    internal static void DrawNormally(MSBE.Part part)
+    {
+        part.DrawOnlyReflectCam = false;
+        part.DrawByReflectCam = false;
+        part.IsShadowOnly = false;
+        part.IsShadowDest = true;
+        part.EnableOnAboveShadow = 0;
+        part.IsCascade3ShadowSrc = 0;
+    }
+
     // "m000100_0003" -> 3
     private static int InstanceOf(string name)
     {
@@ -162,6 +189,13 @@ public static class MsbPort
     {
         if (unk1 is null)
             return;
+        if (options.NoGroups)
+        {
+            Array.Clear(unk1.DisplayGroups);
+            Array.Clear(unk1.DrawGroups);
+            Array.Clear(unk1.CollisionMask);
+            return;
+        }
         if (options.AllVisible)
         {
             Array.Fill(unk1.DisplayGroups, 0xFFFFFFFF);

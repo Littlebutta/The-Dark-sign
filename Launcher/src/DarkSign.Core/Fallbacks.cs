@@ -302,6 +302,15 @@ public static class Fallbacks
             new("A", "Everything visible (default)", "Every map part draws everywhere in the map (Elden Ring's draw groups ignored)."),
             new("B", "DS3's draw groups", "Parts keep DS3's draw and display groups (port-maps --ds3-groups), as DS3 culls them.")
                 { MapsArgs = ["--ds3-groups"] },
+            new("C", "No draw groups", "Parts carry no draw or display groups at all (port-maps --no-groups), as the colosseums' own parts and JortPob's maps have them.")
+                { MapsArgs = ["--no-groups"] },
+        ]),
+        new("map-materials", "DS3 maps", "Materials of the DS3 map pieces", Stage.Build,
+            "DS3 map geometry is invisible, black, far too dark or shiny, or foliage and fences are solid cards.",
+        [
+            new("A", "Elden Ring's map shaders by kind (default)", "Each DS3 material is drawn with a copy of an Elden Ring map material of its kind: normal-mapped opaque, alpha-tested (foliage, grates), blended, and unlit (sky domes), each mesh rebuilt in that material's vertex layout."),
+            new("B", "Albedo only", "Every DS3 material uses the albedo-only material JortPob builds its maps on (port-maps --plain-materials): no normal maps, cut-outs or unlit sky, but the simplest shader there is.")
+                { MapsArgs = ["--plain-materials"] },
         ]),
         new("map-enemies", "DS3 maps", "Enemies and bosses in the DS3 maps", Stage.Build,
             "A DS3 map crashes or hangs while loading, enemies stand in walls or fall through the floor, or a boss fight never starts.",

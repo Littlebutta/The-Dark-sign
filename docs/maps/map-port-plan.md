@@ -56,6 +56,33 @@ Flags are in the block of the empty sea tile m60_39_29 (1039290000+), the way Jo
   binder entry names, the DS3 start point, the host collision template, map materials and texture folders, and the
   warp targets. Run it first on the PC; it answers the open questions below.
 
+### Why map pieces draw (fixed after the 2026-11-09 playtest)
+
+In 1.0.24x the maps loaded and were walkable, but every map piece was invisible. Comparing the port with vanilla
+files found four causes, all checked by `map-selftest` and by `port-maps`' own validator now:
+
+1. **Draw flags.** The colosseum's layout has one map piece, `m009999_1000`, a proxy drawn only in reflections
+   (`DrawOnlyReflectCam`, no `IsShadowDest`). Every DS3 piece was a copy of it. Ported pieces now get an ordinary
+   piece's flags (`MsbPort.DrawNormally`, values from Stormveil's majority), whatever the template has.
+2. **Vertex layout.** An Elden Ring material only draws meshes in the vertex layout its own vanilla meshes use
+   (JortPob ships these per material as `MaterialInfo.xml`). Each ported mesh is rewritten into the layout of the
+   vanilla mesh its template material came from (`MapModelPort.Conform`): one UV channel as Short2, one tangent,
+   one colour. The layouts used are written to `Mods\ER\darksign_map_layouts.txt`.
+3. **Culling box.** Elden Ring's per-mesh box is half extents, rotation, centre; DS3's is min, max
+   (`MapModelPort.SetBoundingBox`).
+4. **Layered materials.** DS3's ground and wall materials (`M[ARSN]_2m/3m/4m`) name their textures
+   `..._AlbedoMap_0`, not `g_DiffuseTexture`, and store UVs in short units. The first layer is used.
+
+Materials are sorted into kinds, each with its own vanilla template found in the legacy dungeons: opaque
+(`M[AMSN_V]`), alpha tested (`_Edge`), blended (`_Alpha`) and unlit (`_NoLight`, DS3's sky domes). A kind with no
+template found falls back to opaque. Meshes with no stand-in yet (water, additive glows, decals, fog cards, unlit
+cloud layers) are left out and counted in the log ("meshes left out"). A DS3 material with no normal map gets a
+flat one (`DKS_flat_n`). Fallbacks: `map-materials` B (albedo-only template) and `map-groups` C (no draw groups).
+
+**Sky and lighting.** DS3's sky is ordinary map pieces (009xxx, a 9 km dome), so it is drawn with the map. Elden
+Ring's own sky, sun, fog and ambient light come from the slot's gparam and light files, which are still the
+colosseum's: converting DS3's gparam is the next step for the look of the maps.
+
 ### Event scripts
 
 Both games run the same event system, and DarkScript3 documents every instruction of each (`ds3-common.emedf.json`,

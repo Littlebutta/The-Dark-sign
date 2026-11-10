@@ -19,6 +19,9 @@ public static class MapPorter
     {
         public HashSet<string> Only { get; } = new(StringComparer.OrdinalIgnoreCase);
         public bool Ds3Groups { get; set; }
+        public bool NoGroups { get; set; }
+        /// <summary>Only the albedo-only material JortPob uses (fallback "map-materials" B).</summary>
+        public bool PlainMaterials { get; set; }
         public bool BinaryCollision { get; set; }
         public bool KeepSimdTree { get; set; }
 
@@ -39,6 +42,8 @@ public static class MapPorter
                 switch (list[i].ToLowerInvariant())
                 {
                     case "--ds3-groups": o.Ds3Groups = true; break;
+                    case "--no-groups": o.NoGroups = true; break;
+                    case "--plain-materials": o.PlainMaterials = true; break;
                     case "--binary-collision": o.BinaryCollision = true; break;
                     case "--simd": o.KeepSimdTree = true; break;
                     case "--enemies" when i + 1 < list.Count: o.Enemies = EnemyPort.ParseMethod(list[i + 1]); i++; break;
@@ -148,6 +153,9 @@ public static class MapPorter
 
         var warps = ported.Select((p, i) => new RunEvents.Warp(p.Slot.Er, (uint)p.StartEntity, i)).ToList();
         WriteMapList(ctx, ported.Select(p => p.Slot), warps);
+        // The vertex layouts the map pieces were written in, for map-validate (a mesh in any other layout isn't drawn).
+        if (_layouts.Count > 0)
+            File.WriteAllLines(ctx.ModPath(LayoutsFile), _layouts.Order(StringComparer.Ordinal));
         Step(report, "enemy tables", () => WriteEnemyTables(ctx, ported.Select(p => p.Slot.Ds3.ToString()).ToHashSet()));
         var startMap = ported.FirstOrDefault(p => p.Slot.Ds3 == MapId.Parse("m40_00_00_00") && !p.Slot.Probe);
         if (startMap.Slot is not null)
@@ -294,7 +302,7 @@ public static class MapPorter
 
         var slots = MapSlots.All.Where(s => !s.Probe && (options.Only.Count == 0 || options.Only.Contains(s.Ds3.ToString())))
             .Select(s => (s.Ds3, s.Er)).ToList();
-        var layout = MsbPort.Convert(ds3Msb, host, ds3Id, erId, new MsbPort.Options { AllVisible = !options.Ds3Groups },
+        var layout = MsbPort.Convert(ds3Msb, host, ds3Id, erId, new MsbPort.Options { AllVisible = !options.Ds3Groups, NoGroups = options.NoGroups },
             slots, ConnectTemplate(er));
         report.AppendLine($"{ds3Id} -> {erId}: {layout.MapPieces} map pieces, {layout.Collisions} collisions, {layout.Players} player points");
         foreach (var note in layout.Notes)
@@ -307,7 +315,7 @@ public static class MapPorter
             {
                 var enemies = Enemies(ctx, ds3, er, options, report);
                 var bosses = EnemyPort.BossEntities(Ds3Scripts(ds3, ds3Id), ds3Layout: true);
-                var placed = EnemyPort.Place(ds3Msb, layout.Msb, ds3Id, erId, new MsbPort.Options { AllVisible = !options.Ds3Groups },
+                var placed = EnemyPort.Place(ds3Msb, layout.Msb, ds3Id, erId, new MsbPort.Options { AllVisible = !options.Ds3Groups, NoGroups = options.NoGroups },
                     enemies.Chooser, e => enemies.Describe(e, bosses), EnemyPort.AnyEnemyPart(enemies.Catalog), _placedEnemies);
                 report.AppendLine($"  enemies: {placed.Placed} placed ({placed.Ported} ported DS3 characters, {placed.StandIns} Elden Ring stand-ins), "
                                   + $"{placed.Npcs} NPCs left out, {placed.Skipped} with nothing to stand in; {bosses.Count} DS3 boss entities");
@@ -323,8 +331,10 @@ public static class MapPorter
         }
 
         // Models. The material templates and binder layout come from vanilla map pieces (see MaterialTemplates).
-        var (models, hostBnd, bndCompression, binderMap) = MaterialTemplates(er, hostId, host);
+        var (models, hostBnd, bndCompression, binderMap) = MaterialTemplates(er, hostId, host, options.PlainMaterials);
         report.AppendLine($"  material templates: {models.TemplateSummary} (binder layout from {binderMap})");
+        lock (_layouts)
+            _layouts.UnionWith(models.TemplateLayouts());
 
         // Every map piece binder converts in parallel (thousands per map). A probe slot copies what its main slot
         // already converted from the same DS3 map, renamed to its own map ID, instead of converting it again.
@@ -368,6 +378,9 @@ public static class MapPorter
             }
         foreach (var note in models.Notes.Distinct().Take(20))
             report.AppendLine($"  note: {note}");
+        if (models.LeftOut.Count > 0)
+            report.AppendLine($"  meshes left out (no Elden Ring material for them yet): {models.LeftOut.Values.Sum()} ("
+                              + string.Join(", ", models.LeftOut.OrderByDescending(k => k.Value).Select(k => $"{k.Key} x{k.Value}")) + ")");
         textures.Need(models.Textures, ds3Id);
         materials.AddRange(models.MatbinFiles(0));
         if (copied > 0)
@@ -525,8 +538,14 @@ public static class MapPorter
     // The main slot each DS3 map's map pieces were converted into this run, and the textures they use.
     private static readonly Dictionary<MapId, (MapId Er, HashSet<string> Textures)> _converted = new();
 
+    public const string LayoutsFile = "darksign_map_layouts.txt";
+    private static readonly HashSet<string> _layouts = new();
+
+    // The vanilla map pieces of the template maps, read once per run however many slots are ported.
+    private static readonly Dictionary<MapId, List<FLVER2>> _templateFlvers = new();
+
     private static (MapModelPort Models, BND4 Binder, DCX.CompressionInfo Compression, MapId BinderMap) MaterialTemplates(
-        GameArchives er, MapId hostId, MSBE host)
+        GameArchives er, MapId hostId, MSBE host, bool plain)
     {
         if (_templates.TryGetValue(hostId, out var known))
             return (known.Item1.Fresh(), known.Item2, known.Item3, known.Item4);
@@ -546,27 +565,45 @@ public static class MapPorter
             }
         }
 
+        // The host first (its binder gives the layout), then the template maps until every kind of material has its
+        // best template: the colosseums only have an albedo-only one, Stormveil has the normal-mapped, alpha-tested,
+        // blended and unlit ones.
         MapModelPort? models = null;
         foreach (var (id, given) in Maps())
         {
-            var msb = given ?? MSBE.Read(er.Read(MsbPath(id)));
-            var binders = msb.Models.MapPieces.Select(m => ErMapBndPath(id, ModelNumber(m.Name))).Where(er.Contains).Distinct().Take(40).ToList();
-            foreach (var path in binders)
+            int count = 0;
+            if (given is null && _templateFlvers.TryGetValue(id, out var cached))
             {
-                var (bytes, compression) = er.ReadWithCompression(path);
-                var bnd = BND4.Read(bytes);
-                var found = bnd.Files.Where(f => FLVER2.Is(f.Bytes)).Select(f => FLVER2.Read(f.Bytes)).ToList();
-                if (found.Count > 0 && layout is null)
-                    layout = (bnd, compression, id, found[0]);
-                flvers.AddRange(found);
+                flvers.AddRange(cached);
+                count = cached.Count;
             }
-            tried.Add($"{id} ({binders.Count} binders)");
+            else
+            {
+                var msb = given ?? MSBE.Read(er.Read(MsbPath(id)));
+                var binders = msb.Models.MapPieces.Select(m => ErMapBndPath(id, ModelNumber(m.Name))).Where(er.Contains).Distinct().Take(40).ToList();
+                var read = new List<FLVER2>();
+                foreach (var path in binders)
+                {
+                    var (bytes, compression) = er.ReadWithCompression(path);
+                    var bnd = BND4.Read(bytes);
+                    var found = bnd.Files.Where(f => FLVER2.Is(f.Bytes)).Select(f => FLVER2.Read(f.Bytes)).ToList();
+                    if (found.Count > 0 && layout is null)
+                        layout = (bnd, compression, id, found[0]);
+                    read.AddRange(found);
+                }
+                if (given is null)
+                    _templateFlvers[id] = read;
+                flvers.AddRange(read);
+                count = binders.Count;
+            }
+            tried.Add($"{id} ({count})");
             if (layout is not null && flvers.Count > 0)
             {
                 try
                 {
-                    models = MapModelPort.Create(flvers, matbins, layout.Value.Header);
-                    break;
+                    models = MapModelPort.Create(flvers, matbins, layout.Value.Header, plain);
+                    if (models.Complete(plain))
+                        break;
                 }
                 catch (InvalidDataException)
                 {
@@ -583,7 +620,7 @@ public static class MapPorter
             tried.Add(ItemText.Leaf(TemplateAsset));
             try
             {
-                models = MapModelPort.Create(flvers, matbins, layout.Value.Header);
+                models = MapModelPort.Create(flvers, matbins, layout.Value.Header, plain);
             }
             catch (InvalidDataException)
             {

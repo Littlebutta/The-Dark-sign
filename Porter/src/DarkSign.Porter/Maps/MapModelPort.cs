@@ -1,3 +1,4 @@
+using System.Numerics;
 using System.Text.RegularExpressions;
 using SoulsFormats;
 
@@ -14,12 +15,25 @@ public sealed class MapModelPort
 {
     /// <summary>One new MATBIN: a copy of <see cref="Template"/> with its own textures.</summary>
     public sealed record NewMaterial(string Name, MaterialTemplate Template, string Albedo, string Normal, string? Albedo2,
-        string? Normal2);
+        string? Normal2, Vector2 Scale = default);
 
-    /// <summary>A vanilla Elden Ring map material used as a pattern, with an example of it in a FLVER.</summary>
-    public sealed record MaterialTemplate(string Kind, string Matbin, BinderFile File, FLVER2.Material Material, FLVER2.GXList GxList);
+    /// <summary>
+    /// A vanilla Elden Ring map material used as a pattern, with an example of it in a FLVER: the material slot, its
+    /// GX list and the vertex layout of a vanilla static mesh drawn with it. Elden Ring only draws a mesh whose
+    /// vertex layout is one its material's shader accepts (JortPob ships the accepted layouts of every material as
+    /// MaterialInfo.xml and builds each mesh in its material's layout), so every ported mesh is rebuilt in
+    /// <see cref="Layout"/>.
+    /// </summary>
+    public sealed record MaterialTemplate(string Kind, string Matbin, BinderFile File, FLVER2.Material Material, FLVER2.GXList GxList,
+        FLVER2.BufferLayout Layout, int Rank = 0);
+
+    /// <summary>The kinds of template, in the order their GX lists and layouts are written.</summary>
+    public static readonly string[] Kinds = ["opaque", "edge", "alpha", "nolight"];
 
     public const string BlackMetallic = "DKS_black_m";
+
+    /// <summary>The flat normal map a ported material uses when its DS3 material had none.</summary>
+    public const string FlatNormal = "DKS_flat_n";
 
     private readonly Dictionary<string, MaterialTemplate> _templates;
     private readonly FLVER2 _templateFlver;
@@ -39,41 +53,80 @@ public sealed class MapModelPort
     /// <summary>A new port with the same templates and none of this one's materials (one per map).</summary>
     public MapModelPort Fresh() => new(_templates, _templateFlver);
 
+    /// <summary>"Position0:Float3 Normal0:UByte4 ..." for a vertex layout.</summary>
+    public static string LayoutText(IEnumerable<FLVER.LayoutMember> layout) =>
+        string.Join(" ", layout.Select(m => $"{m.Semantic}{m.Index}:{m.Type}"));
+
+    /// <summary>The vertex layouts the ported meshes are written in (one per template), as <see cref="LayoutText"/>.</summary>
+    public HashSet<string> TemplateLayouts() => _templates.Values.Select(t => LayoutText(t.Layout)).ToHashSet();
+
     public string TemplateSummary => string.Join(", ", _templates.Select(t => $"{t.Key}={t.Value.Matbin}"));
 
     /// <summary>
-    /// Picks material templates from vanilla Elden Ring models, earlier ones first: an opaque one-layer material, and
-    /// where there are any, an alpha-tested one and a two-layer one. A template with a normal map wins over one
-    /// without. <paramref name="headerFlver"/> gives the FLVER header (a map piece); the first model when null.
+    /// Picks material templates from vanilla Elden Ring models, earlier ones first, one per kind: "opaque" (lit, one
+    /// layer), "edge" (alpha tested: foliage, grates), "alpha" (blended) and "nolight" (unlit: DS3's sky domes). Only
+    /// "opaque" is required. A candidate needs a vanilla static mesh drawn with it, whose vertex layout the ported
+    /// meshes take. Within a kind the lowest <see cref="Rank"/> wins (a normal-mapped shader over an albedo-only one).
+    /// <paramref name="plain"/> (fallback "map-materials" B) only takes the albedo-only opaque shader JortPob uses.
+    /// <paramref name="headerFlver"/> gives the FLVER header (a map piece); the first model when null.
     /// </summary>
-    public static MapModelPort Create(IReadOnlyList<FLVER2> flvers, IReadOnlyDictionary<string, BinderFile> matbins, FLVER2? headerFlver = null)
+    public static MapModelPort Create(IReadOnlyList<FLVER2> flvers, IReadOnlyDictionary<string, BinderFile> matbins,
+        FLVER2? headerFlver = null, bool plain = false)
     {
         if (flvers.Count == 0)
             throw new InvalidDataException("no Elden Ring model to copy materials from");
         var templates = new Dictionary<string, MaterialTemplate>();
-        var withNormal = new HashSet<string>();
+        var rejected = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var flver in flvers)
-            foreach (var material in flver.Materials)
+            foreach (var mesh in flver.Meshes)
             {
+                if (mesh.MaterialIndex < 0 || mesh.MaterialIndex >= flver.Materials.Count)
+                    continue;
+                var material = flver.Materials[mesh.MaterialIndex];
                 var name = ModelPort.MatbinName(material.MTD);
-                if (!matbins.TryGetValue(name, out var file) || material.GXIndex < 0 || material.GXIndex >= flver.GXLists.Count)
+                if (rejected.Contains(name) || templates.Values.Any(t => t.Matbin.Equals(name, StringComparison.OrdinalIgnoreCase)))
+                    continue;
+                if (!matbins.TryGetValue(name, out var file) || material.GXIndex < 0 || material.GXIndex >= flver.GXLists.Count
+                    || StaticLayout(flver, mesh) is not { } layout)
                     continue;
                 MATBIN matbin;
                 try { matbin = MATBIN.Read(file.Bytes); }
-                catch (Exception) { continue; }
-                var kind = Classify(matbin);
-                if (kind is null || withNormal.Contains(kind))
+                catch (Exception) { rejected.Add(name); continue; }
+                if (ClassifyRanked(matbin) is not { } c || (plain && (c.Kind != "opaque" || c.Rank < PlainRank)))
+                {
+                    rejected.Add(name);
                     continue;
-                var normal = matbin.Samplers.Any(x => Role(x.Type) is ("normal", 0));
-                if (templates.ContainsKey(kind) && !normal)
+                }
+                if (templates.TryGetValue(c.Kind, out var known) && known.Rank <= c.Rank)
                     continue;
-                templates[kind] = new MaterialTemplate(kind, name, file, material, flver.GXLists[material.GXIndex]);
-                if (normal)
-                    withNormal.Add(kind);
+                templates[c.Kind] = new MaterialTemplate(c.Kind, name, file, material, flver.GXLists[material.GXIndex],
+                    CopyLayout(layout), c.Rank);
             }
         if (!templates.ContainsKey("opaque"))
             throw new InvalidDataException("no plain one-layer material among these models to use as a template");
         return new MapModelPort(templates, headerFlver ?? flvers[0]);
+    }
+
+    /// <summary>True when every kind has its best template (nothing more to look for in further maps).</summary>
+    public bool Complete(bool plain) =>
+        plain ? _templates["opaque"].Rank == PlainRank : Kinds.All(_templates.ContainsKey) && _templates["opaque"].Rank == 0;
+
+    private const int PlainRank = 2;
+
+    /// <summary>
+    /// The layout of a vanilla mesh a ported static mesh can take: one vertex buffer holding only position, normal,
+    /// tangents, bitangent, colours and UVs (no bone members). Null for anything else.
+    /// </summary>
+    public static FLVER2.BufferLayout? StaticLayout(FLVER2 flver, FLVER2.Mesh mesh)
+    {
+        if (mesh.VertexBuffers.Count != 1 || mesh.VertexBuffers[0].LayoutIndex < 0 || mesh.VertexBuffers[0].LayoutIndex >= flver.BufferLayouts.Count)
+            return null;
+        var layout = flver.BufferLayouts[mesh.VertexBuffers[0].LayoutIndex];
+        bool ok = layout.Count > 0 && layout.All(m => m.Semantic is FLVER.LayoutSemantic.Position or FLVER.LayoutSemantic.Normal
+            or FLVER.LayoutSemantic.Tangent or FLVER.LayoutSemantic.Bitangent or FLVER.LayoutSemantic.VertexColor or FLVER.LayoutSemantic.UV)
+            && layout.Count(m => m.Semantic == FLVER.LayoutSemantic.Position) == 1
+            && layout.Count(m => m.Semantic == FLVER.LayoutSemantic.Normal) == 1;
+        return ok ? layout : null;
     }
 
     private static readonly Regex SamplerRole = new(@"(GSBlendMap_)?(Albedo|Normal|Metallic)Map(?:_(\d))?$", RegexOptions.IgnoreCase);
@@ -91,33 +144,73 @@ public sealed class MapModelPort
         return m.Groups[1].Success ? ("blend", layer) : (m.Groups[2].Value.ToLowerInvariant(), layer);
     }
 
-    /// <summary>"opaque", "alpha" or "twolayer" for a usable Elden Ring MATBIN, null for anything else.</summary>
-    public static string? Classify(MATBIN matbin)
+    // Elden Ring's plain one-layer map shaders: M[A] (albedo), M[AMSN] / M[AMSN_V] (albedo, normal, with or without a
+    // metallic map), each also as _Edge (alpha test), _Alpha (blend) and _NoLight. Everything else (terrain blends,
+    // overlays, snow, water, grass sway, flags...) reads extra vertex channels or masks DS3 has nothing for.
+    private static readonly Regex PlainShader = new(@"^M\[(A|AMSN|AMSN_V|ARSN)\](_Edge|_Alpha|_NoLight)?$", RegexOptions.IgnoreCase);
+
+    /// <summary>"opaque", "edge", "alpha" or "nolight" for a usable Elden Ring MATBIN, null for anything else.</summary>
+    public static string? Classify(MATBIN matbin) => ClassifyRanked(matbin)?.Kind;
+
+    /// <summary>The kind and how good a template it is: 0 normal-mapped, 1 with a metallic map too, 2 albedo only.</summary>
+    public static (string Kind, int Rank)? ClassifyRanked(MATBIN matbin)
     {
         var roles = matbin.Samplers.Select(x => Role(x.Type)).Where(r => r is not null).Select(r => r!.Value).ToList();
         // Terrain blend materials (most of Elden Ring's legacy dungeon pieces) mix layers through a mask: not usable.
-        if (roles.Any(r => r.Role == "blend") || !roles.Contains(("albedo", 0)))
+        if (roles.Any(r => r.Role == "blend" || r.Layer > 0) || roles.Count(r => r == ("albedo", 0)) != 1
+            || roles.Count(r => r == ("normal", 0)) > 1)
             return null;
-        var shader = (matbin.ShaderPath ?? "") + "|" + (matbin.SourcePath ?? "");
-        if (Regex.IsMatch(shader, "water|fog|light|decal|glass|emissive|cloth|grass|tree|leaf|leaves|lava|swamp|sea_", RegexOptions.IgnoreCase))
+        var shader = Path.GetFileNameWithoutExtension(ItemText.Leaf(matbin.ShaderPath ?? ""));
+        var m = PlainShader.Match(shader);
+        if (!m.Success)
             return null;
-        if (roles.Contains(("albedo", 1)))
-            return "twolayer";
-        if (Regex.IsMatch(shader, "_Alp|Alpha", RegexOptions.IgnoreCase))
-            return "alpha";
+        var kind = m.Groups[2].Value.ToLowerInvariant() switch { "_edge" => "edge", "_alpha" => "alpha", "_nolight" => "nolight", _ => "opaque" };
+        int rank = !roles.Contains(("normal", 0)) ? PlainRank : roles.Any(r => r.Role == "metallic") ? 1 : 0;
+        return (kind, kind == "nolight" ? 0 : rank);
+    }
+
+    /// <summary>
+    /// The kind of Elden Ring material a DS3 material maps to, from its MTD name: "opaque", "edge" (alpha tested:
+    /// _e, _Alp, Edge), "alpha" (blended: _al), "nolight" (unlit: sky domes), or "none" for what an opaque surface
+    /// can't stand in for (additive glows, decals, fog cards, shadow-only casters, water, multiply layers, unlit
+    /// blended cloud layers). "none" meshes are left out of the model until those materials are ported.
+    /// </summary>
+    public static string Ds3Kind(FLVER2.Material material)
+    {
+        var mtd = Path.GetFileNameWithoutExtension(ItemText.Leaf(material.MTD ?? ""));
+        bool noLight = mtd.Contains("NoLight", StringComparison.OrdinalIgnoreCase);
+        if (Regex.IsMatch(mtd, @"_add|decal|fog|shadow|_mul|water|sfx|ghost", RegexOptions.IgnoreCase))
+            return "none";
+        if (Regex.IsMatch(mtd, @"_al(?![a-z])", RegexOptions.IgnoreCase))
+            return noLight ? "none" : "alpha";
+        if (noLight)
+            return "nolight";
+        if (Regex.IsMatch(mtd, @"_e(?![a-z])|_alp|edge", RegexOptions.IgnoreCase))
+            return "edge";
         return "opaque";
     }
 
-    /// <summary>The kind of Elden Ring material a DS3 material maps to, from its MTD name and texture slots.</summary>
-    public static string Ds3Kind(FLVER2.Material material)
+    /// <summary>The template a DS3 kind is drawn with: its own, else opaque; a blended one with no template is left out.</summary>
+    private MaterialTemplate? TemplateFor(string kind) =>
+        kind == "none" ? null
+        : _templates.TryGetValue(kind, out var t) ? t
+        : kind == "alpha" ? null
+        : _templates["opaque"];
+
+    /// <summary>
+    /// A DS3 material's texture for a role. Plain materials name them g_DiffuseTexture / g_BumpmapTexture; multi-layer
+    /// ones (M[ARSN]_2m/3m/4m: most ground and walls) name them "..._GSBlendMap_AlbedoMap_0" / "..._NormalMap_0", and
+    /// their first layer is what the one-layer Elden Ring material shows.
+    /// </summary>
+    public static FLVER2.Texture? Ds3Texture(FLVER2.Material m, string role)
     {
-        var mtd = ItemText.Leaf(material.MTD);
-        if (material.Textures.Any(t => t.ParamName == "g_DiffuseTexture2" && t.Path.Length > 0))
-            return "twolayer";
-        if (Regex.IsMatch(mtd, "_Alp|Edge", RegexOptions.IgnoreCase))
-            return "alpha";
-        return "opaque";
+        var (plain, layered) = role == "albedo" ? ("g_DiffuseTexture", "AlbedoMap_0") : ("g_BumpmapTexture", "NormalMap_0");
+        return m.Textures.FirstOrDefault(t => t.ParamName == plain && t.Path.Length > 0)
+               ?? m.Textures.FirstOrDefault(t => t.ParamName.EndsWith(layered, StringComparison.OrdinalIgnoreCase) && t.Path.Length > 0);
     }
+
+    /// <summary>Meshes left out of the converted models, by DS3 material type ("M[A]_Add_NoLight" -> 12).</summary>
+    public Dictionary<string, int> LeftOut { get; } = new(StringComparer.OrdinalIgnoreCase);
 
     /// <summary>Converts every FLVER in a DS3 mapbnd; the binder layout comes from the host's template binder.</summary>
     public BND4 ConvertBinder(BND4 ds3, BND4 hostTemplate, MapId ds3Id, MapId erId, string modelNumber, MapId? hostId = null)
@@ -139,6 +232,8 @@ public sealed class MapModelPort
             var ds3Leaf = ItemText.Leaf(file.Name);
             var leaf = ds3Leaf.Replace(ds3Id.ToString(), erId.ToString(), StringComparison.OrdinalIgnoreCase);
             ConvertFlver(flver, ds3Id);
+            if (flver.Meshes.Count == 0)
+                throw new InvalidDataException("only effect, decal, water or shadow meshes, which have no Elden Ring material yet");
             files.Add(new BinderFile(templateFile.Flags, files.Count, folder + leaf, flver.Write()));
         }
         var binder = new BND4
@@ -169,41 +264,66 @@ public sealed class MapModelPort
             Unk74 = h.Unk74, BoundingBoxMin = bboxMin, BoundingBoxMax = bboxMax,
         };
         MakeStatic(flver);
+        var ds3Layouts = flver.BufferLayouts.ToList();
         flver.Skeletons = new FLVER2.SkeletonSet { BaseSkeleton = Bones(flver), AllSkeletons = Bones(flver) };
 
-        // One GX list per template kind, in a fixed order.
-        var kinds = _templates.Keys.OrderBy(k => k).ToList();
+        // One GX list and one vertex layout per template kind, in a fixed order.
+        var kinds = Kinds.Where(_templates.ContainsKey).ToList();
         flver.GXLists = kinds.Select(k => _templates[k].GxList).ToList();
+        flver.BufferLayouts = kinds.Select(k => CopyLayout(_templates[k].Layout)).ToList();
+
+        // Meshes whose DS3 material nothing here can draw are left out (see Ds3Kind).
+        var meshTemplates = new Dictionary<FLVER2.Mesh, MaterialTemplate>();
+        var dropped = new List<string>();
+        foreach (var mesh in flver.Meshes.ToList())
+        {
+            var m = mesh.MaterialIndex >= 0 && mesh.MaterialIndex < flver.Materials.Count ? flver.Materials[mesh.MaterialIndex] : null;
+            if (m is not null && TemplateFor(Ds3Kind(m)) is { } t)
+                meshTemplates[mesh] = t;
+            else
+            {
+                flver.Meshes.Remove(mesh);
+                dropped.Add(m is null ? "(no material)" : Path.GetFileNameWithoutExtension(ItemText.Leaf(m.MTD ?? "")));
+            }
+        }
+
+        // Only the materials a remaining mesh uses are kept, so a left-out mesh adds no MATBIN and no texture.
+        var used = flver.Meshes.Select(mesh => mesh.MaterialIndex).Distinct().OrderBy(i => i).ToList();
+        flver.Materials = used.Select(i => flver.Materials[i]).ToList();
+        foreach (var mesh in flver.Meshes)
+            mesh.MaterialIndex = used.IndexOf(mesh.MaterialIndex);
 
         // Binders convert in parallel; the shared material table, texture list and notes are changed under a lock.
         lock (_materials)
+        {
+        foreach (var d in dropped)
+            LeftOut[d] = LeftOut.GetValueOrDefault(d) + 1;
         foreach (var m in flver.Materials)
         {
-            var kind = Ds3Kind(m);
-            if (!_templates.TryGetValue(kind, out var template))
-                template = _templates[kind = "opaque"];
+            var template = TemplateFor(Ds3Kind(m)) ?? _templates["opaque"];
+            var kind = template.Kind;
 
-            string? Texture(string param)
-            {
-                var path = m.Textures.FirstOrDefault(t => t.ParamName == param && t.Path.Length > 0)?.Path;
-                return path is null ? null : Path.GetFileNameWithoutExtension(ItemText.Leaf(path));
-            }
-            var albedo = Texture("g_DiffuseTexture");
-            var normal = Texture("g_BumpmapTexture");
-            var albedo2 = Texture("g_DiffuseTexture2");
-            var normal2 = Texture("g_BumpmapTexture2");
+            static string? NameOf(FLVER2.Texture? t) => t is null ? null : Path.GetFileNameWithoutExtension(ItemText.Leaf(t.Path));
+            var albedoTexture = Ds3Texture(m, "albedo");
+            var albedo = NameOf(albedoTexture);
+            var normal = NameOf(Ds3Texture(m, "normal"));
+            var scale = albedoTexture?.TilingScale ?? Vector2.One;
+            if (scale.X <= 0 || scale.Y <= 0)
+                scale = Vector2.One;
             if (albedo is null)
                 Notes.Add($"{ItemText.Leaf(m.MTD)} ({m.Name}) has no albedo texture; it keeps the template's");
-            foreach (var t in new[] { albedo, normal, albedo2, normal2 })
+            foreach (var t in new[] { albedo, normal })
                 if (t is not null)
                     Textures.Add(t);
 
-            var key = string.Join("|", template.Matbin, albedo, normal, albedo2, normal2);
+            var key = string.Join("|", template.Matbin, albedo, normal, scale.X.ToString("R", System.Globalization.CultureInfo.InvariantCulture),
+                scale.Y.ToString("R", System.Globalization.CultureInfo.InvariantCulture));
             if (!_materials.TryGetValue(key, out var material))
             {
                 // Named from what it holds, not from the order binders converted in, so every build names it the same.
-                material = new NewMaterial($"DKS_{ds3Id.Digits}_{StableHash(key)}", template, albedo ?? "", normal ?? "",
-                    albedo2, normal2);
+                // A DS3 material with no normal map (sky domes, some foliage) gets a flat one, not the template's own.
+                material = new NewMaterial($"DKS_{ds3Id.Digits}_{StableHash(key)}", template, albedo ?? "", normal ?? FlatNormal,
+                    null, null, scale);
                 _materials[key] = material;
             }
 
@@ -215,34 +335,123 @@ public sealed class MapModelPort
                 .Select(t => new FLVER2.Texture(t.ParamName, "", t.TilingScale, t.TilingTypeU, t.TilingTypeV, t.Unk14, t.Unk18, t.Unk1C))
                 .ToList();
         }
+        }
 
-        // Same vertex fixes as the weapon port: one tangent, and a vertex color on every mesh.
-        foreach (var layout in flver.BufferLayouts)
-            layout.RemoveAll(member => member.Semantic == FLVER.LayoutSemantic.Tangent && member.Index > 0);
-        foreach (var vertex in flver.Meshes.SelectMany(mesh => mesh.Vertices))
-            if (vertex.Tangents.Count > 1)
-                vertex.Tangents.RemoveRange(1, vertex.Tangents.Count - 1);
-        var changed = new HashSet<FLVER2.BufferLayout>();
+        // Every mesh in its material's vertex layout, with the culling box Elden Ring reads.
         foreach (var mesh in flver.Meshes)
         {
-            var layouts = mesh.VertexBuffers.Select(b => flver.BufferLayouts[b.LayoutIndex]).ToList();
-            if (layouts.Count == 0 || layouts.Any(l => l.Any(member => member.Semantic == FLVER.LayoutSemantic.VertexColor)))
-                continue;
-            var first = layouts[0];
-            int uv = first.FindIndex(member => member.Semantic == FLVER.LayoutSemantic.UV);
-            first.Insert(uv < 0 ? first.Count : uv, new FLVER.LayoutMember(FLVER.LayoutType.UByte4Norm, FLVER.LayoutSemantic.VertexColor, 1));
-            changed.Add(first);
+            var template = meshTemplates[mesh];
+            var sourceLayouts = mesh.VertexBuffers.Where(b => b.LayoutIndex >= 0 && b.LayoutIndex < ds3Layouts.Count)
+                .SelectMany(b => ds3Layouts[b.LayoutIndex]).ToList();
+            Conform(mesh, template.Layout, kinds.IndexOf(template.Kind), sourceLayouts);
+            SetBoundingBox(mesh, flver.Header.Version);
         }
-        foreach (var mesh in flver.Meshes)
+    }
+
+    private static FLVER2.BufferLayout CopyLayout(IEnumerable<FLVER.LayoutMember> members)
+    {
+        var layout = new FLVER2.BufferLayout();
+        layout.AddRange(members.Select(m => new FLVER.LayoutMember(m.Type, m.Semantic, m.Index, 0, 0)));
+        return layout;
+    }
+
+    /// <summary>How many UVs of a vertex one layout member holds (SoulsFormats writes two for the four-component types).</summary>
+    public static int UvCount(FLVER.LayoutType type) =>
+        type is FLVER.LayoutType.Float4 or FLVER.LayoutType.Short4 or FLVER.LayoutType.Half4 or FLVER.LayoutType.UByte4Norm ? 2 : 1;
+
+    // Short UVs hold +-16 (32768 / 2048) in Elden Ring's FLVER version.
+    private const float ShortUvLimit = 15.99f;
+
+    /// <summary>
+    /// Rebuilds a mesh's vertices for one vertex buffer in <paramref name="layout"/>: the tangent, colour and UV
+    /// counts the layout's members write, vertex colours white (the way JortPob writes them; DS3 keeps blend weights
+    /// there, which Elden Ring's one-layer shaders would read as a tint), and the first UV channel brought into the
+    /// range a short UV holds. DS3's float UVs on multi-layer ground are in short units (divided by 2048 here); a
+    /// channel still out of range is moved by whole tiles, which a tiling texture doesn't show.
+    /// </summary>
+    public static void Conform(FLVER2.Mesh mesh, FLVER2.BufferLayout layout, int layoutIndex, IReadOnlyList<FLVER.LayoutMember>? source = null)
+    {
+        int uvs = layout.Where(m => m.Semantic == FLVER.LayoutSemantic.UV).Sum(m => UvCount(m.Type));
+        int tangents = layout.Count(m => m.Semantic == FLVER.LayoutSemantic.Tangent);
+        int colors = layout.Count(m => m.Semantic == FLVER.LayoutSemantic.VertexColor);
+        bool shortUv = layout.Any(m => m.Semantic == FLVER.LayoutSemantic.UV && m.Type is not (FLVER.LayoutType.Float2 or FLVER.LayoutType.Float3 or FLVER.LayoutType.Float4));
+        bool floatSource = source?.FirstOrDefault(m => m.Semantic == FLVER.LayoutSemantic.UV)?.Type
+            is FLVER.LayoutType.Float2 or FLVER.LayoutType.Float3 or FLVER.LayoutType.Float4;
+
+        foreach (var v in mesh.Vertices)
         {
-            var layouts = mesh.VertexBuffers.Select(b => flver.BufferLayouts[b.LayoutIndex]).ToList();
-            if (!layouts.Any(changed.Contains))
-                continue;
-            int colors = layouts.Sum(l => l.Count(member => member.Semantic == FLVER.LayoutSemantic.VertexColor));
-            foreach (var vertex in mesh.Vertices)
-                while (vertex.Colors.Count < colors)
-                    vertex.Colors.Add(new FLVER.VertexColor(1f, 1f, 1f, 1f));
+            if (v.Positions.Count == 0)
+                v.Positions.Add(Vector3.Zero);
+            if (v.Positions.Count > 1)
+                v.Positions.RemoveRange(1, v.Positions.Count - 1);
+            if (v.Normals.Count == 0)
+                v.Normals.Add(Vector3.UnitY);
+            if (v.Normals.Count > 1)
+                v.Normals.RemoveRange(1, v.Normals.Count - 1);
+            v.NormalWs.Clear();
+            v.NormalWs.Add(0);
+            if (v.Tangents.Count == 0)
+            {
+                // Any unit vector across the normal: the meshes that lack one in DS3 are unlit (sky domes).
+                var n = v.Normals[0];
+                var t = Vector3.Cross(n, MathF.Abs(n.Y) < 0.9f ? Vector3.UnitY : Vector3.UnitX);
+                t = t.LengthSquared() > 1e-8f ? Vector3.Normalize(t) : Vector3.UnitX;
+                v.Tangents.Add(new Vector4(t, 1));
+            }
+            while (v.Tangents.Count < tangents)
+                v.Tangents.Add(v.Tangents[0]);
+            if (v.Tangents.Count > tangents)
+                v.Tangents.RemoveRange(tangents, v.Tangents.Count - tangents);
+            v.Colors.Clear();
+            for (int i = 0; i < colors; i++)
+                v.Colors.Add(new FLVER.VertexColor(1f, 1f, 1f, 1f));
+            if (v.UVs.Count == 0)
+                v.UVs.Add(Vector3.Zero);
+            // Only the first channel means the same in both games (DS3's others are lightmap and blend channels).
+            if (v.UVs.Count > 1)
+                v.UVs.RemoveRange(1, v.UVs.Count - 1);
+            while (v.UVs.Count < uvs)
+                v.UVs.Add(Vector3.Zero);
         }
+        if (shortUv && mesh.Vertices.Count > 0)
+        {
+            float Max() => mesh.Vertices.Max(v => MathF.Max(MathF.Abs(v.UVs[0].X), MathF.Abs(v.UVs[0].Y)));
+            if (floatSource && Max() > ShortUvLimit)
+                foreach (var v in mesh.Vertices)
+                    v.UVs[0] = new Vector3(v.UVs[0].X / 2048f, v.UVs[0].Y / 2048f, 0);
+            if (Max() > ShortUvLimit)
+            {
+                var shift = new Vector2(
+                    MathF.Round((mesh.Vertices.Min(v => v.UVs[0].X) + mesh.Vertices.Max(v => v.UVs[0].X)) / 2),
+                    MathF.Round((mesh.Vertices.Min(v => v.UVs[0].Y) + mesh.Vertices.Max(v => v.UVs[0].Y)) / 2));
+                foreach (var v in mesh.Vertices)
+                    v.UVs[0] = new Vector3(
+                        Math.Clamp(v.UVs[0].X - shift.X, -ShortUvLimit, ShortUvLimit),
+                        Math.Clamp(v.UVs[0].Y - shift.Y, -ShortUvLimit, ShortUvLimit), 0);
+            }
+        }
+        mesh.VertexBuffers = [new FLVER2.VertexBuffer(layoutIndex)];
+    }
+
+    /// <summary>
+    /// The mesh's culling box. DS3 stores a mesh's minimum and maximum corner; Elden Ring's FLVERs (version 0x2001A)
+    /// store half the box's size, its rotation and its centre in the same place (read off vanilla map pieces: the
+    /// colosseum's and Stormveil's meshes all hold extent, ~0, centre). SoulsFormats names the three Min, Max, Unk.
+    /// </summary>
+    public static void SetBoundingBox(FLVER2.Mesh mesh, int version)
+    {
+        if (mesh.Vertices.Count == 0)
+            return;
+        var min = new Vector3(float.MaxValue);
+        var max = new Vector3(float.MinValue);
+        foreach (var v in mesh.Vertices)
+        {
+            min = Vector3.Min(min, v.Positions[0]);
+            max = Vector3.Max(max, v.Positions[0]);
+        }
+        mesh.BoundingBox = version >= 0x2001A
+            ? new FLVER2.Mesh.BoundingBoxes { Min = (max - min) / 2, Max = Vector3.Zero, Unk = (max + min) / 2 }
+            : new FLVER2.Mesh.BoundingBoxes { Min = min, Max = max };
     }
 
     /// <summary>
@@ -324,6 +533,10 @@ public sealed class MapModelPort
                 // The bare texture name, the way JortPob's materials name the textures it adds.
                 if (!string.IsNullOrEmpty(texture))
                     sampler.Path = texture;
+                // DS3 tiles a texture per material (a sky dome's 3 x 1); Elden Ring's sampler carries the same scale
+                // (JortPob sets it for its terrain). Left alone at 1 x 1, as vanilla materials have it.
+                if (Role(sampler.Type) is ("albedo" or "normal", 0) && material.Scale != default && material.Scale != Vector2.One)
+                    sampler.Unk14 = material.Scale;
             }
             matbin.SourcePath = ReplaceStem(matbin.SourcePath, material.Template.Matbin, material.Name);
             var name = ReplaceStem(material.Template.File.Name, material.Template.Matbin, material.Name);

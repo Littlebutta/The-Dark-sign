@@ -27,6 +27,8 @@ public static partial class MapPortChecks
         yield return ("navmesh: DS3 Havok AI 2014 -> Elden Ring 2018 keeps faces, edges, graph and tree (XML)", () => Navmesh(xml: true));
         yield return ("navmesh: DS3 Havok AI 2014 -> Elden Ring 2018 keeps faces, edges, graph and tree (binary)", () => Navmesh(xml: false));
         yield return ("models: a DS3 map piece converts into a valid Elden Ring FLVER with its own material", ModelEndToEnd);
+        foreach (var check in VisualChecks())
+            yield return check;
         yield return ("validate: layout checks catch a missing start point and parts without models", ValidateLayout);
         yield return ("validate: run event checks pass on ported events and catch a missing one", ValidateEvents);
         yield return ("navmesh: binder entries are renamed to the host map and keep the host's compendium", NavmeshBinder);
@@ -440,14 +442,25 @@ public static partial class MapPortChecks
         var gx = new FLVER2.GXList();
         gx.Add(new FLVER2.GXItem { ID = "GXMD", Unk04 = 162, Data = new byte[4] });
         flver.GXLists.Add(gx);
-        var layout = new FLVER2.BufferLayout
-        {
-            new FLVER.LayoutMember(FLVER.LayoutType.Float3, FLVER.LayoutSemantic.Position),
-            new FLVER.LayoutMember(FLVER.LayoutType.UByte4Norm, FLVER.LayoutSemantic.Normal),
-            new FLVER.LayoutMember(FLVER.LayoutType.UByte4Norm, FLVER.LayoutSemantic.Tangent),
-            new FLVER.LayoutMember(FLVER.LayoutType.UByte4Norm, FLVER.LayoutSemantic.Tangent, 1),
-            new FLVER.LayoutMember(FLVER.LayoutType.Float2, FLVER.LayoutSemantic.UV),
-        };
+        // Elden Ring: the layout of the colosseum's map piece (m45_00_00_00_009999). DS3: two tangents, float UVs.
+        bool er = version >= 0x2001A;
+        var layout = er
+            ? new FLVER2.BufferLayout
+            {
+                new FLVER.LayoutMember(FLVER.LayoutType.Float3, FLVER.LayoutSemantic.Position),
+                new FLVER.LayoutMember(FLVER.LayoutType.UByte4, FLVER.LayoutSemantic.Normal),
+                new FLVER.LayoutMember(FLVER.LayoutType.UByte4, FLVER.LayoutSemantic.Tangent),
+                new FLVER.LayoutMember(FLVER.LayoutType.UByte4Norm, FLVER.LayoutSemantic.VertexColor, 1),
+                new FLVER.LayoutMember(FLVER.LayoutType.Short2, FLVER.LayoutSemantic.UV),
+            }
+            : new FLVER2.BufferLayout
+            {
+                new FLVER.LayoutMember(FLVER.LayoutType.Float3, FLVER.LayoutSemantic.Position),
+                new FLVER.LayoutMember(FLVER.LayoutType.UByte4Norm, FLVER.LayoutSemantic.Normal),
+                new FLVER.LayoutMember(FLVER.LayoutType.UByte4Norm, FLVER.LayoutSemantic.Tangent),
+                new FLVER.LayoutMember(FLVER.LayoutType.UByte4Norm, FLVER.LayoutSemantic.Tangent, 1),
+                new FLVER.LayoutMember(FLVER.LayoutType.Float2, FLVER.LayoutSemantic.UV),
+            };
         flver.BufferLayouts.Add(layout);
         var mesh = new FLVER2.Mesh { MaterialIndex = 0, NodeIndex = 0 };
         foreach (var p in new[] { new Vector3(0, 0, 0), new Vector3(10, 0, 0), new Vector3(0, 0, 10) })
@@ -457,7 +470,10 @@ public static partial class MapPortChecks
             v.Normals.Add(Vector3.UnitY);
             v.NormalWs.Add(127);
             v.Tangents.Add(new Vector4(1, 0, 0, 1));
-            v.Tangents.Add(new Vector4(1, 0, 0, 1));
+            if (er)
+                v.Colors.Add(new FLVER.VertexColor(1f, 1f, 1f, 1f));
+            else
+                v.Tangents.Add(new Vector4(1, 0, 0, 1));
             v.UVs.Add(new Vector3(p.X / 10, p.Z / 10, 0));
             mesh.Vertices.Add(v);
         }
@@ -524,7 +540,7 @@ public static partial class MapPortChecks
         Expect(host.Header.BoundingBoxMax == new Vector3(10, 1, 10) && !ReferenceEquals(host.Header, flver.Header), "template header must not be shared");
         var material = flver.Materials.Single();
         Expect(material.Name.StartsWith("DKS_40_00_00_00_") && ModelPort.MatbinName(material.MTD) == material.Name, $"material {material.Name} / {material.MTD}");
-        Expect(flver.Meshes[0].Vertices.All(v => v.Tangents.Count == 1 && v.Colors.Count >= 1), "one tangent and a vertex color per vertex");
+        Expect(flver.Meshes[0].Vertices.All(v => v.Tangents.Count == 1 && v.Colors.Count == 1), "one tangent and a vertex color per vertex");
         Expect(flver.Meshes[0].NodeIndex == 0 && flver.Meshes[0].BoneIndices.Count == 0 && flver.Nodes.Count == 1, "every mesh on the root node, no per-mesh bone list");
         Expect(flver.Meshes[0].Vertices.All(v => v.NormalWs.All(w => w == 0)), "NormalW 0 on a static mesh, as JortPob writes it");
         var noNodes = SyntheticFlver(0x20014, @"N:\FDP\data\Material\mtd\map\M[ARSN].mtd");

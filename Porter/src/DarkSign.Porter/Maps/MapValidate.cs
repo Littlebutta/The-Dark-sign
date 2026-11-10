@@ -194,6 +194,14 @@ public static class MapValidate
         CheckEnemies(ctx, er, report, msb, erId);
 
         // Map pieces.
+        var hidden = msb.Parts.MapPieces.Select(p => (p.Name, Issue: CheckPieceDraw(p))).Where(x => x.Issue is not null).ToList();
+        if (hidden.Count > 0)
+            report.Fail($"{erId}: {hidden.Count} of {msb.Parts.MapPieces.Count} map pieces won't be drawn ({hidden[0].Name}: {hidden[0].Issue})");
+        else
+            report.Ok($"{erId}: every map piece part has ordinary draw flags");
+        var layoutsPath = ctx.ModPath(MapPorter.LayoutsFile);
+        var accepted = File.Exists(layoutsPath) ? File.ReadAllLines(layoutsPath).Where(l => l.Length > 0).ToHashSet() : null;
+        var drawIssues = new List<string>();
         int pieces = 0, materials = 0;
         var missingMatbins = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var missingTextures = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -224,6 +232,7 @@ public static class MapValidate
                     var flver = FLVER2.Read(f.Bytes);
                     foreach (var issue in CheckFlver(flver))
                         report.Fail($"{erId}: {ItemText.Leaf(f.Name)}: {issue}");
+                    drawIssues.AddRange(CheckFlverDraw(flver, accepted).Select(issue => $"{ItemText.Leaf(f.Name)}: {issue}"));
                     foreach (var m in flver.Materials)
                     {
                         materials++;
@@ -249,6 +258,11 @@ public static class MapValidate
             }
         }
         report.Ok($"{erId}: {pieces} of {msb.Models.MapPieces.Count} map piece models read back ({materials} materials)");
+        if (drawIssues.Count > 0)
+            report.Fail($"{erId}: {drawIssues.Count} map piece meshes the game won't draw: {string.Join("; ", drawIssues.Take(5))}");
+        else
+            report.Ok($"{erId}: every map piece mesh is in a vertex layout its material accepts, with Elden Ring's culling box"
+                      + (accepted is null ? $" (no {MapPorter.LayoutsFile}: layouts only checked for shape)" : ""));
         if (missingMatbins.Count > 0)
             report.Fail($"{erId}: {missingMatbins.Count} materials name a MATBIN that doesn't exist: {Sample(missingMatbins)}");
         if (missingTextures.Count > 0)
@@ -353,6 +367,47 @@ public static class MapValidate
         new System.Numerics.Vector2(a.X - b.X, a.Z - b.Z).Length();
 
     /// <summary>FLVER problems that crash or garble the game: indices out of range, empty buffers, broken layouts.</summary>
+    /// <summary>Why the game won't draw this map piece part in the main camera, or null.</summary>
+    public static string? CheckPieceDraw(MSBE.Part.MapPiece part) =>
+        part.DrawOnlyReflectCam ? "drawn only in reflections (DrawOnlyReflectCam)"
+        : part.IsShadowOnly ? "drawn only into shadows (IsShadowOnly)"
+        : null;
+
+    /// <summary>
+    /// What stops Elden Ring drawing a map piece mesh: a vertex layout its material doesn't take (one of
+    /// <paramref name="accepted"/>, the layouts port-maps wrote the pieces in; without them only the shape is
+    /// checked) or a culling box that isn't half size, rotation, centre around the mesh's vertices.
+    /// </summary>
+    public static IEnumerable<string> CheckFlverDraw(FLVER2 flver, IReadOnlyCollection<string>? accepted = null)
+    {
+        for (int i = 0; i < flver.Meshes.Count; i++)
+        {
+            var mesh = flver.Meshes[i];
+            if (mesh.VertexBuffers.Count != 1 || mesh.VertexBuffers[0].LayoutIndex < 0 || mesh.VertexBuffers[0].LayoutIndex >= flver.BufferLayouts.Count)
+            {
+                yield return $"mesh {i} has {mesh.VertexBuffers.Count} vertex buffers (layout)";
+                continue;
+            }
+            var layout = flver.BufferLayouts[mesh.VertexBuffers[0].LayoutIndex];
+            var text = MapModelPort.LayoutText(layout);
+            if (accepted is not null ? !accepted.Contains(text) : MapModelPort.StaticLayout(flver, mesh) is null)
+                yield return $"mesh {i} is in vertex layout '{text}', which its material doesn't accept";
+            if (mesh.Vertices.Count == 0 || flver.Header.Version < 0x2001A)
+                continue;
+            var min = new System.Numerics.Vector3(float.MaxValue);
+            var max = new System.Numerics.Vector3(float.MinValue);
+            foreach (var v in mesh.Vertices)
+            {
+                min = System.Numerics.Vector3.Min(min, v.Position);
+                max = System.Numerics.Vector3.Max(max, v.Position);
+            }
+            var box = mesh.BoundingBox;
+            float slack = 0.05f + (max - min).Length() * 0.01f;
+            if (box is null || (box.Min - (max - min) / 2).Length() > slack || (box.Unk - (max + min) / 2).Length() > slack || box.Max.Length() > 0.1f)
+                yield return $"mesh {i} has a culling box in DS3's form (minimum, maximum) instead of half size, rotation, centre";
+        }
+    }
+
     public static IEnumerable<string> CheckFlver(FLVER2 flver)
     {
         for (int i = 0; i < flver.Meshes.Count; i++)
