@@ -239,9 +239,17 @@ Try the next option if: You fall through the floor of a DS3 map, or the game han
 
 Try the next option if: Parts of a DS3 map are invisible or flicker in and out as you move.
 
-- **A: Everything visible (default).** Every map part draws everywhere in the map (Elden Ring's draw groups ignored).
+- **A: Everything visible (default).** Every map part draws everywhere in the map: map pieces carry no draw or display groups (as the colosseums' own parts have them), collisions and enemies have every group on.
 - **B: DS3's draw groups.** Parts keep DS3's draw and display groups (port-maps --ds3-groups), as DS3 culls them. (`port-maps --ds3-groups`)
 - **C: No draw groups.** Parts carry no draw or display groups at all (port-maps --no-groups), as the colosseums' own parts and JortPob's maps have them. (`port-maps --no-groups`)
+
+### Draw distance settings of the DS3 map pieces (`map-draw`, rebuilds the content)
+
+Try the next option if: DS3 map geometry is invisible, pops in only when close, or a large low-poly arena shell sits at the start of the DS3 run.
+
+- **A: The port's own row, with the diagnostic piece (default).** Every map piece names a PartsDrawParam row the port adds (unlimited draw distance, no LOD switching, as JortPob's maps have). Elden Ring's own colosseum map piece is also placed at the run start with the same settings: if it shows and the DS3 pieces don't, the converted models are at fault; if neither shows, the way pieces are placed is.
+- **B: A vanilla row.** Map pieces name Stormveil Castle's most common PartsDrawParam row, 2046 (port-maps --vanilla-draw-param), and nothing is added to the regulation. (`port-maps --vanilla-draw-param`)
+- **C: Without the diagnostic piece.** As A, but the colosseum map piece at the run start is left out (port-maps --no-probe). Use once the DS3 pieces are confirmed to draw. (`port-maps --no-probe`)
 
 ### Materials of the DS3 map pieces (`map-materials`, rebuilds the content)
 

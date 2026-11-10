@@ -15,6 +15,7 @@ public static partial class MapPortChecks
         yield return ("visuals: every ported mesh takes its material's vanilla vertex layout and Elden Ring's culling box", MeshLayoutAndBox);
         yield return ("visuals: DS3 materials sort into kinds; effect, decal, water and shadow meshes are left out", MaterialKinds);
         yield return ("visuals: UVs that a short can't hold are rescaled or moved by whole tiles", UvRange);
+        yield return ("visuals: pieces name a PartsDrawParam row, carry no masks, and the diagnostic piece is placed", DrawSettings);
         yield return ("visuals: fallbacks map-groups C and map-materials B", VisualFallbacks);
     }
 
@@ -40,7 +41,54 @@ public static partial class MapPortChecks
         mixed.Parts.MapPieces[0].DrawOnlyReflectCam = true;
         mixed.Parts.MapPieces.Add(new MSBE.Part.MapPiece { Name = "m001000_0001", ModelName = "m001000", PartsDrawParamID = 77 });
         var second = MsbPort.Convert(SyntheticDs3(), mixed, Ds3Id, ErId);
-        Expect(second.Msb.Parts.MapPieces.Single().PartsDrawParamID == 77 && second.Notes.All(n => !n.Contains("reflections")), "ordinary host piece used");
+        Expect(second.Notes.All(n => !n.Contains("reflections")), "ordinary host piece used");
+    }
+
+    private static void DrawSettings()
+    {
+        // A piece copied from the colosseum's proxy names no PartsDrawParam row; every ported piece must.
+        var host = SyntheticHost();
+        host.Parts.MapPieces[0].isUsePartsDrawParamID = 0;
+        var result = MsbPort.Convert(SyntheticDs3(), host, Ds3Id, ErId,
+            new MsbPort.Options { DrawParamId = MapDrawParams.FirstRow, Probe = true });
+        var msb = MSBE.Read(result.Msb.Write());
+        Expect(msb.Parts.MapPieces.All(p => p.isUsePartsDrawParamID == 1 && p.PartsDrawParamID == MapDrawParams.FirstRow), "every piece names the row");
+        Expect(msb.Parts.MapPieces.All(p => MapValidate.CheckPieceDraw(p) is null), "the validator accepts them");
+        Expect(MapValidate.CheckPieceDraw(host.Parts.MapPieces[0]) is not null, "the validator rejects a piece that names no row");
+
+        // The diagnostic piece: the host's own model at the run start, drawn like the others.
+        var probe = msb.Parts.MapPieces.Single(p => p.InstanceID == MsbPort.ProbeInstance);
+        var start = msb.Parts.Players.Single(p => p.Name == "c0000_9990");
+        Expect(probe.ModelName == host.Parts.MapPieces[0].ModelName && probe.Position == start.Position, $"probe {probe.ModelName} at {probe.Position}");
+        Expect(msb.Models.MapPieces.Any(m => m.Name == probe.ModelName), "probe model listed");
+        Expect(result.Notes.Any(n => n.Contains("diagnostic")), "the report names the diagnostic piece");
+        var plain = MsbPort.Convert(SyntheticDs3(), host, Ds3Id, ErId);
+        Expect(plain.Msb.Parts.MapPieces.All(p => p.InstanceID != MsbPort.ProbeInstance), "no probe unless asked for");
+
+        // DS3's masks, when asked for, come with Condition2 as vanilla parts with masks have it.
+        var masked = MsbPort.Convert(SyntheticDs3(), host, Ds3Id, ErId, new MsbPort.Options { AllVisible = false });
+        foreach (var p in masked.Msb.Parts.MapPieces)
+            Expect(MapValidate.CheckPieceDraw(p) is null, "masks never come without Condition2");
+
+        // The row: a copy of the template with an unlimited draw distance and no LOD switch.
+        var def = new PARAMDEF { ParamType = "PARTS_DRAW_PARAM_ST", DataVersion = 1 };
+        foreach (var (type, name) in new[] { (PARAMDEF.DefType.f32, "lv01_BorderDist"), (PARAMDEF.DefType.f32, "drawDist"),
+                     (PARAMDEF.DefType.s8, "isShadowOnly"), (PARAMDEF.DefType.s8, "drawOnlyReflectCam"), (PARAMDEF.DefType.u8, "lodType") })
+            def.Fields.Add(new PARAMDEF.Field(def, type, name));
+        var param = new PARAM { ParamType = def.ParamType, Rows = [] };
+        param.ApplyParamdef(def);
+        var template = new PARAM.Row(MapDrawParams.TemplateRow, "", def);
+        template.Cells.Single(c => c.Def.InternalName == "drawDist").Value = 120f;
+        template.Cells.Single(c => c.Def.InternalName == "drawOnlyReflectCam").Value = (sbyte)1;
+        param.Rows.Add(template);
+        param.Rows.Add(new PARAM.Row(MapDrawParams.FirstRow, "stale", def));
+        var id = MapDrawParams.AddRow(param);
+        var row = param[id]!;
+        Expect(id == MapDrawParams.FirstRow && param.Rows.Count(r => r.ID == id) == 1, "one row, replacing an earlier run's");
+        Expect((float)row.Cells.Single(c => c.Def.InternalName == "drawDist").Value > 9000f
+               && (float)row.Cells.Single(c => c.Def.InternalName == "lv01_BorderDist").Value > 9000f, "unlimited draw distance, no LOD switch");
+        Expect((sbyte)row.Cells.Single(c => c.Def.InternalName == "drawOnlyReflectCam").Value == 0, "never a reflection proxy");
+        Expect((float)param[MapDrawParams.TemplateRow]!.Cells.Single(c => c.Def.InternalName == "drawDist").Value == 120f, "the template row is untouched");
     }
 
     private static (MapModelPort Port, BND4 HostBnd) VisualPort(bool plain = false)
@@ -64,7 +112,7 @@ public static partial class MapPortChecks
         Add("m10_00_003", "M[A]_NoLight", "M_A__NoLight_snp_Texture2D_0_AlbedoMap_0");
         Add("m10_00_185", "M[AMSN_V]_Grass", "M_AMSN_V__Grass_snp_Texture2D_0_AlbedoMap_0", "M_AMSN_V__Grass_snp_Texture2D_1_NormalMap_0");
         var hostBnd = new BND4();
-        hostBnd.Files.Add(new BinderFile(Binder.FileFlags.Flag1, 0, @"N:\GR\data\Model\map\m45_00_00_00\m45_00_00_00_001000\sib\m45_00_00_00_001000.flver", flvers[0].Write()));
+        hostBnd.Files.Add(new BinderFile(Binder.FileFlags.Flag1, 200, @"N:\GR\data\Model\map\m45_00_00_00\m45_00_00_00_001000\sib\m45_00_00_00_001000.flver", flvers[0].Write()));
         return (MapModelPort.Create(flvers, matbins, flvers[0], plain), hostBnd);
     }
 
@@ -72,7 +120,9 @@ public static partial class MapPortChecks
     {
         var bnd = new BND4();
         bnd.Files.Add(new BinderFile(Binder.FileFlags.Flag1, 0, @"N:\FDP\data\Model\map\m40_00_00_00\sib\m40_00_00_00_000100.flver", ds3.Write()));
-        return FLVER2.Read(BND4.Read(port.ConvertBinder(bnd, hostBnd, Ds3Id, ErId, "000100").Write()).Files.Single().Bytes);
+        var file = BND4.Read(port.ConvertBinder(bnd, hostBnd, Ds3Id, ErId, "000100").Write()).Files.Single();
+        Expect(file.ID == 200, $"the model keeps the template's binder file ID (200), got {file.ID}");
+        return FLVER2.Read(file.Bytes);
     }
 
     private static string LayoutText(IEnumerable<FLVER.LayoutMember> layout) =>
@@ -98,8 +148,10 @@ public static partial class MapPortChecks
         var layout = flver.BufferLayouts[mesh.VertexBuffers.Single().LayoutIndex];
         const string Vanilla = "Position0:Float3 Normal0:UByte4 Tangent0:UByte4 VertexColor1:UByte4Norm UV0:Short2";
         Expect(LayoutText(layout) == Vanilla, $"layout {LayoutText(layout)}");
-        Expect(mesh.Vertices.All(v => v.UVs.Count == 1 && v.Tangents.Count == 1 && v.Colors.Count == 1 && v.Colors[0].R == 1 && v.Colors[0].A == 1),
-            "one UV, one tangent, a white colour");
+        Expect(mesh.Vertices.All(v => v.UVs.Count == 1 && v.Tangents.Count == 1 && v.Colors.Count == 1
+                                      && v.Colors[0] is { R: 1, G: 0, B: 0, A: 1 }), "one UV, one tangent, vanilla's vertex colour (1, 0, 0, 1)");
+        Expect(flver.Nodes.Count == 1 && flver.Nodes[0].Name.StartsWith(ErId.ToString()), $"node named after the Elden Ring model: {flver.Nodes[0].Name}");
+        Expect(flver.Materials.Select(m => m.Index).SequenceEqual(Enumerable.Range(0, flver.Materials.Count)), "materials numbered in order");
         Expect(mesh.Vertices.Select(v => v.Position).SequenceEqual([new Vector3(0, 0, 0), new Vector3(10, 0, 0), new Vector3(0, 0, 10)]), "positions kept");
         // Elden Ring's box: half size, rotation, centre.
         var box = mesh.BoundingBox;

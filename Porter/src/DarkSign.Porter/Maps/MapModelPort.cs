@@ -234,7 +234,14 @@ public sealed class MapModelPort
             ConvertFlver(flver, ds3Id);
             if (flver.Meshes.Count == 0)
                 throw new InvalidDataException("only effect, decal, water or shadow meshes, which have no Elden Ring material yet");
-            files.Add(new BinderFile(templateFile.Flags, files.Count, folder + leaf, flver.Write()));
+            // As vanilla map pieces have them: the one node named after the model under its Elden Ring map ID, and
+            // the materials numbered in order.
+            if (flver.Nodes.Count == 1)
+                flver.Nodes[0].Name = leaf[..leaf.IndexOf('.')];
+            for (int i = 0; i < flver.Materials.Count; i++)
+                flver.Materials[i].Index = i;
+            // The template's file ID (200 in every vanilla map piece binder), not a count from 0.
+            files.Add(new BinderFile(templateFile.Flags, templateFile.ID + files.Count, folder + leaf, flver.Write()));
         }
         var binder = new BND4
         {
@@ -404,7 +411,9 @@ public sealed class MapModelPort
                 v.Tangents.RemoveRange(tangents, v.Tangents.Count - tangents);
             v.Colors.Clear();
             for (int i = 0; i < colors; i++)
-                v.Colors.Add(new FLVER.VertexColor(1f, 1f, 1f, 1f));
+                // What vanilla map piece vertices hold in this channel: red 1, green and blue 0, alpha 1 (all 67,000
+                // vertices of two Stormveil pieces and the colosseum's; alpha alone varies, fading edges out).
+                v.Colors.Add(new FLVER.VertexColor(1f, 1f, 0f, 0f));
             if (v.UVs.Count == 0)
                 v.UVs.Add(Vector3.Zero);
             // Only the first channel means the same in both games (DS3's others are lightmap and blend channels).

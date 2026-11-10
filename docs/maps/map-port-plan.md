@@ -73,6 +73,25 @@ files found four causes, all checked by `map-selftest` and by `port-maps`' own v
 4. **Layered materials.** DS3's ground and wall materials (`M[ARSN]_2m/3m/4m`) name their textures
    `..._AlbedoMap_0`, not `g_DiffuseTexture`, and store UVs in short units. The first layer is used.
 
+The 2026-11-10 playtest of that build (1.0.253+) still showed nothing, with every check above passing and the game
+loading every binder. A second comparison with vanilla found what else no vanilla map piece shares with the port's:
+
+5. **Draw settings row.** Every vanilla map piece names a PartsDrawParam row (`isUsePartsDrawParamID`, 342 of
+   Stormveil's 343): draw distance and LOD distances. The colosseum's proxy names none, and so did its copies. The
+   port adds row 9400 the way JortPob makes its rows (a copy of row 1001, unlimited draw distance, no LOD
+   switching) and every piece names it (`Maps/MapDrawParams.cs`). If the regulation can't be written the pieces
+   are pointed at vanilla row 2046.
+6. **Group masks.** Pieces had every draw and display group on with `Condition2` 0, a state no vanilla piece is in
+   (masks come with `Condition2` 1). Pieces now carry no masks, like the 483 assets the colosseum draws.
+7. **Binder file ID.** The model sits in its `.mapbnd` under file ID 200 in vanilla; the port wrote 0.
+8. **Vertex colour, node name, material numbers.** Vanilla vertices hold (1, 0, 0, alpha) in the colour channel
+   (the port wrote white), the model's one node is named after the model, and materials are numbered in order.
+
+Which of 5 to 8 was the cause is not known: none could be tested alone offline. A **diagnostic piece** tells the
+two halves apart in game: Elden Ring's own colosseum piece `m009999` (vanilla model and material) is placed at
+the run start with the same part settings as the DS3 pieces. It shows and DS3's don't: the converted models or
+materials are wrong. Neither shows: the part settings or the map are. Fallback `map-draw` C removes it.
+
 Materials are sorted into kinds, each with its own vanilla template found in the legacy dungeons: opaque
 (`M[AMSN_V]`), alpha tested (`_Edge`), blended (`_Alpha`) and unlit (`_NoLight`, DS3's sky domes). A kind with no
 template found falls back to opaque. Meshes with no stand-in yet (water, additive glows, decals, fog cards, unlit
