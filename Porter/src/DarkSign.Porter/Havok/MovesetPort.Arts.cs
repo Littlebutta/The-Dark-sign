@@ -81,6 +81,48 @@ public static partial class MovesetPort
 
     public sealed record ArtResult(int Arts, int Weapons, Dictionary<int, string> Names, List<int> StanceIds);
 
+    /// <summary>
+    /// DS3's generic class skills (the ones many weapon classes share, each class with its own animations) and the
+    /// Elden Ring Ash of War that does the same thing. Free art IDs are few (about 115 with ividyon's hks: art ID N is
+    /// TAE section 600 + N, and Elden Ring's own Ashes of War hold most of 1-399), and 1.0.242-1.0.251 handed them out
+    /// in section order, so the DLC weapons' signature arts (a239-a267: the Ringed Knight pair's Ember, Gael's, the
+    /// Demon's Scar) were the ones left without and fell back to their template's Ash of War. Now the unique arts get
+    /// IDs first; a generic class skill is ported while IDs last and otherwise takes Elden Ring's own Ash of War of
+    /// the same kind (by its GemName text), never a random template's.
+    /// </summary>
+    internal static readonly Dictionary<string, string?> GenericArts = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ["Stomp"] = "Stamp (Upward Cut)", ["Charge"] = "Charge Forth", ["Warcry"] = "War Cry", ["Spin Slash"] = "Spinning Slash",
+        ["Stance"] = "Square Off", ["Perseverance"] = "Endure", ["Quickstep"] = "Quickstep", ["Shield Bash"] = "Shield Bash",
+        ["Parry"] = "Parry", ["Spin Sweep"] = "Spinning Strikes", ["Spin Bash"] = "Spinning Strikes", ["Hold"] = "Unsheathe",
+        ["Shield Splitter"] = "Impaling Thrust", ["Weapon Skill"] = "No Skill", ["Steady Chant"] = null, ["Puncturing Arrow"] = "Mighty Shot",
+        ["Falling Bolt"] = null, ["Guiding Light"] = null, ["Unfaltering Prayer"] = null, ["Gentle Prayer"] = null,
+    };
+
+    internal static bool IsGenericArt(string? name) => name is not null && GenericArts.ContainsKey(name.Trim());
+
+    /// <summary>The SwordArtsParam row of Elden Ring's own Ash of War named <paramref name="ashName"/> (GemName "Ash of War: X"), or null.</summary>
+    internal static int? ErAshRow(string ashName, IReadOnlyDictionary<int, string> gemNames, PARAM? gems)
+    {
+        if (gems is null)
+            return null;
+        foreach (var (id, text) in gemNames)
+        {
+            var name = text.Trim();
+            if (name.StartsWith("Ash of War: ", StringComparison.OrdinalIgnoreCase))
+                name = name["Ash of War: ".Length..].Trim();
+            if (!name.Equals(ashName, StringComparison.OrdinalIgnoreCase) || gems[id] is not { } gem)
+                continue;
+            var v = gem["swordArtsParamId"]?.Value;
+            if (v is null or byte[])
+                continue;
+            int row = Convert.ToInt32(v);
+            if (row > 0)
+                return row;
+        }
+        return null;
+    }
+
     /// <summary>The DS3 art sections whose effects and sounds the arts need (so they are ported with the movesets').</summary>
     private static IEnumerable<int> ArtSections(IEnumerable<WeaponPlan> ports, PARAM ds3Weapons) => !ArtsEnabled ? []
         : ports.SelectMany(p => new[] { Convert.ToInt32(ds3Weapons[p.Ds3Id]!["spAtkCategory"].Value), Convert.ToInt32(ds3Weapons[p.Ds3Id]!["wepmotionCategory"].Value) })
@@ -258,7 +300,11 @@ public static partial class MovesetPort
                 jobs.Add(MakeJob(g.Key, g.Key, skill.Where(id => id / 100 == byBlock.Key.Block).ToList(), byBlock.ToList(), "class"));
             }
         }
-        jobs = jobs.OrderByDescending(j => j.Weapons.Any(p => p.Ds3Id == 10180000)).ThenByDescending(j => j.Weapons.Count).ThenBy(j => j.Ds3Section).ToList();
+        // Order: Friede's, then every unique art (its own skill, not a generic class skill: see GenericArts), then the
+        // generic ones by how many weapons they serve. The free IDs run out before the end; what's left takes Elden
+        // Ring's own Ash of War of the same kind below.
+        jobs = jobs.OrderByDescending(j => j.Weapons.Any(p => p.Ds3Id == 10180000)).ThenBy(j => IsGenericArt(Kind(j.Weapons[0]).Name) ? 1 : 0)
+            .ThenByDescending(j => j.Weapons.Count).ThenBy(j => j.Ds3Section).ToList();
         Console.WriteLine($"arts: {jobs.Count} DS3 weapon arts with skill animations ({jobs.Count(j => j.Stance)} stances, " +
                           $"{jobs.Count(j => j.Source == "class")} class skills for {jobs.Where(j => j.Source == "class").Sum(j => j.Weapons.Count)} weapons), " +
                           $"{free.Count} free art IDs; {noClassSkill} weapons have no skill animations");
@@ -281,13 +327,26 @@ public static partial class MovesetPort
         var stanceIds = new List<int>();
         var chainIds = new List<int>();
         var portedIds = new List<int>();
-        int arts = 0, weapons = 0, nextRow = FirstArtRow, followUps = 0, internalIdNext = nextInternalId;
+        int arts = 0, weapons = 0, nextRow = FirstArtRow, followUps = 0, internalIdNext = nextInternalId, erAshes = 0;
+        Dictionary<int, string>? gemNames = null;
         foreach (var job in jobs)
         {
             var label = string.Join(", ", job.Weapons.Select(p => p.Name).Take(3)) + (job.Weapons.Count > 3 ? $" +{job.Weapons.Count - 3}" : "");
             if (free.Count == 0)
             {
-                Console.WriteLine($"arts: skipped {label} (DS3 a{job.Ds3Section}): no free art ID left, keeps its Elden Ring Ash of War");
+                var kindName = Kind(job.Weapons[0]).Name;
+                gemNames ??= ItemText.Load(erArchives, "GemName");
+                int? erRow = IsGenericArt(kindName) && GenericArts[kindName!.Trim()] is { } ash ? ErAshRow(ash, gemNames, er.Get("EquipParamGem")) : null;
+                if (erRow is { } ashRow)
+                {
+                    foreach (var plan in job.Weapons)
+                        foreach (var w in erWeapons.Rows.Where(r => r.ID >= plan.NewId!.Value && r.ID < plan.NewId.Value + 10000))
+                            SetCell(w, "swordArtsParamId", ashRow);
+                    erAshes++;
+                    Console.WriteLine($"arts: {label} (DS3 a{job.Ds3Section}): no free art ID left; its DS3 skill '{kindName}' is Elden Ring's '{GenericArts[kindName!.Trim()]}' (SwordArtsParam {ashRow})");
+                }
+                else
+                    Console.WriteLine($"arts: skipped {label} (DS3 a{job.Ds3Section}, '{kindName}'): no free art ID left and no Elden Ring Ash of War of that kind, keeps its template's");
                 continue;
             }
             var templateWeapon = erWeapons[job.Weapons[0].TemplateId!.Value]!;
@@ -578,7 +637,8 @@ public static partial class MovesetPort
         }
         else if (File.Exists(HksPath(ctx)))
             File.Delete(HksPath(ctx));
-        Console.WriteLine($"arts: {arts} DS3 weapon arts for {weapons} weapons ({stanceIds.Count} stances, {chainIds.Count} with a light chain{(hksWritten ? ", c0000.hks written" : ", no c0000.hks")})");
+        Console.WriteLine($"arts: {arts} DS3 weapon arts for {weapons} weapons ({stanceIds.Count} stances, {chainIds.Count} with a light chain{(hksWritten ? ", c0000.hks written" : ", no c0000.hks")})" +
+                          (erAshes > 0 ? $"; {erAshes} generic class skills use Elden Ring's own Ash of War of the same kind (no free art ID left)" : ""));
         return new ArtResult(arts, weapons, names, stanceIds);
     }
 
@@ -918,6 +978,13 @@ public static class ArtSelfTest
         Check(withDefault.Contains("function GetSwordArtsDiffCategory(artID, idleCat, wepCat)\n    if artID == 26 or artID == 27 then"), "hks: ported IDs below 300 get the default animations");
         Check(MovesetPort.SkillName("A great scythe.\n\nSkill: Spin Sweep\nSpin the scythe.") == "Spin Sweep", "skill name read from a DS3 description");
         Check(MovesetPort.SkillName("No skill here.") is null, "no skill name when the description names none");
+        // Art IDs: unique arts (Ember, Elfriede's Stance) come before generic class skills; a generic one without an ID takes Elden Ring's.
+        Check(!MovesetPort.IsGenericArt("Ember") && !MovesetPort.IsGenericArt("Elfriede's Stance") && MovesetPort.IsGenericArt("Stomp") && MovesetPort.IsGenericArt(" warcry "),
+            "arts: Ember and Elfriede's Stance are unique arts, Stomp and Warcry generic class skills");
+        Check(MovesetPort.GenericArts["Stomp"] == "Stamp (Upward Cut)" && MovesetPort.GenericArts["Stance"] == "Square Off" && MovesetPort.GenericArts["Steady Chant"] is null,
+            "arts: generic skills map to Elden Ring's own Ash of War (Stomp -> Stamp (Upward Cut), Stance -> Square Off), staves' chant to none");
+        Check(MovesetPort.ErAshRow("Stamp (Upward Cut)", new Dictionary<int, string> { [10100] = "Ash of War: Stamp (Upward Cut)" }, null) is null,
+            "arts: no Elden Ring ash row without EquipParamGem");
         // Combo windows: a template's window is replaced by the ported art's own follow-ups (R1 -> 100054, R2 -> 100051).
         var group = new SoulsFormats.TAE.EventGroup(67);
         byte[] Win(int id) { var b = new byte[16]; BitConverter.GetBytes(id).CopyTo(b, 0); return b; }
