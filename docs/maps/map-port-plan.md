@@ -12,7 +12,7 @@ after `port-weapons`. If it fails, the weapons still load and the game starts; t
 | Piece | DS3 | Elden Ring | Code |
 |---|---|---|---|
 | Layout | `map/mapstudio/m40_00_00_00.msb.dcx` (MSB3) | `map/mapstudio/m45_00_00_00.msb.dcx` (MSBE); each part is a copy of a vanilla part of the same kind with DS3's name, model, transform and entity ID | `Maps/MsbPort.cs` |
-| Map pieces | `map/m40_00_00_00/m40_00_00_00_NNNNNN.mapbnd.dcx` | `map/m45/m45_00_00_00/...`; materials become cloned Elden Ring matbins (`DKS_40_00_00_00_NNNN`) in `allmaterial_dlc01`, copied from a plain one-layer material of a legacy dungeon's map pieces (the colosseums are built from assets, and most legacy dungeon pieces use terrain blend materials), or from JortPob's albedo-only asset material `AEG006_030_ID001`; samplers name the DS3 texture by bare name, as JortPob's do | `Maps/MapModelPort.cs` |
+| Map pieces | `map/m40_00_00_00/m40_00_00_00_NNNNNN.mapbnd.dcx` | `map/m45/m45_00_00_00/...`; materials become cloned Elden Ring matbins (`DKS_40_00_00_00_NNNN`) in `allmaterial`, copied from a plain one-layer material of a legacy dungeon's map pieces (the colosseums are built from assets, and most legacy dungeon pieces use terrain blend materials), or from JortPob's albedo-only asset material `AEG006_030_ID001`; samplers name the DS3 texture by bare name, as JortPob's do | `Maps/MapModelPort.cs` |
 | Textures | `map/m40/m40_000N.tpfbhd/.tpfbdt` | a new `map/m45/common/m45_0000.tpfbhd/.tpfbdt` (Elden Ring has no map area texture binders, but loads this one: JortPob's approach), one uncompressed TPF per texture plus its `_l` copy, plus a flat metallic map | `Maps/MapTextures.cs` |
 | Collision | `h40_00_00_00.hkxbhd` (Havok 2014 packfile) | `h45_00_00_00.hkxbhd` (Havok 2018 XML tagfile, same compressed-mesh tree); every triangle is checked after conversion | `Maps/CollisionPort.cs`, `Maps/MapCollisions.cs` |
 | Navmesh | `map/m40_00_00_00/m40_00_00_00.nvmhktbnd.dcx` (Havok AI 2014) | `map/m45/m45_00_00_00/m45_00_00_00.nvmhktbnd.dcx` (Havok AI 2018 tagfiles); faces, edges, cluster graph and AABB tree copied as-is, costs hkHalf → float | `Maps/NavmeshPort.cs`, `Maps/MapNavmesh.cs` |
@@ -87,10 +87,27 @@ loading every binder. A second comparison with vanilla found what else no vanill
 8. **Vertex colour, node name, material numbers.** Vanilla vertices hold (1, 0, 0, alpha) in the colour channel
    (the port wrote white), the model's one node is named after the model, and materials are numbered in order.
 
-Which of 5 to 8 was the cause is not known: none could be tested alone offline. A **diagnostic piece** tells the
-two halves apart in game: Elden Ring's own colosseum piece `m009999` (vanilla model and material) is placed at
-the run start with the same part settings as the DS3 pieces. It shows and DS3's don't: the converted models or
-materials are wrong. Neither shows: the part settings or the map are. Fallback `map-draw` C removes it.
+The 2026-11-10 playtest of that build (1.0.259) no longer loaded at all: the loading bar filled and stopped. The
+game's file log shows it opened the layout, the collision and all 325 map piece binders of the Cemetery and then
+nothing more, where the earlier, walkable build went on to the enemies' files. The likeliest reading is that fix 7
+made the game read the converted models for the first time (which would also explain why the earlier builds drew
+nothing), and that it then waits for something they name. Compared again with vanilla and with JortPob, the
+converted models, materials and texture binder match in structure, which leaves three things nothing offline can
+test. The next build changes the first two and measures the third:
+
+9. **Where the materials are.** The port added its MATBINs to `allmaterial_dlc01.matbinbnd.dcx`, which is empty in
+   the game's own files, so nothing shows the game looks map materials up there. They now go into
+   `allmaterial.matbinbnd.dcx`, where JortPob puts the materials of its map pieces.
+10. **Textures that don't exist.** A few materials named textures DS3's map binders don't hold (object and
+    character textures, system textures: 8 in the Cemetery). Elden Ring's own map materials only name textures that
+    exist, so whether the game gives up on a missing one or waits is unknown. Each now gets a flat grey stand-in
+    under its name (`MapTextures.Write`).
+11. **Test maps** (`MapPorter.PieceTest`). The diagnostic piece is gone (it sat in a map that couldn't load). Instead
+    the three slots hold three nested layers, so one playtest tells which layer stalls: the first slot is the real
+    port; in the second (`vanilla-model`) every map piece is the colosseum's own model, byte for byte; in the third
+    (`vanilla-material`) DS3's geometry is drawn with the colosseum model's own vanilla material. Second loads:
+    binders, layout and draw settings are fine. Third loads too: so is the converted geometry, and what is left is
+    the ported materials and textures. Fallback `map-draw` C builds all three normally.
 
 Materials are sorted into kinds, each with its own vanilla template found in the legacy dungeons: opaque
 (`M[AMSN_V]`), alpha tested (`_Edge`), blended (`_Alpha`) and unlit (`_NoLight`, DS3's sky domes). A kind with no

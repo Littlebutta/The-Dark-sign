@@ -15,7 +15,8 @@ public static partial class MapPortChecks
         yield return ("visuals: every ported mesh takes its material's vanilla vertex layout and Elden Ring's culling box", MeshLayoutAndBox);
         yield return ("visuals: DS3 materials sort into kinds; effect, decal, water and shadow meshes are left out", MaterialKinds);
         yield return ("visuals: UVs that a short can't hold are rescaled or moved by whole tiles", UvRange);
-        yield return ("visuals: pieces name a PartsDrawParam row, carry no masks, and the diagnostic piece is placed", DrawSettings);
+        yield return ("visuals: pieces name a PartsDrawParam row, carry no masks", DrawSettings);
+        yield return ("visuals: test maps hold the host's own model, or DS3 geometry with the host's own material", PieceTests);
         yield return ("visuals: fallbacks map-groups C and map-materials B", VisualFallbacks);
     }
 
@@ -50,20 +51,11 @@ public static partial class MapPortChecks
         var host = SyntheticHost();
         host.Parts.MapPieces[0].isUsePartsDrawParamID = 0;
         var result = MsbPort.Convert(SyntheticDs3(), host, Ds3Id, ErId,
-            new MsbPort.Options { DrawParamId = MapDrawParams.FirstRow, Probe = true });
+            new MsbPort.Options { DrawParamId = MapDrawParams.FirstRow });
         var msb = MSBE.Read(result.Msb.Write());
         Expect(msb.Parts.MapPieces.All(p => p.isUsePartsDrawParamID == 1 && p.PartsDrawParamID == MapDrawParams.FirstRow), "every piece names the row");
         Expect(msb.Parts.MapPieces.All(p => MapValidate.CheckPieceDraw(p) is null), "the validator accepts them");
         Expect(MapValidate.CheckPieceDraw(host.Parts.MapPieces[0]) is not null, "the validator rejects a piece that names no row");
-
-        // The diagnostic piece: the host's own model at the run start, drawn like the others.
-        var probe = msb.Parts.MapPieces.Single(p => p.InstanceID == MsbPort.ProbeInstance);
-        var start = msb.Parts.Players.Single(p => p.Name == "c0000_9990");
-        Expect(probe.ModelName == host.Parts.MapPieces[0].ModelName && probe.Position == start.Position, $"probe {probe.ModelName} at {probe.Position}");
-        Expect(msb.Models.MapPieces.Any(m => m.Name == probe.ModelName), "probe model listed");
-        Expect(result.Notes.Any(n => n.Contains("diagnostic")), "the report names the diagnostic piece");
-        var plain = MsbPort.Convert(SyntheticDs3(), host, Ds3Id, ErId);
-        Expect(plain.Msb.Parts.MapPieces.All(p => p.InstanceID != MsbPort.ProbeInstance), "no probe unless asked for");
 
         // DS3's masks, when asked for, come with Condition2 as vanilla parts with masks have it.
         var masked = MsbPort.Convert(SyntheticDs3(), host, Ds3Id, ErId, new MsbPort.Options { AllVisible = false });
@@ -89,6 +81,38 @@ public static partial class MapPortChecks
                && (float)row.Cells.Single(c => c.Def.InternalName == "lv01_BorderDist").Value > 9000f, "unlimited draw distance, no LOD switch");
         Expect((sbyte)row.Cells.Single(c => c.Def.InternalName == "drawOnlyReflectCam").Value == 0, "never a reflection proxy");
         Expect((float)param[MapDrawParams.TemplateRow]!.Cells.Single(c => c.Def.InternalName == "drawDist").Value == 120f, "the template row is untouched");
+    }
+
+    private static void PieceTests()
+    {
+        // Which slot is which: the first is the real port, the second and third are the two tests.
+        var slots = MapSlots.All.Where(s => !s.Probe).ToList();
+        var none = new MapPorter.Options();
+        Expect(MapPorter.PieceTestFor(slots[0], none) == MapPorter.PieceTest.None, "the first slot is the real port");
+        Expect(slots.Count < 3 || (MapPorter.PieceTestFor(slots[1], none) == MapPorter.PieceTest.VanillaModel
+                                   && MapPorter.PieceTestFor(slots[2], none) == MapPorter.PieceTest.VanillaMaterial), "the second and third slots are the tests");
+        var off = MapPorter.Options.Parse(["--no-piece-test"]);
+        Expect(slots.All(s => MapPorter.PieceTestFor(s, off) == MapPorter.PieceTest.None), "--no-piece-test builds every slot normally");
+        var asked = MapPorter.Options.Parse(["--no-piece-test", "--piece-test", $"{slots[0].Er}=vanilla-material"]);
+        Expect(MapPorter.PieceTestFor(slots[0], asked) == MapPorter.PieceTest.VanillaMaterial && asked.Only.Count == 0, "--piece-test names a slot's test");
+
+        // vanilla-model: the host's FLVER, byte for byte, under the new model's name and the same file ID.
+        var (port, hostBnd) = VisualPort(plain: true);
+        var hostFile = hostBnd.Files.Single();
+        var shell = BND4.Read(MapModelPort.VanillaBinder(hostBnd, ErId, "000100").Write()).Files.Single();
+        Expect(shell.Bytes.AsSpan().SequenceEqual(hostFile.Bytes) && shell.ID == hostFile.ID, "vanilla-model: Elden Ring's own bytes and file ID");
+        Expect(shell.Name == @"N:\GR\data\Model\map\m45_00_00_00\m45_00_00_00_000100\sib\m45_00_00_00_000100.flver", $"vanilla-model: named after the new model ({shell.Name})");
+
+        // vanilla-material: DS3's geometry, the template's own material, and nothing for the port to add.
+        var vanilla = port.WithVanillaMaterials();
+        var ds3 = SyntheticFlver(0x20014, @"N:\FDP\data\Material\mtd\map\M[ARSN].mtd");
+        var vertices = ds3.Meshes[0].Vertices.Count;
+        var result = ConvertOne(vanilla, hostBnd, ds3);
+        var hostMaterial = FLVER2.Read(hostFile.Bytes).Materials[0];
+        Expect(result.Materials.All(m => m.MTD == hostMaterial.MTD && m.Name == hostMaterial.Name), $"vanilla-material: the host's material ({result.Materials[0].MTD})");
+        Expect(result.Meshes.Count == 1 && result.Meshes[0].Vertices.Count == vertices, "vanilla-material: DS3's geometry");
+        Expect(!vanilla.Materials.Any() && vanilla.Textures.Count == 0 && !vanilla.MatbinFiles(0).Any(), "vanilla-material: no MATBIN or texture added");
+        Expect(vanilla.Fresh().VanillaMaterials, "a fresh port keeps the test mode");
     }
 
     private static (MapModelPort Port, BND4 HostBnd) VisualPort(bool plain = false)
