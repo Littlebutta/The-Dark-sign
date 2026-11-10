@@ -276,6 +276,14 @@ Try the next option if: A ported DS3 enemy crashes the game when it loads, is in
 - **C: Elden Ring bodies with DS3 stats.** No new models: each DS3 character is the closest Elden Ring enemy with DS3's name, HP and souls (DARKSIGN_ENEMY_PORT=stats). Use when ported models crash or don't show. (`DARKSIGN_ENEMY_PORT=stats`)
 - **off: Off (plain stand-ins).** No enemy port: the DS3 maps use Elden Ring enemies of the same kind as stand-ins (DARKSIGN_ENEMY_PORT=0). (`DARKSIGN_ENEMY_PORT=0`)
 
+### Materials and model data of ported DS3 enemies (`enemy-model`, rebuilds the content)
+
+Try the next option if: A ported DS3 enemy is invisible, black, shiny or wears the wrong textures, shows all its weapons at once, vanishes at some camera angles, or cannot be hit or locked on to.
+
+- **A: Plain Elden Ring character materials (default).** Every DS3 material is drawn with Elden Ring's plain character shader (albedo, metallic, normal) and DS3's own textures; the model carries Elden Ring's node flags and culling boxes, and DS3's display masks pick its weapon and armour variants.
+- **B: The template enemy's materials.** As A, but each DS3 material is a copy of the Elden Ring template enemy's material with DS3's textures in it (DARKSIGN_ENEMY_MATERIALS=template), as builds up to 1.0.255 meant to do. Use when ported enemies are invisible, black or flicker with A. (`DARKSIGN_ENEMY_MATERIALS=template`)
+- **C: DS3's node flags and mesh boxes.** As A, but the model keeps DS3's node flags and mesh boxes (DARKSIGN_ENEMY_NODES=0), as in builds up to 1.0.255. Use when ported enemies crash on spawn, vanish at some camera angles or are stretched with A. (`DARKSIGN_ENEMY_NODES=0`)
+
 ### Where the DS3 maps' own flags are kept (`map-flags`, rebuilds the content)
 
 Try the next option if: In a DS3 map, bosses come back, opened doors and shortcuts close again or picked-up items return after a reload, or the pre-flight check says a map flag block is MISSING.

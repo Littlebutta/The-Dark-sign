@@ -660,6 +660,22 @@ public static partial class ChrPort
         }
     }
 
+    /// <summary>
+    /// DS3's ModelDispMask0-31 onto Elden Ring's modelDispMask0-31 (same meaning: mask N shows the meshes whose
+    /// material name starts with "#NN#"). Returns how many were copied.
+    /// </summary>
+    public static int CopyDisplayMasks(PARAM.Row ds3Row, PARAM.Row erRow)
+    {
+        int copied = 0;
+        for (int k = 0; k < 32; k++)
+            if (Cell(ds3Row, $"ModelDispMask{k}") is { } from && Cell(erRow, $"modelDispMask{k}") is { } to)
+            {
+                Set(to, from.Value);
+                copied++;
+            }
+        return copied;
+    }
+
     /// <summary>The DS3 characters whose animations a DS3 character can play: itself, then its base (c2191 -> c2190).</summary>
     public static int[] Ds3AnimationSources(int chr) => new[] { chr, chr / 10 * 10 }.Distinct().ToArray();
 
@@ -730,7 +746,14 @@ public static partial class ChrPort
         var templateFlverFile = chrbnd.Files.FirstOrDefault(f => FLVER2.Is(f.Bytes)) ?? throw new InvalidDataException($"template c{t:D4} has no model");
         var templateFlver = FLVER2.Read(templateFlverFile.Bytes);
         var flver = FLVER2.Read(ds3FlverFile.Bytes);
-        files.Materials.AddRange(ChrModel.Convert(flver, templateFlver, x, n));
+        int glowing = flver.Materials.Count(m => m.Textures.Any(tx => tx.Path.Length > 0 && tx.ParamName.Contains("Emissive", StringComparison.OrdinalIgnoreCase)
+                                                                    && !ItemText.Leaf(tx.Path).StartsWith("SYSTEX", StringComparison.OrdinalIgnoreCase)));
+        var made = ChrModel.Convert(flver, templateFlver, x, n);
+        files.Materials.AddRange(made);
+        notes.Add($"{flver.Meshes.Count} meshes, {flver.Materials.Count} DS3 materials on {made.Count} {(ChrModel.PlainMaterials ? "plain character" : "template")} materials"
+                  + $" ({made.Count(m => m.AlphaTest)} cut-out, {flver.Materials.Count(m => ChrModel.MaskPrefix(m.Name).Length > 0)} with a display mask"
+                  + (glowing > 0 ? $", {glowing} glowing ones drawn without their glow" : "") + ")"
+                  + $"; node flags {string.Join(" ", flver.Nodes.GroupBy(node => (int)node.Flags).OrderBy(g => g.Key).Select(g => $"{g.Key}x{g.Count()}"))}");
         templateFlverFile.Bytes = flver.Write();
 
         // DS3's textures, renamed to the new ID, next to the template's in its high-quality texture binder.
@@ -965,6 +988,9 @@ public static partial class ChrPort
                 foreach (var field in new[] { "hp", "getSoul", "stamina", "mp" })
                     if (Cell(source, field) is { } from && Cell(row, field) is { } to)
                         Set(to, from.Value);
+            // DS3's model hides and shows its "#NN#" meshes (weapon and armour variants) by DS3's display masks.
+            if (newModel && ds3Npc?[ds3Id] is { } maskSource)
+                CopyDisplayMasks(maskSource, row);
             if (newModel && Cell(row, "SoundAddBankId") is { } bank && Convert.ToInt32(bank.Value) < 0)
                 Set(bank, plan.TemplateChr);
             // The row goes in first: a placed or spawned character whose NpcParam row is missing crashes the game, a
