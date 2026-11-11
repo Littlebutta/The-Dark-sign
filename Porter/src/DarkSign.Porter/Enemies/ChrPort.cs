@@ -1233,21 +1233,6 @@ public static partial class ChrPort
         var textureOwners = ChrModel.TextureOwners(flver, x);
         int glowing = flver.Materials.Count(m => m.Textures.Any(tx => tx.Path.Length > 0 && tx.ParamName.Contains("Emissive", StringComparison.OrdinalIgnoreCase)
                                                                     && !ItemText.Leaf(tx.Path).StartsWith("SYSTEX", StringComparison.OrdinalIgnoreCase)));
-        // Materials whose colour texture the port does not find (another sampler name, or a path left to the DS3
-        // material file): they draw blank. Named here so one build report tells which enemies and why.
-        var blank = flver.Materials.Where(m => !m.Textures.Any(tx => tx.Path.Length > 0
-                && (tx.ParamName.EndsWith("g_DiffuseTexture", StringComparison.Ordinal) || tx.ParamName.EndsWith("_AlbedoMap_0", StringComparison.Ordinal))))
-            .Select(m => $"{Path.GetFileNameWithoutExtension(ItemText.Leaf(m.MTD))} [{string.Join(",", m.Textures.Select(tx => tx.ParamName + (tx.Path.Length > 0 ? "" : "=empty")))}]")
-            .Distinct(StringComparer.OrdinalIgnoreCase).ToList();
-        var made = ChrModel.Convert(flver, templateFlver, x, n);
-        if (blank.Count > 0)
-            notes.Add($"FAIL textures: {blank.Count} kinds of DS3 material name no colour texture the port reads ({string.Join("; ", blank.Take(6))}{(blank.Count > 6 ? "; ..." : "")})");
-        files.Materials.AddRange(made);
-        notes.Add($"{flver.Meshes.Count} meshes, {flver.Materials.Count} DS3 materials on {made.Count} {(ChrModel.PlainMaterials ? "plain character" : "template")} materials"
-                  + $" ({made.Count(m => m.AlphaTest)} cut-out, {flver.Materials.Count(m => ChrModel.MaskPrefix(m.Name).Length > 0)} with a display mask"
-                  + (glowing > 0 ? $", {glowing} glowing ones drawn without their glow" : "") + ")"
-                  + $"; node flags {string.Join(" ", flver.Nodes.GroupBy(node => (int)node.Flags).OrderBy(g => g.Key).Select(g => $"{g.Key}x{g.Count()}"))}");
-        templateFlverFile.Bytes = flver.Write();
 
         // DS3's textures, renamed to the new ID, in the new character's texture binders.
         bool ownFile = ChrModel.OwnTextureFile;
@@ -1271,6 +1256,26 @@ public static partial class ChrPort
                 tpfs.Add(ChrModel.ConvertTpf(TPF.Read(f.Bytes), x, n, !ownFile));
         foreach (var f in ds3Chrbnd.Files.Where(f => TPF.Is(f.Bytes)))
             tpfs.Add(ChrModel.ConvertTpf(TPF.Read(f.Bytes), x, n, !ownFile));
+        // Materials whose colour texture the port does not find (another sampler name, or a path left to the DS3
+        // material file): they draw blank. Named here so one build report tells which enemies and why.
+        var blank = flver.Materials.Where(m => !m.Textures.Any(tx => tx.Path.Length > 0
+                && (tx.ParamName.EndsWith("g_DiffuseTexture", StringComparison.Ordinal) || tx.ParamName.EndsWith("_AlbedoMap_0", StringComparison.Ordinal))))
+            .Select(m => $"{Path.GetFileNameWithoutExtension(ItemText.Leaf(m.MTD))} [{string.Join(",", m.Textures.Select(tx => tx.ParamName + (tx.Path.Length > 0 ? "" : "=empty")))}]")
+            .Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+        var areas = new Dictionary<string, long>(StringComparer.OrdinalIgnoreCase);
+        foreach (var tx in tpfs.SelectMany(p => p.Textures).Where(tx => tx.Bytes.Length >= 20))
+            areas.TryAdd(tx.Name, (long)BitConverter.ToInt32(tx.Bytes, 16) * BitConverter.ToInt32(tx.Bytes, 12));
+        var made = ChrModel.Convert(flver, templateFlver, x, n, name => areas.GetValueOrDefault(name));
+        if (ChrModel.VertexColoursSet > 0 || ChrModel.SecondLayers > 0)
+            notes.Add($"{ChrModel.VertexColoursSet} vertex colours set to Elden Ring's" + (ChrModel.SecondLayers > 0 ? $", {ChrModel.SecondLayers} two-layer materials show their larger layer" : ""));
+        if (blank.Count > 0)
+            notes.Add($"FAIL textures: {blank.Count} kinds of DS3 material name no colour texture the port reads ({string.Join("; ", blank.Take(6))}{(blank.Count > 6 ? "; ..." : "")})");
+        files.Materials.AddRange(made);
+        notes.Add($"{flver.Meshes.Count} meshes, {flver.Materials.Count} DS3 materials on {made.Count} {(ChrModel.PlainMaterials ? "plain character" : "template")} materials"
+                  + $" ({made.Count(m => m.AlphaTest)} cut-out, {flver.Materials.Count(m => ChrModel.MaskPrefix(m.Name).Length > 0)} with a display mask"
+                  + (glowing > 0 ? $", {glowing} glowing ones drawn without their glow" : "") + ")"
+                  + $"; node flags {string.Join(" ", flver.Nodes.GroupBy(node => (int)node.Flags).OrderBy(g => g.Key).Select(g => $"{g.Key}x{g.Count()}"))}");
+        templateFlverFile.Bytes = flver.Write();
         var texbnd = binders.Keys.Where(k => k.EndsWith(".texbnd.dcx", StringComparison.OrdinalIgnoreCase))
             .OrderBy(k => k.Contains("_h", StringComparison.OrdinalIgnoreCase) ? 0 : 1).FirstOrDefault();
         (int W, int H) templateLargest = (0, 0);

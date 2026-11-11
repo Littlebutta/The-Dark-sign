@@ -319,6 +319,8 @@ public static class EnemySelfTest
         var erTemplate = Model(@"N:\GR\data\Material\mtd\Chr\matxml\C[c3060]_Body.matxml");
         erTemplate.Header.Version = 0x2001A;
         var ds3Model = Model(@"N:\FDP\data\Material\mtd\character\C[ARSN]_e_Decal.mtd");
+        foreach (var coloured in ds3Model.Meshes.SelectMany(m => m.Vertices))
+            coloured.Colors.Add(new FLVER.VertexColor(0.5f, 1f, 0f, 1f));
         var plainMaterials = ChrModel.Convert(ds3Model, erTemplate, 1310, 7031, plainMaterials: true, erNodes: true);
         Check("node flags as Elden Ring has them: carrier 8, skinned + dummy 10, skinned 8, unused 1, dummy holder 2, mesh node 4 ("
               + string.Join(",", ds3Model.Nodes.Select(n => (int)n.Flags)) + ")",
@@ -330,6 +332,23 @@ public static class EnemySelfTest
             plainMaterials.Count == 1 && plainMaterials[0] is { Plain: true, AlphaTest: true, NewMatbin: "C[c7031]_ds3_0", Albedo: "c7031_a", Normal: "c7031_n", Metallic: "c7031_m" }
             && ds3Model.Materials.All(m => m.MTD == @"N:\GR\data\Material\mtd\Chr\matxml\C[c7031]_ds3_0.matxml"
                 && m.Textures.Select(t => t.ParamName).SequenceEqual([ChrModel.PlainAlbedo, ChrModel.PlainMetallic, ChrModel.PlainNormal])));
+
+        Check("every vertex carries Elden Ring's vertex colour 1 0 0 1 (DS3: 1 0 1 1, layer weights in alpha, or none)",
+            ds3Model.Meshes.SelectMany(m => m.Vertices).All(vx => vx.Colors.Count > 0 && vx.Colors.All(c => c.A == 1f && c.R == 1f && c.G == 0f && c.B == 0f)));
+        var layered = Model(@"N:\FDP\data\Material\mtd\character\C[ARSN]_m.mtd");
+        foreach (var m in layered.Materials)
+            m.Textures.AddRange(
+            [
+                new FLVER2.Texture("g_DiffuseTexture2", @"N:\FDP\chr\c1310\tex\c1310_main part_a.tif", System.Numerics.Vector2.One, 0, 0, 0, 0, 0),
+                new FLVER2.Texture("g_SpecularTexture2", @"N:\FDP\chr\c1310\tex\c1310_main part_r.tif", System.Numerics.Vector2.One, 0, 0, 0, 0, 0),
+                new FLVER2.Texture("g_BumpmapTexture2", @"N:\FDP\chr\c1310\tex\c1310_main part_n.tif", System.Numerics.Vector2.One, 0, 0, 0, 0, 0),
+            ]);
+        var layeredMaterials = ChrModel.Convert(layered, erTemplate, 1310, 7031, plainMaterials: true, erNodes: true,
+            textureArea: name => name.Contains("main part") ? 2048 * 2048 : 512 * 512);
+        Check("a two-layer material shows the layer with the larger colour texture",
+            layeredMaterials.Count == 1 && layeredMaterials[0] is { Albedo: "c7031_main part_a", Normal: "c7031_main part_n", Metallic: "c7031_main part_m" } && ChrModel.SecondLayers == 2);
+        var firstLayer = ChrModel.Convert(Model(@"N:\FDP\data\Material\mtd\character\C[ARSN]_m.mtd"), erTemplate, 1310, 7031, plainMaterials: true, erNodes: true, textureArea: _ => 4);
+        Check("a one-layer material keeps its textures", firstLayer.Count == 1 && firstLayer[0].Albedo == "c7031_a" && ChrModel.SecondLayers == 0);
 
         Check("display mask prefixes stay on material names", ChrModel.MaskPrefix("#01# spear") == "#01#" && ChrModel.MaskPrefix("c1280_body_mat") == ""
             && ChrModel.MaskPrefix("#00#  body") == "#00#");
