@@ -271,6 +271,14 @@ Try the next option if: DS3 map geometry is invisible, black, far too dark or sh
 - **A: Elden Ring's map shaders by kind (default).** Each DS3 material is drawn with a copy of an Elden Ring map material of its kind: normal-mapped opaque, alpha-tested (foliage, grates), blended, and unlit (sky domes), each mesh rebuilt in that material's vertex layout.
 - **B: Albedo only.** Every DS3 material uses the albedo-only material JortPob builds its maps on (port-maps --plain-materials): no normal maps, cut-outs or unlit sky, but the simplest shader there is. (`port-maps --plain-materials`)
 
+### Texture detail of the DS3 maps (`map-texture-detail`, rebuilds the content)
+
+Try the next option if: A DS3 map hitches or stutters as you move through it, or its textures look blurrier up close than they did in 1.0.299.
+
+- **A: Full textures near you, half size beyond (default).** DS3's textures in full for map pieces within 128 m, and a half size low detail copy (a quarter of the memory) for everything further away, the way JortPob and Elden Ring's own maps keep a low detail copy.
+- **B: Half size textures.** Every DS3 map texture at half its width and height, and quarter size beyond 128 m (port-maps --half-textures): for a graphics card whose memory DS3's textures still don't fit in. (`port-maps --half-textures`)
+- **C: Full size twice, as up to 1.0.299.** The low detail copy is the full texture again and full textures load within 256 m (port-maps --full-low-textures): every texture of a map sits in graphics memory twice at full size. (`port-maps --full-low-textures`)
+
 ### Lighting of the DS3 maps (`map-lighting`, rebuilds the content)
 
 Try the next option if: A DS3 map looks wrong since it got its own lighting: washed out, lit from inside walls, lamps in the wrong places, or the game hangs or crashes while it loads.

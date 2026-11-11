@@ -31,6 +31,8 @@ public static partial class MapPortChecks
             yield return check;
         foreach (var check in LightingChecks())
             yield return check;
+        foreach (var check in LoadChecks())
+            yield return check;
         yield return ("validate: layout checks catch a missing start point and parts without models", ValidateLayout);
         yield return ("validate: run event checks pass on ported events and catch a missing one", ValidateEvents);
         yield return ("navmesh: binder entries are renamed to the host map and keep the host's compendium", NavmeshBinder);
