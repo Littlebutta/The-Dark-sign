@@ -69,6 +69,8 @@ public static class MapPorter
         /// <summary>--objects full|nocollision|none (launcher Fallbacks "map-objects"): DS3's objects as Elden Ring assets (<see cref="ObjectPort"/>).</summary>
         public ObjectPort.Method Objects { get; set; } = ObjectPort.Method.Full;
 
+        /// <summary>--all-layers (launcher Fallbacks "map-layers" B): every DS3 map state's enemies and objects (m40's Untended Graves too).</summary>
+        public bool AllLayers { get; set; }
         /// <summary>--no-people (launcher Fallbacks "map-people" B): DS3's people (NPCs, hostile humans) are left out, as before.</summary>
         public bool NoPeople { get; set; }
         /// <summary>--no-regions (launcher Fallbacks "map-regions" B): no DS3 regions, patrol routes or generators (<see cref="RegionPort"/>).</summary>
@@ -101,6 +103,7 @@ public static class MapPorter
                     case "--objects" when i + 1 < list.Count: o.Objects = ObjectPort.ParseMethod(list[i + 1]); i++; break;
                     case "--no-regions": o.NoRegions = true; break;
                     case "--no-people": o.NoPeople = true; break;
+                    case "--all-layers": o.AllLayers = true; break;
                     case "--after-pid" when i + 1 < list.Count && int.TryParse(list[i + 1], out var pid): o.AfterPid = pid; i++; break;
                     default: o.Only.Add(MapId.Parse(list[i]).ToString()); break;
                 }
@@ -500,10 +503,12 @@ public static class MapPorter
             try
             {
                 var enemies = Enemies(ctx, ds3, er, options, report);
-                var bosses = EnemyPort.BossEntities(Ds3Scripts(ds3, ds3Id), ds3Layout: true);
-                var placed = EnemyPort.Place(ds3Msb, layout.Msb, ds3Id, erId, new MsbPort.Options { AllVisible = !options.Ds3Groups, NoGroups = options.NoGroups },
+                var scripts = Ds3Scripts(ds3, ds3Id).ToList();
+                var bosses = EnemyPort.BossEntities(scripts, ds3Layout: true);
+                var seats = EnemyPort.Seats(ds3Msb, EnemyPort.EventWarps(scripts));
+                var placed = EnemyPort.Place(ds3Msb, layout.Msb, ds3Id, erId, new MsbPort.Options { AllVisible = !options.Ds3Groups, NoGroups = options.NoGroups, AllLayers = options.AllLayers },
                     enemies.Chooser, e => enemies.Describe(e, bosses), EnemyPort.AnyEnemyPart(enemies.Catalog), _placedEnemies, partNames,
-                    options.NoPeople ? null : enemies.People);
+                    options.NoPeople ? null : enemies.People, seats);
                 report.AppendLine($"  enemies: {placed.Placed} placed ({placed.Ported} ported DS3 characters, {placed.StandIns} Elden Ring stand-ins, "
                                   + $"{placed.People} people{(options.NoPeople ? ", people off (--no-people)" : "")}), {placed.Npcs} people left out, {placed.Skipped} with nothing to stand in; {bosses.Count} DS3 boss entities");
                 foreach (var note in placed.Notes)
@@ -659,7 +664,7 @@ public static class MapPorter
         // checked by writing the layout and reading it back; one that fails is taken out again, so the map is never
         // worse off than without it.
         clock.Restart();
-        var groupOptions = new MsbPort.Options { AllVisible = !options.Ds3Groups, NoGroups = options.NoGroups };
+        var groupOptions = new MsbPort.Options { AllVisible = !options.Ds3Groups, NoGroups = options.NoGroups, AllLayers = options.AllLayers };
         if (options.Objects == ObjectPort.Method.None)
             report.AppendLine($"  objects: off (--objects none); {ds3Msb.Parts.Objects.Count} DS3 objects not placed");
         else if (test != PieceTest.None)

@@ -412,10 +412,18 @@ public static class Fallbacks
                 { MapsArgs = ["--no-regions"] },
         ]),
 
+        new("map-layers", "DS3 maps", "Which state of a DS3 map is ported", Stage.Build,
+            "Enemies or objects you expected are missing from a DS3 map since 1.0.327 (for example on the way to Firelink Shrine), or you want to see the Untended Graves' enemies.",
+        [
+            new("A", "The state the game starts in (default)", "Enemies and objects that DS3 keeps for another state of the same map are left out, as its map pieces already were: m40 holds the Untended Graves (Black Knights, Champion Gundyr, the dark shrine) at the same place as the Cemetery of Ash and Firelink Shrine."),
+            new("B", "Every state", "Enemies and objects of every state stand in the map together (port-maps --all-layers), as every build up to 1.0.326 had them: the Untended Graves' Black Knights stand around Firelink Shrine.")
+                { MapsArgs = ["--all-layers"] },
+        ]),
+
         new("map-people", "DS3 maps", "DS3's people (NPCs and hostile humans)", Stage.Build,
             "A DS3 map crashes or hangs while loading since people were added, a person who should be friendly attacks you (or the other way round), or people stand in the way of something.",
         [
-            new("A", "Elden Ring people stand in (default)", "Where DS3 has someone to talk to, an Elden Ring person stands, silent (no dialogue or shop yet). DS3's hostile humans get hostile Elden Ring humans. DS3 characters with their own body (Fire Keeper, Ludleth) are placed when the enemy porter ported them."),
+            new("A", "Elden Ring people stand in (default)", "Where DS3 has someone to talk to, an Elden Ring person stands, silent (no dialogue or shop yet), on the seat DS3's scripts move them to. DS3's hostile humans get hostile Elden Ring humans. DS3 characters with their own body (Fire Keeper, Ludleth) are their ported body when the enemy porter made one, else an Elden Ring person."),
             new("B", "Nobody", "DS3's people are left out of the maps (port-maps --no-people), as every build up to 1.0.299 was.")
                 { MapsArgs = ["--no-people"] },
         ]),
