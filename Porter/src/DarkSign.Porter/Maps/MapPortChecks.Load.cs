@@ -16,6 +16,7 @@ public static partial class MapPortChecks
         yield return ("load: cube maps, uncompressed and unreadable textures", DropMipEdgeCases);
         yield return ("load: the low detail copy of a map texture is half size; fallbacks map-texture-detail B and C", LowDetailCopies);
         yield return ("load: full textures only near the player", TextureDistance);
+        yield return ("load: collision and navmeshes are binary tagfiles by default, the size of DS3's; --xml-collision keeps XML", CollisionFormat);
     }
 
     /// <summary>A DDS whose every mip level is filled with its own level number (level 0 is all zeros, and so on).</summary>
@@ -189,5 +190,22 @@ public static partial class MapPortChecks
         Expect(Cell(row, "drawDist") > 9000f, "pieces themselves still draw at any distance");
         var legacy = Row(true);
         Expect(Cell(legacy, "tex_lv01_BorderDist") == 256f && Cell(legacy, "tex_lv01_PlayDist") == 32f, "--full-low-textures keeps JortPob's distances");
+    }
+
+    private static void CollisionFormat()
+    {
+        Expect(MapPorter.Options.Parse([]).BinaryCollision, "binary by default");
+        Expect(!MapPorter.Options.Parse(["--xml-collision"]).BinaryCollision, "--xml-collision (fallback map-collision B)");
+        Expect(MapPorter.Options.Parse(["--binary-collision"]).BinaryCollision, "older profiles' --binary-collision still accepted");
+        var simd = MapPorter.Options.Parse(["--simd"]);
+        Expect(simd.BinaryCollision && simd.KeepSimdTree, "--simd alone is fallback C (binary, DS3's tree)");
+
+        // The binary file is about the DS3 file's size; the XML one many times it. Both decode to the same triangles.
+        var ds3 = MapSelfTest.SyntheticDs3Collision(everything: true);
+        var binary = CollisionPort.Convert(ds3, null, xml: false);
+        var xml = CollisionPort.Convert(ds3, null, xml: true);
+        Expect(binary.Triangles == xml.Triangles && binary.Triangles > 0, "same triangles either way");
+        Expect(xml.Bytes.Length > 5 * binary.Bytes.Length, $"XML {xml.Bytes.Length} bytes is many times binary {binary.Bytes.Length}");
+        Expect(binary.Bytes.AsSpan(4, 4).SequenceEqual("TAG0"u8), "a Havok 2018 binary tagfile");
     }
 }

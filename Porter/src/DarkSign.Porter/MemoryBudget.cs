@@ -3,8 +3,8 @@ namespace DarkSign.Porter;
 /// <summary>
 /// Lets parallel work that needs a lot of memory per item run on every core without exhausting the PC: each item
 /// takes its estimated bytes from the budget before it starts and gives them back when done. An item bigger than the
-/// whole budget runs alone. Used for the map collision conversion, whose XML tagfiles take about 800 times the
-/// DS3 file's size in memory while they are written (a 4.7 MB file peaks near 4 GB).
+/// whole budget runs alone. Used for the map collision conversion, whose XML tagfiles (fallback "map-collision" B)
+/// take about 800 times the DS3 file's size in memory while they are written (a 4.7 MB file peaks near 4 GB).
 /// </summary>
 public sealed class MemoryBudget(long bytes)
 {

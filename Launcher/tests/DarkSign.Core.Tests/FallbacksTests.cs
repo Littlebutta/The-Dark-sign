@@ -41,7 +41,7 @@ public sealed class FallbacksTests
         var methods = new Dictionary<string, string> { ["sounds"] = "B", ["map-collision"] = "C", ["loader"] = "C" };
         var env = Fallbacks.PorterEnvironment(methods);
         Assert.Equal("1", env["DARKSIGN_STREAM_SOUNDS"]);
-        Assert.Equal(new[] { "--binary-collision", "--simd" }, Fallbacks.MapsArguments(methods));
+        Assert.Equal(new[] { "--simd" }, Fallbacks.MapsArguments(methods));
         // The loader is a launch method: it doesn't rebuild.
         Assert.Equal("sounds=B map-collision=C", Fallbacks.BuildSignature(methods));
         Assert.Equal("1.0.150 [sounds=B map-collision=C]", Fallbacks.BuildStamp("1.0.150", methods));

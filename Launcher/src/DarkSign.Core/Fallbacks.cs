@@ -317,11 +317,11 @@ public static class Fallbacks
         new("map-collision", "DS3 maps", "Map collision format", Stage.Build,
             "You fall through the floor of a DS3 map, or the game hangs or crashes while a DS3 map loads.",
         [
-            new("A", "XML tagfiles (default)", "DS3 collision converted to Havok 2018 and stored as XML tagfiles, which JortPob says Elden Ring reads."),
-            new("B", "Binary tagfiles", "The same collision written as binary Havok tagfiles, like Elden Ring's own (port-maps --binary-collision).")
-                { MapsArgs = ["--binary-collision"] },
-            new("C", "Binary, keeping DS3's SIMD tree", "Binary tagfiles that keep DS3's SIMD collision tree instead of building a new one (--binary-collision --simd).")
-                { MapsArgs = ["--binary-collision", "--simd"] },
+            new("A", "Binary tagfiles (default)", "DS3 collision and navmeshes converted to Havok 2018 and stored as binary tagfiles, the form Elden Ring ships its own in: the same size as DS3's files."),
+            new("B", "XML tagfiles, as up to 1.0.30x", "The same collision stored as XML tagfiles, which JortPob ships and Elden Ring reads, but some 55 times larger: 3.4 to 7.5 GB per DS3 map, which the game reads as you walk (port-maps --xml-collision). Try it if you fall through the floor on A.")
+                { MapsArgs = ["--xml-collision"] },
+            new("C", "Binary, keeping DS3's SIMD tree", "Binary tagfiles that keep DS3's SIMD collision tree instead of building a new one (port-maps --simd).")
+                { MapsArgs = ["--simd"] },
         ]),
         new("map-groups", "DS3 maps", "Which map parts are drawn", Stage.Build,
             "Parts of a DS3 map are invisible or flicker in and out as you move.",
