@@ -251,6 +251,12 @@ public static partial class EnemyDiag
             Console.WriteLine($"== c{c:D4}: {flver.Meshes.Count} meshes, {flver.Materials.Count} materials, {flver.GXLists.Count} GX lists");
             foreach (var m in flver.Materials)
                 Console.WriteLine($"  material \"{m.Name}\" {ItemText.Leaf(m.MTD)} gx {m.GXIndex} index {m.Index}: {string.Join(", ", m.Textures.Select(t => t.ParamName + (t.Path.Length > 0 ? "=" + ItemText.Leaf(t.Path) : "")))}");
+            for (int mi = 0; mi < flver.Materials.Count; mi++)
+            {
+                var cs = flver.Meshes.Where(mesh => mesh.MaterialIndex == mi).SelectMany(mesh => mesh.Vertices).Where(v => v.Colors.Count > 0).Select(v => v.Colors[0]).ToList();
+                Console.WriteLine(cs.Count == 0 ? $"  colours of material {mi}: none" : FormattableString.Invariant(
+                    $"  colours of material {mi}: mean rgba {cs.Average(c => c.R):0.00} {cs.Average(c => c.G):0.00} {cs.Average(c => c.B):0.00} {cs.Average(c => c.A):0.00}, least {cs.Min(c => c.R):0.00} {cs.Min(c => c.G):0.00} {cs.Min(c => c.B):0.00} {cs.Min(c => c.A):0.00}, white {100.0 * cs.Count(c => c.R > 0.98f && c.G > 0.98f && c.B > 0.98f && c.A > 0.98f) / cs.Count:0}%"));
+            }
             for (int i = 0; i < flver.GXLists.Count; i++)
             {
                 Console.WriteLine($"  gx list {i}: {flver.GXLists[i].Count} items");
