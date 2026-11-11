@@ -42,6 +42,13 @@ public static class MapPorter
         /// "map-texture-detail"; see <see cref="MapTextures.Detail"/>).
         /// </summary>
         public MapTextures.Detail TextureDetail { get; set; } = MapTextures.Detail.Standard;
+        /// <summary>
+        /// --host-navmesh-list: the map's navmesh list (.nva) stays the host's, which names no DS3 navmesh, so the game
+        /// loads none: enemies as every build up to 1.0.299 had them (fallback "map-navmesh" off; see <see cref="MapNavmesh"/>).
+        /// </summary>
+        public bool HostNavmeshList { get; set; }
+        /// <summary>--navmesh-flags ds3: DS3's face data values are kept instead of cleared (fallback "map-navmesh" B).</summary>
+        public bool Ds3NavmeshFlags { get; set; }
         public bool BinaryCollision { get; set; }
         public bool KeepSimdTree { get; set; }
 
@@ -72,6 +79,8 @@ public static class MapPorter
                     case "--helper-pieces": o.HelperPieces = true; break;
                     case "--half-textures": o.TextureDetail = MapTextures.Detail.Half; break;
                     case "--full-low-textures": o.TextureDetail = MapTextures.Detail.FullLow; break;
+                    case "--host-navmesh-list": o.HostNavmeshList = true; break;
+                    case "--navmesh-flags" when i + 1 < list.Count: o.Ds3NavmeshFlags = list[i + 1].Equals("ds3", StringComparison.OrdinalIgnoreCase); i++; break;
                     case "--binary-collision": o.BinaryCollision = true; break;
                     case "--simd": o.KeepSimdTree = true; break;
                     case "--enemies" when i + 1 < list.Count: o.Enemies = EnemyPort.ParseMethod(list[i + 1]); i++; break;
@@ -582,10 +591,11 @@ public static class MapPorter
         report.AppendLine($"  time: collision {clock.Elapsed.TotalSeconds:F0} s");
         clock.Restart();
 
-        // Navmesh, so enemies placed in the map can walk. A failure only leaves them standing.
+        // Navmesh, so enemies placed in the map can find their way. A failure leaves them running straight at the player.
         try
         {
-            report.AppendLine("  " + MapNavmesh.Port(ctx, ds3, er, ds3Id, erId, options, hostId));
+            foreach (var line in MapNavmesh.Port(ctx, ds3, er, ds3Id, erId, options, hostId, ds3Msb))
+                report.AppendLine("  " + line);
         }
         catch (Exception ex)
         {

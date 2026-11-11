@@ -36,6 +36,11 @@
     <Compile Include="..\..\third_party\SoulsAssetPipeline-HKX\*.cs" Link="SoulsAssetPipeline\%(Filename)%(Extension)" />
   </ItemGroup>
 
+  <!-- The navmesh list (.nva) reader and writer for every game, Elden Ring's included, from Smithbox (GPL-3.0). -->
+  <ItemGroup>
+    <Compile Include="..\..\third_party\Smithbox-NVA\*.cs" Link="Smithbox\%(Filename)%(Extension)" />
+  </ItemGroup>
+
   <!-- The fxr library (Unlicense) and its porter adapter, run with Jint to convert DS3 effects (Effects/FxrPort.cs). -->
   <ItemGroup>
     <Content Include="..\..\third_party\fxr\fxr.js;Effects\fxr-port.js" Link="fxr\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />

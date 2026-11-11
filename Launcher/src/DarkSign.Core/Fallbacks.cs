@@ -365,6 +365,15 @@ public static class Fallbacks
             new("B", "Kept as ordinary pieces", "Every DS3 map piece is drawn (port-maps --helper-pieces), as in every build up to 1.0.299: blank slabs and blurry doubles of the ground and rocks stand in the maps, but nothing is missing.")
                 { MapsArgs = ["--helper-pieces"] },
         ]),
+        new("map-navmesh", "DS3 maps", "How enemies find their way in the DS3 maps", Stage.Build,
+            "A DS3 map crashes or hangs while loading since launcher 1.0.300, enemies stand still or refuse to cross ground they should walk on, or they walk through closed doors.",
+        [
+            new("A", "DS3's navmeshes, every face plain ground (default)", "The map's navmesh list is built from DS3's, so the game loads DS3's navmeshes: enemies walk around walls and gaps instead of running straight at you. DS3's per-face marks (closed doors, ladders, drops) are cleared, because Elden Ring reads those bits its own way."),
+            new("B", "DS3's navmeshes with DS3's face marks", "The same, but each face keeps DS3's mark (port-maps --navmesh-flags ds3). Try it if enemies walk where DS3 kept them out; if they then refuse ground they should cross, Elden Ring reads the marks differently.")
+                { MapsArgs = ["--navmesh-flags", "ds3"] },
+            new("off", "The host map's navmesh list, untouched", "The list stays the colosseum's, which names none of DS3's navmeshes (port-maps --host-navmesh-list): the game loads no navmesh and enemies run straight at you, as in every build up to 1.0.299.")
+                { MapsArgs = ["--host-navmesh-list"] },
+        ]),
         new("map-enemies", "DS3 maps", "Enemies and bosses in the DS3 maps", Stage.Build,
             "A DS3 map crashes or hangs while loading, enemies stand in walls or fall through the floor, or a boss fight never starts.",
         [

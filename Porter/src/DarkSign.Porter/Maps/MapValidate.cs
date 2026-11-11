@@ -323,16 +323,30 @@ public static class MapValidate
             }
         }
 
-        // Navmesh (warning only: without it enemies stand still, the map still loads).
+        // Navmesh (warning only: without it enemies can't find their way, the map still loads).
         var nvm = MapNavmesh.ErBinderPath(erId);
         if (!File.Exists(Mod(nvm)))
-            report.Warn($"{erId}: no navmesh written; enemies placed here won't walk");
+            report.Warn($"{erId}: no navmesh written; enemies placed here can't find their way");
         else
             try
             {
                 var bnd = BND4.Read(DCX.Decompress(File.ReadAllBytes(Mod(nvm))));
                 CompareFormat(report, er, nvm, Mod(nvm));
-                report.Ok($"{erId}: navmesh binder reads back ({bnd.Files.Count(f => f.Name.Contains(".hkx", StringComparison.OrdinalIgnoreCase))} navmeshes)");
+                report.Ok($"{erId}: navmesh binder reads back ({bnd.Files.Count(f => f.Name.Contains(".hkx", StringComparison.OrdinalIgnoreCase))} navmesh files)");
+                // The list names the navmeshes the game loads. Without the port's own, the host's stays, which names none of DS3's.
+                var nva = MapNavmesh.ErListPath(erId);
+                if (!File.Exists(Mod(nva)))
+                    report.Warn($"{erId}: no navmesh list written; the game loads no DS3 navmesh and enemies can't find their way");
+                else
+                {
+                    var list = SmithboxFormats.NVA.Read(DCX.Decompress(File.ReadAllBytes(Mod(nva))));
+                    var problems = MapNavmesh.Check(bnd, list, erId);
+                    foreach (var problem in problems)
+                        report.Warn($"{erId}: navmesh list: {problem}");
+                    if (problems.Count == 0)
+                        report.Ok($"{erId}: navmesh list names {list.Navmeshes.Count / 2} navmeshes in each set ({list.Navmeshes.Take(list.Navmeshes.Count / 2).Sum(e => e.FaceCount)} faces, "
+                                  + $"{list.Connectors.Count / 2} connections); every one has its file, and the sampled files match it");
+                }
             }
             catch (Exception ex)
             {

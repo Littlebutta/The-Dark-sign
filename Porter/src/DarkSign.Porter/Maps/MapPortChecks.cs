@@ -24,8 +24,8 @@ public static partial class MapPortChecks
         yield return ("fallbacks: auto-start adds one start request per load outside a run, and a rerun without it removes it", AutoStartRun);
         yield return ("fallbacks: the new-map-ID slots give each DS3 map a registered file-less ID, built from a colosseum", NewIdSlots);
         yield return ("names: collision and texture binder entries", Names);
-        yield return ("navmesh: DS3 Havok AI 2014 -> Elden Ring 2018 keeps faces, edges, graph and tree (XML)", () => Navmesh(xml: true));
-        yield return ("navmesh: DS3 Havok AI 2014 -> Elden Ring 2018 keeps faces, edges, graph and tree (binary)", () => Navmesh(xml: false));
+        foreach (var check in NavmeshChecks())
+            yield return check;
         yield return ("models: a DS3 map piece converts into a valid Elden Ring FLVER with its own material", ModelEndToEnd);
         foreach (var check in VisualChecks())
             yield return check;
@@ -35,7 +35,6 @@ public static partial class MapPortChecks
             yield return check;
         yield return ("validate: layout checks catch a missing start point and parts without models", ValidateLayout);
         yield return ("validate: run event checks pass on ported events and catch a missing one", ValidateEvents);
-        yield return ("navmesh: binder entries are renamed to the host map and keep the host's compendium", NavmeshBinder);
         yield return ("rebuild: a full run deletes port-maps' own old outputs (both slot methods) and keeps the other steps' files", CleanStale);
         yield return ("flags: the allocation lists parse, blocks map to their maps, and a new map ID gets a line", FlagAllocProbe);
         yield return ("map registry: worldmsblist parses, and a slot under an ID it doesn't name is skipped, never registered", MapRegistryList);
@@ -336,101 +335,6 @@ public static partial class MapPortChecks
         Expect(MapPorter.ModelNumber("h000100") == "000100" && MapPorter.ModelNumber("m000100") == "000100", "msb model number");
         Expect(MapTextures.TextureNameOf(@"N:\x\m40_00_wall_a.tpf.dcx") == "m40_00_wall_a", "texture name");
         Expect(MapPorter.ModParts("/map/m45/x.tpfbhd").SequenceEqual(["map", "m45", "x.tpfbhd"]), "mod parts");
-    }
-
-    internal static byte[] SyntheticDs3Navmesh()
-    {
-        Ds3.hkaiNavMeshEdge Edge(int a, int b, uint oppositeEdge = 0xFFFFFFFF, uint oppositeFace = 0xFFFFFFFF) => new()
-        {
-            m_a = a, m_b = b, m_oppositeEdge = oppositeEdge, m_oppositeFace = oppositeFace, m_flags = 0,
-            m_userEdgeCost = (short)(BitConverter.SingleToInt32Bits(1.5f) >> 16),
-        };
-        var mesh = new Ds3.hkaiNavMesh
-        {
-            m_faces =
-            [
-                new Ds3.hkaiNavMeshFace { m_startEdgeIndex = 0, m_startUserEdgeIndex = -1, m_numEdges = 3, m_clusterIndex = 0 },
-                new Ds3.hkaiNavMeshFace { m_startEdgeIndex = 3, m_startUserEdgeIndex = -1, m_numEdges = 3, m_clusterIndex = 0 },
-            ],
-            m_edges = [Edge(0, 1), Edge(1, 2, 3, 1), Edge(2, 0), Edge(2, 1, 1, 0), Edge(1, 3), Edge(3, 2)],
-            m_vertices = [new(0, 0, 0, 0), new(10, 0, 0, 0), new(0, 0, 10, 0), new(10, 0, 10, 0)],
-            m_streamingSets = [],
-            m_faceData = [7, 7],
-            m_edgeData = [],
-            m_faceDataStriding = 1,
-            m_edgeDataStriding = 0,
-            m_aabb = new Ds3.hkAabb { m_min = new(0, 0, 0, 0), m_max = new(10, 0, 10, 0) },
-            m_erosionRadius = 0.3f,
-        };
-        var graph = new Ds3.hkaiDirectedGraphExplicitCost
-        {
-            m_positions = [new(5, 0, 5, 0)],
-            m_nodes = [new Ds3.hkaiDirectedGraphExplicitCostNode { m_startEdgeIndex = 0, m_numEdges = 0 }],
-            m_edges = [],
-            m_nodeData = [],
-            m_edgeData = [],
-            m_streamingSets = [],
-        };
-        var tree = new Ds3.hkcdStaticTreeDefaultTreeStorage6
-        {
-            m_domain = new Ds3.hkAabb { m_min = new(0, 0, 0, 0), m_max = new(10, 0, 10, 0) },
-            m_nodes =
-            [
-                new Ds3.hkcdStaticTreeCodec3Axis6 { m_xyz_0 = 1, m_xyz_1 = 2, m_xyz_2 = 3, m_hiData = 0x80, m_loData = 1 },
-                new Ds3.hkcdStaticTreeCodec3Axis6 { m_xyz_0 = 4, m_xyz_1 = 5, m_xyz_2 = 6, m_hiData = 0, m_loData = 0 },
-                new Ds3.hkcdStaticTreeCodec3Axis6 { m_xyz_0 = 7, m_xyz_1 = 8, m_xyz_2 = 9, m_hiData = 0, m_loData = 1 },
-            ],
-        };
-        var root = new Ds3.hkRootLevelContainer
-        {
-            m_namedVariants =
-            [
-                new Ds3.hkRootLevelContainerNamedVariant { m_name = "hkaiNavMesh", m_className = "hkaiNavMesh", m_variant = mesh },
-                new Ds3.hkRootLevelContainerNamedVariant { m_name = "hkaiDirectedGraphExplicitCost", m_className = "hkaiDirectedGraphExplicitCost", m_variant = graph },
-                new Ds3.hkRootLevelContainerNamedVariant
-                {
-                    m_name = "hkaiStaticTreeNavMeshQueryMediator", m_className = "hkaiStaticTreeNavMeshQueryMediator",
-                    m_variant = new Ds3.hkaiStaticTreeNavMeshQueryMediator { m_navMesh = mesh, m_tree = new Ds3.hkcdStaticAabbTree { m_treePtr = tree } },
-                },
-            ],
-        };
-        using var stream = new MemoryStream();
-        var bw = new BinaryWriterEx(false, stream);
-        new Ds3.PackFileSerializer().Serialize(root, bw);
-        bw.Finish();
-        return stream.ToArray();
-    }
-
-    private static void Navmesh(bool xml)
-    {
-        var result = NavmeshPort.Convert(SyntheticDs3Navmesh(), xml);
-        Expect(result.Faces == 2 && result.Edges == 6 && result.Vertices == 4 && result.GraphNodes == 1,
-            $"counts {result.Faces}/{result.Edges}/{result.Vertices}/{result.GraphNodes}");
-        var root = CollisionPort.Read(result.Bytes);
-        var mesh = root.m_namedVariants.Select(v => v.m_variant).OfType<HKLib.hk2018.hkaiNavMesh>().Single();
-        Expect(Math.Abs(mesh.m_edges[0].m_userEdgeCost - 1.5f) < 1e-3f, $"edge cost {mesh.m_edges[0].m_userEdgeCost}");
-        Expect(mesh.m_edges[1].m_oppositeEdge == 3 && mesh.m_edges[1].m_oppositeFace == 1, "edge links");
-        Expect(mesh.m_vertices[3] == new Vector4(10, 0, 10, 0) && mesh.m_faceData.SequenceEqual([7, 7]), "vertices or face data");
-        var graph = root.m_namedVariants.Select(v => v.m_variant).OfType<HKLib.hk2018.hkaiDirectedGraphExplicitCost>().Single();
-        Expect(graph.m_positions.Count == 1 && graph.m_positions[0] == new Vector4(5, 0, 5, 0), "graph positions");
-        var mediator = root.m_namedVariants.Select(v => v.m_variant).OfType<HKLib.hk2018.hkaiStaticTreeNavMeshQueryMediator>().Single();
-        var nodes = mediator.m_tree!.m_treePtr!.m_tree.m_nodes;
-        Expect(nodes.Count == 3 && nodes[0].m_xyz[2] == 3 && nodes[0].m_hiData == 0x80 && nodes[2].m_loData == 1, "tree nodes");
-        Expect(ReferenceEquals(mediator.m_navMesh, mesh) || mediator.m_navMesh?.m_faces.Count == 2, "mediator mesh");
-    }
-
-    private static void NavmeshBinder()
-    {
-        var ds3 = new BND4();
-        ds3.Files.Add(new BinderFile(Binder.FileFlags.Flag1, 0, @"N:\FDP\data\Model\map\m40_00_00_00\navimesh\n40_00_00_00_000001.hkx", SyntheticDs3Navmesh()));
-        var host = new BND4();
-        host.Files.Add(new BinderFile(Binder.FileFlags.Flag1, 0, @"N:\GR\data\INTERROOT_win64\map\m45_00_00_00\navimesh\n45_00_00_00_000100.hkx", [1, 2, 3]));
-        host.Files.Add(new BinderFile(Binder.FileFlags.Flag1, 1, @"N:\GR\data\INTERROOT_win64\map\m45_00_00_00\navimesh\n45_00_00_00.compendium", [4, 5, 6]));
-        var result = MapNavmesh.Convert(ds3, host, Ds3Id, ErId, xml: true);
-        Expect(result.Converted == 1, result.Summary);
-        var names = result.Binder.Files.Select(f => f.Name).ToList();
-        Expect(names.Any(n => n.EndsWith(@"\n45_00_00_00_000001.hkx") && n.Contains("INTERROOT_win64")), string.Join(", ", names));
-        Expect(names.Any(n => n.EndsWith(".compendium")) && !names.Any(n => n.EndsWith("000100.hkx")), "compendium kept, host navmesh left out");
     }
 
     private static FLVER2 SyntheticFlver(int version, string mtd, params (string Param, string Path)[] textures)
