@@ -154,12 +154,62 @@ public sealed partial class EffectModelPort
     }
 
     /// <summary>
-    /// Converts a DS3 effect model. <paramref name="newTexture"/> gives the Elden Ring ID a DS3 effect texture file
+    /// DS3 effect models that are drawn standing on the ground but reach below their own origin, so part of them is
+    /// under the floor in DS3 too. A deliberate departure from DS3 (Devin's choice, 2026-11-11): they are raised so
+    /// their lowest point is at the origin; sizes and proportions stay. 4023: Friede's ice shards (box Y -0.234 ..
+    /// 0.446). DARKSIGN_GROUND_MODELS=0 keeps DS3's placement.
+    /// </summary>
+    public static bool StandsOnGround(int ds3Model) =>
+        ds3Model is 4023 && Environment.GetEnvironmentVariable("DARKSIGN_GROUND_MODELS") != "0";
+
+    /// <summary>How far the last model converted with onGround was raised (0: not raised).</summary>
+    public float Lifted { get; private set; }
+
+    // Moves the vertices up (Y) so the lowest one is at the origin, with the boxes. Only for a model whose nodes
+    // leave the mesh where it is: with a node that moves or turns it, "up" in the vertices is not up as drawn.
+    internal static float StandOnOrigin(FLVER2 flver)
+    {
+        var vertices = flver.Meshes.SelectMany(m => m.Vertices).ToList();
+        bool plainNodes = flver.Nodes.All(n => n.Translation == System.Numerics.Vector3.Zero && n.Rotation == System.Numerics.Vector3.Zero
+                                               && n.Scale == System.Numerics.Vector3.One);
+        if (vertices.Count == 0 || !plainNodes)
+            return 0;
+        float lift = -vertices.Min(v => v.Position.Y);
+        if (lift <= 0)
+            return 0;
+        var up = new System.Numerics.Vector3(0, lift, 0);
+        foreach (var vertex in vertices)
+            vertex.Position += up;
+        flver.Header.BoundingBoxMin += up;
+        flver.Header.BoundingBoxMax += up;
+        foreach (var mesh in flver.Meshes)
+            if (mesh.BoundingBox is { } box)
+            {
+                box.Min += up;
+                box.Max += up;
+            }
+        foreach (var node in flver.Nodes)
+        {
+            // Nodes without geometry carry an inverted "empty" box (min above max): left as it is.
+            if (node.BoundingBoxMin.Y <= node.BoundingBoxMax.Y)
+            {
+                node.BoundingBoxMin += up;
+                node.BoundingBoxMax += up;
+            }
+        }
+        return lift;
+    }
+
+    /// <summary>
+    /// Converts a DS3 effect model. With onGround the model is first raised to stand on its origin
+    /// (see <see cref="StandsOnGround"/>). <paramref name="newTexture"/> gives the Elden Ring ID a DS3 effect texture file
     /// is ported under (null: not ported, the slot keeps the material's default).
     /// </summary>
-    public byte[] Convert(byte[] ds3Flver, Func<int, int?> newTexture)
+    public byte[] Convert(byte[] ds3Flver, Func<int, int?> newTexture, bool onGround = false)
     {
         var flver = FLVER2.Read(ds3Flver);
+        if (onGround)
+            Lifted = StandOnOrigin(flver);
         var materials = new List<FLVER2.Material>();
         var gxLists = new List<FLVER2.GXList>();
         var gxOf = new Dictionary<(string Model, int Index), int>();

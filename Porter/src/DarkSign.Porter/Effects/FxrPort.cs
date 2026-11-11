@@ -210,7 +210,15 @@ public static partial class FxrPort
         var convertedModels = new Dictionary<int, byte[]>();
         foreach (var (old, _) in models.OrderBy(m => m.Key))
         {
-            try { convertedModels[old] = modelPort!.Convert(ds3.Resources[(Kind.Model, old)].File.Bytes, t => textures.TryGetValue(t, out var id) ? id : null); }
+            try
+            {
+                bool onGround = EffectModelPort.StandsOnGround(old);
+                convertedModels[old] = modelPort!.Convert(ds3.Resources[(Kind.Model, old)].File.Bytes, t => textures.TryGetValue(t, out var id) ? id : null, onGround);
+                if (onGround)
+                    Console.WriteLine(modelPort.Lifted > 0
+                        ? $"effects: DS3 model s{old:D5} raised {modelPort.Lifted:0.###} to stand on the ground (DS3 has that much of it below its origin; DARKSIGN_GROUND_MODELS=0 keeps DS3's placement)"
+                        : $"effects: DS3 model s{old:D5} was to be raised to stand on the ground but is left as DS3 has it (nothing below its origin, or a node moves the mesh)");
+            }
             catch (Exception e) when (e is not OutOfMemoryException)
             {
                 Console.WriteLine($"effects: can't convert DS3 model s{old:D5}: {Short(e)}");

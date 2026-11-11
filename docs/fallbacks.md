@@ -224,6 +224,7 @@ Try the next option if: A ported weapon shows no glow, buff effect or projectile
 - **F: Projectile events as DS3 writes them.** As A, but the event that fires a projectile is copied from DS3 byte for byte (DARKSIGN_BULLET_EVENTS=ds3) instead of being rewritten in Elden Ring's layout, as in builds up to 1.0.271. (`DARKSIGN_BULLET_EVENTS=ds3`)
 - **G: Projectiles without the weapon's attack power.** As A, but a projectile's hit doesn't count the weapon's own attack power or status build-up (DARKSIGN_BULLET_BASE_ATK=0), as in builds up to 1.0.279, where DS3 projectiles hit for nothing. Try this if a projectile hits far too hard. (`DARKSIGN_BULLET_BASE_ATK=0`)
 - **H: No projectiles for weapons built as their class.** As A, but a weapon whose own DS3 moves found no free motion category, and so is built as its class, loses the projectiles its own moves fire (DARKSIGN_BORROW_BULLETS=0), as in builds up to 1.0.282: the Moonlight Greatsword's charged heavy fired no wave. (`DARKSIGN_BORROW_BULLETS=0`)
+- **I: Ice shards where DS3 has them.** As A, but Friede's ice shards keep DS3's placement, a third of each shard under the floor (DARKSIGN_GROUND_MODELS=0), as in builds up to 1.0.326. Try this if the shards float above the ground. (`DARKSIGN_GROUND_MODELS=0`)
 - **off: Off.** Neither (DARKSIGN_BULLETS=0 and DARKSIGN_EFFECT_VISUALS=0): only the effects in a move's own effect events show, as in builds up to 1.0.242. (`DARKSIGN_BULLETS=0`, `DARKSIGN_EFFECT_VISUALS=0`)
 
 

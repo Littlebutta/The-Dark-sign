@@ -295,6 +295,8 @@ public static class Fallbacks
                 { PorterEnv = Env("DARKSIGN_BULLET_BASE_ATK", "0") },
             new("H", "No projectiles for weapons built as their class", "As A, but a weapon whose own DS3 moves found no free motion category, and so is built as its class, loses the projectiles its own moves fire (DARKSIGN_BORROW_BULLETS=0), as in builds up to 1.0.282: the Moonlight Greatsword's charged heavy fired no wave.")
                 { PorterEnv = Env("DARKSIGN_BORROW_BULLETS", "0") },
+            new("I", "Ice shards where DS3 has them", "As A, but Friede's ice shards keep DS3's placement, a third of each shard under the floor (DARKSIGN_GROUND_MODELS=0), as in builds up to 1.0.326. Try this if the shards float above the ground.")
+                { PorterEnv = Env("DARKSIGN_GROUND_MODELS", "0") },
             new("off", "Off", "Neither (DARKSIGN_BULLETS=0 and DARKSIGN_EFFECT_VISUALS=0): only the effects in a move's own effect events show, as in builds up to 1.0.242.")
                 { PorterEnv = Env("DARKSIGN_BULLETS", "0", "DARKSIGN_EFFECT_VISUALS", "0") },
         ]),

@@ -197,6 +197,19 @@ public static class EffectSelfTest
               && portedModel.Materials[1].Textures.Select(t => t.Path).SequenceEqual([@"N:\GR\data\Sfx\Tex\s908120_a.tif", @"N:\GR\data\Sfx\Tex\s908120_n.tif", ""]),
             "effect models: textures go into the Elden Ring slots of the same kind under their new names; an unported one stays the default");
         Check(portedModel.Meshes.All(m => m.Vertices.All(v => v.Tangents.Count == 1)) && portedModel.Meshes[0].Vertices[1].Position.X == 1f, "effect models: DS3's geometry, with the tangent Elden Ring's layout carries");
+        // A model that stands on the ground is raised so its lowest vertex is at the origin, boxes with it.
+        var sunk = FLVER2.Read(frost);
+        foreach (var v in sunk.Meshes.SelectMany(m => m.Vertices)) v.Position -= new System.Numerics.Vector3(0, 0.25f, 0);
+        float sunkTop = sunk.Meshes.SelectMany(m => m.Vertices).Max(v => v.Position.Y), sunkBoxTop = sunk.Header.BoundingBoxMax.Y;
+        var raised = FLVER2.Read(modelPort.Convert(sunk.Write(), _ => null, onGround: true));
+        var raisedY = raised.Meshes.SelectMany(m => m.Vertices).Select(v => v.Position.Y).ToList();
+        Check(modelPort.Lifted > 0 && Math.Abs(raisedY.Min()) < 1e-5f && Math.Abs(raisedY.Max() - (sunkTop + modelPort.Lifted)) < 1e-5f
+              && Math.Abs(raised.Header.BoundingBoxMax.Y - (sunkBoxTop + modelPort.Lifted)) < 1e-5f, "effect models: a ground model is raised to stand on its origin, size kept");
+        Check(FLVER2.Read(modelPort.Convert(sunk.Write(), _ => null)).Meshes.SelectMany(m => m.Vertices).Min(v => v.Position.Y) < 0, "effect models: other models stay where DS3 has them");
+        sunk.Nodes[0].Translation = new System.Numerics.Vector3(0, 1, 0);
+        modelPort.Convert(sunk.Write(), _ => null, onGround: true);
+        Check(modelPort.Lifted == 0, "effect models: a model whose node moves the mesh is not raised");
+        Check(EffectModelPort.StandsOnGround(4023) && !EffectModelPort.StandsOnGround(4024), "effect models: Friede's ice shard model stands on the ground, its debris does not");
 
         // A sound an effect holds while its node lives: played once (flag cleared) unless the map lists it as a
         // sound with a Stop event, which Elden Ring can end; either way it is renumbered.
