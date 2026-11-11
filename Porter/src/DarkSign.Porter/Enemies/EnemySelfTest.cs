@@ -87,6 +87,32 @@ public static class EnemySelfTest
         Check("an Elden Ring entry's file: its own, the one it borrows, none when it plays another entry",
             ChrPort.ErHkx(moveTae.Animations[1], 0) == (0, 20) && ChrPort.ErHkx(moveTae.Animations[0], 0) == (0, 20) && ChrPort.ErHkx(moveTae.Animations[2], 0) is null);
 
+        // The body of a character whose model isn't ported: by kind, never wildlife (the Undead Settlement's
+        // Overgrown Skeletons were deer on 1.0.271: the deer shared the most bone names with them).
+        var deer = new EnemyPort.ErEnemy("c6010", 60100000, 60100000, "Deer", false, "test");
+        var erSkeleton = new EnemyPort.ErEnemy("c3500", 35000000, 35000000, "Large Skeleton", false, "test");
+        var erBoss = new EnemyPort.ErEnemy("c4640", 46400000, 46400000, "Ulcerated Tree Spirit", true, "test");
+        var ds3SkeletonBones = new[] { "Master", "Pelvis", "Tail1", "RootPos", "Sword" };
+        var bodyBones = new Dictionary<string, IReadOnlyList<string>>(shapes.ToDictionary(kv => kv.Key, kv => kv.Value.Names))
+        {
+            ["c6010"] = ["Master", "Pelvis", "Tail1", "Tail2"], ["c3500"] = ["Master", "Skull"], ["c4640"] = ["Master", "Root1"],
+        };
+        var ds3Skeleton = new ChrPort.Ds3Chr(1070, "Overgrown Skeleton - Scimitar - Undead Settlement", false, [107000]);
+        Check("bone names alone would pick the deer",
+            ChrPort.BoneMatch(ds3SkeletonBones, bodyBones["c6010"]) > ChrPort.BoneMatch(ds3SkeletonBones, bodyBones["c3500"]));
+        Check("an unported DS3 skeleton stands as an Elden Ring skeleton",
+            ChrPort.PickBody(ds3Skeleton, ds3SkeletonBones, [deer, erSkeleton, knight], e => bodyBones[e.Model])?.Template.Model == "c3500");
+        var ds3Odd = new ChrPort.Ds3Chr(2150, "Crystal Lizard", false, [215000]);
+        Check("with no Elden Ring enemy of its kind, the best-matching opponent stands in, not wildlife or a boss",
+            ChrPort.PickBody(ds3Odd, dog.Names, [deer, erBoss, knight, hound], e => bodyBones[e.Model])?.Template.Model == "c4410");
+        var ds3Boss = new ChrPort.Ds3Chr(5270, "Dancer of the Boreal Valley", true, [527000]);
+        Check("an unported DS3 boss stands as an Elden Ring boss",
+            ChrPort.PickBody(ds3Boss, human.Names, [deer, knight, erBoss], e => bodyBones[e.Model])?.Template.Model == "c4640");
+        Check("only wildlife to choose from means no body", ChrPort.PickBody(ds3Skeleton, ds3SkeletonBones, [deer], e => bodyBones[e.Model]) is null);
+        Check("wildlife and helper characters are bystanders, enemies are not",
+            new[] { "Deer", "Eagle", "Talk Dummy", "Bullet Dummy", "Bonfire", "BuddyStone", "Ash of War Scarab", "Melina" }.All(DarkSign.Randomizer.Logic.EnemyKinds.IsBystander)
+            && !new[] { "Warhawk", "Large Skeleton", "Giant Rat", "Wolf", "Howling Imp", "Goatman", "Exile Soldier" }.Where(DarkSign.Randomizer.Logic.EnemyKinds.IsBystander).Any());
+
         // New character IDs: DS3 order, skipping IDs the game has, identical on every PC.
         var ids = ChrPort.AssignIds([1300, 1100, 1100, 1200], n => n == 7001);
         Check("character IDs go in DS3 order and skip taken ones (c1100->7000, c1200->7002, c1300->7003)",

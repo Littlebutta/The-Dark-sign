@@ -114,6 +114,16 @@ public static partial class ChrPort
         return kept;
     }
 
+    /// <summary>Share of bone names two skeletons have in common (Jaccard, case-insensitive; 0 when either is empty).</summary>
+    public static double BoneMatch(IEnumerable<string> a, IEnumerable<string> b)
+    {
+        var x = a.Where(n => n.Length > 0).Select(n => n.ToLowerInvariant()).ToHashSet();
+        var y = b.Where(n => n.Length > 0).Select(n => n.ToLowerInvariant()).ToHashSet();
+        if (x.Count == 0 || y.Count == 0)
+            return 0;
+        return x.Intersect(y).Count() / (double)x.Union(y).Count();
+    }
+
     /// <summary>How alike two sizes are, 0 to 1 (1 = equal; 0.5 when either is unknown).</summary>
     public static double SizeMatch(float a, float b) => a <= 0 || b <= 0 ? 0.5 : Math.Min(a, b) / Math.Max(a, b);
 
@@ -159,6 +169,41 @@ public static partial class ChrPort
         return ranked.OrderByDescending(r => r.Item2 >= MinBoneMatch && r.Item3 >= MinSizeMatch).ThenByDescending(r => r.Item3 >= MinSizeMatch)
             .ThenByDescending(r => r.Item4)
             .ThenBy(r => r.Item1.Model, StringComparer.OrdinalIgnoreCase).ToList();
+    }
+
+    /// <summary>
+    /// The Elden Ring body for a DS3 character whose own model isn't ported (method C: the bone match is below
+    /// <see cref="MinBoneMatch"/>, or the template has no animations). The player sees this body, so it is picked
+    /// by what the enemy is, not by leftover bone names: an enemy of the same kind and boss-ness, else of the same
+    /// kind, else of the same boss-ness, else any; the bone match only ranks within the first group that has one.
+    /// Until 1.0.271 the best bone match was kept, which made DS3's skeletons deer and Midir an eagle.
+    /// </summary>
+    public static (EnemyPort.ErEnemy Template, double Match)? PickBody(Ds3Chr ds3, IReadOnlyList<string> ds3Bones,
+        IReadOnlyList<EnemyPort.ErEnemy> candidates, Func<EnemyPort.ErEnemy, IReadOnlyList<string>?> bonesOf)
+    {
+        var kind = EnemyPort.KindOf(ds3.Name);
+        var bodies = candidates.DistinctBy(c => c.Model, StringComparer.OrdinalIgnoreCase)
+            .Where(c => !DarkSign.Randomizer.Logic.EnemyKinds.IsBystander(c.Name) && bonesOf(c) is { Count: > 0 }).ToList();
+        Func<EnemyPort.ErEnemy, bool>[] groups =
+        [
+            c => kind.Length > 0 && c.Kind == kind && c.Boss == ds3.Boss,
+            c => kind.Length > 0 && c.Kind == kind,
+            c => c.Boss == ds3.Boss,
+            _ => true,
+        ];
+        foreach (var group in groups)
+        {
+            (EnemyPort.ErEnemy, double)? best = null;
+            foreach (var c in bodies.Where(group))
+            {
+                var match = BoneMatch(ds3Bones, bonesOf(c)!);
+                if (best is null || match > best.Value.Item2)
+                    best = (c, match);
+            }
+            if (best is not null)
+                return best;
+        }
+        return null;
     }
 
     /// <summary>New character IDs, in DS3 ID order (so every PC gets the same ones), skipping IDs the game has.</summary>
@@ -314,6 +359,7 @@ public static partial class ChrPort
     {
         var erShapes = new ConcurrentDictionary<int, Shape?>();
         Shape? ErShape(EnemyPort.ErEnemy e) => erShapes.GetOrAdd(ChrId(e.Model), c => ErShapeOf(erArchives, c));
+        IReadOnlyList<string>? ErNames(EnemyPort.ErEnemy e) => ErShape(e)?.Names;
         // DS3's skeletons are in its animation binders (large): read side by side, once.
         var ds3Shapes = new ConcurrentDictionary<int, Shape?>();
         Parallel.ForEach(characters, Parallelism.Options, c => ds3Shapes[c.Chr] = Ds3ShapeOf(ds3Archives, c.Chr));
@@ -331,6 +377,10 @@ public static partial class ChrPort
                 continue;
             }
             var chosen = pick.Match < MinBoneMatch && method != Method.Stats ? Method.Stats : method;
+            double boneMatch = pick.Match;
+            // The template's own body will be what stands there: pick it by kind (PickBody), not by bone names.
+            if (chosen == Method.Stats && PickBody(ds3Chr, shape.Names, catalog, ErNames) is { } body)
+                pick = body;
             int templateChr = ChrId(pick.Template.Model);
             if (chosen != Method.Stats)
             {
@@ -339,13 +389,16 @@ public static partial class ChrPort
                 int files = fileChrs.GetOrAdd(templateChr, c => FileChr(c, chr => AnimationCount(erArchives, chr)));
                 if (files < 0)
                 {
-                    notes.Add($"c{ds3Chr.Chr:D4} {ds3Chr.Name}: template {pick.Template.Model} and its base have no animations; using the template's body");
+                    notes.Add($"c{ds3Chr.Chr:D4} {ds3Chr.Name}: template {pick.Template.Model} and its base have no animations; using an Elden Ring body");
                     chosen = Method.Stats;
+                    if (PickBody(ds3Chr, shape.Names, catalog, ErNames) is { } other)
+                        pick = other;
+                    templateChr = ChrId(pick.Template.Model);
                 }
                 else
                     templateChr = files;
             }
-            plans.Add(new Plan(ds3Chr, pick.Template, templateChr, pick.Match, chosen, newChr));
+            plans.Add(new Plan(ds3Chr, pick.Template, templateChr, boneMatch, chosen, newChr));
         }
         return plans;
     }
