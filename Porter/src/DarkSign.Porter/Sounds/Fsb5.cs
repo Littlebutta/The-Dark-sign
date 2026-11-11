@@ -47,6 +47,27 @@ public sealed class Fsb5
         return head[..4].SequenceEqual("FSB5"u8) && count > 0 ? count : 0;
     }
 
+    /// <summary>
+    /// An encrypted FSB5's plain bytes, or null when the bytes aren't one: every byte's bits reversed, then XORed with
+    /// the key, as <see cref="EncryptedSampleCount"/> reads the header (FMOD's FSB encryption; vgmstream's fsb_keys.h).
+    /// </summary>
+    public static byte[]? Decrypt(byte[] bytes)
+    {
+        if (EncryptedSampleCount(bytes) <= 0)
+            return null;
+        var key = "FDPrVuT4fAFvdHJYAgyMzRF4EcBAnKg"u8;
+        var plain = new byte[bytes.Length];
+        for (int i = 0; i < bytes.Length; i++)
+        {
+            int b = bytes[i];
+            b = ((b & 0xF0) >> 4) | ((b & 0x0F) << 4);
+            b = ((b & 0xCC) >> 2) | ((b & 0x33) << 2);
+            b = ((b & 0xAA) >> 1) | ((b & 0x55) << 1);
+            plain[i] = (byte)(b ^ key[i % key.Length]);
+        }
+        return plain;
+    }
+
     public static Fsb5 Read(byte[] bytes, Func<string, bool>? keep = null)
     {
         if (!Is(bytes))

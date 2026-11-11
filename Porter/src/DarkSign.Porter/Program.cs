@@ -41,7 +41,7 @@ const string Usage = """
       timing-selftest              offline checks that ported moves' combo/cancel windows don't cut DS3 swings short
       enemy-diag survey|unpack <file>...  enemy port diagnostics: every character's skeleton and animation IDs; decompress files
       enemy-diag tae <anibnd> [from-to...]  a decompressed animation binder's TAE entries and events, and each file's length and blend hint
-      enemy-selftest               offline checks of the enemy porter (templates, IDs, skin indices, chr map, TAE merge)
+      enemy-selftest               offline checks of the enemy porter (templates, IDs, skin indices, chr map, TAE merge, effects, SpEffects, sound events)
       moveset-selftest             offline checks of how behaviour animation IDs are shared out among the ported movesets
       arts-selftest                offline checks of the weapon art port (hks patch, skill names)
       anim-selftest                offline checks of the bone retargeting (rest-pose corrections) and spline rotation rewrite
@@ -97,7 +97,12 @@ try
     if (argList[0].Equals("timing-selftest", StringComparison.OrdinalIgnoreCase))
         return MoveTiming.SelfTest();
     if (argList[0].Equals("enemy-selftest", StringComparison.OrdinalIgnoreCase))
-        return DarkSign.Porter.Enemies.EnemySelfTest.Run();
+    {
+        int enemy = DarkSign.Porter.Enemies.EnemySelfTest.Run();
+        int effects = DarkSign.Porter.Enemies.ChrEffectsSelfTest.Run();
+        Console.WriteLine(effects == 0 ? "enemy-selftest (effects, sounds, abilities): all checks passed" : $"enemy-selftest (effects, sounds, abilities): {effects} FAILED");
+        return enemy != 0 || effects != 0 ? 1 : 0;
+    }
     // Reads decompressed files only, so it needs neither game nor root (a cloud thread can run it on staged files).
     if (argList[0].Equals("enemy-diag", StringComparison.OrdinalIgnoreCase) && argList.Count >= 3 && argList[1].Equals("tae", StringComparison.OrdinalIgnoreCase))
         return DarkSign.Porter.Enemies.EnemyDiag.Tae(argList[2], argList.Skip(3).ToList());

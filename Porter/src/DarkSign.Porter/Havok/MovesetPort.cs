@@ -1455,6 +1455,10 @@ public sealed class AttackParamPort(ParamStore er, ParamStore ds3, string behavi
     /// standing in the template's or being dropped.</summary>
     public BulletPort? Bullets { get; set; }
 
+    /// <summary>When set, the effects a hit applies are ported in full (an enemy's curse or slow), not only the
+    /// status build-up a weapon's hit carries.</summary>
+    public bool FullHitEffects { get; init; }
+
     public string Summary => $"{_behaviors} behaviour rows ({_templateBehaviors} more from the templates, {_effectBehaviors} casting ported DS3 effects, " +
                              $"{_bulletBehaviors} firing ported DS3 bullets), {_attacks} attack rows";
 
@@ -1682,7 +1686,7 @@ public sealed class AttackParamPort(ParamStore er, ParamStore ds3, string behavi
         if (Effects is not null)
             for (int i = 0; i < 5; i++)
                 if (source[$"spEffect{i}"] is { } from && row[$"spEffectId{i}"] is { } to && Convert.ToInt32(from.Value) > 0
-                    && Effects.Port(Convert.ToInt32(from.Value), statusOnly: true) is > 0 and var effect)
+                    && Effects.Port(Convert.ToInt32(from.Value), statusOnly: !FullHitEffects) is > 0 and var effect)
                     to.Value = Convert.ChangeType(effect, to.Value!.GetType());
         _erAttack.Rows.Add(row);
         _erAttack.Rows.Sort((a, b) => a.ID.CompareTo(b.ID));

@@ -441,6 +441,15 @@ public static class Fallbacks
             new("B", "The Elden Ring template's drops", "Ported enemies keep the drops of the Elden Ring enemy they are built on (DARKSIGN_ENEMY_DROPS=template), as in every build before DS3 drops were ported.")
                 { PorterEnv = Env("DARKSIGN_ENEMY_DROPS", "template") },
         ]),
+        new("enemy-effects", "DS3 maps", "Ported DS3 enemies' effects, sounds and abilities", Stage.Build,
+            "A ported DS3 enemy crashes the game when it spawns or attacks, the game hangs loading it, ported enemies are silent or make wrong sounds, or their effects are missing or wrong.",
+        [
+            new("A", "DS3's effects, sounds and abilities (default)", "Every ported DS3 enemy gets DS3's visual effects in an effect file of its own, DS3's sounds in a sound bank of its own, and the SpEffects and projectiles its DS3 row and moves use (the Jailer's lantern glow and health drain). Work\\reports\\enemy-effects.tsv says what each enemy got."),
+            new("B", "DS3's effects and abilities, the template's sounds", "As A, but ported enemies keep the sounds of the Elden Ring enemy they are built on (DARKSIGN_ENEMY_SOUNDS=0). Use when ported enemies are silent, make wrong sounds, or the game crashes or hangs loading one with A.")
+                { PorterEnv = Env("DARKSIGN_ENEMY_SOUNDS", "0") },
+            new("C", "The Elden Ring template's effects and sounds", "Ported enemies keep the effects, sounds and abilities of the Elden Ring enemy they are built on (DARKSIGN_ENEMY_EFFECTS=0), as in every build up to 1.0.299.")
+                { PorterEnv = Env("DARKSIGN_ENEMY_EFFECTS", "0") },
+        ]),
         new("map-flags", "DS3 maps", "Where the DS3 maps' own flags are kept", Stage.Build,
             "In a DS3 map, bosses come back, opened doors and shortcuts close again or picked-up items return after a reload, or the pre-flight check says a map flag block is MISSING.",
         [
