@@ -19,7 +19,7 @@ namespace DarkSign.Porter.Maps;
 /// </summary>
 public sealed class EventPort
 {
-    public enum Kind { Other, Entity, Flag, FlagRangeStart, FlagRangeEnd, Event, Area, Block, PackedMap, Cutscene }
+    public enum Kind { Other, Entity, Flag, FlagRangeStart, FlagRangeEnd, Event, Area, Block, PackedMap, Cutscene, SpEffect }
 
     private readonly Emedf _ds3, _er;
     private readonly IReadOnlyList<(MapId Ds3, MapId Er)> _maps;
@@ -33,6 +33,14 @@ public sealed class EventPort
 
     public Report Stats { get; } = new();
 
+    /// <summary>
+    /// The Elden Ring ID of a DS3 SpEffect, or null to keep the DS3 ID. A ported enemy's DS3 SpEffects live at
+    /// 700,000,000 + the DS3 ID (<see cref="Enemies.ChrEffects.SpEffectId"/>), so "Set SpEffect", "Clear SpEffect" and
+    /// "IF Character Has SpEffect" must name those rows (Pontiff's sword auras, the Jailer's eye glow swap); an ID
+    /// with no ported row stays as it was. Null: every SpEffect ID stays (no regulation to look in).
+    /// </summary>
+    public Func<long, long?>? SpEffects { get; init; }
+
     /// <summary>Where DS3 action button prompts get their ActionButtonParam rows; without it they don't convert.</summary>
     public ActionButtons? Buttons { get; init; }
 
@@ -42,6 +50,9 @@ public sealed class EventPort
     public sealed class Report
     {
         public int Events, EventsDropped, Instructions, Converted, NoOps;
+        /// <summary>SpEffect IDs pointed at a ported row, and ones left at their DS3 ID (no ported row).</summary>
+        public int SpEffectsMoved, SpEffectsKept;
+        public SortedSet<long> SpEffectsKeptIds { get; } = [];
         public Dictionary<string, int> Unconverted { get; } = new();
         public List<string> Notes { get; } = [];
 
@@ -49,6 +60,8 @@ public sealed class EventPort
 
         public override string ToString() =>
             $"{Events - EventsDropped}/{Events} events, {Converted}/{Instructions} instructions converted, {NoOps} no-ops"
+            + (SpEffectsMoved + SpEffectsKept == 0 ? "" : $", SpEffects: {SpEffectsMoved} to ported rows, {SpEffectsKept} kept"
+                + (SpEffectsKeptIds.Count == 0 ? "" : $" ({string.Join(" ", SpEffectsKeptIds.Take(12))})"))
             + (Unconverted.Count == 0 ? "" : "; not converted: " + string.Join(", ",
                 Unconverted.OrderByDescending(u => u.Value).Take(12).Select(u => $"{u.Key} x{u.Value}")));
     }
@@ -116,6 +129,8 @@ public sealed class EventPort
             return Kind.Area;
         if (n == "block id")
             return Kind.Block;
+        if (n == "speffect id")
+            return Kind.SpEffect;
         if (n == "map id")
             return Kind.PackedMap;
         if (n.Contains("entity") || n == "initial area id" || n.Contains("respawn point"))
@@ -296,9 +311,57 @@ public sealed class EventPort
                     if (ds3.OwnsDs3Id(value))
                         return _commonMapFlags ? _flags.LocalFlag(value) : ds3.MoveEntity((int)value, er);
                 return _flags.Flag(value);
+            case Kind.SpEffect:
+                if (SpEffects?.Invoke(value) is { } moved)
+                {
+                    Stats.SpEffectsMoved++;
+                    return moved;
+                }
+                Stats.SpEffectsKept++;
+                Stats.SpEffectsKeptIds.Add(value);
+                return value;
             default:
                 return value;
         }
+    }
+
+    /// <summary>
+    /// Every DS3 SpEffect ID these scripts set, clear or check: written in an instruction, or passed to an event
+    /// that uses it as one (call <see cref="Learn"/> for every script first). The enemy port ports these rows too,
+    /// so a script's effect exists at its new ID even when no enemy move casts it.
+    /// </summary>
+    public SortedSet<int> ScriptSpEffects(IEnumerable<EMEVD> scripts)
+    {
+        var ids = new SortedSet<int>();
+        void Add(long v)
+        {
+            if (v is > 0 and < int.MaxValue)
+                ids.Add((int)v);
+        }
+        foreach (var e in scripts.SelectMany(s => s.Events))
+            for (int i = 0; i < e.Instructions.Count; i++)
+            {
+                var ins = e.Instructions[i];
+                if (ins.Bank == 2000 && ins.ID is 0 or 6)
+                {
+                    int head = ins.ID == 0 ? 8 : 4;
+                    if (ins.ArgData.Length < head)
+                        continue;
+                    var callee = BitConverter.ToUInt32(ins.ArgData, head - 4);
+                    if (_paramKinds.TryGetValue(callee, out var kinds))
+                        foreach (var (source, kind) in kinds)
+                            if (kind == Kind.SpEffect && head + source + 4 <= ins.ArgData.Length)
+                                Add(BitConverter.ToInt32(ins.ArgData, head + (int)source));
+                    continue;
+                }
+                if (_ds3.Get(ins.Bank, ins.ID) is not { } def)
+                    continue;
+                foreach (var arg in def.Args)
+                    if (KindOf(arg.Name) == Kind.SpEffect
+                        && !e.Parameters.Any(p => p.InstructionIndex == i && p.TargetStartByte == arg.Offset))
+                        Add(Emedf.Read(ins.ArgData, arg));
+            }
+        return ids;
     }
 
     private MapId? SlotFor(long area, long block) =>

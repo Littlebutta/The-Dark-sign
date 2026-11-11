@@ -15,6 +15,7 @@ public static partial class MapPortChecks
         yield return ("event port: flag ranges stay consecutive and the flag table reads back the same", EventFlagTable);
         yield return ("fallbacks: map-flags B gives map flags JortPob numbers and still moves entities to the slot", EventCommonMapFlags);
         yield return ("layout: connect collisions point at the neighbouring map's slot; ones to unported maps are left out", ConnectCollisions);
+        yield return ("event port: SpEffect IDs go to the enemy port's rows (700,000,000 + DS3 ID) where they exist, written or passed in", EventSpEffects);
         yield return ("event port: DS3 action buttons become IF Action Button in Area with one ActionButtonParam row per prompt", EventActionButtons);
     }
 
@@ -60,6 +61,9 @@ public static partial class MapPortChecks
           { "name": "Area ID", "type": 0 }, { "name": "Block ID", "type": 0 }, { "name": "Initial Area ID", "type": 5 } ] },
         { "name": "Hellkite Breath Control", "index": 36, "args": [ { "name": "Entity ID", "type": 5 } ] },
       ] },
+      { "index": 2004, "instrs": [
+        { "name": "Set SpEffect", "index": 8, "args": [ { "name": "Entity ID", "type": 5 }, { "name": "SpEffect ID", "type": 5 } ] },
+      ] },
       { "index": 2005, "instrs": [
         { "name": "(De)activate Object", "index": 3, "args": [ { "name": "Object Entity ID", "type": 5 }, { "name": "State", "type": 3 } ] },
       ] },
@@ -89,6 +93,9 @@ public static partial class MapPortChecks
           { "name": "Area ID", "type": 0 }, { "name": "Block ID", "type": 0 }, { "name": "Region ID", "type": 0 },
           { "name": "Index ID", "type": 0 }, { "name": "Initial Area Entity ID", "type": 2 },
           { "name": "Subarea Name Popup Message ID", "type": 5, "default": -1 } ] },
+      ] },
+      { "index": 2004, "instrs": [
+        { "name": "Set SpEffect", "index": 8, "args": [ { "name": "Entity ID", "type": 5 }, { "name": "SpEffect ID", "type": 5 } ] },
       ] },
       { "index": 2005, "instrs": [
         { "name": "Change Asset Enable State", "index": 3, "args": [
@@ -187,6 +194,45 @@ public static partial class MapPortChecks
         var kept = result.Events[1].Instructions;
         Expect(kept.Count == 2 && kept[0].Bank == 1001 && kept[1].Bank == 2003, "the unknown command isn't a no-op on the same line");
         Expect(port.Stats.EventsDropped == 1 && port.Stats.NoOps == 1, $"report: {port.Stats}");
+    }
+
+    private static void EventSpEffects()
+    {
+        var er = Emedf.Parse(ErDefs);
+        var ds3 = new EMEVD(EMEVD.Game.DarkSouls3);
+        var constructor = new EMEVD.Event(0, EMEVD.Event.RestBehaviorType.Default);
+        constructor.Instructions.Add(Ins(2000, 0, 0, 14000210u, 4000310, 10641));   // the effect passed in
+        constructor.Instructions.Add(Ins(2004, 8, 4000300, 10640));                // written: has a ported row
+        constructor.Instructions.Add(Ins(2004, 8, 10000, 4800));                   // written: no ported row
+        ds3.Events.Add(constructor);
+        var e = new EMEVD.Event(14000210, EMEVD.Event.RestBehaviorType.Default);
+        e.Instructions.Add(Ins(2004, 8, 0, 0));
+        e.Parameters.Add(new EMEVD.Parameter(0, 0, 0, 4));
+        e.Parameters.Add(new EMEVD.Parameter(0, 4, 4, 4));
+        ds3.Events.Add(e);
+
+        var rows = new HashSet<long> { Enemies.ChrEffects.SpEffectId(10640), Enemies.ChrEffects.SpEffectId(10641) };
+        var port = new EventPort(Emedf.Parse(Ds3Defs), er, [(Ds3Id, ErId)], new FlagMap())
+        {
+            SpEffects = id => Enemies.ChrEffects.SpEffectId((int)id) is > 0 and var n && rows.Contains(n) ? n : null,
+        };
+        port.Learn(ds3);
+        var wanted = port.ScriptSpEffects([ds3]);
+        Expect(wanted.SetEquals([10640, 10641, 4800]), $"script SpEffects read as {string.Join(" ", wanted)}, expected 4800 10640 10641");
+        var result = port.Convert(ds3, EMEVD.Game.Sekiro, MoveToSlot);
+        var ins = result.Events[0].Instructions;
+        Expect(BitConverter.ToInt32(ins[0].ArgData, 12) == 700_010_641, $"SpEffect passed in became {BitConverter.ToInt32(ins[0].ArgData, 12)}");
+        Expect(BitConverter.ToInt32(ins[0].ArgData, 8) == 45000310, "the entity passed in still moves");
+        Expect(Arg(ins[1], "SpEffect ID", er) == 700_010_640 && Arg(ins[1], "Entity ID", er) == 45000300,
+            $"Set SpEffect wrote {Arg(ins[1], "SpEffect ID", er)} on {Arg(ins[1], "Entity ID", er)}");
+        Expect(Arg(ins[2], "SpEffect ID", er) == 4800, "an effect with no ported row keeps its DS3 ID");
+        Expect(port.Stats.SpEffectsMoved == 2 && port.Stats.SpEffectsKept == 1 && port.Stats.ToString().Contains("SpEffects: 2 to ported rows, 1 kept (4800)"),
+            $"report: {port.Stats}");
+        var ps = result.Events[1].Parameters;
+        Expect(ps.Count == 2, "the event's SpEffect parameter was lost");
+        // No regulation: every ID stays.
+        var plain = NewEventPort();
+        Expect(plain.Move(10640, EventPort.Kind.SpEffect) == 10640, "without a regulation SpEffect IDs stay");
     }
 
     private static void EventParameters()

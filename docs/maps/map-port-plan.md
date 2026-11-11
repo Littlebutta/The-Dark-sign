@@ -255,6 +255,12 @@ Both games run the same event system, and DarkScript3 documents every instructio
   Each distinct prompt gets an ActionButtonParam row (74000000+) in the mod's regulation, copied from row 6000 the way
   JortPob does, with DS3's dummy poly, reach and angle. The prompt text is Elden Ring's when the words match ("Open"),
   otherwise DS3's words are added to `menu_dlc02`'s ActionButtonText (74000000+). `Maps/ActionButtons.cs`.
+- SpEffect IDs ("Set SpEffect", "Clear SpEffect", "IF Character Has SpEffect", written or passed to an event) go to
+  the enemy port's rows, 700,000,000 + the DS3 ID (`ChrEffects.SpEffectId`), so scripted effect changes on ported
+  enemies (Pontiff's sword auras 10640/10641, the Jailer's eye glow swap) find DS3's effect. The enemy params step
+  first ports every SpEffect the ported maps' scripts and DS3's common events use (`MapEvents.ScriptSpEffects`), so
+  the row exists even when no move casts it; an ID with no ported row keeps its DS3 ID. The `events:` log line of each
+  map counts `SpEffects: N to ported rows, M kept (ids)`, and the enemy port notes `SpEffects the map scripts use ported`.
 
 Not converted yet: sound and BGM instructions, map ceremonies and world tendency. Doors and levers only work once the
 DS3 objects themselves are ported (the next stage); until then the events wait for assets that aren't there.

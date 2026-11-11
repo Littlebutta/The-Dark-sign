@@ -442,6 +442,13 @@ public sealed class ChrEffects
 
     private SpEffectPort? _sp;
     private BulletPort? _bullets;
+
+    /// <summary>
+    /// DS3 SpEffects the ported maps' event scripts set, clear or check on characters (<see cref="Maps.MapEvents.ScriptSpEffects"/>):
+    /// ported too, so a scripted effect change (Pontiff's sword auras, the Jailer's eye glow swap) finds its row at
+    /// 700,000,000 + the DS3 ID even when no move casts it. The events step points the scripts there.
+    /// </summary>
+    public IReadOnlyCollection<int> ScriptEffects { get; set; } = [];
     private AttackParamPort? _attacks;
 
     /// <summary>
@@ -481,6 +488,23 @@ public sealed class ChrEffects
                 foreach (var id in built.Cast.Order())
                     if (!((_ds3SpEffects?[id]?.Name ?? "").TrimStart().StartsWith("[HKS]", StringComparison.OrdinalIgnoreCase)))
                         _sp.Port(id);
+        if (_sp is not null && ScriptEffects.Count > 0)
+        {
+            int ported = 0, missing = 0;
+            foreach (var id in ScriptEffects.Order())
+            {
+                if (_ds3SpEffects?[id] is not { } row)
+                {
+                    missing++;
+                    continue;
+                }
+                if (row.Name is { } name && name.TrimStart().StartsWith("[HKS]", StringComparison.OrdinalIgnoreCase))
+                    continue;
+                if (_sp.Port(id) > 0)
+                    ported++;
+            }
+            notes.Add($"enemy effects: {ported} of {ScriptEffects.Count} SpEffects the map scripts use ported ({missing} not in DS3's SpEffectParam)");
+        }
         return _attacks;
     }
 
