@@ -30,6 +30,8 @@ public static partial class EnemyDiag
             return Survey(ctx);
         if (args.Count >= 1 && args[0].Equals("plan", StringComparison.OrdinalIgnoreCase))
             return Plan(ctx, args.Skip(1).ToList());
+        if (args.Count >= 2 && args[0].Equals("pixels", StringComparison.OrdinalIgnoreCase))
+            return Pixels(ctx, args[1], args.Skip(2).ToList());
         if (args.Count >= 2 && args[0].Equals("textures", StringComparison.OrdinalIgnoreCase))
             return Textures(ctx, args.Skip(1).ToList());
         if (args.Count >= 2 && args[0].Equals("binder", StringComparison.OrdinalIgnoreCase))
@@ -130,6 +132,90 @@ public static partial class EnemyDiag
                 Console.WriteLine($"  texture {name}: {info}");
         }
         return 0;
+    }
+
+    /// <summary>
+    /// "enemy-diag pixels &lt;texture binder or tpf&gt; [name part...]": what the textures hold. Per texture the mean
+    /// colour (sRGB 0-255), the darkest and brightest luminance, the share of pixels cut out (alpha under 128) and,
+    /// for _m maps, the share that is metal (over 128); a 256-pixel PNG preview of each goes to
+    /// Work\reports\enemy-diag\png (alpha dropped, so a cut-out texture still shows its colours).
+    /// </summary>
+    private static int Pixels(PorterContext ctx, string file, List<string> parts)
+    {
+        var bytes = ReadAny(file);
+        var tpfs = TPF.Is(bytes) ? [TPF.Read(bytes)] : BND4.Read(bytes).Files.Where(f => TPF.Is(f.Bytes)).Select(f => TPF.Read(f.Bytes)).ToList();
+        var dir = ctx.WorkPath("reports", "enemy-diag", "png");
+        Directory.CreateDirectory(dir);
+        foreach (var t in tpfs.SelectMany(p => p.Textures).Where(t => parts.Count == 0 || parts.Any(p => t.Name.Contains(p, StringComparison.OrdinalIgnoreCase))))
+            try
+            {
+                var (px, w, h) = WeaponTextures.Decode(t.Bytes);
+                double r = 0, g = 0, b = 0, a = 0;
+                int cut = 0, bright = 0, lo = 255, hi = 0;
+                foreach (var c in px)
+                {
+                    r += c.r; g += c.g; b += c.b; a += c.a;
+                    int lum = (c.r * 54 + c.g * 183 + c.b * 19) >> 8;
+                    lo = Math.Min(lo, lum); hi = Math.Max(hi, lum);
+                    cut += c.a < 128 ? 1 : 0;
+                    bright += c.r > 128 ? 1 : 0;
+                }
+                double n = px.Length;
+                Console.WriteLine(FormattableString.Invariant($"{t.Name}: {w}x{h} mean rgb {r / n:0} {g / n:0} {b / n:0} alpha {a / n:0}, luminance {lo}-{hi}, cut out {100 * cut / n:0.0}%, red over 128 {100 * bright / n:0.0}%"));
+                int step = Math.Max(1, Math.Max(w, h) / 256), pw = w / step, ph = h / step;
+                var rgb = new byte[ph * (1 + pw * 3)];
+                for (int y = 0; y < ph; y++)
+                    for (int x = 0; x < pw; x++)
+                    {
+                        var c = px[y * step * w + x * step];
+                        int o = y * (1 + pw * 3) + 1 + x * 3;
+                        rgb[o] = c.r; rgb[o + 1] = c.g; rgb[o + 2] = c.b;
+                    }
+                File.WriteAllBytes(Path.Combine(dir, string.Concat(t.Name.Select(ch => char.IsLetterOrDigit(ch) || ch == '_' ? ch : '-')) + ".png"), Png(rgb, pw, ph));
+            }
+            catch (Exception ex) when (ex is not OutOfMemoryException)
+            {
+                Console.WriteLine($"{t.Name}: not decoded ({ex.GetType().Name}: {ex.Message})");
+            }
+        Console.WriteLine($"previews in {dir}");
+        return 0;
+    }
+
+    /// <summary>An 8-bit RGB PNG from scanlines that each start with a 0 filter byte.</summary>
+    private static byte[] Png(byte[] scanlines, int width, int height)
+    {
+        using var ms = new MemoryStream();
+        ms.Write([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]);
+        void Chunk(string type, byte[] data)
+        {
+            var head = new byte[4];
+            System.Buffers.Binary.BinaryPrimitives.WriteInt32BigEndian(head, data.Length);
+            ms.Write(head);
+            var body = System.Text.Encoding.ASCII.GetBytes(type).Concat(data).ToArray();
+            ms.Write(body);
+            uint crc = 0xFFFFFFFF;
+            foreach (byte v in body)
+            {
+                crc ^= v;
+                for (int k = 0; k < 8; k++)
+                    crc = (crc & 1) != 0 ? 0xEDB88320 ^ (crc >> 1) : crc >> 1;
+            }
+            System.Buffers.Binary.BinaryPrimitives.WriteUInt32BigEndian(head, ~crc);
+            ms.Write(head);
+        }
+        var ihdr = new byte[13];
+        System.Buffers.Binary.BinaryPrimitives.WriteInt32BigEndian(ihdr.AsSpan(0), width);
+        System.Buffers.Binary.BinaryPrimitives.WriteInt32BigEndian(ihdr.AsSpan(4), height);
+        ihdr[8] = 8; ihdr[9] = 2;
+        Chunk("IHDR", ihdr);
+        using (var z = new MemoryStream())
+        {
+            using (var deflate = new System.IO.Compression.ZLibStream(z, System.IO.Compression.CompressionLevel.Fastest, true))
+                deflate.Write(scanlines);
+            Chunk("IDAT", z.ToArray());
+        }
+        Chunk("IEND", []);
+        return ms.ToArray();
     }
 
     private static string Short(string name) => name.Replace('\t', ' ').Length > 34 ? name.Replace('\t', ' ')[..34] : name.Replace('\t', ' ');
