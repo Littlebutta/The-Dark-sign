@@ -29,6 +29,8 @@ public static partial class MapPortChecks
         yield return ("models: a DS3 map piece converts into a valid Elden Ring FLVER with its own material", ModelEndToEnd);
         foreach (var check in VisualChecks())
             yield return check;
+        foreach (var check in LightingChecks())
+            yield return check;
         yield return ("validate: layout checks catch a missing start point and parts without models", ValidateLayout);
         yield return ("validate: run event checks pass on ported events and catch a missing one", ValidateEvents);
         yield return ("navmesh: binder entries are renamed to the host map and keep the host's compendium", NavmeshBinder);

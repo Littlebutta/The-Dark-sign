@@ -325,6 +325,13 @@ public static class Fallbacks
             new("B", "Albedo only", "Every DS3 material uses the albedo-only material JortPob builds its maps on (port-maps --plain-materials): no normal maps, cut-outs or unlit sky, but the simplest shader there is.")
                 { MapsArgs = ["--plain-materials"] },
         ]),
+        new("map-lighting", "DS3 maps", "Lighting of the DS3 maps", Stage.Build,
+            "A DS3 map looks wrong since it got its own lighting: washed out, lit from inside walls, lamps in the wrong places, or the game hangs or crashes while it loads.",
+        [
+            new("A", "Sunlight, ambient light and DS3's lamps (default)", "DS3's sky dome casts no shadow, so the host map's sun reaches the map. The host's environment map (its ambient light) applies in a box around the whole DS3 map. DS3's own lamps (candles, bonfires, torches) replace the host's."),
+            new("B", "The host map's lighting, untouched", "Nothing is changed (port-maps --host-lighting): the sky dome shadows the map, there is no ambient light and the lamps are the colosseum's. Dark, as every build up to 1.0.284 was.")
+                { MapsArgs = ["--host-lighting"] },
+        ]),
         new("map-enemies", "DS3 maps", "Enemies and bosses in the DS3 maps", Stage.Build,
             "A DS3 map crashes or hangs while loading, enemies stand in walls or fall through the floor, or a boss fight never starts.",
         [

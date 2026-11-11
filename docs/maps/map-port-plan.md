@@ -124,9 +124,24 @@ template found falls back to opaque. Meshes with no stand-in yet (water, additiv
 cloud layers) are left out and counted in the log ("meshes left out"). A DS3 material with no normal map gets a
 flat one (`DKS_flat_n`). Fallbacks: `map-materials` B (albedo-only template) and `map-groups` C (no draw groups).
 
-**Sky and lighting.** DS3's sky is ordinary map pieces (009xxx, a 9 km dome), so it is drawn with the map. Elden
-Ring's own sky, sun, fog and ambient light come from the slot's gparam and light files, which are still the
-colosseum's: converting DS3's gparam is the next step for the look of the maps.
+**Sky and lighting.** DS3's sky is ordinary map pieces (009xxx, a 9 km dome), so it is drawn with the map. The
+sun, sky colours, fog and exposure come from the slot's gparam, which is still the colosseum's. Three things make
+that sun and its ambient light reach a DS3 map (`Maps/MapLighting.cs`; up to 1.0.284 the maps were lit only by the
+host's weak straight-down fill light, side faces black):
+
+- Unlit DS3 materials get `g_GX_bDisableShadowCasting` in their MATBIN. Elden Ring's map pieces cast shadows
+  whatever their layout flags say (332 of Stormveil's 343 pieces have IsShadowSrc off), so the dome around the map
+  kept the sun off all of it.
+- The layout carries the host's first EnvironmentMapEffectBox and EnvironmentMapPoint, the box grown to hold the
+  played area and at least Stormveil's catch-all size (4500 x 4500 x 3500 m). The ported layout is built from
+  scratch and had none; the colosseum's own box is 246 x 316 x 350 m around the arena.
+- DS3's lamps (`mXX_XX_00_00_000N.btl`, version 6) are written as the slot's light file in the host's version
+  (18): what a lamp is stays DS3's, and the fields that hold one value in every Stormveil and colosseum light take
+  that value. DS3's directional light is left out.
+
+Fallback `map-lighting` B (`--host-lighting`) turns all three off. Still the colosseum's: sun direction and
+colour, fog, exposure (DS3's LightSet group has the same field names as Elden Ring's and each DS3 part names a
+light set, so those can be carried over next), and what the environment map shows in reflections.
 
 ### Event scripts
 
