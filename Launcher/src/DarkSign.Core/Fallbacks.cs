@@ -342,6 +342,15 @@ public static class Fallbacks
             new("B", "Albedo only", "Every DS3 material uses the albedo-only material JortPob builds its maps on (port-maps --plain-materials): no normal maps, cut-outs or unlit sky, but the simplest shader there is.")
                 { MapsArgs = ["--plain-materials"] },
         ]),
+        new("map-texture-detail", "DS3 maps", "Texture detail of the DS3 maps", Stage.Build,
+            "A DS3 map hitches or stutters as you move through it, or its textures look blurrier up close than they did in 1.0.299.",
+        [
+            new("A", "Full textures near you, half size beyond (default)", "DS3's textures in full for map pieces within 128 m, and a half size low detail copy (a quarter of the memory) for everything further away, the way JortPob and Elden Ring's own maps keep a low detail copy."),
+            new("B", "Half size textures", "Every DS3 map texture at half its width and height, and quarter size beyond 128 m (port-maps --half-textures): for a graphics card whose memory DS3's textures still don't fit in.")
+                { MapsArgs = ["--half-textures"] },
+            new("C", "Full size twice, as up to 1.0.299", "The low detail copy is the full texture again and full textures load within 256 m (port-maps --full-low-textures): every texture of a map sits in graphics memory twice at full size.")
+                { MapsArgs = ["--full-low-textures"] },
+        ]),
         new("map-lighting", "DS3 maps", "Lighting of the DS3 maps", Stage.Build,
             "A DS3 map looks wrong since it got its own lighting: washed out, lit from inside walls, lamps in the wrong places, or the game hangs or crashes while it loads.",
         [
@@ -391,6 +400,13 @@ public static class Fallbacks
                 { PorterEnv = Env("DARKSIGN_ENEMY_ANIMS", "template") },
             new("F", "DS3 textures next to the template's", "As A, but DS3's textures are a second file in the template's high-quality texture binder with flat 'not metal' maps (DARKSIGN_ENEMY_TEXTURES=added), as in builds up to 1.0.271, where ported enemies drew blank silver. Use when ported enemies crash on spawn or the game hangs loading them with A.")
                 { PorterEnv = Env("DARKSIGN_ENEMY_TEXTURES", "added") },
+        ]),
+        new("enemy-drops", "DS3 maps", "What ported DS3 enemies drop", Stage.Build,
+            "A ported DS3 enemy drops nothing where DS3 drops something, drops the wrong item or far too often, the game crashes or hangs when a ported enemy dies, or the build's enemy params step says the drops were not ported.",
+        [
+            new("A", "DS3's drops and chances (default)", "Every ported DS3 enemy drops what it drops in DS3, with DS3's chances: ported weapons, and Elden Ring items of the same name. A DS3 item that isn't ported yet (armour, rings, most goods) keeps its chance and gives nothing; Work\\reports\\enemy-drops.tsv lists them all."),
+            new("B", "The Elden Ring template's drops", "Ported enemies keep the drops of the Elden Ring enemy they are built on (DARKSIGN_ENEMY_DROPS=template), as in every build before DS3 drops were ported.")
+                { PorterEnv = Env("DARKSIGN_ENEMY_DROPS", "template") },
         ]),
         new("map-flags", "DS3 maps", "Where the DS3 maps' own flags are kept", Stage.Build,
             "In a DS3 map, bosses come back, opened doors and shortcuts close again or picked-up items return after a reload, or the pre-flight check says a map flag block is MISSING.",

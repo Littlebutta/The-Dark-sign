@@ -37,6 +37,11 @@ public static class MapPorter
         /// <summary>--helper-pieces: DS3's reflection proxies, shadow casters and off-layer pieces stay in the map as
         /// ordinary pieces (fallback "map-helper-pieces" B; see <see cref="MsbPort.HelperKind"/>).</summary>
         public bool HelperPieces { get; set; }
+        /// <summary>
+        /// --half-textures / --full-low-textures: how much of each DS3 texture the game is given (launcher Fallbacks
+        /// "map-texture-detail"; see <see cref="MapTextures.Detail"/>).
+        /// </summary>
+        public MapTextures.Detail TextureDetail { get; set; } = MapTextures.Detail.Standard;
         public bool BinaryCollision { get; set; }
         public bool KeepSimdTree { get; set; }
 
@@ -65,6 +70,8 @@ public static class MapPorter
                     case "--vanilla-draw-param": o.VanillaDrawParam = true; break;
                     case "--host-lighting": o.HostLighting = true; break;
                     case "--helper-pieces": o.HelperPieces = true; break;
+                    case "--half-textures": o.TextureDetail = MapTextures.Detail.Half; break;
+                    case "--full-low-textures": o.TextureDetail = MapTextures.Detail.FullLow; break;
                     case "--binary-collision": o.BinaryCollision = true; break;
                     case "--simd": o.KeepSimdTree = true; break;
                     case "--enemies" when i + 1 < list.Count: o.Enemies = EnemyPort.ParseMethod(list[i + 1]); i++; break;
@@ -211,7 +218,7 @@ public static class MapPorter
             try
             {
                 if (!textures.TryGetValue(slot.Er.AreaFolder, out var areaTextures))
-                    textures[slot.Er.AreaFolder] = areaTextures = new MapTextures(slot.Er);
+                    textures[slot.Er.AreaFolder] = areaTextures = new MapTextures(slot.Er, options.TextureDetail);
                 var start = PortMap(ctx, ds3, er, slot, options, areaTextures, materials, report);
                 if (start > 0)
                     ported.Add((slot, start));
@@ -237,7 +244,7 @@ public static class MapPorter
         if (ported.Count > 0 && !options.VanillaDrawParam)
             Step(report, "map piece draw settings", () =>
             {
-                var (row, note) = MapDrawParams.Write(ctx);
+                var (row, note) = MapDrawParams.Write(ctx, options.TextureDetail == MapTextures.Detail.FullLow);
                 if (row != MapDrawParams.FirstRow)
                     foreach (var p in ported)
                         Repoint(ctx, p.Slot.Er, row);
@@ -549,6 +556,8 @@ public static class MapPorter
             report.AppendLine($"  note: {note}");
         if (!options.HostLighting)
             report.AppendLine($"  sunlight: {models.Materials.Count(m => m.Template.Kind == "nolight")} unlit materials (sky domes) cast no shadow");
+        if (test != PieceTest.VanillaModel && copied == 0)
+            report.AppendLine($"  load: {models.LoadSummary}");
         if (copied > 0)
             textures.Need(main.Textures, ds3Id);
         else if (!slot.Probe && test == PieceTest.None)

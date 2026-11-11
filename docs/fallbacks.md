@@ -271,6 +271,14 @@ Try the next option if: DS3 map geometry is invisible, black, far too dark or sh
 - **A: Elden Ring's map shaders by kind (default).** Each DS3 material is drawn with a copy of an Elden Ring map material of its kind: normal-mapped opaque, alpha-tested (foliage, grates), blended, and unlit (sky domes), each mesh rebuilt in that material's vertex layout.
 - **B: Albedo only.** Every DS3 material uses the albedo-only material JortPob builds its maps on (port-maps --plain-materials): no normal maps, cut-outs or unlit sky, but the simplest shader there is. (`port-maps --plain-materials`)
 
+### Texture detail of the DS3 maps (`map-texture-detail`, rebuilds the content)
+
+Try the next option if: A DS3 map hitches or stutters as you move through it, or its textures look blurrier up close than they did in 1.0.299.
+
+- **A: Full textures near you, half size beyond (default).** DS3's textures in full for map pieces within 128 m, and a half size low detail copy (a quarter of the memory) for everything further away, the way JortPob and Elden Ring's own maps keep a low detail copy.
+- **B: Half size textures.** Every DS3 map texture at half its width and height, and quarter size beyond 128 m (port-maps --half-textures): for a graphics card whose memory DS3's textures still don't fit in. (`port-maps --half-textures`)
+- **C: Full size twice, as up to 1.0.299.** The low detail copy is the full texture again and full textures load within 256 m (port-maps --full-low-textures): every texture of a map sits in graphics memory twice at full size. (`port-maps --full-low-textures`)
+
 ### Lighting of the DS3 maps (`map-lighting`, rebuilds the content)
 
 Try the next option if: A DS3 map looks wrong since it got its own lighting: washed out, lit from inside walls, lamps in the wrong places, or the game hangs or crashes while it loads.
@@ -312,6 +320,13 @@ Try the next option if: A ported DS3 enemy is invisible, black, shiny or wears t
 - **D: Template skeleton only.** As A, but the ported skeleton keeps only the Elden Ring template's bones (DARKSIGN_ENEMY_BONES=template), as in builds up to 1.0.263: DS3 weapons, skirts, hats and capes don't follow the animation. Use when ported enemies crash on spawn or when hit, or fold up, with A. (`DARKSIGN_ENEMY_BONES=template`)
 - **E: Template animations where DS3 has none.** As A, but a move of the Elden Ring template that DS3 has no move of the same ID for keeps the template's animation (DARKSIGN_ENEMY_ANIMS=template), as in builds up to 1.0.271, instead of playing the nearest DS3 move. Use when ported enemies freeze, slide or stand idle where they should step, fall or die with A. (`DARKSIGN_ENEMY_ANIMS=template`)
 - **F: DS3 textures next to the template's.** As A, but DS3's textures are a second file in the template's high-quality texture binder with flat 'not metal' maps (DARKSIGN_ENEMY_TEXTURES=added), as in builds up to 1.0.271, where ported enemies drew blank silver. Use when ported enemies crash on spawn or the game hangs loading them with A. (`DARKSIGN_ENEMY_TEXTURES=added`)
+
+### What ported DS3 enemies drop (`enemy-drops`, rebuilds the content)
+
+Try the next option if: A ported DS3 enemy drops nothing where DS3 drops something, drops the wrong item or far too often, the game crashes or hangs when a ported enemy dies, or the build's enemy params step says the drops were not ported.
+
+- **A: DS3's drops and chances (default).** Every ported DS3 enemy drops what it drops in DS3, with DS3's chances: ported weapons, and Elden Ring items of the same name. A DS3 item that isn't ported yet (armour, rings, most goods) keeps its chance and gives nothing; Work\reports\enemy-drops.tsv lists them all.
+- **B: The Elden Ring template's drops.** Ported enemies keep the drops of the Elden Ring enemy they are built on (DARKSIGN_ENEMY_DROPS=template), as in every build before DS3 drops were ported. (`DARKSIGN_ENEMY_DROPS=template`)
 
 ### Where the DS3 maps' own flags are kept (`map-flags`, rebuilds the content)
 
