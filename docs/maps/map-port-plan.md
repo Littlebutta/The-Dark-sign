@@ -214,12 +214,22 @@ Not changed, and the next suspects if a map still hitches:
 
 - Collision and navmesh are XML tagfiles, some 55 times the size of DS3's binary (a 4.7 MB file is 260 MB of XML
   the game parses). JortPob ships XML and calls binary "worse in engine" without saying how; fallback
-  `map-collision` B writes binary and is untested in game.
+  `map-collision` B wrote binary and was untested in game (binary is the default since 1.0.31x, see below).
 - Every map piece draws from everywhere (no draw groups, unlimited draw distance, no detail switch by distance),
   including DS3's far stand-in pieces. DS3 culls by draw group (`map-groups` B, whose mapping onto Elden Ring's
   three mask arrays is unconfirmed), and its models carry lower detail triangle lists the row never switches to
   (counted on the `load:` line).
 - Enemies that can't find a path (the navmesh's links are a separate problem) ask again every few seconds.
+
+2026-11-11, 1.0.304 playtest: the texture change did not fix it (the Undead Settlement still "really really bad",
+occasional hitches on the other two). The port log's new numbers named the collision: 3.4 GB (Cemetery), 3.5 GB
+(High Wall) and 7.5 GB (Undead Settlement) of XML tagfiles, largest files 252, 188 and 300 MB, against DS3's 28 MB
+binder for the Cemetery. Textures (320 to 540 MB) and triangles (15 to 16 million) are about equal on all three
+maps, and only the collision is twice as large on the map that runs worst. Since 1.0.31x collision and navmeshes
+are binary tagfiles by default (the size of DS3's files, every triangle compared after the round trip); XML is
+fallback `map-collision` B (`--xml-collision`). Whether Elden Ring takes binary tagfiles whose type information is
+inline (its own keep it in the binder's `.compendium`) is what the next playtest answers: falling through the
+floor on A means it doesn't.
 
 ### Event scripts
 

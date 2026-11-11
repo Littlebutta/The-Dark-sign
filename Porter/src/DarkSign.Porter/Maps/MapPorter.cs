@@ -60,7 +60,14 @@ public static class MapPorter
         public bool HostNavmeshList { get; set; }
         /// <summary>--navmesh-flags ds3: DS3's face data values are kept instead of cleared (fallback "map-navmesh" B).</summary>
         public bool Ds3NavmeshFlags { get; set; }
-        public bool BinaryCollision { get; set; }
+        /// <summary>
+        /// Collision and navmesh files are written as binary Havok tagfiles, the form Elden Ring ships its own in, unless
+        /// "--xml-collision" asks for XML tagfiles (fallback "map-collision" B). Up to 1.0.30x XML was the default: an
+        /// XML tagfile is some 55 times its DS3 file (a 4.7 MB file is 258 MB of text), and the game read 3.4 to 7.5 GB
+        /// of it per DS3 map, a 100 to 300 MB file each time the player walked into a new area (1.0.304 playtest:
+        /// hitches on every map, the Undead Settlement close to unplayable). A binary file is the size of DS3's.
+        /// </summary>
+        public bool BinaryCollision { get; set; } = true;
         public bool KeepSimdTree { get; set; }
 
         /// <summary>
@@ -105,7 +112,9 @@ public static class MapPorter
                     case "--full-low-textures": o.TextureDetail = MapTextures.Detail.FullLow; break;
                     case "--host-navmesh-list": o.HostNavmeshList = true; break;
                     case "--navmesh-flags" when i + 1 < list.Count: o.Ds3NavmeshFlags = list[i + 1].Equals("ds3", StringComparison.OrdinalIgnoreCase); i++; break;
+                    // Accepted from older launcher profiles: binary is the default now.
                     case "--binary-collision": o.BinaryCollision = true; break;
+                    case "--xml-collision": o.BinaryCollision = false; break;
                     case "--simd": o.KeepSimdTree = true; break;
                     case "--enemies" when i + 1 < list.Count: o.Enemies = EnemyPort.ParseMethod(list[i + 1]); i++; break;
                     case "--objects" when i + 1 < list.Count: o.Objects = ObjectPort.ParseMethod(list[i + 1]); i++; break;

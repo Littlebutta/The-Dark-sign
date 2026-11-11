@@ -14,6 +14,8 @@ public static class MapCollisions
 {
     /// <summary>Peak memory of converting a DS3 collision file, per byte of the file (measured: 4.7 MB peaked at 3.8 GB).</summary>
     private const long BytesPerDs3Byte = 1000;
+    /// <summary>The same for a binary tagfile, which never holds the text: the converted object graph alone (an estimate).</summary>
+    private const long BinaryBytesPerDs3Byte = 100;
 
     public sealed record Result(string Summary, HashSet<string> Ported);
 
@@ -89,7 +91,7 @@ public static class MapCollisions
             try
             {
                 var raw = DCX.Decompress(files[i].Bytes);
-                using var _ = budget.Take(raw.LongLength * BytesPerDs3Byte);
+                using var _ = budget.Take(raw.LongLength * (options.BinaryCollision ? BinaryBytesPerDs3Byte : BytesPerDs3Byte));
                 var result = CollisionPort.Convert(raw, template, !options.BinaryCollision, options.KeepSimdTree);
                 results[i] = (DCX.Compress(result.Bytes, compression), result.Triangles, null, result.Bytes.LongLength);
             }
@@ -122,7 +124,7 @@ public static class MapCollisions
         output.Write(ctx.ModPath(MapPorter.ModParts(target)), ctx.ModPath(MapPorter.ModParts(target[..^3] + "bdt")));
         var summary = $"{ported.Count} files, {triangles} triangles into {ItemText.Leaf(target)}"
                       + $" ({(options.BinaryCollision ? "binary" : "XML")} tagfiles, {(warmNote is null ? "serialized one at a time" : $"on {Parallelism.Threads} threads")}){templateNote}";
-        // The size the game reads: an XML tagfile is some 55 times its DS3 file, and the game parses each one.
+        // The size the game reads: a binary tagfile is about its DS3 file's size, an XML one some 55 times it.
         var written = results.Where(r => r.Bytes is not null).Select(r => r.Written).ToList();
         if (written.Count > 0)
             summary += $"; {written.Sum() / 1048576.0:F0} MB for the game to read, the largest file {written.Max() / 1048576.0:F0} MB";
