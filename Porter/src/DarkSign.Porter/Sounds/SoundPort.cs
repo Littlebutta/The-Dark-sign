@@ -58,6 +58,55 @@ public static class SoundPort
     /// </summary>
     private static readonly bool UseFev = Environment.GetEnvironmentVariable("DARKSIGN_SOUND_FEV") != "0";
 
+    /// <summary>
+    /// A ported sound plays at DS3's level and pitch, with DS3's random volume and pitch, unless
+    /// DARKSIGN_SOUND_LEVELS=0 (launcher fallback "sounds" H): then every sound plays at the template's level, as
+    /// builds before it did (half of DS3's weapon sounds are quieter than that in DS3, by up to 15 dB).
+    /// </summary>
+    public static readonly bool Levels = Environment.GetEnvironmentVariable("DARKSIGN_SOUND_LEVELS") != "0";
+
+    /// <summary>
+    /// A DS3 sound that loops until it is stopped loops in Elden Ring too, and every ported sound gets a Stop event
+    /// (Stop_&lt;letter&gt;&lt;ID&gt;, as each of Elden Ring's own has) so the game can end it, unless DARKSIGN_SOUND_LOOPS=0
+    /// (launcher fallback "sounds" I): then looping sounds play through once and there are no Stop events, as builds
+    /// before it did.
+    /// </summary>
+    public static readonly bool Loops = Environment.GetEnvironmentVariable("DARKSIGN_SOUND_LOOPS") != "0";
+
+    /// <summary>Whether the ported sounds get Stop events: what lets an effect hold a sound while it lives (FxrPort).</summary>
+    public static bool StopEvents => Loops && !DllSounds;
+
+    /// <summary>
+    /// How DS3 plays a layer of an event, for the new Wwise node: the event's and the sound definition's volume in
+    /// dB added up, their pitch in cents, their random volume (down to) and pitch (either way), and whether the
+    /// layer loops. null when the layer plays as it is cloned. Shared by the weapon and the enemy sound ports.
+    /// </summary>
+    internal static WwiseBank.Tuning? TuningOf(Fev.Event ds3Event, Fev.Layer layer)
+    {
+        // A tenth of a dB or half a cent is rounding of the stored linear values, not a level.
+        static float Clean(float value, float least) => float.IsFinite(value) && Math.Abs(value) >= least ? value : 0;
+        float volume = 0, pitch = 0, volumeRandom = 0, pitchRandom = 0;
+        if (Levels)
+        {
+            volume = Clean(Math.Max(-96f, Fev.Decibels(ds3Event.Volume) + Fev.Decibels(layer.Volume)), 0.1f);
+            pitch = Clean(Fev.Cents(ds3Event.Pitch + layer.Pitch), 0.5f);
+            volumeRandom = Math.Min(0, Clean(Math.Max(-96f, Fev.Decibels(ds3Event.VolumeRandomMin) + Fev.Decibels(layer.VolumeRandomMin)), 0.1f));
+            pitchRandom = Math.Max(0, Clean(Fev.Cents(ds3Event.PitchRandom + layer.PitchRandom), 0.5f));
+        }
+        bool loop = Loops && layer.Loops;
+        return volume == 0 && pitch == 0 && volumeRandom == 0 && pitchRandom == 0 && !loop
+            ? null
+            : new WwiseBank.Tuning(volume, pitch, volumeRandom, pitchRandom, loop);
+    }
+
+    /// <summary>The loop points a looping layer's wem gets: the DS3 sample's own, when it has them.</summary>
+    internal static (int Start, int End)? LoopPoints(Fsb5.Sample sample) =>
+        sample.LoopStart >= 0 && sample.LoopEnd > sample.LoopStart ? (sample.LoopStart, sample.LoopEnd) : null;
+
+    /// <summary>The Stop event of a ported sound: its ID, DS3's fade-out, and Elden Ring's Stop action to copy.</summary>
+    internal static WwiseBank.StopEvent StopOf(char letter, int id, Fev.Event? ds3Event, WwiseBank.HircObject? template) =>
+        new(FxSoundExplore.Fnv1($"Stop_{letter}{IdBase + id:D9}"), ds3Event?.FadeOutMs ?? 0, template);
+
     /// <summary>Where the edited index goes (me3 serves it in place of the game's).</summary>
     public static string IndexPath(PorterContext ctx) => ctx.ModPath("sound", "soundbanksinfo.mobnkinfo");
 
@@ -75,15 +124,27 @@ public static class SoundPort
 
         public int Count => _ported.Count;
 
+        private readonly HashSet<(int Kind, int Id)> _looping = [];
+
+        /// <summary>Whether the ported sound loops until its Stop event is posted: whatever plays it must end it.</summary>
+        public bool Loops(int kind, int id) => _looping.Contains((kind, id));
+
+        internal void AddLooping(int kind, int id) => _looping.Add((kind, id));
+
         /// <summary>The sounds went into their own bank (method E): Torrent's NpcParam rows must load it.</summary>
         public bool InOwnBank { get; internal set; }
     }
 
+    /// <summary>The TAE sound kind of effect sounds (s...), the ones effects play.</summary>
+    public const int EffectSoundKind = 5;
+
     /// <summary>The sample-name letter for a TAE sound kind, or null for kinds that aren't ported.</summary>
     public static char? Letter(int kind) => kind switch { 1 => 'c', 5 => 's', _ => null };
 
+    /// <param name="unheld">DS3 effect sounds (kind 5) some ported effect plays without holding them: these never
+    /// loop, because nothing would end them (see FxrPort.Result.UnheldSounds).</param>
     public static Result Apply(PorterContext ctx, GameArchives erArchives, GameArchives ds3Archives, IEnumerable<(int Kind, int Id)> wanted,
-        IEnumerable<int> templateIds)
+        IEnumerable<int> templateIds, IReadOnlySet<int>? unheld = null)
     {
         var result = new Result();
         var todo = wanted.Where(w => Letter(w.Kind) is not null && w.Id > 0 && w.Id < 100_000_000).Distinct().ToList();
@@ -105,14 +166,17 @@ public static class SoundPort
         // its sounds).
         WwiseBank bank = new();
         (WwiseBank.HircObject Event, WwiseBank.HircObject Action, WwiseBank.HircObject Sound) template = default;
+        WwiseBank.HircObject? stopTemplate = null;
         if (!DllSounds)
         {
             var bankBytes = erArchives.Read(Bank); // not DCX-compressed
             bank = WwiseBank.Read(bankBytes);
             // The template: the first Elden Ring player sound in the bank whose event plays a Sound through a Play action.
-            template = templateIds.Select(id => bank.Chain(FxSoundExplore.Fnv1($"Play_c{id:D9}"))).FirstOrDefault(c => c is not null)
+            int templateId = templateIds.FirstOrDefault(id => bank.Chain(FxSoundExplore.Fnv1($"Play_c{id:D9}")) is not null, -1);
+            template = bank.Chain(FxSoundExplore.Fnv1($"Play_c{templateId:D9}"))
                        ?? throw new InvalidDataException($"no template sound found in {Bank}");
             Console.WriteLine($"sounds: {Bank} version {bank.Version}, template event {template.Event.Id}, sound {template.Sound.Id}; {Tuning(bank, template.Sound)}");
+            stopTemplate = bank.StopTemplate(FxSoundExplore.Fnv1($"Stop_c{templateId:D9}"));
 
             // How well the node reader knows this bank (Spellforge reads every node of the game's banks to its exact size;
             // a type that falls short here means the new layout falls back to the older one for it).
@@ -142,22 +206,29 @@ public static class SoundPort
         var events = new List<uint>();
         int bytes = 0, variantsLost = 0, withEvent = 0, byEvent = 0, onlyByEvent = 0, layered = 0, dllLayersDropped = 0;
         List<string> missing = [], undecodable = [];
-        // One sample is decoded and embedded once, however many sounds play it (DS3 events share waves).
+        // One sample is decoded and embedded once, however many sounds play it (DS3 events share waves). A sample a
+        // looping layer plays is embedded apart, with its loop points (loopMedia), so a one-shot use of it stays as it was.
         var media = new Dictionary<Fsb5.Sample, (uint Id, byte[] Bytes)>(ReferenceEqualityComparer.Instance);
+        var loopMedia = new Dictionary<Fsb5.Sample, (uint Id, byte[] Bytes)>(ReferenceEqualityComparer.Instance);
         var failures = new Dictionary<Fsb5.Sample, string>(ReferenceEqualityComparer.Instance);
         HashSet<uint> taken = [], written = [];
+        int leveled = 0, pitched = 0, randomized = 0, stopSkipped = 0;
+        (float Db, string Name) largest = (0, "");
+        List<string> looping = [], unheldLoops = [];
         foreach (var (kind, id) in todo)
         {
             char letter = Letter(kind)!.Value;
             var name = $"{letter}{id:D9}";
             var ruleNames = suffixes.Select(v => name + v).ToList();
-            List<List<Fsb5.Sample>> layers = [];
+            // Each layer's samples, with how DS3 plays the layer (null without a DS3 event: as cloned).
+            List<(List<Fsb5.Sample> Samples, WwiseBank.Tuning? Tuning)> layers = [];
             if (ds3Events.TryGetValue(name, out var ds3Event))
             {
                 withEvent++;
                 layers = ds3Event.Event.Layers
-                    .Select(l => l.Waves.Select(Fev.SampleName).Distinct().Select(w => Pick(w, ds3Event.Fsb)).OfType<Fsb5.Sample>().ToList())
-                    .Where(l => l.Count > 0).ToList();
+                    .Select(l => (Samples: l.Waves.Select(Fev.SampleName).Distinct().Select(w => Pick(w, ds3Event.Fsb)).OfType<Fsb5.Sample>().ToList(),
+                        Tuning: DllSounds ? null : TuningOf(ds3Event.Event, l)))
+                    .Where(l => l.Samples.Count > 0).ToList();
                 if (layers.Count > 0)
                 {
                     byEvent++;
@@ -165,28 +236,48 @@ public static class SoundPort
                 }
             }
             if (layers.Count == 0 && ruleNames.Select(n => Pick(n, null)).OfType<Fsb5.Sample>().ToList() is { Count: > 0 } named)
-                layers.Add(named);
+                layers.Add((named, null));
             uint eventId = FxSoundExplore.Fnv1($"Play_{letter}{IdBase + id:D9}");
             if (layers.Count == 0) { reasons["no DS3 sample"] = reasons.GetValueOrDefault("no DS3 sample") + 1; missing.Add(name); continue; }
             if (bank.Has(eventId)) { reasons["event ID taken"] = reasons.GetValueOrDefault("event ID taken") + 1; continue; }
+            // The Stop event Elden Ring posts to end the sound (Stop_<letter><ID>): one for every ported sound, as
+            // every sound of the game's own has one. A sound that can't get one (its ID is taken) must not loop:
+            // nothing could end it.
+            var stop = StopEvents ? StopOf(letter, id, ds3Event.Event, stopTemplate) : null;
+            if (stop is not null && bank.Has(stop.EventId))
+            {
+                stop = null;
+                stopSkipped++;
+            }
+            // Nor must a sound an effect plays without holding it: the effect's end wouldn't end it.
+            bool playedUnheld = kind == EffectSoundKind && unheld?.Contains(id) == true;
+            if (playedUnheld && layers.Any(l => l.Tuning?.Loop == true))
+                unheldLoops.Add(name);
+            if (stop is null || playedUnheld)
+                layers = [.. layers.Select(l => (l.Samples, l.Tuning is { Loop: true } t ? t with { Loop = false } : l.Tuning))];
 
             // Each layer's samples as media (PCM wems; WAV files for the DLL). A layer none of whose samples decode
             // is left out; a sound none of whose layers decode is not ported.
-            var built = new List<List<(uint Id, byte[] Bytes)>>();
+            var built = new List<(List<(uint Id, byte[] Bytes)> Media, WwiseBank.Tuning? Tuning)>();
             string? failure = null;
-            foreach (var layer in layers)
+            foreach (var (layer, tuning) in layers)
             {
                 var sounds = new List<(uint Id, byte[] Bytes)>();
+                // A looping layer's wem carries the DS3 sample's loop points; a sample without them repeats whole.
+                bool loops = tuning?.Loop == true;
                 foreach (var s in layer)
                 {
-                    if (!media.ContainsKey(s) && !failures.ContainsKey(s))
+                    var store = loops && LoopPoints(s) is not null ? loopMedia : media;
+                    if (!store.ContainsKey(s) && !failures.ContainsKey(s))
                     {
                         try
                         {
                             var pcm = Fsb5.DecodePcm(s);
-                            media[s] = DllSounds
+                            store[s] = DllSounds
                                 ? (0, Wav(pcm, s.Channels, s.Rate))
-                                : (UnusedId(bank, $"darksign_media_{s.Name}", taken), WwiseBank.PcmWem(pcm, s.Channels, s.Rate));
+                                : store == loopMedia
+                                    ? (UnusedId(bank, $"darksign_media_{s.Name}_loop", taken), WwiseBank.PcmWem(pcm, s.Channels, s.Rate, LoopPoints(s)))
+                                    : (UnusedId(bank, $"darksign_media_{s.Name}", taken), WwiseBank.PcmWem(pcm, s.Channels, s.Rate));
                         }
                         catch (Exception e) when (e is not OutOfMemoryException)
                         {
@@ -195,18 +286,21 @@ public static class SoundPort
                                           + (e.Message.Contains("CRC") ? $" {s.SetupCrc} ({s.Channels} ch, {s.Rate} Hz)" : "");
                         }
                     }
-                    if (media.TryGetValue(s, out var m)) sounds.Add(m);
+                    if (store.TryGetValue(s, out var m)) sounds.Add(m);
                     else failure ??= failures[s];
                 }
                 if (sounds.Count > 0)
-                    built.Add(sounds);
+                    built.Add((sounds, tuning));
+                if (sounds.Count > 0 && loops)
+                    looping.Add($"{name} ({string.Join(", ", layer.Select(s => LoopPoints(s) is { } p ? $"{s.Name} frames {p.Start}-{p.End} of {s.Frames}" : $"{s.Name} whole"))}; " +
+                                $"fade-out {ds3Event.Event?.FadeOutMs ?? 0} ms)");
             }
             if (built.Count == 0) { reasons[failure!] = reasons.GetValueOrDefault(failure!) + 1; undecodable.Add($"{name} ({failure})"); continue; }
             if (failure is not null) variantsLost++;
             if (DllSounds)
             {
                 // The DLL plays one WAV per sound: the first layer's first sample.
-                var wav = built[0][0].Bytes;
+                var wav = built[0].Media[0].Bytes;
                 File.WriteAllBytes(ctx.ModPath(DllSoundFolder, $"{letter}{IdBase + id:D9}.wav"), wav);
                 result.Add(kind, id);
                 bytes += wav.Length;
@@ -219,10 +313,14 @@ public static class SoundPort
             {
                 string tag = $"{letter}{id}{(l == 0 ? "" : $"_layer{l}")}";
                 uint actionId = UnusedId(bank, $"darksign_action_{tag}", taken), containerId = UnusedId(bank, $"darksign_container_{tag}", taken);
-                var sounds = built[l].Select((m, v) => (UnusedId(bank, $"darksign_sound_{tag}{(v == 0 ? "" : $"_{v}")}", taken), m.Id, m.Bytes)).ToList();
-                newLayers.Add(new WwiseBank.Layer(actionId, containerId, sounds));
+                var sounds = built[l].Media.Select((m, v) => (UnusedId(bank, $"darksign_sound_{tag}{(v == 0 ? "" : $"_{v}")}", taken), m.Id, m.Bytes)).ToList();
+                newLayers.Add(new WwiseBank.Layer(actionId, containerId, sounds)
+                {
+                    Tuning = built[l].Tuning,
+                    StopActionId = StopEvents ? UnusedId(bank, $"darksign_stop_{tag}", taken) : 0,
+                });
             }
-            foreach (var (mediaId, wem) in built.SelectMany(l => l).Where(m => written.Add(m.Id)))
+            foreach (var (mediaId, wem) in built.SelectMany(l => l.Media).Where(m => written.Add(m.Id)))
             {
                 bytes += wem.Length;
                 // Embedded in the bank like nearly all of Elden Ring's own sounds (17,018 embedded, 3 streamed): the
@@ -231,10 +329,34 @@ public static class SoundPort
                 if (StreamSounds || Mirror)
                     File.WriteAllBytes(ctx.ModPath("sd", "wem", mediaName[..2], mediaName + ".wem"), wem); // me3: sd/wem/NN/<id>.wem
             }
-            bank.AddSound(template, eventId, newLayers, streamed: StreamSounds);
+            bank.AddSound(template, eventId, newLayers, streamed: StreamSounds, stop);
             if (newLayers.Count > 1) layered++;
             events.Add(eventId);
+            if (stop is not null) events.Add(stop.EventId);
             result.Add(kind, id);
+            var tunings = built.Select(b => b.Tuning).OfType<WwiseBank.Tuning>().ToList();
+            if (tunings.Any(t => t.Loop)) result.AddLooping(kind, id);
+            if (tunings.Any(t => t.VolumeDb != 0)) leveled++;
+            if (tunings.Any(t => t.PitchCents != 0)) pitched++;
+            if (tunings.Any(t => t.VolumeRandomDb != 0 || t.PitchRandomCents != 0)) randomized++;
+            if (tunings.Count > 0 && tunings.Min(t => t.VolumeDb) is var db && db < largest.Db) largest = (db, name);
+        }
+        if (!DllSounds && UseFev)
+        {
+            Console.WriteLine(Levels
+                ? $"sounds: DS3 levels: of {result.Count} ported sounds {leveled} play below the port's reference level as DS3 has them (event + sound definition volume), " +
+                  $"{pitched} at DS3's pitch, {randomized} with DS3's random volume or pitch" +
+                  (largest.Name != "" ? $"; the largest level change is {largest.Db:0.0} dB ({largest.Name})" : "") +
+                  (bank.TuningsLost > 0 ? $"; {bank.TuningsLost} layers kept the template's settings (node not readable)" : "")
+                : "sounds: DS3 levels: not applied (DARKSIGN_SOUND_LEVELS=0): every sound plays at the template's level");
+            Console.WriteLine(StopEvents
+                ? $"sounds: loops: {looping.Count} layers of {todo.Count(w => result.Loops(w.Kind, w.Id))} sounds loop until stopped (Loop property on the Sound, the DS3 sample's loop points in the wem); " +
+                  $"{bank.StopEventsAdded} Stop events added, one per ported sound (one Stop action per layer with DS3's fade-out, " +
+                  $"{(stopTemplate is null ? "built in Elden Ring's commonest layout: no Stop event of the template sound in the bank" : $"copied from the template sound's Stop action {stopTemplate.Id}")})" +
+                  (stopSkipped > 0 ? $"; {stopSkipped} sounds got none (event ID taken) and play once" : "") +
+                  (unheldLoops.Count > 0 ? $"; {unheldLoops.Count} looping DS3 sounds play once, because an effect plays them without holding them ({string.Join(", ", unheldLoops)})" : "") +
+                  (looping.Count > 0 ? $": {string.Join("; ", looping)}" : "")
+                : "sounds: loops: none, and no Stop events (DARKSIGN_SOUND_LOOPS=0): looping DS3 sounds play through once");
         }
         if (UseFev)
             Console.WriteLine($"sounds: {withEvent} of {todo.Count} wanted sounds have a DS3 event; {byEvent} take their samples from its waves " +

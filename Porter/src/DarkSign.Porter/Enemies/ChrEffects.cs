@@ -300,7 +300,7 @@ public sealed class ChrEffects
                     return (Fate.Other, e.Type, null); // the template's sound events stay as they are
                 if (_sounds!.Map(s.Kind, s.Id) is not { } id)
                     return (Fate.Drop, e.Type, null);
-                return _fx.SoundEvent(s.Kind, id) is { } sound ? (Fate.Add, sound.Type, sound.Bytes) : (Fate.Drop, e.Type, null);
+                return _fx.SoundEvent(s.Kind, id, _sounds.Loops(s.Kind, s.Id)) is { } sound ? (Fate.Add, sound.Type, sound.Bytes) : (Fate.Drop, e.Type, null);
             }
             return (Fate.Other, e.Type, null);
         }
@@ -318,9 +318,10 @@ public sealed class ChrEffects
 
     /// <summary>
     /// A ported sound as an Elden Ring sound event: the game's own one-shot Wwise_PlaySound_BySlot (129) layout the
-    /// weapon port found to play new sounds (see MovesetPort.SoundEvents), else the most common 128.
+    /// weapon port found to play new sounds (see MovesetPort.SoundEvents), else the most common 128. loops: the
+    /// sound loops until it is stopped, so it ends with the event as Elden Ring's own long sound events do.
     /// </summary>
-    internal (int Type, byte[] Bytes)? SoundEvent(int kind, int id)
+    internal (int Type, byte[] Bytes)? SoundEvent(int kind, int id, bool loops = false)
     {
         int type = OneShot && _swingSample is not null ? 129 : 128;
         var layout = type == 129 ? _swingSample : _soundSample;
@@ -336,7 +337,7 @@ public sealed class ChrEffects
             BitConverter.GetBytes(id).CopyTo(bytes, 24);
             bytes[28] = unchecked((byte)-1);                   // no weapon offset
             BitConverter.GetBytes(-1).CopyTo(bytes, 12);       // SlotID: none
-            bytes[18] = 0;                                     // PlaybackBehaviorType: until the sound ends
+            bytes[18] = loops ? (byte)1 : (byte)0;             // PlaybackBehaviorType: until the sound ends (a loop: with the event)
         }
         return (type, bytes);
     }
@@ -404,7 +405,7 @@ public sealed class ChrEffects
                 .Concat(effects.Sounds.Select(id => (5, id))).Where(s => SoundPort.Letter(s.Item1) is not null).Distinct().ToList();
             try
             {
-                sounds = _sounds.Build(plan, wantedSounds);
+                sounds = _sounds.Build(plan, wantedSounds, effects.UnheldSounds);
             }
             catch (Exception e) when (e is not OutOfMemoryException)
             {

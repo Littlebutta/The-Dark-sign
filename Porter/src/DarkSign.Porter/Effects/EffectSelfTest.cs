@@ -198,6 +198,22 @@ public static class EffectSelfTest
             "effect models: textures go into the Elden Ring slots of the same kind under their new names; an unported one stays the default");
         Check(portedModel.Meshes.All(m => m.Vertices.All(v => v.Tangents.Count == 1)) && portedModel.Meshes[0].Vertices[1].Position.X == 1f, "effect models: DS3's geometry, with the tangent Elden Ring's layout carries");
 
+        // A sound an effect holds while its node lives: played once (flag cleared) unless the map lists it as a
+        // sound with a Stop event, which Elden Ring can end; either way it is renumbered.
+        var js = new FxrPort.FxrScript();
+        var holding = js.Sample(440501, 0, 5, heldSound: 660200);
+        Check(js.Inspect(holding) is { } heldInfo && heldInfo.HeldSounds is [660200] && heldInfo.Sounds.Contains(660200) && heldInfo.UnheldSounds is [],
+            "held sounds: a DS3 effect's held sound is read, and is not among the ones it plays without holding");
+        const string renumber = "\"3\":{\"660200\":900660200}";
+        var once = js.SoundsOfConverted(js.Convert(holding, 900440501, $"{{\"once\":{{\"all\":1}},\"held\":{{}},{renumber}}}"));
+        Check(once.Held.Length == 0 && once.Sounds is [900660200], "held sounds: without a Stop event the sound plays once");
+        var kept = js.SoundsOfConverted(js.Convert(holding, 900440501, $"{{\"once\":{{\"all\":1}},\"held\":{{\"660200\":1}},{renumber}}}"));
+        Check(kept.Held is [900660200] && kept.Sounds is [900660200], "held sounds: a sound with a Stop event stays held");
+        var other = js.SoundsOfConverted(js.Convert(holding, 900440501, $"{{\"once\":{{\"all\":1}},\"held\":{{\"660201\":1}},{renumber}}}"));
+        Check(other.Held.Length == 0, "held sounds: another sound's Stop event doesn't keep this one held");
+        var all = js.SoundsOfConverted(js.Convert(holding, 900440501, $"{{\"once\":{{}},{renumber}}}"));
+        Check(all.Held is [900660200], "held sounds: kept as they are when nothing asks to play them once");
+
         Console.WriteLine(failures == 0 ? "effects-selftest: all checks passed" : $"effects-selftest: {failures} FAILED");
         return failures == 0 ? 0 : 1;
     }

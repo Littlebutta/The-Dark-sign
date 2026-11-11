@@ -425,7 +425,7 @@ public static partial class MovesetPort
         {
             sounds = soundSample is null ? new SoundPort.Result()
                 : SoundPort.Apply(ctx, erArchives, ds3Archives, ds3SectionEvents.Select(SoundPort.Sound).OfType<(int, int)>()
-                    .Concat(effects.Sounds.Select(id => (5, id))), templateSounds); // 5: s-sounds, the ones effects play
+                    .Concat(effects.Sounds.Select(id => (5, id))), templateSounds, effects.UnheldSounds); // 5: s-sounds, the ones effects play
         }
         catch (Exception e) when (e is not OutOfMemoryException)
         {
@@ -1284,7 +1284,10 @@ public static partial class MovesetPort
                 if (OneShot)
                 {
                     BitConverter.GetBytes(-1).CopyTo(bytes, 12); // SlotID: none
-                    bytes[18] = 0;                               // PlaybackBehaviorType: until the sound ends
+                    // PlaybackBehaviorType: until the sound ends. A sound that loops never ends by itself, so it
+                    // gets the type Elden Ring's own long sound events have (1: the sound ends with the event;
+                    // inferred from those events and the field's name, not observed in game).
+                    bytes[18] = sounds.Loops(s.Kind, s.Id) ? (byte)1 : (byte)0;
                 }
             }
             return new TAE.Event(e.StartTime, e.EndTime, type, e.Unk04, bytes, false);

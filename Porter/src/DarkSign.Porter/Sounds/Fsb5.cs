@@ -10,7 +10,9 @@ namespace DarkSign.Porter;
 /// </summary>
 public sealed class Fsb5
 {
-    public sealed record Sample(string Name, int Channels, int Rate, int Frames, int Codec, uint SetupCrc, byte[] Data);
+    /// <summary>LoopStart and LoopEnd: the sample's loop points in frames (its loop chunk, type 3: u32 start, u32 end, the
+    /// end being the last frame of the loop as vgmstream's fsb5.c reads it), or -1 when it has none.</summary>
+    public sealed record Sample(string Name, int Channels, int Rate, int Frames, int Codec, uint SetupCrc, byte[] Data, int LoopStart = -1, int LoopEnd = -1);
 
     public IReadOnlyList<Sample> Samples { get; }
 
@@ -78,7 +80,7 @@ public sealed class Fsb5
         int baseSize = version == 0 ? 0x40 : 0x3C;
         int namesAt = baseSize + headersSize, dataAt = namesAt + namesSize;
 
-        var heads = new List<(int Channels, int Rate, int Frames, int Offset, uint Crc)>();
+        var heads = new List<(int Channels, int Rate, int Frames, int Offset, uint Crc, int LoopStart, int LoopEnd)>();
         int p = baseSize;
         for (int i = 0; i < count; i++)
         {
@@ -89,6 +91,7 @@ public sealed class Fsb5
             // Data offset: bits 7-33, in units of 32 bytes (bit 6 belongs to the channel code).
             int offset = (int)((raw >> 7) & 0x7FFFFFF) * 32, frames = (int)((raw >> 34) & 0x3FFFFFFF);
             uint crc = 0;
+            int loopStart = -1, loopEnd = -1;
             while (more)
             {
                 uint chunk = BitConverter.ToUInt32(bytes, p);
@@ -99,11 +102,15 @@ public sealed class Fsb5
                 {
                     case 1: channels = bytes[body]; break;
                     case 2: rate = BitConverter.ToInt32(bytes, body); break;
+                    case 3 when size >= 8:
+                        loopStart = BitConverter.ToInt32(bytes, body);
+                        loopEnd = BitConverter.ToInt32(bytes, body + 4);
+                        break;
                     case 11: crc = BitConverter.ToUInt32(bytes, body); break;
                 }
                 p = body + size;
             }
-            heads.Add((channels, rate, frames, offset, crc));
+            heads.Add((channels, rate, frames, offset, crc, loopStart, loopEnd));
         }
 
         var samples = new List<Sample>();
@@ -120,7 +127,7 @@ public sealed class Fsb5
                 continue;
             int from = dataAt + heads[i].Offset;
             int to = i + 1 < count ? dataAt + heads[i + 1].Offset : Math.Min(bytes.Length, dataAt + dataSize);
-            samples.Add(new Sample(name, heads[i].Channels, heads[i].Rate, heads[i].Frames, codec, heads[i].Crc, bytes[from..to]));
+            samples.Add(new Sample(name, heads[i].Channels, heads[i].Rate, heads[i].Frames, codec, heads[i].Crc, bytes[from..to], heads[i].LoopStart, heads[i].LoopEnd));
         }
         return new Fsb5(samples);
     }
