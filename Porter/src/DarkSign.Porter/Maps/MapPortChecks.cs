@@ -31,6 +31,7 @@ public static partial class MapPortChecks
             yield return check;
         foreach (var check in LightingChecks())
             yield return check;
+        yield return ("sky: the host's distant view (Elden Ring's sky and Erdtree) is replaced with an empty layout, --host-sky keeps it", DistantView);
         foreach (var check in LoadChecks())
             yield return check;
         yield return ("validate: layout checks catch a missing start point and parts without models", ValidateLayout);
@@ -50,7 +51,7 @@ public static partial class MapPortChecks
         {
             Directory.CreateDirectory(root);
             var ctx = new PorterContext(root);
-            string[] ours = [ctx.ModPath("map", "mapstudio", "m50_00_00_00.msb.dcx"), ctx.ModPath("map", "m45", "m45_01_00_00", "h45_01_00_00.hkxbhd"),
+            string[] ours = [ctx.ModPath("map", "mapstudio", "m50_00_00_00.msb.dcx"), ctx.ModPath("map", "mapstudio", "m45_02_00_99.msb.dcx"), ctx.ModPath("map", "m45", "m45_01_00_00", "h45_01_00_00.hkxbhd"),
                 ctx.ModPath("map", "mapstudio", "m11_70_00_00.msb.dcx"), ctx.ModPath("map", "m11", "m11_70_00_00", "f11_70_00_00.hkxbhd"),
                 ctx.ModPath("map", "worldmsblist.worldloadlistlist.dcx"), ctx.ModPath("map", "breakgeom", "lod0", "m50_00_00_00_lod0.breakgeom.dcx"),
                 ctx.ModPath("map", "m45", "m45_0000.tpfbhd"), ctx.ModPath("event", "common.emevd.dcx"), ctx.ModPath("event", "common_func.emevd.dcx"),

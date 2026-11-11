@@ -157,6 +157,21 @@ looks like piece DrawGroups against collision DisplayGroups, each collision owni
 struct, which is not what `--ds3-groups` writes), and far scenery (m800000 mountain tiles 1 km below the map, the
 m9xxxxx views of other maps), which is unlit and gets no distance fog.
 
+### Sky
+
+Elden Ring keeps a second layout beside every legacy map, index 99 (`m45_02_00_99.msb` for `m45_02_00_00`): the
+map's distant view. It holds the sky (assets `AEG096_xxx`), the Erdtree (`AEG094_000` to `_010`; the burning one,
+`AEG094_1xx`, is switched in by `LegacyDistantViewPartsReplaceParam` rows whose `TargetMapId` is the index-99 ID)
+and far scenery, and the game loads it with the map although nothing in the map's own layout names it. That is why
+the DS3 maps, whose layouts are built from scratch, still stood under Elden Ring's sky with the Erdtree behind
+their houses (1.0.299 playtest). The colosseums have no `WorldMapLegacyConvParam` row, so they are not placed in
+the open world and its distant view (`m60_00_00_99`) is not involved.
+
+`MapDistantView` writes an empty layout in place of the slot's index-99 one; the sky that remains is DS3's own
+dome (map piece `m009000`). The build report's `sky:` line says what the host's distant view drew. Fallback
+`map-sky` B (`--host-sky`) leaves the host's distant view alone. Found by reading how JortPob edits
+`m60_00_00_99` (it keeps only the `AEG096` assets there).
+
 ### What a map costs the game to hold (hitching)
 
 2026-11-11 playtest of 1.0.299: large hitches on the High Wall (worst walking into Vordt's room), the Undead
