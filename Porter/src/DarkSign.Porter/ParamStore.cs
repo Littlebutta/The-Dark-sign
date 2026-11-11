@@ -46,6 +46,8 @@ public sealed class ParamStore
             ?? _data.ParamDef(_game, PascalCase(param.ParamType))
             // Paramdex names a few Elden Ring defs without the "Param" suffix (SpEffectParam -> SpEffect.xml).
             ?? (name.EndsWith("Param", StringComparison.Ordinal) ? _data.ParamDef(_game, name[..^5]) : null)
+            // Params that share one def carry a suffix (ItemLotParam_enemy and ItemLotParam_map -> ItemLotParam.xml).
+            ?? (name.LastIndexOf('_') is > 0 and var cut ? _data.ParamDef(_game, name[..cut]) : null)
             ?? throw new FileNotFoundException($"Paramdex has no def for {_game.ShortName} {name} ({param.ParamType}).");
         var def = PARAMDEF.XmlDeserialize(defFile, versionAware: true, validateFields: false);
         bool applied;
