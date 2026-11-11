@@ -40,6 +40,7 @@ const string Usage = """
       texture-selftest             offline checks of the DS3 reflectance -> Elden Ring metallic texture conversion
       timing-selftest              offline checks that ported moves' combo/cancel windows don't cut DS3 swings short
       enemy-diag survey|unpack <file>...  enemy port diagnostics: every character's skeleton and animation IDs; decompress files
+      enemy-diag tae <anibnd> [from-to...]  a decompressed animation binder's TAE entries and events, and each file's length and blend hint
       enemy-selftest               offline checks of the enemy porter (templates, IDs, skin indices, chr map, TAE merge)
       arts-selftest                offline checks of the weapon art port (hks patch, skill names)
       anim-selftest                offline checks of the bone retargeting (rest-pose corrections) and spline rotation rewrite
@@ -95,6 +96,9 @@ try
         return MoveTiming.SelfTest();
     if (argList[0].Equals("enemy-selftest", StringComparison.OrdinalIgnoreCase))
         return DarkSign.Porter.Enemies.EnemySelfTest.Run();
+    // Reads decompressed files only, so it needs neither game nor root (a cloud thread can run it on staged files).
+    if (argList[0].Equals("enemy-diag", StringComparison.OrdinalIgnoreCase) && argList.Count >= 3 && argList[1].Equals("tae", StringComparison.OrdinalIgnoreCase))
+        return DarkSign.Porter.Enemies.EnemyDiag.Tae(argList[2], argList.Skip(3).ToList());
     if (argList[0].Equals("arts-selftest", StringComparison.OrdinalIgnoreCase))
         return ArtSelfTest.Run();
     if (argList[0].Equals("anim-selftest", StringComparison.OrdinalIgnoreCase))

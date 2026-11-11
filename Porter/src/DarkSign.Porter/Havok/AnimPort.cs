@@ -339,6 +339,23 @@ public static class AnimPort
         };
     }
 
+    /// <summary>
+    /// Whether an Elden Ring animation file is an additive clip (a flinch played on top of the current move: enemy
+    /// 9000-9499) rather than a whole pose. The two kinds must not stand in for each other: a whole-body move in an
+    /// additive slot is added to the pose the character already has.
+    /// </summary>
+    public static bool IsAdditive(byte[] erHkx, byte[]? compendium)
+    {
+        lock (HavokLock)
+            return Container((hkRootLevelContainer)ReadEr(erHkx, compendium)).m_bindings.FirstOrDefault() is { } binding
+                   && binding.m_blendHint != hkaAnimationBinding.BlendHint.NORMAL;
+    }
+
+    /// <summary>Whether a DS3 animation file is an additive clip.</summary>
+    public static bool Ds3Additive(byte[] ds3Hkx) =>
+        HKX.Read(ds3Hkx, HKX.HKXVariation.HKXDS3, false).DataSection.Objects.OfType<HKX.HKAAnimationBinding>().FirstOrDefault() is { } binding
+        && binding.BlendHint.ToString() != "NORMAL";
+
     /// <summary>A DS3 animation file's length in seconds.</summary>
     public static float Duration(byte[] ds3Hkx) =>
         HKX.Read(ds3Hkx, HKX.HKXVariation.HKXDS3, false).DataSection.Objects.OfType<HKX.HKASplineCompressedAnimation>().FirstOrDefault()?.Duration ?? 0;

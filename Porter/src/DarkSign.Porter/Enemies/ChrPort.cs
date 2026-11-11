@@ -60,7 +60,68 @@ public static partial class ChrPort
     public sealed record Ds3Chr(int Chr, string Name, bool Boss, SortedSet<int> NpcParams);
 
     /// <summary>The choice for one DS3 character.</summary>
-    public sealed record Plan(Ds3Chr Ds3, EnemyPort.ErEnemy Template, int TemplateChr, double BoneMatch, Method Method, int NewChr);
+    public sealed record Plan(Ds3Chr Ds3, EnemyPort.ErEnemy Template, int TemplateChr, double BoneMatch, Method Method, int NewChr, Stage Stage = Stage.All);
+
+    /// <summary>
+    /// How far a character's port goes. Every ported character is <see cref="All"/>; the others are the test set
+    /// (<see cref="TestPlans"/>): the same character built one step further each time, so a fault seen in game (an
+    /// enemy that freezes once it is hit) can be pinned to the step that brings it in with one play session.
+    /// </summary>
+    public enum Stage
+    {
+        /// <summary>The template's files under the new ID, nothing from DS3; the template's NpcParam row.</summary>
+        Clone = 1,
+        /// <summary>+ DS3's model and textures.</summary>
+        Model,
+        /// <summary>+ DS3's bones in the animation skeleton (the template's animations still play).</summary>
+        Skeleton,
+        /// <summary>+ DS3's animations in the template's files (the template's events untouched).</summary>
+        Moves,
+        /// <summary>+ DS3's events in the moves: the full port's files, still on the template's NpcParam row.</summary>
+        Events,
+        /// <summary>The full port: + DS3's health and attack data.</summary>
+        All,
+    }
+
+    /// <summary>What a test stage adds, for the F1 spawn list and the report.</summary>
+    public static string StageName(Stage stage) => stage switch
+    {
+        Stage.Clone => "Elden Ring template files only",
+        Stage.Model => "+ DS3 model and textures",
+        Stage.Skeleton => "+ DS3 bones",
+        Stage.Moves => "+ DS3 animations",
+        Stage.Events => "+ DS3 move events",
+        _ => "full port",
+    };
+
+    /// <summary>DS3 characters the test set is built for: the Jailer, the enemy every playtest so far has used.</summary>
+    public static readonly int[] TestChrs = [2230];
+
+    /// <summary>Health of the test set's characters: enough to be hit many times by a strong character.</summary>
+    public const int TestHp = 200_000;
+
+    /// <summary>
+    /// The test set: each <see cref="TestChrs"/> character that is fully ported, once more per stage before
+    /// <see cref="Stage.All"/>, under character IDs taken from the top of the pool (so the ordinary characters keep
+    /// theirs from build to build).
+    /// </summary>
+    public static List<Plan> TestPlans(IReadOnlyList<Plan> plans, Func<int, bool> taken)
+    {
+        var tests = new List<Plan>();
+        var used = plans.Select(p => p.NewChr).ToHashSet();
+        int next = LastNewChr;
+        foreach (var plan in plans.Where(p => p.Method == Method.Full && TestChrs.Contains(p.Ds3.Chr)).OrderBy(p => p.Ds3.Chr))
+            foreach (var stage in new[] { Stage.Clone, Stage.Model, Stage.Skeleton, Stage.Moves, Stage.Events })
+            {
+                while (next >= FirstNewChr && (used.Contains(next) || taken(next)))
+                    next--;
+                if (next < FirstNewChr)
+                    return tests;
+                used.Add(next);
+                tests.Add(plan with { NewChr = next--, Stage = stage });
+            }
+        return tests;
+    }
 
     [GeneratedRegex(@"^c(\d{4})", RegexOptions.IgnoreCase)]
     private static partial Regex ChrModelName();
@@ -299,7 +360,7 @@ public static partial class ChrPort
 
     public sealed class Result
     {
-        public int Characters, Full, Model, Stats, Failed, Animations, NpcRows;
+        public int Characters, Full, Model, Stats, Failed, Animations, NpcRows, Tests;
         public List<string> Lines = [];
         public List<string> Notes = [];
         /// <summary>What the params step adds once port-weapons has written regulation.bin.</summary>
@@ -497,8 +558,40 @@ public static partial class ChrPort
                 files?.Note ?? (plan.Method == Method.Stats && method != Method.Stats ? $"bone match {plan.BoneMatch:0.00} below {MinBoneMatch}" : "")));
         }
 
+        // The test set (RULE 4): one character built stage by stage, only in the F1 spawn list, never placed in a map.
+        var testLines = new List<string>();
+        foreach (var test in TestPlans(plans.Where(p => portedModels.Contains($"c{p.NewChr:D4}")).ToList(), c => erArchives.Contains($"/chr/c{c:D4}.chrbnd.dcx")))
+        {
+            string label = $"TEST {(int)test.Stage} {test.Ds3.Name}: {StageName(test.Stage)}";
+            try
+            {
+                var files = BuildFiles(ctx, erArchives, ds3Archives, test);
+                int row = test.NewChr * 10000;
+                if (test.Ds3.NpcParams.Count == 0 || !usedRows.Add(row))
+                    continue;
+                foreach (var (path, bytes) in files.Outputs)
+                {
+                    var full = ctx.ModPath(ModParts(path));
+                    Directory.CreateDirectory(Path.GetDirectoryName(full)!);
+                    File.WriteAllBytes(full, bytes);
+                    written.Add(full);
+                }
+                result.Materials.AddRange(files.Materials);
+                result.Params.Add((test, new Dictionary<int, int> { [test.Ds3.NpcParams.Min] = row }));
+                testLines.Add(SpawnList.Line("DS3", $"c{test.NewChr:D4}", row, test.Template.ThinkParam, false, label, true));
+                result.Lines.Add(Line(test.Ds3, test, $"test {(int)test.Stage}", $"{StageName(test.Stage)}; {files.Note}"));
+                result.Tests++;
+            }
+            catch (Exception ex) when (ex is not OutOfMemoryException)
+            {
+                notes.Add($"{label}: not built ({Describe(ex)})");
+            }
+        }
+        if (result.Tests > 0)
+            Console.WriteLine($"enemies: test set: {result.Tests} staged builds at the top of the F1 spawn list (TEST 1-5), for pinning a fault to one port step");
+
         File.WriteAllLines(ctx.ModPath(EnemyPort.ChrMap.FileName), mapLines);
-        WriteSpawnList(ctx, mapLines, catalog, plans.Where(p => p.Ds3.Boss).Select(p => $"c{p.Ds3.Chr:D4}").ToHashSet(), portedModels);
+        WriteSpawnList(ctx, mapLines, catalog, plans.Where(p => p.Ds3.Boss).Select(p => $"c{p.Ds3.Chr:D4}").ToHashSet(), portedModels, testLines);
         File.WriteAllLines(ctx.ModPath(ManifestFile), written.Select(w => Path.GetRelativePath(ctx.ModPath(), w)));
         WriteReport(ctx, result);
         Console.WriteLine($"enemies: {result.Summary} (report: Work\\reports\\{ReportFile})");
@@ -556,11 +649,11 @@ public static partial class ChrPort
 
     /// <summary>The F1 menu's spawn list; a failure only costs the menu its list (it falls back to a built-in one).</summary>
     private static void WriteSpawnList(PorterContext ctx, IEnumerable<string> mapLines, IEnumerable<EnemyPort.ErEnemy> catalog, ISet<string> ds3Bosses,
-        ISet<string> portedModels)
+        ISet<string> portedModels, IEnumerable<string>? testLines = null)
     {
         try
         {
-            SpawnList.Write(ctx, mapLines, catalog, ds3Bosses, portedModels);
+            SpawnList.Write(ctx, mapLines, catalog, ds3Bosses, portedModels, testLines);
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
@@ -1108,6 +1201,14 @@ public static partial class ChrPort
         notes.Add(binders.ContainsKey($"/chr/c{n:D4}.behbnd.dcx") ? $"{renamedInside} Havok names renamed" : $"template c{t:D4} has no behbnd; {renamedInside} Havok names renamed");
         notes.Add(files.Outputs.Any(o => o.Path.Equals($"/action/script/c{n:D4}.hks", StringComparison.OrdinalIgnoreCase)) ? "behaviour script cloned" : $"template c{t:D4} has no behaviour script");
 
+        if (plan.Stage == Stage.Clone)
+        {
+            foreach (var (path, (bnd, compression)) in binders.OrderBy(b => b.Key, StringComparer.Ordinal))
+                files.Outputs.Add((path, DCX.Compress(bnd.Write(), compression)));
+            files.Note = string.Join("; ", notes);
+            return files;
+        }
+
         // The DS3 model, on the template's binder.
         var ds3Chrbnd = BND4.Read(ds3.Read($"/chr/c{x:D4}.chrbnd.dcx"));
         var ds3FlverFile = ds3Chrbnd.Files.FirstOrDefault(f => FLVER2.Is(f.Bytes)) ?? throw new InvalidDataException($"DS3 c{x:D4} has no model");
@@ -1191,9 +1292,9 @@ public static partial class ChrPort
         if (lacking.Count > 0)
             notes.Add($"FAIL textures: {lacking.Count} named by the model are in no DS3 binder ({string.Join(", ", lacking.Take(4))}{(lacking.Count > 4 ? ", ..." : "")}); those meshes draw wrong or not at all");
 
-        if (plan.Method == Method.Full)
+        if (plan.Method == Method.Full && plan.Stage > Stage.Model)
         {
-            var animated = PortAnimations(ds3, x, binders, n, notes);
+            var animated = PortAnimations(ds3, x, binders, n, notes, t, plan.Stage);
             files.Animations = animated;
         }
 
@@ -1208,7 +1309,8 @@ public static partial class ChrPort
     /// the same IDs, with their TAE events merged (template's behaviour windows, sounds and effects, stretched to the
     /// DS3 move's length; DS3's attacks and the rest where both games lay the event out the same).
     /// </summary>
-    private static int PortAnimations(GameArchives ds3, int x, Dictionary<string, (BND4 Bnd, DCX.CompressionInfo Compression)> binders, int n, List<string> notes)
+    private static int PortAnimations(GameArchives ds3, int x, Dictionary<string, (BND4 Bnd, DCX.CompressionInfo Compression)> binders, int n, List<string> notes,
+        int templateChr = 0, Stage stage = Stage.All)
     {
         // A DS3 variant (c2191) plays its base's animations (c2190): its own files first, then the base's.
         var ds3Files = Ds3AnimationSources(x).SelectMany(chr => ds3.Entries
@@ -1234,6 +1336,14 @@ public static partial class ChrPort
         var moves = Ds3Moves(ds3Taes, ds3Keys);
         var moveKeys = moves.Keys.ToHashSet();
         bool fill = FillMoves;
+        // Additive clips (flinches played on top of the current move, 9000-9499 in both games) and whole poses only
+        // stand in for their own kind. Builds 1.0.284-1.0.285 filled every template file with the nearest DS3 move by
+        // ID alone, which could put a whole-body move in an additive slot: added to the pose the enemy already has
+        // each time it is hit.
+        var ds3Additive = ds3Hkx.Where(f => { try { return AnimPort.Ds3Additive(f.Value); } catch (Exception) { return false; } })
+            .Select(f => LeafKey(f.Key)).ToHashSet();
+        var additiveKeys = moveKeys.Where(k => ds3Additive.Contains(moves[k].Hkx)).ToHashSet();
+        var wholeKeys = moveKeys.Where(k => !ds3Additive.Contains(moves[k].Hkx)).ToHashSet();
 
         var anibnds = binders.Where(b => b.Key.EndsWith(".anibnd.dcx", StringComparison.OrdinalIgnoreCase)).ToList();
         var main = anibnds.FirstOrDefault(b => b.Key.Equals($"/chr/c{n:D4}.anibnd.dcx", StringComparison.OrdinalIgnoreCase));
@@ -1265,7 +1375,10 @@ public static partial class ChrPort
                       + (merge.Replaced > 0 ? $", {merge.Replaced} template bones set aside (other parent in DS3)" : "") + $", {skeleton.m_bones.Count} in all");
         }
 
-        int replaced = 0, failed = 0, filled = 0, kept = 0;
+        if (stage == Stage.Skeleton)
+            return 0;
+
+        int replaced = 0, failed = 0, filled = 0, kept = 0, additive = 0;
         var durations = new Dictionary<(int, int), (float Ds3, float Er)>();
         var chosen = new Dictionary<(int, int), (int, int)>();
         foreach (var (_, (bnd, _)) in anibnds)
@@ -1277,7 +1390,14 @@ public static partial class ChrPort
                 if (!AnimLeaf().IsMatch(leaf))
                     continue;
                 var key = LeafKey(leaf);
-                if (ChooseMove(key, moveKeys, fill) is not { } pick
+                bool isAdditive = TemplateAdditive.GetOrAdd((templateChr, leaf, file.Bytes.Length), _ =>
+                {
+                    try { return AnimPort.IsAdditive(file.Bytes, bndCompendium); }
+                    catch (Exception ex) when (ex is not OutOfMemoryException) { return false; }
+                });
+                if (isAdditive)
+                    additive++;
+                if (ChooseMove(key, isAdditive ? additiveKeys : wholeKeys, fill) is not { } pick
                     || !ds3Hkx.TryGetValue($"a{moves[pick].Hkx.Section:D3}_{moves[pick].Hkx.Id:D6}.hkx", out var ds3Bytes))
                 {
                     kept++;
@@ -1301,7 +1421,7 @@ public static partial class ChrPort
         }
         int merged = 0;
         foreach (var (_, (bnd, _)) in anibnds)
-            foreach (var file in bnd.Files.Where(f => f.Name.EndsWith(".tae", StringComparison.OrdinalIgnoreCase)))
+            foreach (var file in bnd.Files.Where(f => stage > Stage.Moves && f.Name.EndsWith(".tae", StringComparison.OrdinalIgnoreCase)))
             {
                 TAE tae;
                 try { tae = TAE.Read(file.Bytes); }
@@ -1318,7 +1438,8 @@ public static partial class ChrPort
                     // that plays the same DS3 animation, else the DS3 move the file was filled with.
                     if (ErHkx(anim, section) is not { } hkxKey || !durations.TryGetValue(hkxKey, out var d) || !chosen.TryGetValue(hkxKey, out var content))
                         continue;
-                    var source = ChooseMove(AnimKey(anim.ID, section), moveKeys, fill) is { } own && moves[own].Hkx == moves[content].Hkx ? own : content;
+                    var source = ChooseMove(AnimKey(anim.ID, section), ds3Additive.Contains(moves[content].Hkx) ? additiveKeys : wholeKeys, fill) is { } own
+                                 && moves[own].Hkx == moves[content].Hkx ? own : content;
                     anim.Events = ChrTae.Merge(moves[source].Events, anim, lengths, groups, d.Ds3, d.Er);
                     changed = true;
                     merged++;
@@ -1326,9 +1447,12 @@ public static partial class ChrPort
                 if (changed)
                     file.Bytes = tae.Write();
             }
-        notes.Add($"{replaced} DS3 animations ({failed} failed; {filled} are the nearest DS3 move in place of a template move DS3 has no match for, {kept} template animations kept), {merged} moves with DS3 events");
+        notes.Add($"{replaced} DS3 animations ({failed} failed; {filled} are the nearest DS3 move in place of a template move DS3 has no match for, {kept} template animations kept; {additive} additive flinch files matched with DS3 additive clips only), {merged} moves with DS3 events");
         return replaced;
     }
+
+    /// <summary>Which template animation files are additive, read once per template (many characters share one).</summary>
+    private static readonly ConcurrentDictionary<(int Chr, string Leaf, int Length), bool> TemplateAdditive = new();
 
     private static byte[]? Compendium(BND4 bnd) =>
         bnd.Files.FirstOrDefault(f => f.Name.EndsWith(".compendium", StringComparison.OrdinalIgnoreCase))?.Bytes;
@@ -1380,13 +1504,16 @@ public static partial class ChrPort
             if (npc[id] is not null)
                 continue;
             var row = CopyRow(npc, template, id);
-            row.Name = $"[DS3] {ds3Npc?[ds3Id]?.Name ?? plan.Ds3.Name}";
-            if (ds3Npc?[ds3Id] is { } source)
+            row.Name = $"[DS3] {ds3Npc?[ds3Id]?.Name ?? plan.Ds3.Name}" + (plan.Stage == Stage.All ? "" : $" (test {(int)plan.Stage})");
+            // The test set stays on the template's row with health to spare, so it can be hit again and again.
+            if (plan.Stage != Stage.All && Cell(row, "hp") is { } testHp)
+                Set(testHp, TestHp);
+            if (plan.Stage == Stage.All && ds3Npc?[ds3Id] is { } source)
                 foreach (var field in new[] { "hp", "getSoul", "stamina", "mp" })
                     if (Cell(source, field) is { } from && Cell(row, field) is { } to)
                         Set(to, from.Value);
             // DS3's model hides and shows its "#NN#" meshes (weapon and armour variants) by DS3's display masks.
-            if (newModel && ds3Npc?[ds3Id] is { } maskSource)
+            if (newModel && plan.Stage != Stage.Clone && ds3Npc?[ds3Id] is { } maskSource)
                 CopyDisplayMasks(maskSource, row);
             if (newModel && Cell(row, "SoundAddBankId") is { } bank && Convert.ToInt32(bank.Value) < 0)
                 Set(bank, plan.TemplateChr);
@@ -1394,7 +1521,7 @@ public static partial class ChrPort
             // character that keeps the template's attack data only hits like the template.
             npc.Rows.Add(row);
             added++;
-            if (plan.Method == Method.Full && ds3Npc?[ds3Id] is { } src && Cell(src, "behaviorVariationId") is { } ds3Var
+            if (plan.Method == Method.Full && plan.Stage == Stage.All && ds3Npc?[ds3Id] is { } src && Cell(src, "behaviorVariationId") is { } ds3Var
                 && Cell(row, "behaviorVariationId") is { } erVar)
             {
                 try
