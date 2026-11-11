@@ -38,6 +38,13 @@ public static class MsbPort
         /// </summary>
         public bool HelperPieces { get; init; }
 
+        /// <summary>
+        /// Keep the enemies and objects of every DS3 map state, not only the start of the game's (m40 holds the
+        /// Cemetery of Ash and the Untended Graves at the same place; see <see cref="OtherState"/>). Fallback
+        /// "map-layers" B.
+        /// </summary>
+        public bool AllLayers { get; init; }
+
         /// <summary>The PartsDrawParam row every map piece names (see <see cref="MapDrawParams"/>).</summary>
         public short DrawParamId { get; init; } = MapDrawParams.VanillaRow;
     }
@@ -184,6 +191,14 @@ public static class MsbPort
         : piece.IsShadowOnly ? ShadowOnly
         : layerOk && (piece.MapStudioLayer & 1) == 0 ? OffBaseLayer
         : null;
+
+    /// <summary>
+    /// A part that belongs to another state of the map than the one the game starts in: off layer bit 0, where
+    /// <paramref name="layerOk"/> says the bit means that (<see cref="BaseLayerMeans"/>). DS3's m40 keeps the
+    /// Untended Graves in the same file and at the same place as the Cemetery of Ash and Firelink Shrine: its Black
+    /// Knights, Champion Gundyr and dark shrine are on layer bit 1 only, and DS3 shows one state at a time.
+    /// </summary>
+    public static bool OtherState(MSB3.Part part, bool layerOk) => layerOk && (part.MapStudioLayer & 1) == 0;
 
     /// <summary>
     /// True when layer bit 0 can be read as "in the map's base state": nearly every piece has it (all but 0 of

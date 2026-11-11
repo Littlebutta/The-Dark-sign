@@ -17,6 +17,7 @@ public static partial class MapPortChecks
         yield return ("objects: a DS3 object model becomes an asset binder with its vertices in model space and its textures", ObjectModel);
         yield return ("objects: every DS3 object part becomes an asset part with its entity ID, and can be taken out again", ObjectParts);
         yield return ("objects: asset rows are copies of the template row with a draw distance by size", ObjectRows);
+        yield return ("objects: a param def that differs from the game's only in its data version number still applies (1.0.326 lost every object to it)", DefVersionFit);
     }
 
     private static MSB3 Ds3WithRegions()
@@ -229,11 +230,34 @@ public static partial class MapPortChecks
         MSBE.Read(msb.Write());
     }
 
+    private static void DefVersionFit()
+    {
+        static PARAMDEF Def(short version, int fields)
+        {
+            var def = new PARAMDEF { ParamType = "ASSET_GEOMETORY_PARAM_ST", DataVersion = version, FormatVersion = 203, Unicode = true };
+            for (int i = 0; i < fields; i++)
+                def.Fields.Add(new PARAMDEF.Field(def, PARAMDEF.DefType.s32, $"f{i}"));
+            return def;
+        }
+        var game = Def(5, 3);
+        var param = new PARAM { ParamType = game.ParamType, ParamdefDataVersion = 5, ParamdefFormatVersion = 203, Rows = [new PARAM.Row(7077, "", game), new PARAM.Row(7078, "", game)] };
+        param.ApplyParamdef(game);
+        var back = PARAM.Read(param.Write());
+        Expect(back.DetectedSize == 12, $"row size read back {back.DetectedSize}");
+        Expect(!back.ApplyParamdefCarefully(Def(4, 3)) && ParamStore.FitsButForVersion(back, Def(4, 3)), "same type and size, other data version: fits");
+        Expect(!ParamStore.FitsButForVersion(back, Def(4, 4)), "another row size must not fit");
+        Expect(!ParamStore.FitsButForVersion(back, Def(5, 3)), "the same version is the careful path's job");
+        back.ApplyParamdef(Def(4, 3));
+        Expect(back.Rows.Count == 2 && back[7077] is not null, "rows readable after applying");
+    }
+
     private static void ObjectRows()
     {
         var assetDef = new PARAMDEF { ParamType = "ASSET_GEOMETORY_PARAM_ST", DataVersion = 1 };
         foreach (var (type, name) in new[] { (PARAMDEF.DefType.s32, "soundBankId"), (PARAMDEF.DefType.s32, "refDrawParamId"), (PARAMDEF.DefType.s8, "hitCreateType"), (PARAMDEF.DefType.u8, "behaviorType") })
             assetDef.Fields.Add(new PARAMDEF.Field(assetDef, type, name));
+        assetDef.Fields.Add(new PARAMDEF.Field(assetDef, PARAMDEF.DefType.u8, "isLadder") { BitSize = 1 });
+        assetDef.Fields.Add(new PARAMDEF.Field(assetDef, PARAMDEF.DefType.u8, "isMoveObj") { BitSize = 1 });
         var assetParam = new PARAM { ParamType = assetDef.ParamType, Rows = [] };
         var template = new PARAM.Row(ObjectPort.TemplateRow, "stone ruin", assetDef);
         template["soundBankId"].Value = 42;
@@ -249,7 +273,7 @@ public static partial class MapPortChecks
 
         var port = ObjectPort.ForRows(
         [
-            new ObjectPort.Asset { Ds3Model = "o000100", Index = 0, Name = "AEG920_000", Converted = true, Radius = 0.6f },
+            new ObjectPort.Asset { Ds3Model = "o000100", Index = 0, Name = "AEG920_000", Converted = true, Radius = 0.6f, Ladder = true },
             new ObjectPort.Asset { Ds3Model = "o302590", Index = 1, Name = "AEG920_001", Converted = true, Collision = true, Radius = 9f },
             new ObjectPort.Asset { Ds3Model = "o999999", Index = 2, Name = "AEG920_002", Failure = "no model" },
         ]);
@@ -258,6 +282,7 @@ public static partial class MapPortChecks
         var small = assetParam[920000];
         var big = assetParam[920001];
         Expect(small.Name == "[DS3] o000100" && (int)small["soundBankId"].Value == 42, "a copy of the template row, named after the DS3 object");
+        Expect((byte)small["isLadder"].Value == 1 && (byte)big["isLadder"].Value == 0, "a DS3 ladder's row says it is a ladder");
         Expect((sbyte)small["hitCreateType"].Value == 0 && (byte)small["behaviorType"].Value == 0 && (byte)big["behaviorType"].Value == 1, "low collision only; behaviorType 1 only with collision");
         Expect((int)small["refDrawParamId"].Value == ObjectPort.FirstDrawRow && (int)big["refDrawParamId"].Value == ObjectPort.FirstDrawRow + 3, "draw distance row by size");
         var rows = drawParam.Rows.Where(r => r.ID >= ObjectPort.FirstDrawRow).ToList();

@@ -339,6 +339,25 @@ The port log names every pairing (`enemies: people: Greirat -> ... (silent)`), a
 `darksign_enemies.tsv` so the randomizer never swaps one for a monster. Known limits: they look like Elden Ring characters, they say and sell nothing, and killing one drops what
 the Elden Ring person drops. Off switch: fallback `map-people` B (`port-maps --no-people`).
 
+After the 1.0.326 playtest (no one in Firelink Shrine, Black Knights around it, no objects at all):
+
+- **Seats.** DS3 parks most of Firelink Shrine's people at one spot about 40 m under the floor (273,-98,603) and
+  its scripts warp each to their seat when the map loads (`Warp Character and Copy Floor`, mostly in parameterised
+  events). `EnemyPort.EventWarps` reads every character warp in the map's script and common_func, arguments of
+  parameterised events included; `EnemyPort.Seats` gives a seat to each person standing at a holding spot (three or
+  more characters at one point) whose script warps them, on the collision of the nearest character within 60 m. Two
+  versions of one person warped to the same seat: only the first stands. m40: 19 seats from 27 warps.
+- **Own-body talkers** (Fire Keeper c1400, Ludleth c1450, c2160, c3190, c3200) are their ported body when the
+  enemy porter made one, else an Elden Ring person. c1000 (DS3's invisible talk dummy at bonfires) gets nobody.
+- **Map states.** DS3's m40 holds the Untended Graves at the same place as the Cemetery of Ash: its parts lack
+  MapStudioLayer bit 0 (Black Knights c1300, Champion Gundyr, 40 enemies and 45 objects in all). Map pieces were
+  already filtered that way (`MsbPort.HelperKind`); enemies and objects now are too (`MsbPort.OtherState`), m30 loses
+  11 objects and m31 2 enemies and 1 object the same way. Fallback `map-layers` B (`--all-layers`) keeps them.
+- **Objects lost in 1.0.326.** Every object was placed and then taken out again: Paramdex's def for
+  AssetEnvironmentGeometryParam (ASSET_GEOMETORY_PARAM_ST) has the game's row size, 320, but data version 4, and
+  SoulsFormats' careful apply also compares the version. `ParamStore` now applies a def whose type and row size
+  match when only the version number differs, and says so in the log.
+
 ## Open questions (answered by the first `map-survey` and in-game test)
 
 1. Does WarpPlayer into m45_00 work offline, and does the arena load with our layout? Partly answered 2026-11-08:

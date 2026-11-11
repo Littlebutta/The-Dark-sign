@@ -333,11 +333,18 @@ Try the next option if: A DS3 map crashes or hangs while loading since regions w
 - **A: DS3's regions and map-file events (default).** The areas DS3's events watch (boss rooms, ambush triggers, warp points), enemy patrol routes, platoons and enemy generators are carried into the map with their DS3 entity IDs.
 - **B: None.** The map file has no DS3 regions, patrol routes, platoons or generators (port-maps --no-regions), as every build up to 1.0.299 was: events that wait for the player to enter an area never fire and enemies don't patrol. (`port-maps --no-regions`)
 
+### Which state of a DS3 map is ported (`map-layers`, rebuilds the content)
+
+Try the next option if: Enemies or objects you expected are missing from a DS3 map since 1.0.327 (for example on the way to Firelink Shrine), or you want to see the Untended Graves' enemies.
+
+- **A: The state the game starts in (default).** Enemies and objects that DS3 keeps for another state of the same map are left out, as its map pieces already were: m40 holds the Untended Graves (Black Knights, Champion Gundyr, the dark shrine) at the same place as the Cemetery of Ash and Firelink Shrine.
+- **B: Every state.** Enemies and objects of every state stand in the map together (port-maps --all-layers), as every build up to 1.0.326 had them: the Untended Graves' Black Knights stand around Firelink Shrine. (`port-maps --all-layers`)
+
 ### DS3's people (NPCs and hostile humans) (`map-people`, rebuilds the content)
 
 Try the next option if: A DS3 map crashes or hangs while loading since people were added, a person who should be friendly attacks you (or the other way round), or people stand in the way of something.
 
-- **A: Elden Ring people stand in (default).** Where DS3 has someone to talk to, an Elden Ring person stands, silent (no dialogue or shop yet). DS3's hostile humans get hostile Elden Ring humans. DS3 characters with their own body (Fire Keeper, Ludleth) are placed when the enemy porter ported them.
+- **A: Elden Ring people stand in (default).** Where DS3 has someone to talk to, an Elden Ring person stands, silent (no dialogue or shop yet), on the seat DS3's scripts move them to. DS3's hostile humans get hostile Elden Ring humans. DS3 characters with their own body (Fire Keeper, Ludleth) are their ported body when the enemy porter made one, else an Elden Ring person.
 - **B: Nobody.** DS3's people are left out of the maps (port-maps --no-people), as every build up to 1.0.299 was. (`port-maps --no-people`)
 
 ### How DS3's enemies and bosses are ported (`enemy-port`, rebuilds the content)

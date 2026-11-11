@@ -1,3 +1,4 @@
+using System.Numerics;
 using SoulsFormats;
 
 namespace DarkSign.Porter.Maps;
@@ -115,6 +116,9 @@ public static class EnemyPort
 
         public static bool IsHuman(string model) => model.StartsWith(Human, StringComparison.OrdinalIgnoreCase);
 
+        /// <summary>DS3's invisible dummy character (c1000): talk and menu points, bullet sources.</summary>
+        public static bool IsDummy(string model) => model.StartsWith("c1000", StringComparison.OrdinalIgnoreCase);
+
         public ErEnemy? Choose(Ds3Enemy ds3, bool talks)
         {
             var pool = talks ? Friendly : Hostile;
@@ -172,9 +176,10 @@ public static class EnemyPort
     /// </summary>
     public static Result Place(MSB3 ds3, MSBE msb, MapId ds3Id, MapId erId, MsbPort.Options options, Chooser chooser,
         Func<MSB3.Part.Enemy, Ds3Enemy> describe, MSBE.Part.Enemy? fallbackTemplate = null, List<string>? table = null,
-        Dictionary<string, string>? partNames = null, People? people = null)
+        Dictionary<string, string>? partNames = null, People? people = null, IReadOnlyDictionary<string, Seat>? seats = null)
     {
-        int placed = 0, ported = 0, standIns = 0, npcs = 0, skipped = 0, peoplePlaced = 0;
+        int placed = 0, ported = 0, standIns = 0, npcs = 0, skipped = 0, peoplePlaced = 0, seated = 0, sameSeat = 0;
+        var takenSeats = new List<Vector3>();
         var peopleUse = new Dictionary<string, int>();
         var notes = new List<string>();
         var collisions = msb.Parts.Collisions.Select(c => c.Name).ToHashSet(StringComparer.OrdinalIgnoreCase);
@@ -182,16 +187,28 @@ public static class EnemyPort
         var nextInstance = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
         var standInUse = new Dictionary<string, int>();
 
+        var layerOk = !options.AllLayers && MsbPort.BaseLayerMeans(ds3);
+        int otherState = 0;
+        var otherStateNames = new Dictionary<string, int>();
         foreach (var src in ds3.Parts.Enemies)
         {
             var what = describe(src);
+            if (MsbPort.OtherState(src, layerOk))
+            {
+                otherState++;
+                otherStateNames[what.Name] = otherStateNames.GetValueOrDefault(what.Name) + 1;
+                continue;
+            }
             ErEnemy? who;
             if (what.Npc)
             {
                 // A person: the ported DS3 character if it isn't the human body (Fire Keeper, Ludleth...), else an
                 // Elden Ring person. Without either the spot stays empty, as it was before people were placed.
                 who = people is null ? null
-                    : People.IsHuman(what.Model) ? people.Choose(what, src.TalkID > 0) : chooser.Ported(what);
+                    : People.IsHuman(what.Model) ? people.Choose(what, src.TalkID > 0)
+                    // A talker with a body of its own (Fire Keeper, Ludleth): the ported body, else a silent person.
+                    // c1000 is DS3's invisible talk dummy (bonfires, menus): nothing to stand there.
+                    : chooser.Ported(what) ?? (People.IsDummy(what.Model) ? null : people.Choose(what with { Model = People.Human }, talks: true));
                 if (who is null)
                 {
                     npcs++;
@@ -204,6 +221,17 @@ public static class EnemyPort
             {
                 skipped++;
                 continue;
+            }
+            var seat = what.Npc ? seats?.GetValueOrDefault(src.Name) : null;
+            if (seat is not null)
+            {
+                // Two versions of one person (DS3 enables one by quest state) share a seat: only the first stands.
+                if (takenSeats.Any(t => Vector3.Distance(t, seat.Position) < 0.5f))
+                {
+                    sameSeat++;
+                    continue;
+                }
+                takenSeats.Add(seat.Position);
             }
             var template = who.Part as MSBE.Part.Enemy ?? fallbackTemplate ?? new MSBE.Part.Enemy();
             var part = (MSBE.Part.Enemy)template.DeepCopy();
@@ -224,11 +252,19 @@ public static class EnemyPort
             part.TalkID = 0;
             part.PlatoonID = src.PlatoonID;
             // An Elden Ring person keeps the look of the placement it was copied from; anything else has none.
-            if (!(what.Npc && People.IsHuman(who.Model)))
+            if (!(what.Npc && who.Source != "ported DS3 character"))
                 part.CharaInitID = -1;
             part.WalkRouteName = ""; // DS3 patrol routes need the map's regions, which aren't ported yet
             part.BackupEventAnimID = -1;
             part.CollisionPartName = collisions.Contains(src.CollisionName ?? "") ? src.CollisionName : "";
+            if (seat is not null)
+            {
+                // DS3's scripts move this person from the holding spot to their seat when the map loads.
+                part.Position = seat.Position;
+                part.Rotation = seat.Rotation;
+                part.CollisionPartName = collisions.Contains(seat.Collision) ? seat.Collision : "";
+                seated++;
+            }
             // Load and activation settings come from this map, not the dungeon the stand-in was copied from.
             if (msb.Parts.MapPieces.FirstOrDefault()?.TileLoad is { } tile)
                 part.TileLoad = tile.DeepCopy();
@@ -260,6 +296,12 @@ public static class EnemyPort
         }
         if (standInUse.Count > 0)
             notes.Add("stand-ins: " + string.Join("; ", standInUse.OrderByDescending(s => s.Value).Take(15).Select(s => $"{s.Key} x{s.Value}")));
+        if (otherState > 0)
+            notes.Add($"{otherState} left out that belong to another state of the map (off DS3's layer bit 0, e.g. the Untended Graves): "
+                      + string.Join("; ", otherStateNames.OrderByDescending(n => n.Value).Take(12).Select(n => $"{n.Key} x{n.Value}")));
+        if (seated > 0)
+            notes.Add($"people: {seated} moved from DS3's holding spot to the seat DS3's scripts warp them to"
+                      + (sameSeat > 0 ? $"; {sameSeat} other versions of a seated person left out (DS3 shows one by quest state)" : ""));
         if (peopleUse.Count > 0)
             notes.Add("people: " + string.Join("; ", peopleUse.OrderBy(s => s.Key, StringComparer.Ordinal).Take(30).Select(s => $"{s.Key} x{s.Value}")));
         return new Result(placed, ported, standIns, npcs, skipped, notes, peoplePlaced);
@@ -313,6 +355,93 @@ public static class EnemyPort
         }
         bosses.Remove(0);
         return bosses;
+    }
+
+    // ---- Where DS3's scripts move characters ----
+
+    // Character Warp Request, Warp Character and Set Floor, Issue Short Warp Request, Warp Character and Copy Floor:
+    // each starts Entity ID, Warp Type, Warp Destination Entity ID.
+    private static readonly HashSet<int> CharacterWarps = [3, 40, 41, 42];
+
+    /// <summary>
+    /// DS3 character entity -> the entity its scripts first warp it to (Warp Character and Copy Floor and its kin),
+    /// with the arguments of parameterised events read from the lines that start them. DS3 keeps most of Firelink
+    /// Shrine's people at one spot under the floor and its scripts move each to their seat when the map loads.
+    /// </summary>
+    public static Dictionary<int, int> EventWarps(IEnumerable<EMEVD> scripts, bool ds3Layout = true)
+    {
+        var list = scripts.ToList();
+        var calls = new Dictionary<long, List<byte[]>>();
+        foreach (var ins in list.SelectMany(s => s.Events).SelectMany(e => e.Instructions).Where(i => i.Bank == 2000 && i.ID is 0 or 6))
+        {
+            int at = ins.ID == 6 && ds3Layout ? 0 : 4;
+            if (ins.ArgData.Length < at + 4)
+                continue;
+            var id = BitConverter.ToUInt32(ins.ArgData, at);
+            (calls.TryGetValue(id, out var l) ? l : calls[id] = []).Add(ins.ArgData[(at + 4)..]);
+        }
+        var warps = new Dictionary<int, int>();
+        foreach (var e in list.SelectMany(s => s.Events))
+            for (int k = 0; k < e.Instructions.Count; k++)
+            {
+                var ins = e.Instructions[k];
+                if (ins.Bank != 2004 || !CharacterWarps.Contains(ins.ID) || ins.ArgData.Length < 12)
+                    continue;
+                var who = BitConverter.ToInt32(ins.ArgData, 0);
+                var to = BitConverter.ToInt32(ins.ArgData, 8);
+                var ps = e.Parameters.Where(p => p.InstructionIndex == k).ToList();
+                if (ps.Count == 0)
+                {
+                    if (who > 0 && to > 0)
+                        warps.TryAdd(who, to);
+                    continue;
+                }
+                foreach (var call in calls.GetValueOrDefault(e.ID) ?? [])
+                {
+                    int w = who, t = to;
+                    foreach (var p in ps)
+                        if (p.SourceStartByte + 4 <= call.Length)
+                        {
+                            var value = BitConverter.ToInt32(call, (int)p.SourceStartByte);
+                            if (p.TargetStartByte == 0) w = value;
+                            else if (p.TargetStartByte == 8) t = value;
+                        }
+                    if (w > 0 && t > 0)
+                        warps.TryAdd(w, t);
+                }
+            }
+        return warps;
+    }
+
+    /// <summary>Where a seated person stands: the DS3 region or part it is warped to, and a collision near it.</summary>
+    public sealed record Seat(Vector3 Position, Vector3 Rotation, string Collision);
+
+    /// <summary>
+    /// The seats of DS3 characters that stand at a holding spot (three or more characters at one point, as Firelink
+    /// Shrine's people do under its floor) and that the scripts warp somewhere: DS3 moves them there when the map
+    /// loads, so they are placed there. The collision is that of the nearest character or start point that isn't
+    /// held, within 60 m.
+    /// </summary>
+    public static Dictionary<string, Seat> Seats(MSB3 ds3, IReadOnlyDictionary<int, int> warps)
+    {
+        var seats = new Dictionary<string, Seat>(StringComparer.Ordinal);
+        bool Held(MSB3.Part p) => ds3.Parts.Enemies.Count(o => Vector3.Distance(o.Position, p.Position) < 0.5f) >= 3;
+        var anchors = ds3.Parts.Enemies.Where(e => !Held(e) && !string.IsNullOrEmpty(e.CollisionName)).Select(e => (e.Position, Collision: e.CollisionName))
+            .Concat(ds3.Parts.Players.Select(p => (p.Position, Collision: ""))).ToList();
+        foreach (var e in ds3.Parts.Enemies)
+        {
+            if (e.EntityID <= 0 || !warps.TryGetValue(e.EntityID, out var to) || !Held(e))
+                continue;
+            (Vector3 Pos, Vector3 Rot)? spot =
+                ds3.Regions.GetEntries().FirstOrDefault(r => r.EntityID == to) is { } r ? (r.Position, r.Rotation)
+                : ds3.Parts.GetEntries().FirstOrDefault(p => p.EntityID == to) is { } p ? (p.Position, p.Rotation) : null;
+            if (spot is null)
+                continue;
+            var near = anchors.Where(a => a.Collision.Length > 0 && Vector3.Distance(a.Position, spot.Value.Pos) < 60)
+                .OrderBy(a => Vector3.Distance(a.Position, spot.Value.Pos)).Select(a => a.Collision).FirstOrDefault() ?? "";
+            seats[e.Name] = new Seat(spot.Value.Pos, spot.Value.Rot, near);
+        }
+        return seats;
     }
 
     // ---- The Elden Ring catalog ----

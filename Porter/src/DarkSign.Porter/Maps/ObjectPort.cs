@@ -226,10 +226,16 @@ public sealed class ObjectPort
         var notes = new List<string>();
         var names = msb.Parts.GetEntries().Select(p => p.Name).ToHashSet(StringComparer.OrdinalIgnoreCase);
         var nextInstance = new Dictionary<string, int>();
-        int placed = 0, leftOut = 0, withCollision = 0;
+        int placed = 0, leftOut = 0, withCollision = 0, otherState = 0;
         var failures = new Dictionary<string, int>();
+        var layerOk = !options.AllLayers && MsbPort.BaseLayerMeans(ds3);
         foreach (var src in ds3.Parts.Objects)
         {
+            if (MsbPort.OtherState(src, layerOk))
+            {
+                otherState++;
+                continue;
+            }
             var asset = lookup(src.ModelName);
             if (asset is null || !asset.Converted)
             {
@@ -268,8 +274,10 @@ public sealed class ObjectPort
         }
         foreach (var f in failures.OrderByDescending(f => f.Value).Take(8))
             notes.Add($"{f.Value} object parts left out: {f.Key}");
+        if (otherState > 0)
+            notes.Add($"{otherState} object parts left out: they belong to another state of the map (off DS3's layer bit 0, e.g. the Untended Graves)");
         return new Result(placed, ds3.Parts.Objects.Select(o => o.ModelName).Distinct(StringComparer.OrdinalIgnoreCase).Count(m => lookup(m)?.Converted == true),
-            leftOut, withCollision, partNames, notes);
+            leftOut + otherState, withCollision, partNames, notes);
     }
 
     /// <summary>
@@ -534,6 +542,9 @@ public sealed class ObjectPort
                 Set(row, "refDrawParamId", (int)DrawRowFor(asset.Radius));
             Set(row, "hitCreateType", (sbyte)0);
             Set(row, "behaviorType", (byte)(asset.Collision ? 1 : 0));
+            // DS3's scripts register each ladder by its entity (Register Ladder, converted to Elden Ring's); the
+            // asset row says the asset is one, as DS3's ObjectParam row did.
+            Set(row, "isLadder", (byte)(asset.Ladder ? 1 : 0));
             assetParam.Rows.Add(row);
             added++;
         }

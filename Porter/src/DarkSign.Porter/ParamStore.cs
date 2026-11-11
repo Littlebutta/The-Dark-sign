@@ -64,10 +64,18 @@ public sealed class ParamStore
             Console.WriteLine($"params: {_game.ShortName} {name}: {FillBitfields(def)} unnamed bitfield bits kept ({e.Message})");
             applied = param.ApplyParamdefCarefully(def);
         }
+        if (!applied && FitsButForVersion(param, def))
+        {
+            // Same type and row size, only the def's data version number differs (Elden Ring's
+            // AssetEnvironmentGeometryParam: Paramdex's def says 4). The fields are laid out the same, so it is applied.
+            Console.WriteLine($"params: {_game.ShortName} {name}: Paramdex def {def.ParamType} data version {def.DataVersion} applied to the game's version {param.ParamdefDataVersion} (row size {param.DetectedSize} matches)");
+            param.ApplyParamdef(def);
+            applied = true;
+        }
         if (!applied)
             throw new InvalidDataException(
                 $"{_game.ShortName} {name}: Paramdex def {param.ParamType} does not fit this game version " +
-                $"(row size {param.DetectedSize}).");
+                $"(row size {param.DetectedSize}, the def's {def.GetRowSize()}; data version {param.ParamdefDataVersion}, the def's {def.DataVersion}).");
 
         var names = _data.ParamNames(_game, name);
         if (names is not null)
@@ -75,6 +83,11 @@ public sealed class ParamStore
         _params[name] = param;
         return param;
     }
+
+    /// <summary>The def has the param's type and row size, and differs only in its data version number.</summary>
+    public static bool FitsButForVersion(PARAM param, PARAMDEF def) =>
+        param.ParamType == def.ParamType && param.ParamdefDataVersion != def.DataVersion
+        && param.DetectedSize > 0 && param.DetectedSize == def.GetRowSize();
 
     /// <summary>Writes every loaded param back into the regulation and saves it, encrypted, to a new file.</summary>
     public void Save(string path)
