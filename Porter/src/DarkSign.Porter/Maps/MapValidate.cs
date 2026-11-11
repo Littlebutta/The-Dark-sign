@@ -192,6 +192,7 @@ public static class MapValidate
         CompareFormat(report, er, msbPath, Mod(msbPath));
         CheckLayout(report, msb, erId);
         CheckEnemies(ctx, er, report, msb, erId);
+        report.Lines.Add(CheckDistantView(er.Contains(MapPorter.MsbPath(MapDistantView.Of(erId))), erId, Mod(MapPorter.MsbPath(MapDistantView.Of(erId)))));
 
         // Map pieces.
         var hidden = msb.Parts.MapPieces.Select(p => (p.Name, Issue: CheckPieceDraw(p))).Where(x => x.Issue is not null).ToList();
@@ -341,6 +342,30 @@ public static class MapValidate
     }
 
     /// <summary>Layout checks that need no other file: names, models, entity IDs and the run's start point.</summary>
+    /// <summary>
+    /// Whose sky is over the map: the mod's index-99 layout must be empty, or Elden Ring's sky and Erdtree show
+    /// (<see cref="MapDistantView"/>). Returns the report line.
+    /// </summary>
+    public static (Level Level, string Text) CheckDistantView(bool hostHasView, MapId erId, string modFile)
+    {
+        var view = MapDistantView.Of(erId);
+        if (!File.Exists(modFile))
+            return hostHasView
+                ? (Level.Warn, $"{erId}: Elden Ring's distant view {view} is in place: its sky and the Erdtree show over the DS3 map (fallback map-sky B, or the sky step failed)")
+                : (Level.Ok, $"{erId}: Elden Ring has no distant view {view}: no Elden Ring sky over the map");
+        try
+        {
+            var msb = MSBE.Read(DCX.Decompress(File.ReadAllBytes(modFile)));
+            return MapDistantView.DrawsNothing(msb)
+                ? (Level.Ok, $"{erId}: the distant view {view} is empty: no Elden Ring sky or Erdtree over the map")
+                : (Level.Fail, $"{erId}: the mod's distant view {view} still draws {MapDistantView.Describe(msb)}");
+        }
+        catch (Exception ex)
+        {
+            return (Level.Fail, $"{erId}: the mod's distant view {view} can't be read back: {ex.Message}");
+        }
+    }
+
     public static void CheckLayout(Report report, MSBE msb, MapId erId)
     {
         var parts = msb.Parts.GetEntries();

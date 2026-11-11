@@ -349,6 +349,13 @@ public static class Fallbacks
             new("B", "The host map's lighting, untouched", "Nothing is changed (port-maps --host-lighting): the sky dome shadows the map, there is no ambient light and the lamps are the colosseum's. Dark, as every build up to 1.0.284 was.")
                 { MapsArgs = ["--host-lighting"] },
         ]),
+        new("map-sky", "DS3 maps", "Sky over the DS3 maps", Stage.Build,
+            "A DS3 map has no sky at all (black or a flat colour overhead), or the game hangs or crashes while it loads since Elden Ring's sky was removed.",
+        [
+            new("A", "DS3's own sky (default)", "Elden Ring's distant view of the host map (its sky, the Erdtree and far scenery) is replaced with an empty one, so the only sky is the dome DS3 built into the map."),
+            new("B", "The host map's sky", "The host's distant view is left alone (port-maps --host-sky): Elden Ring's sky and the Erdtree show over the DS3 map, as in every build up to 1.0.299.")
+                { MapsArgs = ["--host-sky"] },
+        ]),
         new("map-enemies", "DS3 maps", "Enemies and bosses in the DS3 maps", Stage.Build,
             "A DS3 map crashes or hangs while loading, enemies stand in walls or fall through the floor, or a boss fight never starts.",
         [

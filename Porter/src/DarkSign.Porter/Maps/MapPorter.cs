@@ -33,6 +33,11 @@ public static class MapPorter
         /// lit exactly as before 1.0.285 (fallback "map-lighting" B; see <see cref="MapLighting"/>).
         /// </summary>
         public bool HostLighting { get; set; }
+        /// <summary>
+        /// --host-sky: the host's distant view (its sky, the Erdtree) is left in place over the DS3 map, as in every
+        /// build up to 1.0.299 (fallback "map-sky" B; see <see cref="MapDistantView"/>).
+        /// </summary>
+        public bool HostSky { get; set; }
         public bool BinaryCollision { get; set; }
         public bool KeepSimdTree { get; set; }
 
@@ -60,6 +65,7 @@ public static class MapPorter
                         o.PieceTests[MapId.Parse(map).ToString()] = ParsePieceTest(test); i++; break;
                     case "--vanilla-draw-param": o.VanillaDrawParam = true; break;
                     case "--host-lighting": o.HostLighting = true; break;
+                    case "--host-sky": o.HostSky = true; break;
                     case "--binary-collision": o.BinaryCollision = true; break;
                     case "--simd": o.KeepSimdTree = true; break;
                     case "--enemies" when i + 1 < list.Count: o.Enemies = EnemyPort.ParseMethod(list[i + 1]); i++; break;
@@ -276,6 +282,7 @@ public static class MapPorter
         foreach (var id in ids)
         {
             Delete(Local(MsbPath(id)));
+            Delete(Local(MsbPath(MapDistantView.Of(id))));
             Delete(Local(MapEvents.ScriptPath(id)));
             var folder = Local($"/map/{id.AreaFolder}/{id}/x")[..^2];
             if (Directory.Exists(folder))
@@ -567,6 +574,15 @@ public static class MapPorter
                     report.AppendLine($"  {name}: FAILED: {ex.Message}");
                 }
             }
+        }
+        // Sky: the host's distant view (Elden Ring's sky and the Erdtree) is emptied. A failure leaves it as it was.
+        try
+        {
+            report.AppendLine("  " + MapDistantView.Write(ctx, er, erId, options.HostSky));
+        }
+        catch (Exception ex)
+        {
+            report.AppendLine($"  sky: FAILED: {ex.Message}");
         }
         File.WriteAllBytes(ctx.ModPath(ModParts(MsbPath(erId))), DCX.Compress(msb.Write(), msbCompression));
         report.AppendLine($"  written: {msb.Parts.MapPieces.Count} map pieces, {msb.Parts.Collisions.Count} collisions, {msb.Parts.Players.Count} player points, {msb.Parts.Enemies.Count} enemies");
