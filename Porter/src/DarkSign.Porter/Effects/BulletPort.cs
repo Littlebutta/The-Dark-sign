@@ -22,6 +22,29 @@ public sealed class BulletPort
 {
     public static bool Enabled => Environment.GetEnvironmentVariable("DARKSIGN_BULLETS") != "0";
 
+    /// <summary>Fallback "weapon-visuals" F: DS3 bullet events copied byte for byte, as in builds up to 1.0.271.</summary>
+    public static bool Ds3Events => Environment.GetEnvironmentVariable("DARKSIGN_BULLET_EVENTS") == "ds3";
+
+    /// <summary>
+    /// A DS3 bullet event (TAE type 2) in Elden Ring's layout. Both games start the same: dummy poly, an index, the
+    /// behaviour judge, attachment type, enable, state info (DSAnimStudio's TAE templates for both games, RULE 3).
+    /// The four bytes at offset 16 differ. Every DS3 player bullet event but seven has FF FF 00 00 there (a short of
+    /// -1); Elden Ring's 2,106 never do: its byte 16 is 0, 1 or 2, and its byte 18 is FF (none) in more than half of
+    /// them (survey: attack-events). Copied as they were, a ported event carried a value Elden Ring never uses in
+    /// byte 16 and 0 where it means "none" with FF, so the four bytes are written the way most of Elden Ring's own are.
+    /// </summary>
+    internal static byte[] ConvertEvent(byte[] ds3)
+    {
+        var er = (byte[])ds3.Clone();
+        if (Ds3Events || er.Length < 20)
+            return er;
+        er[16] = 0;
+        er[17] = 0;
+        er[18] = 0xFF;
+        er[19] = 0;
+        return er;
+    }
+
     /// <summary>First ID of the ported bullets; Elden Ring's own stop far below.</summary>
     public const int FirstNewId = 69_000_000;
 

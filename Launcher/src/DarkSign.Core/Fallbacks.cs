@@ -272,6 +272,8 @@ public static class Fallbacks
                 { PorterEnv = Env("DARKSIGN_EFFECT_MODELS", "0") },
             new("E", "Every DS3 on-model effect", "As A, and Friede's Great Scythe keeps the frost mist DS3 plays on its main scythe at all times (DARKSIGN_RESIDENT_ALL=1), as in 1.0.249-1.0.255.")
                 { PorterEnv = Env("DARKSIGN_RESIDENT_ALL", "1") },
+            new("F", "Projectile events as DS3 writes them", "As A, but the event that fires a projectile is copied from DS3 byte for byte (DARKSIGN_BULLET_EVENTS=ds3) instead of being rewritten in Elden Ring's layout, as in builds up to 1.0.271.")
+                { PorterEnv = Env("DARKSIGN_BULLET_EVENTS", "ds3") },
             new("off", "Off", "Neither (DARKSIGN_BULLETS=0 and DARKSIGN_EFFECT_VISUALS=0): only the effects in a move's own effect events show, as in builds up to 1.0.242.")
                 { PorterEnv = Env("DARKSIGN_BULLETS", "0", "DARKSIGN_EFFECT_VISUALS", "0") },
         ]),
@@ -312,7 +314,7 @@ public static class Fallbacks
         new("map-draw", "DS3 maps", "Draw distance settings of the DS3 map pieces", Stage.Build,
             "DS3 map geometry is invisible or pops in only when close, or the second and third DS3 maps should be the real maps instead of test maps.",
         [
-            new("A", "The port's own row, with two test maps (default)", "Every map piece names a PartsDrawParam row the port adds (unlimited draw distance, no LOD switching, as JortPob's maps have). The first DS3 map is the real port. The second and third are tests that tell apart what stalls a map load: in the second every map piece is Elden Ring's own colosseum model, in the third DS3's geometry is drawn with Elden Ring's own plain material."),
+            new("A", "The port's own row, with two test maps (default)", "Every map piece names a PartsDrawParam row the port adds (unlimited draw distance, no LOD switching, as JortPob's maps have). The first DS3 map is the real port. The second and third are tests that tell apart what stalls a map load: in the second DS3's geometry is drawn with the port's own materials holding Elden Ring's textures, in the third with Elden Ring's own plain material (the one known to load)."),
             new("B", "A vanilla row", "Map pieces name Stormveil Castle's most common PartsDrawParam row, 2046 (port-maps --vanilla-draw-param), and nothing is added to the regulation.")
                 { MapsArgs = ["--vanilla-draw-param"] },
             new("C", "Without the test maps", "As A, but all three DS3 maps are the real port (port-maps --no-piece-test). Use once the first DS3 map is confirmed to load and draw.")

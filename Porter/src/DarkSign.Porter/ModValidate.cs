@@ -139,19 +139,34 @@ public static partial class ModValidate
             Points(r, mod, row, "absorpParamId", "WepAbsorpPosParam");
             Points(r, mod, row, "originEquipWep", "EquipParamWeapon");
             int variation = Field(row, "behaviorVariationId");
+            // The game finds a hit's row by ID: 100,000,000 + variation * 1000 + judge (AttackParamPort.RowId).
+            int firstHit = AttackParamPort.RowId(1, variation, 0);
             if (variation > 0 && mod.Get("BehaviorParam_PC") is { } behaviour
-                && !behaviour.Rows.Any(b => b.ID >= variation * 1000 && b.ID < variation * 1000 + 1000))
-                r.Error($"weapon {row.ID}: behaviorVariationId {variation} has no BehaviorParam_PC rows ({variation * 1000}-{variation * 1000 + 999}); its hits would do nothing");
+                && !behaviour.Rows.Any(b => b.ID >= firstHit && b.ID < firstHit + 1000))
+                r.Error($"weapon {row.ID}: behaviorVariationId {variation} has no BehaviorParam_PC rows ({firstHit}-{firstHit + 999}); its hits would do nothing");
             else if (variation > 0)
                 hitVariations.Add(variation);
         }
         CheckIcons(r, modDir, bases.Select(row => Field(row, "iconId")).ToHashSet());
+        // Behaviour rows the game can never reach: a row of a real variation numbered without the prefix the game adds
+        // when it looks a hit up (1 player, 2 enemy). 1.0.183-1.0.271 wrote every ported row that way: ported weapons
+        // dealt no damage and ported enemies' attacks did nothing.
+        foreach (var name in new[] { "BehaviorParam_PC", "BehaviorParam" })
+        {
+            if (mod.Get(name) is not { } table)
+                continue;
+            var lost = table.Rows.Where(b => Field(b, "variationId") > 0 && AttackParamPort.Prefix(b) == 0).ToList();
+            if (lost.Count > 0)
+                r.Error($"{name}: {lost.Count} rows of {lost.Select(b => Field(b, "variationId")).Distinct().Count()} variations are numbered variation * 1000 + judge " +
+                        $"with no prefix (e.g. {lost[0].ID}); the game looks hits up as prefix * 100000000 + variation * 1000 + judge and never finds them");
+            Console.WriteLine($"validate: {name}: {table.Rows.Count(b => Field(b, "variationId") > 0 && AttackParamPort.Prefix(b) > 0)} rows numbered the way the game looks them up, {lost.Count} not");
+        }
         // Ported hits need a hitbox: an attack row with a sphere/capsule (radius > 0 on a dummy poly). 1.0.183 copied
         // DS3 attack rows with radius 0 and DS3 weapons hit nothing (enemies or walls).
         if (mod.Get("BehaviorParam_PC") is { } behaviours && mod.Get("AtkParam_Pc") is { } attacks)
         {
             int checkedHits = 0, empty = 0, throws = 0;
-            foreach (var b in behaviours.Rows.Where(b => hitVariations.Contains(b.ID / 1000) && Field(b, "refType") == 0))
+            foreach (var b in behaviours.Rows.Where(b => hitVariations.Contains(Field(b, "variationId")) && Field(b, "refType") == 0))
             {
                 if (attacks[Field(b, "refId")] is not { } atk)
                     continue;

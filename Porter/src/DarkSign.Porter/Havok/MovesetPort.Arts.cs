@@ -588,7 +588,7 @@ public static partial class MovesetPort
                         SetComboWindows(a, windowProto, sources[(int)a.ID].Events, sources[(int)a.ID].Duration, light is not null, heavy is not null);
                 // The stance chain's windows: the stance light attack opens 100054 (-> 40010) when the second light
                 // attack built, 40010 opens 100055 (-> 40020) when the third did; the last move opens nothing. The
-                // window is DS3's own transition marker (SpEffect 100500) when the move has one.
+                // window is DS3's own chain marker (SpEffect 100490, see ChainSpan) when the move has one.
                 if (stance && chain.Count > 0 && windowProto is not null)
                 {
                     bool second = kept.Any(a => a.ID == ChainSlots[0].Er), third = kept.Any(a => a.ID == ChainSlots[1].Er);
@@ -689,13 +689,19 @@ public static partial class MovesetPort
         if (!light && !heavy)
             return;
         var ds3Window = ds3Events?.FirstOrDefault(e => e.Type == proto.Type && WindowId(e) is not null);
-        // Stance chains: DS3's stance attacks mark when the next one may start with SpEffect 100500 ("[HKS] Non-generator
-        // Transition", Friede's 36230: 2.5-3.9 s, after 100490 0-2.5 s), read by DS3's per-weapon hks; that is the window.
-        if (ds3Marker)
-            ds3Window ??= ds3Events?.FirstOrDefault(e => e.Type == 66 && e.GetParameterBytes(false) is { Length: >= 4 } b && BitConverter.ToInt32(b, 0) == Ds3ChainMarker);
         float? exit = MoveTiming.Guard && ds3Window is null && ds3Events is not null ? MoveTiming.Recovery(ds3Events, HitStarts(ds3Events)) : null;
         float start = ds3Window?.StartTime ?? exit ?? duration * 0.45f;
         float end = ds3Window?.EndTime ?? (exit is not null ? Math.Max(duration, start + 0.5f) : duration * 0.9f);
+        // Stance chains: a DS3 stance attack holds SpEffect 100490 ("[HKS] Non-generator Transition - Friede's Great
+        // Scythe"; also Lockout's a250 and the Aquamarine Dagger's a256) while R1 goes to the next attack of the chain,
+        // from the start of the move (Friede's 36230: 0-2.5 s, 36250: 0-2.2 s; the dagger's 36230: 0-0.87 s). DS3
+        // takes the press once the move's R1 cancel (JumpTable 4, 36230: from 1.6 s) is open; when 100490 ends R1 is a
+        // plain attack again (Friede's then carry 100500, the generic marker, to the end: 2.5-3.9 s). 1.0.242-1.0.271
+        // read 100500 as the chain window, so the chain opened at 2.5 s, after the plain R1 the cancels had allowed
+        // since 1.9 s: the stance's light attacks never chained. The window is 100490's span from where the R1 cancel
+        // opens (not before the last hit ends) to its end.
+        if (ds3Marker && ds3Window is null && ChainSpan(ds3Events) is { } span)
+            (start, end) = span;
         if (end <= start)
             end = start + 0.5f;
         var group = anim.Events.FirstOrDefault(e => e.Type == proto.Type && e.Group is not null)?.Group;
@@ -733,8 +739,34 @@ public static partial class MovesetPort
     /// <summary>TAE JumpTable (type 0) ID Elden Ring opens over an art's R2 follow-up window (100050/100051: a606, a848).</summary>
     internal const int HeavyFollowUpJumpTable = 116;
 
-    /// <summary>DS3 SpEffect "[HKS] Non-generator Transition": a DS3 stance attack carries it while its hks lets the next one start.</summary>
-    internal const int Ds3ChainMarker = 100500;
+    /// <summary>DS3 SpEffect "[HKS] Non-generator Transition - Friede's Great Scythe": a DS3 stance attack carries it
+    /// while R1 continues the stance's light chain (100500, the generic marker after it, is not the chain).</summary>
+    internal const int Ds3ChainMarker = 100490;
+
+    /// <summary>DS3 TAE JumpTable (type 0) ID that lets R1 leave a move.</summary>
+    internal const int Ds3LightAttackCancel = 4;
+
+    /// <summary>
+    /// When a DS3 stance attack takes R1 for the next attack of its chain: the span of its chain marker (SpEffect
+    /// 100490) from where the move's R1 cancel opens, never before its last hit ends, to the marker's end. Null when
+    /// the move has no marker. A marker that ends before the cancel opens keeps its last half second.
+    /// </summary>
+    internal static (float Start, float End)? ChainSpan(List<TAE.Event>? ds3Events)
+    {
+        static int Id(TAE.Event e) => e.GetParameterBytes(false) is { Length: >= 4 } b ? BitConverter.ToInt32(b, 0) : -1;
+        if (ds3Events?.FirstOrDefault(e => e.Type is 66 or 67 && Id(e) == Ds3ChainMarker) is not { } marker)
+            return null;
+        float open = marker.StartTime;
+        var cancels = ds3Events.Where(e => e.Type == 0 && Id(e) == Ds3LightAttackCancel && e.EndTime > marker.StartTime).ToList();
+        if (cancels.Count > 0)
+            open = Math.Max(open, cancels.Min(e => e.StartTime));
+        var hits = ds3Events.Where(e => e.Type == 1 && e.StartTime < marker.EndTime).ToList();
+        if (hits.Count > 0)
+            open = Math.Max(open, hits.Max(e => e.EndTime));
+        if (open > marker.EndTime - 0.2f)
+            open = Math.Max(marker.StartTime, marker.EndTime - 0.5f);
+        return (open, marker.EndTime);
+    }
 
     /// <summary>
     /// Ties every ported weapon to its art, as DS3 does: no Ash of War can be put on it or its affinity changed, like
@@ -1121,7 +1153,7 @@ public static class ArtSelfTest
         Check(chained.Contains("function DarkSignIsStanceChain(arts_id)\n    if arts_id == 300 or arts_id == 301 then\n        return TRUE") && chained.IndexOf("function DarkSignIsStanceChain", StringComparison.Ordinal) < chained.IndexOf("function IsStanceArts", StringComparison.Ordinal),
             "chain: DarkSignIsStanceChain lists the chained arts, before IsStanceArts");
         Check(MovesetPort.PatchHks(chainHks, [300], null, []) == MovesetPort.PatchHks(chainHks, [300]), "chain: no chained arts, no hks change");
-        // Its windows: the stance light attack opens 100054 over DS3's own transition marker (100500); the second
+        // Its windows: the stance light attack opens 100054 over DS3's own chain marker (100490) once R1 may leave; the second
         // light attack opens 100055; the template's window goes.
         var stanceLight = new SoulsFormats.TAE.Animation(40060, new SoulsFormats.TAE.Animation.AnimMiniHeader.Standard(), "a906_040060.hkt")
             { Events = [new SoulsFormats.TAE.Event(0.1f, 0.5f, 67, 0, Win(100050), false) { Group = group }, new SoulsFormats.TAE.Event(0, 0.3f, 0, 0, Jump(7), false) { Group = jumpGroup }] };
@@ -1131,14 +1163,21 @@ public static class ArtSelfTest
         };
         MovesetPort.SetComboWindows(stanceLight, proto, friede, 4.033f, true, false, ds3Marker: true);
         var w = stanceLight.Events.Where(e => e.Type == 67).ToList();
-        Check(w.Count == 1 && BitConverter.ToInt32(w[0].GetParameterBytes(false), 0) == 100054 && Math.Abs(w[0].StartTime - 2.5f) < 0.001f && Math.Abs(w[0].EndTime - 3.9f) < 0.001f,
-            $"chain: the stance light attack opens 100054 over DS3's transition marker 2.5-3.9 s (got {string.Join(" ", w.Select(e => $"{BitConverter.ToInt32(e.GetParameterBytes(false), 0)} {e.StartTime:0.###}-{e.EndTime:0.###}"))})");
-        Check(stanceLight.Events.Any(e => e.Type == 0 && BitConverter.ToInt32(e.GetParameterBytes(false), 0) == MovesetPort.LightFollowUpJumpTable && Math.Abs(e.StartTime - 2.5f) < 0.001f)
+        Check(w.Count == 1 && BitConverter.ToInt32(w[0].GetParameterBytes(false), 0) == 100054 && Math.Abs(w[0].StartTime - 1.633f) < 0.001f && Math.Abs(w[0].EndTime - 2.5f) < 0.001f,
+            $"chain: the stance light attack opens 100054 over DS3's chain marker from the last hit to its end, 1.633-2.5 s, not over 100500 (got {string.Join(" ", w.Select(e => $"{BitConverter.ToInt32(e.GetParameterBytes(false), 0)} {e.StartTime:0.###}-{e.EndTime:0.###}"))})");
+        Check(stanceLight.Events.Any(e => e.Type == 0 && BitConverter.ToInt32(e.GetParameterBytes(false), 0) == MovesetPort.LightFollowUpJumpTable && Math.Abs(e.StartTime - 1.633f) < 0.001f && Math.Abs(e.EndTime - 2.5f) < 0.001f)
               && !stanceLight.Events.Any(e => e.Type == 0 && BitConverter.ToInt32(e.GetParameterBytes(false), 0) == MovesetPort.HeavyFollowUpJumpTable),
             "chain: cancel JumpTable 115 (R1), not 116, opens with the chain window");
         MovesetPort.SetComboWindows(stanceLight, proto, friede, 4.033f, true, false, lightWindow: 100055, ds3Marker: true);
         Check(stanceLight.Events.Count(e => e.Type == 67) == 1 && stanceLight.Events.Any(e => e.Type == 67 && BitConverter.ToInt32(e.GetParameterBytes(false), 0) == 100055),
             "chain: the second light attack opens 100055 (into ComboEnd_2) instead");
+        // The Aquamarine Dagger's 36230: marker 0-0.867 s, R1 cancel from 0.5 s, hit 0.333-0.433 s; a marker that ends
+        // before the cancel opens keeps its last half second; no marker, no span (the Ringed Knight Straight Sword).
+        var dagger = new List<SoulsFormats.TAE.Event> { new(0.333f, 0.433f, 1, 0, new byte[16], false), new(0f, 0.867f, 66, 0, Win(100490), false), new(0.5f, 1.8f, 0, 0, Jt(4), false) };
+        Check(MovesetPort.ChainSpan(dagger) is { } d && Math.Abs(d.Start - 0.5f) < 0.001f && Math.Abs(d.End - 0.867f) < 0.001f, "chain: the window opens with DS3's R1 cancel when that comes after the hit (0.5-0.867 s)");
+        var late = new List<SoulsFormats.TAE.Event> { new(0f, 1f, 66, 0, Win(100490), false), new(1.5f, 3f, 0, 0, Jt(4), false) };
+        Check(MovesetPort.ChainSpan(late) is { } l8 && Math.Abs(l8.Start - 0.5f) < 0.001f && Math.Abs(l8.End - 1f) < 0.001f, "chain: a marker that ends before the R1 cancel keeps its last half second");
+        Check(MovesetPort.ChainSpan([new(2.5f, 3.9f, 66, 0, Win(100500), false), new(1.6f, 4f, 0, 0, Jt(4), false)]) is null, "chain: a move without the chain marker has no span (keeps the first-exit window)");
         MovesetPort.SetComboWindows(stanceLight, proto, friede, 4.033f, true, false);
         Check(stanceLight.Events.Single(e => e.Type == 67).StartTime > 1.5f && stanceLight.Events.Single(e => e.Type == 67).StartTime < 2.5f,
             "windows: without ds3Marker the DS3 transition marker is not read (one-shot follow-ups keep their timing)");

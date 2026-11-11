@@ -24,7 +24,7 @@ public static class MapPorter
         public bool PlainMaterials { get; set; }
         /// <summary>--no-piece-test: build every slot normally (no test maps; see <see cref="PieceTest"/>).</summary>
         public bool NoPieceTest { get; set; }
-        /// <summary>--piece-test &lt;Elden Ring map id&gt;=&lt;vanilla-model|vanilla-material|none&gt;: a slot's test, instead of the default.</summary>
+        /// <summary>--piece-test &lt;Elden Ring map id&gt;=&lt;vanilla-model|vanilla-material|ported-material|none&gt;: a slot's test, instead of the default.</summary>
         public Dictionary<string, PieceTest> PieceTests { get; } = new(StringComparer.OrdinalIgnoreCase);
         /// <summary>Map pieces name vanilla PartsDrawParam row 2046 instead of the port's own (fallback "map-draw" B).</summary>
         public bool VanillaDrawParam { get; set; }
@@ -81,19 +81,24 @@ public static class MapPorter
     /// Loads: binders, layout parts and draw settings are fine.</item>
     /// <item><see cref="VanillaMaterial"/>: DS3's geometry with the host model's own vanilla material. Loads: the
     /// converted geometry is fine too.</item>
+    /// <item><see cref="PortedMaterial"/>: DS3's geometry with the port's own MATBINs, which keep their template's
+    /// vanilla textures. Loads: the MATBINs the port adds are fine too.</item>
     /// <item><see cref="None"/>: the real port (DS3 geometry, ported materials and textures).</item>
     /// </list>
-    /// By default the first slot is the real port and the second and third are the two tests ("--no-piece-test"
-    /// builds all of them normally; launcher Fallbacks "map-draw" C).
+    /// The 1.0.271 playtest: vanilla-model and vanilla-material both loaded and the real port did not, so the wait
+    /// is on the ported MATBINs or their textures. By default the first slot is now the real port, the second
+    /// ported-material and the third vanilla-material, the known good one ("--no-piece-test" builds all of them
+    /// normally; launcher Fallbacks "map-draw" C).
     /// </summary>
-    public enum PieceTest { None, VanillaModel, VanillaMaterial }
+    public enum PieceTest { None, VanillaModel, VanillaMaterial, PortedMaterial }
 
     public static PieceTest ParsePieceTest(string text) => text.ToLowerInvariant() switch
     {
         "vanilla-model" => PieceTest.VanillaModel,
         "vanilla-material" => PieceTest.VanillaMaterial,
+        "ported-material" => PieceTest.PortedMaterial,
         "none" => PieceTest.None,
-        _ => throw new ArgumentException($"unknown piece test '{text}' (vanilla-model, vanilla-material or none)"),
+        _ => throw new ArgumentException($"unknown piece test '{text}' (vanilla-model, vanilla-material, ported-material or none)"),
     };
 
     /// <summary>The test a slot is built as: what "--piece-test" says, else by the slot's place in the slot list.</summary>
@@ -105,7 +110,7 @@ public static class MapPorter
             return PieceTest.None;
         return MapSlots.All.Where(s => !s.Probe).ToList().IndexOf(slot) switch
         {
-            1 => PieceTest.VanillaModel,
+            1 => PieceTest.PortedMaterial,
             2 => PieceTest.VanillaMaterial,
             _ => PieceTest.None,
         };
@@ -425,10 +430,15 @@ public static class MapPorter
                 test = PieceTest.None;
             }
         }
+        if (test == PieceTest.PortedMaterial)
+            models = models.WithTemplateTextures();
         if (test != PieceTest.None)
-            report.AppendLine(test == PieceTest.VanillaModel
-                ? $"  TEST MAP (vanilla-model): every map piece is Elden Ring's own model from {binderMap}, not DS3's. It loads: binders, layout and draw settings are fine"
-                : $"  TEST MAP (vanilla-material): DS3 geometry drawn with Elden Ring's own material {models.TemplateSummary}. It loads: the converted geometry is fine");
+            report.AppendLine(test switch
+            {
+                PieceTest.VanillaModel => $"  TEST MAP (vanilla-model): every map piece is Elden Ring's own model from {binderMap}, not DS3's. It loads: binders, layout and draw settings are fine",
+                PieceTest.VanillaMaterial => $"  TEST MAP (vanilla-material): DS3 geometry drawn with Elden Ring's own material {models.TemplateSummary}. It loads: the converted geometry is fine",
+                _ => "  TEST MAP (ported-material): DS3 geometry drawn with the port's own materials, which keep Elden Ring's textures. It loads: the added materials are fine, and a map that still hangs waits on its textures",
+            });
         report.AppendLine($"  material templates: {models.TemplateSummary} (binder layout from {binderMap})");
         lock (_layouts)
             _layouts.UnionWith(models.TemplateLayouts());
