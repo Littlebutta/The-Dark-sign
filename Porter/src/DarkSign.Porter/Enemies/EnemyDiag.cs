@@ -30,11 +30,13 @@ public static partial class EnemyDiag
             return Survey(ctx);
         if (args.Count >= 1 && args[0].Equals("plan", StringComparison.OrdinalIgnoreCase))
             return Plan(ctx, args.Skip(1).ToList());
+        if (args.Count >= 2 && args[0].Equals("textures", StringComparison.OrdinalIgnoreCase))
+            return Textures(ctx, args.Skip(1).ToList());
         if (args.Count >= 2 && args[0].Equals("binder", StringComparison.OrdinalIgnoreCase))
             return Binder(ctx, args.Skip(1).ToList());
         if (args.Count >= 3 && args[0].Equals("matbin", StringComparison.OrdinalIgnoreCase))
             return Matbin(ctx, args[1], args.Skip(2).ToList());
-        Console.Error.WriteLine("enemy-diag survey | plan [build <DS3 chr>...] | binder <file>... | matbin <binder> <name part>... | unpack <file>...");
+        Console.Error.WriteLine("enemy-diag survey | plan [build <DS3 chr>...] | textures <DS3 chr>... | binder <file>... | matbin <binder> <name part>... | unpack <file>...");
         return 1;
     }
 
@@ -79,6 +81,54 @@ public static partial class EnemyDiag
                 {
                     Console.WriteLine($"build c{plan.Ds3.Chr:D4} FAILED: {ChrPort.Describe(ex)}");
                 }
+        return 0;
+    }
+
+    /// <summary>
+    /// "enemy-diag textures c5280 c5140": a DS3 character's materials (material file, every sampler and the texture
+    /// it names, which one the port takes as colour) and the textures its binders hold (format, size, mip levels),
+    /// with the names the model uses that no binder has. Reads DS3 only.
+    /// </summary>
+    private static int Textures(PorterContext ctx, List<string> args)
+    {
+        using var ds3 = ctx.OpenArchives(PorterGame.DarkSouls3);
+        foreach (var arg in args)
+        {
+            int x = int.Parse(arg.TrimStart('c', 'C'));
+            var chrbnd = BND4.Read(ds3.Read($"/chr/c{x:D4}.chrbnd.dcx"));
+            var flver = FLVER2.Read(chrbnd.Files.First(f => FLVER2.Is(f.Bytes)).Bytes);
+            Console.WriteLine($"== c{x:D4}: {flver.Meshes.Count} meshes, {flver.Materials.Count} materials; chrbnd files: {string.Join(", ", chrbnd.Files.Select(f => ItemText.Leaf(f.Name)))}");
+            var held = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            void Hold(string where, byte[] bytes)
+            {
+                foreach (var t in TPF.Read(bytes).Textures)
+                {
+                    var d = t.Bytes;
+                    string fourCc = d.Length > 88 ? System.Text.Encoding.ASCII.GetString(d, 84, 4).TrimEnd('\0') : "?";
+                    string info = d.Length > 132 ? $"{BitConverter.ToInt32(d, 16)}x{BitConverter.ToInt32(d, 12)} mips {BitConverter.ToInt32(d, 28)} {fourCc}{(fourCc == "DX10" ? "/" + BitConverter.ToInt32(d, 128) : "")} caps2 {BitConverter.ToInt32(d, 112):X}" : "short";
+                    held.TryAdd(t.Name, $"{info} fmt {t.Format} flags {t.Flags1} {d.Length / 1024} KB in {where}");
+                }
+            }
+            foreach (var f in chrbnd.Files.Where(f => TPF.Is(f.Bytes)))
+                Hold("chrbnd", f.Bytes);
+            foreach (var path in ds3.Entries.Where(e => e.Path is { } p && p.StartsWith($"/chr/c{x:D4}", StringComparison.OrdinalIgnoreCase) && p.EndsWith(".texbnd.dcx", StringComparison.OrdinalIgnoreCase)).Select(e => e.Path!).ToList())
+                foreach (var f in BND4.Read(ds3.Read(path)).Files.Where(f => TPF.Is(f.Bytes)))
+                    Hold(ItemText.Leaf(path), f.Bytes);
+            for (int i = 0; i < flver.Materials.Count; i++)
+            {
+                var m = flver.Materials[i];
+                int meshes = flver.Meshes.Count(mesh => mesh.MaterialIndex == i);
+                long verts = flver.Meshes.Where(mesh => mesh.MaterialIndex == i).Sum(mesh => (long)mesh.Vertices.Count);
+                Console.WriteLine($"  material {i} \"{m.Name}\" {ItemText.Leaf(m.MTD)} ({meshes} meshes, {verts} vertices, cut-out {ChrModel.IsAlphaTested(m.MTD)})");
+                foreach (var t in m.Textures)
+                {
+                    var leaf = t.Path.Length > 0 ? Path.GetFileNameWithoutExtension(ItemText.Leaf(t.Path)) : "";
+                    Console.WriteLine($"    {t.ParamName} = {(t.Path.Length > 0 ? t.Path : "(empty)")}{(leaf.Length == 0 ? "" : held.ContainsKey(leaf) ? "" : "  << IN NO BINDER")} scale {t.TilingScale.X}x{t.TilingScale.Y}");
+                }
+            }
+            foreach (var (name, info) in held.OrderBy(h => h.Key, StringComparer.OrdinalIgnoreCase))
+                Console.WriteLine($"  texture {name}: {info}");
+        }
         return 0;
     }
 
