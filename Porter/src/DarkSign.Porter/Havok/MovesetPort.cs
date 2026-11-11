@@ -283,8 +283,8 @@ public static partial class MovesetPort
         // are spells, 600-999 arts), so 256-399 are ordinary numbers there. Builds up to 1.0.284 stopped at 255, which
         // left 62 numbers for 111 DS3 movesets. That limit dates from the wepmotionCategory builds: that field is one
         // byte, a section above 255 needed the mod DLL to hand it to the game (motion-categories.txt), the DLL's hook
-        // never found its code, and the one build that tried closed at startup. The offset blamed then (+0x1EBCEF9)
-        // has since turned out to be the engine's panic while it is already shutting down, not a cause.
+        // never found its code, and the one build that tried closed at startup. That close, like the one of
+        // 1.0.297, came from the number of animation files in c0000_a9x (ClipBudget.AnimFileLimit), not the numbers.
         // DARKSIGN_WIDE_MOTION=0 stops at 255 again; with DARKSIGN_MOVESET_FIELD=wmc the wide sections stay off
         // unless DARKSIGN_WIDE_MOTION=1.
         var wide = WideSections ? Enumerable.Range(256, UseWeaponMotionCategory ? 744 : 144) : [];
@@ -459,6 +459,17 @@ public static partial class MovesetPort
         var borrowed = new Dictionary<(int Art, int Judge), int>();
         int borrowedEvents = 0, borrowedRows = 0;
 
+        // The player's animation binder holds a limited number of files (ClipBudget.AnimFileLimit). Movesets keep
+        // their own converted files while there is room; after that a move whose DS3 animation an earlier moveset
+        // already converted on the same Elden Ring template plays that file (the TAE entry keeps its own events and
+        // names the other animation as its file, as Elden Ring's own sections do: Standard header, ImportsHKX).
+        int animFileBudget = ClipBudget.AnimFileLimit - ClipBudget.ArtFileReserve;
+        var convertedFiles = new Dictionary<(string Ds3File, string Template), (string Name, int AnimId, float ErDuration)>();
+        // The same DS3 animation converted on another Elden Ring template: the motion is DS3's either way (the
+        // template gives the file its layout and the pose of bones DS3 doesn't animate), used when the exact one isn't there.
+        var convertedAnyTemplate = new Dictionary<string, (string Name, int AnimId, float ErDuration)>(StringComparer.OrdinalIgnoreCase);
+        int sharedMovesets = 0, sharedMoves = 0;
+
         foreach (var group in groups)
         {
             var (ds3Section, ds3ArtSection, templateSection) = group.Key;
@@ -545,6 +556,8 @@ public static partial class MovesetPort
                 // First pass, in order: find each move's DS3 source and Elden Ring template (lookups fill shared caches).
                 var anims = tae.Animations.ToList();
                 var jobs = new (Ds3Move? Source, byte[]? Ds3Bytes, ErAnim? Template)[anims.Count];
+                var templateNames = new string?[anims.Count];
+                var sharedFiles = new (string Name, int AnimId, float ErDuration)?[anims.Count];
                 for (int i = 0; i < anims.Count; i++)
                 {
                     var erId = (int)anims[i].ID;
@@ -562,11 +575,31 @@ public static partial class MovesetPort
                     if (group.Any(p => p.Ds3Id == 10180000) && erToDs3.ContainsKey(erId))
                         Console.WriteLine($"moveset: Friede's {erId} <- DS3 {ds3Id}: " +
                                           (source is null ? "not in its DS3 sections" : ds3File is null ? $"{source.HkxName} NOT FOUND" : $"{source.HkxName}, {source.Events.Count} events"));
-                    var template = source is not null && ds3File is not null
-                        ? ErAnimFile(erArchives, $"a{templateSection:D3}_{erId:D6}") ?? ErAnimFile(erArchives, "a000_000000")!
-                        : null;
+                    ErAnim? template = null;
+                    if (source is not null && ds3File is not null)
+                    {
+                        var ownTemplate = ErAnimFile(erArchives, $"a{templateSection:D3}_{erId:D6}");
+                        template = ownTemplate ?? ErAnimFile(erArchives, "a000_000000")!;
+                        templateNames[i] = ownTemplate is null ? "a000_000000" : $"a{templateSection:D3}_{erId:D6}";
+                    }
                     jobs[i] = (source, ds3File, template);
                 }
+                // Room for a file of its own per DS3 move? Otherwise the moves another moveset already converted
+                // play that moveset's file.
+                int ownFiles = jobs.Count(j => j is { Source: not null, Ds3Bytes: not null });
+                int movesShared = 0;
+                if (erAnims.Files.Count + ownFiles > animFileBudget)
+                    for (int i = 0; i < anims.Count; i++)
+                        if (jobs[i] is { Source: { } src, Ds3Bytes: not null }
+                            && (convertedFiles.TryGetValue((src.HkxName, templateNames[i]!), out var done) || convertedAnyTemplate.TryGetValue(src.HkxName, out done)))
+                        {
+                            sharedFiles[i] = done;
+                            jobs[i].Template = null; // no conversion
+                            movesShared++;
+                        }
+                if (erAnims.Files.Count + ownFiles - movesShared > animFileBudget)
+                    throw new InvalidOperationException($"the player's animation binder has no room for its {ownFiles - movesShared} animations " +
+                                                        $"({erAnims.Files.Count} files, {animFileBudget} allowed before the weapon arts)");
                 // Second pass: the animation conversions, on every core. A failure is kept and thrown in order below,
                 // so a bad animation skips this moveset exactly as it did when the conversions ran one by one.
                 var convertedHkx = new (byte[]? Hkx, float ErDuration, Exception? Error)[anims.Count];
@@ -596,17 +629,30 @@ public static partial class MovesetPort
 
                     if (jobs[i] is { Source: { } s, Ds3Bytes: { } ds3Bytes })
                     {
-                        if (convertedHkx[i].Error is { } error)
-                            System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(error).Throw();
-                        var hkx = convertedHkx[i].Hkx
-                                  ?? throw new InvalidDataException($"no Elden Ring animation to use as the template for {newName}");
-                        AddFile(erAnims, newName + ".hkx", hkx);
-                        anim.MiniHeader = new TAE.Animation.AnimMiniHeader.Standard();
-                        anim.AnimFileName = newName + ".hkt";
+                        float erDuration;
+                        if (sharedFiles[i] is { } shared)
+                        {
+                            anim.MiniHeader = new TAE.Animation.AnimMiniHeader.Standard { ImportsHKX = true, ImportHKXSourceAnimID = shared.AnimId };
+                            anim.AnimFileName = shared.Name + ".hkt";
+                            erDuration = shared.ErDuration;
+                        }
+                        else
+                        {
+                            if (convertedHkx[i].Error is { } error)
+                                System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(error).Throw();
+                            var hkx = convertedHkx[i].Hkx
+                                      ?? throw new InvalidDataException($"no Elden Ring animation to use as the template for {newName}");
+                            AddFile(erAnims, newName + ".hkx", hkx);
+                            anim.MiniHeader = new TAE.Animation.AnimMiniHeader.Standard();
+                            anim.AnimFileName = newName + ".hkt";
+                            erDuration = convertedHkx[i].ErDuration;
+                            convertedFiles.TryAdd((s.HkxName, templateNames[i]!), (newName, section * 1_000_000 + erId, erDuration));
+                            convertedAnyTemplate.TryAdd(s.HkxName, (newName, section * 1_000_000 + erId, erDuration));
+                        }
                         float ds3Duration = AnimPort.Duration(ds3Bytes);
                         anim.Events = MergeEvents(s.Events, anim, templateGroups, erEventLengths, effectEvents, effects, soundPort, ds3Duration, out var stretch);
                         stretches[erId] = stretch;
-                        timing.Add(TimingLine(section, groupName, erId, s, ds3Duration, convertedHkx[i].ErDuration, stretch));
+                        timing.Add(TimingLine(section, groupName, erId, s, ds3Duration, erDuration, stretch));
                         converted++;
                     }
                     else if (lean)
@@ -628,6 +674,11 @@ public static partial class MovesetPort
                         }
                         copied++;
                     }
+                }
+                if (movesShared > 0)
+                {
+                    sharedMovesets++;
+                    sharedMoves += movesShared;
                 }
                 if (lean)
                 {
@@ -671,7 +722,8 @@ public static partial class MovesetPort
                 Console.WriteLine($"moveset: {groupName} -> motion category {section} (from Elden Ring {templateSection}, DS3 {ds3Section}/{ds3ArtSection}): " +
                                   $"{converted} DS3 animations, " +
                                   (lean ? $"lean (every other move plays from Elden Ring's {templateSection}), " : $"{copied} kept from Elden Ring ({(CopyErAnims ? "copied" : "imported")}), ") +
-                                  $"{registered} behaviour clips, {nextInternalId - firstClipId} animation IDs, {(DateTime.UtcNow - started).TotalSeconds:0}s" +
+                                  (movesShared > 0 ? $"{movesShared} of them play another moveset's file, " : "") +
+                                  $"{registered} behaviour clips, {nextInternalId - firstClipId} animation IDs, {erAnims.Files.Count} files in the binder, {(DateTime.UtcNow - started).TotalSeconds:0}s" +
                                   (pairedGroup ? $"; paired: {dualMoves} two-handed moves from DS3's dual-wield set (033xxx)" : ""));
             }
             // Any failure (HKLib, a converter's NullReference or IndexOutOfRange, ...) skips this moveset only: it used
@@ -734,6 +786,8 @@ public static partial class MovesetPort
         int moves = timing.Count - 1, held = timing.Skip(1).Count(l => l.Split('\t')[9] != "0"), early = timing.Skip(1).Count(l => l.EndsWith("\tEARLY"));
         Console.WriteLine($"moveset: timing guard {(MoveTiming.Guard ? "on" : "off (1.0.89 timing)")}: {moves} DS3 moves, {held} had windows held back to DS3's own recovery, " +
                           $"{clipFixes} behaviour clip limits fitted, {early} still exit before DS3 does; per move: {timingReport}");
+        Console.WriteLine($"moveset: animation files: {erAnims.Files.Count} in {ItemText.Leaf(AnimBinder)} of {ClipBudget.AnimFileLimit} the game takes; " +
+                          $"{sharedMovesets} movesets play {sharedMoves} moves from another moveset's file (no room for a file of their own)");
         Console.WriteLine($"moveset: event switches: DS3 effect events {Ds3EffectEvents}, DS3 sound events {Ds3SoundEvents}, swing align {SwingAlign}");
         Console.WriteLine($"moveset: {portedGroups} movesets ported, {skippedGroups} skipped; attacks: {attackPort.Summary}; {_taeEffectEvents} DS3 SpEffect events with ported effects; " +
                           $"{wideCategories.Count} weapons on categories above 255 (mod DLL)");

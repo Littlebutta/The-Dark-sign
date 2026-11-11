@@ -77,6 +77,18 @@ and where the community approach looks easier, are **motion categories** and **w
   That fallback was seen in game on the `wepmotionCategory` builds (a template's special section overrode only its
   own moves). Not yet seen in game: a ported section above 255.
 
+### 7. An animation binder takes 5,395 files (2026-11-11)
+
+- Launcher 1.0.297/1.0.299 with all 111 movesets closed at startup (DL_PANIC "Transaction failed" at
+  eldenring.exe+0x1EBCEF9 right after `c0000_a9x.anibnd` and `c0000.anibnd` were read). The function at +0x229890
+  lists a binder's files into an array that grows by half when full; the growth from 5,395 to 8,092 entries
+  fails. That build had about 5,600 files in `c0000_a9x`; the 62-moveset build, about 4,440, runs. The section
+  numbers above 255 were not the cause (neither on 2026-11-07).
+- Ours: `ClipBudget.AnimFileLimit`. Movesets keep their own converted files while there is room; after that a
+  move whose DS3 animation another moveset already converted plays that file through the TAE's Standard header
+  (`ImportsHKX`, the way Elden Ring's own sections share animation files). `validate` fails a build over the limit.
+- No community source for this limit was found; it comes from the crash dumps and the disassembly.
+
 ## Findings that confirm what we do
 
 | Area | Community | Ours | Gap |

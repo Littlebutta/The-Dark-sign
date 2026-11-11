@@ -561,6 +561,8 @@ public static partial class MovesetPort
                                    ?? ErAnimFile(erArchives, "a000_000000")!;
                     var (hkx, _, erDuration) = AnimPort.ConvertTimed(ds3Bytes, ds3Skeleton, erSkeleton, template.Bytes, template.Compendium, AnimPort.Spline);
                     var newName = $"a{section:D3}_{erId:D6}";
+                    if (erAnims.Files.Count >= ClipBudget.AnimFileLimit)
+                        throw new InvalidOperationException($"the player's animation binder is full ({erAnims.Files.Count} files, the game takes {ClipBudget.AnimFileLimit})");
                     AddFile(erAnims, newName + ".hkx", hkx);
                     anim.MiniHeader = new TAE.Animation.AnimMiniHeader.Standard();
                     anim.AnimFileName = newName + ".hkt";
