@@ -51,6 +51,14 @@ void dks_spawn_request_clear(void);
 /* What the spawner last did, for the menu's status line. */
 const char *dks_spawn_status(void);
 
+/* God mode for testing (the F1 menu checkbox, Ctrl+Shift+F5, or DKSIGN_GOD=1 at launch). While on, the main player's
+   ChrDataModule "no damage" debug bit is kept set (fromsoftware-rs, chr_ins/module/data.rs: debug_flags at 0x19B,
+   "2nd bit makes you undamageable") and HP is topped back up to max in case a game version moves that bit.
+   dks_god_update applies it; the render thread calls it every frame. */
+void dks_god_set(int on);
+int dks_god_on(void);
+void dks_god_update(void);
+
 #ifdef __cplusplus
 }
 #endif
