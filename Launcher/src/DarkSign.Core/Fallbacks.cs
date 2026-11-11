@@ -391,6 +391,23 @@ public static class Fallbacks
                 { MapsArgs = ["--enemies", "none"] },
         ]),
 
+        new("map-objects", "DS3 maps", "DS3 objects in the DS3 maps", Stage.Build,
+            "A DS3 map crashes, hangs while loading or hitches since objects were added, objects float or are a mess of polygons, or something invisible blocks the way.",
+        [
+            new("A", "DS3's objects as Elden Ring assets (default)", "Every DS3 object (statues, candles, crates, doors, ladders, the bonfire's sword) is converted to an Elden Ring asset and stands where DS3 has it, with its DS3 entity ID so the converted events find it. Objects that never move or break also get DS3's collision; doors, lifts and crates can be walked through until their animations and breaking are ported. Report: Work\\reports\\object-port.tsv."),
+            new("B", "Objects without collision", "The same objects, but none of them is solid (port-maps --objects nocollision). Tells whether an object's collision is what blocks the way or breaks the map.")
+                { MapsArgs = ["--objects", "nocollision"] },
+            new("off", "Off (no objects)", "The DS3 maps have no objects (port-maps --objects none), as every build up to 1.0.299 was.")
+                { MapsArgs = ["--objects", "none"] },
+        ]),
+        new("map-regions", "DS3 maps", "DS3 regions, patrol routes and generators", Stage.Build,
+            "A DS3 map crashes or hangs while loading since regions were added, enemies walk into walls or stand in a pile, or an event fires in the wrong place.",
+        [
+            new("A", "DS3's regions and map-file events (default)", "The areas DS3's events watch (boss rooms, ambush triggers, warp points), enemy patrol routes, platoons and enemy generators are carried into the map with their DS3 entity IDs."),
+            new("B", "None", "The map file has no DS3 regions, patrol routes, platoons or generators (port-maps --no-regions), as every build up to 1.0.299 was: events that wait for the player to enter an area never fire and enemies don't patrol.")
+                { MapsArgs = ["--no-regions"] },
+        ]),
+
         new("enemy-port", "DS3 maps", "How DS3's enemies and bosses are ported", Stage.Build,
             "A ported DS3 enemy crashes the game when it loads, is invisible or a mess of stretched polygons, T-poses or moves wrongly, or the enemy-port report (Work\\reports\\enemy-port.tsv) lists many failures.",
         [

@@ -19,6 +19,8 @@ after `port-weapons`. If it fails, the weapons still load and the game starts; t
 | Map events | `event/m40_00_00_00.emevd.dcx` | `event/m45_00_00_00.emevd.dcx`, converted instruction by instruction (see "Event scripts" below); the slot's own Elden Ring events no longer run | `Maps/EventPort.cs`, `Maps/MapEvents.cs` |
 | Common events | `event/common_func.emevd.dcx` (only the events the ported maps start, and the ones those start) | added to `event/common_func.emevd.dcx` under IDs 103x291000-103x291999 | `Maps/MapEvents.cs`, `Maps/FlagMap.cs` |
 | Enemies and bosses | MSB3 enemy parts | MSBE enemy parts at DS3's spot, on DS3's collision, with DS3's entity ID moved to the slot. The character is the ported DS3 one when `Mods\ER\darksign_chr_map.tsv` lists it, otherwise an Elden Ring stand-in of the same kind copied from a vanilla legacy-dungeon placement; DS3 bosses (boss health bar in DS3's events) get Elden Ring bosses. NPCs are left out. Fallbacks `map-enemies`. | `Maps/EnemyPort.cs` |
+| Objects | MSB3 object parts, `obj/oNNNNNN.objbnd.dcx` | MSBE asset parts at DS3's spot with DS3's entity ID; each DS3 object model becomes an asset `asset/aeg/aeg92x/aeg92x_NNN.geombnd.dcx` (+ `_l.geomhkxbnd.dcx` collision for objects that never move or break) with a row in AssetEnvironmentGeometryParam, built the way JortPob builds assets. Fallbacks `map-objects`. See "Objects, regions and map-file events". | `Maps/ObjectPort.cs` |
+| Regions and map-file events | MSB3 regions (event areas, warp, spawn and patrol points), PatrolInfo, PlatoonInfo, Generator | MSBE "Other" regions, spawn points and patrol route points with DS3's shape and entity ID; patrol routes, platoons and generators naming the ported enemies and points. Fallbacks `map-regions`. | `Maps/RegionPort.cs` |
 | Map connections | MSB3 connect collisions | MSBE connect collisions copied from a legacy dungeon's, pointing at the neighbouring map's slot (ones to unported maps are left out) | `Maps/MsbPort.cs` |
 | Run start/leave | | two events in `common.emevd` wait for flags the F1 menu sets, then use the game's WarpPlayer | `Maps/RunEvents.cs`, `TestMenu/src/overlay.cpp` |
 
@@ -284,6 +286,40 @@ skeleton, dog, rat, bird, crab, worm, serpent, lizard, tree, ghost, beast, giant
 dungeon's enemy of the same kind, or the most common one when the kind has none. Bosses are spread over Elden Ring's
 bosses (of the same kind when there is one). Stand-ins keep their Elden Ring stats; the player keeps Elden Ring's
 jump, guard counter and the rest. Patrol routes and DS3's boss name text aren't ported yet.
+
+### Objects, regions and map-file events
+
+Stage 1 (2026-11-11, not yet playtested; written without game files, checked offline by `map-selftest`):
+
+- **Regions** (`Maps/RegionPort.cs`). The converted event scripts wait on things only the map file holds: "is the
+  player inside region 3002800", "warp to point 3002990", an enemy's patrol route. DS3's Event, ActivationArea,
+  WarpPoint, Logic and Other regions become Elden Ring "Other" regions (JortPob's script region settings), spawn
+  points stay spawn points, PatrolRoute and MovementPoint regions become patrol route points, all with DS3's shape,
+  spot and entity ID moved to the slot. Left out and counted in the log: sound and effect emitters, wind, messages,
+  muffling, invasion points and DS3's environment map points (their IDs name DS3 sounds, effects and text).
+- **Map-file events.** PatrolInfo (enemies walk their DS3 routes), PlatoonInfo and Generator are carried, naming the
+  ported enemy parts and regions. Treasure and ObjAct are not yet (stage 2).
+- **Objects** (`Maps/ObjectPort.cs`). Every DS3 object model used by a map that has a slot gets a number in name
+  order and becomes asset `AEG{first free group from 920}_{000-999}`, the same on every PC. The model is converted
+  like a map piece (same cloned materials and vertex layouts); because an object's meshes hang off several nodes,
+  each vertex is first moved into model space (a DS3 unskinned vertex is stored in the space of the node its NormalW
+  names). Nodes and dummy points are kept. The objbnd's own textures go into the map texture binder. The asset
+  binder, collision binder, asset part settings and AssetEnvironmentGeometryParam row (a copy of row 7077) follow
+  JortPob (Bind.cs BindAsset, MakePart.cs Asset, Paramanager.cs GenerateAssetRows). Draw distance is by size
+  (PartsDrawParam rows 9410-9415, JortPob's table with the distances doubled).
+- **Collision** is ported only for objects that never move or break: no animations in the objbnd, no hit points in
+  DS3's ObjectParam, not a ladder, not the target of an ObjAct. Doors, levers, lifts, crates and barrels are drawn
+  but can be walked through until stage 2, so none of them can block the way. DS3's object collision is converted
+  by the map collision converter; an object whose file holds no compressed mesh has none (the report says so).
+- **Reports.** `Work\reports\object-port.tsv` has one line per object model: what its objbnd holds, what was
+  converted, why it has or hasn't collision, whether it moves, breaks, is a ladder or an ObjAct target.
+  `Mods\ER\darksign_objects.tsv` maps DS3 objects to assets. The port-maps log has "objects:", "regions:",
+  "object port:" and "object params:" lines, and `darksign_maps_check.txt` checks every asset's file and row.
+- **If a map breaks:** launcher Fallbacks `map-objects` B (no collision) or off, `map-regions` B.
+
+Still missing after stage 1: object effects (candle and bonfire flames, torches), doors/levers/lifts (ObjAct events,
+ObjActParam, object animations), ladders, bonfires as sites of grace, fog walls, breakable objects, treasure
+(items lying in the map), NPCs and their dialogue, sound regions.
 
 ## Open questions (answered by the first `map-survey` and in-game test)
 

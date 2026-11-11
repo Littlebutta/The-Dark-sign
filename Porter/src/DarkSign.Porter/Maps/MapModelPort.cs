@@ -356,6 +356,97 @@ public sealed class MapModelPort
         return binder;
     }
 
+    /// <summary>
+    /// Converts a DS3 object model (obj/oNNNNNN.objbnd) in place into a model an Elden Ring asset can draw, with the
+    /// same materials, textures and vertex layouts as the ported map pieces. Objects differ from map pieces in one
+    /// way: their meshes hang off several nodes (a chandelier's arms, a door's leaves). A DS3 mesh that isn't
+    /// skinned keeps each vertex in the space of the node its NormalW names, so every vertex is first moved into
+    /// model space (<see cref="BakeNodes"/>) and the mesh then sits on the root like a map piece's. Skinned meshes
+    /// (cloth, chains) are already in model space and are drawn in their rest pose. Nodes and dummy points stay, so
+    /// effects, prompts and ladders still find their dummy polys.
+    /// </summary>
+    public void ConvertObject(FLVER2 flver, MapId ds3Id)
+    {
+        BakeNodes(flver);
+        ConvertFlver(flver, ds3Id);
+        if (flver.Meshes.Count == 0)
+            throw new InvalidDataException("only effect, decal, water or shadow meshes, which have no Elden Ring material yet");
+        for (int i = 0; i < flver.Materials.Count; i++)
+            flver.Materials[i].Index = i;
+    }
+
+    /// <summary>
+    /// Moves every vertex of the model into model space and makes every mesh a plain unskinned one. Returns how many
+    /// meshes had vertices on a node other than an untransformed one.
+    /// </summary>
+    public static int BakeNodes(FLVER2 flver)
+    {
+        var world = new Matrix4x4[flver.Nodes.Count];
+        var done = new bool[flver.Nodes.Count];
+        Matrix4x4 World(int i, int depth = 0)
+        {
+            if (i < 0 || i >= world.Length || depth > 64)
+                return Matrix4x4.Identity;
+            if (done[i])
+                return world[i];
+            var local = flver.Nodes[i].ComputeLocalTransform();
+            var parent = flver.Nodes[i].ParentIndex;
+            world[i] = parent >= 0 && parent < world.Length && parent != i ? local * World(parent, depth + 1) : local;
+            done[i] = true;
+            return world[i];
+        }
+        // The root is where an unskinned mesh ends up; were it transformed, everything is expressed relative to it.
+        var rootInverse = Matrix4x4.Identity;
+        if (flver.Nodes.Count > 0 && !World(0).IsIdentity && !Matrix4x4.Invert(World(0), out rootInverse))
+            rootInverse = Matrix4x4.Identity;
+
+        int moved = 0;
+        foreach (var mesh in flver.Meshes)
+        {
+            if (!mesh.UseBoneWeights)
+            {
+                bool any = false;
+                foreach (var v in mesh.Vertices)
+                {
+                    int index = v.NormalWs.Count > 0 ? v.NormalWs[0] : 0;
+                    int node = index >= 0 && index < mesh.BoneIndices.Count ? mesh.BoneIndices[index] : index;
+                    if (node < 0 || node >= flver.Nodes.Count)
+                        node = mesh.NodeIndex;
+                    var m = World(node) * rootInverse;
+                    if (m.IsIdentity)
+                        continue;
+                    any = true;
+                    v.Position = Vector3.Transform(v.Position, m);
+                    v.Normal = SafeNormal(Vector3.TransformNormal(v.Normal, m), v.Normal);
+                    for (int t = 0; t < v.Tangents.Count; t++)
+                    {
+                        var tangent = v.Tangents[t];
+                        var xyz = SafeNormal(Vector3.TransformNormal(new Vector3(tangent.X, tangent.Y, tangent.Z), m), new Vector3(tangent.X, tangent.Y, tangent.Z));
+                        v.Tangents[t] = new Vector4(xyz, tangent.W);
+                    }
+                    var b = SafeNormal(Vector3.TransformNormal(new Vector3(v.Bitangent.X, v.Bitangent.Y, v.Bitangent.Z), m), new Vector3(v.Bitangent.X, v.Bitangent.Y, v.Bitangent.Z));
+                    v.Bitangent = new Vector4(b, v.Bitangent.W);
+                }
+                if (any)
+                    moved++;
+            }
+            // Either way the mesh is now a rigid one on the root (MakeStatic then clears its node references).
+            mesh.UseBoneWeights = false;
+            mesh.NodeIndex = 0;
+            mesh.BoneIndices = [];
+            foreach (var v in mesh.Vertices)
+                for (int i = 0; i < v.NormalWs.Count; i++)
+                    v.NormalWs[i] = 0;
+        }
+        return moved;
+    }
+
+    private static Vector3 SafeNormal(Vector3 v, Vector3 fallback)
+    {
+        var length = v.Length();
+        return length > 1e-6f && float.IsFinite(length) ? v / length : fallback;
+    }
+
     /// <summary>The folder a model's FLVER sits in inside its binder: the template's, renamed to the new model.</summary>
     private static string ModelFolder(BinderFile templateFile, MapId erId, string modelNumber, MapId? hostId)
     {

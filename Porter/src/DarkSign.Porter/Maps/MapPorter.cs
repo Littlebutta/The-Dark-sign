@@ -66,6 +66,12 @@ public static class MapPorter
         /// <summary>--enemies auto|standin|none (launcher Fallbacks "map-enemies"): who stands where DS3's enemies stood.</summary>
         public EnemyPort.Method Enemies { get; set; } = EnemyPort.Method.Auto;
 
+        /// <summary>--objects full|nocollision|none (launcher Fallbacks "map-objects"): DS3's objects as Elden Ring assets (<see cref="ObjectPort"/>).</summary>
+        public ObjectPort.Method Objects { get; set; } = ObjectPort.Method.Full;
+
+        /// <summary>--no-regions (launcher Fallbacks "map-regions" B): no DS3 regions, patrol routes or generators (<see cref="RegionPort"/>).</summary>
+        public bool NoRegions { get; set; }
+
         public static Options Parse(IEnumerable<string> args)
         {
             var o = new Options();
@@ -90,6 +96,8 @@ public static class MapPorter
                     case "--binary-collision": o.BinaryCollision = true; break;
                     case "--simd": o.KeepSimdTree = true; break;
                     case "--enemies" when i + 1 < list.Count: o.Enemies = EnemyPort.ParseMethod(list[i + 1]); i++; break;
+                    case "--objects" when i + 1 < list.Count: o.Objects = ObjectPort.ParseMethod(list[i + 1]); i++; break;
+                    case "--no-regions": o.NoRegions = true; break;
                     case "--after-pid" when i + 1 < list.Count && int.TryParse(list[i + 1], out var pid): o.AfterPid = pid; i++; break;
                     default: o.Only.Add(MapId.Parse(list[i]).ToString()); break;
                 }
@@ -182,11 +190,16 @@ public static class MapPorter
         _placedEnemies.Clear();
         _templates.Clear();
         _converted.Clear();
+        _objects = null;
+        _objectsFailed = false;
         // A full run starts from Elden Ring's own files, not from what an earlier run left in Mods\ER: every PC that
         // builds from the same game files then gets byte-identical maps, events and flag numbers (co-op), and a slot
         // of the other map-slots method doesn't linger. A --only run is a partial rebuild and keeps the rest.
         if (options.Only.Count == 0)
+        {
             CleanOutputs(ctx);
+            ObjectPort.CleanOutputs(ctx);
+        }
         using var ds3 = ctx.OpenArchives(PorterGame.DarkSouls3);
         using var er = ctx.OpenArchives(PorterGame.EldenRing);
         var report = new StringBuilder();
@@ -245,6 +258,14 @@ public static class MapPorter
             }
             Time(report, $"map {slot.Ds3} -> {slot.Er}", mapClock);
         }
+        // The objects' materials and textures: shared by every map, so they are added once, to every area's binder.
+        if (_objects is not null && ported.Count > 0)
+        {
+            materials.AddRange(_objects.Models.MatbinFiles(0));
+            foreach (var areaTextures in textures.Values)
+                _objects.GiveTextures(areaTextures, ported[0].Slot.Ds3);
+            Step(report, "object port", _objects.WriteReports);
+        }
         // Missing textures or materials leave the maps grey, not broken, so a failure here doesn't stop the run.
         foreach (var areaTextures in textures.Values)
             Step(report, "textures", () => areaTextures.Write(ctx, ds3, er));
@@ -265,6 +286,23 @@ public static class MapPorter
                         Repoint(ctx, p.Slot.Er, row);
                 return note;
             });
+        // The asset rows of the ported objects. An asset part whose row is missing must not ship, so if the rows
+        // can't be written the objects are taken back out of the map files.
+        if (_objects is not null && ported.Count > 0)
+        {
+            var objectClock = System.Diagnostics.Stopwatch.StartNew();
+            try
+            {
+                report.AppendLine(_objects.WriteParams());
+            }
+            catch (Exception ex) when (ex is not OutOfMemoryException)
+            {
+                int removed = ported.Sum(p => ObjectPort.Strip(ctx, p.Slot.Er));
+                report.AppendLine($"object params: FAILED: {ex.Message}; the {removed} object parts were taken out of the maps again");
+                Console.Error.WriteLine($"  object params failed: {ex.Message}");
+            }
+            Time(report, "object params", objectClock);
+        }
         if (enemyPort is not null)
             Step(report, "enemy params", () => ChrPort.ApplyParams(ctx, er, enemyPort));
         if (ported.Count > 0)
@@ -451,6 +489,8 @@ public static class MapPorter
         foreach (var note in layout.Notes)
             report.AppendLine($"  note: {note}");
 
+        // DS3 part name -> ported part name, for the regions and map-file events that name parts.
+        var partNames = new Dictionary<string, string>(StringComparer.Ordinal);
         // Enemies and bosses where DS3 had them. A failure here leaves the map empty of enemies, not broken.
         if (options.Enemies != EnemyPort.Method.None)
         {
@@ -459,7 +499,7 @@ public static class MapPorter
                 var enemies = Enemies(ctx, ds3, er, options, report);
                 var bosses = EnemyPort.BossEntities(Ds3Scripts(ds3, ds3Id), ds3Layout: true);
                 var placed = EnemyPort.Place(ds3Msb, layout.Msb, ds3Id, erId, new MsbPort.Options { AllVisible = !options.Ds3Groups, NoGroups = options.NoGroups },
-                    enemies.Chooser, e => enemies.Describe(e, bosses), EnemyPort.AnyEnemyPart(enemies.Catalog), _placedEnemies);
+                    enemies.Chooser, e => enemies.Describe(e, bosses), EnemyPort.AnyEnemyPart(enemies.Catalog), _placedEnemies, partNames);
                 report.AppendLine($"  enemies: {placed.Placed} placed ({placed.Ported} ported DS3 characters, {placed.StandIns} Elden Ring stand-ins), "
                                   + $"{placed.Npcs} NPCs left out, {placed.Skipped} with nothing to stand in; {bosses.Count} DS3 boss entities");
                 foreach (var note in placed.Notes)
@@ -469,6 +509,7 @@ public static class MapPorter
             {
                 layout.Msb.Parts.Enemies.Clear();
                 layout.Msb.Models.Enemies.Clear();
+                partNames.Clear();
                 report.AppendLine($"  enemies: FAILED ({ex.Message}); the map has no enemies");
             }
         }
@@ -610,6 +651,54 @@ public static class MapPorter
         }
         report.AppendLine($"  time: navmesh {clock.Elapsed.TotalSeconds:F0} s");
 
+        // DS3's objects as assets, then the regions and map-file events (they name enemies and objects). Each is
+        // checked by writing the layout and reading it back; one that fails is taken out again, so the map is never
+        // worse off than without it.
+        clock.Restart();
+        var groupOptions = new MsbPort.Options { AllVisible = !options.Ds3Groups, NoGroups = options.NoGroups };
+        if (options.Objects == ObjectPort.Method.None)
+            report.AppendLine($"  objects: off (--objects none); {ds3Msb.Parts.Objects.Count} DS3 objects not placed");
+        else if (test != PieceTest.None)
+            report.AppendLine("  objects: not placed in a test map");
+        else
+        {
+            try
+            {
+                var objects = Objects(ctx, ds3, er, options, models, report);
+                var placed = objects.Place(ds3Msb, layout.Msb, ds3Id, erId, groupOptions);
+                MSBE.Read(layout.Msb.Write());
+                foreach (var (from, to) in placed.PartNames)
+                    partNames[from] = to;
+                report.AppendLine("  " + placed.Summary);
+                foreach (var note in placed.Notes)
+                    report.AppendLine($"  objects: {note}");
+            }
+            catch (Exception ex) when (ex is not OutOfMemoryException)
+            {
+                ObjectPort.Strip(layout.Msb);
+                report.AppendLine($"  objects: FAILED ({ex.Message}); the map has no objects");
+            }
+            report.AppendLine($"  time: objects {clock.Elapsed.TotalSeconds:F0} s");
+        }
+        if (options.NoRegions)
+            report.AppendLine("  regions: off (--no-regions)");
+        else
+        {
+            try
+            {
+                var regions = RegionPort.Convert(ds3Msb, layout.Msb, ds3Id, erId, partNames);
+                MSBE.Read(layout.Msb.Write());
+                report.AppendLine("  " + regions.Summary);
+                foreach (var note in regions.Notes)
+                    report.AppendLine($"  regions: {note}");
+            }
+            catch (Exception ex) when (ex is not OutOfMemoryException)
+            {
+                RegionPort.Strip(layout.Msb);
+                report.AppendLine($"  regions: FAILED ({ex.Message}); the map has no DS3 regions");
+            }
+        }
+
         // Drop what has no model, then write the layout.
         var msb = layout.Msb;
         msb.Parts.MapPieces.RemoveAll(p => missingModels.Contains(p.ModelName));
@@ -653,7 +742,8 @@ public static class MapPorter
             report.AppendLine($"  sky: FAILED: {ex.Message}");
         }
         File.WriteAllBytes(ctx.ModPath(ModParts(MsbPath(erId))), DCX.Compress(msb.Write(), msbCompression));
-        report.AppendLine($"  written: {msb.Parts.MapPieces.Count} map pieces, {msb.Parts.Collisions.Count} collisions, {msb.Parts.Players.Count} player points, {msb.Parts.Enemies.Count} enemies");
+        report.AppendLine($"  written: {msb.Parts.MapPieces.Count} map pieces, {msb.Parts.Collisions.Count} collisions, {msb.Parts.Players.Count} player points, {msb.Parts.Enemies.Count} enemies, "
+                          + $"{msb.Parts.Assets.Count} objects, {msb.Regions.GetEntries().Count} regions, {msb.Events.GetEntries().Count} map-file events");
 
         // The slot's own event script would run colosseum events; replace it with an empty one.
         // A new map ID gets one too, in the template's format.
@@ -681,6 +771,38 @@ public static class MapPorter
                 name = e.ModelName;
             var npc = e.ModelName.StartsWith("c0000", StringComparison.OrdinalIgnoreCase) || e.TalkID > 0;
             return new EnemyPort.Ds3Enemy(e.ModelName, e.NPCParamID, name, bosses.Contains(e.EntityID), npc);
+        }
+    }
+
+    private static ObjectPort? _objects;
+    private static bool _objectsFailed;
+
+    /// <summary>
+    /// The run's object port, made with the first map that needs it: it numbers every object model of every DS3 map
+    /// that has a slot, so a partial (--only) run gives each model the number a full run does.
+    /// </summary>
+    private static ObjectPort Objects(PorterContext ctx, GameArchives ds3, GameArchives er, Options options, MapModelPort models, StringBuilder report)
+    {
+        if (_objects is not null)
+            return _objects;
+        if (_objectsFailed)
+            throw new InvalidDataException("the object port could not start (see the first map)");
+        try
+        {
+            var maps = new List<MSB3>();
+            foreach (var slot in MapSlots.All.Where(s => !s.Probe && ds3.Contains(MsbPath(s.Ds3))))
+                maps.Add(MSB3.Read(ds3.Read(MsbPath(slot.Ds3))));
+            PARAM? objectParam = null;
+            try { objectParam = ctx.LoadParams(PorterGame.DarkSouls3).Get("ObjectParam"); }
+            catch (Exception ex) when (ex is not OutOfMemoryException) { report.AppendLine($"  note: DS3 ObjectParam unavailable ({ex.Message}); no object gets collision"); }
+            var method = objectParam is null && options.Objects == ObjectPort.Method.Full ? ObjectPort.Method.NoCollision : options.Objects;
+            return _objects = new ObjectPort(ctx, ds3, er, models.Fresh(), method, maps, objectParam, MapCollisions.LastTemplate,
+                !options.BinaryCollision, options.KeepSimdTree);
+        }
+        catch
+        {
+            _objectsFailed = true;
+            throw;
         }
     }
 

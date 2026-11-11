@@ -193,6 +193,7 @@ public static class MapValidate
         CheckLayout(report, msb, erId);
         CheckEnemies(ctx, er, report, msb, erId);
         report.Lines.Add(CheckDistantView(er.Contains(MapPorter.MsbPath(MapDistantView.Of(erId))), erId, Mod(MapPorter.MsbPath(MapDistantView.Of(erId)))));
+        CheckObjects(ctx, er, report, msb, erId);
 
         // Map pieces.
         var hidden = msb.Parts.MapPieces.Select(p => (p.Name, Issue: CheckPieceDraw(p))).Where(x => x.Issue is not null).ToList();
@@ -600,6 +601,56 @@ public static class MapValidate
         if (floating > 0)
             report.Warn($"{erId}: {floating} enemies have no collision to stand on (they may fall)");
         report.Ok($"{erId}: {msb.Parts.Enemies.Count} enemies, {msb.Models.Enemies.Count} characters");
+    }
+
+    /// <summary>
+    /// Every placed object's asset has its model file and its AssetEnvironmentGeometryParam row, and every region
+    /// and map-file event names parts and regions the map holds.
+    /// </summary>
+    private static void CheckObjects(PorterContext ctx, GameArchives er, Report report, MSBE msb, MapId erId)
+    {
+        var regionNames = msb.Regions.GetEntries().Select(r => r.Name).ToHashSet(StringComparer.Ordinal);
+        var partNames = msb.Parts.GetEntries().Select(p => p.Name).ToHashSet(StringComparer.Ordinal);
+        var dangling = new List<string>();
+        foreach (var patrol in msb.Events.PatrolInfo)
+            dangling.AddRange(patrol.WalkRegionNames.Where(n => !string.IsNullOrEmpty(n) && !regionNames.Contains(n)).Select(n => $"{patrol.Name} -> {n}"));
+        foreach (var generator in msb.Events.Generators)
+        {
+            dangling.AddRange(generator.SpawnRegionNames.Where(n => !string.IsNullOrEmpty(n) && !regionNames.Contains(n)).Select(n => $"{generator.Name} -> {n}"));
+            dangling.AddRange(generator.SpawnPartNames.Where(n => !string.IsNullOrEmpty(n) && !partNames.Contains(n)).Select(n => $"{generator.Name} -> {n}"));
+        }
+        foreach (var enemy in msb.Parts.Enemies.Where(e => !string.IsNullOrEmpty(e.WalkRouteName) && msb.Events.PatrolInfo.All(p => p.Name != e.WalkRouteName)))
+            dangling.Add($"{enemy.Name} -> route {enemy.WalkRouteName}");
+        if (dangling.Count > 0)
+            report.Fail($"{erId}: map-file events name regions or parts the map doesn't hold: {Sample(dangling)}");
+        var regionIds = msb.Regions.GetEntries().Where(r => r.EntityID > 0).GroupBy(r => r.EntityID).Where(g => g.Count() > 1).Select(g => g.Key.ToString()).ToList();
+        if (regionIds.Count > 0)
+            report.Warn($"{erId}: {regionIds.Count} entity IDs are shared by more than one region (as in DS3's own map file): {Sample(regionIds)}");
+        report.Ok($"{erId}: {msb.Regions.GetEntries().Count} regions, {msb.Events.PatrolInfo.Count} patrol routes, {msb.Events.Generators.Count} generators");
+
+        if (msb.Parts.Assets.Count == 0)
+        {
+            report.Warn($"{erId}: no DS3 objects placed (Fallbacks \"map-objects\" off, or the object port failed; see the port-maps log)");
+            return;
+        }
+        var noFile = msb.Models.Assets.Select(m => m.Name)
+            .Where(m => m.Length >= 10 && !er.Contains(ObjectPort.GeomBndPath(m)) && !File.Exists(ctx.ModPath(MapPorter.ModParts(ObjectPort.GeomBndPath(m)))))
+            .ToList();
+        if (noFile.Count > 0)
+            report.Fail($"{erId}: objects use assets with no model file: {Sample(noFile)}");
+        try
+        {
+            var rows = ActionButtons.LoadRegulation(ctx).Get("AssetEnvironmentGeometryParam")?.Rows.Select(r => r.ID).ToHashSet() ?? [];
+            var noRow = msb.Models.Assets.Select(m => m.Name)
+                .Where(m => m.Length >= 10 && int.TryParse(m[3..6], out var g) && int.TryParse(m[7..10], out var n) && !rows.Contains(g * 1000 + n)).ToList();
+            if (noRow.Count > 0)
+                report.Fail($"{erId}: objects use assets with no AssetEnvironmentGeometryParam row: {Sample(noRow)}");
+        }
+        catch (Exception ex)
+        {
+            report.Warn($"{erId}: can't read the mod's AssetEnvironmentGeometryParam to check the objects' rows: {ex.Message}");
+        }
+        report.Ok($"{erId}: {msb.Parts.Assets.Count} objects, {msb.Models.Assets.Count} assets");
     }
 
     public static void ValidateEvents(PorterContext ctx, GameArchives er, Report report, MapId host)

@@ -55,6 +55,18 @@ public sealed class MapTextures
         }
     }
 
+    private readonly Dictionary<string, TPF.Texture> _provided = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// A texture that doesn't live in DS3's map area binders, with its data: DS3 objects carry their textures inside
+    /// their own objbnd. It is written under its name like the others (see <see cref="Need"/> for who uses it).
+    /// </summary>
+    public void Provide(string name, TPF.Texture texture)
+    {
+        lock (_provided)
+            _provided.TryAdd(name, texture);
+    }
+
     /// <summary>The area binders of a DS3 map area: m40_0000 to m40_0009, whichever exist.</summary>
     public static IEnumerable<string> AreaBinders(GameArchives game, string areaFolder) =>
         Enumerable.Range(0, 10)
@@ -120,7 +132,9 @@ public sealed class MapTextures
         foreach (var name in _needed.Keys)
         {
             TPF.Texture? texture = null;
-            if (sources.TryGetValue(name, out var source))
+            if (_provided.TryGetValue(name, out var given))
+                texture = new TPF.Texture(name, given.Format, given.Flags1, given.Bytes, TPF.TPFPlatform.PC) { Type = given.Type, Mipmaps = given.Mipmaps };
+            else if (sources.TryGetValue(name, out var source))
             {
                 var tpf = TPF.Read(DCX.Is(source.Bytes) ? DCX.Decompress(source.Bytes) : source.Bytes);
                 texture = tpf.Textures.FirstOrDefault(t => t.Name.Equals(name, StringComparison.OrdinalIgnoreCase))
