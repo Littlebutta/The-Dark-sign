@@ -392,9 +392,57 @@ public static partial class MovesetPort
         Console.WriteLine($"moveset: {ports.Count} weapons in {own.Count} DS3 movesets ({classes.Count} by class alone), " +
                           $"{freeSections.Count} free motion categories; {groups.Count(g => order.Contains(g.Key))} to build");
 
+        // Weapons whose own moveset found no free category are built as their class. That is said here, for every
+        // weapon (it used to be printed for paired weapons only, so a missing own move had no trace in the log).
+        var unfit = ports.Where(p => Key(p, true).Ds3ArtSection != 0 && !order.Contains(Key(p, true))).ToList();
+        if (unfit.Count > 0)
+            Console.WriteLine($"moveset: {unfit.Count} weapons' own DS3 moves did not fit a free motion category and use their class's moveset: " +
+                              string.Join(", ", unfit.Select(p => $"{p.Name} (a{Key(p, true).Ds3ArtSection})")));
+        // Their projectiles are kept all the same, see WithOwnBullets below.
+        var spareJudges = new Queue<int>(BorrowBullets && bullets is not null ? attackPort.FreeJudges() : []);
+        var borrowed = new Dictionary<(int Art, int Judge), int>();
+        int borrowedEvents = 0, borrowedRows = 0;
+
         foreach (var group in groups)
         {
             var (ds3Section, ds3ArtSection, templateSection) = group.Key;
+            // A class moveset shared with weapons whose own section did not fit: those sections.
+            var unfitArts = ds3ArtSection == 0 ? group.Select(p => Key(p, true).Ds3ArtSection).Where(a => a != 0).Distinct().ToList() : [];
+            // The projectile a weapon's own section fires from a move that plays the class's animation (the Moonlight
+            // Greatsword's a158 replays the greatsword heavies a025_030320 ... with the wave's bullet event added) is
+            // added to the class move. It gets a behaviour judge no weapon in either game uses, and only the weapons
+            // of that section get a row for it (AliasJudge), so the other weapons sharing the moveset fire nothing.
+            Ds3Move WithOwnBullets(Ds3Move source, int ds3Id)
+            {
+                List<TAE.Event>? added = null;
+                string file = source.FileName ?? source.HkxName;
+                foreach (var art in unfitArts)
+                {
+                    if (FindDs3([(art, Ds3Tae(art))], ds3Main, ds3Id) is not { } own
+                        || !string.Equals(own.FileName ?? own.HkxName, file, StringComparison.OrdinalIgnoreCase))
+                        continue;
+                    foreach (var e in own.Events.Where(e => e.Type == BulletEvent))
+                    {
+                        var bytes = e.GetParameterBytes(false);
+                        if (bytes.Length < 12)
+                            continue;
+                        int judge = BitConverter.ToInt32(bytes, 8);
+                        if (source.Events.Any(c => c.Type == BulletEvent && c.GetParameterBytes(false) is { Length: >= 12 } cb && BitConverter.ToInt32(cb, 8) == judge))
+                            continue;
+                        if (!borrowed.TryGetValue((art, judge), out var alias))
+                        {
+                            if (spareJudges.Count == 0)
+                                continue;
+                            alias = borrowed[(art, judge)] = spareJudges.Dequeue();
+                        }
+                        var copy = (byte[])bytes.Clone();
+                        BitConverter.GetBytes(alias).CopyTo(copy, 8);
+                        (added ??= []).Add(new TAE.Event(e.StartTime, e.EndTime, e.Type, e.Unk04, copy, false));
+                        borrowedEvents++;
+                    }
+                }
+                return added is null ? source : source with { Events = [.. source.Events, .. added] };
+            }
             var groupName = string.Join(", ", group.Select(p => p.Name).Take(3)) + (group.Count() > 3 ? $" +{group.Count() - 3}" : "");
             if (!order.Contains(group.Key) || freeSections.Count == 0)
             {
@@ -450,6 +498,8 @@ public static partial class MovesetPort
                         ds3Id -= 1000;
                         dualMoves++;
                     }
+                    if (source is not null && unfitArts.Count > 0 && spareJudges.Count + borrowed.Count > 0)
+                        source = WithOwnBullets(source, ds3Id);
                     var ds3File = source is { } found ? ds3Hkx.Read(found.HkxName) : null;
                     if (group.Any(p => p.Ds3Id == 10180000) && erToDs3.ContainsKey(erId))
                         Console.WriteLine($"moveset: Friede's {erId} <- DS3 {ds3Id}: " +
@@ -569,9 +619,13 @@ public static partial class MovesetPort
             {
                 int ds3Variation = Convert.ToInt32(ds3Weapons[plan.Ds3Id]!["behaviorVariationId"].Value), newId = plan.NewId!.Value;
                 int templateVariation = Convert.ToInt32(erWeapons[newId]!["behaviorVariationId"].Value);
+                int ownArt = ds3ArtSection == 0 ? Key(plan, true).Ds3ArtSection : 0;
                 pointWeapons.Add(() =>
                 {
                     int variation = attackPort.PortVariation(ds3Variation, templateVariation);
+                    foreach (var ((_, judge), alias) in borrowed.Where(b => b.Key.Art == ownArt && ownArt != 0))
+                        if (attackPort.AliasJudge(variation, judge, alias))
+                            borrowedRows++;
                     if (UseWeaponMotionCategory && section > byte.MaxValue)
                         wideCategories[newId] = section; // the row keeps its template's category for the DLL to replace
                     foreach (var row in erWeapons.Rows.Where(r => r.ID >= newId && r.ID < newId + 10000))
@@ -615,6 +669,8 @@ public static partial class MovesetPort
         Console.WriteLine($"effects: {_effectGroupsAdded} moves got an effect event group their template section has none of (DS3 effects there were dropped before)");
         if (bullets is not null)
             Console.WriteLine($"bullets: {bullets.Summary}; {_bulletEvents} DS3 bullet events copied into the moves");
+            Console.WriteLine($"bullets: {borrowedEvents} projectile events of weapons built as their class were added to the class moves under {borrowed.Count} spare judges " +
+                              $"({string.Join(" ", borrowed.OrderBy(b => b.Value).Select(b => $"a{b.Key.Art}:{b.Key.Judge}={b.Value}"))}), {borrowedRows} behaviour rows added for them");
             Console.WriteLine($"bullets: {attackPort.BulletBaseAttacks} bullet attacks take the weapon's attack power (percentages only in DS3)");
         if (spEffects?.Visuals is { } visualRows)
             Console.WriteLine($"effect visuals: {visualRows.Summary}");
@@ -1175,6 +1231,10 @@ public static partial class MovesetPort
         new(Math.Max(0, e.StartTime + shift), Math.Max(0, e.EndTime + shift), e.Type, e.Unk04,
             (byte[])e.GetParameterBytes(false).Clone(), false) { Group = e.Group };
 
+    /// <summary>Fallback "weapon-visuals" H: DARKSIGN_BORROW_BULLETS=0 leaves a weapon built as its class without the
+    /// projectiles of its own section, as in builds up to 1.0.282.</summary>
+    private static readonly bool BorrowBullets = Environment.GetEnvironmentVariable("DARKSIGN_BORROW_BULLETS") != "0";
+
     /// <summary>A DS3 move: its animation file, events, and the file its TAE entry names (when that differs).</summary>
     private sealed record Ds3Move(string HkxName, List<TAE.Event> Events, string? FileName = null);
 
@@ -1385,6 +1445,27 @@ public sealed class AttackParamPort(ParamStore er, ParamStore ds3, string behavi
     {
         long id = (long)prefix * PrefixUnit + (long)variation * 1000 + judge;
         return id is > 0 and <= int.MaxValue ? (int)id : -1;
+    }
+
+    /// <summary>Judges (1-999) that no row of either game's behaviour param uses, lowest first.</summary>
+    public List<int> FreeJudges()
+    {
+        var used = _erBehavior.Rows.Concat(_ds3Behavior.Rows).Select(Judge).ToHashSet();
+        return [.. Enumerable.Range(1, 999).Where(j => !used.Contains(j))];
+    }
+
+    /// <summary>Gives a ported variation a second row for one of its judges, under a judge of its own (a copy of the
+    /// first, e.g. the row that names a bullet). False when the variation has no such row or the new one exists.</summary>
+    public bool AliasJudge(int variation, int judge, int alias)
+    {
+        int from = RowId(MainPrefix, variation, judge), to = RowId(MainPrefix, variation, alias);
+        if (variation <= 0 || from < 0 || to < 0 || _erBehavior[from] is not { } source || _erBehavior[to] is not null)
+            return false;
+        var row = CopyRow(source, to);
+        row["behaviorJudgeId"].Value = Convert.ChangeType(alias, row["behaviorJudgeId"].Value!.GetType());
+        _erBehavior.Rows.Add(row);
+        _erBehavior.Rows.Sort((a, b) => a.ID.CompareTo(b.ID));
+        return true;
     }
 
     // The prefix this param's rows of real variations carry: 1 in BehaviorParam_PC, 2 in BehaviorParam.

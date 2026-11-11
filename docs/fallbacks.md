@@ -180,6 +180,7 @@ Try the next option if: The game crashes when a ported weapon swings, or its eff
 - **A: DS3 effects (default).** DS3's FXR effects converted to Elden Ring's format (@cccode/fxr), with the sounds they play.
 - **B: DS3 effects without their sounds.** Same effects; the sounds inside them are left out (DARKSIGN_FXR_SOUNDS=0). (`DARKSIGN_FXR_SOUNDS=0`)
 - **C: DS3 and Elden Ring effects together.** Moves spawn DS3's effects and keep the template's Elden Ring trails and sparks too (DARKSIGN_KEEP_ER_EFFECTS=1), so a DS3 effect that doesn't show still leaves Elden Ring's instead of nothing. (`DARKSIGN_KEEP_ER_EFFECTS=1`)
+- **D: DS3 effects with held sounds.** An effect's sound that DS3 holds while the effect lives stays held, not played once (DARKSIGN_FXR_HELD_SOUNDS=1). Such a sound can keep playing after its effect ends. (`DARKSIGN_FXR_HELD_SOUNDS=1`)
 - **off: Off (Elden Ring effects).** Ported weapons keep the template's effects (DARKSIGN_DS3_EFFECT_EVENTS=0). (`DARKSIGN_DS3_EFFECT_EVENTS=0`)
 
 ### DS3 weapon arts (skills on L2) (`weapon-arts`, rebuilds the content)
@@ -211,6 +212,7 @@ Try the next option if: A ported weapon shows no glow, buff effect or projectile
 - **E: Every DS3 on-model effect.** As A, and Friede's Great Scythe keeps the frost mist DS3 plays on its main scythe at all times (DARKSIGN_RESIDENT_ALL=1), as in 1.0.249-1.0.255. (`DARKSIGN_RESIDENT_ALL=1`)
 - **F: Projectile events as DS3 writes them.** As A, but the event that fires a projectile is copied from DS3 byte for byte (DARKSIGN_BULLET_EVENTS=ds3) instead of being rewritten in Elden Ring's layout, as in builds up to 1.0.271. (`DARKSIGN_BULLET_EVENTS=ds3`)
 - **G: Projectiles without the weapon's attack power.** As A, but a projectile's hit doesn't count the weapon's own attack power or status build-up (DARKSIGN_BULLET_BASE_ATK=0), as in builds up to 1.0.279, where DS3 projectiles hit for nothing. Try this if a projectile hits far too hard. (`DARKSIGN_BULLET_BASE_ATK=0`)
+- **H: No projectiles for weapons built as their class.** As A, but a weapon whose own DS3 moves found no free motion category, and so is built as its class, loses the projectiles its own moves fire (DARKSIGN_BORROW_BULLETS=0), as in builds up to 1.0.282: the Moonlight Greatsword's charged heavy fired no wave. (`DARKSIGN_BORROW_BULLETS=0`)
 - **off: Off.** Neither (DARKSIGN_BULLETS=0 and DARKSIGN_EFFECT_VISUALS=0): only the effects in a move's own effect events show, as in builds up to 1.0.242. (`DARKSIGN_BULLETS=0`, `DARKSIGN_EFFECT_VISUALS=0`)
 
 
