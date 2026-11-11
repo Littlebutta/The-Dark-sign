@@ -64,6 +64,7 @@ public sealed class ChrEffects
     private readonly FxrPort.ChrBinderLayout _layout;
     private readonly SpEffectPort? _planned;
     private readonly ChrSounds? _sounds;
+    private readonly ScriptEffects? _scripts;
     private readonly object _lock = new();
     private readonly ConcurrentDictionary<int, Built> _built = new();
     private readonly ConcurrentDictionary<int, int> _ported = new();
@@ -86,6 +87,8 @@ public sealed class ChrEffects
         public int EventsAdded, EventsDropped, TemplateDropped;
         public Dictionary<string, int> Events = [];
         public int NpcEffects, NpcEffectsSkipped;
+        /// <summary>DS3 effects its row names that DS3's scripts only take off (left out), and ones they only put on (added).</summary>
+        public List<int> ScriptDropped = [], ScriptAdded = [];
         public string Note = "";
     }
 
@@ -95,8 +98,10 @@ public sealed class ChrEffects
     public ConcurrentBag<string> Written { get; } = [];
 
     private ChrEffects(PorterContext ctx, GameArchives? er, PARAM? erNpc, PARAM? ds3Npc, PARAM? ds3SpEffects, Ds3EffectRefs? refs, EffectEvents events,
-        FxrPort.ChrConverter converter, FxrPort.ChrBinderLayout layout, SpEffectPort? planned, ChrSounds? sounds, byte[]? swingSample, byte[]? soundSample)
+        FxrPort.ChrConverter converter, FxrPort.ChrBinderLayout layout, SpEffectPort? planned, ChrSounds? sounds, byte[]? swingSample, byte[]? soundSample,
+        ScriptEffects? scripts = null)
     {
+        _scripts = scripts;
         _ctx = ctx;
         _er = er;
         _erNpc = erNpc;
@@ -182,8 +187,9 @@ public sealed class ChrEffects
                 }
             else if (!SoundsEnabled)
                 Console.WriteLine("enemies: DS3 sounds are off (DARKSIGN_ENEMY_SOUNDS=0): the templates' sounds stay");
+            var scripts = ScriptEffects.Read(ds3, notes);
             var fx = new ChrEffects(ctx, er, erParams.Get("NpcParam"), ds3Params.Get("NpcParam"), ds3Params.Get("SpEffectParam"),
-                new Ds3EffectRefs(ds3Params, "BehaviorParam", "AtkParam_Npc"), events, new FxrPort.ChrConverter(ds3Fx, er), layout, planned, sounds, swing, sound);
+                new Ds3EffectRefs(ds3Params, "BehaviorParam", "AtkParam_Npc"), events, new FxrPort.ChrConverter(ds3Fx, er), layout, planned, sounds, swing, sound, scripts);
             foreach (var g in erEvents.Where(e => e.Group is not null).GroupBy(e => e.Type))
                 fx.Groups[g.Key] = g.First().Group!;
             foreach (var g in erEvents.GroupBy(e => e.Type))
@@ -201,9 +207,9 @@ public sealed class ChrEffects
 
     /// <summary>For the self-tests: the port over params and effect files built in memory, with no game behind it.</summary>
     internal static ChrEffects ForTest(PorterContext ctx, PARAM? ds3Npc, PARAM? ds3SpEffects, EffectEvents events, FxrPort.ChrConverter converter,
-        FxrPort.ChrBinderLayout layout, SpEffectPort? planned, byte[]? swingSample, IEnumerable<TAE.Event> erEvents)
+        FxrPort.ChrBinderLayout layout, SpEffectPort? planned, byte[]? swingSample, IEnumerable<TAE.Event> erEvents, ScriptEffects? scripts = null)
     {
-        var fx = new ChrEffects(ctx, null, null, ds3Npc, ds3SpEffects, null, events, converter, layout, planned, null, swingSample, null);
+        var fx = new ChrEffects(ctx, null, null, ds3Npc, ds3SpEffects, null, events, converter, layout, planned, null, swingSample, null, scripts);
         foreach (var g in erEvents.GroupBy(e => e.Type))
             fx.Lengths[g.Key] = g.Select(e => e.GetParameterBytes(false).Length).ToHashSet();
         return fx;
@@ -362,6 +368,9 @@ public sealed class ChrEffects
             {
                 for (int k = 0; k < 32; k++)
                     refs.AddSpEffect(ParamDefaults.Int(row, $"spEffectId{k}"));
+                // Effects DS3's map scripts put on it (Pontiff's sword auras): their effects go in its binder too.
+                foreach (var id in _scripts?.Set(npcId) ?? new HashSet<int>())
+                    refs.AddSpEffect(id);
                 refs.AddVariation(ParamDefaults.Int(row, "behaviorVariationId"));
             }
         built.Cast = MovesetPort.TaeSpEffects(ds3Events).ToHashSet();
@@ -506,10 +515,17 @@ public sealed class ChrEffects
         if (_sp is not null && ds3Row is not null)
         {
             var have = Enumerable.Range(0, 32).Select(k => ParamDefaults.Int(row, $"spEffectID{k}")).ToHashSet();
-            for (int k = 0; k < 32; k++)
+            var own = Enumerable.Range(0, 32).Select(k => ParamDefaults.Int(ds3Row, $"spEffectId{k}")).Where(id => id > 0).ToList();
+            var ds3Effects = own;
+            if (_scripts is not null)
             {
-                int id = ParamDefaults.Int(ds3Row, $"spEffectId{k}");
-                if (id <= 0 || _ds3SpEffects?[id] is not { } effect)
+                (ds3Effects, var dropped, var added) = _scripts.Apply(ds3Row.ID, own);
+                built.ScriptDropped = [.. built.ScriptDropped.Union(dropped)];
+                built.ScriptAdded = [.. built.ScriptAdded.Union(added)];
+            }
+            foreach (var id in ds3Effects)
+            {
+                if (_ds3SpEffects?[id] is not { } effect)
                     continue;
                 if (!NpcEffectWanted(effect) || _sp.Port(id) is not (> 0 and var newId))
                 {
@@ -532,12 +548,12 @@ public sealed class ChrEffects
             // The row's bank becomes the character's own; the bank it had (the template's) stays as the second.
             int bank = ParamDefaults.Int(row, "SoundBankId"), add = ParamDefaults.Int(row, "SoundAddBankId");
             if (bank <= 0 || add <= 0 || bank == add)
-            {
                 ParamDefaults.Set(row, "SoundAddBankId", bank > 0 ? bank : add > 0 ? add : plan.TemplateChr);
-                ParamDefaults.Set(row, "SoundBankId", plan.NewChr);
-            }
             else
-                built.Note = $"NpcParam {row.ID} names two template sound banks ({bank}, {add}); its DS3 bank isn't loaded";
+                // A template with two banks of its own (Pontiff's Godskin Noble: 3560 and 3570) keeps its second one;
+                // up to 1.0.326 the DS3 bank was left out here and Pontiff played no DS3 sound.
+                built.Note = $"NpcParam {row.ID}: the DS3 bank replaces the template's first sound bank {bank} (its second, {add}, stays)";
+            ParamDefaults.Set(row, "SoundBankId", plan.NewChr);
         }
     }
 
@@ -566,7 +582,8 @@ public sealed class ChrEffects
         var lines = new List<string>
         {
             "new chr\tDS3 chr\tname\teffects ported\teffects wanted\teffect binder\tleft out (reason: count)\tSpEffects cast by moves ported\tcast\tNpcParam effects\tNpcParam effects skipped\t" +
-            "sounds ported\tsounds wanted\tsound bank\tsounds left out\tevents added\tevents dropped\ttemplate events dropped\tevents by kind\tnote",
+            "sounds ported\tsounds wanted\tsound bank\tsounds left out\tevents added\tevents dropped\ttemplate events dropped\tevents by kind\tnote\t" +
+            "NpcParam effects DS3 scripts only take off (left out)\teffects DS3 scripts put on (added)",
         };
         foreach (var b in _built.Values.OrderBy(b => b.Plan.NewChr))
             lines.Add(string.Join('\t', $"c{b.Plan.NewChr:D4}", $"c{b.Plan.Ds3.Chr:D4}", b.Plan.Ds3.Name.Replace('\t', ' '), b.EffectsPorted, b.EffectsWanted,
@@ -576,7 +593,8 @@ public sealed class ChrEffects
                 b.Sounds?.Ported.Count ?? 0, b.Sounds?.Wanted ?? 0, b.Sounds?.BankFile is null ? "none" : b.Sounds.BankName,
                 b.Sounds is null ? "" : string.Join("; ", b.Sounds.Reasons.OrderByDescending(r => r.Value).Select(r => $"{r.Key}: {r.Value}")),
                 b.EventsAdded, b.EventsDropped, b.TemplateDropped,
-                string.Join("; ", b.Events.OrderBy(e => e.Key).Select(e => $"{e.Key}: {e.Value}")), b.Note));
+                string.Join("; ", b.Events.OrderBy(e => e.Key).Select(e => $"{e.Key}: {e.Value}")), b.Note,
+                string.Join(" ", b.ScriptDropped.Order()), string.Join(" ", b.ScriptAdded.Order())));
         foreach (var (id, reason) in _converter.Reasons.OrderBy(r => r.Key).Take(400))
             lines.Add($"# f{id}: {reason}");
         _sp?.WriteReport(_ctx, "enemy-speffects.tsv");
