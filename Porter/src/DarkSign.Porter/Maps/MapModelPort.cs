@@ -240,6 +240,40 @@ public sealed class MapModelPort
                ?? m.Textures.FirstOrDefault(t => t.ParamName.EndsWith(layered, StringComparison.OrdinalIgnoreCase) && t.Path.Length > 0);
     }
 
+    // What the converted models of this map hold, for the report's "load:" line (see LoadSummary).
+    private long _models, _meshes, _vertices, _triangles, _lodFaceSets, _modelBytes;
+
+    /// <summary>
+    /// What the game has to hold and draw for this map's pieces: models, meshes, vertices, full detail triangles,
+    /// and how many lower detail triangle lists DS3 shipped inside the models (drawn only where the PartsDrawParam
+    /// row switches detail by distance, which <see cref="MapDrawParams"/> turns off).
+    /// </summary>
+    public string LoadSummary =>
+        $"{_models} models, {_meshes} meshes, {_vertices:N0} vertices, {_triangles:N0} triangles at full detail "
+        + $"({_lodFaceSets} lower detail triangle lists from DS3 go unused), {_modelBytes / 1048576.0:F0} MB of model data";
+
+    private void Count(FLVER2 flver, int bytes)
+    {
+        long vertices = 0, triangles = 0, lods = 0;
+        foreach (var mesh in flver.Meshes)
+        {
+            vertices += mesh.Vertices.Count;
+            foreach (var set in mesh.FaceSets)
+            {
+                if (set.Flags == FLVER2.FaceSet.FSFlags.None)
+                    triangles += set.TriangleStrip ? Math.Max(0, set.Indices.Count - 2) : set.Indices.Count / 3;
+                else if ((set.Flags & (FLVER2.FaceSet.FSFlags.LodLevel1 | FLVER2.FaceSet.FSFlags.LodLevel2)) != 0)
+                    lods++;
+            }
+        }
+        Interlocked.Increment(ref _models);
+        Interlocked.Add(ref _meshes, flver.Meshes.Count);
+        Interlocked.Add(ref _vertices, vertices);
+        Interlocked.Add(ref _triangles, triangles);
+        Interlocked.Add(ref _lodFaceSets, lods);
+        Interlocked.Add(ref _modelBytes, bytes);
+    }
+
     /// <summary>Meshes left out of the converted models, by DS3 material type ("M[A]_Add_NoLight" -> 12).</summary>
     public Dictionary<string, int> LeftOut { get; } = new(StringComparer.OrdinalIgnoreCase);
 
@@ -265,7 +299,9 @@ public sealed class MapModelPort
             for (int i = 0; i < flver.Materials.Count; i++)
                 flver.Materials[i].Index = i;
             // The template's file ID (200 in every vanilla map piece binder), not a count from 0.
-            files.Add(new BinderFile(templateFile.Flags, templateFile.ID + files.Count, folder + leaf, flver.Write()));
+            var written = flver.Write();
+            Count(flver, written.Length);
+            files.Add(new BinderFile(templateFile.Flags, templateFile.ID + files.Count, folder + leaf, written));
         }
         var binder = new BND4
         {

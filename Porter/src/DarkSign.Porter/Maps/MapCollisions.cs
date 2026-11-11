@@ -70,7 +70,7 @@ public static class MapCollisions
         var failed = new List<string>();
         // Each collision file converts on its own thread; they're added in DS3's order, so every build is the same.
         var files = ds3Binder.Files.Where(f => f.Name.EndsWith(".hkx.dcx", StringComparison.OrdinalIgnoreCase)).ToList();
-        var results = new (byte[]? Bytes, int Triangles, string? Error)[files.Count];
+        var results = new (byte[]? Bytes, int Triangles, string? Error, long Written)[files.Count];
         // Serializing is the slow part and HKLib can only do it on every core once its caches are warm (see
         // CollisionPort.WarmUp). Big files go first, so the end of the stage isn't one core finishing a large file
         // alone, and the memory budget keeps the XML of the files in flight (about 800 times the DS3 file's size)
@@ -86,11 +86,11 @@ public static class MapCollisions
                 var raw = DCX.Decompress(files[i].Bytes);
                 using var _ = budget.Take(raw.LongLength * BytesPerDs3Byte);
                 var result = CollisionPort.Convert(raw, template, !options.BinaryCollision, options.KeepSimdTree);
-                results[i] = (DCX.Compress(result.Bytes, compression), result.Triangles, null);
+                results[i] = (DCX.Compress(result.Bytes, compression), result.Triangles, null, result.Bytes.LongLength);
             }
             catch (Exception ex)
             {
-                results[i] = (null, 0, ex.Message);
+                results[i] = (null, 0, ex.Message, 0);
             }
         });
         // A cache that grew while files serialized on every core means a type the warm-up missed: the files still
@@ -117,6 +117,10 @@ public static class MapCollisions
         output.Write(ctx.ModPath(MapPorter.ModParts(target)), ctx.ModPath(MapPorter.ModParts(target[..^3] + "bdt")));
         var summary = $"{ported.Count} files, {triangles} triangles into {ItemText.Leaf(target)}"
                       + $" ({(options.BinaryCollision ? "binary" : "XML")} tagfiles, {(warmNote is null ? "serialized one at a time" : $"on {Parallelism.Threads} threads")}){templateNote}";
+        // The size the game reads: an XML tagfile is some 55 times its DS3 file, and the game parses each one.
+        var written = results.Where(r => r.Bytes is not null).Select(r => r.Written).ToList();
+        if (written.Count > 0)
+            summary += $"; {written.Sum() / 1048576.0:F0} MB for the game to read, the largest file {written.Max() / 1048576.0:F0} MB";
         if (failed.Count > 0)
             summary += $"; {failed.Count} failed: {string.Join("; ", failed.Take(5))}{(failed.Count > 5 ? "; ..." : "")}";
         return new Result(summary, ported);

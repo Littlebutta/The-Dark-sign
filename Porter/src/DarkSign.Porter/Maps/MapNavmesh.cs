@@ -58,6 +58,7 @@ public static class MapNavmesh
         var nextId = output.Files.Count == 0 ? 0 : output.Files.Max(f => f.ID) + 1;
 
         int converted = 0, faces = 0;
+        long written = 0;
         var failed = new List<string>();
         foreach (var file in ds3.Files)
         {
@@ -73,13 +74,14 @@ public static class MapNavmesh
                 output.Files.Add(new BinderFile(flags, nextId++, name, outBytes));
                 converted++;
                 faces += navmesh.Faces;
+                written += navmesh.Bytes.LongLength;
             }
             catch (Exception ex)
             {
                 failed.Add($"{leaf} ({ex.Message})");
             }
         }
-        var summary = $"{converted} navmeshes, {faces} faces ({(xml ? "XML" : "binary")} tagfiles)";
+        var summary = $"{converted} navmeshes, {faces} faces ({(xml ? "XML" : "binary")} tagfiles, {written / 1048576.0:F0} MB for the game to read)";
         if (failed.Count > 0)
             summary += $"; {failed.Count} failed: {string.Join("; ", failed.Take(5))}{(failed.Count > 5 ? "; ..." : "")}";
         return new Result(output, summary, converted);
