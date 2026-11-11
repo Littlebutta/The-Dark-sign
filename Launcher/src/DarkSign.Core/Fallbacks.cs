@@ -358,6 +358,10 @@ public static class Fallbacks
                 { PorterEnv = Env("DARKSIGN_ENEMY_NODES", "0") },
             new("D", "Template skeleton only", "As A, but the ported skeleton keeps only the Elden Ring template's bones (DARKSIGN_ENEMY_BONES=template), as in builds up to 1.0.263: DS3 weapons, skirts, hats and capes don't follow the animation. Use when ported enemies crash on spawn or when hit, or fold up, with A.")
                 { PorterEnv = Env("DARKSIGN_ENEMY_BONES", "template") },
+            new("E", "Template animations where DS3 has none", "As A, but a move of the Elden Ring template that DS3 has no move of the same ID for keeps the template's animation (DARKSIGN_ENEMY_ANIMS=template), as in builds up to 1.0.271, instead of playing the nearest DS3 move. Use when ported enemies freeze, slide or stand idle where they should step, fall or die with A.")
+                { PorterEnv = Env("DARKSIGN_ENEMY_ANIMS", "template") },
+            new("F", "DS3 textures next to the template's", "As A, but DS3's textures are a second file in the template's high-quality texture binder with flat 'not metal' maps (DARKSIGN_ENEMY_TEXTURES=added), as in builds up to 1.0.271, where ported enemies drew blank silver. Use when ported enemies crash on spawn or the game hangs loading them with A.")
+                { PorterEnv = Env("DARKSIGN_ENEMY_TEXTURES", "added") },
         ]),
         new("map-flags", "DS3 maps", "Where the DS3 maps' own flags are kept", Stage.Build,
             "In a DS3 map, bosses come back, opened doors and shortcuts close again or picked-up items return after a reload, or the pre-flight check says a map flag block is MISSING.",

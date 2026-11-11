@@ -39,6 +39,7 @@ const string Usage = """
       sound-selftest               offline checks of how ported sounds are added to a Wwise bank (no game files needed)
       texture-selftest             offline checks of the DS3 reflectance -> Elden Ring metallic texture conversion
       timing-selftest              offline checks that ported moves' combo/cancel windows don't cut DS3 swings short
+      enemy-diag survey|unpack <file>...  enemy port diagnostics: every character's skeleton and animation IDs; decompress files
       enemy-selftest               offline checks of the enemy porter (templates, IDs, skin indices, chr map, TAE merge)
       arts-selftest                offline checks of the weapon art port (hks patch, skill names)
       anim-selftest                offline checks of the bone retargeting (rest-pose corrections) and spline rotation rewrite
@@ -122,6 +123,7 @@ try
         "texture-check" => TextureCheck.Run(ctx, argList[1..]),
         "port-maps" => DarkSign.Porter.Maps.MapPorter.Run(ctx, argList[1..]),
         "port-enemies" => DarkSign.Porter.Enemies.ChrPort.Run(ctx),
+        "enemy-diag" => DarkSign.Porter.Enemies.EnemyDiag.Run(ctx, argList[1..]),
         "map-survey" => DarkSign.Porter.Maps.MapSurvey.Run(ctx, argList[1..]),
         "map-validate" => DarkSign.Porter.Maps.MapValidate.Run(ctx),
         "randomize" => DarkSign.Porter.Rando.RandomizeCommand.Run(ctx, argList[1..]),

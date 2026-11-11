@@ -20,25 +20,72 @@ public static class EnemySelfTest
                 failures++;
         }
 
-        // Bone match: Jaccard of names, case-insensitive.
-        Check("bone match of equal skeletons is 1", ChrPort.BoneMatch(["Master", "Pelvis", "Spine"], ["master", "pelvis", "SPINE"]) == 1);
-        Check("bone match of half-shared skeletons is 1/3", Math.Abs(ChrPort.BoneMatch(["A", "B"], ["B", "C"]) - 1.0 / 3) < 1e-9);
-        Check("bone match with an empty skeleton is 0", ChrPort.BoneMatch([], ["A"]) == 0);
-
-        // Template choice: the best skeleton wins; on equal skeletons the same kind and boss-ness win.
-        var human = new[] { "Master", "Pelvis", "Spine", "Neck", "Head", "L_Thigh", "R_Thigh" };
-        var dog = new[] { "Master", "Pelvis", "Tail1", "Tail2", "FrontLeg_L", "FrontLeg_R" };
+        // Template choice: the template that has DS3's bones, stands as big and is the same kind wins.
+        ChrPort.Shape Sk(float size, params (string, int)[] b) => new(b.Select(x => x.Item1).ToList(), b.Select(x => (short)x.Item2).ToList(), size);
+        var human = Sk(2.0f, ("Master", -1), ("Pelvis", 0), ("Spine", 1), ("Neck", 2), ("Head", 3), ("L_Thigh", 1), ("R_Thigh", 1));
+        var imp = Sk(1.1f, ("Master", -1), ("Pelvis", 0), ("Spine", 1), ("Neck", 2), ("Head", 3), ("L_Thigh", 1), ("R_Thigh", 1));
+        var dog = Sk(1.2f, ("Master", -1), ("Pelvis", 0), ("Tail1", 1), ("Tail2", 2), ("FrontLeg_L", 1), ("FrontLeg_R", 1));
         var knight = new EnemyPort.ErEnemy("c4300", 43000000, 43000000, "Banished Knight", false, "test");
         var soldier = new EnemyPort.ErEnemy("c4310", 43100000, 43100000, "Godrick Soldier", false, "test");
         var hound = new EnemyPort.ErEnemy("c4410", 44100000, 44100000, "Wolf", false, "test");
-        var bones = new Dictionary<string, string[]> { ["c4300"] = human, ["c4310"] = human, ["c4410"] = dog };
+        var impEnemy = new EnemyPort.ErEnemy("c3080", 30800000, 30800000, "Imp", false, "test");
+        var shapes = new Dictionary<string, ChrPort.Shape> { ["c4300"] = human, ["c4310"] = human, ["c4410"] = dog, ["c3080"] = imp };
+        Check("kept bones: equal skeletons keep all, names are case-insensitive",
+            ChrPort.KeptBones(human, Sk(2, ("master", -1), ("PELVIS", 0), ("Spine", 1))) == 3);
+        Check("kept bones: a bone under another parent that comes earlier is kept, under a new bone it is not",
+            ChrPort.KeptBones(human, Sk(2, ("Master", -1), ("Pelvis", 0), ("Spine", 0), ("Neck1", 2), ("Neck", 3))) == 3);
+        Check("kept bones without parents count the names both have", ChrPort.KeptBones(new ChrPort.Shape(["A", "B"], []), new ChrPort.Shape(["B", "C"], [])) == 1);
+        Check("size match: equal 1, half 0.5, unknown 0.5", ChrPort.SizeMatch(2, 2) == 1 && ChrPort.SizeMatch(1, 2) == 0.5 && ChrPort.SizeMatch(0, 2) == 0.5);
         var ds3Knight = new ChrPort.Ds3Chr(1100, "Lothric Knight", false, [110000]);
-        var pick = ChrPort.PickTemplate(ds3Knight, human, [hound, soldier, knight], e => bones[e.Model]);
-        Check($"a DS3 knight gets a humanoid template ({pick?.Template.Model})", pick?.Template.Model is "c4300" or "c4310" && pick?.Match == 1);
+        var pick = ChrPort.PickTemplate(ds3Knight, human, [hound, impEnemy, soldier, knight], e => shapes[e.Model]);
+        Check($"a DS3 knight gets the knight, not the Imp with the same bone names or the soldier ({pick?.Template.Model})", pick?.Template.Model == "c4300" && pick?.Match == 1);
+        var ds3Jailer = new ChrPort.Ds3Chr(2230, "Jailer", false, [223000]);
+        Check("a man-sized DS3 enemy with no kind gets a man-sized template, not the Imp",
+            ChrPort.PickTemplate(ds3Jailer, human, [impEnemy, soldier], e => shapes[e.Model])?.Template.Model == "c4310");
+        var dragon = new EnemyPort.ErEnemy("c4500", 45000000, 45000000, "Flying Dragon", false, "test");
+        var skeletonEnemy = new EnemyPort.ErEnemy("c3500", 35000000, 35000000, "Large Skeleton", false, "test");
+        var other = Sk(2.0f, ("Root", -1), ("Hips", 0), ("Chest", 1));
+        shapes["c4500"] = human with { Size = 60 };
+        shapes["c3500"] = other;
+        var ranked = ChrPort.RankTemplates(new ChrPort.Ds3Chr(1070, "Skeleton", false, [107000]), human, [dragon, skeletonEnemy], e => shapes[e.Model]);
+        Check("a template of a wholly different size comes last even with every bone (a dragon's files for a skeleton), and the pick then has too few bones for the DS3 model",
+            ranked[0].Template.Model == "c3500" && ranked[0].Match < ChrPort.MinBoneMatch && ranked[1].Match == 1);
+        Check("a template with DS3's bones comes before a better-scoring one that cannot carry the DS3 model",
+            ChrPort.PickTemplate(new ChrPort.Ds3Chr(1310, "Outrider Knight", false, [131000]), human with { Size = 4 }, [knight, skeletonEnemy], e => e.Model == "c4300" ? human : other with { Size = 4 })?.Template.Model == "c4300");
+        Check("size: by head height when both have a head, by the box otherwise",
+            ChrPort.SizeMatch(new ChrPort.Shape([], [], 2, 1), new ChrPort.Shape([], [], 2, 2)) == 0.5 && ChrPort.SizeMatch(new ChrPort.Shape([], [], 2, 0), new ChrPort.Shape([], [], 2, 2)) == 1);
+        var rest = ChrPort.RestSize(["Master", "Pelvis", "Head", "Throw_Target2"], [-1, 0, 1, 0],
+            [(System.Numerics.Vector3.Zero, System.Numerics.Quaternion.Identity), (new(0, 1, 0), System.Numerics.Quaternion.Identity), (new(0, 0.7f, 0), System.Numerics.Quaternion.Identity), (new(0, 30, 0), System.Numerics.Quaternion.Identity)]);
+        Check($"rest size: head height adds up the chain ({rest.Head})", Math.Abs(rest.Head - 1.7f) < 1e-5);
         var ds3Dog = new ChrPort.Ds3Chr(1300, "Hound Rat", false, [130000]);
         Check("a DS3 four-legged enemy gets the four-legged template",
-            ChrPort.PickTemplate(ds3Dog, dog, [knight, hound], e => bones[e.Model])?.Template.Model == "c4410");
-        Check("no candidates with bones means no template", ChrPort.PickTemplate(ds3Dog, dog, [knight], _ => null) is null);
+            ChrPort.PickTemplate(ds3Dog, dog, [knight, hound], e => shapes[e.Model])?.Template.Model == "c4410");
+        Check("no candidates with a skeleton means no template", ChrPort.PickTemplate(ds3Dog, dog, [knight], _ => null) is null);
+
+        // Moves: DS3's own move of the same ID, else the nearest DS3 move of the same kind, never the template's.
+        var have = new HashSet<(int, int)> { (0, 0), (0, 2000), (0, 2001), (0, 3000), (0, 3004), (0, 3006), (0, 5000), (0, 5001), (0, 8000), (0, 8001), (0, 8021), (0, 10000), (1, 8000) };
+        Check("moves: the same ID wins, in its section first", ChrPort.ChooseMove((0, 3004), have) == (0, 3004) && ChrPort.ChooseMove((1, 8000), have) == (1, 8000)
+            && ChrPort.ChooseMove((1, 3000), have) == (0, 3000));
+        Check("moves: a template attack DS3 lacks plays the nearest DS3 attack, same last digit first (3016 -> 3006, 3003 -> 3004)",
+            ChrPort.ChooseMove((0, 3016), have) == (0, 3006) && ChrPort.ChooseMove((0, 3003), have) == (0, 3004));
+        Check("moves: being hit from a side keeps the side (8031 -> 8021), a dodge plays a step (6001 -> 5001), a second death the first (11010 -> 10000)",
+            ChrPort.ChooseMove((0, 8031), have) == (0, 8021) && ChrPort.ChooseMove((0, 6001), have) == (0, 5001) && ChrPort.ChooseMove((0, 11010), have) == (0, 10000));
+        Check("moves: a kind DS3 has nothing of plays its idle (13000 -> 0)", ChrPort.ChooseMove((0, 13000), have) == (0, 0));
+        Check("moves: fallback enemy-model E keeps the template's animation where DS3 has no move of that ID",
+            ChrPort.ChooseMove((0, 3016), have, fill: false) is null && ChrPort.ChooseMove((0, 3004), have, fill: false) == (0, 3004));
+        var moveTae = new TAE { Format = TAE.TAEFormat.DS3, Animations = [] };
+        var idleEvents = new List<TAE.Event> { new(0, 1, 16, 0, new byte[16], false) };
+        moveTae.Animations.Add(new TAE.Animation(0, new TAE.Animation.AnimMiniHeader.Standard { ImportsHKX = true, ImportHKXSourceAnimID = 20 }, "a000_000000.hkt") { Events = idleEvents });
+        moveTae.Animations.Add(new TAE.Animation(20, new TAE.Animation.AnimMiniHeader.Standard(), "a000_000020.hkt") { Events = [] });
+        moveTae.Animations.Add(new TAE.Animation(2300, new TAE.Animation.AnimMiniHeader.ImportOtherAnim { ImportFromAnimID = 0 }, "a000_002300.hkt") { Events = [] });
+        moveTae.Animations.Add(new TAE.Animation(7401, new TAE.Animation.AnimMiniHeader.Standard(), "a000_007401.hkt") { Events = [] });
+        var ds3Moves = ChrPort.Ds3Moves([(0, moveTae)], new HashSet<(int, int)> { (0, 20), (0, 3000) });
+        Check("DS3 moves: an entry that borrows a file plays it (idle 0 -> file 20), one that plays another entry follows it, one without a file is left out, a file without an entry is a move",
+            ds3Moves.Count == 4 && ds3Moves[(0, 0)].Hkx == (0, 20) && ReferenceEquals(ds3Moves[(0, 0)].Events, idleEvents)
+            && ds3Moves[(0, 2300)].Hkx == (0, 20) && ReferenceEquals(ds3Moves[(0, 2300)].Events, idleEvents)
+            && !ds3Moves.ContainsKey((0, 7401)) && ds3Moves[(0, 3000)].Hkx == (0, 3000));
+        Check("an Elden Ring entry's file: its own, the one it borrows, none when it plays another entry",
+            ChrPort.ErHkx(moveTae.Animations[1], 0) == (0, 20) && ChrPort.ErHkx(moveTae.Animations[0], 0) == (0, 20) && ChrPort.ErHkx(moveTae.Animations[2], 0) is null);
 
         // The body of a character whose model isn't ported: by kind, never wildlife (the Undead Settlement's
         // Overgrown Skeletons were deer on 1.0.271: the deer shared the most bone names with them).
@@ -46,21 +93,21 @@ public static class EnemySelfTest
         var erSkeleton = new EnemyPort.ErEnemy("c3500", 35000000, 35000000, "Large Skeleton", false, "test");
         var erBoss = new EnemyPort.ErEnemy("c4640", 46400000, 46400000, "Ulcerated Tree Spirit", true, "test");
         var ds3SkeletonBones = new[] { "Master", "Pelvis", "Tail1", "RootPos", "Sword" };
-        var bodyBones = new Dictionary<string, string[]>(bones)
+        var bodyBones = new Dictionary<string, IReadOnlyList<string>>(shapes.ToDictionary(kv => kv.Key, kv => kv.Value.Names))
         {
             ["c6010"] = ["Master", "Pelvis", "Tail1", "Tail2"], ["c3500"] = ["Master", "Skull"], ["c4640"] = ["Master", "Root1"],
         };
         var ds3Skeleton = new ChrPort.Ds3Chr(1070, "Overgrown Skeleton - Scimitar - Undead Settlement", false, [107000]);
         Check("bone names alone would pick the deer",
-            ChrPort.PickTemplate(ds3Skeleton, ds3SkeletonBones, [deer, erSkeleton, knight], e => bodyBones[e.Model])?.Template.Model == "c6010");
+            ChrPort.BoneMatch(ds3SkeletonBones, bodyBones["c6010"]) > ChrPort.BoneMatch(ds3SkeletonBones, bodyBones["c3500"]));
         Check("an unported DS3 skeleton stands as an Elden Ring skeleton",
             ChrPort.PickBody(ds3Skeleton, ds3SkeletonBones, [deer, erSkeleton, knight], e => bodyBones[e.Model])?.Template.Model == "c3500");
         var ds3Odd = new ChrPort.Ds3Chr(2150, "Crystal Lizard", false, [215000]);
         Check("with no Elden Ring enemy of its kind, the best-matching opponent stands in, not wildlife or a boss",
-            ChrPort.PickBody(ds3Odd, dog, [deer, erBoss, knight, hound], e => bodyBones[e.Model])?.Template.Model == "c4410");
+            ChrPort.PickBody(ds3Odd, dog.Names, [deer, erBoss, knight, hound], e => bodyBones[e.Model])?.Template.Model == "c4410");
         var ds3Boss = new ChrPort.Ds3Chr(5270, "Dancer of the Boreal Valley", true, [527000]);
         Check("an unported DS3 boss stands as an Elden Ring boss",
-            ChrPort.PickBody(ds3Boss, human, [deer, knight, erBoss], e => bodyBones[e.Model])?.Template.Model == "c4640");
+            ChrPort.PickBody(ds3Boss, human.Names, [deer, knight, erBoss], e => bodyBones[e.Model])?.Template.Model == "c4640");
         Check("only wildlife to choose from means no body", ChrPort.PickBody(ds3Skeleton, ds3SkeletonBones, [deer], e => bodyBones[e.Model]) is null);
         Check("wildlife and helper characters are bystanders, enemies are not",
             new[] { "Deer", "Eagle", "Talk Dummy", "Bullet Dummy", "Bonfire", "BuddyStone", "Ash of War Scarab", "Melina" }.All(DarkSign.Randomizer.Logic.EnemyKinds.IsBystander)
@@ -350,6 +397,20 @@ public static class EnemySelfTest
             && merged1.m_parentIndices.SequenceEqual(new short[] { -1, 0, 1, 2, 3, 1, 2, 6, 7, 1 })
             && merged1.m_referencePose[9].m_translation.X == 6 && merged1.m_referencePose[2].m_translation.X == 2
             && Enumerable.Range(0, merged1.m_bones.Count).All(i => merged1.m_parentIndices[i] < i));
+        var movedBones = new[] { ("Master", -1), ("Pelvis", 0), ("Neck", 1), ("Head", 2), ("Jaw", 3), ("Chain", 0) };
+        var movedSk = new AnimPort.Ds3Skeleton
+        {
+            Names = movedBones.Select(b => b.Item1).ToList(),
+            Parents = movedBones.Select(b => (short)b.Item2).ToList(),
+            ReferencePose = movedBones.Select((_, i) => new SoulsAssetPipeline.Animation.NewBlendableTransform
+                { Translation = new System.Numerics.Vector3(i, 0, 0), Rotation = System.Numerics.Quaternion.Identity, Scale = System.Numerics.Vector3.One }).ToList(),
+        };
+        var merged3 = Template();
+        Check("a bone DS3 has under another, earlier bone moves there and keeps its number (nothing set aside)",
+            ChrPort.MergeSkeleton(merged3, movedSk, addBones: true) == new ChrPort.SkeletonMerge(5, 0, 0, 1) && merged3.m_bones.Count == 6
+            && merged3.m_parentIndices[5] == 0 && merged3.m_bones[5].m_name == "Chain"
+            && ChrPort.KeptBones(new ChrPort.Shape(Template().m_bones.Select(b => b.m_name!).ToList(), Template().m_parentIndices), new ChrPort.Shape(movedSk.Names, movedSk.Parents)) == 6
+            && ChrPort.KeptBones(new ChrPort.Shape(Template().m_bones.Select(b => b.m_name!).ToList(), Template().m_parentIndices), new ChrPort.Shape(ds3Sk.Names, ds3Sk.Parents)) == 3);
         var merged2 = Template();
         Check("fallback enemy-model D: only shared bones take DS3's rest position, none added",
             ChrPort.MergeSkeleton(merged2, ds3Sk, addBones: false) == new ChrPort.SkeletonMerge(5, 0, 0) && merged2.m_bones.Count == 6
@@ -365,6 +426,29 @@ public static class EnemySelfTest
         ] });
         Check("textures a model names under another character's ID are found (c2020 wears c2029's)",
             ChrModel.TextureOwners(dogModel, 2020).SequenceEqual([2029]) && ChrModel.TextureNames(dogModel).SetEquals(["c2029_body_a", "c2020_n", "SYSTEX_DummyNormal"]));
+
+        // Textures: one file per binder, a low-quality copy two sizes down.
+        var dds16 = WeaponTextures.Encode(new byte[16 * 16 * 4], 16, 16, BCnEncoder.Shared.CompressionFormat.Bc1, 72);
+        var small = ChrModel.DropMips(dds16, 2);
+        Check($"a low-quality texture drops the two largest sizes (16x16 with {BitConverter.ToInt32(dds16, 28)} sizes -> {BitConverter.ToInt32(small, 16)}x{BitConverter.ToInt32(small, 12)} with {BitConverter.ToInt32(small, 28)})",
+            BitConverter.ToInt32(dds16, 28) == 5 && BitConverter.ToInt32(small, 16) == 4 && BitConverter.ToInt32(small, 12) == 4 && BitConverter.ToInt32(small, 28) == 3
+            && small.Length == 148 + 8 + 8 + 8 && BitConverter.ToInt32(small, 20) == 8
+            && small.AsSpan(148).SequenceEqual(dds16.AsSpan(dds16.Length - 24)));
+        var tiny = ModelPort.BlackBc4Dds();
+        Check("a texture too small to shrink, or not block-compressed, is kept as it is",
+            ReferenceEquals(ChrModel.DropMips(tiny, 2), tiny) && ChrModel.DropMips(new byte[200], 2).Length == 200);
+        var highTpf = new TPF { Platform = TPF.TPFPlatform.PC, Encoding = 1, Flag2 = 3 };
+        highTpf.Textures.Add(new TPF.Texture("c7000_body_a", 0, 0, dds16, TPF.TPFPlatform.PC));
+        var lowTpf = ChrModel.LowTpf(highTpf);
+        Check("the low-quality file names every texture name + _l", lowTpf.Textures.Count == 1 && lowTpf.Textures[0].Name == "c7000_body_a_l" && lowTpf.Textures[0].Bytes.Length < dds16.Length
+            && lowTpf.Encoding == 1 && lowTpf.Flag2 == 3);
+        var r1 = new TPF { Platform = TPF.TPFPlatform.PC };
+        r1.Textures.Add(new TPF.Texture("c1100_body_r", 0, 0, dds16, TPF.TPFPlatform.PC));
+        var r2 = new TPF { Platform = TPF.TPFPlatform.PC };
+        r2.Textures.Add(new TPF.Texture("c1100_body_r", 0, 0, dds16, TPF.TPFPlatform.PC));
+        Check("converted textures get a flat metallic map only for fallback enemy-model F (the default reads metal from the reflectance map later)",
+            ChrModel.ConvertTpf(r1, 1100, 7000).Textures.Select(t => t.Name).SequenceEqual(["c7000_body_r"])
+            && ChrModel.ConvertTpf(r2, 1100, 7000, flatMetallic: true).Textures.Select(t => t.Name).SequenceEqual(["c7000_body_r", "c7000_body_m"]));
 
         Console.WriteLine(failures == 0 ? "enemy-selftest: all checks passed" : $"enemy-selftest: {failures} check(s) FAILED");
         return failures == 0 ? 0 : 1;
