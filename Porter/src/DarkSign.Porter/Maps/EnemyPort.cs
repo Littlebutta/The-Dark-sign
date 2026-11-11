@@ -19,7 +19,9 @@ namespace DarkSign.Porter.Maps;
 /// legacy dungeon), picked by what the DS3 enemy is: its NpcParam name ("Lothric Knight") is matched by kind
 /// (knight, soldier, dog, skeleton, dragon...) to an Elden Ring enemy of the same kind, earliest dungeon first so the
 /// first DS3 areas get early-game enemies. DS3 bosses (enemies whose boss health bar the map's events show) get
-/// Elden Ring bosses. NPCs (talk scripts) are left out until their dialogue is ported.
+/// Elden Ring bosses. DS3's people (the human body c0000, and anyone with a talk script) get Elden Ring people
+/// to stand in for them (<see cref="People"/>): they stand where DS3 put them and say nothing, until DS3's
+/// equipment and dialogue are ported.
 /// </summary>
 public static class EnemyPort
 {
@@ -87,6 +89,41 @@ public static class EnemyPort
             }
             return sameKind.FirstOrDefault() ?? _commonEnemy ?? _commonBoss;
         }
+
+        /// <summary>The ported DS3 character for this one, if the enemy porter made it (method A only).</summary>
+        public ErEnemy? Ported(Ds3Enemy ds3) => _method == Method.Auto ? _ported?.Find(ds3) : null;
+    }
+
+    /// <summary>
+    /// The Elden Ring people who stand in for DS3's: vanilla placements of the human body (c0000) in the legacy
+    /// dungeons, each with its own look (CharaInitParam), NpcParam and AI. Someone DS3 lets you talk to gets one
+    /// Elden Ring lets you talk to (so they are on the player's side), with the talk script taken off; a DS3 human
+    /// without a talk script (invaders, hostile humans, summons) gets an Elden Ring human who fights for the
+    /// enemies' team. The same DS3 person is the same stand-in on every map.
+    /// </summary>
+    public sealed class People
+    {
+        public const string Human = "c0000";
+        public IReadOnlyList<ErEnemy> Friendly { get; }
+        public IReadOnlyList<ErEnemy> Hostile { get; }
+
+        public People(IEnumerable<ErEnemy> friendly, IEnumerable<ErEnemy> hostile)
+        {
+            Friendly = friendly.ToList();
+            Hostile = hostile.ToList();
+        }
+
+        public static bool IsHuman(string model) => model.StartsWith(Human, StringComparison.OrdinalIgnoreCase);
+
+        public ErEnemy? Choose(Ds3Enemy ds3, bool talks)
+        {
+            var pool = talks ? Friendly : Hostile;
+            if (pool.Count == 0 || !IsHuman(ds3.Model))
+                return null;
+            // Not string.GetHashCode: the pick has to be the same on every run.
+            var hash = (uint)ds3.NpcParam * 2654435761u;
+            return pool[(int)((hash >> 8) % (uint)pool.Count)];
+        }
     }
 
     /// <summary>
@@ -125,7 +162,9 @@ public static class EnemyPort
             : _byModel.TryGetValue(ds3.Model, out var m) ? m with { Boss = ds3.Boss } : null;
     }
 
-    public sealed record Result(int Placed, int Ported, int StandIns, int Npcs, int Skipped, IReadOnlyList<string> Notes);
+    /// <param name="Npcs">DS3 people left out.</param>
+    /// <param name="People">DS3 people placed (counted in Placed too).</param>
+    public sealed record Result(int Placed, int Ported, int StandIns, int Npcs, int Skipped, IReadOnlyList<string> Notes, int People = 0);
 
     /// <summary>
     /// Adds the DS3 map's enemies to the converted layout. <paramref name="describe"/> says what each DS3 enemy is
@@ -133,9 +172,10 @@ public static class EnemyPort
     /// </summary>
     public static Result Place(MSB3 ds3, MSBE msb, MapId ds3Id, MapId erId, MsbPort.Options options, Chooser chooser,
         Func<MSB3.Part.Enemy, Ds3Enemy> describe, MSBE.Part.Enemy? fallbackTemplate = null, List<string>? table = null,
-        Dictionary<string, string>? partNames = null)
+        Dictionary<string, string>? partNames = null, People? people = null)
     {
-        int placed = 0, ported = 0, standIns = 0, npcs = 0, skipped = 0;
+        int placed = 0, ported = 0, standIns = 0, npcs = 0, skipped = 0, peoplePlaced = 0;
+        var peopleUse = new Dictionary<string, int>();
         var notes = new List<string>();
         var collisions = msb.Parts.Collisions.Select(c => c.Name).ToHashSet(StringComparer.OrdinalIgnoreCase);
         var names = msb.Parts.GetEntries().Select(p => p.Name).ToHashSet(StringComparer.OrdinalIgnoreCase);
@@ -145,12 +185,21 @@ public static class EnemyPort
         foreach (var src in ds3.Parts.Enemies)
         {
             var what = describe(src);
+            ErEnemy? who;
             if (what.Npc)
             {
-                npcs++;
-                continue;
+                // A person: the ported DS3 character if it isn't the human body (Fire Keeper, Ludleth...), else an
+                // Elden Ring person. Without either the spot stays empty, as it was before people were placed.
+                who = people is null ? null
+                    : People.IsHuman(what.Model) ? people.Choose(what, src.TalkID > 0) : chooser.Ported(what);
+                if (who is null)
+                {
+                    npcs++;
+                    continue;
+                }
             }
-            var who = chooser.Choose(what);
+            else
+                who = chooser.Choose(what);
             if (who is null)
             {
                 skipped++;
@@ -174,7 +223,9 @@ public static class EnemyPort
             part.ThinkParamID = who.ThinkParam;
             part.TalkID = 0;
             part.PlatoonID = src.PlatoonID;
-            part.CharaInitID = -1;
+            // An Elden Ring person keeps the look of the placement it was copied from; anything else has none.
+            if (!(what.Npc && People.IsHuman(who.Model)))
+                part.CharaInitID = -1;
             part.WalkRouteName = ""; // DS3 patrol routes need the map's regions, which aren't ported yet
             part.BackupEventAnimID = -1;
             part.CollisionPartName = collisions.Contains(src.CollisionName ?? "") ? src.CollisionName : "";
@@ -186,9 +237,17 @@ public static class EnemyPort
             MsbPort.AddModel(msb.Models.Enemies, who.Model, who.ModelEntry, erId);
             placed++;
             // One row of darksign_enemies.tsv (Randomizer EnemyTables.PlacedFile), so the randomizer knows this spot.
-            table?.Add(string.Join('\t', ds3Id, src.Name, src.EntityID, erId, part.Name, part.EntityID, src.ModelName, src.NPCParamID,
-                Clean(what.Name), what.Boss ? 1 : 0, who.Source == "ported DS3 character" ? "ported" : "stand-in", who.Model, who.NpcParam, who.ThinkParam));
-            if (who.Source == "ported DS3 character")
+            // People aren't listed: the randomizer must not put a monster where someone stands.
+            if (!what.Npc)
+                table?.Add(string.Join('\t', ds3Id, src.Name, src.EntityID, erId, part.Name, part.EntityID, src.ModelName, src.NPCParamID,
+                    Clean(what.Name), what.Boss ? 1 : 0, who.Source == "ported DS3 character" ? "ported" : "stand-in", who.Model, who.NpcParam, who.ThinkParam));
+            if (what.Npc)
+            {
+                peoplePlaced++;
+                var key = $"{what.Name} -> {who.Name}{(src.TalkID > 0 ? " (silent)" : " (hostile)")}";
+                peopleUse[key] = peopleUse.GetValueOrDefault(key) + 1;
+            }
+            else if (who.Source == "ported DS3 character")
                 ported++;
             else
             {
@@ -201,7 +260,9 @@ public static class EnemyPort
         }
         if (standInUse.Count > 0)
             notes.Add("stand-ins: " + string.Join("; ", standInUse.OrderByDescending(s => s.Value).Take(15).Select(s => $"{s.Key} x{s.Value}")));
-        return new Result(placed, ported, standIns, npcs, skipped, notes);
+        if (peopleUse.Count > 0)
+            notes.Add("people: " + string.Join("; ", peopleUse.OrderBy(s => s.Key, StringComparer.Ordinal).Take(30).Select(s => $"{s.Key} x{s.Value}")));
+        return new Result(placed, ported, standIns, npcs, skipped, notes, peoplePlaced);
     }
 
     private static string Clean(string s) => s.Replace('\t', ' ').Replace('\n', ' ').Replace('\r', ' ');
@@ -264,9 +325,39 @@ public static class EnemyPort
     ];
 
     /// <summary>Every distinct enemy (model, NpcParam, ThinkParam) placed in Elden Ring's legacy dungeons, with its name.</summary>
-    public static List<ErEnemy> BuildCatalog(GameArchives er, PARAM? npcParam, List<string> notes)
+    public static List<ErEnemy> BuildCatalog(GameArchives er, PARAM? npcParam, List<string> notes) =>
+        BuildCatalog(er, npcParam, notes, out _);
+
+    /// <summary>The team a row of NpcParam fights for, or -1.</summary>
+    public static int TeamOf(PARAM? npcParam, int id)
+    {
+        try { return npcParam?[id] is { } row ? System.Convert.ToInt32(row["teamType"].Value) : -1; }
+        catch (Exception ex) when (ex is not OutOfMemoryException) { return -1; }
+    }
+
+    /// <summary>
+    /// Sorts the vanilla human placements into the two pools of <see cref="People"/>. Friendly: has a talk script.
+    /// Hostile: no talk script, and on a team the ordinary enemies of the catalog are on (so the game already
+    /// treats it as an enemy; summons, corpses and quest phantoms are on other teams and are left out).
+    /// </summary>
+    public static People SortPeople(IEnumerable<(ErEnemy Who, bool Talks)> humans, IEnumerable<ErEnemy> catalog, Func<int, int> teamOf, List<string> notes)
+    {
+        var enemyTeams = catalog.Select(c => teamOf(c.NpcParam)).Where(t => t >= 0).ToHashSet();
+        var list = humans.ToList();
+        var friendly = list.Where(h => h.Talks).Select(h => h.Who).DistinctBy(h => (h.NpcParam, h.Part?.CharaInitID)).ToList();
+        var hostile = list.Where(h => !h.Talks && enemyTeams.Contains(teamOf(h.Who.NpcParam))).Select(h => h.Who)
+            .DistinctBy(h => (h.NpcParam, h.Part?.CharaInitID)).ToList();
+        notes.Add($"people: {friendly.Count} Elden Ring people with a talk script and {hostile.Count} hostile humans found to stand in for DS3's "
+                  + $"(of {list.Count} human placements; enemy teams {string.Join(",", enemyTeams.OrderBy(t => t))})");
+        if (hostile.Count > 0)
+            notes.Add("people: hostile humans: " + string.Join("; ", hostile.Take(20).Select(h => $"{h.Name} ({h.NpcParam}, {h.Source})")));
+        return new People(friendly, hostile);
+    }
+
+    public static List<ErEnemy> BuildCatalog(GameArchives er, PARAM? npcParam, List<string> notes, out People people)
     {
         var catalog = new List<ErEnemy>();
+        var humans = new List<(ErEnemy, bool)>();
         var seen = new HashSet<(string, int, int)>();
         int bystanders = 0;
         var names = npcParam?.Rows.ToDictionary(r => r.ID, r => r.Name ?? "") ?? new();
@@ -295,8 +386,11 @@ public static class EnemyPort
             var bosses = BossEntities(scripts, ds3Layout: false);
             foreach (var part in msb.Parts.Enemies)
             {
-                // Humans (c0000) are NPCs or invaders built from equipment; talkers need their dialogue.
-                if (part.ModelName.StartsWith("c0000", StringComparison.OrdinalIgnoreCase) || part.TalkID > 0 || part.NPCParamID <= 0)
+                // Humans (c0000) are NPCs or invaders built from equipment: they stand in for DS3's people, not its enemies.
+                if (People.IsHuman(part.ModelName) && part.NPCParamID > 0 && part.CharaInitID > 0)
+                    humans.Add((new ErEnemy(part.ModelName, part.NPCParamID, part.ThinkParamID, names.GetValueOrDefault(part.NPCParamID, part.ModelName),
+                        false, name, part, msb.Models.Enemies.FirstOrDefault(m => m.Name.Equals(part.ModelName, StringComparison.OrdinalIgnoreCase))), part.TalkID > 0));
+                if (People.IsHuman(part.ModelName) || part.TalkID > 0 || part.NPCParamID <= 0)
                     continue;
                 if (!seen.Add((part.ModelName, part.NPCParamID, part.ThinkParamID)))
                     continue;
@@ -313,6 +407,7 @@ public static class EnemyPort
         }
         if (bystanders > 0)
             notes.Add($"catalog: {bystanders} wildlife and helper placements left out (deer, eagles, dummies, bonfires)");
+        people = SortPeople(humans, catalog.Where(c => !c.Boss), id => TeamOf(npcParam, id), notes);
         return catalog;
     }
 

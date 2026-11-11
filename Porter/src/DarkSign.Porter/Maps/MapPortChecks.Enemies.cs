@@ -11,6 +11,7 @@ public static partial class MapPortChecks
         yield return ("enemies: DS3 names sort into kinds (knight, soldier, dog, dragon...)", EnemyKinds);
         yield return ("enemies: stand-ins by kind, bosses spread over bosses, ported characters first, NPCs and 'none' left out", EnemyChooser);
         yield return ("enemies: boss entities come from boss health bars, given directly or passed to the event", EnemyBosses);
+        yield return ("people: DS3 talkers get silent Elden Ring people, DS3 hostile humans get hostile ones, the same person every time", PeoplePlacement);
         yield return ("enemies: placed at DS3's spot with the DS3 entity moved to the slot, on its collision, and read back", EnemyPlacement);
     }
 
@@ -119,5 +120,66 @@ public static partial class MapPortChecks
             "every placed model needs a model entry");
         var back = MSBE.Read(layout.Msb.Write());
         Expect(back.Parts.Enemies.Count == 3 && back.Parts.Enemies.Any(e => e.EntityID == 45000800 && e.NPCParamID == boss.NPCParamID), "enemies don't read back");
+    }
+
+    private static void PeoplePlacement()
+    {
+        static EnemyPort.ErEnemy Human(int npc, string name, int look, int talk) => new("c0000", npc, npc + 1, name, false, "m10_00_00_00",
+            new MSBE.Part.Enemy { Name = $"c0000_{npc}", ModelName = "c0000", NPCParamID = npc, ThinkParamID = npc + 1, CharaInitID = look, TalkID = talk, BackupEventAnimID = 30000 });
+        var teams = new Dictionary<int, int> { [43000010] = 6, [31000010] = 6, [45000010] = 6, [100] = 8, [200] = 8, [300] = 6, [400] = 2, [500] = 6 };
+        var notes = new List<string>();
+        var people = EnemyPort.SortPeople(
+            [(Human(100, "Merchant", 23000, 100000), true), (Human(200, "Sorcerer", 23010, 200000), true), (Human(300, "Carian Knight", 23020, 0), false),
+             (Human(400, "Summoned Spirit", 23030, 0), false), (Human(500, "Exile", 23040, 0), false)],
+            SyntheticCatalog().Where(c => !c.Boss), id => teams.GetValueOrDefault(id, -1), notes);
+        Expect(people.Friendly.Count == 2 && people.Hostile.Count == 2, $"{people.Friendly.Count} friendly and {people.Hostile.Count} hostile, expected 2 and 2");
+        Expect(people.Hostile.All(h => h.Name != "Summoned Spirit"), "a human who isn't on an enemy team must not stand in for a hostile one");
+        var greirat = new EnemyPort.Ds3Enemy("c0000", 22000, "Greirat", false, true);
+        Expect(people.Choose(greirat, talks: true) is { } a && ReferenceEquals(a, people.Choose(greirat, talks: true)) && people.Friendly.Contains(a), "a talker gets the same friendly person every time");
+        Expect(people.Choose(greirat, talks: false) is { } h && people.Hostile.Contains(h), "a human without a talk script gets a hostile one");
+        Expect(people.Choose(new("c1400", 1, "Fire Keeper", false, true), true) is null, "only the human body gets a human");
+        Expect(Enumerable.Range(0, 40).Select(i => people.Choose(new("c0000", 22000 + i * 10, "x", false, true), true)!.NpcParam).Distinct().Count() == 2, "both friendly people are used");
+        Expect(new EnemyPort.People([], []).Choose(greirat, true) is null, "no people, nobody placed");
+
+        var ds3 = SyntheticDs3();
+        var collision = ds3.Parts.Collisions[0].Name;
+        ds3.Models.Enemies.Add(new MSB3.Model.Enemy { Name = "c0000" });
+        ds3.Models.Enemies.Add(new MSB3.Model.Enemy { Name = "c1400" });
+        ds3.Parts.Enemies.Add(new MSB3.Part.Enemy { Name = "c0000_0000", ModelName = "c0000", EntityID = 4000700, NPCParamID = 22000, TalkID = 22000, CollisionName = collision, Position = new Vector3(4, 5, 6) });
+        ds3.Parts.Enemies.Add(new MSB3.Part.Enemy { Name = "c0000_0001", ModelName = "c0000", EntityID = 4000710, NPCParamID = 23000, CollisionName = collision });
+        ds3.Parts.Enemies.Add(new MSB3.Part.Enemy { Name = "c1400_0000", ModelName = "c1400", EntityID = 4000720, NPCParamID = 140000, TalkID = 14000, CollisionName = collision });
+        ds3.Parts.Enemies.Add(new MSB3.Part.Enemy { Name = "c1240_0000", ModelName = "c1240", EntityID = 4000100, NPCParamID = 124000, CollisionName = collision });
+        EnemyPort.Ds3Enemy Describe(MSB3.Part.Enemy e) => new(e.ModelName, e.NPCParamID, e.ModelName == "c1240" ? "Lothric Knight" : e.Name, false, e.ModelName == "c0000" || e.TalkID > 0);
+        var chooser = new EnemyPort.Chooser(SyntheticCatalog(), null, EnemyPort.Method.Auto);
+
+        var layout = MsbPort.Convert(ds3, SyntheticHost(), Ds3Id, ErId);
+        var table = new List<string>();
+        var result = EnemyPort.Place(ds3, layout.Msb, Ds3Id, ErId, new MsbPort.Options(), chooser, Describe, null, table, null, people);
+        var placed = layout.Msb.Parts.Enemies;
+        Expect(result.Placed == 3 && result.People == 2 && result.Npcs == 1, $"placed {result.Placed}, people {result.People}, left out {result.Npcs}; expected 3, 2 and 1 (the Fire Keeper isn't ported)");
+        var talker = placed.First(e => e.EntityID == 45000700);
+        Expect(talker.ModelName == "c0000" && talker.TalkID == 0 && talker.CharaInitID is 23000 or 23010 && talker.BackupEventAnimID == -1,
+            $"the talker: model {talker.ModelName}, talk {talker.TalkID}, look {talker.CharaInitID}");
+        Expect(talker.Position == new Vector3(4, 5, 6) && talker.CollisionPartName == collision, "the talker isn't where DS3 had them");
+        var fighter = placed.First(e => e.EntityID == 45000710);
+        Expect(fighter.CharaInitID is 23020 or 23040 && fighter.NPCParamID is 300 or 500, $"the hostile human got look {fighter.CharaInitID}");
+        Expect(placed.First(e => e.EntityID == 45000100).CharaInitID == -1, "an ordinary enemy has no look");
+        Expect(layout.Msb.Models.Enemies.Any(m => m.Name == "c0000"), "the human body needs a model entry");
+        Expect(table.Count == 1, "darksign_enemies.tsv is the randomizer's list of enemy spots: people must not be in it");
+        Expect(result.Notes.Any(n => n.StartsWith("people: ") && n.Contains("(silent)") && n.Contains("(hostile)")), "the report must name the people");
+        var back = MSBE.Read(layout.Msb.Write());
+        Expect(back.Parts.Enemies.Count == 3 && back.Parts.Enemies.Any(e => e.EntityID == 45000700 && e.CharaInitID == talker.CharaInitID), "people don't read back");
+
+        // Ported DS3 characters with a talk script stand where DS3 had them, silent.
+        var ported = EnemyPort.ChrMap.Parse(["chr\tc1400\tc7001\t70010000\t70010000\tFire Keeper"]);
+        var layout2 = MsbPort.Convert(ds3, SyntheticHost(), Ds3Id, ErId);
+        var result2 = EnemyPort.Place(ds3, layout2.Msb, Ds3Id, ErId, new MsbPort.Options(), new EnemyPort.Chooser(SyntheticCatalog(), ported, EnemyPort.Method.Auto), Describe, null, null, null, people);
+        Expect(result2.People == 3 && result2.Npcs == 0 && layout2.Msb.Parts.Enemies.Any(e => e.EntityID == 45000720 && e.ModelName == "c7001" && e.TalkID == 0 && e.CharaInitID == -1),
+            "a ported talker (Fire Keeper) should be placed, silent");
+
+        // Off: nobody.
+        var layout3 = MsbPort.Convert(ds3, SyntheticHost(), Ds3Id, ErId);
+        var result3 = EnemyPort.Place(ds3, layout3.Msb, Ds3Id, ErId, new MsbPort.Options(), chooser, Describe);
+        Expect(result3.People == 0 && result3.Npcs == 3 && layout3.Msb.Parts.Enemies.Count == 1, "without people, DS3's people are left out as before");
     }
 }
