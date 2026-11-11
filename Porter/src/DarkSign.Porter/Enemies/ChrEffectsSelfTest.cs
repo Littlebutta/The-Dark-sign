@@ -109,7 +109,8 @@ public static class ChrEffectsSelfTest
         var erSp = Param([.. erFields.Distinct().Select(f => (f, TypeOf(f))), ("iconId", S32), ("erOnly", U8)]);
         for (int i = 0; i < 3; i++)
             Add(erSp, 10 + i, "", ("iconId", -1), ("erOnly", 4), ("maxHpRate", 1f), ("physicsDiffenceRate", 1f), ("replaceSpEffectId", -1));
-        Add(ds3Sp, 11880, "Jailer - HP Reduction", ("maxHpRate", 0.9f), ("physDefRate", 0.5f), ("lifeReductionRate", 0.25f), ("effectEndurance", 10f), ("replaceSpEffectId", 11890));
+        Add(ds3Sp, 11880, "Jailer - HP Reduction", ("maxHpRate", 0.9f), ("physDefRate", 0.5f), ("lifeReductionRate", 0.25f), ("effectEndurance", 10f), ("replaceSpEffectId", 11890),
+            ("spCategory", 100), ("categoryPriority", 4));
         Add(ds3Sp, 11890, "Jailer - HP Reduction 2", ("changeHpPoint", 30), ("maxHpRate", 1f), ("physDefRate", 1f));
         Add(ds3Sp, 11900, "Jailer - Lantern VFX", ("EffectVfx0", 4000), ("maxHpRate", 1f), ("physDefRate", 1f));
         Add(ds3Sp, 7000, "NG+ scaling", ("maxHpRate", 2f), ("physDefRate", 1f));
@@ -125,9 +126,10 @@ public static class ChrEffectsSelfTest
         int drain = sp.Port(11880);
         var drainRow = erSp[drain];
         Check("enemy SpEffects: the new ID is 700,000,000 + the DS3 ID, one row (no upgrade rows)", drain == 700_011_880 && erSp[drain + 1] is null && erSp.Rows.Count(r => r.ID >= 700_000_000 && r.ID <= 700_011_880) == 2);
-        Check("enemy SpEffects: DS3's values, defence and life drain included, over Elden Ring's usual values for its own fields",
+        Check("enemy SpEffects: DS3's values, defence, life drain and category (one effect of a category shows: the Jailer's lights) included, over Elden Ring's usual values for its own fields",
             drainRow is not null && Convert.ToSingle(drainRow["maxHpRate"].Value) == 0.9f && Convert.ToSingle(drainRow["physicsDiffenceRate"].Value) == 0.5f
-            && Convert.ToSingle(drainRow["lifeReductionRate"].Value) == 0.25f && ParamDefaults.Int(drainRow, "erOnly") == 4 && ParamDefaults.Int(drainRow, "iconId") == -1);
+            && Convert.ToSingle(drainRow["lifeReductionRate"].Value) == 0.25f && ParamDefaults.Int(drainRow, "erOnly") == 4 && ParamDefaults.Int(drainRow, "iconId") == -1
+            && ParamDefaults.Int(drainRow, "spCategory") == 100 && ParamDefaults.Int(drainRow, "categoryPriority") == 4);
         Check("enemy SpEffects: the effect it turns into is ported and named by its new ID; no chain stays none",
             ParamDefaults.Int(drainRow!, "replaceSpEffectId") == 700_011_890 && erSp[700_011_890] is { } next && ParamDefaults.Int(next, "changeHpPoint") == 30
             && ParamDefaults.Int(next, "replaceSpEffectId") == -1 && ParamDefaults.Int(drainRow!, "cycleOccurrenceSpEffectId") == -1);
@@ -206,6 +208,120 @@ public static class ChrEffectsSelfTest
             Enumerable.Range(0, 4).Select(k => ParamDefaults.Int(row, $"spEffectID{k}")).SequenceEqual([1234, 700_011_900, 700_011_880, -1])
             && ParamDefaults.Int(row, "SfxResBankId") == 7005 && session.Built is { NpcEffects: 2, NpcEffectsSkipped: 1 });
         Check("NpcParam: without a DS3 sound bank the template's bank stays", ParamDefaults.Int(row, "SoundBankId") == 4300 && ParamDefaults.Int(row, "SoundAddBankId") == -1);
+
+        // DS3's map scripts: Pontiff's sword auras are set by m37's script on his entity; the Jailer's script takes its
+        // blue lights off (the entity comes from the event's parameters), and puts the orange eye glow back on.
+        var jailerEvent = new EMEVD.Event(13905220);
+        jailerEvent.Instructions.Add(new EMEVD.Instruction(ScriptEffects.Bank, ScriptEffects.SetId, Ints(0, 11890)));
+        jailerEvent.Instructions.Add(new EMEVD.Instruction(ScriptEffects.Bank, ScriptEffects.ClearId, Ints(0, 11900)));
+        jailerEvent.Instructions.Add(new EMEVD.Instruction(ScriptEffects.Bank, ScriptEffects.ClearId, Ints(0, 11899)));
+        jailerEvent.Parameters.AddRange([new EMEVD.Parameter(0, 0, 0, 4), new EMEVD.Parameter(1, 0, 0, 4), new EMEVD.Parameter(2, 0, 0, 4)]);
+        var jailerEvent2 = new EMEVD.Event(13905225);
+        jailerEvent2.Instructions.Add(new EMEVD.Instruction(ScriptEffects.Bank, ScriptEffects.ClearId, Ints(0, 11890)));
+        jailerEvent2.Instructions.Add(new EMEVD.Instruction(ScriptEffects.Bank, ScriptEffects.SetId, Ints(0, 11899)));
+        jailerEvent2.Parameters.AddRange([new EMEVD.Parameter(0, 0, 4, 4), new EMEVD.Parameter(1, 0, 4, 4)]);
+        var starter = new EMEVD.Event(0);
+        starter.Instructions.Add(new EMEVD.Instruction(2000, 0, Ints(0, 13905220, 3900800)));
+        starter.Instructions.Add(new EMEVD.Instruction(2000, 0, Ints(1, 13905225, 0, 3900800)));
+        starter.Instructions.Add(new EMEVD.Instruction(ScriptEffects.Bank, ScriptEffects.SetId, Ints(3700850, 10640)));
+        starter.Instructions.Add(new EMEVD.Instruction(ScriptEffects.Bank, ScriptEffects.SetId, Ints(3700850, 10641)));
+        starter.Instructions.Add(new EMEVD.Instruction(ScriptEffects.Bank, ScriptEffects.SetId, Ints(999, 12345)));
+        var m39 = new EMEVD();
+        m39.Events.AddRange([starter, jailerEvent, jailerEvent2]);
+        var placed = new Dictionary<int, int> { [223000] = 3, [514000] = 1, [223010] = 1 };
+        var scripts = ScriptEffects.From([m39], new Dictionary<int, HashSet<int>> { [3900800] = [223000], [3700850] = [514000] }, placed,
+            new Dictionary<int, int> { [3900800] = 223000, [3700850] = 514000 });
+        Check($"scripts: SpEffects set and cleared are found by the DS3 NpcParam row of the enemy they name, entities from the event's starting calls too ({scripts.Resolved} of {scripts.Instructions}, {scripts.Unresolved} not an enemy)",
+            scripts.Instructions == 8 && scripts.Resolved == 7 && scripts.Unresolved == 1
+            && scripts.Set(514000).SetEquals([10640, 10641]) && scripts.Set(223000).SetEquals([11890, 11899]) && scripts.Cleared(223000).SetEquals([11890, 11899, 11900]));
+        var jailerFx = scripts.Apply(223000, [5330, 11900, 11899, 11902]);
+        Check("scripts: a swap on one of three placed Jailers changes nothing on their shared row",
+            jailerFx.Dropped.Count == 0 && jailerFx.Added.Count == 0 && jailerFx.Effects.SequenceEqual([5330, 11900, 11899, 11902]));
+        var lone = ScriptEffects.From([m39], new Dictionary<int, HashSet<int>> { [3900800] = [223000] }, new Dictionary<int, int> { [223000] = 1 },
+            new Dictionary<int, int> { [3900800] = 223000 }).Apply(223000, [5330, 11900, 11899, 11902]);
+        Check("scripts: on a row whose only placed enemy the scripts switch a light off for good, the light is left out; one they put back (11899) stays",
+            lone.Dropped.SequenceEqual([11900]) && lone.Added.Count == 0 && lone.Effects.SequenceEqual([5330, 11899, 11902]));
+        var pontiffFx = scripts.Apply(514000, [5404, 10642]);
+        Check("scripts: Pontiff's row gains the sword auras his script puts on him and never takes off",
+            pontiffFx.Added.SequenceEqual([10640, 10641]) && pontiffFx.Dropped.Count == 0 && pontiffFx.Effects.SequenceEqual([5404, 10642, 10640, 10641]));
+        var aura = Add(ds3Sp, 10640, "Pontiff - Heat Up", ("EffectVfx0", 4000), ("maxHpRate", 1f), ("physDefRate", 1f));
+        var pontiffNpc = Add(ds3Npc, 514000, "Pontiff", ("spEffectId0", 7000), ("spEffectId1", -1), ("spEffectId2", -1), ("spEffectId3", -1));
+        var pontiffRow = Add(erNpc, 71050000, "Pontiff", ("spEffectID0", 5400), ("spEffectID1", -1), ("spEffectID2", -1), ("spEffectID3", -1),
+            ("SfxResBankId", -1), ("SoundBankId", 3560), ("SoundAddBankId", 3570));
+        var pontiffPlan = plan with { Ds3 = new ChrPort.Ds3Chr(5140, "Pontiff Sulyvahn", true, [514000]), NewChr = 7105 };
+        var pontiffFx2 = ChrEffects.ForTest(ctx, null, ds3Sp, events, new FxrPort.ChrConverter(ds3Fx, () => []), layout, planned, swing, erEvents, scripts);
+        pontiffFx2.Open(pontiffPlan, [], [], []);
+        pontiffFx2.UseForTest(sp);
+        pontiffFx2.ApplyNpc(pontiffRow, pontiffNpc, pontiffPlan);
+        Check("NpcParam: an effect DS3's script puts on the boss goes in a free slot of its ported row; the report lists it",
+            ParamDefaults.Int(pontiffRow, "spEffectID1") == 700_010_640 && pontiffFx2.Characters[7105].ScriptAdded.SequenceEqual([10640, 10641]));
+
+        // Glowing materials: DS3's emissive map on Elden Ring's glowing character material, with its colours white.
+        var glowMatbin = new MATBIN { ShaderPath = @"N:\GR\data\Material\mtd\Chr\shader\C[AMSN]_Glow.spx", SourcePath = @"N:\GR\data\Material\mtd\Chr\matxml\C[c3570]_Body_Glow.matxml" };
+        foreach (var type in new[] { "C_AMSN__Glow_snp_Texture2D_2_AlbedoMap_0", "C_AMSN__Glow_snp_Texture2D_0_MetallicMap_0", "C_AMSN__Glow_snp_Texture2D_7_NormalMap_4", "C_AMSN__Glow_snp_Texture2D_1_EmissiveMap" })
+            glowMatbin.Samplers.Add(new MATBIN.Sampler { Type = type, Path = @"N:\GR\data\Model\chr\c3570\tex\c3570_x.tif" });
+        glowMatbin.Params.Add(new MATBIN.Param { Name = "C_AMSN__Glow_snp_0_color_1", Type = MATBIN.ParamType.Float5, Value = new[] { 1f, 1f, 1f, 1f, 1f } });
+        glowMatbin.Params.Add(new MATBIN.Param { Name = "C_AMSN__Glow_snp_0_float_1", Type = MATBIN.ParamType.Float, Value = 0.15f });
+        glowMatbin.Params.Add(new MATBIN.Param { Name = "g_GlowScale", Type = MATBIN.ParamType.Float4, Value = new[] { 1f, 1f, 1f, 0.8f } });
+        var tinted = new MATBIN { ShaderPath = glowMatbin.ShaderPath };
+        tinted.Samplers.AddRange(glowMatbin.Samplers);
+        tinted.Params.Add(new MATBIN.Param { Name = "C_AMSN__Glow_snp_0_color_1", Type = MATBIN.ParamType.Float5, Value = new[] { 0.41f, 0.59f, 0.67f, 1f, 3f } });
+        var detailMatbin = new MATBIN { ShaderPath = "C[DetailBlend]_Glow.spx" };
+        detailMatbin.Samplers.Add(new MATBIN.Sampler { Type = "Detail_BlendMask", Path = "" });
+        detailMatbin.Samplers.AddRange(glowMatbin.Samplers);
+        Check("glow: Elden Ring's plain glowing shader with white colours ranks first; a tinted one after it; a material with a slot the port can't fill (a blend mask) is no candidate",
+            ChrGlow.Score(glowMatbin) == 6 && ChrGlow.Score(tinted) == 5 && ChrGlow.Score(detailMatbin) is null && ChrGlow.Score(new MATBIN()) is null);
+        var glowTemplate = new ChrGlow.Template("C[c3570]_Body_Glow", "C[AMSN]_Glow", glowMatbin.Samplers.Select(x => x.Type).ToList(),
+            new FLVER2.Material(), new FLVER2.GXList());
+        var glowModel = new FLVER2();
+        glowModel.Header.Version = 0x20014;
+        glowModel.Nodes.Add(new FLVER.Node { Name = "Master" });
+        glowModel.GXLists.Add(new FLVER2.GXList());
+        glowModel.Materials.Add(new FLVER2.Material { Name = "#08#lantern", MTD = @"N:\FDP\data\Material\mtd\character\C[ARSN]_em_Glow.mtd", Textures =
+        [
+            new FLVER2.Texture("g_DiffuseTexture", @"N:\FDP\chr\c2230\tex\c2230_weapon_a.tif", System.Numerics.Vector2.One, 0, 0, 0, 0, 0),
+            new FLVER2.Texture("g_EmissiveTexture", @"N:\FDP\chr\c2230\tex\c2230_weapon_e.tif", System.Numerics.Vector2.One, 0, 0, 0, 0, 0),
+        ] });
+        glowModel.Materials.Add(new FLVER2.Material { Name = "body", MTD = @"N:\FDP\data\Material\mtd\character\C[ARSN].mtd", Textures =
+        [
+            new FLVER2.Texture("g_DiffuseTexture", @"N:\FDP\chr\c2230\tex\c2230_body_a.tif", System.Numerics.Vector2.One, 0, 0, 0, 0, 0),
+            new FLVER2.Texture("g_EmissiveTexture", @"N:\FDP\data\Model\SYSTEX_DummyBurn_em.tif", System.Numerics.Vector2.One, 0, 0, 0, 0, 0),
+        ] });
+        var glowTemplateModel = new FLVER2();
+        glowTemplateModel.Header.Version = 0x2001A;
+        glowTemplateModel.Nodes.Add(new FLVER.Node { Name = "Master" });
+        glowTemplateModel.GXLists.Add(new FLVER2.GXList());
+        glowTemplateModel.Materials.Add(new FLVER2.Material { Name = "body", MTD = @"N:\GR\data\Material\mtd\Chr\matxml\C[c3900]_Body.matxml" });
+        var glowMesh = new FLVER2.Mesh { MaterialIndex = 0, NodeIndex = 0 };
+        glowMesh.Vertices.Add(new FLVER.Vertex());
+        glowMesh.FaceSets.Add(new FLVER2.FaceSet { Indices = [0, 0, 0] });
+        glowTemplateModel.Meshes.Add(glowMesh);
+        glowTemplateModel.BufferLayouts.Add(new FLVER2.BufferLayout { new FLVER.LayoutMember(FLVER.LayoutType.Float3, FLVER.LayoutSemantic.Position, 0) });
+        var glowMade = ChrModel.Convert(glowModel, glowTemplateModel, 2230, 7071, plainMaterials: true, erNodes: false, glow: glowTemplate);
+        Check($"glow: a DS3 material with a glow map goes on the glowing material with its own GX list and samplers; a SYSTEX dummy glow map is no glow ({ChrModel.Glowing})",
+            ChrModel.Glowing == 1 && glowMade.Count == 2 && glowMade[0] is { TemplateMatbin: "C[c3570]_Body_Glow", Emissive: "c7071_weapon_e" }
+            && glowMade[1] is { TemplateMatbin: ChrMaterial.PlainSource, Emissive: null }
+            && glowModel.Materials[0].GXIndex == 1 && glowModel.GXLists.Count == 2 && glowModel.Materials[0].Textures.Count == 4 && glowModel.Materials[1].GXIndex == 0);
+        int named = glowMade[0].Apply(glowMatbin);
+        Check("glow: the copy names DS3's colour and glow textures, clears the slots DS3 has nothing for, and its glow colour is white with Elden Ring's strength kept",
+            named == 2 && glowMatbin.Samplers[3].Path.EndsWith(@"\c7071_weapon_e.tif") && glowMatbin.Samplers[0].Path.EndsWith(@"\c7071_weapon_a.tif") && glowMatbin.Samplers[1].Path == ""
+            && ChrGlow.Whiten(tinted) == 1 && ((float[])tinted.Params[0].Value).SequenceEqual([1f, 1f, 1f, 1f, 3f])
+            && ((float[])glowMatbin.Params[2].Value).SequenceEqual([1f, 1f, 1f, 0.8f]) && (float)glowMatbin.Params[1].Value == 0.15f);
+        var noGlow = new FLVER2();
+        noGlow.Header.Version = 0x20014;
+        noGlow.Nodes.Add(new FLVER.Node { Name = "Master" });
+        noGlow.GXLists.Add(new FLVER2.GXList());
+        noGlow.Materials.Add(glowModel.Materials[0]);
+        noGlow.Materials[0].MTD = @"N:\FDP\data\Material\mtd\character\C[ARSN]_em_Glow.mtd";
+        noGlow.Materials[0].Textures =
+        [
+            new FLVER2.Texture("g_DiffuseTexture", @"N:\FDP\chr\c2230\tex\c2230_weapon_a.tif", System.Numerics.Vector2.One, 0, 0, 0, 0, 0),
+            new FLVER2.Texture("g_EmissiveTexture", @"N:\FDP\chr\c2230\tex\c2230_weapon_e.tif", System.Numerics.Vector2.One, 0, 0, 0, 0, 0),
+        ];
+        var plainMade = ChrModel.Convert(noGlow, glowTemplateModel, 2230, 7071, plainMaterials: true, erNodes: false, glow: null);
+        Check("glow: with no glowing material (fallback DARKSIGN_ENEMY_GLOW=0, or none found) the material is plain as before",
+            plainMade.Single() is { TemplateMatbin: ChrMaterial.PlainSource, Emissive: null } && noGlow.GXLists.Count == 1 && ChrModel.Glowing == 0);
+
 
         // DS3's encrypted sound files.
         var plain = new byte[0x40];

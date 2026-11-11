@@ -1295,7 +1295,7 @@ public static partial class ChrPort
         var areas = new Dictionary<string, long>(StringComparer.OrdinalIgnoreCase);
         foreach (var tx in tpfs.SelectMany(p => p.Textures).Where(tx => tx.Bytes.Length >= 20))
             areas.TryAdd(tx.Name, (long)BitConverter.ToInt32(tx.Bytes, 16) * BitConverter.ToInt32(tx.Bytes, 12));
-        var made = ChrModel.Convert(flver, templateFlver, x, n, name => areas.GetValueOrDefault(name));
+        var made = ChrModel.Convert(flver, templateFlver, x, n, name => areas.GetValueOrDefault(name), glowing > 0 ? ChrGlow.Find(er) : null);
         if (ChrModel.VertexColoursSet > 0 || ChrModel.SecondLayers > 0)
             notes.Add($"{ChrModel.VertexColoursSet} vertex colours set to Elden Ring's" + (ChrModel.SecondLayers > 0 ? $", {ChrModel.SecondLayers} two-layer materials show their larger layer" : ""));
         if (blank.Count > 0)
@@ -1303,7 +1303,8 @@ public static partial class ChrPort
         files.Materials.AddRange(made);
         notes.Add($"{flver.Meshes.Count} meshes, {flver.Materials.Count} DS3 materials on {made.Count} {(ChrModel.PlainMaterials ? "plain character" : "template")} materials"
                   + $" ({made.Count(m => m.AlphaTest)} cut-out, {flver.Materials.Count(m => ChrModel.MaskPrefix(m.Name).Length > 0)} with a display mask"
-                  + (glowing > 0 ? $", {glowing} glowing ones drawn without their glow" : "") + ")"
+                  + (glowing > 0 ? ChrModel.Glowing > 0 ? $", {ChrModel.Glowing} glowing ones on Elden Ring's glowing material" + (glowing > ChrModel.Glowing ? $" ({glowing - ChrModel.Glowing} without their glow)" : "")
+                      : $", {glowing} glowing ones drawn without their glow" : "") + ")"
                   + $"; node flags {string.Join(" ", flver.Nodes.GroupBy(node => (int)node.Flags).OrderBy(g => g.Key).Select(g => $"{g.Key}x{g.Count()}"))}");
         templateFlverFile.Bytes = flver.Write();
         var texbnd = binders.Keys.Where(k => k.EndsWith(".texbnd.dcx", StringComparison.OrdinalIgnoreCase))

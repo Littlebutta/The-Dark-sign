@@ -106,6 +106,11 @@ public sealed class SpEffectPort
     // DS3 fields the fuller copy adds: same name and meaning in both games...
     private static readonly string[] FullSharedFields =
     [
+        // spCategory / categoryPriority: of the effects in one category a character carries only the highest priority
+        // one. DS3's Jailer row names three lights in category 100 (11899 orange on the weapon, priority 4; 11900 cyan
+        // lantern, 1; 11902 blue eyes, 2) and DS3 shows only the orange; without the category all three showed and the
+        // ported Jailer glowed blue (1.0.326 playtest). Same names and types in both games' Paramdex defs.
+        "spCategory", "categoryPriority",
         "conditionHp", "lifeReductionRate", "lifeReductionType", "soulStealRate", "noDead", "bCurrHPIndependeMaxHP", "hasTarget",
         "enableLifeTime", "isExtendSpEffectLife", "disablePoison", "disableBlood", "disableCurse",
         .. Enumerable.Range(0, 16).Select(k => $"vowType{k}"),

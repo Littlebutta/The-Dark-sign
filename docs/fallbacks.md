@@ -397,6 +397,14 @@ Try the next option if: A ported DS3 enemy crashes the game when it spawns or at
 - **B: DS3's effects and abilities, the template's sounds.** As A, but ported enemies keep the sounds of the Elden Ring enemy they are built on (DARKSIGN_ENEMY_SOUNDS=0). Use when ported enemies are silent, make wrong sounds, or the game crashes or hangs loading one with A. (`DARKSIGN_ENEMY_SOUNDS=0`)
 - **C: The Elden Ring template's effects and sounds.** Ported enemies keep the effects, sounds and abilities of the Elden Ring enemy they are built on (DARKSIGN_ENEMY_EFFECTS=0), as in every build up to 1.0.299. (`DARKSIGN_ENEMY_EFFECTS=0`)
 
+### Ported DS3 enemies' glows (`enemy-glow`, rebuilds the content)
+
+Try the next option if: A ported DS3 enemy's glow is the wrong colour or missing (the Jailer's lantern, Pontiff Sulyvahn's swords, the Soul of Cinder), a part of it glows far too brightly or draws black, or the game crashes or hangs loading a ported enemy that glows.
+
+- **A: DS3's glows (default).** DS3 materials with a glow map are drawn on Elden Ring's glowing character material with DS3's glow texture, and the effects DS3's map scripts keep on an enemy (Pontiff's sword auras) are part of its enemy row.
+- **B: Glowing materials, effects from the enemy row only.** As A, but ported enemies get only the effects their DS3 enemy row names, not the ones DS3's map scripts add or take off (DARKSIGN_ENEMY_SCRIPT_EFFECTS=0), as up to 1.0.326. (`DARKSIGN_ENEMY_SCRIPT_EFFECTS=0`)
+- **C: No glowing materials.** Glowing DS3 materials are drawn plain, without their glow (DARKSIGN_ENEMY_GLOW=0), as up to 1.0.326. Use when a ported enemy draws black or crashes the game with A. (`DARKSIGN_ENEMY_GLOW=0`)
+
 ### Where the DS3 maps' own flags are kept (`map-flags`, rebuilds the content)
 
 Try the next option if: In a DS3 map, bosses come back, opened doors and shortcuts close again or picked-up items return after a reload, or the pre-flight check says a map flag block is MISSING.
