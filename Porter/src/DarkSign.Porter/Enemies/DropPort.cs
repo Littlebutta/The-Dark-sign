@@ -134,8 +134,11 @@ public sealed class DropPort
         public string Ds3Name(Kind kind, int id) =>
             _ds3Names[kind].TryGetValue(kind == Kind.Weapon ? BaseWeapon(id) : id, out var name) ? name : "";
 
-        /// <summary>A DS3 weapon ID without its reinforcement level and infusion (DS3: base + infusion * 100 + level).</summary>
-        public static int BaseWeapon(int id) => id / 10000 * 10000;
+        /// <summary>
+        /// A DS3 weapon ID without its reinforcement level and infusion (DS3: base + infusion * 100 + level). Arrows and
+        /// bolts (IDs below 1,000,000, a hundred apart: Standard Arrow 400000, Fire Arrow 400100) have neither.
+        /// </summary>
+        public static int BaseWeapon(int id) => id < 1_000_000 ? id : id / 10000 * 10000;
 
         /// <summary>The Elden Ring item for a DS3 item, or null when there is none yet.</summary>
         public Item? Map(Kind kind, int ds3Id)
@@ -665,13 +668,18 @@ public sealed class DropPort
 
         var items = new ItemMap(new Dictionary<int, int> { [2000000] = 80010000, [2010000] = 80990000 });
         items.Add(Kind.Weapon, new Dictionary<int, string> { [2000000] = "Lothric Knight Sword", [2010000] = "Unbuilt Sword", [100000] = "Dagger" },
-            new Dictionary<int, string> { [1000000] = "Dagger", [1000100] = "Heavy Dagger", [80010000] = "Lothric Knight Sword" }, [1000000, 1000100, 80010000]);
+            new Dictionary<int, string> { [1000000] = "Dagger", [1000100] = "Heavy Dagger", [80010000] = "Lothric Knight Sword", [50020000] = "Fire Arrow" },
+            [1000000, 1000100, 80010000, 50020000]);
+        items.Add(Kind.Weapon, new Dictionary<int, string> { [400000] = "Standard Arrow", [400100] = "Fire Arrow" }, new Dictionary<int, string>(), [1000000, 1000100, 80010000, 50020000]);
         items.Add(Kind.Armor, new Dictionary<int, string> { [51000000] = "Lothric Knight Helm" }, new Dictionary<int, string> { [10000] = "Iron Helmet" }, [10000]);
         items.Add(Kind.Ring, new Dictionary<int, string>(), new Dictionary<int, string>(), []);
         items.Add(Kind.Goods, new Dictionary<int, string> { [296] = "Throwing Knife" }, new Dictionary<int, string> { [1700] = "Throwing knife", [1701] = "Throwing Knife" }, [1700, 1701]);
         check("items: a ported weapon by the plan, a level or infusion left off, a weapon whose ported row is missing unmapped",
             items.Map(Kind.Weapon, 2000000) is { Id: 80010000 } && items.Map(Kind.Weapon, 2000003) is { Id: 80010000 } && items.Map(Kind.Weapon, 2000100) is { Id: 80010000 }
             && items.Map(Kind.Weapon, 2010000) is null);
+        check("items: arrows are a hundred apart and keep their own ID and name (Fire Arrow is not Standard Arrow)",
+            ItemMap.BaseWeapon(400100) == 400100 && items.Ds3Name(Kind.Weapon, 400100) == "Fire Arrow" && items.Map(Kind.Weapon, 400100) is { Id: 50020000 }
+            && items.Map(Kind.Weapon, 400000) is null);
         check("items: the Elden Ring item of the same name (its lowest ID), nothing for an item Elden Ring lacks",
             items.Map(Kind.Weapon, 100000) is { Id: 1000000 } && items.Map(Kind.Goods, 296) is { Id: 1700 } && items.Map(Kind.Armor, 51000000) is null
             && items.Map(Kind.Goods, 0) is null);
