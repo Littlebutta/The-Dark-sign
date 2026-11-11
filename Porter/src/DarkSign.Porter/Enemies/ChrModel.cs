@@ -27,10 +27,22 @@ public static class ChrModel
         PlainMetallic = "C_AMSN__snp_Texture2D_0_MetallicMap_0",
         PlainNormal = "C_AMSN__snp_Texture2D_7_NormalMap_4";
 
-    public static List<ChrMaterial> Convert(FLVER2 flver, FLVER2 template, int ds3Chr, int newChr) =>
-        Convert(flver, template, ds3Chr, newChr, PlainMaterials, ErNodes);
+    /// <summary>
+    /// False with DARKSIGN_ENEMY_COLOURS=ds3: the model keeps DS3's vertex colours (and white where DS3 has none),
+    /// and a two-layer material shows its first layer, as builds up to 1.0.299 did.
+    /// </summary>
+    public static bool ErVertexColours => Environment.GetEnvironmentVariable("DARKSIGN_ENEMY_COLOURS")?.Trim().ToLowerInvariant() != "ds3";
 
-    public static List<ChrMaterial> Convert(FLVER2 flver, FLVER2 template, int ds3Chr, int newChr, bool plainMaterials, bool erNodes)
+    /// <summary>From the last Convert on this thread: vertex colours changed to Elden Ring's, materials shown by their second layer.</summary>
+    [ThreadStatic] public static int VertexColoursSet;
+    [ThreadStatic] public static int SecondLayers;
+
+    public static List<ChrMaterial> Convert(FLVER2 flver, FLVER2 template, int ds3Chr, int newChr, Func<string, long>? textureArea = null) =>
+        Convert(flver, template, ds3Chr, newChr, PlainMaterials, ErNodes, textureArea, ErVertexColours);
+
+    /// <param name="textureArea">Pixels of a texture by its new name (0 when unknown); picks the layer a two-layer material shows.</param>
+    public static List<ChrMaterial> Convert(FLVER2 flver, FLVER2 template, int ds3Chr, int newChr, bool plainMaterials, bool erNodes,
+        Func<string, long>? textureArea = null, bool erColours = true)
     {
         if (!ChrPort.HasBody(template) || flver.Materials.Count == 0)
             throw new InvalidDataException("the template or the DS3 model has nothing to draw");
@@ -51,6 +63,7 @@ public static class ChrModel
         flver.GXLists = [template.GXLists[0]];
 
         var materials = new List<ChrMaterial>();
+        int secondLayers = 0;
         var plain = new Dictionary<(string?, string?, string?, bool), string>();
         string oldTag = $"c{ds3Chr:D4}", newTag = $"c{newChr:D4}";
         for (int i = 0; i < flver.Materials.Count; i++)
@@ -63,6 +76,17 @@ public static class ChrModel
             var albedo = Ds3Texture("g_DiffuseTexture", "_AlbedoMap_0");
             var normal = Ds3Texture("g_BumpmapTexture", "_NormalMap_0");
             var specular = Ds3Texture("g_SpecularTexture", "_ReflectanceMap_0");
+            // A two-layer DS3 material (C[ARSN]_m: Pontiff Sulyvahn's body is a 512 "Corrosion" layer over the 2048
+            // skin) blends by vertex alpha; the plain shader has one layer. The layer with the larger colour texture
+            // is the surface itself, the smaller one a tiling overlay: up to 1.0.299 the first was taken whatever it was.
+            if (erColours && textureArea is not null && Ds3Texture("g_DiffuseTexture2", "_AlbedoMap_1") is { } albedo2
+                && (albedo is null || textureArea(albedo2) > textureArea(albedo)))
+            {
+                albedo = albedo2;
+                normal = Ds3Texture("g_BumpmapTexture2", "_NormalMap_1") ?? normal;
+                specular = Ds3Texture("g_SpecularTexture2", "_ReflectanceMap_1") ?? specular;
+                secondLayers++;
+            }
             var metallic = specular is not null && specular.EndsWith("_r", StringComparison.OrdinalIgnoreCase) ? specular[..^2] + "_m" : null;
             bool alphaTest = IsAlphaTested(m.MTD);
             // "#01#": the display mask the mesh belongs to (NpcParam modelDispMask1), the same in both games.
@@ -120,6 +144,21 @@ public static class ChrModel
                 while (vertex.Colors.Count < colors)
                     vertex.Colors.Add(new FLVER.VertexColor(1f, 1f, 1f, 1f));
         }
+        // Elden Ring's character meshes carry the vertex colour 1 0 0 1 (red, opaque) on every material but fur
+        // (read off c3250, c3570, c3900, c4340, c4353). DS3's carry 1 0 1 1, blend materials their layer weight in
+        // alpha (Pontiff's body goes down to 0), and meshes without colours (all of the Soul of Cinder's body) were
+        // given white: on Elden Ring's shader those drew blank. Every ported vertex now carries Elden Ring's value.
+        VertexColoursSet = 0;
+        if (erColours)
+            foreach (var vertex in flver.Meshes.SelectMany(mesh => mesh.Vertices))
+                for (int c = 0; c < vertex.Colors.Count; c++)
+                {
+                    var old = vertex.Colors[c];
+                    if (old.A != 1f || old.R != 1f || old.G != 0f || old.B != 0f)
+                        VertexColoursSet++;
+                    vertex.Colors[c] = new FLVER.VertexColor(1f, 1f, 0f, 0f);
+                }
+        SecondLayers = secondLayers;
         return materials;
     }
 

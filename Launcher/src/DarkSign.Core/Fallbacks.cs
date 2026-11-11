@@ -441,6 +441,8 @@ public static class Fallbacks
                 { PorterEnv = Env("DARKSIGN_ENEMY_ANIMS", "template") },
             new("F", "DS3 textures next to the template's", "As A, but DS3's textures are a second file in the template's high-quality texture binder with flat 'not metal' maps (DARKSIGN_ENEMY_TEXTURES=added), as in builds up to 1.0.271, where ported enemies drew blank silver. Use when ported enemies crash on spawn or the game hangs loading them with A.")
                 { PorterEnv = Env("DARKSIGN_ENEMY_TEXTURES", "added") },
+            new("G", "DS3's vertex colours", "As A, but the model keeps DS3's vertex colours (white where DS3 has none) and a two-layer material shows its first layer (DARKSIGN_ENEMY_COLOURS=ds3), as in builds up to 1.0.299, where the Soul of Cinder and Pontiff Sulyvahn drew without textures. Use when ported enemies that had textures lose them, or turn red, with A.")
+                { PorterEnv = Env("DARKSIGN_ENEMY_COLOURS", "ds3") },
         ]),
         new("enemy-drops", "DS3 maps", "What ported DS3 enemies drop", Stage.Build,
             "A ported DS3 enemy drops nothing where DS3 drops something, drops the wrong item or far too often, the game crashes or hangs when a ported enemy dies, or the build's enemy params step says the drops were not ported.",

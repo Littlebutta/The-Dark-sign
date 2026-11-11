@@ -119,7 +119,7 @@ public static class WeaponTextures
     private static float ToSrgb(float v) =>
         v <= 0.0031308f ? v * 12.92f : 1.055f * MathF.Pow(v, 1f / 2.4f) - 0.055f;
 
-    private static (ColorRgba32[] Pixels, int Width, int Height) Decode(byte[] ddsBytes)
+    internal static (ColorRgba32[] Pixels, int Width, int Height) Decode(byte[] ddsBytes)
     {
         using var ms = new MemoryStream(ddsBytes);
         var dds = DdsFile.Load(ms);
