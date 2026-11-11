@@ -615,6 +615,7 @@ public static partial class MovesetPort
         Console.WriteLine($"effects: {_effectGroupsAdded} moves got an effect event group their template section has none of (DS3 effects there were dropped before)");
         if (bullets is not null)
             Console.WriteLine($"bullets: {bullets.Summary}; {_bulletEvents} DS3 bullet events copied into the moves");
+            Console.WriteLine($"bullets: {attackPort.BulletBaseAttacks} bullet attacks take the weapon's attack power (percentages only in DS3)");
         if (spEffects?.Visuals is { } visualRows)
             Console.WriteLine($"effect visuals: {visualRows.Summary}");
         try
@@ -1316,8 +1317,32 @@ public sealed class AttackParamPort(ParamStore er, ParamStore ds3, string behavi
             ? _erBehavior.Rows.Where(r => Convert.ToInt32(r["refType"].Value) == 1).Select(r => bullets[Convert.ToInt32(r["refId"].Value)])
                 .Where(b => b is not null).Select(b => _erAttack[Convert.ToInt32(b!["atkId_Bullet"].Value)]).FirstOrDefault(a => a is not null)
             : null;
-        return PortAttack(ds3Id, _bulletAttackBase);
+        int id = PortAttack(ds3Id, _bulletAttackBase);
+        // A DS3 weapon's projectile takes its power from the weapon: its attack row has only percentages (Friede's
+        // shatter 200% magic, the Moonlight wave 110%) and no attack power of its own. In Elden Ring a bullet's
+        // attack only counts the weapon when isAddBaseAtk is set: all 98 Ash of War bullet attacks that have
+        // percentages and no power of their own set it (Storm Assault), and the bullet attack the port starts from
+        // doesn't, so every such DS3 projectile hit for nothing and built up none of the weapon's frost or bleed.
+        if (BulletBaseAttack && _attackIds.ContainsKey(ds3Id) && _bulletAttacks.Add(id) && _erAttack[id] is { } row
+            && Power(row, "Correction") && !Power(row, "") && ParamDefaults.Cell(row, "isAddBaseAtk") is { } add)
+        {
+            add.Value = Convert.ChangeType(1, add.Value!.GetType());
+            _bulletBaseAttacks++;
+        }
+        return id;
     }
+
+    /// <summary>Fallback "weapon-visuals" G: DARKSIGN_BULLET_BASE_ATK=0 leaves ported bullet attacks without the
+    /// weapon's own attack power, as in builds up to 1.0.279.</summary>
+    private static readonly bool BulletBaseAttack = Environment.GetEnvironmentVariable("DARKSIGN_BULLET_BASE_ATK") != "0";
+
+    private static bool Power(PARAM.Row row, string suffix) =>
+        new[] { "atkPhys", "atkMag", "atkFire", "atkThun", "atkDark" }
+            .Any(f => ParamDefaults.Cell(row, f + suffix) is { Value: not null } c && Convert.ToDouble(c.Value) > 0);
+
+    private readonly HashSet<int> _bulletAttacks = [];
+    private int _bulletBaseAttacks;
+    public int BulletBaseAttacks => _bulletBaseAttacks;
 
     private PARAM.Row? _bulletAttackBase;
 
