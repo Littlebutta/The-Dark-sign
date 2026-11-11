@@ -1175,29 +1175,42 @@ public static partial class ChrPort
         // The template's character and effect files, under the new ID. Its sound bank isn't copied: the new NpcParam
         // rows load the template's own bank (SoundAddBankId), so its sound events keep playing.
         var binders = new Dictionary<string, (BND4 Bnd, DCX.CompressionInfo Compression)>(StringComparer.OrdinalIgnoreCase);
-        int renamedInside = 0;
-        foreach (var entry in er.Entries.Where(e => e.Path is { } p && ClonedFolders.Any(f => p.StartsWith(f, StringComparison.OrdinalIgnoreCase))
-                                                     && Regex.IsMatch(ItemText.Leaf(p), $@"(^|_)c{t:D4}(\.|_)", RegexOptions.IgnoreCase))
-                     .OrderBy(e => e.Path, StringComparer.Ordinal))
-        {
-            var (bytes, compression) = er.ReadWithCompression(entry.Path!);
-            if (BND4.Is(bytes))
+        int renamedInside = 0, fromVariant = 0;
+        // The files come from the character that holds the template's animations (a variant such as c4353 keeps them
+        // in its base, c4350), then, for every file the base lacks, from the variant itself: a base can be nothing
+        // but animations and behaviour (c4350 has no chrbnd), and with the base alone every enemy on such a template
+        // failed to build and stood there as the Elden Ring body (the Lothric Knight on the Leyndell Knight, 1.0.284).
+        int variant = ChrId(plan.Template.Model);
+        foreach (int from in new[] { t, variant }.Where(c => c > 0).Distinct())
+            foreach (var entry in er.Entries.Where(e => e.Path is { } p && ClonedFolders.Any(f => p.StartsWith(f, StringComparison.OrdinalIgnoreCase))
+                                                         && Regex.IsMatch(ItemText.Leaf(p), $@"(^|_)c{from:D4}(\.|_)", RegexOptions.IgnoreCase))
+                         .OrderBy(e => e.Path, StringComparer.Ordinal))
             {
-                var bnd = BND4.Read(bytes);
-                foreach (var f in bnd.Files)
+                var path = Rename(entry.Path!, from, n);
+                if (binders.ContainsKey(path) || files.Outputs.Any(o => o.Path.Equals(path, StringComparison.OrdinalIgnoreCase)))
+                    continue;
+                var (bytes, compression) = er.ReadWithCompression(entry.Path!);
+                if (BND4.Is(bytes))
                 {
-                    f.Name = Rename(f.Name, t, n);
-                    if (f.Name.EndsWith(".hkx", StringComparison.OrdinalIgnoreCase))
-                        renamedInside += RenameInside(f.Bytes, t, n);
+                    var bnd = BND4.Read(bytes);
+                    foreach (var f in bnd.Files)
+                    {
+                        f.Name = Rename(f.Name, from, n);
+                        if (f.Name.EndsWith(".hkx", StringComparison.OrdinalIgnoreCase))
+                            renamedInside += RenameInside(f.Bytes, from, n);
+                    }
+                    binders[path] = (bnd, compression);
                 }
-                binders[Rename(entry.Path!, t, n)] = (bnd, compression);
+                else
+                    files.Outputs.Add((path, compression.Type == DCX.Type.None ? bytes : DCX.Compress(bytes, compression)));
+                if (from != t)
+                    fromVariant++;
             }
-            else
-                files.Outputs.Add((Rename(entry.Path!, t, n), compression.Type == DCX.Type.None ? bytes : DCX.Compress(bytes, compression)));
-        }
         var chrbndPath = $"/chr/c{n:D4}.chrbnd.dcx";
         if (!binders.ContainsKey(chrbndPath))
             throw new InvalidDataException($"template c{t:D4} has no chrbnd");
+        if (fromVariant > 0)
+            notes.Add($"{fromVariant} files from the template's own model c{variant:D4} (its base c{t:D4} lacks them)");
         notes.Add(binders.ContainsKey($"/chr/c{n:D4}.behbnd.dcx") ? $"{renamedInside} Havok names renamed" : $"template c{t:D4} has no behbnd; {renamedInside} Havok names renamed");
         notes.Add(files.Outputs.Any(o => o.Path.Equals($"/action/script/c{n:D4}.hks", StringComparison.OrdinalIgnoreCase)) ? "behaviour script cloned" : $"template c{t:D4} has no behaviour script");
 
