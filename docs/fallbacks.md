@@ -66,7 +66,6 @@ Try the next option if: Some moves of a ported weapon are DS3 but others (often 
 - **C: B plus the hand-checked heavy table.** B, plus the heavy-attack pairs found while porting Friede's scythe (Elden Ring 030500/030501/030505 = DS3 030320/030330/030321, two-handed 032xxx = DS3 034xxx), which win. (`DARKSIGN_ANIM_MAP=table`)
 - **D: Names only, no two-handed twins.** A, without pairing two-handed moves through their one-handed twins (Elden Ring 032xxx = DS3 034xxx) when the names don't pair them (DARKSIGN_TWOHAND_MAP=0). (`DARKSIGN_TWOHAND_MAP=0`)
 - **E: A without the paired dual-wield set.** A, but a paired weapon's two-handed moves (Elden Ring 032xxx) take DS3's 034xxx two-handed entries, which import the class's one-handed swings, instead of DS3's own dual-wield attacks (033xxx) (DARKSIGN_PAIRED_2H=0). Builds up to 1.0.217 did this: the Ringed Knight pair two-handed like one Ultra Greatsword. (`DARKSIGN_PAIRED_2H=0`)
-- **F: Own movesets by animation files only.** A, but a weapon only gets its own moveset when its DS3 section has animation files of its own (DARKSIGN_OWN_MOVES=files), not when it replays its class's animations with its own attacks or projectiles. Builds up to 1.0.282 did this: the Moonlight Greatsword was a plain greatsword and its charged heavy fired no wave. (`DARKSIGN_OWN_MOVES=files`)
 
 ### When the next attack can start (R1 chains) (`combo-windows`, rebuilds the content)
 
