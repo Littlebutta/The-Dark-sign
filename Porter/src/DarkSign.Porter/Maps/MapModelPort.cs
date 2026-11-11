@@ -73,6 +73,17 @@ public sealed class MapModelPort
     /// <summary>This port's templates with <see cref="TemplateTextures"/> on.</summary>
     public MapModelPort WithTemplateTextures() => new(_templates, _templateFlver) { TemplateTextures = true };
 
+    /// <summary>
+    /// False (the default): the MATBINs of unlit materials are told not to cast shadows. DS3's sky is a map piece,
+    /// an unlit dome kilometres across around the whole map, and Elden Ring lets every map piece shadow the sun
+    /// unless its material says otherwise (g_GX_bDisableShadowCasting, on in 857 vanilla materials): up to 1.0.284
+    /// the dome kept the sun off the entire map. True ("--host-lighting") leaves the template's own setting.
+    /// </summary>
+    public bool UnlitCastShadows { get; set; }
+
+    /// <summary>The MATBIN switch that keeps a material's meshes out of the shadow maps.</summary>
+    public const string NoShadowParam = "g_GX_bDisableShadowCasting";
+
     /// <summary>"Position0:Float3 Normal0:UByte4 ..." for a vertex layout.</summary>
     public static string LayoutText(IEnumerable<FLVER.LayoutMember> layout) =>
         string.Join(" ", layout.Select(m => $"{m.Semantic}{m.Index}:{m.Type}"));
@@ -606,6 +617,13 @@ public sealed class MapModelPort
                 // (JortPob sets it for its terrain). Left alone at 1 x 1, as vanilla materials have it.
                 if (Role(sampler.Type) is ("albedo" or "normal", 0) && material.Scale != default && material.Scale != Vector2.One)
                     sampler.Unk14 = material.Scale;
+            }
+            if (material.Template.Kind == "nolight" && !UnlitCastShadows)
+            {
+                if (matbin.Params.FirstOrDefault(p => p.Name == NoShadowParam && p.Value is bool) is { } noShadow)
+                    noShadow.Value = true;
+                else
+                    Notes.Add($"{material.Template.Matbin} has no {NoShadowParam} switch: {material.Name} (unlit, a sky dome) still casts shadows");
             }
             matbin.SourcePath = ReplaceStem(matbin.SourcePath, material.Template.Matbin, material.Name);
             var name = ReplaceStem(material.Template.File.Name, material.Template.Matbin, material.Name);

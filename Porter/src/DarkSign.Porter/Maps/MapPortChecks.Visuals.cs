@@ -133,6 +133,8 @@ public static partial class MapPortChecks
             var matbin = new MATBIN { ShaderPath = $@"N:\GR\data\Material\sat\OutputData\SPX\{shader}.spx", SourcePath = $@"N:\GR\data\Material\mtd\Map_m10_00\matxml\{name}.matxml" };
             foreach (var s in samplers)
                 matbin.Samplers.Add(new MATBIN.Sampler { Type = s, Path = @"N:\GR\data\Other\SysTex\SYSTEX_Dummy.tif" });
+            // As every vanilla map material has it: off (the material's meshes cast shadows).
+            matbin.Params.Add(new MATBIN.Param { Name = MapModelPort.NoShadowParam, Type = MATBIN.ParamType.Bool, Value = false });
             matbins[name] = new(Binder.FileFlags.Flag1, matbins.Count, $@"N:\GR\data\INTERROOT_win64\material\matbin\Map_m10_00\matxml\{name}.matbin", MATBIN.Read(matbin.Write()).Write());
             flvers.Add(SyntheticFlver(0x2001A, $@"N:\GR\data\Material\mtd\Map_m10_00\matxml\{name}.matxml"));
         }

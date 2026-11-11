@@ -28,6 +28,11 @@ public static class MapPorter
         public Dictionary<string, PieceTest> PieceTests { get; } = new(StringComparer.OrdinalIgnoreCase);
         /// <summary>Map pieces name vanilla PartsDrawParam row 2046 instead of the port's own (fallback "map-draw" B).</summary>
         public bool VanillaDrawParam { get; set; }
+        /// <summary>
+        /// --host-lighting: no ambient light region, no DS3 lamps, and the unlit sky dome casts shadows again: a map
+        /// lit exactly as before 1.0.285 (fallback "map-lighting" B; see <see cref="MapLighting"/>).
+        /// </summary>
+        public bool HostLighting { get; set; }
         public bool BinaryCollision { get; set; }
         public bool KeepSimdTree { get; set; }
 
@@ -54,6 +59,7 @@ public static class MapPorter
                     case "--piece-test" when i + 1 < list.Count && list[i + 1].Split('=') is [var map, var test]:
                         o.PieceTests[MapId.Parse(map).ToString()] = ParsePieceTest(test); i++; break;
                     case "--vanilla-draw-param": o.VanillaDrawParam = true; break;
+                    case "--host-lighting": o.HostLighting = true; break;
                     case "--binary-collision": o.BinaryCollision = true; break;
                     case "--simd": o.KeepSimdTree = true; break;
                     case "--enemies" when i + 1 < list.Count: o.Enemies = EnemyPort.ParseMethod(list[i + 1]); i++; break;
@@ -425,6 +431,7 @@ public static class MapPorter
         }
         if (test == PieceTest.PortedMaterial)
             models = models.WithTemplateTextures();
+        models.UnlitCastShadows = options.HostLighting;
         if (test != PieceTest.None)
             report.AppendLine(test switch
             {
@@ -487,7 +494,12 @@ public static class MapPorter
             report.AppendLine($"  meshes left out (no Elden Ring material for them yet): {models.LeftOut.Values.Sum()} ("
                               + string.Join(", ", models.LeftOut.OrderByDescending(k => k.Value).Select(k => $"{k.Key} x{k.Value}")) + ")");
         textures.Need(models.Textures, ds3Id);
+        int notesSoFar = models.Notes.Count;
         materials.AddRange(models.MatbinFiles(0));
+        foreach (var note in models.Notes.Skip(notesSoFar).Distinct().Take(5))
+            report.AppendLine($"  note: {note}");
+        if (!options.HostLighting)
+            report.AppendLine($"  sunlight: {models.Materials.Count(m => m.Template.Kind == "nolight")} unlit materials (sky domes) cast no shadow");
         if (copied > 0)
             textures.Need(main.Textures, ds3Id);
         else if (!slot.Probe && test == PieceTest.None)
@@ -534,6 +546,28 @@ public static class MapPorter
         var keptCollisions = msb.Parts.Collisions.Select(c => c.Name).ToHashSet(StringComparer.OrdinalIgnoreCase);
         foreach (var enemy in msb.Parts.Enemies.Where(e => !string.IsNullOrEmpty(e.CollisionPartName) && !keptCollisions.Contains(e.CollisionPartName)))
             enemy.CollisionPartName = "";
+        // Light: ambient from the host's environment map, lamps from DS3's light file. A failure leaves the map
+        // as dark as it was before, not broken.
+        if (options.HostLighting)
+            report.AppendLine("  lighting: the host's own (--host-lighting): no ambient light region, no DS3 lamps");
+        else
+        {
+            foreach (var (name, step) in new (string, Func<string>)[]
+                     {
+                         ("ambient light", () => MapLighting.AddAmbient(msb, host, ds3Msb)),
+                         ("lamps", () => MapLighting.PortLights(ctx, ds3, er, ds3Id, erId, hostId)),
+                     })
+            {
+                try
+                {
+                    report.AppendLine("  " + step());
+                }
+                catch (Exception ex)
+                {
+                    report.AppendLine($"  {name}: FAILED: {ex.Message}");
+                }
+            }
+        }
         File.WriteAllBytes(ctx.ModPath(ModParts(MsbPath(erId))), DCX.Compress(msb.Write(), msbCompression));
         report.AppendLine($"  written: {msb.Parts.MapPieces.Count} map pieces, {msb.Parts.Collisions.Count} collisions, {msb.Parts.Players.Count} player points, {msb.Parts.Enemies.Count} enemies");
 

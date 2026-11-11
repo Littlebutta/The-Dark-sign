@@ -259,6 +259,13 @@ Try the next option if: DS3 map geometry is invisible, black, far too dark or sh
 - **A: Elden Ring's map shaders by kind (default).** Each DS3 material is drawn with a copy of an Elden Ring map material of its kind: normal-mapped opaque, alpha-tested (foliage, grates), blended, and unlit (sky domes), each mesh rebuilt in that material's vertex layout.
 - **B: Albedo only.** Every DS3 material uses the albedo-only material JortPob builds its maps on (port-maps --plain-materials): no normal maps, cut-outs or unlit sky, but the simplest shader there is. (`port-maps --plain-materials`)
 
+### Lighting of the DS3 maps (`map-lighting`, rebuilds the content)
+
+Try the next option if: A DS3 map looks wrong since it got its own lighting: washed out, lit from inside walls, lamps in the wrong places, or the game hangs or crashes while it loads.
+
+- **A: Sunlight, ambient light and DS3's lamps (default).** DS3's sky dome casts no shadow, so the host map's sun reaches the map. The host's environment map (its ambient light) applies in a box around the whole DS3 map. DS3's own lamps (candles, bonfires, torches) replace the host's.
+- **B: The host map's lighting, untouched.** Nothing is changed (port-maps --host-lighting): the sky dome shadows the map, there is no ambient light and the lamps are the colosseum's. Dark, as every build up to 1.0.284 was. (`port-maps --host-lighting`)
+
 ### Enemies and bosses in the DS3 maps (`map-enemies`, rebuilds the content)
 
 Try the next option if: A DS3 map crashes or hangs while loading, enemies stand in walls or fall through the floor, or a boss fight never starts.

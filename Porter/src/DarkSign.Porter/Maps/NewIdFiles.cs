@@ -58,6 +58,9 @@ public static class NewIdFiles
             foreach (var path in files)
             {
                 var target = Renamed(path, slot.Host, slot.Er);
+                // The light file is the port's own when the DS3 map had lamps (MapLighting.PortLights).
+                if (target.EndsWith(".btl.dcx", StringComparison.OrdinalIgnoreCase) && File.Exists(ctx.ModPath(MapPorter.ModParts(target))))
+                    continue;
                 if (path.EndsWith(".hkxbhd", StringComparison.OrdinalIgnoreCase))
                 {
                     var binder = BXF4.Read(er.Read(path), er.Read(path[..^3] + "bdt"));
