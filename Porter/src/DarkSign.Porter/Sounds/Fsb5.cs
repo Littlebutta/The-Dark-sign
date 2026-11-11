@@ -24,6 +24,29 @@ public sealed class Fsb5
 
     public static bool Is(byte[] bytes) => bytes.Length >= 0x3C && bytes.AsSpan(0, 4).SequenceEqual("FSB5"u8);
 
+    /// <summary>
+    /// How many samples an encrypted FSB5 holds, or 0 when the bytes aren't one. DS3's loose FSBs (fdp_sm*, fdp_vm*...)
+    /// use FMOD's FSB encryption: each byte's bits are reversed, then XORed with the game's key (DS3's is public:
+    /// vgmstream's fsb_keys.h). Only the 12 header bytes with the count are decoded; the samples are not read.
+    /// </summary>
+    public static int EncryptedSampleCount(byte[] bytes)
+    {
+        if (bytes.Length < 0x3C)
+            return 0;
+        var key = "FDPrVuT4fAFvdHJYAgyMzRF4EcBAnKg"u8;
+        Span<byte> head = stackalloc byte[12];
+        for (int i = 0; i < head.Length; i++)
+        {
+            int b = bytes[i];
+            b = ((b & 0xF0) >> 4) | ((b & 0x0F) << 4);
+            b = ((b & 0xCC) >> 2) | ((b & 0x33) << 2);
+            b = ((b & 0xAA) >> 1) | ((b & 0x55) << 1);
+            head[i] = (byte)(b ^ key[i % key.Length]);
+        }
+        int count = BitConverter.ToInt32(head[8..]);
+        return head[..4].SequenceEqual("FSB5"u8) && count > 0 ? count : 0;
+    }
+
     public static Fsb5 Read(byte[] bytes, Func<string, bool>? keep = null)
     {
         if (!Is(bytes))

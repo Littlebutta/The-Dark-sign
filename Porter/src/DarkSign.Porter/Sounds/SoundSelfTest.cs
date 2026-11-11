@@ -85,6 +85,88 @@ public static class SoundSelfTest
             Check(own.Write().SequenceEqual(ownBytes), "own bank round trip");
         }
 
+        // A DS3 event with two layers: one Play action per layer, all in one event, each layer with a container and
+        // media of its own. The second layer has two variants, and its first Sound plays media an earlier sound embedded.
+        var wemL = WwiseBank.PcmWem([11, 12], 1, 48000);
+        bank.AddSound(chain, 9201, [new WwiseBank.Layer(9203, 9204, [(9202u, 9205u, wemB)]), new WwiseBank.Layer(9213, 9214, [(9212u, 9005u, wem), (9216u, 9217u, wemL)])], false);
+        var b4Bytes = bank.Write();
+        var b4 = WwiseBank.Read(b4Bytes);
+        var plays = b4.Plays(9201);
+        Check(b4.Get(9201)!.Data.SequenceEqual(Cat(U32(9201), [2], U32(9203), U32(9213))), "layered event lists both actions");
+        Check(plays.Count == 2 && plays[0].Action.Id == 9203 && plays[1].Action.Id == 9213, "layered event: one Play action per layer");
+        Check(plays.Count == 2 && BitConverter.ToUInt32(plays[0].Action.Data, 6) == 9204 && BitConverter.ToUInt32(plays[1].Action.Data, 6) == 9214, "layer actions play their own containers");
+        Check(plays.Count == 2 && plays[0].Sound.Id == 9202 && plays[1].Sound.Id == 9212, "layers resolve to their sounds");
+        Check(plays.All(p => b4.Media(BitConverter.ToUInt32(p.Sound.Data, 9)) is { } m && BitConverter.ToInt32(p.Sound.Data, 13) == m.Length), "each layer resolves to media");
+        Check(new uint[] { 9204, 9214 }.All(c => b4.Get(c) is { } o && WwiseNode.Read(o)!.Parent(o.Data) == M), "layer containers under the mixer");
+        Check(WwiseNode.Read(b4.Get(9214)!)!.Children.SequenceEqual([9212u, 9216u]) && WwiseNode.Read(b4.Get(9204)!)!.Children.SequenceEqual([9202u]), "layer containers list their sounds");
+        Check(WwiseNode.Read(b4.Get(M)!)!.Children.SequenceEqual([Other, R, 9004u, 9104u, 9204u, 9214u]), "mixer lists the layer containers");
+        var ids4 = b4.Objects.Select(o => o.Id).ToList();
+        Check(ids4.IndexOf(9212) < ids4.IndexOf(9214) && ids4.IndexOf(9214) < ids4.IndexOf(M) && ids4.IndexOf(M) < ids4.IndexOf(9213) && ids4.IndexOf(9213) < ids4.IndexOf(9201), "layered order: sounds, containers, mixer, actions, event");
+        var didx4 = Section(b4Bytes, "DIDX");
+        Check(Enumerable.Range(0, didx4.Length / 12).Count(i => BitConverter.ToUInt32(didx4, 12 * i) == 9005) == 1 && b4.Media(9217)!.SequenceEqual(wemL), "shared media embedded once");
+        Check(bank.LayersAdded == 1 && b4.Chain(9201)?.Sound.Id == 9202 && b4.Write().SequenceEqual(b4Bytes), "layered bank round trip");
+        Check(bank.WriteOwnBank(778) is { } own4 && WwiseBank.Read(own4).Plays(9201).Count == 2 && WwiseBank.Read(own4).Media(9005) is not null, "own bank keeps the layers");
+
+        // DS3 event files (Fev): a file built here from the layout the reader documents. Two sound definitions (the
+        // first with two wave files, the second with a "don't play" entry and one file), an event with two layers (the
+        // first with an envelope), an event whose only layer has no sound, and a record whose layer doesn't read.
+        static byte[] FevStr(string s) => Cat(U32((uint)s.Length + 1), Encoding.ASCII.GetBytes(s), [0]);
+        static byte[] FevEvent(uint name, params byte[][] layers)
+        {
+            var head = new byte[0xA8];
+            BitConverter.GetBytes(8).CopyTo(head, 0);
+            BitConverter.GetBytes(name).CopyTo(head, 4);
+            BitConverter.GetBytes(1f).CopyTo(head, 24);
+            BitConverter.GetBytes(128).CopyTo(head, 40);
+            return Cat(head, U32((uint)layers.Length), Cat(layers),
+                U32(1), new byte[28], U32(0),                       // one parameter, no values after it
+                U32(2), FevStr("playDistance"), U32(1), F(29f), FevStr("returnType"), U32(0), U32(1), // user properties
+                U32(1), FevStr("SE"));                              // category
+        }
+        static byte[] FevSound(ushort definition) => Cat(U16(definition), new byte[56]);
+        string[] fevStrings = ["", "main", "c000000001", "/x/one", "/x/two", "c000000002", "c000000003"];
+        var fevText = Cat(fevStrings.Select(s => Cat(Encoding.ASCII.GetBytes(s), [0])).ToArray());
+        var fevOffsets = fevStrings.Select((_, i) => (uint)fevStrings.Take(i).Sum(s => s.Length + 1)).ToArray();
+        var strr = Cat(U32((uint)fevStrings.Length), Cat(fevOffsets.Select(U32).ToArray()), fevText);
+        var envelope = Cat(U32(0xFFFFFFFF), FevStr("FMOD Lowpass Simple"), U32(0), U32(4), U32(0), U32(3), U32(0), U32(1), U32(2), U32(0), U32(1));
+        var lgcy = Cat(
+            new byte[20],                                           // what comes before the first event
+            FevEvent(2, Cat(U16(2), U16(0xFFFF), U16(0), U16(1), U16(1), FevSound(0), envelope), Cat(U16(2), U16(0xFFFF), U16(0), U16(1), U16(0), FevSound(1))),
+            FevEvent(5, Cat(U16(0), U16(0xFFFF), U16(0), U16(0), U16(0))),
+            FevEvent(6, Cat(U16(7), U16(0xFFFF), U16(0), U16(1), U16(0), FevSound(0))), // not a layer: skipped
+            U32(2),
+            U32(3), U32(0), U32(2), U32(0), U32(100), FevStr("bank/x/a.wav"), U32(0), U32(0), U32(100), U32(0), U32(100), FevStr("sfx\\b.wav"), U32(0), U32(1), U32(200),
+            U32(4), U32(0), U32(2), U32(2), U32(100), U32(0), U32(100), FevStr("c.wav"), U32(0), U32(2), U32(300),
+            new byte[12]);
+        static byte[] Riff(string tag, byte[] body) => Cat(Sec(tag, body), new byte[body.Length & 1]); // chunks are padded to even sizes
+        byte[] FevFile(params byte[][] chunks) =>
+            Sec("RIFF", Cat(Encoding.ASCII.GetBytes("FEV "), Riff("FMT ", U32(0x00450000)), Sec("LIST", Cat(Encoding.ASCII.GetBytes("PROJ"), Cat(chunks)))));
+        var fevBytes = FevFile(Riff("LGCY", lgcy), Riff("STRR", strr));
+        var fev = Fev.Read(fevBytes);
+        Check(fev.Definitions == 2 && fev.Events.Count == 2 && fev.Skipped == 1, $"fev reads: {fev.Definitions} definitions, {fev.Events.Count} events, {fev.Skipped} skipped");
+        Check(fev.Events.TryGetValue("c000000001", out var fe) && fe.Layers.Count == 2
+              && fe.Layers[0].Waves.SequenceEqual(["bank/x/a.wav", "sfx\\b.wav"]) && fe.Layers[1].Waves.SequenceEqual(["c.wav"]), "fev event layers and their waves");
+        Check(fev.Events.TryGetValue("c000000002", out var fe2) && fe2.Layers.Count == 1 && fe2.Layers[0].Waves.Count == 0, "fev layer without a sound");
+        Check(!fev.Events.ContainsKey("c000000003"), "fev record that doesn't read is left out");
+        Check(Fev.SampleName("bank/fdp_main/sfx/s000525503.wav") == "s000525503" && Fev.SampleName("sfx\\b.wav") == "b" && Fev.SampleName("magic-atom") == "magic-atom", "fev wave names to sample names");
+        bool fevThrew = false;
+        try
+        {
+            for (int cut = 0; cut < fevBytes.Length; cut += 7)
+                Fev.Read(fevBytes[..cut]);
+            Check(Fev.Read(new byte[64]).Events.Count == 0 && Fev.Read(FevFile(Riff("LGCY", lgcy))).Events.Count == 0, "fev: not a FEV, or no string table, gives no events");
+        }
+        catch (Exception) { fevThrew = true; }
+        Check(!fevThrew, "fev reader doesn't throw on cut files");
+        var encrypted = new byte[0x40];
+        for (int i = 0; i < 12; i++)
+        {
+            int b = new byte[] { (byte)'F', (byte)'S', (byte)'B', (byte)'5', 1, 0, 0, 0, 77, 0, 0, 0 }[i] ^ "FDPrVuT4fAFvdHJYAgyMzRF4EcBAnKg"[i];
+            b = ((b & 0xF0) >> 4) | ((b & 0x0F) << 4); b = ((b & 0xCC) >> 2) | ((b & 0x33) << 2); b = ((b & 0xAA) >> 1) | ((b & 0x55) << 1);
+            encrypted[i] = (byte)b;
+        }
+        Check(Fsb5.EncryptedSampleCount(encrypted) == 77 && Fsb5.EncryptedSampleCount(new byte[0x40]) == 0 && !Fsb5.Is(encrypted), "encrypted fsb5 sample count");
+
         // The game's sound index (soundbanksinfo.mobnkinfo): new events listed under their bank, appended so the
         // original bytes stay, sorted lists, a new bank added to its section in ID order.
         var sbi = Sbi([(10, [5, 7]), (20, [3, 9, 0x1_0000_0001])], [(30, [1])]);

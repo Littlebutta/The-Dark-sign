@@ -96,23 +96,8 @@ public sealed class WwiseBank
 
     /// <summary>The Sound an event plays: through its first Play action, directly or as the first Sound whose
     /// parent is the container the action plays.</summary>
-    public (HircObject Event, HircObject Action, HircObject Sound)? Chain(uint eventId)
-    {
-        if (Get(eventId) is not { Type: EventType } ev)
-            return null;
-        foreach (var actionId in EventActions(ev))
-        {
-            if (Get(actionId) is not { Type: ActionType } action || BitConverter.ToUInt16(action.Data, 4) != 0x0403)
-                continue;
-            uint target = BitConverter.ToUInt32(action.Data, 6);
-            if (Get(target) is { Type: SoundType } sound)
-                return (ev, action, sound);
-            var child = _objects.FirstOrDefault(o => o.Type == SoundType && ParentIs(o, target));
-            if (child is not null)
-                return (ev, action, child);
-        }
-        return null;
-    }
+    public (HircObject Event, HircObject Action, HircObject Sound)? Chain(uint eventId) =>
+        Plays(eventId) is [var (action, sound), ..] ? (Get(eventId)!, action, sound) : null;
 
     /// <summary>Adds an event that plays new PCM media, cloned from a template chain. Streamed media stays out of
     /// the bank (the game reads it from /wem/NN/&lt;media ID&gt;.wem), so the bank only grows by the new objects;
@@ -126,11 +111,51 @@ public sealed class WwiseBank
     /// When the template's nodes can't be read exactly, the older layout is used (the Sound under the template's
     /// own container, played directly).</para></summary>
     public void AddSound((HircObject Event, HircObject Action, HircObject Sound) template, uint eventId, uint soundId, uint actionId,
-        uint containerId, uint mediaId, byte[] wem, bool streamed, IReadOnlyList<(uint SoundId, uint MediaId, byte[] Wem)>? variants = null)
+        uint containerId, uint mediaId, byte[] wem, bool streamed, IReadOnlyList<(uint SoundId, uint MediaId, byte[] Wem)>? variants = null) =>
+        AddSound(template, eventId, [new Layer(actionId, containerId, [(soundId, mediaId, wem), .. variants ?? []])], streamed);
+
+    /// <summary>One layer of a new event: its Play action, its container, and its Sounds (the first, then its random
+    /// variants). Two Sounds may name the same media ID (the same sample under two events); it is embedded once.</summary>
+    public sealed record Layer(uint ActionId, uint ContainerId, IReadOnlyList<(uint SoundId, uint MediaId, byte[] Wem)> Sounds);
+
+    /// <summary>Adds an event whose layers all start together, as the layers of a DS3 (FMOD) event do: one Play
+    /// action per layer, each playing that layer's own Sound or random container, built like a single new sound
+    /// (see the overload above). Elden Ring layers sounds the same way: 161 of cs_main's own events have two to four
+    /// Play actions.</summary>
+    public void AddSound((HircObject Event, HircObject Action, HircObject Sound) template, uint eventId, IReadOnlyList<Layer> layers, bool streamed)
     {
+        if (layers.Count == 0 || layers.Count > 127 || layers.Any(l => l.Sounds.Count == 0))
+            throw new ArgumentException("an event needs 1 to 127 layers with a sound each", nameof(layers));
+        var actions = new List<HircObject>();
+        foreach (var layer in layers)
+            actions.Add(AddLayer(template, layer, streamed));
+        LayersAdded += layers.Count - 1;
+        // Event: ID and its action list, in the template's count format (u8 in newer banks, u32 before).
+        bool byteCount = template.Event.Data.Length == 5 + 4 * template.Event.Data[4];
+        var ev = new MemoryStream();
+        ev.Write(BitConverter.GetBytes(eventId));
+        if (byteCount) ev.WriteByte((byte)actions.Count);
+        else ev.Write(BitConverter.GetBytes(actions.Count));
+        foreach (var action in actions) ev.Write(BitConverter.GetBytes(action.Id));
+        foreach (var obj in actions.Append(new HircObject(EventType, eventId, ev.ToArray())))
+        {
+            _objects.Add(obj);
+            _byId[obj.Id] = obj;
+            _new.Add(obj);
+        }
+    }
+
+    /// <summary>How many layers beyond their event's first were added (each with a Play action of its own).</summary>
+    public int LayersAdded { get; private set; }
+
+    // One layer's Sounds and container go into the hierarchy; returns its Play action (the caller adds it with the event).
+    private HircObject AddLayer((HircObject Event, HircObject Action, HircObject Sound) template, Layer layer, bool streamed)
+    {
+        var (soundId, mediaId, wem) = layer.Sounds[0];
+        uint actionId = layer.ActionId, containerId = layer.ContainerId;
         // DS3 sounds come in variants (c000001043, c000001043b, c...c, ...d), played at random by FMOD: they become
         // extra Sounds in the new random container (only with a container of their own; the older layout keeps one).
-        variants ??= [];
+        var variants = layer.Sounds.Skip(1).ToList();
         // Sound: ID, then AkBankSourceData: plugin (PCM), stream type (0 in the bank, 2 streamed), media ID and size.
         // A source-plugin template (e.g. Wwise Silence, plugin type 2) carries a u32 parameter size and its parameters
         // after that; a codec Sound has neither, and leaving them in makes Wwise reject the whole bank.
@@ -161,12 +186,6 @@ public sealed class WwiseBank
         var action = (byte[])template.Action.Data.Clone();
         BitConverter.GetBytes(actionId).CopyTo(action, 0);
         BitConverter.GetBytes(target).CopyTo(action, 6);
-        // Event: ID and an action list of one, in the template's count format (u8 in newer banks, u32 before).
-        bool byteCount = template.Event.Data.Length == 5 + 4 * template.Event.Data[4];
-        var ev = byteCount ? new byte[9] : new byte[12];
-        BitConverter.GetBytes(eventId).CopyTo(ev, 0);
-        if (byteCount) { ev[4] = 1; BitConverter.GetBytes(actionId).CopyTo(ev, 5); }
-        else { BitConverter.GetBytes(1).CopyTo(ev, 4); BitConverter.GetBytes(actionId).CopyTo(ev, 8); }
 
         var newSound = new HircObject(SoundType, soundId, sound);
         if (newContainer is not null)
@@ -204,14 +223,28 @@ public sealed class WwiseBank
             _new.Add(newSound);
         }
         _byId[soundId] = newSound;
-        foreach (var obj in new[] { new HircObject(ActionType, actionId, action), new HircObject(EventType, eventId, ev) })
-        {
-            _objects.Add(obj);
-            _byId[obj.Id] = obj;
-            _new.Add(obj);
-        }
         if (!streamed && _media.TryAdd(mediaId, wem))
             _added.Add((mediaId, wem));
+        return new HircObject(ActionType, actionId, action);
+    }
+
+    /// <summary>The Sound each of an event's Play actions plays (see <see cref="Chain"/>), one per action.</summary>
+    public IReadOnlyList<(HircObject Action, HircObject Sound)> Plays(uint eventId)
+    {
+        var plays = new List<(HircObject, HircObject)>();
+        if (Get(eventId) is not { Type: EventType } ev)
+            return plays;
+        foreach (var actionId in EventActions(ev))
+        {
+            if (Get(actionId) is not { Type: ActionType } action || BitConverter.ToUInt16(action.Data, 4) != 0x0403)
+                continue;
+            uint target = BitConverter.ToUInt32(action.Data, 6);
+            if (Get(target) is { Type: SoundType } sound)
+                plays.Add((action, sound));
+            else if (_objects.FirstOrDefault(o => o.Type == SoundType && ParentIs(o, target)) is { } child)
+                plays.Add((action, child));
+        }
+        return plays;
     }
 
     /// <summary>DARKSIGN_SOUND_CONTAINERS=0 goes back to the older layout (the Sound under Elden Ring's own container).</summary>
