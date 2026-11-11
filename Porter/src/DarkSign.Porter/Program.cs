@@ -42,6 +42,7 @@ const string Usage = """
       enemy-diag survey|unpack <file>...  enemy port diagnostics: every character's skeleton and animation IDs; decompress files
       enemy-diag tae <anibnd> [from-to...]  a decompressed animation binder's TAE entries and events, and each file's length and blend hint
       enemy-selftest               offline checks of the enemy porter (templates, IDs, skin indices, chr map, TAE merge)
+      moveset-selftest             offline checks of how behaviour animation IDs are shared out among the ported movesets
       arts-selftest                offline checks of the weapon art port (hks patch, skill names)
       anim-selftest                offline checks of the bone retargeting (rest-pose corrections) and spline rotation rewrite
       weapon-diag bones            how each shared player bone rests in both games and how its DS3 rotation is carried over
@@ -99,6 +100,8 @@ try
     // Reads decompressed files only, so it needs neither game nor root (a cloud thread can run it on staged files).
     if (argList[0].Equals("enemy-diag", StringComparison.OrdinalIgnoreCase) && argList.Count >= 3 && argList[1].Equals("tae", StringComparison.OrdinalIgnoreCase))
         return DarkSign.Porter.Enemies.EnemyDiag.Tae(argList[2], argList.Skip(3).ToList());
+    if (argList[0].Equals("moveset-selftest", StringComparison.OrdinalIgnoreCase))
+        return ClipBudget.SelfTest();
     if (argList[0].Equals("arts-selftest", StringComparison.OrdinalIgnoreCase))
         return ArtSelfTest.Run();
     if (argList[0].Equals("anim-selftest", StringComparison.OrdinalIgnoreCase))

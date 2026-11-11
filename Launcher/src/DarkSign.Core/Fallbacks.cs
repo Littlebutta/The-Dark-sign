@@ -93,6 +93,15 @@ public static class Fallbacks
             new("C", "Both fields", "The DS3 moveset goes in spAtkcategory and in wepmotionCategory, so whichever one the game reads for a move finds it. Class rules (powerstance, guard) then follow the new section, a copy of the template's.")
                 { PorterEnv = Env("DARKSIGN_MOVESET_FIELD", "both") },
         ]),
+        new("moveset-capacity", "Weapon movesets", "How many DS3 movesets fit", Stage.Build,
+            "The game closes at startup after an update, or a weapon that newly has its own DS3 moves does not attack or is missing some moves.",
+        [
+            new("A", "Every moveset (default)", "Every DS3 moveset gets a motion category: numbers 90 to 255 first, then 256 to 399 (the community's range for weapon movesets), and when the behaviour file's animation IDs run short the later movesets are built lean, with DS3's moves only; their other moves play from the weapon's Elden Ring class as before."),
+            new("B", "Categories up to 255 only", "Motion categories stop at 255 (DARKSIGN_WIDE_MOTION=0), as in builds up to 1.0.284: about 62 movesets fit and the remaining weapons swing with their DS3 class's moves. Try it if the game closes at startup or a weapon that newly got its own moves does not attack at all.")
+                { PorterEnv = Env("DARKSIGN_WIDE_MOTION", "0") },
+            new("C", "Full copies only", "As A, but every moveset is a full copy of its Elden Ring template's category (DARKSIGN_LEAN_MOVESETS=0), as in builds up to 1.0.284; movesets the animation IDs have no room for are left out and those weapons use their class's. Try it if a weapon is missing moves it has nothing of its own for in DS3 (a roll attack, a jump attack, a guard counter).")
+                { PorterEnv = Env("DARKSIGN_LEAN_MOVESETS", "0") },
+        ]),
         new("anim-map", "Weapon movesets", "Which DS3 animation replaces each move (R2, charged R2)", Stage.Build,
             "Some moves of a ported weapon are DS3 but others (often R2, charged R2 or two-handed attacks) still look like Elden Ring.",
         [

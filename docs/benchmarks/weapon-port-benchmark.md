@@ -66,6 +66,17 @@ and where the community approach looks easier, are **motion categories** and **w
   our own problem to solve before DS1R and Bloodborne (for example by not creating generators for moves that only
   ImportOtherAnim the template, if finding 1 lets them fall back).
 
+### 6. Capacity for every DS3 moveset (2026-11-11)
+
+- 111 DS3 movesets want a motion category. Builds up to 1.0.284 handed out 90 to 255 only (62 free), a limit left
+  over from the `wepmotionCategory` byte; 55 weapons swung with their class's moves. With `spAtkcategory` the
+  community range 70 to 399 applies, so 256 to 399 are handed out too (fallback `moveset-capacity` B turns it off).
+- No public mod or tool was found that works around the 32,767 animation ID limit (finding 5). Ours: `ClipBudget`
+  shares the IDs out. A moveset that doesn't fit as a full copy of its template's category is built lean, with
+  DS3's moves only; `spAtkcategory` overrides move by move, so the rest play from the row's motion category.
+  That fallback was seen in game on the `wepmotionCategory` builds (a template's special section overrode only its
+  own moves). Not yet seen in game: a ported section above 255.
+
 ## Findings that confirm what we do
 
 | Area | Community | Ours | Gap |

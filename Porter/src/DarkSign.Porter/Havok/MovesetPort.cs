@@ -277,14 +277,17 @@ public static partial class MovesetPort
             int art = Convert.ToInt32(ds3Weapons[p.Ds3Id]!["spAtkCategory"].Value);
             return (cls, withArt && Overrides(cls, art) ? art : 0, Convert.ToInt32(erWeapons[p.NewId!.Value]!["wepmotionCategory"].Value));
         }
-        // wepmotionCategory is one byte, so sections 90-255 go straight into the weapon rows (from 90 up the animations
-        // live in c0000_a9x, where these go). Sections 256-999 need the mod DLL: it reads them from
-        // motion-categories.txt and gives them to the game in place of the row's byte. Animation names allow 3 digits.
-        // They are off unless DARKSIGN_WIDE_MOTION=1: builds with sections above 255 crashed Elden Ring 2.7.2 at
-        // startup (access violation at +0x1EBCEF9), and the DLL's hook didn't find its code either.
-        // With spAtkcategory (u16) there is no byte ceiling, but weapon movesets stay in 70-399 (400+ are spells and arts).
-        var wide = Environment.GetEnvironmentVariable("DARKSIGN_WIDE_MOTION") == "1"
-            ? Enumerable.Range(256, UseWeaponMotionCategory ? 744 : 144) : [];
+        // Sections 90-255 are handed out first (from 90 up the animations live in c0000_a9x, where these go), highest
+        // first, then 256-399. The moveset goes in spAtkcategory, a u16 (Paramdex: "50 to 999 allowed"), and the
+        // community's range for weapon moveset sections is 70-399 (Themyys, Introduction to Moveset Modding; 400-599
+        // are spells, 600-999 arts), so 256-399 are ordinary numbers there. Builds up to 1.0.284 stopped at 255, which
+        // left 62 numbers for 111 DS3 movesets. That limit dates from the wepmotionCategory builds: that field is one
+        // byte, a section above 255 needed the mod DLL to hand it to the game (motion-categories.txt), the DLL's hook
+        // never found its code, and the one build that tried closed at startup. The offset blamed then (+0x1EBCEF9)
+        // has since turned out to be the engine's panic while it is already shutting down, not a cause.
+        // DARKSIGN_WIDE_MOTION=0 stops at 255 again; with DARKSIGN_MOVESET_FIELD=wmc the wide sections stay off
+        // unless DARKSIGN_WIDE_MOTION=1.
+        var wide = WideSections ? Enumerable.Range(256, UseWeaponMotionCategory ? 744 : 144) : [];
         var freeSections = new Queue<int>(Enumerable.Range(90, 166).Reverse().Concat(wide)
             .Where(s => !usedSections.Contains(s)));
         var wideCategories = new SortedDictionary<int, int>();
@@ -293,14 +296,67 @@ public static partial class MovesetPort
         // own moveset doesn't fit gets its class's: DS3's moves for its class, without the ones its art replaces.
         var own = ports.GroupBy(p => Key(p, true)).ToList();
         var classes = ports.GroupBy(p => Key(p, false)).ToList();
-        var order = own.Where(g => g.Any(p => p.Ds3Id == 10180000)).Select(g => g.Key)
+        var wanted = own.Where(g => g.Any(p => p.Ds3Id == 10180000)).Select(g => g.Key)
             .Concat(classes.OrderByDescending(g => g.Count()).Select(g => g.Key))
             // Paired weapons next (AbsorpPort marked them isDualBlade): their art section holds their own two-handed
             // set, which their class doesn't have (the Ringed Knight Paired Greatswords two-hand with DS3 a253's moves;
             // as part of the Ultra Greatsword class moveset they two-handed like a Fume Ultra Greatsword).
             .Concat(own.Where(g => g.Key.Ds3ArtSection != 0 && g.Any(IsPairedPort)).OrderByDescending(g => g.Count()).Select(g => g.Key))
             .Concat(own.Where(g => g.Key.Ds3ArtSection != 0).OrderByDescending(g => g.Count()).Select(g => g.Key))
-            .Distinct().Take(freeSections.Count).ToHashSet();
+            .Distinct().ToList();
+        // The other limit is the behaviour's animation IDs (ClipBudget): what each moveset costs as a full copy of its
+        // template's category and as a lean build of its DS3 moves alone.
+        var erClipMoves = new Dictionary<int, HashSet<int>>();
+        foreach (var clip in selectors.Where(IsWeaponSelector).SelectMany(s => s.m_generators.OfType<hkbClipGenerator>()))
+            if (AnimName().Match(clip.m_animationName ?? "") is { Success: true } m)
+            {
+                int clipSection = int.Parse(m.Groups[1].Value);
+                if (!erClipMoves.TryGetValue(clipSection, out var clipIds))
+                    erClipMoves[clipSection] = clipIds = [];
+                clipIds.Add(int.Parse(m.Groups[2].Value));
+            }
+        var erTaeMoves = new Dictionary<int, HashSet<int>>();
+        HashSet<int> ErTaeMoves(int section) => erTaeMoves.TryGetValue(section, out var known) ? known
+            : erTaeMoves[section] = BinderLeaf(erMain, $"a{section:D2}.tae") is { } f ? TAE.Read(f.Bytes).Animations.Select(a => (int)a.ID).ToHashSet() : [];
+        var ds3TaeMoves = new Dictionary<int, HashSet<int>>();
+        bool Ds3Has(int section, int id) => section > 0 && (ds3TaeMoves.TryGetValue(section, out var known) ? known
+            : ds3TaeMoves[section] = Ds3Tae(section)?.Animations.Select(a => (int)a.ID).ToHashSet() ?? []).Contains(id);
+        bool canBeLean = LeanMovesets && !UseWeaponMotionCategory && !UseBothFields;
+        var pairedKeys = own.Concat(classes).Where(g => g.Any(IsPairedPort)).Select(g => g.Key).ToHashSet();
+        ClipBudget.Want Cost((int Ds3Section, int Ds3ArtSection, int TemplateSection) key)
+        {
+            var clipMoves = erClipMoves.GetValueOrDefault(key.TemplateSection) ?? [];
+            if (!canBeLean)
+                return new(clipMoves.Count, clipMoves.Count);
+            bool paired = PairedTwoHanded && pairedKeys.Contains(key);
+            bool Has(int id) => Ds3Has(key.Ds3ArtSection, id) || Ds3Has(key.Ds3Section, id);
+            int lean = clipMoves.Count(erId => ErTaeMoves(key.TemplateSection).Contains(erId) && erToDs3.TryGetValue(erId, out var ds3Id)
+                && (Has(ds3Id) || paired && erId is >= 32000 and < 33000 && ds3Id is >= 34000 and < 35000 && Has(ds3Id - 1000)));
+            return new(clipMoves.Count, lean);
+        }
+        int clipIdsFree = Math.Max(0, ClipBudget.Limit - nextInternalId + 1 - ClipBudget.ArtReserve);
+        // A class's moveset is only built for weapons that don't get their own; an own moveset left out sends its
+        // weapons to their class's, which may then need building, so this repeats until nothing more is left out.
+        var modes = new Dictionary<(int Ds3Section, int Ds3ArtSection, int TemplateSection), ClipBudget.Mode>();
+        var leftOut = new HashSet<(int Ds3Section, int Ds3ArtSection, int TemplateSection)>();
+        while (true)
+        {
+            var needed = wanted.Where(k => !leftOut.Contains(k) && (k.Ds3ArtSection != 0
+                    || ports.Any(p => Key(p, false) == k && (Key(p, true).Ds3ArtSection == 0 || leftOut.Contains(Key(p, true))))))
+                .ToList();
+            var fit = needed.Take(freeSections.Count).ToList();
+            var plan = ClipBudget.Plan(fit.Select(Cost).ToList(), clipIdsFree);
+            modes = fit.Select((k, n) => (k, plan[n])).ToDictionary(x => x.k, x => x.Item2);
+            var drops = needed.Where(k => k.Ds3ArtSection != 0 && modes.GetValueOrDefault(k) == ClipBudget.Mode.None).ToList();
+            if (drops.Count == 0)
+                break;
+            leftOut.UnionWith(drops);
+        }
+        var order = modes.Where(m => m.Value != ClipBudget.Mode.None).Select(m => m.Key).ToHashSet();
+        Console.WriteLine($"moveset: behaviour animation IDs: Elden Ring's reach {nextInternalId - 1} of {ClipBudget.Limit}, {ClipBudget.ArtReserve} kept for arts, {clipIdsFree} for movesets; " +
+                          $"{modes.Count(m => m.Value == ClipBudget.Mode.Full)} movesets as full copies ({modes.Where(m => m.Value == ClipBudget.Mode.Full).Sum(m => Cost(m.Key).Full)} IDs), " +
+                          $"{modes.Count(m => m.Value == ClipBudget.Mode.Lean)} lean ({modes.Where(m => m.Value == ClipBudget.Mode.Lean).Sum(m => Cost(m.Key).Lean)} IDs)" +
+                          $"{(canBeLean ? "" : " (lean builds off)")}; {freeSections.Count} free motion categories{(WideSections ? "" : " (none above 255)")}, {freeSections.Count(n => n > byte.MaxValue)} of them above 255");
         foreach (var g in own.Where(g => g.Key.Ds3ArtSection != 0 && g.Any(IsPairedPort)))
             Console.WriteLine($"moveset: paired {string.Join(", ", g.Select(p => p.Name))}: own DS3 moveset {g.Key.Ds3Section}/{g.Key.Ds3ArtSection} " +
                               (order.Contains(g.Key) ? "built" : "did not fit, class moveset used"));
@@ -452,6 +508,9 @@ public static partial class MovesetPort
             }
             // Taken even if the port fails below: its files may then hold part of the category.
             int section = freeSections.Dequeue();
+            // A lean build holds DS3's moves only (ClipBudget): the rest play from the row's own motion category.
+            bool lean = modes.GetValueOrDefault(group.Key) == ClipBudget.Mode.Lean;
+            int firstClipId = nextInternalId;
             var started = DateTime.UtcNow;
             try
             {
@@ -550,6 +609,8 @@ public static partial class MovesetPort
                         timing.Add(TimingLine(section, groupName, erId, s, ds3Duration, convertedHkx[i].ErDuration, stretch));
                         converted++;
                     }
+                    else if (lean)
+                        continue;
                     else if (anim.MiniHeader is TAE.Animation.AnimMiniHeader.Standard && ErAnimFile(erArchives, templateName) is { } original)
                     {
                         if (CopyErAnims)
@@ -568,9 +629,16 @@ public static partial class MovesetPort
                         copied++;
                     }
                 }
+                if (lean)
+                {
+                    if (converted == 0)
+                        throw new InvalidDataException("none of its DS3 moves pairs with a move of the Elden Ring template");
+                    tae.Animations.RemoveAll(a => !stretches.ContainsKey((int)a.ID));
+                }
                 AddFile(erMain, $"a{section}.tae", tae.Write(), templateTaeFile);
 
-                // 2. Register the category in every weapon selector: a clip per move, copied from the template's.
+                // 2. Register the category in every weapon selector: a clip per move, copied from the template's
+                // (a lean build: per DS3 move).
                 timeActVariable ??= graph.OfType<hkbBehaviorGraphStringData>().Select(d => d.m_variableNames.IndexOf("TimeActEditor_10"))
                     .FirstOrDefault(i => i >= 0, -1);
                 int registered = 0;
@@ -581,6 +649,8 @@ public static partial class MovesetPort
                     {
                         var m = AnimName().Match(clip.m_animationName ?? "");
                         if (!m.Success || int.Parse(m.Groups[1].Value) != templateSection)
+                            continue;
+                        if (lean && !stretches.ContainsKey(int.Parse(m.Groups[2].Value)))
                             continue;
                         var name = $"a{section:D3}_{m.Groups[2].Value}";
                         if (!internalIds.TryGetValue(name, out var internalId))
@@ -599,7 +669,9 @@ public static partial class MovesetPort
                 }
 
                 Console.WriteLine($"moveset: {groupName} -> motion category {section} (from Elden Ring {templateSection}, DS3 {ds3Section}/{ds3ArtSection}): " +
-                                  $"{converted} DS3 animations, {copied} kept from Elden Ring ({(CopyErAnims ? "copied" : "imported")}), {registered} behaviour clips, {(DateTime.UtcNow - started).TotalSeconds:0}s" +
+                                  $"{converted} DS3 animations, " +
+                                  (lean ? $"lean (every other move plays from Elden Ring's {templateSection}), " : $"{copied} kept from Elden Ring ({(CopyErAnims ? "copied" : "imported")}), ") +
+                                  $"{registered} behaviour clips, {nextInternalId - firstClipId} animation IDs, {(DateTime.UtcNow - started).TotalSeconds:0}s" +
                                   (pairedGroup ? $"; paired: {dualMoves} two-handed moves from DS3's dual-wield set (033xxx)" : ""));
             }
             // Any failure (HKLib, a converter's NullReference or IndexOutOfRange, ...) skips this moveset only: it used
@@ -794,6 +866,18 @@ public static partial class MovesetPort
     /// </summary>
     public static readonly bool UseBothFields =
         string.Equals(Environment.GetEnvironmentVariable("DARKSIGN_MOVESET_FIELD"), "both", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// Whether motion categories above 255 are handed out (see Apply). On by default with the moveset in
+    /// spAtkcategory, where DARKSIGN_WIDE_MOTION=0 (fallback "moveset-capacity" B) stops at 255 as builds up to
+    /// 1.0.284 did; with DARKSIGN_MOVESET_FIELD=wmc they need the mod DLL and stay off unless DARKSIGN_WIDE_MOTION=1.
+    /// </summary>
+    internal static bool WideSections => Environment.GetEnvironmentVariable("DARKSIGN_WIDE_MOTION") is var v
+        && (UseWeaponMotionCategory ? v == "1" : v != "0");
+
+    /// <summary>Fallback "moveset-capacity" C: DARKSIGN_LEAN_MOVESETS=0 builds full copies only (ClipBudget); a
+    /// moveset the animation IDs have no room for is left out and its weapons use their class's.</summary>
+    private static readonly bool LeanMovesets = Environment.GetEnvironmentVariable("DARKSIGN_LEAN_MOVESETS") != "0";
 
     /// <summary>Points one EquipParamWeapon row at its ported section and DS3 attack variation.</summary>
     public static void PointRow(PARAM.Row row, int section, int variation, bool ds3Sounds)

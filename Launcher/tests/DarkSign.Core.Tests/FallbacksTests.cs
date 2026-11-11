@@ -125,7 +125,7 @@ public sealed class FallbacksDocTests
     }
 
     /// <summary>Dev-only switches the porter reads that are deliberately not in the Fallbacks window.</summary>
-    private static readonly string[] NotInCatalog = ["DARKSIGN_WIDE_MOTION"];
+    private static readonly string[] NotInCatalog = [];
 
     [Fact]
     public void Every_variable_and_argument_in_the_catalog_has_a_consumer_and_back()
