@@ -32,6 +32,8 @@ public static partial class EnemyDiag
             return Plan(ctx, args.Skip(1).ToList());
         if (args.Count >= 2 && args[0].Equals("pixels", StringComparison.OrdinalIgnoreCase))
             return Pixels(ctx, args[1], args.Skip(2).ToList());
+        if (args.Count >= 2 && args[0].Equals("gx", StringComparison.OrdinalIgnoreCase))
+            return Gx(ctx, args.Skip(1).ToList());
         if (args.Count >= 2 && args[0].Equals("textures", StringComparison.OrdinalIgnoreCase))
             return Textures(ctx, args.Skip(1).ToList());
         if (args.Count >= 2 && args[0].Equals("binder", StringComparison.OrdinalIgnoreCase))
@@ -216,6 +218,46 @@ public static partial class EnemyDiag
         }
         Chunk("IEND", []);
         return ms.ToArray();
+    }
+
+    /// <summary>
+    /// "enemy-diag gx c4340 c3250 ...": an Elden Ring character model's materials (material file, GX list index,
+    /// samplers) and its GX lists (per item: ID, number, length, the data as floats where they look like floats).
+    /// The port gives every DS3 material the template's first GX list.
+    /// </summary>
+    private static int Gx(PorterContext ctx, List<string> args)
+    {
+        using var er = ctx.OpenArchives(PorterGame.EldenRing);
+        foreach (var arg in args)
+        {
+            int c = int.Parse(arg.TrimStart('c', 'C'));
+            var path = $"/chr/c{c:D4}.chrbnd.dcx";
+            if (!er.Contains(path))
+            {
+                Console.WriteLine($"== c{c:D4}: no chrbnd");
+                continue;
+            }
+            var flver = FLVER2.Read(BND4.Read(er.Read(path)).Files.First(f => FLVER2.Is(f.Bytes)).Bytes);
+            Console.WriteLine($"== c{c:D4}: {flver.Meshes.Count} meshes, {flver.Materials.Count} materials, {flver.GXLists.Count} GX lists");
+            foreach (var m in flver.Materials)
+                Console.WriteLine($"  material \"{m.Name}\" {ItemText.Leaf(m.MTD)} gx {m.GXIndex} index {m.Index}: {string.Join(", ", m.Textures.Select(t => t.ParamName + (t.Path.Length > 0 ? "=" + ItemText.Leaf(t.Path) : "")))}");
+            for (int i = 0; i < flver.GXLists.Count; i++)
+            {
+                Console.WriteLine($"  gx list {i}: {flver.GXLists[i].Count} items");
+                foreach (var item in flver.GXLists[i])
+                {
+                    var values = new List<string>();
+                    for (int o = 0; o + 4 <= item.Data.Length && values.Count < 24; o += 4)
+                    {
+                        int n = BitConverter.ToInt32(item.Data, o);
+                        float f = BitConverter.ToSingle(item.Data, o);
+                        values.Add(n is > -100000 and < 100000 ? n.ToString() : FormattableString.Invariant($"{f:0.###}f"));
+                    }
+                    Console.WriteLine($"    {item.ID} {item.Unk04} {item.Data.Length} bytes: {string.Join(' ', values)}");
+                }
+            }
+        }
+        return 0;
     }
 
     private static string Short(string name) => name.Replace('\t', ' ').Length > 34 ? name.Replace('\t', ' ')[..34] : name.Replace('\t', ' ');
