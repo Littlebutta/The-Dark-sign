@@ -449,6 +449,10 @@ public static partial class FxrPort
             return JsonSerializer.Deserialize<Info>(json, new JsonSerializerOptions { PropertyNameCaseInsensitive = true })!;
         }
 
+        /// <summary>For the self-tests: a small DS3 effect with one texture that plays another effect (child > 0).</summary>
+        public byte[] Sample(int id, int child, int texture) =>
+            (byte[])_engine.Invoke(_engine.Modules.Import("./fxr-port.js").Get("sample"), id, child, texture).ToObject()!;
+
         public byte[] Convert(byte[] bytes, int newId, string mapJson) =>
             (byte[])_engine.Invoke(_convert, _engine.Intrinsics.Uint8Array.Construct(bytes), newId, mapJson).ToObject()!;
     }

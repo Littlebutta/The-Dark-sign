@@ -55,6 +55,19 @@ public sealed class EffectEvents
 
     private readonly HashSet<int> _candidates = [];
 
+    /// <summary>For the self-tests: the fields that hold effect IDs and Elden Ring's usual parameters, given outright.</summary>
+    internal static EffectEvents ForTest(Dictionary<int, int[]> fields, Dictionary<int, byte[]> erSamples)
+    {
+        var fx = new EffectEvents();
+        foreach (var (type, f) in fields)
+        {
+            fx._candidates.Add(type);
+            fx._field[type] = f;
+            fx._erSample[type] = erSamples[type];
+        }
+        return fx;
+    }
+
     /// <summary>Whether DS3 events of this type spawn effects (converted, or dropped when they can't be).</summary>
     public bool IsEffect(int type) => _candidates.Contains(type);
 

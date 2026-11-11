@@ -1,5 +1,5 @@
 // DarkSign porter adapter for @cccode/fxr: reads a DS3 effect, renumbers it and its resources, writes it for Elden Ring.
-import { FXR, Game, ProxyNode, GenericNode, NodeType, Action, SFXReference } from './fxr.js';
+import { FXR, Game, ProxyNode, GenericNode, NodeType, Action, SFXReference, BasicNode, BillboardEx } from './fxr.js';
 
 export function inspect(bytes) {
   const fxr = FXR.read(bytes, Game.DarkSouls3);
@@ -39,4 +39,12 @@ export function convert(bytes, newId, mapJson) {
     }
   }
   return new Uint8Array(fxr.toArrayBuffer(Game.EldenRing));
+}
+
+// For the self-tests: a small DS3 effect that draws one billboard with a texture and, with child > 0, plays another effect.
+export function sample(id, child, texture) {
+  const fxr = new FXR(id);
+  fxr.root.nodes.push(new BasicNode([new BillboardEx({ texture })]));
+  if (child > 0) fxr.root.nodes.push(new ProxyNode(child));
+  return new Uint8Array(fxr.toArrayBuffer(Game.DarkSouls3));
 }

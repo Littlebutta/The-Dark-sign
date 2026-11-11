@@ -88,19 +88,70 @@ public sealed class SpEffectPort
         ("atkOccurenceSpEffectId", "atkOccurrenceSpEffectId"),
     ];
 
-    public SpEffectPort(ParamStore er, ParamStore ds3)
+    // Enemy effects (Enemies/ChrEffects.cs): the new ID is a function of the DS3 ID, so the enemy port can write an
+    // effect's ID into a move before the row exists; one row per effect (enemies have no upgrade levels); and a
+    // fuller copy (defence rates, life drain, flags), started from the values most Elden Ring rows have.
+    private readonly Func<int, int>? _idOf;
+    private readonly int _rows = 26;
+    private readonly bool _full;
+    private object?[]? _common;
+
+    public SpEffectPort(ParamStore er, ParamStore ds3, Func<int, int> idOf, bool full)
+        : this(er.Get("SpEffectParam") ?? throw new InvalidDataException("Elden Ring has no SpEffectParam"),
+            ds3.Get("SpEffectParam") ?? throw new InvalidDataException("DS3 has no SpEffectParam"),
+            er.Get("SpEffectVfxParam"), ds3.Get("SpEffectVfxParam"), er.Get("EquipParamWeapon")!, idOf, full)
     {
-        _er = er.Get("SpEffectParam") ?? throw new InvalidDataException("Elden Ring has no SpEffectParam");
-        _ds3 = ds3.Get("SpEffectParam") ?? throw new InvalidDataException("DS3 has no SpEffectParam");
-        _erVfx = er.Get("SpEffectVfxParam");
+    }
+
+    // DS3 fields the fuller copy adds: same name and meaning in both games...
+    private static readonly string[] FullSharedFields =
+    [
+        "conditionHp", "lifeReductionRate", "lifeReductionType", "soulStealRate", "noDead", "bCurrHPIndependeMaxHP", "hasTarget",
+        "enableLifeTime", "isExtendSpEffectLife", "disablePoison", "disableBlood", "disableCurse",
+        .. Enumerable.Range(0, 16).Select(k => $"vowType{k}"),
+    ];
+
+    // ...and renamed (DS3 defence -> Elden Ring "Diffence").
+    private static readonly (string Ds3, string Er)[] FullRenamedFields =
+    [
+        ("physDefRate", "physicsDiffenceRate"), ("magicDefRate", "magicDiffenceRate"), ("fireDefRate", "fireDiffenceRate"),
+        ("thunderDefRate", "thunderDiffenceRate"), ("darkDefRate", "darkDiffenceRate"), ("physDef", "physicsDiffence"),
+        ("magicDef", "magicDiffence"), ("fireDef", "fireDiffence"), ("thunderDef", "thunderDiffence"),
+    ];
+
+    /// <summary>For the self-tests: every field the port reads on a DS3 row and writes on an Elden Ring one.</summary>
+    internal static (string[] Ds3, string[] Er) TestFields =>
+        ([.. SharedFields, .. FullSharedFields, .. RenamedFields.Select(f => f.Ds3), .. FullRenamedFields.Select(f => f.Ds3), .. ChainFields.Select(f => f.Ds3),
+                .. StatusFields.Select(f => f.Ds3), .. Ds3VfxFields, "stateInfo"],
+            [.. SharedFields, .. FullSharedFields, .. RenamedFields.Select(f => f.Er), .. FullRenamedFields.Select(f => f.Er), .. ChainFields.Select(f => f.Er),
+                .. ErStatusFields, .. Enumerable.Range(0, 8).Select(ErVfxField), "stateInfo"]);
+
+    public SpEffectPort(ParamStore er, ParamStore ds3)
+        : this(er.Get("SpEffectParam") ?? throw new InvalidDataException("Elden Ring has no SpEffectParam"),
+            ds3.Get("SpEffectParam") ?? throw new InvalidDataException("DS3 has no SpEffectParam"),
+            er.Get("SpEffectVfxParam"), ds3.Get("SpEffectVfxParam"), er.Get("EquipParamWeapon")!)
+    {
+    }
+
+    internal SpEffectPort(PARAM er, PARAM ds3, PARAM? erVfx, PARAM? ds3Vfx, PARAM weapons, Func<int, int>? idOf = null, bool full = false)
+    {
+        _er = er;
+        _ds3 = ds3;
+        _erVfx = erVfx;
+        if (idOf is not null)
+        {
+            _idOf = idOf;
+            _rows = 1;
+            _full = full;
+        }
         if (VisualsEnabled)
-            try { Visuals = new VfxPort(er, ds3); }
-            catch (Exception e) when (e is InvalidDataException or FileNotFoundException)
-            {
-                Console.WriteLine($"weapon effects: visuals off ({e.Message})");
-            }
+        {
+            if (erVfx is not null && ds3Vfx is not null)
+                Visuals = new VfxPort(erVfx, ds3Vfx);
+            else
+                Console.WriteLine($"weapon effects: visuals off ({(erVfx is null ? "Elden Ring" : "DS3")} has no SpEffectVfxParam)");
+        }
         // The row Elden Ring's own weapons use most for each status (their base rows; upgrades add offsets to them).
-        var weapons = er.Get("EquipParamWeapon")!;
         _statusTemplates = weapons.Rows.Where(r => r.ID < WeaponPort.FirstNewId)
             .SelectMany(r => new[] { "spEffectBehaviorId0", "spEffectBehaviorId1", "spEffectBehaviorId2" }.Select(f => Int(r, f)))
             .Where(id => id > 0 && _er[id] is not null)
@@ -172,13 +223,18 @@ public sealed class SpEffectPort
             return -1;
         }
 
-        int baseId = NextBlock();
+        int baseId = _idOf is null ? NextBlock() : _idOf(ds3Id);
+        if (_idOf is not null && (baseId <= 0 || _er[baseId] is not null))
+        {
+            Note(ds3Id, source.Name, -1, "skipped", $"its new ID {baseId} is taken or out of range");
+            return -1;
+        }
         // DS3's own upgrade rows for this effect (base + 1, + 2, ...), as far as they go without a gap.
         int offsets = 1;
-        while (offsets < 100 && _ds3[ds3Id + offsets] is not null && SameEffect(_ds3[ds3Id]!, _ds3[ds3Id + offsets]!))
+        while (_rows > 1 && offsets < 100 && _ds3[ds3Id + offsets] is not null && SameEffect(_ds3[ds3Id]!, _ds3[ds3Id + offsets]!))
             offsets++;
         // Elden Ring upgrades add up to 25 to the ID; give every offset a row so no upgrade level finds nothing.
-        for (int k = 0; k < 26; k++)
+        for (int k = 0; k < _rows; k++)
         {
             var from = _ds3[ds3Id + Math.Min(k, offsets - 1)]!;
             var row = kind is not null ? StatusRow(baseId + k, from, kind, k) : ValuesRow(baseId + k, from);
@@ -189,7 +245,7 @@ public sealed class SpEffectPort
             kind is not null ? $"{kind} {Int(source, status[0].Ds3)} (copy of Elden Ring {_statusTemplates[kind]}), DS3 upgrade rows {offsets}"
                 : $"DS3 upgrade rows {offsets}{(_erBased.Contains(baseId) ? $", based on Elden Ring {ErBase(source.Name)}" : "")}");
         // Chains point at their own ported rows (after the block is taken, so a loop ends).
-        foreach (var k in Enumerable.Range(0, 26))
+        foreach (var k in Enumerable.Range(0, _rows))
         {
             var row = _er[baseId + k]!;
             var from = _ds3[ds3Id + Math.Min(k, offsets - 1)]!;
@@ -258,10 +314,26 @@ public sealed class SpEffectPort
             return based;
         }
         var row = new PARAM.Row(id, ds3.Name ?? "", _er.AppliedParamdef);
+        if (_full)
+        {
+            _common ??= ParamDefaults.Common(_er);
+            for (int i = 0; i < row.Cells.Count; i++)
+                if (_common[i] is { } usual)
+                    row.Cells[i].Value = usual;
+            foreach (var (_, e) in ChainFields)
+                ParamDefaults.Set(row, e, -1);
+        }
         foreach (var field in SharedFields)
             CopyField(ds3, field, row, field);
         foreach (var (d, e) in RenamedFields)
             CopyField(ds3, d, row, e);
+        if (_full)
+        {
+            foreach (var field in FullSharedFields)
+                ParamDefaults.Copy(ds3, field, row, field);
+            foreach (var (d, e) in FullRenamedFields)
+                ParamDefaults.Copy(ds3, d, row, e);
+        }
         foreach (var (d, e) in StatusFields)
             if (Int(ds3, d) > 0 && row[e] is { } cell)
                 Set(cell, Int(ds3, d));
@@ -311,7 +383,11 @@ public sealed class SpEffectPort
 
     public bool VisualsBound => Visuals is null || Visuals.IsBound;
 
-    private static bool HasValues(PARAM.Row ds3)
+    private bool HasValues(PARAM.Row ds3) =>
+        HasSharedValues(ds3) || (_full && (FullRenamedFields.Any(f => ParamDefaults.Cell(ds3, f.Ds3)?.Value is { } v and not byte[] && IsSet(f.Ds3, Convert.ToDouble(v)))
+                                           || (ParamDefaults.Cell(ds3, "lifeReductionRate")?.Value is { } drain && Convert.ToDouble(drain) != 0)));
+
+    private static bool HasSharedValues(PARAM.Row ds3)
     {
         foreach (var field in SharedFields.Where(f => !f.StartsWith("effectTarget", StringComparison.Ordinal) && f != "effectEndurance" && f != "motionInterval" && f != "wepParamChange"))
             if (ds3[field]?.Value is { } v && IsSet(field, Convert.ToDouble(v)))
@@ -456,9 +532,9 @@ public sealed class SpEffectPort
         Console.WriteLine($"weapon effects: {weapons} weapons got DS3 effects ({slots} slots over their affinity rows); {Summary}");
     }
 
-    public void WriteReport(PorterContext ctx)
+    public void WriteReport(PorterContext ctx, string file = "weapon-effects.tsv")
     {
-        var path = ctx.WorkPath("reports", "weapon-effects.tsv");
+        var path = ctx.WorkPath("reports", file);
         Directory.CreateDirectory(Path.GetDirectoryName(path)!);
         File.WriteAllLines(path, _report);
     }

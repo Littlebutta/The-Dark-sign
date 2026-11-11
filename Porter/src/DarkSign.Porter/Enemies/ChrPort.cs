@@ -368,6 +368,8 @@ public static partial class ChrPort
         public List<ChrMaterial> Materials = [];
         /// <summary>Both games' item names, read while DS3's archives are open, for the drops (<see cref="DropPort"/>).</summary>
         public DropPort.Names? ItemNames;
+        /// <summary>The effect, sound and ability port of this build (null: off or failed, the templates' stay).</summary>
+        public ChrEffects? Effects;
         /// <summary>
         /// What went wrong when DS3 models that should have been built weren't: how many, and the reason most of them
         /// share (one cause usually fails them all). Null when every planned model was built. Printed as a FAIL line
@@ -495,6 +497,10 @@ public static partial class ChrPort
         var plans = MakePlans(erArchives, ds3Archives, characters, catalog, method, notes,
             skipped => result.Lines.Add(Line(skipped, null, "skipped", "no Elden Ring template or no free character ID")));
 
+        // DS3's effects, sounds and abilities for every fully ported character (ChrEffects); null leaves the templates'.
+        var fx = method == Method.Full ? ChrEffects.Create(ctx, erArchives, ds3Archives, plans, notes) : null;
+        result.Effects = fx;
+
         var mapLines = new List<string> { "# kind\tDS3\tElden Ring model\tNpcParam\tThinkParam\tname (written by DarkSignPorter port-maps, enemy port)" };
         var written = new List<string>();
         var portedModels = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -504,7 +510,7 @@ public static partial class ChrPort
         {
             try
             {
-                built[plan.Ds3.Chr] = (BuildFiles(ctx, erArchives, ds3Archives, plan), null);
+                built[plan.Ds3.Chr] = (BuildFiles(ctx, erArchives, ds3Archives, plan, fx), null);
             }
             catch (Exception ex) when (ex is not OutOfMemoryException)
             {
@@ -596,6 +602,11 @@ public static partial class ChrPort
 
         File.WriteAllLines(ctx.ModPath(EnemyPort.ChrMap.FileName), mapLines);
         WriteSpawnList(ctx, mapLines, catalog, plans.Where(p => p.Ds3.Boss).Select(p => $"c{p.Ds3.Chr:D4}").ToHashSet(), portedModels, testLines);
+        if (fx is not null)
+        {
+            written.AddRange(fx.Written);
+            try { fx.WriteReport(); } catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { notes.Add($"enemy effects report not written ({ex.Message})"); }
+        }
         File.WriteAllLines(ctx.ModPath(ManifestFile), written.Select(w => Path.GetRelativePath(ctx.ModPath(), w)));
         WriteReport(ctx, result);
         Console.WriteLine($"enemies: {result.Summary} (report: Work\\reports\\{ReportFile})");
@@ -617,7 +628,9 @@ public static partial class ChrPort
             return "enemies: nothing to add";
         var regulation = ActionButtons.LoadRegulation(ctx);
         var ds3 = ctx.LoadParams(PorterGame.DarkSouls3);
-        var attacks = new AttackParamPort(regulation, ds3, "BehaviorParam", "AtkParam_Npc");
+        // With the effect port, DS3's SpEffects and projectiles are ported along with the attacks (ChrEffects).
+        var fx = result.Effects;
+        var attacks = fx?.Attacks(regulation, ds3, result.Notes) ?? new AttackParamPort(regulation, ds3, "BehaviorParam", "AtkParam_Npc");
         int rows = 0, failed = 0;
         // DS3's drops for every ported row (one port for all of them: rows that share DS3 lots share the new ones).
         var drops = DropPort.Create(ctx, regulation, ds3, result.ItemNames, result.Notes);
@@ -625,7 +638,7 @@ public static partial class ChrPort
         {
             try
             {
-                rows += PortParams(regulation, ds3, attacks, plan, npcRows, result.Notes, drops);
+                rows += PortParams(regulation, ds3, attacks, plan, npcRows, result.Notes, drops, fx);
             }
             catch (Exception ex) when (ex is not OutOfMemoryException)
             {
@@ -644,6 +657,10 @@ public static partial class ChrPort
             result.Notes.AddRange(drops.Notes);
         }
         regulation.Save(ctx.ModPath("regulation.bin"));
+        string effects = "";
+        if (fx is not null)
+            try { effects = "; " + fx.Finish(result.Notes); }
+            catch (Exception ex) when (ex is not OutOfMemoryException) { result.Notes.Add($"enemy effects: {Describe(ex)}"); }
         try
         {
             if (result.Materials.Count > 0)
@@ -656,7 +673,7 @@ public static partial class ChrPort
         WriteReport(ctx, result);
         return $"enemies: {rows + fallback} NpcParam rows ({fallback} plain template copies), {attacks.Summary}" +
                $"{(failed > 0 ? $", {failed} characters' params failed (first: {result.Notes.FirstOrDefault(n => n.Contains("params failed")) ?? ""})" : "")}" +
-               $"{(result.Notes.FirstOrDefault(n => n.Contains("attacks not ported")) is { } a ? $"; {a}" : "")}" + dropSummary;
+               $"{(result.Notes.FirstOrDefault(n => n.Contains("attacks not ported")) is { } a ? $"; {a}" : "")}" + effects + dropSummary;
     }
 
     /// <summary>The F1 menu's spawn list; a failure only costs the menu its list (it falls back to a built-in one).</summary>
@@ -1170,6 +1187,7 @@ public static partial class ChrPort
         public int TemplateVariation;
     }
 
+
     /// <summary>
     /// Where a template's files live: its character binders, its effects and its behaviour script
     /// (action\script\cXXXX.hks). The script is cloned too: the behaviour graph's script loader is handed a null
@@ -1179,7 +1197,7 @@ public static partial class ChrPort
     /// </summary>
     private static readonly string[] ClonedFolders = ["/chr/", "/sfx/", "/action/script/"];
 
-    internal static ChrFiles BuildFiles(PorterContext ctx, GameArchives er, GameArchives ds3, Plan plan)
+    internal static ChrFiles BuildFiles(PorterContext ctx, GameArchives er, GameArchives ds3, Plan plan, ChrEffects? fx = null)
     {
         int t = plan.TemplateChr, n = plan.NewChr, x = plan.Ds3.Chr;
         var files = new ChrFiles();
@@ -1319,7 +1337,7 @@ public static partial class ChrPort
 
         if (plan.Method == Method.Full && plan.Stage > Stage.Model)
         {
-            var animated = PortAnimations(ds3, x, binders, n, notes, t, plan.Stage);
+            var animated = PortAnimations(ds3, x, binders, n, notes, t, plan.Stage, plan.Stage == Stage.All ? fx : null, plan);
             files.Animations = animated;
         }
 
@@ -1335,7 +1353,7 @@ public static partial class ChrPort
     /// DS3 move's length; DS3's attacks and the rest where both games lay the event out the same).
     /// </summary>
     private static int PortAnimations(GameArchives ds3, int x, Dictionary<string, (BND4 Bnd, DCX.CompressionInfo Compression)> binders, int n, List<string> notes,
-        int templateChr = 0, Stage stage = Stage.All)
+        int templateChr = 0, Stage stage = Stage.All, ChrEffects? fx = null, Plan? plan = null)
     {
         // A DS3 variant (c2191) plays its base's animations (c2190): its own files first, then the base's.
         var ds3Files = Ds3AnimationSources(x).SelectMany(chr => ds3.Entries
@@ -1444,6 +1462,18 @@ public static partial class ChrPort
                 }
             }
         }
+        // What the character shows, sounds like and casts (the full port only): its effect binder and sound bank are
+        // made first, so each move's DS3 events can name what was converted. A failure leaves the template's.
+        ChrEffects.Session? session = null;
+        if (fx is not null && plan is not null && stage > Stage.Moves)
+            try
+            {
+                session = fx.Open(plan, binders, ds3Taes.SelectMany(t => t.Item2.Animations.SelectMany(a => a.Events)).ToList(), notes);
+            }
+            catch (Exception ex) when (ex is not OutOfMemoryException)
+            {
+                notes.Add($"effects: not ported, the template's effects and sounds stay ({Describe(ex)})");
+            }
         int merged = 0;
         foreach (var (_, (bnd, _)) in anibnds)
             foreach (var file in bnd.Files.Where(f => stage > Stage.Moves && f.Name.EndsWith(".tae", StringComparison.OrdinalIgnoreCase)))
@@ -1465,7 +1495,7 @@ public static partial class ChrPort
                         continue;
                     var source = ChooseMove(AnimKey(anim.ID, section), ds3Additive.Contains(moves[content].Hkx) ? additiveKeys : wholeKeys, fill) is { } own
                                  && moves[own].Hkx == moves[content].Hkx ? own : content;
-                    anim.Events = ChrTae.Merge(moves[source].Events, anim, lengths, groups, d.Ds3, d.Er);
+                    anim.Events = ChrTae.Merge(moves[source].Events, anim, lengths, groups, d.Ds3, d.Er, session, fx?.Groups);
                     changed = true;
                     merged++;
                 }
@@ -1501,7 +1531,7 @@ public static partial class ChrPort
     /// DS3's attack data under its own behaviour variation). Returns how many NpcParam rows were added.
     /// </summary>
     private static int PortParams(ParamStore er, ParamStore ds3, AttackParamPort attacks, Plan plan, IReadOnlyDictionary<int, int> npcRows,
-        List<string>? notes = null, DropPort? drops = null)
+        List<string>? notes = null, DropPort? drops = null, ChrEffects? fx = null)
     {
         var npc = er.Get("NpcParam")!;
         var ds3Npc = ds3.Get("NpcParam");
@@ -1549,6 +1579,10 @@ public static partial class ChrPort
             // character that keeps the template's attack data only hits like the template.
             npc.Rows.Add(row);
             added++;
+            // DS3's own effects (a lantern's glow, an aura), and the character's effect binder and sound bank.
+            if (fx is not null && plan.Method == Method.Full && plan.Stage == Stage.All)
+                try { fx.ApplyNpc(row, ds3Npc?[ds3Id], plan); }
+                catch (Exception ex) when (ex is not OutOfMemoryException) { notes?.Add($"c{plan.Ds3.Chr:D4} {plan.Ds3.Name}: DS3 effects not added to its row ({Describe(ex)})"); }
             if (plan.Method == Method.Full && plan.Stage == Stage.All && ds3Npc?[ds3Id] is { } src && Cell(src, "behaviorVariationId") is { } ds3Var
                 && Cell(row, "behaviorVariationId") is { } erVar)
             {

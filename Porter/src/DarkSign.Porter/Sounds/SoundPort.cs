@@ -63,7 +63,7 @@ public static class SoundPort
 
     /// <summary>The folder the DLL reads (Mods\ER\darksign_sounds); must match TestMenu/src/sound.cpp.</summary>
     public const string DllSoundFolder = "darksign_sounds";
-    private const string Bank = "/enus/cs_main.bnk";
+    internal const string Bank = "/enus/cs_main.bnk";
 
     public sealed class Result
     {
@@ -356,7 +356,7 @@ public static class SoundPort
         return parts.Count == 0 ? "template nodes not readable (older layout used)" : "template chain " + string.Join(" < ", parts);
     }
 
-    private static uint UnusedId(WwiseBank bank, string name, HashSet<uint>? taken = null)
+    internal static uint UnusedId(WwiseBank bank, string name, HashSet<uint>? taken = null)
     {
         uint id = FxSoundExplore.Fnv1(name);
         while (bank.Has(id) || taken?.Contains(id) == true)
@@ -415,7 +415,7 @@ public static class SoundPort
     // fdp_main.fsb). Loose files in the game's sound folder come before archived ones of the same name. The player's
     // sounds are in the main banks, so those are read first (an assumption: 985 DS3 sound names are in more than one
     // event file, 53 of them with different waves, e.g. a character's bank with its own waves under a shared name).
-    private static Dictionary<string, (Fev.Event Event, string Fsb)> Ds3Events(PorterContext ctx, GameArchives ds3)
+    internal static Dictionary<string, (Fev.Event Event, string Fsb)> Ds3Events(PorterContext ctx, GameArchives ds3)
     {
         var files = new Dictionary<string, Func<byte[]>>(StringComparer.OrdinalIgnoreCase);
         var loose = Path.Combine(ctx.GameDir(PorterGame.DarkSouls3), "sound");

@@ -343,6 +343,14 @@ Try the next option if: A ported DS3 enemy drops nothing where DS3 drops somethi
 - **A: DS3's drops and chances (default).** Every ported DS3 enemy drops what it drops in DS3, with DS3's chances: ported weapons, and Elden Ring items of the same name. A DS3 item that isn't ported yet (armour, rings, most goods) keeps its chance and gives nothing; Work\reports\enemy-drops.tsv lists them all.
 - **B: The Elden Ring template's drops.** Ported enemies keep the drops of the Elden Ring enemy they are built on (DARKSIGN_ENEMY_DROPS=template), as in every build before DS3 drops were ported. (`DARKSIGN_ENEMY_DROPS=template`)
 
+### Ported DS3 enemies' effects, sounds and abilities (`enemy-effects`, rebuilds the content)
+
+Try the next option if: A ported DS3 enemy crashes the game when it spawns or attacks, the game hangs loading it, ported enemies are silent or make wrong sounds, or their effects are missing or wrong.
+
+- **A: DS3's effects, sounds and abilities (default).** Every ported DS3 enemy gets DS3's visual effects in an effect file of its own, DS3's sounds in a sound bank of its own, and the SpEffects and projectiles its DS3 row and moves use (the Jailer's lantern glow and health drain). Work\reports\enemy-effects.tsv says what each enemy got.
+- **B: DS3's effects and abilities, the template's sounds.** As A, but ported enemies keep the sounds of the Elden Ring enemy they are built on (DARKSIGN_ENEMY_SOUNDS=0). Use when ported enemies are silent, make wrong sounds, or the game crashes or hangs loading one with A. (`DARKSIGN_ENEMY_SOUNDS=0`)
+- **C: The Elden Ring template's effects and sounds.** Ported enemies keep the effects, sounds and abilities of the Elden Ring enemy they are built on (DARKSIGN_ENEMY_EFFECTS=0), as in every build up to 1.0.299. (`DARKSIGN_ENEMY_EFFECTS=0`)
+
 ### Where the DS3 maps' own flags are kept (`map-flags`, rebuilds the content)
 
 Try the next option if: In a DS3 map, bosses come back, opened doors and shortcuts close again or picked-up items return after a reload, or the pre-flight check says a map flag block is MISSING.
