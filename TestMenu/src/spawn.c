@@ -66,6 +66,7 @@ static uintptr_t g_current_before; /* the last created character before the requ
 static ULONGLONG g_current_since;
 static uint32_t g_next_entity;
 
+#define WATCH_FX_MAX 24
 typedef struct {
     uintptr_t chr;
     uint32_t entity;
@@ -76,6 +77,8 @@ typedef struct {
     float pos[3];
     int still;        /* 1 once it was logged as standing still */
     int32_t anim[2];
+    int32_t fx[WATCH_FX_MAX]; /* the special effects (SpEffect IDs) it had at the last sample */
+    int fx_n;
 } Spawned;
 
 /* Watch: how often a spawned character is sampled, how far it must move between samples to count as moving, and how
@@ -89,6 +92,12 @@ typedef struct {
 #define TIMEACT_ANIM 0x20
 #define MODULES_EVENT 0x58
 #define EVENT_ANIM 0xC8
+/* The special effects on a character (fromsoftware-rs ChrIns.special_effect, unconfirmed for this version: logged as
+   "fx?"): ChrIns + 0x178 -> SpecialEffect, + 0x8 -> first entry; entry + 0x8 = SpEffect ID, + 0x30 = next entry. */
+#define CHR_SPEFFECT 0x178
+#define SPEFFECT_HEAD 0x8
+#define FXENTRY_ID 0x8
+#define FXENTRY_NEXT 0x30
 static Spawned g_spawned[MAX_TRACKED];
 static int g_spawned_len;
 
@@ -484,6 +493,59 @@ int dks_spawn_pending(void) { return g_queue_len + g_active; }
 
 static uintptr_t chr_data(uintptr_t chr) { return read_ptr(read_ptr(chr + CHR_MODULES) + MODULES_DATA); }
 
+/* The SpEffect IDs on a character, at most WATCH_FX_MAX; -1 when the list can't be read. */
+static int read_effects(uintptr_t chr, int32_t *out)
+{
+    uintptr_t fx = read_ptr(chr + CHR_SPEFFECT);
+    if (!fx)
+        return -1;
+    int n = 0;
+    uintptr_t seen[64];
+    for (uintptr_t e = read_ptr(fx + SPEFFECT_HEAD); e && n < WATCH_FX_MAX; e = read_ptr(e + FXENTRY_NEXT)) {
+        for (int k = 0; k < n && k < 64; k++)
+            if (seen[k] == e)
+                return n; /* a loop: stop */
+        int32_t id = 0;
+        if (!read_mem(e + FXENTRY_ID, &id, 4))
+            return n ? n : -1;
+        if (n < 64)
+            seen[n] = e;
+        out[n++] = id;
+    }
+    return n;
+}
+
+static int has_effect(const int32_t *list, int n, int32_t id)
+{
+    for (int k = 0; k < n; k++)
+        if (list[k] == id)
+            return 1;
+    return 0;
+}
+
+/* Writes "fx? +a +b -c" when the effects changed since the last sample (an enemy that stops taking hits after a weapon
+   art shows here with what the hit put on it). */
+static void watch_effects(Spawned *s, int first)
+{
+    int32_t now[WATCH_FX_MAX];
+    int n = read_effects(s->chr, now);
+    if (n < 0)
+        return;
+    char line[400];
+    int len = 0;
+    for (int k = 0; k < n && len < (int)sizeof line - 16; k++)
+        if (first || !has_effect(s->fx, s->fx_n, now[k]))
+            len += snprintf(line + len, sizeof line - (size_t)len, " +%d", now[k]);
+    if (!first)
+        for (int k = 0; k < s->fx_n && len < (int)sizeof line - 16; k++)
+            if (!has_effect(now, n, s->fx[k]))
+                len += snprintf(line + len, sizeof line - (size_t)len, " -%d", s->fx[k]);
+    if (len > 0)
+        dks_log("watch: %u fx?%s (%d now)", s->entity, line, n);
+    memcpy(s->fx, now, sizeof now[0] * (size_t)n);
+    s->fx_n = n;
+}
+
 /* The watch (RULE 4): what each spawned character is doing, written to the log when it changes: health after a hit,
    when it stops moving and when it moves again, and when its position stops being a number. An enemy that "freezes
    and can't be hit" shows here as alive or dead, standing or not, so the next look at the log says which. */
@@ -535,6 +597,7 @@ static void spawn_watch(void)
         s->hp = hp;
         s->pos[0] = pos[0], s->pos[1] = pos[1], s->pos[2] = pos[2];
         s->anim[0] = anim[0], s->anim[1] = anim[1];
+        watch_effects(s, first);
     }
 }
 
