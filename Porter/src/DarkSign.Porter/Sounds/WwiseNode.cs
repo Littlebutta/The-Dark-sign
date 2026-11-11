@@ -11,6 +11,10 @@ namespace DarkSign.Porter;
 public sealed class WwiseNode
 {
     public const byte PropVolume = 0x00, PropPitch = 0x02, PropLowPass = 0x03, PropHighPass = 0x04;
+    /// <summary>How often a Sound plays: an i32, 0 = until it is stopped. Elden Ring's looping sounds carry it on the
+    /// Sound itself, always as 0 (4,421 Sounds; 2,595 of its looping Play_s/Play_c events, 142 loop their container
+    /// instead).</summary>
+    public const byte PropLoop = 0x3A;
 
     public required byte Type { get; init; }
     /// <summary>Offset of the u32 direct parent ID.</summary>
@@ -27,9 +31,14 @@ public sealed class WwiseNode
     /// <summary>A random/sequence container's u16 avoid-repeat count, or -1.</summary>
     public int AvoidRepeatAt { get; init; } = -1;
     public Dictionary<byte, uint> Props { get; init; } = [];
+    /// <summary>The ranged part of the property bundle: what Wwise adds at random to a property each time the node
+    /// plays, between Min and Max. Elden Ring's Volume ranges go down only (Min below 0, Max 0, in 3,774 of its
+    /// 3,882 nodes with one); its Pitch ranges mostly go both ways (Min below 0, Max above, in 13,749 of 15,297).</summary>
+    public Dictionary<byte, (float Min, float Max)> Ranges { get; init; } = [];
     public uint Parent(byte[] data) => BitConverter.ToUInt32(data, ParentAt);
 
     public static float AsFloat(uint bits) => BitConverter.Int32BitsToSingle((int)bits);
+    public static uint Bits(float value) => (uint)BitConverter.SingleToInt32Bits(value);
 
     private sealed class Reader(byte[] d, int at)
     {
@@ -91,7 +100,10 @@ public sealed class WwiseNode
         foreach (var id in ids)
             props[id] = r.U32();
         int ranged = r.U8();
-        r.Skip(ranged + ranged * 8L);
+        var rangedIds = Enumerable.Range(0, ranged).Select(_ => r.U8()).ToList();
+        var ranges = new Dictionary<byte, (float, float)>();
+        foreach (var id in rangedIds)
+            ranges[id] = (AsFloat(r.U32()), AsFloat(r.U32()));
         int propsEnd = r.At;
         int bits = r.U8(); // positioning
         if ((bits & 1) != 0 && (bits & 2) != 0)
@@ -177,8 +189,39 @@ public sealed class WwiseNode
         return new WwiseNode
         {
             Type = o.Type, ParentAt = parentAt, PropsAt = propsAt, PropsEnd = propsEnd, ChildrenAt = childrenAt, Children = children,
-            PlaylistAt = playlistAt, Playlist = playlist, AvoidRepeatAt = avoidAt, Props = props,
+            PlaylistAt = playlistAt, Playlist = playlist, AvoidRepeatAt = avoidAt, Props = props, Ranges = ranges,
         };
+    }
+
+    /// <summary>
+    /// The data with these properties and random ranges set in the property bundle (added, or replacing the one of
+    /// the same ID), written the way Elden Ring's banks hold them: a count, the IDs in ascending order, the values in
+    /// the same order, then the ranged ones likewise with a Min and a Max each (ascending IDs in all 93,218 nodes of
+    /// the game's 602 banks; a range needs no value of its own ID, 12,530 ranges have none). The other properties
+    /// and ranges stay. More than 255 of either kind doesn't fit the bundle: the data is returned unchanged.
+    /// </summary>
+    public byte[] WithProps(byte[] data, IEnumerable<(byte Id, uint Bits)> props, IEnumerable<(byte Id, float Min, float Max)>? ranges = null)
+    {
+        var values = new SortedDictionary<byte, uint>(Props);
+        foreach (var (id, bits) in props)
+            values[id] = bits;
+        var ranged = new SortedDictionary<byte, (float Min, float Max)>(Ranges);
+        foreach (var (id, min, max) in ranges ?? [])
+            ranged[id] = (min, max);
+        if (values.Count > 255 || ranged.Count > 255)
+            return (byte[])data.Clone();
+        var bundle = new MemoryStream();
+        bundle.WriteByte((byte)values.Count);
+        foreach (var id in values.Keys) bundle.WriteByte(id);
+        foreach (var bits in values.Values) bundle.Write(BitConverter.GetBytes(bits));
+        bundle.WriteByte((byte)ranged.Count);
+        foreach (var id in ranged.Keys) bundle.WriteByte(id);
+        foreach (var (min, max) in ranged.Values)
+        {
+            bundle.Write(BitConverter.GetBytes(min));
+            bundle.Write(BitConverter.GetBytes(max));
+        }
+        return [.. data.AsSpan(0, PropsAt), .. bundle.ToArray(), .. data.AsSpan(PropsEnd)];
     }
 
     /// <summary>The data with the given properties (and their random ranges) taken out of the property bundle.</summary>

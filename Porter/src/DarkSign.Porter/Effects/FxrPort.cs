@@ -32,6 +32,9 @@ public static partial class FxrPort
         public Dictionary<int, string> Reasons { get; } = [];
         /// <summary>DS3 sound IDs (type s) the ported effects play, renamed to SoundPort.IdBase + ID in them.</summary>
         public HashSet<int> Sounds { get; } = [];
+        /// <summary>The ones of <see cref="Sounds"/> some ported effect plays without holding them (no node of it ends
+        /// them when it ends): they must not loop, nothing would stop them.</summary>
+        public HashSet<int> UnheldSounds { get; } = [];
 
         /// <summary>The Elden Ring ID for a DS3 effect, or null when it wasn't ported.</summary>
         public int? Map(int ds3Id) => Effects.TryGetValue(ds3Id, out var id) ? id : null;
@@ -49,6 +52,22 @@ public static partial class FxrPort
     private static readonly bool PortFxrSounds = Environment.GetEnvironmentVariable("DARKSIGN_FXR_SOUNDS") != "0";
 
     private static IEnumerable<int> FxrSounds(IEnumerable<int> ids) => ids.Where(id => id is > 0 and < 100_000_000).Distinct();
+
+    /// <summary>
+    /// The DS3 sounds (as the keys of fxr-port.js's map.held) an effect may keep holding: the ones it plays as ported
+    /// sounds, when those get Stop events (SoundPort.StopEvents: every ported sound does). Measured: Elden Ring's own
+    /// effects hold 1,188 sounds, each with a Stop event, 814 of them looping. Inferred from that and from the game
+    /// building "Stop_%s" names: it ends a held sound by posting its Stop event when the node ends (not observed in
+    /// game). The effects are converted before the sounds are ported, so this goes by the port's rule, not its
+    /// result: a sound that then doesn't port has no Play event either and stays silent.
+    /// </summary>
+    private static Dictionary<string, int> StoppableSounds(IEnumerable<int> heldSounds) =>
+        PortFxrSounds && SoundPort.StopEvents ? FxrSounds(heldSounds).ToDictionary(id => id.ToString(), _ => 1) : [];
+
+    /// <summary>The sounds a converted effect plays without holding them: DS3's own unheld ones, and the held ones
+    /// too when the conversion clears their flag (no Stop events, see <see cref="StoppableSounds"/>).</summary>
+    private static IEnumerable<int> Unheld(FxrScript.Info info) =>
+        FxrSounds(HeldSoundsOnce && !SoundPort.StopEvents ? info.Sounds : info.UnheldSounds ?? info.Sounds);
 
     internal sealed record Ds3File(BinderFile File, string Binder);
 
@@ -164,12 +183,20 @@ public static partial class FxrPort
             info.Textures.Concat(info.Models.Where(modelTextures.ContainsKey).SelectMany(m => modelTextures[m])).Where(textures.ContainsKey).Distinct();
         // Sounds an effect holds for as long as one of its nodes lives (the hum of Friede's ice blade): see fxr-port.js.
         var held = effects.Where(e => e.Value.Info.HeldSounds is { Length: > 0 }).ToList();
+        var stoppable = StoppableSounds(effects.Values.SelectMany(e => e.Info.HeldSounds ?? []));
         if (held.Count > 0)
+        {
+            int kept = held.Count(e => !HeldSoundsOnce || e.Value.Info.HeldSounds!.Any(s => stoppable.ContainsKey(s.ToString())));
             Console.WriteLine($"effects: {held.Count} DS3 effects hold a sound while they live ({string.Join(" ", held.Take(12).Select(e => $"f{e.Key}:s{e.Value.Info.HeldSounds![0]}"))}{(held.Count > 12 ? " ..." : "")}); " +
-                              (HeldSoundsOnce ? "ported to play once, because Elden Ring could not end them" : "kept held (DARKSIGN_FXR_HELD_SOUNDS=1)"));
+                              (!HeldSoundsOnce ? "kept held (DARKSIGN_FXR_HELD_SOUNDS=1)"
+                                  : kept == 0 ? "ported to play once, because Elden Ring could not end them (the ported sounds have no Stop events)"
+                                  : $"{kept} keep it held: Elden Ring ends the ported sound with its Stop event when the effect ends" +
+                                    (kept < held.Count ? $"; {held.Count - kept} play theirs once (not a ported sound)" : "")));
+        }
         var mapJson = JsonSerializer.Serialize(new Dictionary<string, Dictionary<string, int>>
         {
             ["once"] = HeldSoundsOnce ? new() { ["all"] = 1 } : [],
+            ["held"] = stoppable,
             ["sfx"] = effects.Keys.ToDictionary(id => id.ToString(), id => IdBase + id),
             [((int)Kind.Texture).ToString()] = textures.ToDictionary(t => t.Key.ToString(), t => t.Value),
             [((int)Kind.Model).ToString()] = models.ToDictionary(t => t.Key.ToString(), t => t.Value),
@@ -209,7 +236,10 @@ public static partial class FxrPort
         {
             result.Effects[id] = IdBase + id;
             if (PortFxrSounds)
+            {
                 result.Sounds.UnionWith(FxrSounds(effects[id].Info.Sounds));
+                result.UnheldSounds.UnionWith(Unheld(effects[id].Info));
+            }
             Add(erBinders, ".fxr", $"f{IdBase + id:D9}.fxr", converted[id], added);
         }
         foreach (var (old, newId) in models.Where(m => effects.Values.Any(e => e.Info.Models.Contains(m.Key))).OrderBy(m => m.Value))
@@ -429,7 +459,7 @@ public static partial class FxrPort
     /// <summary>The fxr library, loaded once into a Jint engine.</summary>
     internal sealed class FxrScript
     {
-        public sealed record Info(int[] Sfx, int[] Textures, int[] Models, int[] Anibnds, int[] Sounds, int[]? HeldSounds = null);
+        public sealed record Info(int[] Sfx, int[] Textures, int[] Models, int[] Anibnds, int[] Sounds, int[]? HeldSounds = null, int[]? UnheldSounds = null);
 
         private readonly Engine _engine;
         private readonly JsValue _inspect, _convert;
@@ -450,8 +480,17 @@ public static partial class FxrPort
         }
 
         /// <summary>For the self-tests: a small DS3 effect with one texture that plays another effect (child > 0).</summary>
-        public byte[] Sample(int id, int child, int texture) =>
-            (byte[])_engine.Invoke(_engine.Modules.Import("./fxr-port.js").Get("sample"), id, child, texture).ToObject()!;
+        public byte[] Sample(int id, int child, int texture, int heldSound = 0) =>
+            (byte[])_engine.Invoke(_engine.Modules.Import("./fxr-port.js").Get("sample"), id, child, texture, heldSound).ToObject()!;
+
+        /// <summary>For the self-tests: the sounds a converted (Elden Ring) effect plays, and the ones it holds.</summary>
+        public (int[] Held, int[] Sounds) SoundsOfConverted(byte[] bytes)
+        {
+            var json = _engine.Invoke(_engine.Modules.Import("./fxr-port.js").Get("soundsOfConverted"), _engine.Intrinsics.Uint8Array.Construct(bytes)).AsString();
+            using var doc = JsonDocument.Parse(json);
+            int[] Ids(string name) => [.. doc.RootElement.GetProperty(name).EnumerateArray().Select(e => e.GetInt32())];
+            return (Ids("held"), Ids("sounds"));
+        }
 
         public byte[] Convert(byte[] bytes, int newId, string mapJson) =>
             (byte[])_engine.Invoke(_convert, _engine.Intrinsics.Uint8Array.Construct(bytes), newId, mapJson).ToObject()!;

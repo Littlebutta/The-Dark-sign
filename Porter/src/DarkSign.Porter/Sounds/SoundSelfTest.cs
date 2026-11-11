@@ -21,7 +21,12 @@ public static class SoundSelfTest
         var act = Cat(U32(A), U16(0x0403), U32(R), [0], new byte[3], U32(1)); // last u32: the bank holding the target (this one, ID 1)
         var ev = Cat(U32(E), [1], U32(A));
         var other = Cat(U32(Other), U32(0x00040001), [0], U32(media), U32(4), [0], Base(M, []));
-        var objs = new (byte t, byte[] d)[] { (2, other), (2, snd), (5, rsc), (7, mixer), (3, act), (4, ev) };
+        // The template sound's Stop event, as the game's look: a Stop action (0x0103) on what the Play action plays,
+        // here with a delay (0x0F) and a 1 s fade (0x10) and a tail of its own.
+        uint SA = 450, SE = 550;
+        var stopAct = Cat(U32(SA), U16(0x0103), U32(R), [0], [2], [0x0F, 0x10], U32(500), U32(1000), [0], [5, 6, 0]);
+        var stopEv = Cat(U32(SE), [1], U32(SA));
+        var objs = new (byte t, byte[] d)[] { (2, other), (2, snd), (5, rsc), (7, mixer), (3, act), (4, ev), (3, stopAct), (4, stopEv) };
         var hirc = Cat(U32((uint)objs.Length), objs.SelectMany(o => Cat([o.t], U32((uint)o.d.Length), o.d)).ToArray());
         var bnk = Cat(Sec("BKHD", Cat(U32(135), U32(1), new byte[8])), Sec("DIDX", Cat(U32(media), U32(0), U32(4))), Sec("DATA", [1, 2, 3, 4]), Sec("HIRC", hirc));
 
@@ -107,23 +112,99 @@ public static class SoundSelfTest
         Check(bank.LayersAdded == 1 && b4.Chain(9201)?.Sound.Id == 9202 && b4.Write().SequenceEqual(b4Bytes), "layered bank round trip");
         Check(bank.WriteOwnBank(778) is { } own4 && WwiseBank.Read(own4).Plays(9201).Count == 2 && WwiseBank.Read(own4).Media(9005) is not null, "own bank keeps the layers");
 
+        // Properties and random ranges written into a node's bundle the way the game's banks hold them (ascending
+        // IDs, values, then the ranged ones), read back from the bytes.
+        var rscObj = bank.Get(R)!;
+        var rscNode = WwiseNode.Read(rscObj)!;
+        Check(rscNode.Ranges.Count == 1 && rscNode.Ranges[2] == (-100f, 100f), "node reads its random ranges");
+        var retuned = rscNode.WithProps(rscObj.Data, [(WwiseNode.PropLoop, 0u), (WwiseNode.PropVolume, WwiseNode.Bits(-17f))], [(WwiseNode.PropVolume, -3f, 0f)]);
+        var retunedNode = WwiseNode.Read(new WwiseBank.HircObject(5, R, retuned));
+        Check(retuned.AsSpan(rscNode.PropsAt, 6).SequenceEqual(new byte[] { 5, 0x00, 0x02, 0x03, 0x04, 0x3A })
+              && retuned.AsSpan(rscNode.PropsAt + 6 + 20, 3).SequenceEqual(new byte[] { 2, 0x00, 0x02 }), "props and ranges written in ascending ID order");
+        Check(retunedNode is not null && retunedNode.Props[0] == WwiseNode.Bits(-17f) && retunedNode.Props[0x3A] == 0 && retunedNode.Props[2] == WwiseNode.Bits(-2200f)
+              && retunedNode.Ranges[0] == (-3f, 0f) && retunedNode.Ranges[2] == (-100f, 100f) && retunedNode.Children.SequenceEqual([S]) && retunedNode.Playlist.Count == 1,
+            "node with new props and ranges reads back, the rest untouched");
+        Check(rscNode.WithProps(rscObj.Data, []).SequenceEqual(rscObj.Data), "no new props: the same bytes");
+
+        // A DS3 sound that loops, 9 dB down with random volume and pitch: the level, pitch and ranges go on its
+        // container (relative to the template's -14 dB), the Loop property on its Sounds, its sample's loop points in
+        // the wem, and it gets a Stop event with one Stop action on what the Play action plays, DS3's fade-out in it.
+        var stopTemplate = bank.StopTemplate(SE);
+        Check(stopTemplate?.Id == SA && bank.StopTemplate(E) is null, "the template's Stop action is found");
+        var wemLoop = WwiseBank.PcmWem(new short[100], 1, 44100, (10, 89));
+        bank.AddSound(chain, 9301, [new WwiseBank.Layer(9303, 9304, [(9302u, 9305u, wemLoop), (9306u, 9307u, wemL)])
+        {
+            Tuning = new WwiseBank.Tuning(-9f, -100f, -5f, 150f, Loop: true), StopActionId = 9308,
+        }], false, new WwiseBank.StopEvent(9310, 1500, stopTemplate));
+        var b5Bytes = bank.Write();
+        var b5 = WwiseBank.Read(b5Bytes);
+        var loopCntr = WwiseNode.Read(b5.Get(9304)!)!;
+        Check(loopCntr.Props[0] == WwiseNode.Bits(-23f) && loopCntr.Props[2] == WwiseNode.Bits(-100f) && loopCntr.Ranges[0] == (-5f, 0f) && loopCntr.Ranges[2] == (-150f, 150f)
+              && !loopCntr.Props.ContainsKey(0x3A), "looping layer: DS3's level, pitch and ranges on the container");
+        Check(new uint[] { 9302, 9306 }.All(s => WwiseNode.Read(b5.Get(s)!) is { } n && n.Props.TryGetValue(0x3A, out var loop) && loop == 0 && n.Props[0] == WwiseNode.Bits(-2f)),
+            "looping layer: Loop property (0 = until stopped) on every Sound, their own volume kept");
+        Check(b5.Get(9310)?.Data.SequenceEqual(Cat(U32(9310), [1], U32(9308))) == true, "Stop event lists its Stop action");
+        Check(b5.Get(9308)?.Data.SequenceEqual(Cat(U32(9308), U16(0x0103), U32(9304), [0], [1], [0x10], U32(1500), [0], [5, 6, 0])) == true,
+            "Stop action: type 0x0103, the Play action's target, DS3's fade-out, the template's tail, no delay");
+        Check(b5.Plays(9301) is [var loopPlay] && BitConverter.ToUInt32(loopPlay.Action.Data, 6) == 9304 && b5.Plays(9310).Count == 0, "Play event still plays; the Stop event plays nothing");
+        var ids5 = b5.Objects.Select(o => o.Id).ToList();
+        Check(ids5.IndexOf(9303) < ids5.IndexOf(9301) && ids5.IndexOf(9301) < ids5.IndexOf(9308) && ids5.IndexOf(9308) < ids5.IndexOf(9310), "order: Play action, Play event, Stop action, Stop event");
+        Check(bank.StopEventsAdded == 1 && bank.TuningsLost == 0 && b5.Media(9305)!.SequenceEqual(wemLoop) && b5.Write().SequenceEqual(b5Bytes), "looping bank round trip");
+        Check(bank.WriteOwnBank(779) is { } own5 && WwiseBank.Read(own5) is var o5 && o5.Get(9310) is not null && o5.Get(9308) is not null
+              && WwiseNode.Read(o5.Get(9302)!)!.Props.ContainsKey(0x3A) && o5.Write().SequenceEqual(own5), "own bank keeps the loop and the Stop event");
+        // Two layers, no fade-out, no template: one Stop action per layer in the game's commonest layout; a one-shot
+        // sound without tuning keeps the template's settings.
+        bank.AddSound(chain, 9401, [new WwiseBank.Layer(9403, 9404, [(9402u, 9005u, wem)]) { StopActionId = 9408 },
+            new WwiseBank.Layer(9413, 9414, [(9412u, 9005u, wem)]) { StopActionId = 9418, Tuning = new WwiseBank.Tuning(VolumeDb: -200f, PitchCents: 5000f) }], false, new WwiseBank.StopEvent(9410, 0, null));
+        var b6 = WwiseBank.Read(bank.Write());
+        Check(b6.Get(9410)?.Data.SequenceEqual(Cat(U32(9410), [2], U32(9408), U32(9418))) == true
+              && b6.Get(9408)!.Data.SequenceEqual(Cat(U32(9408), U16(0x0103), U32(9404), [0], [0], [0], [4, 6, 0]))
+              && b6.Get(9418)!.Data.SequenceEqual(Cat(U32(9418), U16(0x0103), U32(9414), [0], [0], [0], [4, 6, 0])), "two layers: one Stop action each, no fade, default tail");
+        var plain = WwiseNode.Read(b6.Get(9404)!)!; var limited = WwiseNode.Read(b6.Get(9414)!)!;
+        Check(plain.Props[0] == WwiseNode.Bits(-14f) && !plain.Props.ContainsKey(2) && plain.Ranges.Count == 0 && !WwiseNode.Read(b6.Get(9402)!)!.Props.ContainsKey(0x3A), "untuned one-shot layer as before");
+        Check(limited.Props[0] == WwiseNode.Bits(-96f) && limited.Props[2] == WwiseNode.Bits(2400f), "level and pitch kept inside Wwise's limits");
+        // Loop points in a PCM wem: a "smpl" chunk with one loop between fmt and data; bad points leave it out.
+        Check(Encoding.ASCII.GetString(wemLoop, 44, 4) == "smpl" && BitConverter.ToInt32(wemLoop, 48) == 60 && BitConverter.ToInt32(wemLoop, 52 + 28) == 1
+              && BitConverter.ToInt32(wemLoop, 52 + 36 + 8) == 10 && BitConverter.ToInt32(wemLoop, 52 + 36 + 12) == 89
+              && Encoding.ASCII.GetString(wemLoop, 112, 4) == "data" && BitConverter.ToInt32(wemLoop, 4) == wemLoop.Length - 8 && wemLoop.Length == wem.Length + 68, "wem loop points (smpl chunk)");
+        Check(BitConverter.ToInt32(WwiseBank.PcmWem(new short[100], 1, 44100, (10, 500)), 52 + 36 + 12) == 99, "wem loop end kept inside the audio");
+        Check(WwiseBank.PcmWem(new short[100], 1, 44100, (50, 50)).SequenceEqual(wem) && WwiseBank.PcmWem(new short[100], 1, 44100, (200, 300)).SequenceEqual(wem)
+              && WwiseBank.PcmWem(new short[100], 1, 44100, (-1, 5)).SequenceEqual(wem), "wem without usable loop points is the plain wem");
+
         // DS3 event files (Fev): a file built here from the layout the reader documents. Two sound definitions (the
         // first with two wave files, the second with a "don't play" entry and one file), an event with two layers (the
         // first with an envelope), an event whose only layer has no sound, and a record whose layer doesn't read.
         static byte[] FevStr(string s) => Cat(U32((uint)s.Length + 1), Encoding.ASCII.GetBytes(s), [0]);
-        static byte[] FevEvent(uint name, params byte[][] layers)
+        static byte[] FevEvent(uint name, Action<byte[]>? header, params byte[][] layers)
         {
             var head = new byte[0xA8];
             BitConverter.GetBytes(8).CopyTo(head, 0);
             BitConverter.GetBytes(name).CopyTo(head, 4);
             BitConverter.GetBytes(1f).CopyTo(head, 24);
             BitConverter.GetBytes(128).CopyTo(head, 40);
+            BitConverter.GetBytes(0x40080000u).CopyTo(head, 72); // DS3's commonest flags: the one-shot bit set
+            header?.Invoke(head);
             return Cat(head, U32((uint)layers.Length), Cat(layers),
                 U32(1), new byte[28], U32(0),                       // one parameter, no values after it
                 U32(2), FevStr("playDistance"), U32(1), F(29f), FevStr("returnType"), U32(0), U32(1), // user properties
                 U32(1), FevStr("SE"));                              // category
         }
-        static byte[] FevSound(ushort definition) => Cat(U16(definition), new byte[56]);
+        // A sound in a layer: the definition's index, then i32 fields of which the fourth is the loop mode.
+        static byte[] FevSound(ushort definition, uint loopMode = 1) => Cat(U16(definition), new byte[12], U32(loopMode), new byte[40]);
+        // A definition property record: volume +16, lowest random volume +32, pitch +36, pitch randomisation +52.
+        static byte[] FevProps(float volume, float volumeRandomMin, float pitch, float pitchRandom)
+        {
+            var record = new byte[74];
+            F(volume).CopyTo(record, 16); F(volumeRandomMin).CopyTo(record, 32); F(pitch).CopyTo(record, 36); F(pitchRandom).CopyTo(record, 52);
+            return record;
+        }
+        // The first event's header: -6 dB, a semitone down, a semitone of random pitch, random volume down to -3 dB,
+        // heard up to 27 m, not one-shot, fading out over 1.5 s.
+        static void FevLoopHeader(byte[] head)
+        {
+            F(0.5012f).CopyTo(head, 24); F(-1 / 48f).CopyTo(head, 28); F(1 / 48f).CopyTo(head, 32); F(0.2921f).CopyTo(head, 36);
+            F(27f).CopyTo(head, 60); U32(0x40000000).CopyTo(head, 72); U32(1500).CopyTo(head, 144);
+        }
         string[] fevStrings = ["", "main", "c000000001", "/x/one", "/x/two", "c000000002", "c000000003"];
         var fevText = Cat(fevStrings.Select(s => Cat(Encoding.ASCII.GetBytes(s), [0])).ToArray());
         var fevOffsets = fevStrings.Select((_, i) => (uint)fevStrings.Take(i).Sum(s => s.Length + 1)).ToArray();
@@ -131,12 +212,13 @@ public static class SoundSelfTest
         var envelope = Cat(U32(0xFFFFFFFF), FevStr("FMOD Lowpass Simple"), U32(0), U32(4), U32(0), U32(3), U32(0), U32(1), U32(2), U32(0), U32(1));
         var lgcy = Cat(
             new byte[20],                                           // what comes before the first event
-            FevEvent(2, Cat(U16(2), U16(0xFFFF), U16(0), U16(1), U16(1), FevSound(0), envelope), Cat(U16(2), U16(0xFFFF), U16(0), U16(1), U16(0), FevSound(1))),
-            FevEvent(5, Cat(U16(0), U16(0xFFFF), U16(0), U16(0), U16(0))),
-            FevEvent(6, Cat(U16(7), U16(0xFFFF), U16(0), U16(1), U16(0), FevSound(0))), // not a layer: skipped
+            FevEvent(2, FevLoopHeader, Cat(U16(2), U16(0xFFFF), U16(0), U16(1), U16(1), FevSound(0, loopMode: 0), envelope), Cat(U16(2), U16(0xFFFF), U16(0), U16(1), U16(0), FevSound(1))),
+            FevEvent(5, null, Cat(U16(0), U16(0xFFFF), U16(0), U16(0), U16(0))),
+            FevEvent(6, null, Cat(U16(7), U16(0xFFFF), U16(0), U16(1), U16(0), FevSound(0))), // not a layer: skipped
+            U32(2), FevProps(0.7079f, 0.7943f, 0, 1 / 96f), FevProps(1, 1, 2 / 48f, 0), // the definitions' property records
             U32(2),
             U32(3), U32(0), U32(2), U32(0), U32(100), FevStr("bank/x/a.wav"), U32(0), U32(0), U32(100), U32(0), U32(100), FevStr("sfx\\b.wav"), U32(0), U32(1), U32(200),
-            U32(4), U32(0), U32(2), U32(2), U32(100), U32(0), U32(100), FevStr("c.wav"), U32(0), U32(2), U32(300),
+            U32(4), U32(1), U32(2), U32(2), U32(100), U32(0), U32(100), FevStr("c.wav"), U32(0), U32(2), U32(300),
             new byte[12]);
         static byte[] Riff(string tag, byte[] body) => Cat(Sec(tag, body), new byte[body.Length & 1]); // chunks are padded to even sizes
         byte[] FevFile(params byte[][] chunks) =>
@@ -148,6 +230,19 @@ public static class SoundSelfTest
               && fe.Layers[0].Waves.SequenceEqual(["bank/x/a.wav", "sfx\\b.wav"]) && fe.Layers[1].Waves.SequenceEqual(["c.wav"]), "fev event layers and their waves");
         Check(fev.Events.TryGetValue("c000000002", out var fe2) && fe2.Layers.Count == 1 && fe2.Layers[0].Waves.Count == 0, "fev layer without a sound");
         Check(!fev.Events.ContainsKey("c000000003"), "fev record that doesn't read is left out");
+        // Levels, pitch and loops: the event header's and the definitions' property records.
+        static bool Near(float a, float b, float within = 0.05f) => Math.Abs(a - b) <= within;
+        Check(fe is not null && Near(Fev.Decibels(fe.Volume), -6) && Near(Fev.Cents(fe.Pitch), -100) && Near(Fev.Cents(fe.PitchRandom), 100)
+              && Near(Fev.Decibels(fe.VolumeRandomMin), -3) && fe.MaxDistance == 27 && !fe.OneShot && fe.FadeOutMs == 1500, "fev event level, pitch, randomisation, distance, one-shot bit and fade-out");
+        Check(fe is not null && fe.Layers[0] is { LoopMode: 0, Loops: true } l0 && Near(Fev.Decibels(l0.Volume), -3) && Near(Fev.Decibels(l0.VolumeRandomMin), -2)
+              && l0.Pitch == 0 && Near(Fev.Cents(l0.PitchRandom), 50), "fev looping layer and its definition's level");
+        Check(fe is not null && fe.Layers[1] is { LoopMode: 1, Loops: false, Volume: 1, VolumeRandomMin: 1, PitchRandom: 0 } l1 && Near(Fev.Cents(l1.Pitch), 200), "fev one-shot layer and its definition's pitch");
+        Check(fe2 is { Volume: 1, Pitch: 0, PitchRandom: 0, VolumeRandomMin: 1, OneShot: true, FadeOutMs: 0 }, "fev plain event reads as unchanged");
+        Check(fe is not null && SoundPort.TuningOf(fe, fe.Layers[0]) is { Loop: true } t0 && Near(t0.VolumeDb, -9) && Near(t0.PitchCents, -100) && Near(t0.VolumeRandomDb, -5) && Near(t0.PitchRandomCents, 150)
+              && SoundPort.TuningOf(fe, fe.Layers[1]) is { Loop: false } t1 && Near(t1.VolumeDb, -6) && Near(t1.PitchCents, 100) && Near(t1.VolumeRandomDb, -3) && Near(t1.PitchRandomCents, 100),
+            "event and definition add up to a layer's tuning (dB, cents)");
+        Check(fe2 is not null && SoundPort.TuningOf(fe2, new Fev.Layer([])) is null, "a plain layer has no tuning");
+        Check(Fev.Decibels(0) == -96 && Fev.Decibels(float.NaN) == -96 && Fev.Decibels(1) == 0 && Fev.Cents(float.NaN) == 0, "fev dB and cents of odd values");
         Check(Fev.SampleName("bank/fdp_main/sfx/s000525503.wav") == "s000525503" && Fev.SampleName("sfx\\b.wav") == "b" && Fev.SampleName("magic-atom") == "magic-atom", "fev wave names to sample names");
         bool fevThrew = false;
         try

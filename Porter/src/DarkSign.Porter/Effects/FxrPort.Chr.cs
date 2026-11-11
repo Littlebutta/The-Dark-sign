@@ -22,7 +22,7 @@ public static partial class FxrPort
     private const int ChrResourceBase = 950_000;
 
     /// <summary>One converted effect: its Elden Ring bytes and what it needs next to it.</summary>
-    public sealed record ChrEffect(byte[] Fxr, int[] Children, int[] Textures, int[] Models, int[] Sounds);
+    public sealed record ChrEffect(byte[] Fxr, int[] Children, int[] Textures, int[] Models, int[] Sounds, int[] UnheldSounds);
 
     /// <summary>Converts DS3 effects for character binders, each once. Not thread-safe: callers hold one lock.</summary>
     public sealed class ChrConverter
@@ -121,12 +121,14 @@ public static partial class FxrPort
             var map = JsonSerializer.Serialize(new Dictionary<string, Dictionary<string, int>>
             {
                 ["once"] = HeldSoundsOnce ? new() { ["all"] = 1 } : [],
+                ["held"] = StoppableSounds(info.HeldSounds ?? []),
                 ["sfx"] = children.ToDictionary(c => c.ToString(), c => ChrIdBase + c),
                 [((int)Kind.Texture).ToString()] = info.Textures.Where(t => t > 0).Distinct().ToDictionary(t => t.ToString(), t => _textureIds[t]),
                 [((int)Kind.Model).ToString()] = models.ToDictionary(m => m.ToString(), m => _modelIds[m]),
                 [((int)Kind.Sound).ToString()] = sounds.ToDictionary(s => s.ToString(), s => SoundPort.IdBase + s),
             });
-            return new ChrEffect(_js.Convert(file.File.Bytes, ChrIdBase + id, map), children, [.. textures.Distinct()], models, sounds);
+            return new ChrEffect(_js.Convert(file.File.Bytes, ChrIdBase + id, map), children, [.. textures.Distinct()], models, sounds,
+                PortFxrSounds ? [.. Unheld(info)] : []);
         }
 
         // A DS3 effect model on Elden Ring's effect materials (EffectModelPort), once; returns why it can't be.
@@ -202,6 +204,7 @@ public static partial class FxrPort
                 layout.Add(binder, ".ffxreslist", $"f{newId:D9}.ffxreslist", System.Text.Encoding.ASCII.GetBytes(string.Concat(lines.Select(l => l + "\r\n"))));
                 result.Effects[id] = newId;
                 result.Sounds.UnionWith(effect.Sounds);
+                result.UnheldSounds.UnionWith(effect.UnheldSounds);
             }
             return result;
         }

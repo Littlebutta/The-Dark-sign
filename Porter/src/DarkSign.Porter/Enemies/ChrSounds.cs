@@ -49,6 +49,10 @@ public sealed class ChrSounds
         public Dictionary<string, int> Reasons = [];
 
         public int? Map(int kind, int id) => Ported.Contains((kind, id)) ? SoundPort.IdBase + id : null;
+
+        /// <summary>The ported sounds that loop until their Stop event is posted (see SoundPort.Result.Loops).</summary>
+        public HashSet<(int Kind, int Id)> Looping = [];
+        public bool Loops(int kind, int id) => Looping.Contains((kind, id));
     }
 
     private ChrSounds(PorterContext ctx, GameArchives er, GameArchives ds3, byte[] main, uint mainBankId, List<int> templateIds,
@@ -113,13 +117,15 @@ public sealed class ChrSounds
     /// Builds one character's bank from the DS3 sounds its moves and effects play. One character at a time (the
     /// decoder and the bank cache are shared). A character with no sound that ports gets no bank.
     /// </summary>
-    public Result Build(ChrPort.Plan plan, IReadOnlyList<(int Kind, int Id)> wanted)
+    /// <param name="unheld">Effect sounds the character's effects play without holding them: they never loop
+    /// (see SoundPort.Apply).</param>
+    public Result Build(ChrPort.Plan plan, IReadOnlyList<(int Kind, int Id)> wanted, IReadOnlySet<int>? unheld = null)
     {
         lock (_lock)
-            return BuildLocked(plan, wanted);
+            return BuildLocked(plan, wanted, unheld);
     }
 
-    private Result BuildLocked(ChrPort.Plan plan, IReadOnlyList<(int Kind, int Id)> wanted)
+    private Result BuildLocked(ChrPort.Plan plan, IReadOnlyList<(int Kind, int Id)> wanted, IReadOnlySet<int>? unheld)
     {
         var result = new Result { BankName = $"cs_c{plan.NewChr:D4}", Wanted = wanted.Count };
         result.BankId = FxSoundExplore.Fnv1(result.BankName);
@@ -165,7 +171,12 @@ public sealed class ChrSounds
 
         var bank = WwiseBank.Read(_main);
         var template = Template(bank, _templateIds)!.Value;
+        int templateId = _templateIds.FirstOrDefault(t => bank.Chain(FxSoundExplore.Fnv1($"Play_c{t:D9}")) is not null, -1);
+        var stopTemplate = bank.StopTemplate(FxSoundExplore.Fnv1($"Stop_c{templateId:D9}"));
+        // As the weapon port: DS3's level, pitch and loops per layer, a looping layer's sample embedded apart with
+        // its loop points, and a Stop event for every sound (SoundPort.TuningOf, LoopPoints, StopOf).
         var media = new Dictionary<Fsb5.Sample, (uint Id, byte[] Bytes)>(ReferenceEqualityComparer.Instance);
+        var loopMedia = new Dictionary<Fsb5.Sample, (uint Id, byte[] Bytes)>(ReferenceEqualityComparer.Instance);
         var failed = new HashSet<Fsb5.Sample>(ReferenceEqualityComparer.Instance);
         HashSet<uint> taken = [], written = [];
         var wems = new List<(uint Id, byte[] Bytes)>();
@@ -173,40 +184,52 @@ public sealed class ChrSounds
         {
             char letter = SoundPort.Letter(kind)!.Value;
             var name = $"{letter}{id:D9}";
-            List<List<Fsb5.Sample>> layers = [];
+            List<(List<Fsb5.Sample> Samples, WwiseBank.Tuning? Tuning)> layers = [];
             string? eventBank = null;
             if (_events.TryGetValue(name, out var ds3Event))
             {
                 eventBank = ds3Event.Fsb;
                 layers = ds3Event.Event.Layers
-                    .Select(l => l.Waves.Select(Fev.SampleName).Distinct().Select(w => Pick(w, [eventBank])).OfType<Fsb5.Sample>().ToList())
-                    .Where(l => l.Count > 0).ToList();
+                    .Select(l => (Samples: l.Waves.Select(Fev.SampleName).Distinct().Select(w => Pick(w, [eventBank])).OfType<Fsb5.Sample>().ToList(),
+                        Tuning: SoundPort.TuningOf(ds3Event.Event, l)))
+                    .Where(l => l.Samples.Count > 0).ToList();
             }
             if (layers.Count == 0 && Suffixes.Select(v => Pick(name + v, own.Prepend(eventBank))).OfType<Fsb5.Sample>().ToList() is { Count: > 0 } named)
-                layers.Add(named);
+                layers.Add((named, null));
             if (layers.Count == 0) { Left(eventBank is null ? "no DS3 event or sample" : "no DS3 sample"); continue; }
             uint eventId = FxSoundExplore.Fnv1($"Play_{letter}{SoundPort.IdBase + id:D9}");
             if (bank.Has(eventId)) { Left("event ID taken"); continue; }
-            var built = new List<List<(uint Id, byte[] Bytes)>>();
-            foreach (var layer in layers)
+            // A sound that can't get a Stop event must not loop: nothing could end it.
+            var stop = SoundPort.StopEvents ? SoundPort.StopOf(letter, id, ds3Event.Event, stopTemplate) : null;
+            if (stop is not null && bank.Has(stop.EventId))
+                stop = null;
+            // Nor must a sound an effect plays without holding it.
+            if (stop is null || (kind == SoundPort.EffectSoundKind && unheld?.Contains(id) == true))
+                layers = [.. layers.Select(l => (l.Samples, l.Tuning is { Loop: true } t ? t with { Loop = false } : l.Tuning))];
+            var built = new List<(List<(uint Id, byte[] Bytes)> Media, WwiseBank.Tuning? Tuning)>();
+            foreach (var (layer, tuning) in layers)
             {
                 var sounds = new List<(uint Id, byte[] Bytes)>();
                 foreach (var s in layer)
                 {
-                    if (!media.ContainsKey(s) && !failed.Contains(s))
+                    bool looped = tuning?.Loop == true && SoundPort.LoopPoints(s) is not null;
+                    var store = looped ? loopMedia : media;
+                    if (!store.ContainsKey(s) && !failed.Contains(s))
                         try
                         {
-                            media[s] = (SoundPort.UnusedId(bank, $"darksign_media_{s.Name}", taken), WwiseBank.PcmWem(Fsb5.DecodePcm(s), s.Channels, s.Rate));
+                            store[s] = looped
+                                ? (SoundPort.UnusedId(bank, $"darksign_media_{s.Name}_loop", taken), WwiseBank.PcmWem(Fsb5.DecodePcm(s), s.Channels, s.Rate, SoundPort.LoopPoints(s)))
+                                : (SoundPort.UnusedId(bank, $"darksign_media_{s.Name}", taken), WwiseBank.PcmWem(Fsb5.DecodePcm(s), s.Channels, s.Rate));
                         }
                         catch (Exception e) when (e is not OutOfMemoryException)
                         {
                             failed.Add(s); // one undecodable sample must not cost the others
                         }
-                    if (media.TryGetValue(s, out var m))
+                    if (store.TryGetValue(s, out var m))
                         sounds.Add(m);
                 }
                 if (sounds.Count > 0)
-                    built.Add(sounds);
+                    built.Add((sounds, tuning));
             }
             if (built.Count == 0) { Left("not decodable"); continue; }
             // The same object names the weapon port gives a sound, so one DS3 sound is the same Wwise objects in
@@ -217,12 +240,20 @@ public sealed class ChrSounds
                 string tag = $"{letter}{id}{(l == 0 ? "" : $"_layer{l}")}";
                 uint actionId = SoundPort.UnusedId(bank, $"darksign_action_{tag}", taken), containerId = SoundPort.UnusedId(bank, $"darksign_container_{tag}", taken);
                 newLayers.Add(new WwiseBank.Layer(actionId, containerId,
-                    built[l].Select((m, v) => (SoundPort.UnusedId(bank, $"darksign_sound_{tag}{(v == 0 ? "" : $"_{v}")}", taken), m.Id, m.Bytes)).ToList()));
+                    built[l].Media.Select((m, v) => (SoundPort.UnusedId(bank, $"darksign_sound_{tag}{(v == 0 ? "" : $"_{v}")}", taken), m.Id, m.Bytes)).ToList())
+                {
+                    Tuning = built[l].Tuning,
+                    StopActionId = stop is not null ? SoundPort.UnusedId(bank, $"darksign_stop_{tag}", taken) : 0,
+                });
             }
-            wems.AddRange(built.SelectMany(l => l).Where(m => written.Add(m.Id)));
-            bank.AddSound(template, eventId, newLayers, streamed: false);
+            wems.AddRange(built.SelectMany(l => l.Media).Where(m => written.Add(m.Id)));
+            bank.AddSound(template, eventId, newLayers, streamed: false, stop);
             result.Events.Add(eventId);
+            if (stop is not null)
+                result.Events.Add(stop.EventId);
             result.Ported.Add((kind, id));
+            if (built.Any(b => b.Tuning?.Loop == true))
+                result.Looping.Add((kind, id));
         }
         if (result.Ported.Count == 0)
             return result;

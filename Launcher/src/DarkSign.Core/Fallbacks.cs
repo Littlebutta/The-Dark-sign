@@ -235,6 +235,10 @@ public static class Fallbacks
                 { PorterEnv = Env("DARKSIGN_SOUND_INDEX", "0", "DARKSIGN_SOUND_ONESHOT", "0", "DARKSIGN_SOUND_MIRROR", "0") },
             new("G", "Samples by the sound's name only", "A without DS3's event files (DARKSIGN_SOUND_FEV=0), as builds before them: a sound is the DS3 sample named like it. Sounds whose samples are named differently stay Elden Ring's or silent, and a sound made of several layers plays only one. Use it if ported sounds play the wrong sample or too many at once.")
                 { PorterEnv = Env("DARKSIGN_SOUND_FEV", "0") },
+            new("H", "Without DS3's levels and pitch", "A, but every ported sound plays at the Elden Ring template's level with no pitch change or randomisation (DARKSIGN_SOUND_LEVELS=0), as earlier builds did. Use it if ported sounds are too quiet, too loud or at the wrong pitch.")
+                { PorterEnv = Env("DARKSIGN_SOUND_LEVELS", "0") },
+            new("I", "Without loops and Stop events", "A, but DS3 sounds that loop play through once, no ported sound has a Stop event, and effects play the sounds they hold once (DARKSIGN_SOUND_LOOPS=0), as earlier builds did. Use it if a ported sound is cut off early, never ends, or the game misbehaves when an effect or move ends.")
+                { PorterEnv = Env("DARKSIGN_SOUND_LOOPS", "0") },
             new("off", "Off (Elden Ring sounds)", "Ported weapons keep the Elden Ring template's swing sounds (DARKSIGN_DS3_SOUND_EVENTS=0). Not DS3, but never silent.")
                 { PorterEnv = Env("DARKSIGN_DS3_SOUND_EVENTS", "0") },
         ]),
