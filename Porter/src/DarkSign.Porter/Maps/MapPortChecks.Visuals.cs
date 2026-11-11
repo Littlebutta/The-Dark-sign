@@ -18,6 +18,63 @@ public static partial class MapPortChecks
         yield return ("visuals: pieces name a PartsDrawParam row, carry no masks", DrawSettings);
         yield return ("visuals: test maps hold the host's own model, its own material, or the port's materials with vanilla textures", PieceTests);
         yield return ("visuals: fallbacks map-groups C and map-materials B", VisualFallbacks);
+        yield return ("visuals: DS3's reflection proxies, shadow casters and off-layer pieces are left out and reported", HelperPieces);
+    }
+
+    private static void HelperPieces()
+    {
+        MSB3 Map()
+        {
+            var ds3 = SyntheticDs3();
+            ds3.Parts.MapPieces[0].MapStudioLayer = 0xFFFFFFFF;
+            void Add(string model, Action<MSB3.Part.MapPiece> set)
+            {
+                ds3.Models.MapPieces.Add(new MSB3.Model.MapPiece { Name = model });
+                var piece = new MSB3.Part.MapPiece { Name = model + "_0000", ModelName = model, MapStudioLayer = 0xFFFFFFFF };
+                set(piece);
+                ds3.Parts.MapPieces.Add(piece);
+            }
+            // As m40 has them: a reflection proxy of a whole area, plus a shadow card and an off-layer piece.
+            Add("m200000", p => { p.DrawOnlyReflectCam = true; p.DrawByReflectCam = true; });
+            Add("m000700", p => p.IsShadowOnly = true);
+            Add("m004435", p => p.MapStudioLayer = 2);
+            Add("m000010", p => p.DrawByReflectCam = true);
+            // More scenery, so the off-layer piece is the exception it is in a real map.
+            for (int i = 0; i < 6; i++)
+                Add($"m00030{i}", _ => { });
+            return ds3;
+        }
+
+        var result = MsbPort.Convert(Map(), SyntheticHost(), Ds3Id, ErId);
+        var names = result.Msb.Parts.MapPieces.Select(p => p.ModelName).ToList();
+        Expect(names.Count == 8 && !names.Contains("m200000") && !names.Contains("m000700") && !names.Contains("m004435"),
+            $"the reflection proxy, shadow card and off-layer piece are left out ({string.Join(", ", names)})");
+        Expect(names.Contains("m000010"), "a piece that reflections draw too (water) stays");
+        Expect(result.Msb.Models.MapPieces.All(m => m.Name is not ("m200000" or "m000700" or "m004435")), "no model is converted for a left-out piece");
+        Expect(result.Notes.Count(n => n.StartsWith("helper pieces left out: 1 ")) == 3, $"each kind is reported ({string.Join(" | ", result.Notes)})");
+
+        // Fallback map-helper-pieces B keeps them.
+        Expect(MapPorter.Options.Parse(["--helper-pieces"]).HelperPieces && !new MapPorter.Options().HelperPieces, "--helper-pieces is read");
+        var kept = MsbPort.Convert(Map(), SyntheticHost(), Ds3Id, ErId, new MsbPort.Options { HelperPieces = true });
+        Expect(kept.Msb.Parts.MapPieces.Count == 11, "--helper-pieces keeps every piece");
+
+        // A map whose pieces are mostly off bit 0 uses layers some other way: none is dropped for its layer.
+        var odd = Map();
+        foreach (var p in odd.Parts.MapPieces.Take(5))
+            p.MapStudioLayer = 2;
+        var oddResult = MsbPort.Convert(odd, SyntheticHost(), Ds3Id, ErId);
+        Expect(oddResult.Msb.Parts.MapPieces.Count == 9, $"layers are ignored when most pieces are off the base layer ({oddResult.Msb.Parts.MapPieces.Count})");
+
+        // The piece report names every piece, written or not, with its meshes.
+        var (port, hostBnd) = VisualPort();
+        var flver = SyntheticFlver(0x20014, @"N:\FDP\data\Material\mtd\map\M[ARSN]_l.mtd", ("g_DiffuseTexture", @"N:\x\m40_00_wall_a.tif"));
+        var ds3Bnd = new BND4();
+        ds3Bnd.Files.Add(new BinderFile(Binder.FileFlags.Flag1, 0, @"N:\x\m40_00_00_00_000100.flver", flver.Write()));
+        port.ConvertBinder(ds3Bnd, hostBnd, Ds3Id, ErId, "000100");
+        var report = MapPorter.PieceReport(Map(), port, new HashSet<string>(), false).Split('\n');
+        Expect(report.Length >= 12, "one line per piece");
+        Expect(report.Any(l => l.StartsWith("m000100_0000\tm000100\twritten\t") && l.Contains("M[ARSN]_l [opaque]") && l.Contains("m40_00_wall_a")), "a written piece lists its meshes");
+        Expect(report.Any(l => l.StartsWith("m200000_0000\tm200000\tleft out: " + MsbPort.ReflectionOnly)), "a left-out piece says why");
     }
 
     private static void ReflectionOnlyHost()

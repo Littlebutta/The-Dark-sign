@@ -1,3 +1,4 @@
+using System.Numerics;
 using System.Text;
 using SoulsFormats;
 using ChrPort = DarkSign.Porter.Enemies.ChrPort;
@@ -33,6 +34,9 @@ public static class MapPorter
         /// lit exactly as before 1.0.285 (fallback "map-lighting" B; see <see cref="MapLighting"/>).
         /// </summary>
         public bool HostLighting { get; set; }
+        /// <summary>--helper-pieces: DS3's reflection proxies, shadow casters and off-layer pieces stay in the map as
+        /// ordinary pieces (fallback "map-helper-pieces" B; see <see cref="MsbPort.HelperKind"/>).</summary>
+        public bool HelperPieces { get; set; }
         public bool BinaryCollision { get; set; }
         public bool KeepSimdTree { get; set; }
 
@@ -60,6 +64,7 @@ public static class MapPorter
                         o.PieceTests[MapId.Parse(map).ToString()] = ParsePieceTest(test); i++; break;
                     case "--vanilla-draw-param": o.VanillaDrawParam = true; break;
                     case "--host-lighting": o.HostLighting = true; break;
+                    case "--helper-pieces": o.HelperPieces = true; break;
                     case "--binary-collision": o.BinaryCollision = true; break;
                     case "--simd": o.KeepSimdTree = true; break;
                     case "--enemies" when i + 1 < list.Count: o.Enemies = EnemyPort.ParseMethod(list[i + 1]); i++; break;
@@ -68,6 +73,39 @@ public static class MapPorter
                 }
             return o;
         }
+    }
+
+    /// <summary>
+    /// One line per DS3 map piece, to name what a screenshot shows: the part, where it stands, DS3's draw flags and
+    /// groups, whether it was written, and each mesh of its model (material type, the kind it is drawn as, vertex
+    /// count, size in metres, albedo texture). Sorted so the largest odd pieces (unlit, left out, few vertices)
+    /// are easy to find with a filter.
+    /// </summary>
+    public static string PieceReport(MSB3 ds3, MapModelPort models, IReadOnlySet<string> missingModels, bool helperPieces)
+    {
+        var inv = System.Globalization.CultureInfo.InvariantCulture;
+        string V(Vector3 v) => string.Create(inv, $"{v.X:F0},{v.Y:F0},{v.Z:F0}");
+        var sb = new StringBuilder();
+        sb.AppendLine("part\tmodel\tstatus\tposition\trotation\tlod\tlayer\tshadow src/dest\treflect by/only\tdraw groups\tsize\tvertices\tmeshes");
+        bool layerOk = MsbPort.BaseLayerMeans(ds3);
+        foreach (var p in ds3.Parts.MapPieces)
+        {
+            var number = ModelNumber(p.ModelName);
+            models.ModelMeshes.TryGetValue(number, out var meshes);
+            var status = !helperPieces && MsbPort.HelperKind(p, layerOk) is { } helper ? "left out: " + helper
+                : missingModels.Contains(p.ModelName) ? "left out: no mesh the port can draw"
+                : "written";
+            var size = meshes is { Count: > 0 } ? meshes.Select(m => m.Size).Aggregate(Vector3.Max) : Vector3.Zero;
+            sb.Append(p.Name).Append('\t').Append(p.ModelName).Append('\t').Append(status).Append('\t')
+                .Append(V(p.Position)).Append('\t').Append(V(p.Rotation)).Append('\t').Append(p.LodParamID).Append('\t')
+                .Append(p.MapStudioLayer.ToString("X")).Append('\t')
+                .Append(p.ShadowSource ? 1 : 0).Append('/').Append(p.ShadowDest ? 1 : 0).Append(p.IsShadowOnly ? " only" : "").Append('\t')
+                .Append(p.DrawByReflectCam ? 1 : 0).Append('/').Append(p.DrawOnlyReflectCam ? 1 : 0).Append('\t')
+                .Append(string.Join("", p.DrawGroups.Take(4).Select(g => g.ToString("X8")))).Append('\t')
+                .Append(V(size)).Append('\t').Append(meshes?.Sum(m => m.Vertices) ?? 0).Append('\t')
+                .AppendLine(meshes is null ? "" : string.Join("; ", meshes.Select(m => string.Create(inv, $"{m.Mtd} [{m.Kind}] v{m.Vertices} {V(m.Size)} {m.Albedo}"))));
+        }
+        return sb.ToString();
     }
 
     // The map materials this port adds go into Elden Ring's main material binder, where JortPob puts the materials
@@ -382,7 +420,7 @@ public static class MapPorter
             .Select(s => (s.Ds3, s.Er)).ToList();
         var layout = MsbPort.Convert(ds3Msb, host, ds3Id, erId, new MsbPort.Options
             {
-                AllVisible = !options.Ds3Groups, NoGroups = options.NoGroups,
+                AllVisible = !options.Ds3Groups, NoGroups = options.NoGroups, HelperPieces = options.HelperPieces,
                 DrawParamId = options.VanillaDrawParam ? MapDrawParams.VanillaRow : MapDrawParams.FirstRow,
             },
             slots, ConnectTemplate(er));
@@ -493,6 +531,17 @@ public static class MapPorter
         if (models.LeftOut.Count > 0)
             report.AppendLine($"  meshes left out (no Elden Ring material for them yet): {models.LeftOut.Values.Sum()} ("
                               + string.Join(", ", models.LeftOut.OrderByDescending(k => k.Value).Select(k => $"{k.Key} x{k.Value}")) + ")");
+        try
+        {
+            var piecesReport = ctx.WorkPath("reports", $"map-pieces-{erId}.tsv");
+            Directory.CreateDirectory(Path.GetDirectoryName(piecesReport)!);
+            File.WriteAllText(piecesReport, PieceReport(ds3Msb, models, missingModels, options.HelperPieces));
+            report.AppendLine($"  piece report: Work\\reports\\{Path.GetFileName(piecesReport)} (every DS3 map piece: where it is, how big, its materials, and why it was left out)");
+        }
+        catch (Exception ex)
+        {
+            report.AppendLine($"  piece report: FAILED: {ex.Message}");
+        }
         textures.Need(models.Textures, ds3Id);
         int notesSoFar = models.Notes.Count;
         materials.AddRange(models.MatbinFiles(0));
