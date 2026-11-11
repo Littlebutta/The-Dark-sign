@@ -115,6 +115,8 @@ test. The next build changes the first two and measures the third:
     writes both the way JortPob does. The second slot's test is now `ported-material` (the port's MATBINs keeping
     their template's vanilla textures): if the first map still hangs and the second loads, the textures are still
     at fault; if the second hangs too, the added MATBINs are.
+13. **1.0.279 playtest: the first map loads and draws with DS3's textures.** The texture binder packing was the
+    cause. All three slots are the real port again; the tests remain behind `--piece-test <er map>=<test>` only.
 
 Materials are sorted into kinds, each with its own vanilla template found in the legacy dungeons: opaque
 (`M[AMSN_V]`), alpha tested (`_Edge`), blended (`_Alpha`) and unlit (`_NoLight`, DS3's sky domes). A kind with no
