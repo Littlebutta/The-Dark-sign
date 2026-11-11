@@ -331,6 +331,13 @@ Try the next option if: A DS3 map crashes or hangs while loading since regions w
 - **A: DS3's regions and map-file events (default).** The areas DS3's events watch (boss rooms, ambush triggers, warp points), enemy patrol routes, platoons and enemy generators are carried into the map with their DS3 entity IDs.
 - **B: None.** The map file has no DS3 regions, patrol routes, platoons or generators (port-maps --no-regions), as every build up to 1.0.299 was: events that wait for the player to enter an area never fire and enemies don't patrol. (`port-maps --no-regions`)
 
+### DS3's people (NPCs and hostile humans) (`map-people`, rebuilds the content)
+
+Try the next option if: A DS3 map crashes or hangs while loading since people were added, a person who should be friendly attacks you (or the other way round), or people stand in the way of something.
+
+- **A: Elden Ring people stand in (default).** Where DS3 has someone to talk to, an Elden Ring person stands, silent (no dialogue or shop yet). DS3's hostile humans get hostile Elden Ring humans. DS3 characters with their own body (Fire Keeper, Ludleth) are placed when the enemy porter ported them.
+- **B: Nobody.** DS3's people are left out of the maps (port-maps --no-people), as every build up to 1.0.299 was. (`port-maps --no-people`)
+
 ### How DS3's enemies and bosses are ported (`enemy-port`, rebuilds the content)
 
 Try the next option if: A ported DS3 enemy crashes the game when it loads, is invisible or a mess of stretched polygons, T-poses or moves wrongly, or the enemy-port report (Work\reports\enemy-port.tsv) lists many failures.

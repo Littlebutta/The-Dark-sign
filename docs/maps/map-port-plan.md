@@ -18,7 +18,7 @@ after `port-weapons`. If it fails, the weapons still load and the game starts; t
 | Navmesh | `map/m40_00_00_00/m40_00_00_00.nvmhktbnd.dcx` (Havok AI 2014, one file per navmesh in its own space) and `m40_00_00_00.nva.dcx` (the navmesh list: placement, connections, gate nodes) | `map/m45/m45_00_00_00/m45_00_00_00.nvmhktbnd.dcx` (Havok AI 2018 tagfiles, an `n` and an `o` file per navmesh, in map space, face tree in a query mediator) and `m45_00_00_00.nva.dcx` (Elden Ring's list: NameIDs by position, both sets, connections renumbered, gate nodes). See "Navigation" below. Fallbacks `map-navmesh`. | `Maps/NavmeshPort.cs`, `Maps/NavFaceTree.cs`, `Maps/NavmeshList.cs`, `Maps/MapNavmesh.cs` |
 | Map events | `event/m40_00_00_00.emevd.dcx` | `event/m45_00_00_00.emevd.dcx`, converted instruction by instruction (see "Event scripts" below); the slot's own Elden Ring events no longer run | `Maps/EventPort.cs`, `Maps/MapEvents.cs` |
 | Common events | `event/common_func.emevd.dcx` (only the events the ported maps start, and the ones those start) | added to `event/common_func.emevd.dcx` under IDs 103x291000-103x291999 | `Maps/MapEvents.cs`, `Maps/FlagMap.cs` |
-| Enemies and bosses | MSB3 enemy parts | MSBE enemy parts at DS3's spot, on DS3's collision, with DS3's entity ID moved to the slot. The character is the ported DS3 one when `Mods\ER\darksign_chr_map.tsv` lists it, otherwise an Elden Ring stand-in of the same kind copied from a vanilla legacy-dungeon placement; DS3 bosses (boss health bar in DS3's events) get Elden Ring bosses. NPCs are left out. Fallbacks `map-enemies`. | `Maps/EnemyPort.cs` |
+| Enemies and bosses | MSB3 enemy parts | MSBE enemy parts at DS3's spot, on DS3's collision, with DS3's entity ID moved to the slot. The character is the ported DS3 one when `Mods\ER\darksign_chr_map.tsv` lists it, otherwise an Elden Ring stand-in of the same kind copied from a vanilla legacy-dungeon placement; DS3 bosses (boss health bar in DS3's events) get Elden Ring bosses. DS3's people get Elden Ring people (see "People" below). Fallbacks `map-enemies`, `map-people`. | `Maps/EnemyPort.cs` |
 | Objects | MSB3 object parts, `obj/oNNNNNN.objbnd.dcx` | MSBE asset parts at DS3's spot with DS3's entity ID; each DS3 object model becomes an asset `asset/aeg/aeg92x/aeg92x_NNN.geombnd.dcx` (+ `_l.geomhkxbnd.dcx` collision for objects that never move or break) with a row in AssetEnvironmentGeometryParam, built the way JortPob builds assets. Fallbacks `map-objects`. See "Objects, regions and map-file events". | `Maps/ObjectPort.cs` |
 | Regions and map-file events | MSB3 regions (event areas, warp, spawn and patrol points), PatrolInfo, PlatoonInfo, Generator | MSBE "Other" regions, spawn points and patrol route points with DS3's shape and entity ID; patrol routes, platoons and generators naming the ported enemies and points. Fallbacks `map-regions`. | `Maps/RegionPort.cs` |
 | Map connections | MSB3 connect collisions | MSBE connect collisions copied from a legacy dungeon's, pointing at the neighbouring map's slot (ones to unported maps are left out) | `Maps/MsbPort.cs` |
@@ -319,7 +319,25 @@ Stage 1 (2026-11-11, not yet playtested; written without game files, checked off
 
 Still missing after stage 1: object effects (candle and bonfire flames, torches), doors/levers/lifts (ObjAct events,
 ObjActParam, object animations), ladders, bonfires as sites of grace, fog walls, breakable objects, treasure
-(items lying in the map), NPCs and their dialogue, sound regions.
+(items lying in the map), what people say and sell (see below), sound regions.
+
+### People (stage 2)
+
+DS3's people are enemy parts like any other: the human body `c0000` dressed by DS3's CharaInitParam, or a character
+with a talk script (`TalkID`). Neither DS3's armour nor its dialogue is ported, so `EnemyPort.People` gives each one an
+Elden Ring person, copied from a vanilla placement of `c0000` in the legacy dungeons (part, look, NpcParam, AI):
+
+- Someone DS3 lets you talk to gets an Elden Ring person who has a talk script (so the game has them on your side),
+  with the talk script taken off: they stand where DS3 put them and say nothing.
+- A DS3 human without a talk script (invaders, hostile humans, summons) gets an Elden Ring human whose NpcParam team is
+  one the ordinary enemies of the catalog are on. Summons and quest phantoms stay hidden as long as DS3's converted
+  events hide them, as in DS3.
+- A talker with its own body (Fire Keeper `c1400`, Ludleth) is placed only when the enemy porter ported that body.
+- The pick is by DS3 NpcParam, so the same DS3 person is the same Elden Ring person everywhere.
+
+The port log names every pairing (`enemies: people: Greirat -> ... (silent)`), and they are kept out of
+`darksign_enemies.tsv` so the randomizer never swaps one for a monster. Known limits: they look like Elden Ring characters, they say and sell nothing, and killing one drops what
+the Elden Ring person drops. Off switch: fallback `map-people` B (`port-maps --no-people`).
 
 ## Open questions (answered by the first `map-survey` and in-game test)
 

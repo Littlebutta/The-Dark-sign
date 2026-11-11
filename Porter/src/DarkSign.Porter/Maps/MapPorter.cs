@@ -69,6 +69,8 @@ public static class MapPorter
         /// <summary>--objects full|nocollision|none (launcher Fallbacks "map-objects"): DS3's objects as Elden Ring assets (<see cref="ObjectPort"/>).</summary>
         public ObjectPort.Method Objects { get; set; } = ObjectPort.Method.Full;
 
+        /// <summary>--no-people (launcher Fallbacks "map-people" B): DS3's people (NPCs, hostile humans) are left out, as before.</summary>
+        public bool NoPeople { get; set; }
         /// <summary>--no-regions (launcher Fallbacks "map-regions" B): no DS3 regions, patrol routes or generators (<see cref="RegionPort"/>).</summary>
         public bool NoRegions { get; set; }
 
@@ -98,6 +100,7 @@ public static class MapPorter
                     case "--enemies" when i + 1 < list.Count: o.Enemies = EnemyPort.ParseMethod(list[i + 1]); i++; break;
                     case "--objects" when i + 1 < list.Count: o.Objects = ObjectPort.ParseMethod(list[i + 1]); i++; break;
                     case "--no-regions": o.NoRegions = true; break;
+                    case "--no-people": o.NoPeople = true; break;
                     case "--after-pid" when i + 1 < list.Count && int.TryParse(list[i + 1], out var pid): o.AfterPid = pid; i++; break;
                     default: o.Only.Add(MapId.Parse(list[i]).ToString()); break;
                 }
@@ -499,9 +502,10 @@ public static class MapPorter
                 var enemies = Enemies(ctx, ds3, er, options, report);
                 var bosses = EnemyPort.BossEntities(Ds3Scripts(ds3, ds3Id), ds3Layout: true);
                 var placed = EnemyPort.Place(ds3Msb, layout.Msb, ds3Id, erId, new MsbPort.Options { AllVisible = !options.Ds3Groups, NoGroups = options.NoGroups },
-                    enemies.Chooser, e => enemies.Describe(e, bosses), EnemyPort.AnyEnemyPart(enemies.Catalog), _placedEnemies, partNames);
-                report.AppendLine($"  enemies: {placed.Placed} placed ({placed.Ported} ported DS3 characters, {placed.StandIns} Elden Ring stand-ins), "
-                                  + $"{placed.Npcs} NPCs left out, {placed.Skipped} with nothing to stand in; {bosses.Count} DS3 boss entities");
+                    enemies.Chooser, e => enemies.Describe(e, bosses), EnemyPort.AnyEnemyPart(enemies.Catalog), _placedEnemies, partNames,
+                    options.NoPeople ? null : enemies.People);
+                report.AppendLine($"  enemies: {placed.Placed} placed ({placed.Ported} ported DS3 characters, {placed.StandIns} Elden Ring stand-ins, "
+                                  + $"{placed.People} people{(options.NoPeople ? ", people off (--no-people)" : "")}), {placed.Npcs} people left out, {placed.Skipped} with nothing to stand in; {bosses.Count} DS3 boss entities");
                 foreach (var note in placed.Notes)
                     report.AppendLine($"  enemies: {note}");
             }
@@ -762,7 +766,7 @@ public static class MapPorter
     }
 
     /// <summary>What enemy placement needs once per run: the stand-in catalog, the ported-character table and DS3's names.</summary>
-    private sealed record EnemyContext(List<EnemyPort.ErEnemy> Catalog, EnemyPort.Chooser Chooser, PARAM? Ds3Npc)
+    private sealed record EnemyContext(List<EnemyPort.ErEnemy> Catalog, EnemyPort.Chooser Chooser, PARAM? Ds3Npc, EnemyPort.People People)
     {
         public EnemyPort.Ds3Enemy Describe(MSB3.Part.Enemy e, HashSet<long> bosses)
         {
@@ -820,7 +824,7 @@ public static class MapPorter
         catch (Exception ex) { notes.Add($"Elden Ring NpcParam names unavailable ({ex.Message}); stand-ins picked by model only"); }
         try { ds3Npc = ctx.LoadParams(PorterGame.DarkSouls3).Get("NpcParam"); }
         catch (Exception ex) { notes.Add($"DS3 NpcParam names unavailable ({ex.Message}); every DS3 enemy gets the most common stand-in"); }
-        var catalog = EnemyPort.BuildCatalog(er, erNpc, notes);
+        var catalog = EnemyPort.BuildCatalog(er, erNpc, notes, out var people);
         EnemyPort.ChrMap? ported = null;
         var mapPath = ctx.ModPath(EnemyPort.ChrMap.FileName);
         if (options.Enemies == EnemyPort.Method.Auto && File.Exists(mapPath))
@@ -831,7 +835,7 @@ public static class MapPorter
             report.AppendLine($"  note: {note}");
         if (catalog.Count == 0 && (ported?.Count ?? 0) == 0)
             throw new InvalidDataException("no Elden Ring enemy placements found to stand in for DS3's");
-        return _enemies = new EnemyContext(catalog, new EnemyPort.Chooser(catalog, ported, options.Enemies), ds3Npc);
+        return _enemies = new EnemyContext(catalog, new EnemyPort.Chooser(catalog, ported, options.Enemies), ds3Npc, people);
     }
 
     private static IEnumerable<EMEVD> Ds3Scripts(GameArchives ds3, MapId ds3Id)
