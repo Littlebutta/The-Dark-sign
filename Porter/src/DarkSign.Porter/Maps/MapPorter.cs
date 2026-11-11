@@ -22,7 +22,7 @@ public static class MapPorter
         public bool NoGroups { get; set; }
         /// <summary>Only the albedo-only material JortPob uses (fallback "map-materials" B).</summary>
         public bool PlainMaterials { get; set; }
-        /// <summary>--no-piece-test: build every slot normally (no test maps; see <see cref="PieceTest"/>).</summary>
+        /// <summary>--no-piece-test: accepted for older launchers; every slot is built normally anyway (see <see cref="PieceTest"/>).</summary>
         public bool NoPieceTest { get; set; }
         /// <summary>--piece-test &lt;Elden Ring map id&gt;=&lt;vanilla-model|vanilla-material|ported-material|none&gt;: a slot's test, instead of the default.</summary>
         public Dictionary<string, PieceTest> PieceTests { get; } = new(StringComparer.OrdinalIgnoreCase);
@@ -86,9 +86,9 @@ public static class MapPorter
     /// <item><see cref="None"/>: the real port (DS3 geometry, ported materials and textures).</item>
     /// </list>
     /// The 1.0.271 playtest: vanilla-model and vanilla-material both loaded and the real port did not, so the wait
-    /// is on the ported MATBINs or their textures. By default the first slot is now the real port, the second
-    /// ported-material and the third vanilla-material, the known good one ("--no-piece-test" builds all of them
-    /// normally; launcher Fallbacks "map-draw" C).
+    /// was on the ported MATBINs or their textures. 1.0.279 packed the texture binder the way JortPob does and the
+    /// real port loaded, textured. Every slot is therefore the real port again; a test is built only when
+    /// "--piece-test" names one for a slot.
     /// </summary>
     public enum PieceTest { None, VanillaModel, VanillaMaterial, PortedMaterial }
 
@@ -101,19 +101,12 @@ public static class MapPorter
         _ => throw new ArgumentException($"unknown piece test '{text}' (vanilla-model, vanilla-material, ported-material or none)"),
     };
 
-    /// <summary>The test a slot is built as: what "--piece-test" says, else by the slot's place in the slot list.</summary>
+    /// <summary>The test a slot is built as: what "--piece-test" says, else none (the real port).</summary>
     public static PieceTest PieceTestFor(MapSlots.Slot slot, Options options)
     {
         if (options.PieceTests.TryGetValue(slot.Er.ToString(), out var asked))
             return asked;
-        if (options.NoPieceTest || slot.Probe)
-            return PieceTest.None;
-        return MapSlots.All.Where(s => !s.Probe).ToList().IndexOf(slot) switch
-        {
-            1 => PieceTest.PortedMaterial,
-            2 => PieceTest.VanillaMaterial,
-            _ => PieceTest.None,
-        };
+        return PieceTest.None;
     }
 
     public static int Run(PorterContext ctx, IEnumerable<string> args)

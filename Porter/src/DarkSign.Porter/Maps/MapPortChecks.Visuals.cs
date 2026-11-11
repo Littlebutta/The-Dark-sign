@@ -85,14 +85,12 @@ public static partial class MapPortChecks
 
     private static void PieceTests()
     {
-        // Which slot is which: the first is the real port, the second and third are the two tests.
+        // Every slot is the real port unless --piece-test names a test for it.
         var slots = MapSlots.All.Where(s => !s.Probe).ToList();
         var none = new MapPorter.Options();
-        Expect(MapPorter.PieceTestFor(slots[0], none) == MapPorter.PieceTest.None, "the first slot is the real port");
-        Expect(slots.Count < 3 || (MapPorter.PieceTestFor(slots[1], none) == MapPorter.PieceTest.PortedMaterial
-                                   && MapPorter.PieceTestFor(slots[2], none) == MapPorter.PieceTest.VanillaMaterial), "the second and third slots are the tests");
+        Expect(slots.All(s => MapPorter.PieceTestFor(s, none) == MapPorter.PieceTest.None), "every slot is the real port by default");
         var off = MapPorter.Options.Parse(["--no-piece-test"]);
-        Expect(slots.All(s => MapPorter.PieceTestFor(s, off) == MapPorter.PieceTest.None), "--no-piece-test builds every slot normally");
+        Expect(slots.All(s => MapPorter.PieceTestFor(s, off) == MapPorter.PieceTest.None), "--no-piece-test is still accepted");
         var asked = MapPorter.Options.Parse(["--no-piece-test", "--piece-test", $"{slots[0].Er}=vanilla-material"]);
         Expect(MapPorter.PieceTestFor(slots[0], asked) == MapPorter.PieceTest.VanillaMaterial && asked.Only.Count == 0, "--piece-test names a slot's test");
 
