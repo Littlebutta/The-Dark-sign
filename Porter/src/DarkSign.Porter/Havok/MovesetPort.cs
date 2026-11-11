@@ -267,8 +267,18 @@ public static partial class MovesetPort
                 return known;
             var classOnly = new List<(int, TAE?)> { (cls, Ds3Tae(cls)) }.Where(t => t.Item2 is not null).ToList();
             var withArt = new List<(int, TAE?)> { (art, artTae) }.Concat(classOnly).ToList();
-            return overridesClass[(cls, art)] = mappedDs3.Where(id => artTae.Animations.Any(a => a.ID == id))
-                .Any(id => FindDs3(withArt, ds3Main, id)?.HkxName != FindDs3(classOnly, ds3Main, id)?.HkxName);
+            // A move also counts as replaced when the weapon's section plays the class's animation with other
+            // attacks or projectiles on it: the Moonlight Greatsword's a158 imports the greatsword class's heavy
+            // animations (a025_030320 ...) and adds the wave's bullet event and its own attack judge to each. Compared
+            // by file name alone it never counted, the weapon was built as a plain greatsword, and its charged heavy
+            // fired nothing (playtest of 1.0.279). DARKSIGN_OWN_MOVES=files compares file names only, as before.
+            bool replaces = mappedDs3.Where(id => artTae.Animations.Any(a => a.ID == id)).Any(id =>
+                FindDs3(withArt, ds3Main, id) is var own && FindDs3(classOnly, ds3Main, id) is var shared
+                && (own?.HkxName != shared?.HkxName || OwnMovesByEvents && own is not null && shared is not null && Lookups(own) != Lookups(shared)));
+            if (replaces && mappedDs3.Where(id => artTae.Animations.Any(a => a.ID == id))
+                    .All(id => FindDs3(withArt, ds3Main, id)?.HkxName == FindDs3(classOnly, ds3Main, id)?.HkxName))
+                Console.WriteLine($"moveset: DS3 a{art} plays a{cls}'s animations with its own attacks or projectiles, so its weapons get their own moveset");
+            return overridesClass[(cls, art)] = replaces;
         }
         bool IsPairedPort(WeaponPlan p) => erWeapons[p.NewId!.Value]?["isDualBlade"] is { } dual && Convert.ToInt32(dual.Value) == 1;
         (int Ds3Section, int Ds3ArtSection, int TemplateSection) Key(WeaponPlan p, bool withArt)
@@ -1174,6 +1184,13 @@ public static partial class MovesetPort
     private static TAE.Event Shifted(TAE.Event e, float shift) =>
         new(Math.Max(0, e.StartTime + shift), Math.Max(0, e.EndTime + shift), e.Type, e.Unk04,
             (byte[])e.GetParameterBytes(false).Clone(), false) { Group = e.Group };
+
+    private static readonly bool OwnMovesByEvents = Environment.GetEnvironmentVariable("DARKSIGN_OWN_MOVES") != "files";
+
+    /// <summary>The behaviour rows a move looks up: each attack (type 1) and bullet (type 2) event's judge, in order.</summary>
+    private static string Lookups(Ds3Move move) => string.Join(' ', move.Events.Where(e => e.Type is 1 or BulletEvent)
+        .Select(e => (e.Type, Bytes: e.GetParameterBytes(false))).Where(e => e.Bytes.Length >= 12)
+        .Select(e => $"{e.Type}:{BitConverter.ToInt32(e.Bytes, 8)}").Order(StringComparer.Ordinal));
 
     /// <summary>A DS3 move: its animation file, events, and the file its TAE entry names (when that differs).</summary>
     private sealed record Ds3Move(string HkxName, List<TAE.Event> Events, string? FileName = null);

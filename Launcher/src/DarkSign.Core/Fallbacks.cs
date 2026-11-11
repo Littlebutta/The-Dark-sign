@@ -105,6 +105,8 @@ public static class Fallbacks
                 { PorterEnv = Env("DARKSIGN_TWOHAND_MAP", "0") },
             new("E", "A without the paired dual-wield set", "A, but a paired weapon's two-handed moves (Elden Ring 032xxx) take DS3's 034xxx two-handed entries, which import the class's one-handed swings, instead of DS3's own dual-wield attacks (033xxx) (DARKSIGN_PAIRED_2H=0). Builds up to 1.0.217 did this: the Ringed Knight pair two-handed like one Ultra Greatsword.")
                 { PorterEnv = Env("DARKSIGN_PAIRED_2H", "0") },
+            new("F", "Own movesets by animation files only", "A, but a weapon only gets its own moveset when its DS3 section has animation files of its own (DARKSIGN_OWN_MOVES=files), not when it replays its class's animations with its own attacks or projectiles. Builds up to 1.0.282 did this: the Moonlight Greatsword was a plain greatsword and its charged heavy fired no wave.")
+                { PorterEnv = Env("DARKSIGN_OWN_MOVES", "files") },
         ]),
         new("combo-windows", "Weapon movesets", "When the next attack can start (R1 chains)", Stage.Build,
             "R1 doesn't chain to the second swing, swings are cut short, or you can act too early or too late.",
