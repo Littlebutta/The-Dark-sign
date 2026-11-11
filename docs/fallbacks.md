@@ -316,6 +316,21 @@ Try the next option if: A DS3 map crashes or hangs while loading, enemies stand 
 - **B: Elden Ring stand-ins only.** The same placements, but always the Elden Ring stand-ins, even for ported DS3 characters (port-maps --enemies standin). Tells whether a ported character is what breaks. (`port-maps --enemies standin`)
 - **off: Off (no enemies).** The DS3 maps are empty of enemies (port-maps --enemies none), to explore them or to find out whether enemies are what breaks a map. (`port-maps --enemies none`)
 
+### DS3 objects in the DS3 maps (`map-objects`, rebuilds the content)
+
+Try the next option if: A DS3 map crashes, hangs while loading or hitches since objects were added, objects float or are a mess of polygons, or something invisible blocks the way.
+
+- **A: DS3's objects as Elden Ring assets (default).** Every DS3 object (statues, candles, crates, doors, ladders, the bonfire's sword) is converted to an Elden Ring asset and stands where DS3 has it, with its DS3 entity ID so the converted events find it. Objects that never move or break also get DS3's collision; doors, lifts and crates can be walked through until their animations and breaking are ported. Report: Work\reports\object-port.tsv.
+- **B: Objects without collision.** The same objects, but none of them is solid (port-maps --objects nocollision). Tells whether an object's collision is what blocks the way or breaks the map. (`port-maps --objects nocollision`)
+- **off: Off (no objects).** The DS3 maps have no objects (port-maps --objects none), as every build up to 1.0.299 was. (`port-maps --objects none`)
+
+### DS3 regions, patrol routes and generators (`map-regions`, rebuilds the content)
+
+Try the next option if: A DS3 map crashes or hangs while loading since regions were added, enemies walk into walls or stand in a pile, or an event fires in the wrong place.
+
+- **A: DS3's regions and map-file events (default).** The areas DS3's events watch (boss rooms, ambush triggers, warp points), enemy patrol routes, platoons and enemy generators are carried into the map with their DS3 entity IDs.
+- **B: None.** The map file has no DS3 regions, patrol routes, platoons or generators (port-maps --no-regions), as every build up to 1.0.299 was: events that wait for the player to enter an area never fire and enemies don't patrol. (`port-maps --no-regions`)
+
 ### How DS3's enemies and bosses are ported (`enemy-port`, rebuilds the content)
 
 Try the next option if: A ported DS3 enemy crashes the game when it loads, is invisible or a mess of stretched polygons, T-poses or moves wrongly, or the enemy-port report (Work\reports\enemy-port.tsv) lists many failures.

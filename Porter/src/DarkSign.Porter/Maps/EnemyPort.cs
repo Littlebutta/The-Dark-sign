@@ -132,7 +132,8 @@ public static class EnemyPort
     /// (name from its NpcParam, boss or not, NPC or not).
     /// </summary>
     public static Result Place(MSB3 ds3, MSBE msb, MapId ds3Id, MapId erId, MsbPort.Options options, Chooser chooser,
-        Func<MSB3.Part.Enemy, Ds3Enemy> describe, MSBE.Part.Enemy? fallbackTemplate = null, List<string>? table = null)
+        Func<MSB3.Part.Enemy, Ds3Enemy> describe, MSBE.Part.Enemy? fallbackTemplate = null, List<string>? table = null,
+        Dictionary<string, string>? partNames = null)
     {
         int placed = 0, ported = 0, standIns = 0, npcs = 0, skipped = 0;
         var notes = new List<string>();
@@ -167,6 +168,7 @@ public static class EnemyPort
             part.Name = $"{who.Model}_{instance:D4}";
             part.InstanceID = instance;
             names.Add(part.Name);
+            partNames?.TryAdd(src.Name, part.Name);
             part.ModelName = who.Model;
             part.NPCParamID = who.NpcParam;
             part.ThinkParamID = who.ThinkParam;

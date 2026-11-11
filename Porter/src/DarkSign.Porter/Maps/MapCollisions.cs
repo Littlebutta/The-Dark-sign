@@ -17,6 +17,9 @@ public static class MapCollisions
 
     public sealed record Result(string Summary, HashSet<string> Ported);
 
+    /// <summary>The Elden Ring collision settings the last map's collision was converted with, for the object port.</summary>
+    public static ErCollisionTemplate? LastTemplate { get; private set; }
+
     public static string Ds3BinderPath(MapId id, string kind) => $"/map/{id}/{kind}{id.Digits}.hkxbhd";
     public static string ErBinderPath(MapId id, string kind) => $"/map/{id.AreaFolder}/{id}/{kind}{id.Digits}.hkxbhd";
 
@@ -53,6 +56,8 @@ public static class MapCollisions
             templateNote = $"; host template unreadable ({ex.Message}), defaults used";
         }
         templateNote = template is null && templateNote.Length == 0 ? "; no host template body, defaults used" : templateNote;
+        if (template is not null)
+            LastTemplate = template;
 
         var folder = templateFile.Name[..^ItemText.Leaf(templateFile.Name).Length]
             .Replace(host0.ToString(), erId.ToString(), StringComparison.OrdinalIgnoreCase);
