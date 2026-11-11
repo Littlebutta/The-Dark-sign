@@ -279,9 +279,14 @@ public sealed class MapModelPort
 
     /// <summary>
     /// One mesh of a DS3 map piece model, for the piece report: its DS3 material type, the kind it was drawn as
-    /// ("none" when left out), its size and the albedo texture it shows.
+    /// ("none" when left out), its size and the albedo texture it shows. Min and Max are its box in the model's own
+    /// space (zero for a mesh with no vertices), which <see cref="MapStandIns"/> places in the map.
     /// </summary>
-    public sealed record MeshInfo(string Mtd, string Kind, int Vertices, Vector3 Size, string Albedo);
+    public sealed record MeshInfo(string Mtd, string Kind, int Vertices, Vector3 Size, string Albedo)
+    {
+        public Vector3 Min { get; init; }
+        public Vector3 Max { get; init; }
+    }
 
     /// <summary>Every converted model's meshes by model number ("000052"), left-out meshes included.</summary>
     public Dictionary<string, List<MeshInfo>> ModelMeshes { get; } = new(StringComparer.OrdinalIgnoreCase);
@@ -303,7 +308,11 @@ public sealed class MapModelPort
             list.Add(new MeshInfo(
                 m is null ? "(no material)" : Path.GetFileNameWithoutExtension(ItemText.Leaf(m.MTD ?? "")),
                 m is null ? "none" : Ds3Kind(m), mesh.Vertices.Count, mesh.Vertices.Count == 0 ? Vector3.Zero : max - min,
-                albedo is null ? "" : Path.GetFileNameWithoutExtension(ItemText.Leaf(albedo.Path))));
+                albedo is null ? "" : Path.GetFileNameWithoutExtension(ItemText.Leaf(albedo.Path)))
+            {
+                Min = mesh.Vertices.Count == 0 ? Vector3.Zero : min,
+                Max = mesh.Vertices.Count == 0 ? Vector3.Zero : max,
+            });
         }
         return list;
     }

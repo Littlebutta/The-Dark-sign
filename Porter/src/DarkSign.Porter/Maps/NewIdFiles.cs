@@ -64,6 +64,9 @@ public static class NewIdFiles
                 // The navmesh list is the port's own when DS3 had one (MapNavmesh.Port); the host's names no DS3 navmesh.
                 if (target.EndsWith(".nva.dcx", StringComparison.OrdinalIgnoreCase) && File.Exists(ctx.ModPath(MapPorter.ModParts(target))))
                     continue;
+                // The draw params are the port's own when DS3's colours were written (MapAtmosphere.Write).
+                if (target.EndsWith(".gparam.dcx", StringComparison.OrdinalIgnoreCase) && File.Exists(ctx.ModPath(MapPorter.ModParts(target))))
+                    continue;
                 if (path.EndsWith(".hkxbhd", StringComparison.OrdinalIgnoreCase))
                 {
                     var binder = BXF4.Read(er.Read(path), er.Read(path[..^3] + "bdt"));

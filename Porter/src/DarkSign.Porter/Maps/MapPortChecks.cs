@@ -31,6 +31,8 @@ public static partial class MapPortChecks
             yield return check;
         foreach (var check in LightingChecks())
             yield return check;
+        foreach (var check in AtmosphereChecks())
+            yield return check;
         yield return ("sky: the host's distant view (Elden Ring's sky and Erdtree) is replaced with an empty layout, --host-sky keeps it", DistantView);
         foreach (var check in LoadChecks())
             yield return check;
