@@ -15,7 +15,7 @@ after `port-weapons`. If it fails, the weapons still load and the game starts; t
 | Map pieces | `map/m40_00_00_00/m40_00_00_00_NNNNNN.mapbnd.dcx` | `map/m45/m45_00_00_00/...`; materials become cloned Elden Ring matbins (`DKS_40_00_00_00_NNNN`) in `allmaterial`, copied from a plain one-layer material of a legacy dungeon's map pieces (the colosseums are built from assets, and most legacy dungeon pieces use terrain blend materials), or from JortPob's albedo-only asset material `AEG006_030_ID001`; samplers name the DS3 texture by bare name, as JortPob's do | `Maps/MapModelPort.cs` |
 | Textures | `map/m40/m40_000N.tpfbhd/.tpfbdt` | a new `map/m45/common/m45_0000.tpfbhd/.tpfbdt` (Elden Ring has no map area texture binders, but loads this one: JortPob's approach), one uncompressed TPF per texture plus its `_l` copy, plus a flat metallic map | `Maps/MapTextures.cs` |
 | Collision | `h40_00_00_00.hkxbhd` (Havok 2014 packfile) | `h45_00_00_00.hkxbhd` (Havok 2018 XML tagfile, same compressed-mesh tree); every triangle is checked after conversion | `Maps/CollisionPort.cs`, `Maps/MapCollisions.cs` |
-| Navmesh | `map/m40_00_00_00/m40_00_00_00.nvmhktbnd.dcx` (Havok AI 2014) | `map/m45/m45_00_00_00/m45_00_00_00.nvmhktbnd.dcx` (Havok AI 2018 tagfiles); faces, edges, cluster graph and AABB tree copied as-is, costs hkHalf → float | `Maps/NavmeshPort.cs`, `Maps/MapNavmesh.cs` |
+| Navmesh | `map/m40_00_00_00/m40_00_00_00.nvmhktbnd.dcx` (Havok AI 2014, one file per navmesh in its own space) and `m40_00_00_00.nva.dcx` (the navmesh list: placement, connections, gate nodes) | `map/m45/m45_00_00_00/m45_00_00_00.nvmhktbnd.dcx` (Havok AI 2018 tagfiles, an `n` and an `o` file per navmesh, in map space, face tree in a query mediator) and `m45_00_00_00.nva.dcx` (Elden Ring's list: NameIDs by position, both sets, connections renumbered, gate nodes). See "Navigation" below. Fallbacks `map-navmesh`. | `Maps/NavmeshPort.cs`, `Maps/NavFaceTree.cs`, `Maps/NavmeshList.cs`, `Maps/MapNavmesh.cs` |
 | Map events | `event/m40_00_00_00.emevd.dcx` | `event/m45_00_00_00.emevd.dcx`, converted instruction by instruction (see "Event scripts" below); the slot's own Elden Ring events no longer run | `Maps/EventPort.cs`, `Maps/MapEvents.cs` |
 | Common events | `event/common_func.emevd.dcx` (only the events the ported maps start, and the ones those start) | added to `event/common_func.emevd.dcx` under IDs 103x291000-103x291999 | `Maps/MapEvents.cs`, `Maps/FlagMap.cs` |
 | Enemies and bosses | MSB3 enemy parts | MSBE enemy parts at DS3's spot, on DS3's collision, with DS3's entity ID moved to the slot. The character is the ported DS3 one when `Mods\ER\darksign_chr_map.tsv` lists it, otherwise an Elden Ring stand-in of the same kind copied from a vanilla legacy-dungeon placement; DS3 bosses (boss health bar in DS3's events) get Elden Ring bosses. NPCs are left out. Fallbacks `map-enemies`. | `Maps/EnemyPort.cs` |
@@ -311,7 +311,7 @@ jump, guard counter and the rest. Patrol routes and DS3's boss name text aren't 
 3. Does the game accept collision as XML tagfiles inside the binder (JortPob says yes), or does it need binary?
 4. Is the simd tree needed (`--simd` keeps DS3's)?
 5. Do the cloned map materials draw the DS3 textures correctly (opaque, alpha, two-layer)?
-6. Does Elden Ring need anything besides the .nvmhktbnd for a navmesh (an MSB entry or an .nva file)? `map-survey` lists every file type in both map folders.
+6. ~~Does Elden Ring need anything besides the .nvmhktbnd for a navmesh (an MSB entry or an .nva file)?~~ Yes: the .nva list (2026-11-11, see "Navigation"). The colosseum's own list named none of DS3's navmeshes, so the game loaded none.
 7. ~~Are the port's flag blocks allocated?~~ Answered 2026-11-08, in two steps. Elden Ring's map registry is
    `map/worldmsblist.worldloadlistlist.dcx` (+ `_dlc01`, `_dlc02`): plain text, one `map:/MapStudio/mAA_BB_CC_DD.msb `
    line per map the game will load (m45_00-02 included, m50 not; an unlisted ID sat on the loading screen for ever
@@ -325,16 +325,72 @@ jump, guard counter and the rest. Patrol routes and DS3's boss name text aren't 
    the registry, skips a slot whose ID the shipped registry doesn't name, and map-slots B uses the registry's
    file-less IDs (m11_70, m11_72, m19_70). The template's other per-map files (`NewIdFiles.Copy`) and flag-list lines
    (`FlagAlloc.WriteForNewIds`) are still copied under such a slot. See `docs/maps/own-map-ids.md`.
-8. The vanilla colosseum's other per-map files (`.nva`, `.mfr`, `.btl` lights, envmaps, ivinfo, `map/onav`,
-   `breakgeom`) stay as they are and describe the colosseum, not the DS3 map. SoulsFormats can't write Elden Ring's NVA.
+8. The vanilla colosseum's other per-map files (`.mfr`, envmaps, ivinfo, `map/onav`, `breakgeom`) stay as they are
+   and describe the colosseum, not the DS3 map. (`.btl` lights and the `.nva` navmesh list are the port's own now.)
+   `map/onav` is the map's occlusion graph (Smithbox: read by MSPOcclusionGraph, empty in most maps); the port-maps
+   log doesn't describe the colosseum's yet.
 
 A full `port-maps` run first deletes everything it wrote last time (both slot methods) and builds from Elden Ring's own
 common.emevd, common_func.emevd and menu binder with a fresh flag table, so every PC gets the same output; a `--only`
 run is a partial rebuild that keeps the rest.
 
+## Navigation (how enemies find their way)
+
+2026-11-11, playtest of 1.0.299: "enemies don't seem to correctly pathfind on DS3 maps". Cause: Elden Ring loads a
+navmesh only when the map's navmesh list (`.nva`) names it. The port wrote DS3's navmeshes into the binder and left
+the list the host colosseum's, which names the colosseum's own models. No DS3 navmesh was ever loaded, so every
+enemy ran straight at the player.
+
+What the port does now, for every DS3 map (`MapNavmesh.Port`):
+
+| | DS3 | Elden Ring, as written |
+|---|---|---|
+| List entry name | NameID = (AA × 10 + BB) × 1,000,000 + ModelID | NameID = AABBCC × 1000 + position in the list |
+| Sets | one | n (first half) and o (second half, NameID + 2,000,000,000, large characters); the o set is a copy of the n set |
+| Placement | each entry has a position, rotation (radians, Y × Z × X) and scale; the mesh is in its own space | entries at the identity; the mesh's vertices are moved into map space |
+| File contents | hkaiNavMesh, a bare hkcdStaticAabbTree, a cluster graph, jump/drop link setups | hkaiNavMesh and an hkaiStaticTreeNavMeshQueryMediator whose face tree is built over the moved faces |
+| Connections between navmeshes | list connectors: pairs of (face, edge) by index | the same pairs, with the entries' new NameIDs, once per set |
+| Gate nodes | per navmesh, 16 walking-cost slots, navmeshes named by list position | carried over; the o set's point at the o half |
+| Binder | `n40_00_00_00_NNNNNN.hkx` | `n45_00_00_00_NNNNNN.hkx` from ID 10000 and `o45_00_00_00_NNNNNN.hkx` from ID 20000, in the host's folder and format |
+
+Sources: Smithbox's Navigation tool (the rules above, from its survey of every map of both games) and JortPob (the
+smallest list and binder Elden Ring accepts); see CREDITS.md. The list reader and writer is Smithbox's `NVA.cs`
+(`Porter/third_party/Smithbox-NVA`).
+
+Decisions and what they cost:
+
+- **Face data is cleared** (every face is plain ground). Elden Ring reads face bits as impassable (0x1), gated
+  (0x10000, 0x100000), lava, ladder and more; what DS3's bits are is unknown, and a DS3 mark read as "impassable"
+  would wall enemies in. The log lists DS3's values per map (`navmesh: DS3 face data ...`), and fallback
+  `map-navmesh` B keeps them, to find out.
+- **Node banks are left out**: the faces DS3's events close and open (doors, fog). Enemies may try to path through a
+  closed door.
+- **Jump and drop links are left out**: DS3 keeps them as link setups the game turns into edges on load; Elden Ring
+  wants them as user edges in the mesh. Enemies won't drop off ledges after the player.
+- **Joins to other maps are left out** (level connectors); each ported map is on its own.
+- A DS3 map with a MapOffset event has list entries in world space and parts in map space. The port tries both and
+  keeps the one that puts more of DS3's characters over a navmesh face (logged).
+
+Evidence in the port-maps log (`Work\logs\port-maps-*.txt`), per map, under `navmesh:`: the summary (navmeshes, faces,
+connections, gate nodes), two placement checks on the map's own data (gate nodes on their navmesh's edges; DS3's
+characters over a navmesh face), DS3's face data values, and a description of the host's own binder and list and of
+DS3's list (entry values, sections, root objects, face and edge data), so the next question about either game's
+files can be answered from the log. `map-validate` reads the written pair back (entries named by position, every
+entry's file present, face counts and face trees of sampled files).
+
+Not proven in game yet (first build with it: the one after 1.0.299). If enemies still don't find their way:
+
+1. Read the placement checks in the log. Low numbers mean the navmeshes aren't where the map is (rotation order or
+   map offset), not that the game rejects them.
+2. Compare the "host" lines with what the port writes (root objects, face/edge data striding, binder IDs and
+   names, the list's sections). The port takes the host's values where it reads them, but nothing has been compared
+   by eye, because the cloud threads can't open the game's files.
+3. If the files are right and the game still doesn't use them, generate the navmeshes with the game's own Havok code
+   instead (ERNavmeshGen, as JortPob does) from the ported collision, and keep this list code for the result.
+
 ## Next stages
 
-1. Navmesh: converted since PR #44. If Elden Ring rejects converted navmeshes, fall back to generating them, as NavMeshStudio does with Recast.
+1. Navmesh: converted since PR #44, loaded by the game since the list is written too (see "Navigation"). If Elden Ring rejects converted navmeshes, generate them with the game's own Havok code (ERNavmeshGen, as JortPob does) or with Recast (NavMeshStudio, Smithbox). Then: DS3's jump and drop links as user edges, and the faces events close and open (node banks).
 2. Enemies: placed, and ported by the enemy porter (see above). Next: DS3 AI scripts and sounds per character, objects, items and bonfires from the MSB.
 3. DS3 map events: converted (see "Event scripts"). Next: action buttons (doors, levers, fog walls) as
    ActionButtonParam rows, map-to-map connect collisions, then cutscenes (remo files, camera and animations via Havok).

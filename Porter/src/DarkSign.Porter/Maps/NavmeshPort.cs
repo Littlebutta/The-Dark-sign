@@ -1,3 +1,4 @@
+using System.Numerics;
 using HKLib.hk2018;
 using SoulsFormats;
 using Ds3 = HKX2;
@@ -6,75 +7,143 @@ namespace DarkSign.Porter.Maps;
 
 /// <summary>
 /// Turns a Dark Souls III navmesh (Havok AI 2014 packfile, one per entry of a map's .nvmhktbnd) into an Elden Ring one
-/// (Havok AI 2018 tagfile). Enemies walk and path on the navmesh, so a map without one has enemies that stand still.
+/// (Havok AI 2018 tagfile). Enemies walk and path on the navmesh, so a map without one has enemies that run straight
+/// at the player, into walls and off ledges.
 ///
-/// The three objects a FromSoftware navmesh file holds keep their layout between the two Havok versions:
-/// hkaiNavMesh (faces, edges, vertices), hkaiDirectedGraphExplicitCost (the coarse cluster graph used for long
-/// paths) and hkaiStaticTreeNavMeshQueryMediator (an AABB tree over the faces, 6-byte compressed nodes in both).
-/// Costs stored as hkHalf16 in 2014 become floats, and 2014's per-mesh streaming sets ("this UID / opposite UID")
-/// become 2018's annotated streaming sets (side A = this mesh). Nothing is re-generated, so paths stay DS3's.
+/// What the two games keep in a navmesh file differs (Smithbox's Navigation tool surveyed every file of both):
+/// - DS3: the hkaiNavMesh in its own space (the map's navmesh list, the .nva, places it with a position, rotation and
+///   scale), a bare hkcdStaticAabbTree over its faces, a cluster graph (hkaiDirectedGraphExplicitCost), and jump and
+///   drop links as hkaiUserEdgeSetupArray, which the game turns into edges when it loads the mesh.
+/// - Elden Ring: the hkaiNavMesh in map space (list entries sit at the identity), and an
+///   hkaiStaticTreeNavMeshQueryMediator holding the face tree. No cluster graph; links are user edges in the mesh.
+///
+/// So the mesh keeps its faces and edges (the list's connections between navmeshes name them by index), its vertices
+/// are moved into map space by the list entry's placement, the face tree is built anew over the moved faces
+/// (<see cref="NavFaceTree"/>) and put in a mediator, and the cluster graph, the streaming sets and the link setups
+/// are left out. Face data is cleared unless asked for: Elden Ring reads its bits as impassable, gated, lava and so
+/// on (Smithbox: CS::CSChrCostModifier), and what DS3's bits mean to Elden Ring is not known.
 /// </summary>
 public static class NavmeshPort
 {
-    public sealed record Result(byte[] Bytes, int Faces, int Edges, int Vertices, int GraphNodes, IReadOnlyList<string> Notes);
+    /// <param name="FaceData">How many faces carry each face data value in the DS3 file (before any clearing).</param>
+    /// <param name="Mesh">The converted mesh as read back from <paramref name="Bytes"/>, in map space.</param>
+    public sealed record Result(byte[] Bytes, int Faces, int Edges, int Vertices, IReadOnlyDictionary<int, int> FaceData,
+        int LinkSetups, IReadOnlyList<string> Notes, hkaiNavMesh Mesh);
+
+    /// <summary>
+    /// How many ints of data each face and edge of the host map's own navmeshes carry. The game reads a face's data
+    /// to price and gate it, so a ported mesh carries at least as many (zeros), and never fewer than one per face.
+    /// </summary>
+    public sealed record Layout(int FaceDataStriding, int EdgeDataStriding)
+    {
+        public static readonly Layout Minimum = new(1, 0);
+
+        public static Layout? Of(hkaiNavMesh? mesh) => mesh is null ? null : new Layout(mesh.m_faceDataStriding, mesh.m_edgeDataStriding);
+    }
 
     public static Ds3.hkRootLevelContainer ReadDs3(byte[] hkx) => CollisionPort.ReadDs3(hkx);
 
-    public static Result Convert(byte[] ds3Hkx, bool xml = true)
+    /// <param name="placement">Where the navmesh list puts the mesh in the ported map; null leaves it where it is.</param>
+    /// <param name="keepFaceData">Keep DS3's face data values instead of clearing them.</param>
+    /// <param name="layout">The host map's face and edge data layout; null for the minimum.</param>
+    public static Result Convert(byte[] ds3Hkx, bool xml = true, Matrix4x4? placement = null, bool keepFaceData = false, Layout? layout = null)
     {
         var notes = new List<string>();
         var ds3 = ReadDs3(ds3Hkx);
-        var er = Convert(ds3, notes);
+        var source = ds3.m_namedVariants?.Select(v => v.m_variant).OfType<Ds3.hkaiNavMesh>().FirstOrDefault()
+                     ?? throw new InvalidDataException("no hkaiNavMesh in the DS3 navmesh file");
+        var faceData = new Dictionary<int, int>();
+        int striding = Math.Max(1, source.m_faceDataStriding);
+        for (int f = 0; f < (source.m_faces?.Count ?? 0); f++)
+        {
+            int value = source.m_faceData is { } data && f * striding < data.Count ? data[f * striding] : 0;
+            faceData[value] = faceData.GetValueOrDefault(value) + 1;
+        }
+        int links = ds3.m_namedVariants?.Select(v => v.m_variant).OfType<Ds3.hkaiUserEdgeSetupArray>().Sum(a => a.m_edgeSetups?.Count ?? 0) ?? 0;
+
+        var er = Convert(ds3, placement ?? Matrix4x4.Identity, keepFaceData, notes, layout);
         var bytes = CollisionPort.Write(er, xml);
 
-        // Read back and compare the counts, so a serializer problem shows up in the porter and not in the game.
+        // Read back and compare, so a serializer problem shows up in the porter and not in the game.
         var reread = CollisionPort.Read(bytes);
         var before = Count(ds3);
         var after = Count(reread);
-        if (before != after)
+        if (before.Faces != after.Faces || before.Edges != after.Edges || before.Vertices != after.Vertices)
             throw new InvalidDataException($"navmesh changed in conversion: {before} -> {after}");
-        return new Result(bytes, after.Faces, after.Edges, after.Vertices, after.Nodes, notes);
+        var mesh = reread.m_namedVariants.Select(v => v.m_variant).OfType<hkaiNavMesh>().First();
+        var mediator = reread.m_namedVariants.Select(v => v.m_variant).OfType<hkaiStaticTreeNavMeshQueryMediator>().FirstOrDefault();
+        if (NavFaceTree.Check(mediator?.m_tree, mesh) is { } problem)
+            throw new InvalidDataException($"face tree: {problem}");
+        return new Result(bytes, after.Faces, after.Edges, after.Vertices, faceData, links, notes, mesh);
     }
 
-    public static hkRootLevelContainer Convert(Ds3.hkRootLevelContainer ds3, List<string> notes)
+    public static hkRootLevelContainer Convert(Ds3.hkRootLevelContainer ds3, Matrix4x4 placement, bool keepFaceData, List<string> notes, Layout? layout = null)
     {
-        var root = new hkRootLevelContainer();
-        var meshes = new Dictionary<Ds3.hkaiNavMesh, hkaiNavMesh>(ReferenceEqualityComparer.Instance);
-        hkaiNavMesh Mesh(Ds3.hkaiNavMesh m)
-        {
-            if (!meshes.TryGetValue(m, out var converted))
-                meshes[m] = converted = ConvertMesh(m);
-            return converted;
-        }
+        var source = ds3.m_namedVariants?.Select(v => v.m_variant).OfType<Ds3.hkaiNavMesh>().FirstOrDefault()
+                     ?? throw new InvalidDataException("no hkaiNavMesh in the DS3 navmesh file");
+        if ((ds3.m_namedVariants?.Count(v => v.m_variant is Ds3.hkaiNavMesh) ?? 0) > 1)
+            notes.Add("more than one hkaiNavMesh in the file; the first is used");
+        var mesh = ConvertMesh(source);
+        if ((source.m_streamingSets?.Count ?? 0) > 0)
+            notes.Add($"{source.m_streamingSets!.Count} streaming sets left out (the navmesh list holds the connections)");
+        mesh.m_streamingSets.Clear();
+        if (!keepFaceData)
+            for (int i = 0; i < mesh.m_faceData.Count; i++)
+                mesh.m_faceData[i] = 0;
+        layout ??= Layout.Minimum;
+        (mesh.m_faceData, mesh.m_faceDataStriding) = Restride(mesh.m_faceData, mesh.m_faceDataStriding, Math.Max(1, layout.FaceDataStriding), mesh.m_faces.Count);
+        (mesh.m_edgeData, mesh.m_edgeDataStriding) = Restride(mesh.m_edgeData, mesh.m_edgeDataStriding, layout.EdgeDataStriding, mesh.m_edges.Count);
+        Place(mesh, placement, notes);
 
-        foreach (var variant in ds3.m_namedVariants ?? [])
-        {
-            hkReferencedObject? converted = variant.m_variant switch
-            {
-                Ds3.hkaiNavMesh mesh => Mesh(mesh),
-                Ds3.hkaiDirectedGraphExplicitCost graph => ConvertGraph(graph),
-                Ds3.hkaiStaticTreeNavMeshQueryMediator mediator => new hkaiStaticTreeNavMeshQueryMediator
-                {
-                    m_navMesh = mediator.m_navMesh is null ? null : Mesh(mediator.m_navMesh),
-                    m_tree = ConvertTree(mediator.m_tree),
-                },
-                _ => null,
-            };
-            if (converted is null)
-            {
-                notes.Add($"skipped root object {variant.m_className}");
-                continue;
-            }
+        var root = new hkRootLevelContainer();
+        root.m_namedVariants.Add(new hkRootLevelContainer.NamedVariant { m_name = "hkaiNavMesh", m_className = "hkaiNavMesh", m_variant = mesh });
+        // A file without faces holds only its mesh, as the game's own empty files do.
+        if (NavFaceTree.Build(mesh) is { } tree)
             root.m_namedVariants.Add(new hkRootLevelContainer.NamedVariant
             {
-                m_name = variant.m_name ?? variant.m_className,
-                m_className = variant.m_className,
-                m_variant = converted,
+                m_name = "hkaiStaticTreeNavMeshQueryMediator",
+                m_className = "hkaiStaticTreeNavMeshQueryMediator",
+                m_variant = new hkaiStaticTreeNavMeshQueryMediator { m_navMesh = mesh, m_tree = tree },
             });
-        }
-        if (!root.m_namedVariants.Any(v => v.m_variant is hkaiNavMesh))
-            throw new InvalidDataException("no hkaiNavMesh in the DS3 navmesh file");
         return root;
+    }
+
+    /// <summary>Per-item data widened to at least <paramref name="atLeast"/> ints an item, the new ints zero.</summary>
+    private static (List<int> Data, int Striding) Restride(List<int> data, int striding, int atLeast, int items)
+    {
+        if (striding >= atLeast && data.Count == items * striding)
+            return (data, striding);
+        int wide = Math.Max(striding, atLeast);
+        var result = new List<int>(new int[items * wide]);
+        for (int i = 0; i < items; i++)
+            for (int k = 0; k < striding && i * striding + k < data.Count; k++)
+                result[i * wide + k] = data[i * striding + k];
+        return (result, wide);
+    }
+
+    /// <summary>Moves a mesh's vertices by a placement and sets its bounds from them.</summary>
+    private static void Place(hkaiNavMesh mesh, Matrix4x4 placement, List<string> notes)
+    {
+        if (!placement.IsIdentity)
+        {
+            if (placement.GetDeterminant() < 0)
+                notes.Add("the placement mirrors the mesh; its faces now wind the other way");
+            for (int i = 0; i < mesh.m_vertices.Count; i++)
+            {
+                var v = mesh.m_vertices[i];
+                mesh.m_vertices[i] = new Vector4(Vector3.Transform(new Vector3(v.X, v.Y, v.Z), placement), v.W);
+            }
+        }
+        if (mesh.m_vertices.Count == 0)
+            return;
+        var min = new Vector3(float.MaxValue);
+        var max = new Vector3(float.MinValue);
+        foreach (var v in mesh.m_vertices)
+        {
+            min = Vector3.Min(min, new Vector3(v.X, v.Y, v.Z));
+            max = Vector3.Max(max, new Vector3(v.X, v.Y, v.Z));
+        }
+        mesh.m_aabb = new hkAabb { m_min = new Vector4(min, mesh.m_aabb.m_min.W), m_max = new Vector4(max, mesh.m_aabb.m_max.W) };
     }
 
     private static float Half(short value) => BitConverter.Int32BitsToSingle(value << 16);
@@ -142,43 +211,6 @@ public static class NavmeshPort
         foreach (var c in s.m_volumeConnections ?? [])
             er.m_volumeConnections.Add(new hkaiStreamingSet.VolumeConnection { m_aCellIndex = c.m_cellIndex, m_bCellIndex = c.m_oppositeCellIndex });
         return new hkaiAnnotatedStreamingSet { m_side = hkaiAnnotatedStreamingSet.Side.SIDE_A, m_streamingSet = er };
-    }
-
-    private static hkaiDirectedGraphExplicitCost ConvertGraph(Ds3.hkaiDirectedGraphExplicitCost g)
-    {
-        var er = new hkaiDirectedGraphExplicitCost { m_nodeDataStriding = g.m_nodeDataStriding, m_edgeDataStriding = g.m_edgeDataStriding };
-        foreach (var n in g.m_nodes ?? [])
-            er.m_nodes.Add(new hkaiDirectedGraphExplicitCost.Node { m_startEdgeIndex = n.m_startEdgeIndex, m_numEdges = n.m_numEdges });
-        foreach (var e in g.m_edges ?? [])
-            er.m_edges.Add(new hkaiDirectedGraphExplicitCost.Edge
-            {
-                m_cost = Half(e.m_cost),
-                m_flags = (hkaiDirectedGraphExplicitCost.EdgeBits)e.m_flags,
-                m_target = e.m_target,
-            });
-        er.m_positions.AddRange(g.m_positions ?? []);
-        er.m_nodeData.AddRange(g.m_nodeData ?? []);
-        er.m_edgeData.AddRange(g.m_edgeData ?? []);
-        foreach (var set in g.m_streamingSets ?? [])
-            er.m_streamingSets.Add(StreamingSet(set));
-        return er;
-    }
-
-    private static hkcdStaticAabbTree? ConvertTree(Ds3.hkcdStaticAabbTree? tree)
-    {
-        if (tree?.m_treePtr is not { } storage)
-            return null;
-        var impl = new hkcdStaticAabbTree.Impl();
-        impl.m_tree.m_domain = Aabb(storage.m_domain);
-        foreach (var n in storage.m_nodes ?? [])
-        {
-            var node = new HKLib.hk2018.hkcdCompressedAabbCodecs.Aabb6BytesCodec { m_hiData = n.m_hiData, m_loData = n.m_loData };
-            node.m_xyz[0] = n.m_xyz_0;
-            node.m_xyz[1] = n.m_xyz_1;
-            node.m_xyz[2] = n.m_xyz_2;
-            impl.m_tree.m_nodes.Add(node);
-        }
-        return new hkcdStaticAabbTree { m_treePtr = impl };
     }
 
     public readonly record struct Counts(int Faces, int Edges, int Vertices, int Nodes, int TreeNodes);
