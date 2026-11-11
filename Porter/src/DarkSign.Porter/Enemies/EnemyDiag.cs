@@ -124,6 +124,16 @@ public static partial class EnemyDiag
                 int meshes = flver.Meshes.Count(mesh => mesh.MaterialIndex == i);
                 long verts = flver.Meshes.Where(mesh => mesh.MaterialIndex == i).Sum(mesh => (long)mesh.Vertices.Count);
                 Console.WriteLine($"  material {i} \"{m.Name}\" {ItemText.Leaf(m.MTD)} ({meshes} meshes, {verts} vertices, cut-out {ChrModel.IsAlphaTested(m.MTD)})");
+                // Vertex colours: blend and burn materials keep layer weights there; a one-layer shader may read them as tint.
+                var colours = flver.Meshes.Where(mesh => mesh.MaterialIndex == i).SelectMany(mesh => mesh.Vertices).Where(v => v.Colors.Count > 0).ToList();
+                if (colours.Count > 0)
+                    for (int set = 0; set < colours.Max(v => v.Colors.Count); set++)
+                    {
+                        var cs = colours.Where(v => v.Colors.Count > set).Select(v => v.Colors[set]).ToList();
+                        Console.WriteLine(FormattableString.Invariant($"    vertex colour {set}: {cs.Count} vertices, mean rgba {cs.Average(c => c.R):0.00} {cs.Average(c => c.G):0.00} {cs.Average(c => c.B):0.00} {cs.Average(c => c.A):0.00}, least {cs.Min(c => c.R):0.00} {cs.Min(c => c.G):0.00} {cs.Min(c => c.B):0.00} {cs.Min(c => c.A):0.00}, white {100.0 * cs.Count(c => c.R > 0.98f && c.G > 0.98f && c.B > 0.98f && c.A > 0.98f) / cs.Count:0}%"));
+                    }
+                else
+                    Console.WriteLine("    no vertex colours");
                 foreach (var t in m.Textures)
                 {
                     var leaf = t.Path.Length > 0 ? Path.GetFileNameWithoutExtension(ItemText.Leaf(t.Path)) : "";
