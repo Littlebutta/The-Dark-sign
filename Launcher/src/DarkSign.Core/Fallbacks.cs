@@ -385,6 +385,13 @@ public static class Fallbacks
             new("F", "DS3 textures next to the template's", "As A, but DS3's textures are a second file in the template's high-quality texture binder with flat 'not metal' maps (DARKSIGN_ENEMY_TEXTURES=added), as in builds up to 1.0.271, where ported enemies drew blank silver. Use when ported enemies crash on spawn or the game hangs loading them with A.")
                 { PorterEnv = Env("DARKSIGN_ENEMY_TEXTURES", "added") },
         ]),
+        new("enemy-drops", "DS3 maps", "What ported DS3 enemies drop", Stage.Build,
+            "A ported DS3 enemy drops nothing where DS3 drops something, drops the wrong item or far too often, the game crashes or hangs when a ported enemy dies, or the build's enemy params step says the drops were not ported.",
+        [
+            new("A", "DS3's drops and chances (default)", "Every ported DS3 enemy drops what it drops in DS3, with DS3's chances: ported weapons, and Elden Ring items of the same name. A DS3 item that isn't ported yet (armour, rings, most goods) keeps its chance and gives nothing; Work\\reports\\enemy-drops.tsv lists them all."),
+            new("B", "The Elden Ring template's drops", "Ported enemies keep the drops of the Elden Ring enemy they are built on (DARKSIGN_ENEMY_DROPS=template), as in every build before DS3 drops were ported.")
+                { PorterEnv = Env("DARKSIGN_ENEMY_DROPS", "template") },
+        ]),
         new("map-flags", "DS3 maps", "Where the DS3 maps' own flags are kept", Stage.Build,
             "In a DS3 map, bosses come back, opened doors and shortcuts close again or picked-up items return after a reload, or the pre-flight check says a map flag block is MISSING.",
         [

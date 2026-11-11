@@ -366,6 +366,8 @@ public static partial class ChrPort
         /// <summary>What the params step adds once port-weapons has written regulation.bin.</summary>
         public List<(Plan Plan, Dictionary<int, int> NpcRows)> Params = [];
         public List<ChrMaterial> Materials = [];
+        /// <summary>Both games' item names, read while DS3's archives are open, for the drops (<see cref="DropPort"/>).</summary>
+        public DropPort.Names? ItemNames;
         /// <summary>
         /// What went wrong when DS3 models that should have been built weren't: how many, and the reason most of them
         /// share (one cause usually fails them all). Null when every planned model was built. Printed as a FAIL line
@@ -486,6 +488,8 @@ public static partial class ChrPort
         TAE.ValidateEventBank = false;
         var ds3Npc = ctx.LoadParams(PorterGame.DarkSouls3).Get("NpcParam");
         var characters = Ds3Characters(ds3Archives, ds3Npc);
+        if (DropPort.Enabled)
+            result.ItemNames = DropPort.Names.Load(erArchives, ds3Archives, notes);
         Console.WriteLine($"enemies: {characters.Count} DS3 characters in DS3's maps, {catalog.Count} Elden Ring templates");
 
         var plans = MakePlans(erArchives, ds3Archives, characters, catalog, method, notes,
@@ -615,11 +619,13 @@ public static partial class ChrPort
         var ds3 = ctx.LoadParams(PorterGame.DarkSouls3);
         var attacks = new AttackParamPort(regulation, ds3, "BehaviorParam", "AtkParam_Npc");
         int rows = 0, failed = 0;
+        // DS3's drops for every ported row (one port for all of them: rows that share DS3 lots share the new ones).
+        var drops = DropPort.Create(ctx, regulation, ds3, result.ItemNames, result.Notes);
         foreach (var (plan, npcRows) in result.Params)
         {
             try
             {
-                rows += PortParams(regulation, ds3, attacks, plan, npcRows, result.Notes);
+                rows += PortParams(regulation, ds3, attacks, plan, npcRows, result.Notes, drops);
             }
             catch (Exception ex) when (ex is not OutOfMemoryException)
             {
@@ -631,6 +637,12 @@ public static partial class ChrPort
             result.Params.SelectMany(p => p.NpcRows.Values.Select(row => (p.Plan.Template.NpcParam, row))));
         if (fallback > 0)
             result.Notes.Add($"{fallback} NpcParam rows added as plain copies of their template's (their params step failed)");
+        string dropSummary = "";
+        if (drops is not null)
+        {
+            dropSummary = "\n  " + drops.Finish(ctx);
+            result.Notes.AddRange(drops.Notes);
+        }
         regulation.Save(ctx.ModPath("regulation.bin"));
         try
         {
@@ -644,7 +656,7 @@ public static partial class ChrPort
         WriteReport(ctx, result);
         return $"enemies: {rows + fallback} NpcParam rows ({fallback} plain template copies), {attacks.Summary}" +
                $"{(failed > 0 ? $", {failed} characters' params failed (first: {result.Notes.FirstOrDefault(n => n.Contains("params failed")) ?? ""})" : "")}" +
-               $"{(result.Notes.FirstOrDefault(n => n.Contains("attacks not ported")) is { } a ? $"; {a}" : "")}";
+               $"{(result.Notes.FirstOrDefault(n => n.Contains("attacks not ported")) is { } a ? $"; {a}" : "")}" + dropSummary;
     }
 
     /// <summary>The F1 menu's spawn list; a failure only costs the menu its list (it falls back to a built-in one).</summary>
@@ -1489,7 +1501,7 @@ public static partial class ChrPort
     /// DS3's attack data under its own behaviour variation). Returns how many NpcParam rows were added.
     /// </summary>
     private static int PortParams(ParamStore er, ParamStore ds3, AttackParamPort attacks, Plan plan, IReadOnlyDictionary<int, int> npcRows,
-        List<string>? notes = null)
+        List<string>? notes = null, DropPort? drops = null)
     {
         var npc = er.Get("NpcParam")!;
         var ds3Npc = ds3.Get("NpcParam");
@@ -1528,6 +1540,9 @@ public static partial class ChrPort
             // DS3's model hides and shows its "#NN#" meshes (weapon and armour variants) by DS3's display masks.
             if (newModel && plan.Stage != Stage.Clone && ds3Npc?[ds3Id] is { } maskSource)
                 CopyDisplayMasks(maskSource, row);
+            // DS3's drops with DS3's chances, on any body; the staged test set keeps the template's.
+            if (plan.Stage == Stage.All && ds3Npc?[ds3Id] is { } dropSource)
+                drops?.Apply(dropSource, row);
             if (newModel && Cell(row, "SoundAddBankId") is { } bank && Convert.ToInt32(bank.Value) < 0)
                 Set(bank, plan.TemplateChr);
             // The row goes in first: a placed or spawned character whose NpcParam row is missing crashes the game, a

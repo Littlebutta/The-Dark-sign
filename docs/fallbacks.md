@@ -306,6 +306,13 @@ Try the next option if: A ported DS3 enemy is invisible, black, shiny or wears t
 - **E: Template animations where DS3 has none.** As A, but a move of the Elden Ring template that DS3 has no move of the same ID for keeps the template's animation (DARKSIGN_ENEMY_ANIMS=template), as in builds up to 1.0.271, instead of playing the nearest DS3 move. Use when ported enemies freeze, slide or stand idle where they should step, fall or die with A. (`DARKSIGN_ENEMY_ANIMS=template`)
 - **F: DS3 textures next to the template's.** As A, but DS3's textures are a second file in the template's high-quality texture binder with flat 'not metal' maps (DARKSIGN_ENEMY_TEXTURES=added), as in builds up to 1.0.271, where ported enemies drew blank silver. Use when ported enemies crash on spawn or the game hangs loading them with A. (`DARKSIGN_ENEMY_TEXTURES=added`)
 
+### What ported DS3 enemies drop (`enemy-drops`, rebuilds the content)
+
+Try the next option if: A ported DS3 enemy drops nothing where DS3 drops something, drops the wrong item or far too often, the game crashes or hangs when a ported enemy dies, or the build's enemy params step says the drops were not ported.
+
+- **A: DS3's drops and chances (default).** Every ported DS3 enemy drops what it drops in DS3, with DS3's chances: ported weapons, and Elden Ring items of the same name. A DS3 item that isn't ported yet (armour, rings, most goods) keeps its chance and gives nothing; Work\reports\enemy-drops.tsv lists them all.
+- **B: The Elden Ring template's drops.** Ported enemies keep the drops of the Elden Ring enemy they are built on (DARKSIGN_ENEMY_DROPS=template), as in every build before DS3 drops were ported. (`DARKSIGN_ENEMY_DROPS=template`)
+
 ### Where the DS3 maps' own flags are kept (`map-flags`, rebuilds the content)
 
 Try the next option if: In a DS3 map, bosses come back, opened doors and shortcuts close again or picked-up items return after a reload, or the pre-flight check says a map flag block is MISSING.
