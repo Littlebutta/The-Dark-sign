@@ -233,6 +233,8 @@ public static class Fallbacks
                 { PorterEnv = Env("DARKSIGN_SOUND_BANK", "own") },
             new("F", "As builds up to 1.0.161", "A without this round's changes: the game's sound index isn't edited, the swing events keep the template's playback settings, and there are no loose copies (DARKSIGN_SOUND_INDEX=0, DARKSIGN_SOUND_ONESHOT=0, DARKSIGN_SOUND_MIRROR=0). Use it if A breaks something B, C and E don't.")
                 { PorterEnv = Env("DARKSIGN_SOUND_INDEX", "0", "DARKSIGN_SOUND_ONESHOT", "0", "DARKSIGN_SOUND_MIRROR", "0") },
+            new("G", "Samples by the sound's name only", "A without DS3's event files (DARKSIGN_SOUND_FEV=0), as builds before them: a sound is the DS3 sample named like it. Sounds whose samples are named differently stay Elden Ring's or silent, and a sound made of several layers plays only one. Use it if ported sounds play the wrong sample or too many at once.")
+                { PorterEnv = Env("DARKSIGN_SOUND_FEV", "0") },
             new("off", "Off (Elden Ring sounds)", "Ported weapons keep the Elden Ring template's swing sounds (DARKSIGN_DS3_SOUND_EVENTS=0). Not DS3, but never silent.")
                 { PorterEnv = Env("DARKSIGN_DS3_SOUND_EVENTS", "0") },
         ]),

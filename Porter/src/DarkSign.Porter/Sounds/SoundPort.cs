@@ -8,6 +8,8 @@ namespace DarkSign.Porter;
 /// (/sound/*.fsb). Elden Ring plays Wwise events named Play_c&lt;ID:D9&gt; / Play_s&lt;ID:D9&gt; (IDs are FNV-1 hashes of the
 /// names). Each DS3 sound is decoded to PCM and added to Elden Ring's main bank (sd/enus/cs_main.bnk) as a new event
 /// with ID 900000000 + the DS3 ID, cloned from the event an Elden Ring weapon swing plays.
+/// Which samples a DS3 sound plays is read from DS3's event files (<see cref="Fev"/>): an event's waves can be named
+/// differently from it, and each of its layers becomes a Play action of the new event.
 /// </summary>
 public static class SoundPort
 {
@@ -48,6 +50,13 @@ public static class SoundPort
     /// byte-identical loose copy, and which way the game loads isn't known.
     /// </summary>
     private static readonly bool Mirror = Environment.GetEnvironmentVariable("DARKSIGN_SOUND_MIRROR") != "0";
+
+    /// <summary>
+    /// A DS3 sound's samples are the waves its event plays, read from DS3's event files (<see cref="Fev"/>), unless
+    /// DARKSIGN_SOUND_FEV=0 (launcher fallback "sounds" G): then only samples named like the sound are taken, as
+    /// builds before the event reader did. That misses sounds whose waves are named apart and every layer but one.
+    /// </summary>
+    private static readonly bool UseFev = Environment.GetEnvironmentVariable("DARKSIGN_SOUND_FEV") != "0";
 
     /// <summary>Where the edited index goes (me3 serves it in place of the game's).</summary>
     public static string IndexPath(PorterContext ctx) => ctx.ModPath("sound", "soundbanksinfo.mobnkinfo");
@@ -112,73 +121,131 @@ public static class SoundPort
                 .GroupBy(o => o.Type).OrderBy(g => g.Key).Select(g => $"type {g.Key} {g.Count(o => WwiseNode.Read(o) is not null)}/{g.Count()}")));
         }
 
-        var names = todo.SelectMany(w => new[] { "", "b", "c", "d", "e", "f", "g", "h" }.Select(v => $"{Letter(w.Kind)}{w.Id:D9}{v}")).ToHashSet();
+        // Which samples a sound plays. DS3's event of that name says (Fev): each of its layers plays one sound
+        // definition, whose waves are random variants and can be named anything. Without an event, or when none of its
+        // waves is a sample, the name rule: samples named like the sound, with variants b..h (c000001043, c000001043b...).
+        string[] suffixes = ["", "b", "c", "d", "e", "f", "g", "h"];
+        var ds3Events = UseFev ? Ds3Events(ctx, ds3Archives) : [];
+        if (!UseFev)
+            Console.WriteLine("sounds: DS3's event files are not read (DARKSIGN_SOUND_FEV=0): samples are found by the sound's name only");
+        var names = todo.SelectMany(w => suffixes.Select(v => $"{Letter(w.Kind)}{w.Id:D9}{v}")).ToHashSet();
+        foreach (var w in todo)
+            if (ds3Events.TryGetValue($"{Letter(w.Kind)}{w.Id:D9}", out var known))
+                names.UnionWith(known.Event.Layers.SelectMany(l => l.Waves).Select(Fev.SampleName));
         var samples = Ds3Samples(ctx, ds3Archives, names);
+        // A wave is the sample of its name in the event file's own bank (fdp_main.fev's waves are in fdp_main.fsb),
+        // else the first of that name anywhere, as the name rule takes it.
+        Fsb5.Sample? Pick(string sample, string? fsb) =>
+            samples.TryGetValue(sample, out var found) ? found.FirstOrDefault(s => s.Fsb == fsb, found[0]).Sample : null;
+
         var reasons = new Dictionary<string, int>();
         var events = new List<uint>();
-        int bytes = 0, variantsLost = 0;
+        int bytes = 0, variantsLost = 0, withEvent = 0, byEvent = 0, onlyByEvent = 0, layered = 0, dllLayersDropped = 0;
         List<string> missing = [], undecodable = [];
+        // One sample is decoded and embedded once, however many sounds play it (DS3 events share waves).
+        var media = new Dictionary<Fsb5.Sample, (uint Id, byte[] Bytes)>(ReferenceEqualityComparer.Instance);
+        var failures = new Dictionary<Fsb5.Sample, string>(ReferenceEqualityComparer.Instance);
+        HashSet<uint> taken = [], written = [];
         foreach (var (kind, id) in todo)
         {
             char letter = Letter(kind)!.Value;
             var name = $"{letter}{id:D9}";
-            // DS3 keeps a sound's random variants as separate samples (c000001043, c000001043b, ...c, ...d): every one
-            // present is ported, and Elden Ring's random container picks between them like the DS3 event did.
-            var present = new[] { "", "b", "c", "d", "e", "f", "g", "h" }
-                .Select(v => (Suffix: v, Sample: samples.GetValueOrDefault(name + v))).Where(x => x.Sample is not null).ToList();
-            uint eventId = FxSoundExplore.Fnv1($"Play_{letter}{IdBase + id:D9}");
-            if (present.Count == 0) { reasons["no DS3 sample"] = reasons.GetValueOrDefault("no DS3 sample") + 1; missing.Add(name); continue; }
-            if (bank.Has(eventId)) { reasons["event ID taken"] = reasons.GetValueOrDefault("event ID taken") + 1; continue; }
-            var decoded = new List<(string Suffix, Fsb5.Sample Sample, short[] Pcm)>();
-            string? failure = null;
-            foreach (var (suffix, s) in present)
+            var ruleNames = suffixes.Select(v => name + v).ToList();
+            List<List<Fsb5.Sample>> layers = [];
+            if (ds3Events.TryGetValue(name, out var ds3Event))
             {
-                try { decoded.Add((suffix, s!, Fsb5.DecodePcm(s!))); }
-                catch (Exception e) when (e is not OutOfMemoryException)
+                withEvent++;
+                layers = ds3Event.Event.Layers
+                    .Select(l => l.Waves.Select(Fev.SampleName).Distinct().Select(w => Pick(w, ds3Event.Fsb)).OfType<Fsb5.Sample>().ToList())
+                    .Where(l => l.Count > 0).ToList();
+                if (layers.Count > 0)
                 {
-                    // One undecodable sample (NVorbis throws its own types too) must not cost every other sound.
-                    failure ??= $"decode: {e.Message.Split(' ').Take(4).Aggregate((a, b) => a + " " + b)}";
-                    if (e.Message.Contains("CRC")) failure += $" {s!.SetupCrc} ({s.Channels} ch, {s.Rate} Hz)";
+                    byEvent++;
+                    if (!ruleNames.Any(samples.ContainsKey)) onlyByEvent++;
                 }
             }
-            if (decoded.Count == 0) { reasons[failure!] = reasons.GetValueOrDefault(failure!) + 1; undecodable.Add($"{name} ({failure})"); continue; }
+            if (layers.Count == 0 && ruleNames.Select(n => Pick(n, null)).OfType<Fsb5.Sample>().ToList() is { Count: > 0 } named)
+                layers.Add(named);
+            uint eventId = FxSoundExplore.Fnv1($"Play_{letter}{IdBase + id:D9}");
+            if (layers.Count == 0) { reasons["no DS3 sample"] = reasons.GetValueOrDefault("no DS3 sample") + 1; missing.Add(name); continue; }
+            if (bank.Has(eventId)) { reasons["event ID taken"] = reasons.GetValueOrDefault("event ID taken") + 1; continue; }
+
+            // Each layer's samples as media (PCM wems; WAV files for the DLL). A layer none of whose samples decode
+            // is left out; a sound none of whose layers decode is not ported.
+            var built = new List<List<(uint Id, byte[] Bytes)>>();
+            string? failure = null;
+            foreach (var layer in layers)
+            {
+                var sounds = new List<(uint Id, byte[] Bytes)>();
+                foreach (var s in layer)
+                {
+                    if (!media.ContainsKey(s) && !failures.ContainsKey(s))
+                    {
+                        try
+                        {
+                            var pcm = Fsb5.DecodePcm(s);
+                            media[s] = DllSounds
+                                ? (0, Wav(pcm, s.Channels, s.Rate))
+                                : (UnusedId(bank, $"darksign_media_{s.Name}", taken), WwiseBank.PcmWem(pcm, s.Channels, s.Rate));
+                        }
+                        catch (Exception e) when (e is not OutOfMemoryException)
+                        {
+                            // One undecodable sample (NVorbis throws its own types too) must not cost every other sound.
+                            failures[s] = $"decode: {e.Message.Split(' ').Take(4).Aggregate((a, b) => a + " " + b)}"
+                                          + (e.Message.Contains("CRC") ? $" {s.SetupCrc} ({s.Channels} ch, {s.Rate} Hz)" : "");
+                        }
+                    }
+                    if (media.TryGetValue(s, out var m)) sounds.Add(m);
+                    else failure ??= failures[s];
+                }
+                if (sounds.Count > 0)
+                    built.Add(sounds);
+            }
+            if (built.Count == 0) { reasons[failure!] = reasons.GetValueOrDefault(failure!) + 1; undecodable.Add($"{name} ({failure})"); continue; }
             if (failure is not null) variantsLost++;
-            var (_, sample, pcm) = decoded[0];
             if (DllSounds)
             {
-                var wav = Wav(pcm, sample.Channels, sample.Rate);
+                // The DLL plays one WAV per sound: the first layer's first sample.
+                var wav = built[0][0].Bytes;
                 File.WriteAllBytes(ctx.ModPath(DllSoundFolder, $"{letter}{IdBase + id:D9}.wav"), wav);
                 result.Add(kind, id);
                 bytes += wav.Length;
+                dllLayersDropped += built.Count - 1;
                 continue;
             }
-            var wem = WwiseBank.PcmWem(pcm, sample.Channels, sample.Rate);
-            uint soundId = UnusedId(bank, $"darksign_sound_{letter}{id}"), actionId = UnusedId(bank, $"darksign_action_{letter}{id}");
-            uint mediaId = UnusedId(bank, $"darksign_media_{letter}{id}"), containerId = UnusedId(bank, $"darksign_container_{letter}{id}");
-            var variants = new List<(uint SoundId, uint MediaId, byte[] Wem)>();
-            var taken = new HashSet<uint> { soundId, actionId, mediaId, containerId };
-            foreach (var (suffix, s, p) in decoded.Skip(1))
+            // Layer 0 keeps the IDs a single-layer sound always had; further layers and variants get their own.
+            var newLayers = new List<WwiseBank.Layer>();
+            for (int l = 0; l < built.Count; l++)
             {
-                uint vs = UnusedId(bank, $"darksign_sound_{letter}{id}{suffix}", taken), vm = UnusedId(bank, $"darksign_media_{letter}{id}{suffix}", taken);
-                variants.Add((vs, vm, WwiseBank.PcmWem(p, s.Channels, s.Rate)));
+                string tag = $"{letter}{id}{(l == 0 ? "" : $"_layer{l}")}";
+                uint actionId = UnusedId(bank, $"darksign_action_{tag}", taken), containerId = UnusedId(bank, $"darksign_container_{tag}", taken);
+                var sounds = built[l].Select((m, v) => (UnusedId(bank, $"darksign_sound_{tag}{(v == 0 ? "" : $"_{v}")}", taken), m.Id, m.Bytes)).ToList();
+                newLayers.Add(new WwiseBank.Layer(actionId, containerId, sounds));
             }
-            // Embedded in the bank like nearly all of Elden Ring's own sounds (17,018 embedded, 3 streamed): the
-            // streamed loose wems (sd\wem\NN\<ID>.wem) stayed silent in game. DARKSIGN_STREAM_SOUNDS=1 streams them.
-            if (StreamSounds || Mirror)
-                foreach (var (m, w) in variants.Select(v => (v.MediaId, v.Wem)).Prepend((mediaId, wem)))
-                {
-                    var mediaName = m.ToString();
-                    File.WriteAllBytes(ctx.ModPath("sd", "wem", mediaName[..2], mediaName + ".wem"), w); // me3: sd/wem/NN/<id>.wem
-                }
-            bank.AddSound(template, eventId, soundId, actionId, containerId, mediaId, wem, streamed: StreamSounds, variants: variants);
-            bytes += variants.Sum(v => v.Wem.Length);
+            foreach (var (mediaId, wem) in built.SelectMany(l => l).Where(m => written.Add(m.Id)))
+            {
+                bytes += wem.Length;
+                // Embedded in the bank like nearly all of Elden Ring's own sounds (17,018 embedded, 3 streamed): the
+                // streamed loose wems (sd\wem\NN\<ID>.wem) stayed silent in game. DARKSIGN_STREAM_SOUNDS=1 streams them.
+                var mediaName = mediaId.ToString();
+                if (StreamSounds || Mirror)
+                    File.WriteAllBytes(ctx.ModPath("sd", "wem", mediaName[..2], mediaName + ".wem"), wem); // me3: sd/wem/NN/<id>.wem
+            }
+            bank.AddSound(template, eventId, newLayers, streamed: StreamSounds);
+            if (newLayers.Count > 1) layered++;
             events.Add(eventId);
             result.Add(kind, id);
-            bytes += wem.Length;
         }
-        // Which ones, so the next pass can look for them under other names (e.g. FEV events whose waves are named apart).
+        if (UseFev)
+            Console.WriteLine($"sounds: {withEvent} of {todo.Count} wanted sounds have a DS3 event; {byEvent} take their samples from its waves " +
+                              $"({onlyByEvent} of them have no sample named like the sound)");
+        if (bank.LayersAdded > 0)
+            Console.WriteLine($"sounds: {bank.LayersAdded} extra layers added to {layered} sounds (one Play action per layer, all starting together)");
+        if (dllLayersDropped > 0)
+            Console.WriteLine($"sounds: {dllLayersDropped} extra layers left out: the DLL plays one WAV per sound (the first layer)");
+        // Which ones, so the next pass can look for them elsewhere.
         if (missing.Count > 0)
-            Console.WriteLine($"sounds: no DS3 sample named like: {string.Join(", ", missing)}");
+            Console.WriteLine($"sounds: no DS3 sample ({(UseFev ? "none of the sound's event waves, and none " : "none ")}named like the sound): {string.Join(", ", missing)}");
         if (undecodable.Count > 0)
             Console.WriteLine($"sounds: not decodable: {string.Join(", ", undecodable)}");
         if (DllSounds)
@@ -208,7 +275,7 @@ public static class SoundPort
             }
             RegisterEvents(ctx, erArchives, eventBank, bank.BankId, events);
         }
-        Console.WriteLine($"sounds: {result.Count} DS3 sounds ported ({bytes / 1024} KB of PCM {(StreamSounds ? "streamed from sd/wem" : "embedded")}, {bank.OwnContainerCount} in a container of their own, {bank.ChildrenAdded} added to their parent, {bank.VariantsAdded} DS3 random variants alongside them{(variantsLost > 0 ? $", {variantsLost} sounds lost a variant that didn't decode" : "")}) " +
+        Console.WriteLine($"sounds: {result.Count} DS3 sounds ported ({bytes / 1024} KB of PCM {(StreamSounds ? "streamed from sd/wem" : "embedded")}, {bank.OwnContainerCount} in a container of their own, {bank.ChildrenAdded} added to their parent, {bank.VariantsAdded} DS3 random variants alongside them, {bank.LayersAdded} extra layers{(variantsLost > 0 ? $", {variantsLost} sounds lost a variant that didn't decode" : "")}) " +
                           $"into sd{Bank}; left out: " +
                           (reasons.Count == 0 ? "none" : string.Join(", ", reasons.Select(r => $"{r.Value} {r.Key}"))));
         return result;
@@ -298,22 +365,37 @@ public static class SoundPort
         return id;
     }
 
-    // Every DS3 sample by name; loose files in the game's sound folder win over archived ones of the same name.
-    private static Dictionary<string, Fsb5.Sample> Ds3Samples(PorterContext ctx, GameArchives ds3, HashSet<string> names)
+    // The wanted DS3 samples by name, each with the FSB it is in (file name without extension). The first of a name
+    // is the one the name rule takes: loose files in the game's sound folder come before archived ones.
+    private static Dictionary<string, List<(string Fsb, Fsb5.Sample Sample)>> Ds3Samples(PorterContext ctx, GameArchives ds3, HashSet<string> names)
     {
-        var samples = new Dictionary<string, Fsb5.Sample>();
-        void AddFile(byte[] bytes)
+        var samples = new Dictionary<string, List<(string Fsb, Fsb5.Sample Sample)>>();
+        int encryptedFiles = 0, encryptedSamples = 0;
+        void AddFile(string path, byte[] bytes)
         {
             if (!Fsb5.Is(bytes))
+            {
+                // Encrypted FSBs are not read; how much sits in them is logged so a missing sound can be looked for there.
+                if (Fsb5.EncryptedSampleCount(bytes) is > 0 and var count)
+                {
+                    encryptedFiles++;
+                    encryptedSamples += count;
+                }
                 return;
+            }
+            var fsb = Path.GetFileNameWithoutExtension(path).ToLowerInvariant();
             foreach (var s in Fsb5.Read(bytes, names.Contains).Samples)
-                samples.TryAdd(s.Name, s);
+            {
+                if (!samples.TryGetValue(s.Name, out var list))
+                    samples[s.Name] = list = [];
+                list.Add((fsb, s));
+            }
         }
         var loose = Path.Combine(ctx.GameDir(PorterGame.DarkSouls3), "sound");
         if (Directory.Exists(loose))
             foreach (var file in Directory.EnumerateFiles(loose, "*.fsb").Order(StringComparer.Ordinal))
             {
-                try { AddFile(File.ReadAllBytes(file)); }
+                try { AddFile(file, File.ReadAllBytes(file)); }
                 catch (Exception e) when (e is InvalidDataException or IndexOutOfRangeException or ArgumentException or IOException)
                 {
                     Console.WriteLine($"sounds: skipped {Path.GetFileName(file)} ({e.GetType().Name}: {e.Message})");
@@ -321,10 +403,49 @@ public static class SoundPort
             }
         foreach (var entry in ds3.Entries.Where(e => e.Path?.StartsWith("/sound/") == true && e.Path.EndsWith(".fsb")).OrderBy(e => e.Path, StringComparer.Ordinal))
         {
-            try { AddFile(ds3.Read(entry.Path!)); }
+            try { AddFile(entry.Path!, ds3.Read(entry.Path!)); }
             catch (Exception e) when (e is InvalidDataException or IndexOutOfRangeException or ArgumentException) { }
         }
+        if (encryptedSamples > 0)
+            Console.WriteLine($"sounds: {encryptedSamples} DS3 samples sit in {encryptedFiles} encrypted FSB files, which are not read");
         return samples;
+    }
+
+    // Every DS3 event by name, with the bank its waves are in (the event file's name: fdp_main.fev goes with
+    // fdp_main.fsb). Loose files in the game's sound folder come before archived ones of the same name. The player's
+    // sounds are in the main banks, so those are read first (an assumption: 985 DS3 sound names are in more than one
+    // event file, 53 of them with different waves, e.g. a character's bank with its own waves under a shared name).
+    private static Dictionary<string, (Fev.Event Event, string Fsb)> Ds3Events(PorterContext ctx, GameArchives ds3)
+    {
+        var files = new Dictionary<string, Func<byte[]>>(StringComparer.OrdinalIgnoreCase);
+        var loose = Path.Combine(ctx.GameDir(PorterGame.DarkSouls3), "sound");
+        if (Directory.Exists(loose))
+            foreach (var file in Directory.EnumerateFiles(loose, "*.fev"))
+                files.TryAdd(Path.GetFileNameWithoutExtension(file), () => File.ReadAllBytes(file));
+        foreach (var entry in ds3.Entries.Where(e => e.Path?.StartsWith("/sound/") == true && e.Path.EndsWith(".fev")))
+            files.TryAdd(Path.GetFileNameWithoutExtension(entry.Path!), () => ds3.Read(entry.Path!));
+
+        var events = new Dictionary<string, (Fev.Event Event, string Fsb)>();
+        int read = 0, records = 0, skipped = 0, unreadable = 0;
+        foreach (var (name, bytes) in files.OrderBy(f => f.Key.StartsWith("fdp_main", StringComparison.OrdinalIgnoreCase) ? 0 : 1)
+                     .ThenBy(f => f.Key, StringComparer.OrdinalIgnoreCase))
+        {
+            Fev fev;
+            try { fev = Fev.Read(bytes()); }
+            catch (Exception e) when (e is InvalidDataException or IOException or IndexOutOfRangeException or ArgumentException)
+            {
+                unreadable++;
+                continue;
+            }
+            read++;
+            records += fev.Events.Count;
+            skipped += fev.Skipped;
+            foreach (var ev in fev.Events.Values)
+                events.TryAdd(ev.Name, (ev, name.ToLowerInvariant()));
+        }
+        Console.WriteLine($"sounds: {read} DS3 event files (.fev) read: {records} events under {events.Count} names, {skipped} records skipped" +
+                          (unreadable > 0 ? $", {unreadable} files could not be read" : ""));
+        return events;
     }
 
     /// <summary>The (kind, ID) a TAE sound event plays, for the types that start with them.</summary>
