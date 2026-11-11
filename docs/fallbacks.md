@@ -285,6 +285,7 @@ Try the next option if: A ported DS3 enemy is invisible, black, shiny or wears t
 - **C: DS3's node flags and mesh boxes.** As A, but the model keeps DS3's node flags and mesh boxes (DARKSIGN_ENEMY_NODES=0), as in builds up to 1.0.255. Use when ported enemies crash on spawn, vanish at some camera angles or are stretched with A. (`DARKSIGN_ENEMY_NODES=0`)
 - **D: Template skeleton only.** As A, but the ported skeleton keeps only the Elden Ring template's bones (DARKSIGN_ENEMY_BONES=template), as in builds up to 1.0.263: DS3 weapons, skirts, hats and capes don't follow the animation. Use when ported enemies crash on spawn or when hit, or fold up, with A. (`DARKSIGN_ENEMY_BONES=template`)
 - **E: Template animations where DS3 has none.** As A, but a move of the Elden Ring template that DS3 has no move of the same ID for keeps the template's animation (DARKSIGN_ENEMY_ANIMS=template), as in builds up to 1.0.271, instead of playing the nearest DS3 move. Use when ported enemies freeze, slide or stand idle where they should step, fall or die with A. (`DARKSIGN_ENEMY_ANIMS=template`)
+- **F: DS3 textures next to the template's.** As A, but DS3's textures are a second file in the template's high-quality texture binder with flat 'not metal' maps (DARKSIGN_ENEMY_TEXTURES=added), as in builds up to 1.0.271, where ported enemies drew blank silver. Use when ported enemies crash on spawn or the game hangs loading them with A. (`DARKSIGN_ENEMY_TEXTURES=added`)
 
 ### Where the DS3 maps' own flags are kept (`map-flags`, rebuilds the content)
 

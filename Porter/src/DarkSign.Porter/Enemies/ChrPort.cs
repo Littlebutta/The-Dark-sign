@@ -72,8 +72,13 @@ public static partial class ChrPort
 
     // ---- Planning (pure; offline-tested by enemy-selftest) ----
 
-    /// <summary>A character's animation skeleton as the template choice sees it: bones, their parents, and how big it stands (the diagonal of its rest pose, metres; 0 = unknown).</summary>
-    public sealed record Shape(IReadOnlyList<string> Names, IReadOnlyList<short> Parents, float Size = 0);
+    /// <summary>
+    /// A character's animation skeleton as the template choice sees it: bones, their parents, and how big it stands
+    /// in its rest pose (metres; 0 = unknown): Size is the diagonal of the box around the middle 80% of its bones on
+    /// each axis (helper bones stand far off: every skeleton has a throw target 3 m up), Head the height of its
+    /// "Head" bone when it has one (the Imp 0.96, the Jailer 2.20, Lorian 4.29).
+    /// </summary>
+    public sealed record Shape(IReadOnlyList<string> Names, IReadOnlyList<short> Parents, float Size = 0, float Head = 0);
 
     /// <summary>
     /// How many DS3 bones land on a bone the template has (the same count <see cref="MergeSkeleton"/> reports as
@@ -112,6 +117,12 @@ public static partial class ChrPort
     /// <summary>How alike two sizes are, 0 to 1 (1 = equal; 0.5 when either is unknown).</summary>
     public static double SizeMatch(float a, float b) => a <= 0 || b <= 0 ? 0.5 : Math.Min(a, b) / Math.Max(a, b);
 
+    /// <summary>How alike two characters' sizes are: by head height when both have a head, else by their boxes.</summary>
+    public static double SizeMatch(Shape a, Shape b) => a.Head > 0 && b.Head > 0 ? SizeMatch(a.Head, b.Head) : SizeMatch(a.Size, b.Size);
+
+    /// <summary>Below this size match a template is only used when nothing fits (a dragon's files for a skeleton).</summary>
+    public const double MinSizeMatch = 0.2;
+
     /// <summary>
     /// The template for a DS3 character. The template gives the new character everything DS3's files don't: its AI,
     /// its behaviour (which moves follow which), its ragdoll and hit shapes. So the best one has DS3's bones (half
@@ -119,7 +130,9 @@ public static partial class ChrPort
     /// for the Nameless King), and is the same kind (0.15: knight, dog...) and boss-ness (0.05). Until 1.0.271 the
     /// score was the share of bone names in common out of all names of both, which the smallest skeleton with the
     /// usual human bone names won nearly every time: 58 of 93 DS3 enemies were Imps and 26 Giant Beast Skeletons.
-    /// Match is the share of DS3's bones the template has.
+    /// Match is the share of DS3's bones the template has. A template with too few of DS3's bones to carry its
+    /// model (<see cref="MinBoneMatch"/>) or of a wholly different size comes after every one that fits, whatever
+    /// its score: the DS3 model is only given up when no template can carry it.
     /// </summary>
     public static (EnemyPort.ErEnemy Template, double Match)? PickTemplate(Ds3Chr ds3, Shape ds3Shape,
         IReadOnlyList<EnemyPort.ErEnemy> candidates, Func<EnemyPort.ErEnemy, Shape?> shapeOf) =>
@@ -138,12 +151,14 @@ public static partial class ChrPort
             if (shapeOf(group.First()) is not { Names.Count: > 0 } shape)
                 continue;
             double match = bones == 0 ? 0 : KeptBones(shape, ds3Shape) / (double)bones;
-            double size = SizeMatch(shape.Size, ds3Shape.Size);
+            double size = SizeMatch(shape, ds3Shape);
             var c = group.OrderByDescending(c => (kind.Length > 0 && c.Kind == kind ? 3 : 0) + (c.Boss == ds3.Boss ? 1 : 0)).First();
             double score = 0.5 * match + 0.3 * size + (kind.Length > 0 && c.Kind == kind ? 0.15 : 0) + (c.Boss == ds3.Boss ? 0.05 : 0);
             ranked.Add((c, match, size, score));
         }
-        return ranked.OrderByDescending(r => r.Item4).ThenBy(r => r.Item1.Model, StringComparer.OrdinalIgnoreCase).ToList();
+        return ranked.OrderByDescending(r => r.Item2 >= MinBoneMatch && r.Item3 >= MinSizeMatch).ThenByDescending(r => r.Item3 >= MinSizeMatch)
+            .ThenByDescending(r => r.Item4)
+            .ThenBy(r => r.Item1.Model, StringComparer.OrdinalIgnoreCase).ToList();
     }
 
     /// <summary>New character IDs, in DS3 ID order (so every PC gets the same ones), skipping IDs the game has.</summary>
@@ -705,8 +720,9 @@ public static partial class ChrPort
                 lock (AnimPort.HavokLock)
                 {
                     var s = AnimPort.ReadErSkeleton(file.Bytes, Compendium(bnd));
-                    return new Shape(s.Names, s.Parents, RestSize(s.Parents, s.ReferencePose.Select(t =>
-                        (new Vector3(t.m_translation.X, t.m_translation.Y, t.m_translation.Z), t.m_rotation)).ToList()));
+                    var (size, head) = RestSize(s.Names, s.Parents, s.ReferencePose.Select(t =>
+                        (new Vector3(t.m_translation.X, t.m_translation.Y, t.m_translation.Z), t.m_rotation)).ToList());
+                    return new Shape(s.Names, s.Parents, size, head);
                 }
             }
             catch (Exception ex) when (ex is not OutOfMemoryException)
@@ -729,7 +745,8 @@ public static partial class ChrPort
                     if (BND4.Read(ds3.Read(entry.Path!)).Files.FirstOrDefault(f => ItemText.Leaf(f.Name).Equals("skeleton.hkx", StringComparison.OrdinalIgnoreCase)) is { } file)
                     {
                         var s = AnimPort.ReadDs3Skeleton(file.Bytes);
-                        return new Shape(s.Names, s.Parents, RestSize(s.Parents, s.ReferencePose.Select(t => (t.Translation, t.Rotation)).ToList()));
+                        var (size, head) = RestSize(s.Names, s.Parents, s.ReferencePose.Select(t => (t.Translation, t.Rotation)).ToList());
+                        return new Shape(s.Names, s.Parents, size, head);
                     }
         }
         catch (Exception ex) when (ex is not OutOfMemoryException)
@@ -738,11 +755,11 @@ public static partial class ChrPort
         return new Shape(model, []);
     }
 
-    /// <summary>The diagonal of the box around a skeleton's bones in its rest pose.</summary>
-    public static float RestSize(IReadOnlyList<short> parents, IReadOnlyList<(Vector3 T, Quaternion R)> local)
+    /// <summary>A skeleton's size in its rest pose (see <see cref="Shape"/>): the box diagonal and the head height.</summary>
+    public static (float Size, float Head) RestSize(IReadOnlyList<string> names, IReadOnlyList<short> parents, IReadOnlyList<(Vector3 T, Quaternion R)> local)
     {
         if (local.Count == 0)
-            return 0;
+            return (0, 0);
         var pos = new Vector3[local.Count];
         var rot = new Quaternion[local.Count];
         for (int i = 0; i < local.Count; i++)
@@ -752,7 +769,13 @@ public static partial class ChrPort
             pos[i] = top ? local[i].T : pos[p] + Vector3.Transform(local[i].T, rot[p]);
             rot[i] = top ? local[i].R : rot[p] * local[i].R;
         }
-        return (pos.Aggregate(Vector3.Max) - pos.Aggregate(Vector3.Min)).Length();
+        float Spread(Func<Vector3, float> axis)
+        {
+            var v = pos.Select(axis).OrderBy(x => x).ToArray();
+            return v[(int)(0.9 * (v.Length - 1))] - v[(int)(0.1 * (v.Length - 1))];
+        }
+        int head = Enumerable.Range(0, Math.Min(names.Count, pos.Length)).FirstOrDefault(i => names[i].Equals("Head", StringComparison.OrdinalIgnoreCase), -1);
+        return (new Vector3(Spread(v => v.X), Spread(v => v.Y), Spread(v => v.Z)).Length(), head >= 0 ? Math.Max(0, pos[head].Y) : 0);
     }
 
     /// <summary>
@@ -1051,7 +1074,8 @@ public static partial class ChrPort
                   + $"; node flags {string.Join(" ", flver.Nodes.GroupBy(node => (int)node.Flags).OrderBy(g => g.Key).Select(g => $"{g.Key}x{g.Count()}"))}");
         templateFlverFile.Bytes = flver.Write();
 
-        // DS3's textures, renamed to the new ID, next to the template's in its high-quality texture binder.
+        // DS3's textures, renamed to the new ID, in the new character's texture binders.
+        bool ownFile = ChrModel.OwnTextureFile;
         var ds3Textures = ds3.Entries.Where(e => e.Path is { } p && p.StartsWith($"/chr/c{x:D4}", StringComparison.OrdinalIgnoreCase)
                                                  && p.EndsWith(".texbnd.dcx", StringComparison.OrdinalIgnoreCase)).Select(e => e.Path!).ToList();
         var tpfs = new List<TPF>();
@@ -1065,13 +1089,13 @@ public static partial class ChrPort
                     var tpf = TPF.Read(f.Bytes);
                     tpf.Textures.RemoveAll(tx => !textureNames.Contains(tx.Name));
                     if (tpf.Textures.Count > 0)
-                        tpfs.Add(ChrModel.ConvertTpf(tpf, x, n));
+                        tpfs.Add(ChrModel.ConvertTpf(tpf, x, n, !ownFile));
                 }
         foreach (var path in ds3Textures)
             foreach (var f in BND4.Read(ds3.Read(path)).Files.Where(f => TPF.Is(f.Bytes)))
-                tpfs.Add(ChrModel.ConvertTpf(TPF.Read(f.Bytes), x, n));
+                tpfs.Add(ChrModel.ConvertTpf(TPF.Read(f.Bytes), x, n, !ownFile));
         foreach (var f in ds3Chrbnd.Files.Where(f => TPF.Is(f.Bytes)))
-            tpfs.Add(ChrModel.ConvertTpf(TPF.Read(f.Bytes), x, n));
+            tpfs.Add(ChrModel.ConvertTpf(TPF.Read(f.Bytes), x, n, !ownFile));
         var texbnd = binders.Keys.Where(k => k.EndsWith(".texbnd.dcx", StringComparison.OrdinalIgnoreCase))
             .OrderBy(k => k.Contains("_h", StringComparison.OrdinalIgnoreCase) ? 0 : 1).FirstOrDefault();
         if (tpfs.Count > 0)
@@ -1081,10 +1105,35 @@ public static partial class ChrPort
             var target = texbnd is not null ? binders[texbnd].Bnd : chrbnd;
             var like = target.Files.FirstOrDefault(f => TPF.Is(f.Bytes)) ?? target.Files[0];
             var folder = like.Name[..^ItemText.Leaf(like.Name).Length];
-            target.Files.Add(new BinderFile(like.Flags, target.Files.Max(f => f.ID) + 1, $"{folder}c{n:D4}_ds3.tpf", merged.Write()));
-            notes.Add($"{merged.Textures.Count} DS3 textures" + (textureOwners.Count > 0 ? $" (some from {string.Join(", ", textureOwners.Select(o => $"c{o:D4}"))})" : ""));
+            string where;
+            if (ownFile && texbnd is not null && TPF.Is(like.Bytes))
+            {
+                // Elden Ring's character texture binders hold one file each (cXXXX_h.tpf, and cXXXX_l.tpf with the
+                // same textures two sizes down under name + "_l"). Up to 1.0.271 DS3's textures were a second file in
+                // the high-quality binder, which the game never read: every ported enemy drew blank (silver). They
+                // now are that one file (the template's textures are of no use to a DS3 model), in both binders,
+                // with metal read from DS3's reflectance maps the way the weapon port does it.
+                WeaponTextures.AddMetallicMaps(merged, WeaponTextures.CurrentMode);
+                like.Bytes = merged.Write();
+                target.Files.RemoveAll(f => f != like && TPF.Is(f.Bytes));
+                where = "in the character's own texture file";
+                var lowKey = binders.Keys.FirstOrDefault(k => k.EndsWith("_l.texbnd.dcx", StringComparison.OrdinalIgnoreCase));
+                if (lowKey is not null && binders[lowKey].Bnd.Files.FirstOrDefault(f => TPF.Is(f.Bytes)) is { } lowFile)
+                {
+                    lowFile.Bytes = ChrModel.LowTpf(merged).Write();
+                    binders[lowKey].Bnd.Files.RemoveAll(f => f != lowFile && TPF.Is(f.Bytes));
+                    where += " and its low-quality copy";
+                }
+            }
+            else
+            {
+                target.Files.Add(new BinderFile(like.Flags, target.Files.Max(f => f.ID) + 1, $"{folder}c{n:D4}_ds3.tpf", merged.Write()));
+                where = texbnd is not null ? "in a second file of the template's texture binder" : "in the character binder (the template has no texture binder)";
+            }
+            notes.Add($"{merged.Textures.Count} DS3 textures {where}" + (textureOwners.Count > 0 ? $" (some from {string.Join(", ", textureOwners.Select(o => $"c{o:D4}"))})" : ""));
         }
         var have = tpfs.SelectMany(p => p.Textures).Select(tx => tx.Name).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        have.UnionWith(have.Where(name => name.EndsWith("_r", StringComparison.OrdinalIgnoreCase)).Select(name => name[..^2] + "_m").ToList());
         var lacking = made.SelectMany(m => new[] { m.Albedo, m.Normal }).Where(t => t is not null && !have.Contains(t)).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
         if (lacking.Count > 0)
             notes.Add($"FAIL textures: {lacking.Count} named by the model are in no DS3 binder ({string.Join(", ", lacking.Take(4))}{(lacking.Count > 4 ? ", ..." : "")}); those meshes draw wrong or not at all");

@@ -42,6 +42,21 @@ public static class EnemySelfTest
         var ds3Jailer = new ChrPort.Ds3Chr(2230, "Jailer", false, [223000]);
         Check("a man-sized DS3 enemy with no kind gets a man-sized template, not the Imp",
             ChrPort.PickTemplate(ds3Jailer, human, [impEnemy, soldier], e => shapes[e.Model])?.Template.Model == "c4310");
+        var dragon = new EnemyPort.ErEnemy("c4500", 45000000, 45000000, "Flying Dragon", false, "test");
+        var skeletonEnemy = new EnemyPort.ErEnemy("c3500", 35000000, 35000000, "Large Skeleton", false, "test");
+        var other = Sk(2.0f, ("Root", -1), ("Hips", 0), ("Chest", 1));
+        shapes["c4500"] = human with { Size = 60 };
+        shapes["c3500"] = other;
+        var ranked = ChrPort.RankTemplates(new ChrPort.Ds3Chr(1070, "Skeleton", false, [107000]), human, [dragon, skeletonEnemy], e => shapes[e.Model]);
+        Check("a template of a wholly different size comes last even with every bone (a dragon's files for a skeleton), and the pick then has too few bones for the DS3 model",
+            ranked[0].Template.Model == "c3500" && ranked[0].Match < ChrPort.MinBoneMatch && ranked[1].Match == 1);
+        Check("a template with DS3's bones comes before a better-scoring one that cannot carry the DS3 model",
+            ChrPort.PickTemplate(new ChrPort.Ds3Chr(1310, "Outrider Knight", false, [131000]), human with { Size = 4 }, [knight, skeletonEnemy], e => e.Model == "c4300" ? human : other with { Size = 4 })?.Template.Model == "c4300");
+        Check("size: by head height when both have a head, by the box otherwise",
+            ChrPort.SizeMatch(new ChrPort.Shape([], [], 2, 1), new ChrPort.Shape([], [], 2, 2)) == 0.5 && ChrPort.SizeMatch(new ChrPort.Shape([], [], 2, 0), new ChrPort.Shape([], [], 2, 2)) == 1);
+        var rest = ChrPort.RestSize(["Master", "Pelvis", "Head", "Throw_Target2"], [-1, 0, 1, 0],
+            [(System.Numerics.Vector3.Zero, System.Numerics.Quaternion.Identity), (new(0, 1, 0), System.Numerics.Quaternion.Identity), (new(0, 0.7f, 0), System.Numerics.Quaternion.Identity), (new(0, 30, 0), System.Numerics.Quaternion.Identity)]);
+        Check($"rest size: head height adds up the chain ({rest.Head})", Math.Abs(rest.Head - 1.7f) < 1e-5);
         var ds3Dog = new ChrPort.Ds3Chr(1300, "Hound Rat", false, [130000]);
         Check("a DS3 four-legged enemy gets the four-legged template",
             ChrPort.PickTemplate(ds3Dog, dog, [knight, hound], e => shapes[e.Model])?.Template.Model == "c4410");
@@ -385,6 +400,29 @@ public static class EnemySelfTest
         ] });
         Check("textures a model names under another character's ID are found (c2020 wears c2029's)",
             ChrModel.TextureOwners(dogModel, 2020).SequenceEqual([2029]) && ChrModel.TextureNames(dogModel).SetEquals(["c2029_body_a", "c2020_n", "SYSTEX_DummyNormal"]));
+
+        // Textures: one file per binder, a low-quality copy two sizes down.
+        var dds16 = WeaponTextures.Encode(new byte[16 * 16 * 4], 16, 16, BCnEncoder.Shared.CompressionFormat.Bc1, 72);
+        var small = ChrModel.DropMips(dds16, 2);
+        Check($"a low-quality texture drops the two largest sizes (16x16 with {BitConverter.ToInt32(dds16, 28)} sizes -> {BitConverter.ToInt32(small, 16)}x{BitConverter.ToInt32(small, 12)} with {BitConverter.ToInt32(small, 28)})",
+            BitConverter.ToInt32(dds16, 28) == 5 && BitConverter.ToInt32(small, 16) == 4 && BitConverter.ToInt32(small, 12) == 4 && BitConverter.ToInt32(small, 28) == 3
+            && small.Length == 148 + 8 + 8 + 8 && BitConverter.ToInt32(small, 20) == 8
+            && small.AsSpan(148).SequenceEqual(dds16.AsSpan(dds16.Length - 24)));
+        var tiny = ModelPort.BlackBc4Dds();
+        Check("a texture too small to shrink, or not block-compressed, is kept as it is",
+            ReferenceEquals(ChrModel.DropMips(tiny, 2), tiny) && ChrModel.DropMips(new byte[200], 2).Length == 200);
+        var highTpf = new TPF { Platform = TPF.TPFPlatform.PC, Encoding = 1, Flag2 = 3 };
+        highTpf.Textures.Add(new TPF.Texture("c7000_body_a", 0, 0, dds16, TPF.TPFPlatform.PC));
+        var lowTpf = ChrModel.LowTpf(highTpf);
+        Check("the low-quality file names every texture name + _l", lowTpf.Textures.Count == 1 && lowTpf.Textures[0].Name == "c7000_body_a_l" && lowTpf.Textures[0].Bytes.Length < dds16.Length
+            && lowTpf.Encoding == 1 && lowTpf.Flag2 == 3);
+        var r1 = new TPF { Platform = TPF.TPFPlatform.PC };
+        r1.Textures.Add(new TPF.Texture("c1100_body_r", 0, 0, dds16, TPF.TPFPlatform.PC));
+        var r2 = new TPF { Platform = TPF.TPFPlatform.PC };
+        r2.Textures.Add(new TPF.Texture("c1100_body_r", 0, 0, dds16, TPF.TPFPlatform.PC));
+        Check("converted textures get a flat metallic map only for fallback enemy-model F (the default reads metal from the reflectance map later)",
+            ChrModel.ConvertTpf(r1, 1100, 7000).Textures.Select(t => t.Name).SequenceEqual(["c7000_body_r"])
+            && ChrModel.ConvertTpf(r2, 1100, 7000, flatMetallic: true).Textures.Select(t => t.Name).SequenceEqual(["c7000_body_r", "c7000_body_m"]));
 
         Console.WriteLine(failures == 0 ? "enemy-selftest: all checks passed" : $"enemy-selftest: {failures} check(s) FAILED");
         return failures == 0 ? 0 : 1;

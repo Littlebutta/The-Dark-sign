@@ -217,8 +217,14 @@ public static class ChrModel
     public static string TextureName(string name, string oldTag, string newTag) =>
         name.Replace(oldTag, newTag, StringComparison.OrdinalIgnoreCase);
 
-    /// <summary>DS3 textures renamed to the new ID, plus a flat _m (metallic) map per _r (reflectance) map.</summary>
-    public static TPF ConvertTpf(TPF tpf, int ds3Chr, int newChr)
+    /// <summary>
+    /// False with DARKSIGN_ENEMY_TEXTURES=added: DS3's textures go into a second file next to the template's in the
+    /// high-quality texture binder, with flat "not metal" maps, as builds up to 1.0.271 did.
+    /// </summary>
+    public static bool OwnTextureFile => Environment.GetEnvironmentVariable("DARKSIGN_ENEMY_TEXTURES")?.Trim().ToLowerInvariant() != "added";
+
+    /// <summary>DS3 textures renamed to the new ID; with <paramref name="flatMetallic"/> plus a flat _m (metallic) map per _r (reflectance) map.</summary>
+    public static TPF ConvertTpf(TPF tpf, int ds3Chr, int newChr, bool flatMetallic = false)
     {
         string oldTag = $"c{ds3Chr:D4}", newTag = $"c{newChr:D4}";
         var added = new List<TPF.Texture>();
@@ -226,11 +232,86 @@ public static class ChrModel
         {
             t.Name = TextureName(t.Name, oldTag, newTag);
             t.Platform = TPF.TPFPlatform.PC;
-            if (t.Name.EndsWith("_r", StringComparison.OrdinalIgnoreCase))
+            if (flatMetallic && t.Name.EndsWith("_r", StringComparison.OrdinalIgnoreCase))
                 added.Add(new TPF.Texture(t.Name[..^2] + "_m", 103, 0, ModelPort.BlackBc4Dds(), TPF.TPFPlatform.PC));
         }
         tpf.Textures.AddRange(added);
         return tpf;
+    }
+
+    /// <summary>
+    /// The low-quality copy of a character's textures, as Elden Ring keeps it in cXXXX_l.texbnd: every texture under
+    /// its name + "_l", two sizes down (the Imp's 1024 body is 256 there).
+    /// </summary>
+    public static TPF LowTpf(TPF high)
+    {
+        var low = new TPF { Platform = high.Platform, Encoding = high.Encoding, Flag2 = high.Flag2 };
+        foreach (var t in high.Textures)
+            low.Textures.Add(new TPF.Texture(t.Name + "_l", t.Format, t.Flags1, DropMips(t.Bytes, 2), TPF.TPFPlatform.PC));
+        return low;
+    }
+
+    /// <summary>Bytes per 4x4 block of a block-compressed DDS (8 or 16), 0 for anything else.</summary>
+    private static int BlockBytes(byte[] dds)
+    {
+        var fourCc = System.Text.Encoding.ASCII.GetString(dds, 84, 4);
+        if (fourCc == "DX10")
+        {
+            if (dds.Length < 148 || BitConverter.ToInt32(dds, 140) > 1 || (BitConverter.ToInt32(dds, 136) & 0x4) != 0)
+                return 0; // texture arrays and cube maps are left alone
+            return BitConverter.ToInt32(dds, 128) switch
+            {
+                >= 70 and <= 72 => 8,   // BC1
+                >= 73 and <= 78 => 16,  // BC2, BC3
+                >= 79 and <= 81 => 8,   // BC4
+                >= 82 and <= 84 => 16,  // BC5
+                >= 94 and <= 99 => 16,  // BC6H, BC7
+                _ => 0,
+            };
+        }
+        return fourCc switch
+        {
+            "DXT1" or "ATI1" or "BC4U" or "BC4S" => 8,
+            "DXT2" or "DXT3" or "DXT4" or "DXT5" or "ATI2" or "BC5U" or "BC5S" => 16,
+            _ => 0,
+        };
+    }
+
+    /// <summary>
+    /// A block-compressed DDS without its <paramref name="drop"/> largest mip levels (fewer when it has too few, or
+    /// would get smaller than 4 pixels). Anything else (uncompressed, cube map, a length that doesn't add up) is
+    /// returned as it is.
+    /// </summary>
+    public static byte[] DropMips(byte[] dds, int drop)
+    {
+        if (dds.Length < 128 || dds[0] != 'D' || dds[1] != 'D' || dds[2] != 'S' || BlockBytes(dds) is not (> 0 and var block))
+            return dds;
+        if ((BitConverter.ToInt32(dds, 112) & 0x200) != 0)
+            return dds; // legacy cube map
+        int header = System.Text.Encoding.ASCII.GetString(dds, 84, 4) == "DX10" ? 148 : 128;
+        int height = BitConverter.ToInt32(dds, 12), width = BitConverter.ToInt32(dds, 16), mips = Math.Max(1, BitConverter.ToInt32(dds, 28));
+        long MipSize(int level) => (long)Math.Max(1, ((width >> level) + 3) / 4) * Math.Max(1, ((height >> level) + 3) / 4) * block;
+        long total = 0;
+        for (int m = 0; m < mips; m++)
+            total += MipSize(m);
+        if (header + total != dds.Length)
+            return dds;
+        int n = 0;
+        while (n < drop && n + 1 < mips && (width >> (n + 1)) >= 4 && (height >> (n + 1)) >= 4)
+            n++;
+        if (n == 0)
+            return dds;
+        long skip = 0;
+        for (int m = 0; m < n; m++)
+            skip += MipSize(m);
+        var result = new byte[dds.Length - skip];
+        Array.Copy(dds, 0, result, 0, header);
+        Array.Copy(dds, header + skip, result, header, dds.Length - header - skip);
+        BitConverter.GetBytes(height >> n).CopyTo(result, 12);
+        BitConverter.GetBytes(width >> n).CopyTo(result, 16);
+        BitConverter.GetBytes((int)MipSize(n)).CopyTo(result, 20);
+        BitConverter.GetBytes(mips - n).CopyTo(result, 28);
+        return result;
     }
 }
 
