@@ -32,6 +32,12 @@ public static class MsbPort
         /// </summary>
         public bool NoGroups { get; init; }
 
+        /// <summary>
+        /// Keep DS3's helper pieces as ordinary map pieces (see <see cref="HelperKind"/>), as every build up to
+        /// 1.0.299 did. Fallback "map-helper-pieces" B.
+        /// </summary>
+        public bool HelperPieces { get; init; }
+
         /// <summary>The PartsDrawParam row every map piece names (see <see cref="MapDrawParams"/>).</summary>
         public short DrawParamId { get; init; } = MapDrawParams.VanillaRow;
     }
@@ -66,8 +72,19 @@ public static class MsbPort
         var collisionModel = host.Models.Collisions.FirstOrDefault();
         var playerModel = host.Models.Players.FirstOrDefault();
 
+        // DS3's helper pieces are not scenery. Every ported piece is drawn as ordinary geometry (DrawNormally), so up
+        // to 1.0.299 they stood in the map as untextured slabs and low detail doubles of the ground and rocks.
+        var layerOk = BaseLayerMeans(ds3);
+        var helpers = new Dictionary<string, List<string>>();
         foreach (var src in ds3.Parts.MapPieces)
         {
+            if (!options.HelperPieces && HelperKind(src, layerOk) is { } helper)
+            {
+                if (!helpers.TryGetValue(helper, out var names))
+                    helpers[helper] = names = [];
+                names.Add(src.Name);
+                continue;
+            }
             var part = (MSBE.Part.MapPiece)mapPieceTemplate.DeepCopy();
             CopyCommon(src, part, ds3Id, erId);
             ApplyPieceGroups(src, part.Unk1, options);
@@ -75,6 +92,11 @@ public static class MsbPort
             msb.Parts.MapPieces.Add(part);
             AddModel(msb.Models.MapPieces, src.ModelName, mapPieceModel, erId);
         }
+
+        foreach (var (kind, names) in helpers.OrderBy(h => h.Key))
+            notes.Add($"helper pieces left out: {names.Count} {kind} ({string.Join(", ", names.Take(12))}{(names.Count > 12 ? ", ..." : "")})");
+        if (!layerOk)
+            notes.Add("most of this map's pieces are off DS3's base layer; layers are not used to leave pieces out");
 
         foreach (var src in ds3.Parts.Collisions)
         {
@@ -142,6 +164,33 @@ public static class MsbPort
         return new Result(msb, msb.Parts.MapPieces.Count, msb.Parts.Collisions.Count, msb.Parts.Players.Count,
             StartEntityId(erId), notes);
     }
+
+    public const string ReflectionOnly = "drawn only in water reflections", ShadowOnly = "shadow casters only",
+        OffBaseLayer = "not in the map's base state";
+
+    /// <summary>
+    /// Why DS3 never draws a map piece in the ordinary view of the map as the port shows it, or null for scenery:
+    /// <list type="bullet">
+    /// <item>a reflection proxy (DrawOnlyReflectCam): a low detail double of a whole area with small textures,
+    /// drawn only into water reflections (m40's m200000 and m200010 lie over the Cemetery and the Untended Graves);</item>
+    /// <item>a shadow caster (IsShadowOnly): flat cards and boxes that only shape the light, such as leaf-cut
+    /// cards that dapple a courtyard (none of Stormveil's 343 pieces has the flag, so it is not relied on);</item>
+    /// <item>a piece that is off the map's base layer (MapStudioLayer bit 0: m40's Cemetery of Ash; bit 1 is the
+    /// Untended Graves), when <paramref name="layerOk"/> says the bit means that in this map.</item>
+    /// </list>
+    /// </summary>
+    public static string? HelperKind(MSB3.Part.MapPiece piece, bool layerOk = true) =>
+        piece.DrawOnlyReflectCam ? ReflectionOnly
+        : piece.IsShadowOnly ? ShadowOnly
+        : layerOk && (piece.MapStudioLayer & 1) == 0 ? OffBaseLayer
+        : null;
+
+    /// <summary>
+    /// True when layer bit 0 can be read as "in the map's base state": nearly every piece has it (all but 0 of
+    /// m40's 4057). A map where a fifth of the pieces lack it uses the bits some other way.
+    /// </summary>
+    public static bool BaseLayerMeans(MSB3 ds3) =>
+        ds3.Parts.MapPieces.Count(p => (p.MapStudioLayer & 1) == 0) * 5 <= ds3.Parts.MapPieces.Count;
 
     /// <summary>
     /// The DS3 player part the run starts at: one whose map-local entity number is 990-999 (arrival points), else

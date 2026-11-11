@@ -354,9 +354,16 @@ public static class Fallbacks
         new("map-lighting", "DS3 maps", "Lighting of the DS3 maps", Stage.Build,
             "A DS3 map looks wrong since it got its own lighting: washed out, lit from inside walls, lamps in the wrong places, or the game hangs or crashes while it loads.",
         [
-            new("A", "Sunlight, ambient light and DS3's lamps (default)", "DS3's sky dome casts no shadow, so the host map's sun reaches the map. The host's environment map (its ambient light) applies in a box around the whole DS3 map. DS3's own lamps (candles, bonfires, torches) replace the host's."),
+            new("A", "Sunlight, ambient light and DS3's map lights (default)", "DS3's sky dome casts no shadow, so the host map's sun reaches the map. The host's environment map (its ambient light) applies in a box around the whole DS3 map. The lights of DS3's light file (soft fill lights, mostly indoors) replace the host's. Candles, torches and bonfires are DS3 objects with their own flame effects and are not part of this."),
             new("B", "The host map's lighting, untouched", "Nothing is changed (port-maps --host-lighting): the sky dome shadows the map, there is no ambient light and the lamps are the colosseum's. Dark, as every build up to 1.0.284 was.")
                 { MapsArgs = ["--host-lighting"] },
+        ]),
+        new("map-helper-pieces", "DS3 maps", "DS3's helper map pieces", Stage.Build,
+            "Part of a DS3 map is missing since 1.0.300 (a wall, a floor, a whole building), or its shadows look wrong.",
+        [
+            new("A", "Left out (default)", "DS3 keeps pieces in its maps that are never drawn as scenery: low detail doubles of whole areas that only water reflections show, flat cards and boxes that only cast shadows, and pieces of another state of the map. They are left out. Work\\reports\\map-pieces-<map>.tsv lists every piece and why it was left out."),
+            new("B", "Kept as ordinary pieces", "Every DS3 map piece is drawn (port-maps --helper-pieces), as in every build up to 1.0.299: blank slabs and blurry doubles of the ground and rocks stand in the maps, but nothing is missing.")
+                { MapsArgs = ["--helper-pieces"] },
         ]),
         new("map-enemies", "DS3 maps", "Enemies and bosses in the DS3 maps", Stage.Build,
             "A DS3 map crashes or hangs while loading, enemies stand in walls or fall through the floor, or a boss fight never starts.",
