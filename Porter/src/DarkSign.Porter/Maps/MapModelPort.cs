@@ -277,6 +277,37 @@ public sealed class MapModelPort
     /// <summary>Meshes left out of the converted models, by DS3 material type ("M[A]_Add_NoLight" -> 12).</summary>
     public Dictionary<string, int> LeftOut { get; } = new(StringComparer.OrdinalIgnoreCase);
 
+    /// <summary>
+    /// One mesh of a DS3 map piece model, for the piece report: its DS3 material type, the kind it was drawn as
+    /// ("none" when left out), its size and the albedo texture it shows.
+    /// </summary>
+    public sealed record MeshInfo(string Mtd, string Kind, int Vertices, Vector3 Size, string Albedo);
+
+    /// <summary>Every converted model's meshes by model number ("000052"), left-out meshes included.</summary>
+    public Dictionary<string, List<MeshInfo>> ModelMeshes { get; } = new(StringComparer.OrdinalIgnoreCase);
+
+    private static List<MeshInfo> Describe(FLVER2 flver)
+    {
+        var list = new List<MeshInfo>();
+        foreach (var mesh in flver.Meshes)
+        {
+            var m = mesh.MaterialIndex >= 0 && mesh.MaterialIndex < flver.Materials.Count ? flver.Materials[mesh.MaterialIndex] : null;
+            var min = new Vector3(float.MaxValue);
+            var max = new Vector3(float.MinValue);
+            foreach (var v in mesh.Vertices)
+            {
+                min = Vector3.Min(min, v.Position);
+                max = Vector3.Max(max, v.Position);
+            }
+            var albedo = m is null ? null : Ds3Texture(m, "albedo");
+            list.Add(new MeshInfo(
+                m is null ? "(no material)" : Path.GetFileNameWithoutExtension(ItemText.Leaf(m.MTD ?? "")),
+                m is null ? "none" : Ds3Kind(m), mesh.Vertices.Count, mesh.Vertices.Count == 0 ? Vector3.Zero : max - min,
+                albedo is null ? "" : Path.GetFileNameWithoutExtension(ItemText.Leaf(albedo.Path))));
+        }
+        return list;
+    }
+
     /// <summary>Converts every FLVER in a DS3 mapbnd; the binder layout comes from the host's template binder.</summary>
     public BND4 ConvertBinder(BND4 ds3, BND4 hostTemplate, MapId ds3Id, MapId erId, string modelNumber, MapId? hostId = null)
     {
@@ -287,6 +318,13 @@ public sealed class MapModelPort
         foreach (var file in ds3.Files.Where(f => FLVER2.Is(f.Bytes)))
         {
             var flver = FLVER2.Read(file.Bytes);
+            var described = Describe(flver);
+            lock (ModelMeshes)
+            {
+                if (!ModelMeshes.TryGetValue(modelNumber, out var known))
+                    ModelMeshes[modelNumber] = known = [];
+                known.AddRange(described);
+            }
             var ds3Leaf = ItemText.Leaf(file.Name);
             var leaf = ds3Leaf.Replace(ds3Id.ToString(), erId.ToString(), StringComparison.OrdinalIgnoreCase);
             ConvertFlver(flver, ds3Id);

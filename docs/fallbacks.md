@@ -283,7 +283,7 @@ Try the next option if: A DS3 map hitches or stutters as you move through it, or
 
 Try the next option if: A DS3 map looks wrong since it got its own lighting: washed out, lit from inside walls, lamps in the wrong places, or the game hangs or crashes while it loads.
 
-- **A: Sunlight, ambient light and DS3's lamps (default).** DS3's sky dome casts no shadow, so the host map's sun reaches the map. The host's environment map (its ambient light) applies in a box around the whole DS3 map. DS3's own lamps (candles, bonfires, torches) replace the host's.
+- **A: Sunlight, ambient light and DS3's map lights (default).** DS3's sky dome casts no shadow, so the host map's sun reaches the map. The host's environment map (its ambient light) applies in a box around the whole DS3 map. The lights of DS3's light file (soft fill lights, mostly indoors) replace the host's. Candles, torches and bonfires are DS3 objects with their own flame effects and are not part of this.
 - **B: The host map's lighting, untouched.** Nothing is changed (port-maps --host-lighting): the sky dome shadows the map, there is no ambient light and the lamps are the colosseum's. Dark, as every build up to 1.0.284 was. (`port-maps --host-lighting`)
 
 ### Sky over the DS3 maps (`map-sky`, rebuilds the content)
@@ -292,6 +292,13 @@ Try the next option if: A DS3 map has no sky at all (black or a flat colour over
 
 - **A: DS3's own sky (default).** Elden Ring's distant view of the host map (its sky, the Erdtree and far scenery) is replaced with an empty one, so the only sky is the dome DS3 built into the map.
 - **B: The host map's sky.** The host's distant view is left alone (port-maps --host-sky): Elden Ring's sky and the Erdtree show over the DS3 map, as in every build up to 1.0.299. (`port-maps --host-sky`)
+
+### DS3's helper map pieces (`map-helper-pieces`, rebuilds the content)
+
+Try the next option if: Part of a DS3 map is missing since 1.0.300 (a wall, a floor, a whole building), or its shadows look wrong.
+
+- **A: Left out (default).** DS3 keeps pieces in its maps that are never drawn as scenery: low detail doubles of whole areas that only water reflections show, flat cards and boxes that only cast shadows, and pieces of another state of the map. They are left out. Work\reports\map-pieces-<map>.tsv lists every piece and why it was left out.
+- **B: Kept as ordinary pieces.** Every DS3 map piece is drawn (port-maps --helper-pieces), as in every build up to 1.0.299: blank slabs and blurry doubles of the ground and rocks stand in the maps, but nothing is missing. (`port-maps --helper-pieces`)
 
 ### Enemies and bosses in the DS3 maps (`map-enemies`, rebuilds the content)
 

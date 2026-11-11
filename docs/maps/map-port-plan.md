@@ -135,13 +135,27 @@ host's weak straight-down fill light, side faces black):
 - The layout carries the host's first EnvironmentMapEffectBox and EnvironmentMapPoint, the box grown to hold the
   played area and at least Stormveil's catch-all size (4500 x 4500 x 3500 m). The ported layout is built from
   scratch and had none; the colosseum's own box is 246 x 316 x 350 m around the arena.
-- DS3's lamps (`mXX_XX_00_00_000N.btl`, version 6) are written as the slot's light file in the host's version
-  (18): what a lamp is stays DS3's, and the fields that hold one value in every Stormveil and colosseum light take
-  that value. DS3's directional light is left out.
+- DS3's map lights (`mXX_XX_00_00_000N.btl`, version 6) are written as the slot's light file in the host's version
+  (18): what a light is stays DS3's, and the fields that hold one value in every Stormveil and colosseum light take
+  that value. DS3's directional light is left out. These are fill lights (m40 has 45, named "dynamic", nearly all
+  inside Firelink Shrine); the light of candles, torches and bonfires comes from the flame effects of DS3's
+  objects, which arrive with the object port.
 
 Fallback `map-lighting` B (`--host-lighting`) turns all three off. Still the colosseum's: sun direction and
 colour, fog, exposure (DS3's LightSet group has the same field names as Elden Ring's and each DS3 part names a
 light set, so those can be carried over next), and what the environment map shows in reflections.
+
+**Helper pieces.** DS3 keeps map pieces that are never drawn as scenery, and the port draws every piece it writes
+as ordinary geometry, so up to 1.0.299 they stood in the maps (2026-11-11 playtest: blank slabs with leaf-shaped
+holes in the High Wall, blurry doubles of rocks and ground in the Undead Settlement). `MsbPort.HelperKind` leaves
+out reflection proxies (DrawOnlyReflectCam: low detail doubles of whole areas for water reflections; m40's m200000
+and m200010), shadow casters (IsShadowOnly) and pieces off the map's base layer (MapStudioLayer bit 0, when nearly
+every piece has it). Fallback `map-helper-pieces` B (`--helper-pieces`) keeps them. `Work\reports\map-pieces-<slot>.tsv`
+lists every DS3 piece (position, flags, draw groups, size, each mesh's material type, kind and albedo) to name what
+a screenshot shows. Not handled: DS3's draw groups (which piece is drawn from which collision; Elden Ring's test
+looks like piece DrawGroups against collision DisplayGroups, each collision owning one bit in its second mask
+struct, which is not what `--ds3-groups` writes), and far scenery (m800000 mountain tiles 1 km below the map, the
+m9xxxxx views of other maps), which is unlit and gets no distance fog.
 
 ### Sky
 
@@ -157,6 +171,7 @@ the open world and its distant view (`m60_00_00_99`) is not involved.
 dome (map piece `m009000`). The build report's `sky:` line says what the host's distant view drew. Fallback
 `map-sky` B (`--host-sky`) leaves the host's distant view alone. Found by reading how JortPob edits
 `m60_00_00_99` (it keeps only the `AEG096` assets there).
+
 ### What a map costs the game to hold (hitching)
 
 2026-11-11 playtest of 1.0.299: large hitches on the High Wall (worst walking into Vordt's room), the Undead
