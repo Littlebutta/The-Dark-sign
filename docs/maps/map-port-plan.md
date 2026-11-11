@@ -157,6 +157,35 @@ the open world and its distant view (`m60_00_00_99`) is not involved.
 dome (map piece `m009000`). The build report's `sky:` line says what the host's distant view drew. Fallback
 `map-sky` B (`--host-sky`) leaves the host's distant view alone. Found by reading how JortPob edits
 `m60_00_00_99` (it keeps only the `AEG096` assets there).
+### What a map costs the game to hold (hitching)
+
+2026-11-11 playtest of 1.0.299: large hitches on the High Wall (worst walking into Vordt's room), the Undead
+Settlement close to unplayable, the Cemetery of Ash fine. Not measured in game (the PC was offline), so what
+follows is read from the converter and from JortPob, and the first fix is the one deviation from both that scales
+with a map's size:
+
+- The texture binder's low detail entry (`name_l`) was the full texture a second time. JortPob's is half size
+  (`Common/DDS.cs` Scale), and the PartsDrawParam row asked for full textures within 256 m, which is most of a DS3
+  map. So every texture of a map sat in graphics memory twice at full size. `MapTextures.BuildBinder` now writes
+  the low copy without its largest mip level (`DdsMips`: DS3's own bytes, nothing re-encoded), and the row asks
+  for full textures within 128 m (`MapDrawParams.TextureDistance`).
+- Fallback `map-texture-detail`: B halves the full copies too (`--half-textures`), C is 1.0.299's behaviour
+  (`--full-low-textures`).
+
+The port log now says what each map holds, so the next look at performance starts from numbers:
+`texture memory mXX: N textures, X MB full detail + Y MB low detail`, `load: N models, meshes, vertices,
+triangles`, and the collision and navmesh lines end with the megabytes the game has to read.
+
+Not changed, and the next suspects if a map still hitches:
+
+- Collision and navmesh are XML tagfiles, some 55 times the size of DS3's binary (a 4.7 MB file is 260 MB of XML
+  the game parses). JortPob ships XML and calls binary "worse in engine" without saying how; fallback
+  `map-collision` B writes binary and is untested in game.
+- Every map piece draws from everywhere (no draw groups, unlimited draw distance, no detail switch by distance),
+  including DS3's far stand-in pieces. DS3 culls by draw group (`map-groups` B, whose mapping onto Elden Ring's
+  three mask arrays is unconfirmed), and its models carry lower detail triangle lists the row never switches to
+  (counted on the `load:` line).
+- Enemies that can't find a path (the navmesh's links are a separate problem) ask again every few seconds.
 
 ### Event scripts
 
