@@ -302,6 +302,20 @@ Try the next option if: Part of a DS3 map is missing since 1.0.300 (a wall, a fl
 - **A: Left out (default).** DS3 keeps pieces in its maps that are never drawn as scenery: low detail doubles of whole areas that only water reflections show, flat cards and boxes that only cast shadows, and pieces of another state of the map. They are left out. Work\reports\map-pieces-<map>.tsv lists every piece and why it was left out.
 - **B: Kept as ordinary pieces.** Every DS3 map piece is drawn (port-maps --helper-pieces), as in every build up to 1.0.299: blank slabs and blurry doubles of the ground and rocks stand in the maps, but nothing is missing. (`port-maps --helper-pieces`)
 
+### DS3's low-detail stand-ins (`map-stand-ins`, rebuilds the content)
+
+Try the next option if: A far part of a DS3 map is missing (a castle wall, a hall or a tower you could see from a distance), or blocky slabs and steps with stretched textures are back.
+
+- **A: Left out where detailed pieces stand (default).** DS3 shows a far area as one blocky piece with a stretched "low" texture, and only from where its detailed pieces are not drawn. The port draws everything at once, so such a stand-in is left out when detailed pieces DS3 never shows together with it stand inside it. One with nothing detailed under it (Lothric Castle seen from the High Wall) stays. The port log lists every stand-in and why it was kept or left out.
+- **B: Kept.** Every stand-in is drawn (port-maps --stand-ins), as in every build before this option: blocky slabs and steps overlap the detailed scenery, but nothing far away is missing. (`port-maps --stand-ins`)
+
+### Colours of light and fog in the DS3 maps (`map-atmosphere`, rebuilds the content)
+
+Try the next option if: A DS3 map looks washed out, too foggy, too clear, or wrongly coloured since the maps took DS3's colours.
+
+- **A: DS3's colours (default).** Each map's sun and fog take DS3's colours and sun angle, the fog is as thick as Stormveil Castle's, and the colosseum's colour grading is off. How bright each light is stays Elden Ring's.
+- **B: The colosseum's own.** The map keeps the Elden Ring colosseum's colour, fog and sun settings (port-maps --host-atmosphere), as in every build before this option: a red tint on map 2 and thick golden fog on map 1. (`port-maps --host-atmosphere`)
+
 ### How enemies find their way in the DS3 maps (`map-navmesh`, rebuilds the content)
 
 Try the next option if: A DS3 map crashes or hangs while loading since launcher 1.0.300, enemies stand still or refuse to cross ground they should walk on, or they walk through closed doors.

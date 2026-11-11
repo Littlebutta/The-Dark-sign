@@ -159,6 +159,23 @@ looks like piece DrawGroups against collision DisplayGroups, each collision owni
 struct, which is not what `--ds3-groups` writes), and far scenery (m800000 mountain tiles 1 km below the map, the
 m9xxxxx views of other maps), which is unlit and gets no distance fog.
 
+**Low-detail stand-ins.** DS3 shows a far area (a hall, a castle wall, a tower) as one blocky piece with a stretched
+texture named `..._low_...`, drawn only from the collisions where the detailed pieces it stands for are not. With
+every piece drawn from everywhere, map 2 showed those slabs and steps over its detailed scenery (2026-11-11 playtest
+of 1.0.307). `MapStandIns` leaves out a piece that is mostly low texture when at least 3 detailed pieces stand inside
+its box, none of them drawn from a collision that draws it, holding a quarter of its vertices. Measured on the real
+layouts: m30_00's m900xxx stand-ins have 400 to 1,700 pieces they are never drawn with, while m30_00's m980xxx
+(Lothric Castle's outside) and every low piece of m40_00 share a collision with all other pieces, so they stay.
+The port log lists each judged piece; fallback `map-stand-ins` B (`--stand-ins`) keeps them all.
+
+**Atmosphere.** A slot used to keep its colosseum's gparam: Caelid's red volumetric fog lit at 1.6 on map 2,
+Leyndell's golden colour grading (LUT 101) and fog out to 2 km on map 1. `MapAtmosphere` writes the slot's
+`/param/drawparam/mAA_BB_0000.gparam.dcx` from the host's: the sun angle and the colours of directional lights 0 and
+1 from DS3's light set 0 (the set nearly every DS3 piece names), with Elden Ring's strengths; the volumetric fog's
+colours from DS3's fog 0 and its amounts from Stormveil (m10_00, first time of day), with the height fog starting
+where one in twenty of the map's enemies and player points stand lower; colour grading off. Fallback
+`map-atmosphere` B (`--host-atmosphere`) keeps the host's file.
+
 ### Sky
 
 Elden Ring keeps a second layout beside every legacy map, index 99 (`m45_02_00_99.msb` for `m45_02_00_00`): the

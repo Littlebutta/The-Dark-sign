@@ -37,6 +37,12 @@ public static class MapPorter
         /// <summary>--helper-pieces: DS3's reflection proxies, shadow casters and off-layer pieces stay in the map as
         /// ordinary pieces (fallback "map-helper-pieces" B; see <see cref="MsbPort.HelperKind"/>).</summary>
         public bool HelperPieces { get; set; }
+        /// <summary>--stand-ins: DS3's low-detail stand-ins stay in the map on top of the detailed pieces they stand
+        /// for (fallback "map-stand-ins" B; see <see cref="MapStandIns"/>).</summary>
+        public bool StandIns { get; set; }
+        /// <summary>--host-atmosphere: the slot keeps its Elden Ring colosseum's colour, fog and sun settings untouched
+        /// (fallback "map-atmosphere" B; see <see cref="MapAtmosphere"/>).</summary>
+        public bool HostAtmosphere { get; set; }
         /// <summary>
         /// --host-sky: the host's distant view (its sky, the Erdtree) is left in place over the DS3 map, as in every
         /// build up to 1.0.299 (fallback "map-sky" B; see <see cref="MapDistantView"/>).
@@ -91,6 +97,8 @@ public static class MapPorter
                     case "--host-lighting": o.HostLighting = true; break;
                     case "--host-sky": o.HostSky = true; break;
                     case "--helper-pieces": o.HelperPieces = true; break;
+                    case "--stand-ins": o.StandIns = true; break;
+                    case "--host-atmosphere": o.HostAtmosphere = true; break;
                     case "--half-textures": o.TextureDetail = MapTextures.Detail.Half; break;
                     case "--full-low-textures": o.TextureDetail = MapTextures.Detail.FullLow; break;
                     case "--host-navmesh-list": o.HostNavmeshList = true; break;
@@ -114,7 +122,8 @@ public static class MapPorter
     /// count, size in metres, albedo texture). Sorted so the largest odd pieces (unlit, left out, few vertices)
     /// are easy to find with a filter.
     /// </summary>
-    public static string PieceReport(MSB3 ds3, MapModelPort models, IReadOnlySet<string> missingModels, bool helperPieces)
+    public static string PieceReport(MSB3 ds3, MapModelPort models, IReadOnlySet<string> missingModels, bool helperPieces,
+        IReadOnlySet<string>? standIns = null)
     {
         var inv = System.Globalization.CultureInfo.InvariantCulture;
         string V(Vector3 v) => string.Create(inv, $"{v.X:F0},{v.Y:F0},{v.Z:F0}");
@@ -127,6 +136,7 @@ public static class MapPorter
             models.ModelMeshes.TryGetValue(number, out var meshes);
             var status = !helperPieces && MsbPort.HelperKind(p, layerOk) is { } helper ? "left out: " + helper
                 : missingModels.Contains(p.ModelName) ? "left out: no mesh the port can draw"
+                : standIns?.Contains(p.Name) == true ? "left out: low detail stand-in"
                 : "written";
             var size = meshes is { Count: > 0 } ? meshes.Select(m => m.Size).Aggregate(Vector3.Max) : Vector3.Zero;
             sb.Append(p.Name).Append('\t').Append(p.ModelName).Append('\t').Append(status).Append('\t')
@@ -378,6 +388,7 @@ public static class MapPorter
         {
             Delete(Local(MsbPath(id)));
             Delete(Local(MsbPath(MapDistantView.Of(id))));
+            Delete(Local(MapAtmosphere.GparamPath(id)));
             Delete(Local(MapEvents.ScriptPath(id)));
             var folder = Local($"/map/{id.AreaFolder}/{id}/x")[..^2];
             if (Directory.Exists(folder))
@@ -599,11 +610,36 @@ public static class MapPorter
         if (models.LeftOut.Count > 0)
             report.AppendLine($"  meshes left out (no Elden Ring material for them yet): {models.LeftOut.Values.Sum()} ("
                               + string.Join(", ", models.LeftOut.OrderByDescending(k => k.Value).Select(k => $"{k.Key} x{k.Value}")) + ")");
+        // DS3's low-detail stand-ins, judged now that every model's meshes are known. A failure keeps them all.
+        var standIns = new HashSet<string>(StringComparer.Ordinal);
+        if (options.StandIns)
+            report.AppendLine("  low-detail stand-ins: kept (--stand-ins)");
+        else if (copied > 0 || test != PieceTest.None)
+            report.AppendLine("  low-detail stand-ins: not judged in a copied or test map");
+        else
+        {
+            try
+            {
+                bool layerOk = MsbPort.BaseLayerMeans(ds3Msb);
+                var skip = ds3Msb.Parts.MapPieces
+                    .Where(p => missingModels.Contains(p.ModelName) || (!options.HelperPieces && MsbPort.HelperKind(p, layerOk) is not null))
+                    .Select(p => p.Name).ToHashSet(StringComparer.Ordinal);
+                var judged = MapStandIns.Find(ds3Msb, models.ModelMeshes, skip);
+                standIns = judged.LeftOut;
+                report.AppendLine("  " + judged.Summary);
+                foreach (var line in judged.Lines)
+                    report.AppendLine("    " + line);
+            }
+            catch (Exception ex) when (ex is not OutOfMemoryException)
+            {
+                report.AppendLine($"  low-detail stand-ins: FAILED ({ex.Message}); all kept");
+            }
+        }
         try
         {
             var piecesReport = ctx.WorkPath("reports", $"map-pieces-{erId}.tsv");
             Directory.CreateDirectory(Path.GetDirectoryName(piecesReport)!);
-            File.WriteAllText(piecesReport, PieceReport(ds3Msb, models, missingModels, options.HelperPieces));
+            File.WriteAllText(piecesReport, PieceReport(ds3Msb, models, missingModels, options.HelperPieces, standIns));
             report.AppendLine($"  piece report: Work\\reports\\{Path.GetFileName(piecesReport)} (every DS3 map piece: where it is, how big, its materials, and why it was left out)");
         }
         catch (Exception ex)
@@ -706,7 +742,9 @@ public static class MapPorter
         // Drop what has no model, then write the layout.
         var msb = layout.Msb;
         msb.Parts.MapPieces.RemoveAll(p => missingModels.Contains(p.ModelName));
-        msb.Models.MapPieces.RemoveAll(m => missingModels.Contains(m.Name));
+        msb.Parts.MapPieces.RemoveAll(p => standIns.Contains(p.Name));
+        var usedModels = msb.Parts.MapPieces.Select(p => p.ModelName).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        msb.Models.MapPieces.RemoveAll(m => missingModels.Contains(m.Name) || (standIns.Count > 0 && !usedModels.Contains(m.Name)));
         msb.Parts.Collisions.RemoveAll(p => missingCollisions.Contains(p.ModelName));
         msb.Parts.ConnectCollisions.RemoveAll(p => missingCollisions.Contains(p.ModelName)
                                                    || msb.Parts.Collisions.All(c => c.Name != p.CollisionName));
@@ -744,6 +782,16 @@ public static class MapPorter
         catch (Exception ex)
         {
             report.AppendLine($"  sky: FAILED: {ex.Message}");
+        }
+        // Colours of light and air: DS3's instead of the colosseum's. A failure leaves the host's.
+        try
+        {
+            report.AppendLine("  " + MapAtmosphere.Write(ctx, ds3, er, ds3Id, erId, hostId, ds3Msb, options.HostAtmosphere));
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            try { File.Delete(ctx.ModPath(ModParts(MapAtmosphere.GparamPath(erId)))); } catch (IOException) { }
+            report.AppendLine($"  atmosphere: FAILED: {ex.Message}; the host's colours stay");
         }
         File.WriteAllBytes(ctx.ModPath(ModParts(MsbPath(erId))), DCX.Compress(msb.Write(), msbCompression));
         report.AppendLine($"  written: {msb.Parts.MapPieces.Count} map pieces, {msb.Parts.Collisions.Count} collisions, {msb.Parts.Players.Count} player points, {msb.Parts.Enemies.Count} enemies, "
