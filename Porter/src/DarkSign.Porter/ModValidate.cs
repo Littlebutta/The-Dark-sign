@@ -276,6 +276,11 @@ public static partial class ModValidate
             if (binder.Files.Zip(binder.Files.Skip(1)).FirstOrDefault(p => p.First.ID >= p.Second.ID) is { First: not null } bad)
                 r.Error($"{name}: binder IDs out of order at {bad.First.ID} >= {bad.Second.ID} (a binder entry out of ID order hung the game at load)");
 
+        if (anims is not null && anims.Files.Count > ClipBudget.AnimFileLimit)
+            r.Error($"chr\\c0000_a9x.anibnd.dcx holds {anims.Files.Count} files; Elden Ring closes at startup above {ClipBudget.AnimFileLimit} (see ClipBudget.AnimFileLimit)");
+        else if (anims is not null)
+            r.Info($"c0000_a9x: {anims.Files.Count} files of {ClipBudget.AnimFileLimit} the game takes");
+
         var portedSounds = new List<(int Section, int Animation, int Kind, int Id)>();
         var portedEffects = new List<(int Section, int Animation, int Id)>();
         if (main is not null && anims is not null)
@@ -303,6 +308,11 @@ public static partial class ModValidate
                 {
                     switch (anim.MiniHeader)
                     {
+                        case TAE.Animation.AnimMiniHeader.Standard { ImportsHKX: true } shared:
+                            imports++;
+                            if (!animIds.Contains(checked(1_000_000_000 + shared.ImportHKXSourceAnimID)))
+                                r.Error($"a{section:D3}_{anim.ID:D6}: plays the file of {shared.ImportHKXSourceAnimID}, which c0000_a9x doesn't have");
+                            break;
                         case TAE.Animation.AnimMiniHeader.Standard:
                             own++;
                             int id = checked(1_000_000_000 + section * 1_000_000 + (int)anim.ID);

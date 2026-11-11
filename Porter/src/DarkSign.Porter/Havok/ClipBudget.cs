@@ -19,6 +19,20 @@ internal static class ClipBudget
     /// <summary>IDs kept back for the weapon arts, which are built after the movesets (a few clips per art).</summary>
     public const int ArtReserve = 2500;
 
+    /// <summary>
+    /// The most files one animation binder may hold. At startup Elden Ring 2.7.2 lists a binder's files into a
+    /// growing array of (index, ID) pairs (eldenring.exe+0x229890); the array grows by half each time it is full,
+    /// and the growth from 5,395 to 8,092 entries fails ("Transaction failed", DL_PANIC at +0x1EBCEF9, right after
+    /// c0000_a9x.anibnd and c0000.anibnd are read). Launcher 1.0.297/1.0.299 with all 111 movesets put about 5,600
+    /// files in c0000_a9x and closed at startup three times (dumps 13188, 5188, 18028: the array full at 0x1513 =
+    /// 5,395, asking for 0x1F9C = 8,092); the same build with 62 movesets, about 4,440 files, runs. This is what
+    /// "sections above 255 crash" was on 2026-11-07 too: the number of files, not the section numbers.
+    /// </summary>
+    public const int AnimFileLimit = 5395;
+
+    /// <summary>Files kept back in the binder for the weapon arts, built after the movesets (421 art moves in 1.0.299).</summary>
+    public const int ArtFileReserve = 600;
+
     public enum Mode { None, Lean, Full }
 
     /// <summary>A moveset wanting IDs, in priority order: what a full copy and a lean build cost.</summary>
