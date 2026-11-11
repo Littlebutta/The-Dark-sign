@@ -414,8 +414,7 @@ public static partial class MovesetPort
                 var templateTae = TAE.Read(templateTaeFile.Bytes);
                 var tae = TAE.Read(templateTaeFile.Bytes);
                 tae.ID = 2000 + section;
-                var erEventLengths = templateTae.Animations.SelectMany(a => a.Events).GroupBy(e => e.Type)
-                    .ToDictionary(g => g.Key, g => g.First().GetParameterBytes(false).Length);
+                var erEventLengths = EventLengths(templateTae.Animations.SelectMany(a => a.Events));
                 // An event group of each type anywhere in the template's TAE, for DS3 events whose type this move's
                 // Elden Ring template doesn't use (they were dropped: e.g. a DS3 move with an extra effect or model event).
                 var templateGroups = templateTae.Animations.SelectMany(a => a.Events).Where(e => e.Group is not null)
@@ -843,7 +842,7 @@ public static partial class MovesetPort
 
     /// <summary>DS3's events for a move, with Elden Ring's sound and effect events moved to DS3's first hit.</summary>
     private static List<TAE.Event> MergeEvents(List<TAE.Event> ds3Events, TAE.Animation anim, Dictionary<int, TAE.EventGroup> templateGroups,
-        Dictionary<int, int> erLengths, EffectEvents effectEvents, FxrPort.Result effects, SoundEvents sounds, float ds3Duration, out MoveTiming.Stretch stretch)
+        Dictionary<int, HashSet<int>> erLengths, EffectEvents effectEvents, FxrPort.Result effects, SoundEvents sounds, float ds3Duration, out MoveTiming.Stretch stretch)
     {
         var erEvents = anim.Events;
         var merged = new List<TAE.Event>();
@@ -957,7 +956,7 @@ public static partial class MovesetPort
                 _bulletEvents++;
                 continue;
             }
-            if (ErOwned(e.Type) || !erLengths.TryGetValue(e.Type, out var length) || length != bytes.Length)
+            if (ErOwned(e.Type) || !erLengths.TryGetValue(e.Type, out var lengths) || !lengths.Contains(bytes.Length))
                 continue;
             if (!TryGroup(e.Type, out var group))
                 continue;
@@ -1167,6 +1166,16 @@ public static partial class MovesetPort
 
     private static int NearestHit(List<float> hits, float time) =>
         Enumerable.Range(0, hits.Count).MinBy(h => Math.Abs(hits[h] - time));
+
+    /// <summary>
+    /// Every parameter length the template section's events of each type have. A DS3 event is copied as it is only
+    /// when Elden Ring writes its type at that length, and Elden Ring writes some types at two: the FP charge of a
+    /// weapon art (330, all zeros) is 16 bytes like DS3's in most moves and 24 in a few (Unsheathe's stance light
+    /// a614 40060, Rellana's a918). Builds up to 1.0.276 kept only the first length met, so on the stance template
+    /// a614 that was 24 and every DS3 FP charge (16) was dropped: no attack of a ported stance art cost any FP.
+    /// </summary>
+    internal static Dictionary<int, HashSet<int>> EventLengths(IEnumerable<TAE.Event> events) =>
+        events.GroupBy(e => e.Type).ToDictionary(g => g.Key, g => g.Select(e => e.GetParameterBytes(false).Length).ToHashSet());
 
     private static bool ErOwned(int type) => EldenRingOnlyTypes.Contains(type) && !(Ds3JumpTables && BehaviourTypes.Contains(type));
 
