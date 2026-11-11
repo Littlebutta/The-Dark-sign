@@ -1233,7 +1233,15 @@ public static partial class ChrPort
         var textureOwners = ChrModel.TextureOwners(flver, x);
         int glowing = flver.Materials.Count(m => m.Textures.Any(tx => tx.Path.Length > 0 && tx.ParamName.Contains("Emissive", StringComparison.OrdinalIgnoreCase)
                                                                     && !ItemText.Leaf(tx.Path).StartsWith("SYSTEX", StringComparison.OrdinalIgnoreCase)));
+        // Materials whose colour texture the port does not find (another sampler name, or a path left to the DS3
+        // material file): they draw blank. Named here so one build report tells which enemies and why.
+        var blank = flver.Materials.Where(m => !m.Textures.Any(tx => tx.Path.Length > 0
+                && (tx.ParamName.EndsWith("g_DiffuseTexture", StringComparison.Ordinal) || tx.ParamName.EndsWith("_AlbedoMap_0", StringComparison.Ordinal))))
+            .Select(m => $"{Path.GetFileNameWithoutExtension(ItemText.Leaf(m.MTD))} [{string.Join(",", m.Textures.Select(tx => tx.ParamName + (tx.Path.Length > 0 ? "" : "=empty")))}]")
+            .Distinct(StringComparer.OrdinalIgnoreCase).ToList();
         var made = ChrModel.Convert(flver, templateFlver, x, n);
+        if (blank.Count > 0)
+            notes.Add($"FAIL textures: {blank.Count} kinds of DS3 material name no colour texture the port reads ({string.Join("; ", blank.Take(6))}{(blank.Count > 6 ? "; ..." : "")})");
         files.Materials.AddRange(made);
         notes.Add($"{flver.Meshes.Count} meshes, {flver.Materials.Count} DS3 materials on {made.Count} {(ChrModel.PlainMaterials ? "plain character" : "template")} materials"
                   + $" ({made.Count(m => m.AlphaTest)} cut-out, {flver.Materials.Count(m => ChrModel.MaskPrefix(m.Name).Length > 0)} with a display mask"
@@ -1265,6 +1273,12 @@ public static partial class ChrPort
             tpfs.Add(ChrModel.ConvertTpf(TPF.Read(f.Bytes), x, n, !ownFile));
         var texbnd = binders.Keys.Where(k => k.EndsWith(".texbnd.dcx", StringComparison.OrdinalIgnoreCase))
             .OrderBy(k => k.Contains("_h", StringComparison.OrdinalIgnoreCase) ? 0 : 1).FirstOrDefault();
+        (int W, int H) templateLargest = (0, 0);
+        if (texbnd is not null)
+            foreach (var f in binders[texbnd].Bnd.Files.Where(f => TPF.Is(f.Bytes)))
+                foreach (var tx in TPF.Read(f.Bytes).Textures.Where(tx => tx.Bytes.Length >= 20))
+                    if ((long)BitConverter.ToInt32(tx.Bytes, 16) * BitConverter.ToInt32(tx.Bytes, 12) > (long)templateLargest.W * templateLargest.H)
+                        templateLargest = (BitConverter.ToInt32(tx.Bytes, 16), BitConverter.ToInt32(tx.Bytes, 12));
         if (tpfs.Count > 0)
         {
             var merged = new TPF { Platform = TPF.TPFPlatform.PC, Encoding = 1, Flag2 = 3 };
@@ -1297,6 +1311,12 @@ public static partial class ChrPort
                 target.Files.Add(new BinderFile(like.Flags, target.Files.Max(f => f.ID) + 1, $"{folder}c{n:D4}_ds3.tpf", merged.Write()));
                 where = texbnd is not null ? "in a second file of the template's texture binder" : "in the character binder (the template has no texture binder)";
             }
+            // Sizes, so a "low resolution" report can be told from small DS3 textures: the largest texture in the
+            // file the game reads at full quality, the file's size, and the template's own largest for comparison.
+            static (int W, int H) Size(byte[] dds) => dds.Length >= 20 ? (BitConverter.ToInt32(dds, 16), BitConverter.ToInt32(dds, 12)) : (0, 0);
+            var largest = merged.Textures.Select(tx => Size(tx.Bytes)).MaxBy(sz => (long)sz.W * sz.H);
+            notes.Add($"largest DS3 texture {largest.W}x{largest.H}, {merged.Textures.Sum(tx => (long)tx.Bytes.Length) / 1048576} MB in all"
+                      + (templateLargest.W > 0 ? $" (the template's largest was {templateLargest.W}x{templateLargest.H})" : ""));
             notes.Add($"{merged.Textures.Count} DS3 textures {where}" + (textureOwners.Count > 0 ? $" (some from {string.Join(", ", textureOwners.Select(o => $"c{o:D4}"))})" : ""));
         }
         var have = tpfs.SelectMany(p => p.Textures).Select(tx => tx.Name).ToHashSet(StringComparer.OrdinalIgnoreCase);
