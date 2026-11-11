@@ -69,7 +69,26 @@ static uint32_t g_next_entity;
 typedef struct {
     uintptr_t chr;
     uint32_t entity;
+    /* The watch (spawn_watch): what was last written to the log about this character. */
+    ULONGLONG seen;   /* when it was last sampled */
+    ULONGLONG logged; /* when a line was last written */
+    int32_t hp;
+    float pos[3];
+    int still;        /* 1 once it was logged as standing still */
+    int32_t anim[2];
 } Spawned;
+
+/* Watch: how often a spawned character is sampled, how far it must move between samples to count as moving, and how
+   often a moving one is written down. */
+#define WATCH_SAMPLE_MS 500
+#define WATCH_MOVE_M 0.03f
+#define WATCH_LINE_MS 3000
+#define DATA_HP_MAX 0x13C
+/* Two places an animation ID has been reported at (not confirmed for this game version: logged raw, as a?/b?). */
+#define MODULES_TIMEACT 0x18
+#define TIMEACT_ANIM 0x20
+#define MODULES_EVENT 0x58
+#define EVENT_ANIM 0xC8
 static Spawned g_spawned[MAX_TRACKED];
 static int g_spawned_len;
 
@@ -349,6 +368,8 @@ static int read_player_place(uintptr_t player, float pos[3], float quat[4])
            read_mem(physics + PHYSICS_ORIENTATION, quat, 4 * sizeof(float));
 }
 
+static void spawn_watch(void);
+
 static void track(uintptr_t chr, uint32_t entity)
 {
     /* Forget characters that are gone, then add this one. */
@@ -360,7 +381,7 @@ static void track(uintptr_t chr, uint32_t entity)
     }
     g_spawned_len = kept;
     if (g_spawned_len < MAX_TRACKED)
-        g_spawned[g_spawned_len++] = (Spawned){chr, entity};
+        g_spawned[g_spawned_len++] = (Spawned){.chr = chr, .entity = entity};
 }
 
 /* Hands one request to the game's debug creator. */
@@ -405,6 +426,7 @@ void dks_spawn_update(void)
 {
     if (InterlockedExchange(&g_clear_requested, 0))
         dks_spawn_clear();
+    spawn_watch();
     if (g_pending_open && !g_active && g_pending_spawned && GetTickCount64() - g_pending_spawned > SPAWN_SAFE_MS)
         pending_clear();
     if (!g_active && !g_queue_len)
@@ -461,6 +483,60 @@ void dks_spawn_update(void)
 int dks_spawn_pending(void) { return g_queue_len + g_active; }
 
 static uintptr_t chr_data(uintptr_t chr) { return read_ptr(read_ptr(chr + CHR_MODULES) + MODULES_DATA); }
+
+/* The watch (RULE 4): what each spawned character is doing, written to the log when it changes: health after a hit,
+   when it stops moving and when it moves again, and when its position stops being a number. An enemy that "freezes
+   and can't be hit" shows here as alive or dead, standing or not, so the next look at the log says which. */
+static void spawn_watch(void)
+{
+    ULONGLONG now = GetTickCount64();
+    for (int i = 0; i < g_spawned_len; i++) {
+        Spawned *s = &g_spawned[i];
+        if (now - s->seen < WATCH_SAMPLE_MS)
+            continue;
+        uint32_t id = 0;
+        if (!is_object(s->chr) || !read_mem(s->chr + CHR_ENTITY_ID, &id, 4) || id != s->entity)
+            continue;
+        int first = s->seen == 0;
+        s->seen = now;
+        uintptr_t modules = read_ptr(s->chr + CHR_MODULES), data = read_ptr(modules + MODULES_DATA);
+        int32_t hp = 0, hp_max = 0, anim[2] = {-1, -1};
+        float pos[3] = {0}, quat[4];
+        read_mem(data + DATA_HP, &hp, 4);
+        read_mem(data + DATA_HP_MAX, &hp_max, 4);
+        int placed = read_player_place(s->chr, pos, quat);
+        read_mem(read_ptr(modules + MODULES_TIMEACT) + TIMEACT_ANIM, &anim[0], 4);
+        read_mem(read_ptr(modules + MODULES_EVENT) + EVENT_ANIM, &anim[1], 4);
+        float dx = pos[0] - s->pos[0], dy = pos[1] - s->pos[1], dz = pos[2] - s->pos[2];
+        float moved = dx * dx + dy * dy + dz * dz;
+        int bad = !placed || pos[0] != pos[0] || pos[1] != pos[1] || pos[2] != pos[2] || moved != moved;
+        int moving = !bad && moved > WATCH_MOVE_M * WATCH_MOVE_M;
+        const char *what = NULL;
+        if (first)
+            what = "spawned";
+        else if (hp != s->hp)
+            what = hp <= 0 ? "died" : hp < s->hp ? "hit" : "healed";
+        else if (bad && !s->still)
+            what = "position is not a number";
+        else if (!moving && !s->still)
+            what = "stands still";
+        else if (moving && s->still)
+            what = "moves again";
+        else if (moving && now - s->logged >= WATCH_LINE_MS)
+            what = "moving";
+        else if (!moving && (anim[0] != s->anim[0] || anim[1] != s->anim[1]) && now - s->logged >= WATCH_SAMPLE_MS * 2)
+            what = "still, new animation";
+        if (what) {
+            dks_log("watch: %u %s: hp %d/%d (was %d), at %.1f %.1f %.1f, a? %d b? %d", s->entity, what, hp, hp_max, first ? hp : s->hp,
+                    pos[0], pos[1], pos[2], anim[0], anim[1]);
+            s->logged = now;
+        }
+        s->still = !moving;
+        s->hp = hp;
+        s->pos[0] = pos[0], s->pos[1] = pos[1], s->pos[2] = pos[2];
+        s->anim[0] = anim[0], s->anim[1] = anim[1];
+    }
+}
 
 int dks_spawn_alive(void)
 {

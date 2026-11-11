@@ -29,9 +29,11 @@ public static class SpawnList
     /// </summary>
     /// <param name="portedModels">The models the port built and wrote (c7xxx); any other DS3 line is on an Elden Ring body.</param>
     public static List<string> Lines(IEnumerable<string> chrMapLines, IEnumerable<EnemyPort.ErEnemy> erCatalog, ISet<string> ds3Bosses,
-        ISet<string> portedModels)
+        ISet<string> portedModels, IEnumerable<string>? testLines = null)
     {
+        // The test set first (ChrPort.TestPlans): ready-made lines, at the top where they are easy to find.
         var lines = new List<string> { Header };
+        lines.AddRange(testLines ?? []);
         var ds3 = new List<(bool Boss, string Name, string Line)>();
         foreach (var line in chrMapLines)
         {
@@ -57,9 +59,9 @@ public static class SpawnList
     }
 
     public static void Write(PorterContext ctx, IEnumerable<string> chrMapLines, IEnumerable<EnemyPort.ErEnemy> erCatalog, ISet<string> ds3Bosses,
-        ISet<string> portedModels)
+        ISet<string> portedModels, IEnumerable<string>? testLines = null)
     {
-        var lines = Lines(chrMapLines, erCatalog, ds3Bosses, portedModels);
+        var lines = Lines(chrMapLines, erCatalog, ds3Bosses, portedModels, testLines);
         File.WriteAllLines(ctx.ModPath(FileName), lines);
         Console.WriteLine($"enemies: F1 spawn list: {lines.Count(l => l.StartsWith("DS3\t"))} DS3 ({lines.Count(l => l.StartsWith("DS3\t") && l.EndsWith("\tds3"))} with their DS3 model), " +
                           $"{lines.Count(l => l.StartsWith("ER\t"))} Elden Ring characters");

@@ -163,6 +163,18 @@ public static class EnemySelfTest
         var stats = ChrPort.MapLines(plan with { Method = ChrPort.Method.Stats }, rows, 43000000).First().Split('\t');
         Check("method C (stats) points the map at the template's model", stats[2] == "c4300");
 
+        // The test set: one fully ported character built stage by stage, IDs from the top of the pool.
+        var jailer = plan with { Ds3 = new ChrPort.Ds3Chr(ChrPort.TestChrs[0], "Jailer", false, [223000]), Method = ChrPort.Method.Full, NewChr = 7001 };
+        var staged = ChrPort.TestPlans([plan with { NewChr = 7000 }, jailer], n => n == 7998);
+        Check("test set: five stages before the full port, on free IDs from c7999 down, for the test character only",
+            staged.Select(t => t.Stage).SequenceEqual([ChrPort.Stage.Clone, ChrPort.Stage.Model, ChrPort.Stage.Skeleton, ChrPort.Stage.Moves, ChrPort.Stage.Events])
+            && staged.Select(t => t.NewChr).SequenceEqual([7999, 7997, 7996, 7995, 7994]) && staged.All(t => t.Ds3.Chr == ChrPort.TestChrs[0]));
+        Check("test set: none for a test character left on an Elden Ring body",
+            ChrPort.TestPlans([jailer with { Method = ChrPort.Method.Stats }], _ => false).Count == 0);
+        var withTests = SpawnList.Lines([], [knight], new HashSet<string>(), new HashSet<string>(),
+            [SpawnList.Line("DS3", "c7999", 79990000, 1, false, "TEST 1 Jailer: Elden Ring template files only", true)]);
+        Check("spawn list: test lines come first, shown with the DS3 models", withTests.Count == 3 && withTests[1].StartsWith("DS3\tc7999\t79990000\t") && withTests[1].EndsWith("\tds3"));
+
         // The F1 menu's spawn list (TestMenu/src/spawn.c parses these lines).
         var spawn = SpawnList.Lines(ChrPort.MapLines(plan, rows, 43000000), [knight, knight, hound with { Boss = true }], new HashSet<string>(),
             new HashSet<string> { "c7000" });

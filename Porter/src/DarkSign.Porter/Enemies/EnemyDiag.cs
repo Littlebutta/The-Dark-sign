@@ -10,7 +10,9 @@ namespace DarkSign.Porter.Enemies;
 /// Diagnostics for the enemy port (RULE 4), written to Work\reports\enemy-diag:
 /// "enemy-diag survey" lists every Elden Ring and DS3 character's animation skeleton (bones with parents, height)
 /// and animation IDs, the facts the template choice and the animation fallbacks are made from;
-/// "enemy-diag unpack &lt;file&gt;..." writes built or game files decompressed to Work\extract\MOD, to look at elsewhere.
+/// "enemy-diag unpack &lt;file&gt;..." writes built or game files decompressed to Work\extract\MOD, to look at elsewhere;
+/// "enemy-diag tae &lt;anibnd&gt; [from-to...]" lists a decompressed animation binder's TAE entries with their events, and
+/// each animation file's length, tracks and blend hint (no game needed: it runs on files staged into a cloud thread).
 /// </summary>
 public static partial class EnemyDiag
 {
@@ -64,12 +66,14 @@ public static partial class EnemyDiag
             .OrderByDescending(g => g.Count()).Select(g => $"{g.Count()} x {g.Key}")));
         foreach (var n in notes)
             Console.WriteLine($"note: {n}");
+        // "build" also builds the test set's stages of the characters named (ChrPort.TestPlans).
+        var tests = ChrPort.TestPlans(plans, c => er.Contains($"/chr/c{c:D4}.chrbnd.dcx"));
         if (args.Count >= 2 && args[0].Equals("build", StringComparison.OrdinalIgnoreCase))
-            foreach (var plan in plans.Where(p => args.Skip(1).Any(a => a.Equals($"c{p.Ds3.Chr:D4}", StringComparison.OrdinalIgnoreCase))))
+            foreach (var plan in plans.Concat(tests).Where(p => args.Skip(1).Any(a => a.Equals($"c{p.Ds3.Chr:D4}", StringComparison.OrdinalIgnoreCase))))
                 try
                 {
                     var files = ChrPort.BuildFiles(ctx, er, ds3, plan);
-                    Console.WriteLine($"build c{plan.Ds3.Chr:D4} on c{plan.TemplateChr:D4} ({plan.Method}): {files.Outputs.Count} files, {files.Outputs.Sum(o => (long)o.Bytes.Length)} bytes; {files.Note}");
+                    Console.WriteLine($"build c{plan.Ds3.Chr:D4} on c{plan.TemplateChr:D4} as c{plan.NewChr:D4} ({plan.Method}, stage {plan.Stage}): {files.Outputs.Count} files, {files.Outputs.Sum(o => (long)o.Bytes.Length)} bytes; {files.Note}");
                 }
                 catch (Exception ex) when (ex is not OutOfMemoryException)
                 {
@@ -180,6 +184,82 @@ public static partial class EnemyDiag
             done++;
         }
         return done > 0 ? 0 : 1;
+    }
+
+    /// <summary>
+    /// "enemy-diag tae &lt;anibnd&gt; [from-to|id ...]": every TAE entry of a decompressed animation binder in the given
+    /// ID ranges (all without one) with what it plays and its events (type, start-end, parameter bytes), plus the
+    /// animation files the binder holds. For comparing a built character's damage, death and attack moves with its
+    /// template's and DS3's.
+    /// </summary>
+    public static int Tae(string path, List<string> ranges)
+    {
+        if (!File.Exists(path))
+        {
+            Console.Error.WriteLine($"not found: {path}");
+            return 1;
+        }
+        var wanted = ranges.Select(r => r.Split('-')).Select(p => (From: long.Parse(p[0]), To: long.Parse(p[^1]))).ToList();
+        bool Wanted(long id) => wanted.Count == 0 || wanted.Any(w => id % 1_000_000 >= w.From && id % 1_000_000 <= w.To);
+        TAE.ValidateEventBank = false;
+        var bnd = BND4.Read(File.ReadAllBytes(path));
+        var hkx = bnd.Files.Select(f => ItemText.Leaf(f.Name)).Where(n => AnimLeaf().IsMatch(n)).ToList();
+        Console.WriteLine($"{Path.GetFileName(path)}: {bnd.Files.Count} files, {hkx.Count} animation files");
+        var compendium = bnd.Files.FirstOrDefault(f => f.Name.EndsWith(".compendium", StringComparison.OrdinalIgnoreCase))?.Bytes;
+        foreach (var name in hkx.Where(n => Wanted(long.Parse(AnimLeaf().Match(n).Groups[2].Value))))
+        {
+            var bytes = bnd.Files.First(f => ItemText.Leaf(f.Name) == name).Bytes;
+            Console.WriteLine($"  file {name} {bytes.Length} {ClipFacts(bytes, compendium)}");
+        }
+        foreach (var file in bnd.Files.Where(f => f.Name.EndsWith(".tae", StringComparison.OrdinalIgnoreCase)))
+        {
+            TAE tae;
+            try { tae = TAE.Read(file.Bytes); }
+            catch (Exception ex) { Console.WriteLine($"{ItemText.Leaf(file.Name)}: unreadable ({ex.Message})"); continue; }
+            Console.WriteLine($"{ItemText.Leaf(file.Name)}: {tae.Animations.Count} entries");
+            foreach (var anim in tae.Animations.Where(a => Wanted(a.ID)))
+            {
+                string plays = anim.MiniHeader switch
+                {
+                    TAE.Animation.AnimMiniHeader.ImportOtherAnim imp => $"plays entry {imp.ImportFromAnimID}",
+                    TAE.Animation.AnimMiniHeader.Standard { ImportsHKX: true } s => $"file of {s.ImportHKXSourceAnimID}",
+                    _ => "own file",
+                };
+                Console.WriteLine($" {anim.ID} ({plays}) {anim.Events.Count} events");
+                foreach (var e in anim.Events.OrderBy(e => e.StartTime))
+                    Console.WriteLine(FormattableString.Invariant($"    {e.Type,4} {e.StartTime:0.00}-{e.EndTime:0.00} {System.Convert.ToHexString(e.GetParameterBytes(false))}"));
+            }
+        }
+        return 0;
+    }
+
+    /// <summary>An Elden Ring animation file's length, bound tracks and blend hint ("" for a DS3 or unreadable file).</summary>
+    private static string ClipFacts(byte[] bytes, byte[]? compendium)
+    {
+        try
+        {
+            lock (AnimPort.HavokLock)
+            {
+                var container = AnimPort.Container((hkRootLevelContainer)AnimPort.ReadEr(bytes, compendium));
+                var binding = container.m_bindings.FirstOrDefault();
+                var anim = container.m_animations.FirstOrDefault();
+                return FormattableString.Invariant($"{anim?.m_duration ?? 0:0.00}s tracks {anim?.m_numberOfTransformTracks} bound {binding?.m_transformTrackToBoneIndices.Count} blend {binding?.m_blendHint}");
+            }
+        }
+        catch (Exception)
+        {
+        }
+        try
+        {
+            var hkx = SoulsAssetPipeline.Animation.HKX.Read(bytes, SoulsAssetPipeline.Animation.HKX.HKXVariation.HKXDS3, false);
+            var anim = hkx.DataSection.Objects.OfType<SoulsAssetPipeline.Animation.HKX.HKASplineCompressedAnimation>().FirstOrDefault();
+            var binding = hkx.DataSection.Objects.OfType<SoulsAssetPipeline.Animation.HKX.HKAAnimationBinding>().FirstOrDefault();
+            return FormattableString.Invariant($"{anim?.Duration ?? 0:0.00}s tracks {anim?.TransformTrackCount} bound {binding?.TransformTrackToBoneIndices.Size} blend {binding?.BlendHint} (DS3)");
+        }
+        catch (Exception)
+        {
+            return "";
+        }
     }
 
     /// <summary>World positions of a skeleton's bones in its rest pose.</summary>
