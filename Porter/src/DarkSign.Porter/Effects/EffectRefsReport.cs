@@ -111,7 +111,12 @@ public static class EffectRefsReport
         {
             Log($"  DS3 {d} {ds3Bullets[d]!.Name}: {NonZero(ds3Bullets[d]!)}");
             Log($"   -> ER {e}: {Diff(erBullets[e]!, bulletDefaults)}");
+            // The attack the bullet deals, as ported: where its power comes from decides whether it hurts at all.
+            if (er.Get("AtkParam_Pc")?[ParamDefaults.Int(erBullets[e]!, "atkId_Bullet")] is { } atk)
+                Log($"      attack {atk.ID}: " + string.Join(" ", new[] { "atkPhys", "atkMag", "atkFire", "atkThun", "atkDark", "atkPhysCorrection", "atkMagCorrection", "atkFireCorrection",
+                    "atkThunCorrection", "atkDarkCorrection", "isAddBaseAtk", "spEffectId0", "spEffectId1", "spEffectId2" }.Select(f => $"{f}={ParamDefaults.Cell(atk, f)?.Value}")));
         }
+        Log($"\n{attackPort.BulletBaseAttacks} bullet attacks take the weapon's attack power (percentages only in DS3)");
 
         Directory.CreateDirectory(ctx.WorkPath("reports", "diag"));
         var path = ctx.WorkPath("reports", "diag", "effect-refs.txt");

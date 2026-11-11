@@ -42,6 +42,10 @@ public static partial class FxrPort
 
     internal enum Kind { Texture = 0, Model = 1, Anibnd = 2, Sound = 3 }
 
+    /// <summary>Fallback "weapon-effects-files" C: DARKSIGN_FXR_HELD_SOUNDS=1 keeps the sounds DS3 effects hold while
+    /// they live as they are, as in builds up to 1.0.282 (the hum of Friede's ice blade never stopped).</summary>
+    private static readonly bool HeldSoundsOnce = Environment.GetEnvironmentVariable("DARKSIGN_FXR_HELD_SOUNDS") != "1";
+
     private static readonly bool PortFxrSounds = Environment.GetEnvironmentVariable("DARKSIGN_FXR_SOUNDS") != "0";
 
     private static IEnumerable<int> FxrSounds(IEnumerable<int> ids) => ids.Where(id => id is > 0 and < 100_000_000).Distinct();
@@ -158,8 +162,14 @@ public static partial class FxrPort
         // Every texture file an effect needs: its own and its models'.
         IEnumerable<int> TexturesOf(FxrScript.Info info) =>
             info.Textures.Concat(info.Models.Where(modelTextures.ContainsKey).SelectMany(m => modelTextures[m])).Where(textures.ContainsKey).Distinct();
+        // Sounds an effect holds for as long as one of its nodes lives (the hum of Friede's ice blade): see fxr-port.js.
+        var held = effects.Where(e => e.Value.Info.HeldSounds is { Length: > 0 }).ToList();
+        if (held.Count > 0)
+            Console.WriteLine($"effects: {held.Count} DS3 effects hold a sound while they live ({string.Join(" ", held.Take(12).Select(e => $"f{e.Key}:s{e.Value.Info.HeldSounds![0]}"))}{(held.Count > 12 ? " ..." : "")}); " +
+                              (HeldSoundsOnce ? "ported to play once, because Elden Ring could not end them" : "kept held (DARKSIGN_FXR_HELD_SOUNDS=1)"));
         var mapJson = JsonSerializer.Serialize(new Dictionary<string, Dictionary<string, int>>
         {
+            ["once"] = HeldSoundsOnce ? new() { ["all"] = 1 } : [],
             ["sfx"] = effects.Keys.ToDictionary(id => id.ToString(), id => IdBase + id),
             [((int)Kind.Texture).ToString()] = textures.ToDictionary(t => t.Key.ToString(), t => t.Value),
             [((int)Kind.Model).ToString()] = models.ToDictionary(t => t.Key.ToString(), t => t.Value),
@@ -419,7 +429,7 @@ public static partial class FxrPort
     /// <summary>The fxr library, loaded once into a Jint engine.</summary>
     internal sealed class FxrScript
     {
-        public sealed record Info(int[] Sfx, int[] Textures, int[] Models, int[] Anibnds, int[] Sounds);
+        public sealed record Info(int[] Sfx, int[] Textures, int[] Models, int[] Anibnds, int[] Sounds, int[]? HeldSounds = null);
 
         private readonly Engine _engine;
         private readonly JsValue _inspect, _convert;

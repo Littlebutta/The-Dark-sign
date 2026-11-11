@@ -235,6 +235,8 @@ public static class Fallbacks
                 { PorterEnv = Env("DARKSIGN_FXR_SOUNDS", "0") },
             new("C", "DS3 and Elden Ring effects together", "Moves spawn DS3's effects and keep the template's Elden Ring trails and sparks too (DARKSIGN_KEEP_ER_EFFECTS=1), so a DS3 effect that doesn't show still leaves Elden Ring's instead of nothing.")
                 { PorterEnv = Env("DARKSIGN_KEEP_ER_EFFECTS", "1") },
+            new("D", "DS3 effects with held sounds", "An effect's sound that DS3 holds while the effect lives stays held, not played once (DARKSIGN_FXR_HELD_SOUNDS=1). Such a sound can keep playing after its effect ends.")
+                { PorterEnv = Env("DARKSIGN_FXR_HELD_SOUNDS", "1") },
             new("off", "Off (Elden Ring effects)", "Ported weapons keep the template's effects (DARKSIGN_DS3_EFFECT_EVENTS=0).")
                 { PorterEnv = Env("DARKSIGN_DS3_EFFECT_EVENTS", "0") },
         ]),
@@ -274,6 +276,10 @@ public static class Fallbacks
                 { PorterEnv = Env("DARKSIGN_RESIDENT_ALL", "1") },
             new("F", "Projectile events as DS3 writes them", "As A, but the event that fires a projectile is copied from DS3 byte for byte (DARKSIGN_BULLET_EVENTS=ds3) instead of being rewritten in Elden Ring's layout, as in builds up to 1.0.271.")
                 { PorterEnv = Env("DARKSIGN_BULLET_EVENTS", "ds3") },
+            new("G", "Projectiles without the weapon's attack power", "As A, but a projectile's hit doesn't count the weapon's own attack power or status build-up (DARKSIGN_BULLET_BASE_ATK=0), as in builds up to 1.0.279, where DS3 projectiles hit for nothing. Try this if a projectile hits far too hard.")
+                { PorterEnv = Env("DARKSIGN_BULLET_BASE_ATK", "0") },
+            new("H", "No projectiles for weapons built as their class", "As A, but a weapon whose own DS3 moves found no free motion category, and so is built as its class, loses the projectiles its own moves fire (DARKSIGN_BORROW_BULLETS=0), as in builds up to 1.0.282: the Moonlight Greatsword's charged heavy fired no wave.")
+                { PorterEnv = Env("DARKSIGN_BORROW_BULLETS", "0") },
             new("off", "Off", "Neither (DARKSIGN_BULLETS=0 and DARKSIGN_EFFECT_VISUALS=0): only the effects in a move's own effect events show, as in builds up to 1.0.242.")
                 { PorterEnv = Env("DARKSIGN_BULLETS", "0", "DARKSIGN_EFFECT_VISUALS", "0") },
         ]),
