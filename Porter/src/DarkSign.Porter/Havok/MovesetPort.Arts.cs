@@ -522,8 +522,8 @@ public static partial class MovesetPort
                 if (chainTemplate > 0 && BinderLeaf(erMain, $"a{chainTemplate}.tae") is { } chainTaeFile)
                     foreach (var a in TAE.Read(chainTaeFile.Bytes).Animations.Where(a => chainOf.ContainsKey((int)a.ID) && tae.Animations.All(t => t.ID != a.ID)))
                         tae.Animations.Add(a);
-                var erEventLengths = templateTae.Animations.SelectMany(a => a.Events).GroupBy(e => e.Type)
-                    .ToDictionary(g => g.Key, g => g.First().GetParameterBytes(false).Length);
+                // Lengths from the chain template too: its moves (40010 / 40020) are built on that section.
+                var erEventLengths = EventLengths(templateTae.Animations.Concat(tae.Animations).SelectMany(a => a.Events));
                 var templateGroups = templateTae.Animations.SelectMany(a => a.Events).Where(e => e.Group is not null)
                     .GroupBy(e => e.Type).ToDictionary(g => g.Key, g => g.First().Group!);
                 var stretches = new Dictionary<int, MoveTiming.Stretch>();
@@ -1181,6 +1181,9 @@ public static class ArtSelfTest
         MovesetPort.SetComboWindows(stanceLight, proto, friede, 4.033f, true, false);
         Check(stanceLight.Events.Single(e => e.Type == 67).StartTime > 1.5f && stanceLight.Events.Single(e => e.Type == 67).StartTime < 2.5f,
             "windows: without ds3Marker the DS3 transition marker is not read (one-shot follow-ups keep their timing)");
+        // FP charge (330): Elden Ring writes it at 16 and 24 bytes in one section; DS3's 16 must still be copied.
+        var lengths = MovesetPort.EventLengths([new(0.4f, 0.5f, 330, 0, new byte[24], false), new(0.5f, 0.6f, 330, 0, new byte[16], false), new(0f, 1f, 67, 0, new byte[8], false)]);
+        Check(lengths[330].SetEquals([16, 24]) && lengths[67].SetEquals([8]), "events: every length the template writes a type at is known (FP charge 330: 16 and 24 bytes)");
         Console.WriteLine(failures == 0 ? "arts-selftest: all checks passed" : $"arts-selftest: {failures} failed");
         return failures == 0 ? 0 : 1;
     }
