@@ -190,7 +190,11 @@ What the enemy porter does, for every DS3 character placed in DS3's maps (one ru
    `darksign_spawn_list.tsv` carries a body column (`ds3`/`er`) so the F1 menu knows which entries wear their DS3
    model without guessing from the ID (Elden Ring ships its own c7000).
 
-A character whose files fail falls back to C (the template's body with DS3's stats), never to nothing. The written
+A character whose files fail falls back to C (the template's body with DS3's stats), never to nothing. The body
+of a character on C is picked by what the enemy is (`ChrPort.PickBody`: same kind and boss-ness, else same kind, else
+same boss-ness), not by bone names, and never from Elden Ring's wildlife or helper characters
+(`EnemyKinds.IsBystander`: deer, eagles, dummies, bonfires, scarabs), which are left out of the enemy catalog. On
+1.0.271 the Undead Settlement's Overgrown Skeletons were deer, the template with the most shared bone names. The written
 files are listed in `darksign_chr_files.txt` and deleted at the start of the next run. Fallbacks `enemy-port`: A model
 and animations, B model only, C Elden Ring bodies with DS3 stats, off. Offline checks: `DarkSignPorter enemy-selftest`.
 Not yet ported: DS3's AI scripts (the template's ThinkParam/AI is used), sounds (the template's bank), boss events.

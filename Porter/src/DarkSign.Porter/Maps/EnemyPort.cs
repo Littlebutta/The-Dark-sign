@@ -266,6 +266,7 @@ public static class EnemyPort
     {
         var catalog = new List<ErEnemy>();
         var seen = new HashSet<(string, int, int)>();
+        int bystanders = 0;
         var names = npcParam?.Rows.ToDictionary(r => r.ID, r => r.Name ?? "") ?? new();
         foreach (var name in CatalogMaps)
         {
@@ -297,11 +298,19 @@ public static class EnemyPort
                     continue;
                 if (!seen.Add((part.ModelName, part.NPCParamID, part.ThinkParamID)))
                     continue;
+                // Wildlife and helper characters (deer, eagles, talk dummies, bonfires) are nobody's stand-in.
+                if (DarkSign.Randomizer.Logic.EnemyKinds.IsBystander(names.GetValueOrDefault(part.NPCParamID, "")))
+                {
+                    bystanders++;
+                    continue;
+                }
                 var model = msb.Models.Enemies.FirstOrDefault(m => m.Name.Equals(part.ModelName, StringComparison.OrdinalIgnoreCase));
                 catalog.Add(new ErEnemy(part.ModelName, part.NPCParamID, part.ThinkParamID,
                     names.GetValueOrDefault(part.NPCParamID, part.ModelName), bosses.Contains(part.EntityID), name, part, model));
             }
         }
+        if (bystanders > 0)
+            notes.Add($"catalog: {bystanders} wildlife and helper placements left out (deer, eagles, dummies, bonfires)");
         return catalog;
     }
 
