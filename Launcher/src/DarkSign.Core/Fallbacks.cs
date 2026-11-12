@@ -451,8 +451,10 @@ public static class Fallbacks
         new("map-people", "DS3 maps", "DS3's people (NPCs and hostile humans)", Stage.Build,
             "A DS3 map crashes or hangs while loading since people were added, a person who should be friendly attacks you (or the other way round), or people stand in the way of something.",
         [
-            new("A", "Elden Ring people stand in (default)", "Where DS3 has someone to talk to, an Elden Ring person stands, silent (no dialogue or shop yet), on the seat DS3's scripts move them to. DS3's hostile humans get hostile Elden Ring humans. DS3 characters with their own body (Fire Keeper, Ludleth) are their ported body when the enemy porter made one, else an Elden Ring person."),
-            new("B", "Nobody", "DS3's people are left out of the maps (port-maps --no-people), as every build up to 1.0.299 was.")
+            new("A", "DS3's own people only (default)", "DS3 characters with a body of their own (Fire Keeper, Ludleth) stand where DS3's scripts seat them, silent, when the enemy porter ported them. DS3's human NPCs and hostile humans (built from DS3 armour) are left out until they can be ported: no Elden Ring stand-ins."),
+            new("B", "Elden Ring people stand in", "As builds 1.0.326-1.0.353: where DS3 has a human or a talker with no ported body, a dressed Elden Ring person stands, silent; DS3's hostile humans get hostile Elden Ring humans (port-maps --er-people).")
+                { MapsArgs = ["--er-people"] },
+            new("C", "Nobody", "DS3's people are left out of the maps, ported ones too (port-maps --no-people), as every build up to 1.0.299 was.")
                 { MapsArgs = ["--no-people"] },
         ]),
 
