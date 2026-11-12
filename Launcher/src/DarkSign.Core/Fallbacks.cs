@@ -443,6 +443,17 @@ public static class Fallbacks
             new("B", "The colosseum's own", "The map pieces keep the colosseum's baked light (port-maps --host-env-light), as in every build before this option: red map surfaces on map 2.")
                 { MapsArgs = ["--host-env-light"] },
         ]),
+        new("map-baked-light", "DS3 maps", "DS3's baked light and shade in the DS3 maps", Stage.Build,
+            "A DS3 map's rooms, tunnels or courtyards are lit in the wrong places (dark where DS3 is bright, bright where it is dark), look mirrored, or the map looks wrong since its light was baked from DS3.",
+        [
+            new("A", "DS3's baked light (default)", "Each map gets a light volume of its own built from DS3's light probes: tunnels, rooms and shade under roofs are as dark as DS3 baked them and open ground as bright as the sky. Outside the probed area the map keeps one even light."),
+            new("B", "One even light everywhere", "No baked light volume (port-maps --flat-env-light), as in builds before this option: the same flat light in tunnels as outside, no shade.")
+                { MapsArgs = ["--flat-env-light"] },
+            new("C", "Baked light mirrored east-west", "The same baked light with the volume mirrored along x (port-maps --baked-light-flip x). Try it if dark patches sit across the map from where the rooms are.")
+                { MapsArgs = ["--baked-light-flip", "x"] },
+            new("D", "Baked light mirrored north-south", "The same baked light with the volume mirrored along z (port-maps --baked-light-flip z). Try it if C didn't line the dark patches up with the rooms.")
+                { MapsArgs = ["--baked-light-flip", "z"] },
+        ]),
         new("map-navmesh", "DS3 maps", "How enemies find their way in the DS3 maps", Stage.Build,
             "A DS3 map crashes or hangs while loading since launcher 1.0.300, enemies stand still or refuse to cross ground they should walk on, or they walk through closed doors.",
         [

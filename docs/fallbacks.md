@@ -360,6 +360,15 @@ Try the next option if: A DS3 map's walls and ground look flat, too dark or too 
 - **A: Even grey (default).** Elden Ring lights map pieces with light baked for the map they stand in (a light volume and a reflection cube per place). The DS3 maps had the colosseum's: red on map 2, golden on map 1, pale blue on map 3. That light is made one even grey of the same strength, so the map's own textures, sun and fog give the colour.
 - **B: The colosseum's own.** The map pieces keep the colosseum's baked light (port-maps --host-env-light), as in every build before this option: red map surfaces on map 2. (`port-maps --host-env-light`)
 
+### DS3's baked light and shade in the DS3 maps (`map-baked-light`, rebuilds the content)
+
+Try the next option if: A DS3 map's rooms, tunnels or courtyards are lit in the wrong places (dark where DS3 is bright, bright where it is dark), look mirrored, or the map looks wrong since its light was baked from DS3.
+
+- **A: DS3's baked light (default).** Each map gets a light volume of its own built from DS3's light probes: tunnels, rooms and shade under roofs are as dark as DS3 baked them and open ground as bright as the sky. Outside the probed area the map keeps one even light.
+- **B: One even light everywhere.** No baked light volume (port-maps --flat-env-light), as in builds before this option: the same flat light in tunnels as outside, no shade. (`port-maps --flat-env-light`)
+- **C: Baked light mirrored east-west.** The same baked light with the volume mirrored along x (port-maps --baked-light-flip x). Try it if dark patches sit across the map from where the rooms are. (`port-maps --baked-light-flip x`)
+- **D: Baked light mirrored north-south.** The same baked light with the volume mirrored along z (port-maps --baked-light-flip z). Try it if C didn't line the dark patches up with the rooms. (`port-maps --baked-light-flip z`)
+
 ### How enemies find their way in the DS3 maps (`map-navmesh`, rebuilds the content)
 
 Try the next option if: A DS3 map crashes or hangs while loading since launcher 1.0.300, enemies stand still or refuse to cross ground they should walk on, or they walk through closed doors.

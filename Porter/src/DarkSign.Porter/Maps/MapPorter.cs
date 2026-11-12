@@ -64,6 +64,9 @@ public static class MapPorter
         /// <summary>--host-env-light: the slot keeps its Elden Ring colosseum's baked light volumes and reflection cubes,
         /// which light every DS3 map piece in the colosseum's colour (fallback "map-env-light" B; see <see cref="MapEnvironment"/>).</summary>
         public bool HostEnvLight { get; set; }
+        /// <summary>--flat-env-light / --baked-light-flip x|y|z: the DS3 map's own baked light volume off, or mirrored
+        /// (fallback "map-baked-light"; see <see cref="MapBakedLight"/>).</summary>
+        public MapBakedLight.Options BakedLight { get; set; } = MapBakedLight.Options.Default;
         /// <summary>
         /// --host-sky: the host's distant view (its sky, the Erdtree) is left in place over the DS3 map, as in every
         /// build up to 1.0.299 (fallback "map-sky" B; see <see cref="MapDistantView"/>).
@@ -142,6 +145,11 @@ public static class MapPorter
                     case "--tint-materials": o.TintMaterials = true; break;
                     case "--host-atmosphere": o.HostAtmosphere = true; break;
                     case "--host-env-light": o.HostEnvLight = true; break;
+                    case "--flat-env-light": o.BakedLight = o.BakedLight with { Flat = true }; break;
+                    case "--baked-light-flip" when i + 1 < list.Count:
+                        var axes = list[++i].ToLowerInvariant();
+                        o.BakedLight = o.BakedLight with { FlipX = axes.Contains('x'), FlipY = axes.Contains('y'), FlipZ = axes.Contains('z') };
+                        break;
                     case "--half-textures": o.TextureDetail = MapTextures.Detail.Half; break;
                     case "--full-low-textures": o.TextureDetail = MapTextures.Detail.FullLow; break;
                     case "--host-navmesh-list": o.HostNavmeshList = true; break;
@@ -1025,14 +1033,25 @@ public static class MapPorter
             enemy.CollisionPartName = "";
         // Light: ambient from the host's environment map, lamps from DS3's light file. A failure leaves the map
         // as dark as it was before, not broken.
+        MapBakedLight.Volume? baked = null;
         if (options.HostLighting)
+        {
             report.AppendLine("  lighting: the host's own (--host-lighting): no ambient light region, no DS3 lamps");
+            MapBakedLight.WriteIvInfo(ctx, er, hostId, erId, null);
+        }
         else
         {
             foreach (var (name, step) in new (string, Func<string>)[]
                      {
                          ("ambient light", () => MapLighting.AddAmbient(msb, host, ds3Msb)),
-                         ("environment light", () => MapEnvironment.Write(ctx, er, erId, hostId, options.HostEnvLight)),
+                         ("baked light", () =>
+                         {
+                             var (volume, line) = MapBakedLight.Build(ds3, er, ds3Id, hostId, msb, ds3Msb, options.HostEnvLight ? MapBakedLight.Options.Default with { Flat = true } : options.BakedLight);
+                             baked = volume;
+                             return line;
+                         }),
+                         ("environment light", () => MapEnvironment.Write(ctx, er, erId, hostId, options.HostEnvLight, baked)),
+                         ("light volume info", () => MapBakedLight.WriteIvInfo(ctx, er, hostId, erId, baked)),
                          ("lamps", () => MapLighting.PortLights(ctx, ds3, er, ds3Id, erId, hostId)),
                      })
             {
