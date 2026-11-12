@@ -37,21 +37,43 @@ public static class BossArenas
 
     /// <summary>A DS3 boss fight, in DS3's IDs.</summary>
     public sealed record Fight(string Name, uint Defeated, uint Entry, uint FirstEncounter, int Area, int Boss,
-        IReadOnlyList<uint> Events, Vector3 Point, string PointFrom);
+        IReadOnlyList<uint> Events, Vector3 Point, string PointFrom)
+    {
+        /// <summary>DS3 flags only a talk script sets that the fight's first encounter waits for (<see cref="TalkGate"/>).</summary>
+        public IReadOnlyList<uint> TalkFlags { get; init; } = [];
+
+        /// <summary>The DS3 entity the talk happens at (the action button's), or the boss.</summary>
+        public int TalkEntity { get; init; }
+    }
 
     /// <summary>A fight placed in an Elden Ring map: its IDs moved to the slot and its arrival point.</summary>
     public sealed record Arena(MapId Ds3, MapId Er, string MapName, string Name, uint Defeated, uint Entry, uint FirstEncounter,
         IReadOnlyList<uint> Events, uint PointEntity)
     {
         public int Index { get; init; }
+
+        /// <summary>The talk-only flags in DS3's numbering (moved when the events are written) and the talk entity, moved.</summary>
+        public IReadOnlyList<uint> TalkFlags { get; init; } = [];
+        public uint TalkEntity { get; init; }
     }
+
+    /// <summary>The event that stands in for a fight's unported talk (1500+i in the run's block).</summary>
+    public static uint TalkEventId(int index) => RunEvents.FlagBlock + 1500 + (uint)index;
+    public static bool IsTalkEvent(long id) => id >= RunEvents.FlagBlock + 1500 && id < RunEvents.FlagBlock + 1500 + MaxArenas;
+
+    /// <summary>How close the player comes to the talk entity before the talk flags turn on (DS3's talk prompts reach 2-5.5 m).</summary>
+    public const float TalkReach = 8f;
 
     /// <summary>
     /// The boss fights the map's own script starts with <see cref="Ds3BossFight"/>, in script order. Fights whose area
     /// isn't in the layout are left out. <paramref name="name"/> names a boss entity (the placement's NpcParam name).
     /// </summary>
-    public static List<Fight> Find(MSB3 msb, EMEVD mapScript, MapId ds3, Func<MSB3.Part.Enemy, string?>? name = null)
+    public static List<Fight> Find(MSB3 msb, EMEVD mapScript, MapId ds3, Func<MSB3.Part.Enemy, string?>? name = null,
+        IReadOnlySet<int>? warpPoints = null, IEnumerable<EMEVD>? otherScripts = null)
     {
+        var allScripts = new List<EMEVD> { mapScript };
+        if (otherScripts is not null)
+            allScripts.AddRange(otherScripts);
         var calls = new List<int[]>();
         foreach (var ins in mapScript.Events.SelectMany(e => e.Instructions))
         {
@@ -72,7 +94,7 @@ public static class BossArenas
             if (region is null)
                 continue;
             var members = Members(msb, boss);
-            var (point, from) = ArrivalPoint(msb, region);
+            var (point, from) = ArrivalPoint(msb, region, warpPoints, members);
             // The first main health bar's placement (Friede's first stage), else the first other bar's (the Champion's
             // Gravetender's Greatwolf: the Gravetender's own bar is passed to an event), else the lowest member; named
             // without its stage ("- First Stage").
@@ -82,10 +104,79 @@ public static class BossArenas
                 .Select(e => e is null ? null : name?.Invoke(e)).FirstOrDefault(n => !string.IsNullOrWhiteSpace(n));
             if (named is not null && named.IndexOf(" - ", StringComparison.Ordinal) is > 0 and var dash)
                 named = named[..dash];
+            var (talkFlags, talkEntity) = first > 0 ? TalkGate(mapScript, allScripts, first) : ([], 0);
             fights.Add(new Fight(named?.Trim() ?? $"Boss {defeated}", (uint)defeated, (uint)entry, first > 0 ? (uint)first : 0, area, boss,
-                FightEvents(mapScript, ds3, defeated, defeatedLocals), point, from));
+                FightEvents(mapScript, ds3, defeated, defeatedLocals), point, from)
+            {
+                TalkFlags = talkFlags,
+                TalkEntity = talkEntity > 0 ? talkEntity : boss,
+            });
         }
         return fights;
+    }
+
+    // DS3 "Set Event Flag" (2003[02]), "Set Network-Connected Event Flag" (2003[62]) and Elden Ring-style 2003[66]:
+    // the flag is in the second / first argument by form. A flag any script turns on is not talk-only.
+    private static IEnumerable<int> FlagsTurnedOn(IEnumerable<EMEVD.Instruction> instructions)
+    {
+        foreach (var ins in instructions)
+        {
+            // A value passed to an event may be a flag the event sets (20005800 sets the entry flag it is given).
+            if (ins.Bank == 2000 && ins.ID is 0 or 6)
+            {
+                for (int k = 0; k + 4 <= ins.ArgData.Length; k += 4)
+                    yield return BitConverter.ToInt32(ins.ArgData, k);
+                continue;
+            }
+            if (ins.Bank != 2003 || ins.ArgData.Length < 5)
+                continue;
+            if (ins.ID is 2 or 62 && ins.ArgData[4] == 1)
+                yield return BitConverter.ToInt32(ins.ArgData, 0);
+            else if (ins.ID == 66 && ins.ArgData.Length >= 9 && ins.ArgData[8] == 1)
+                yield return BitConverter.ToInt32(ins.ArgData, 4);
+            // Batch flag ranges (2003[22] Batch Set Event Flags: start, end, state) turn many on.
+            else if (ins.ID == 22 && ins.ArgData.Length >= 9 && ins.ArgData[8] == 1)
+                for (int f = BitConverter.ToInt32(ins.ArgData, 0), end = BitConverter.ToInt32(ins.ArgData, 4); f <= end && end - f < 10_000; f++)
+                    yield return f;
+        }
+    }
+
+    /// <summary>
+    /// The flags a fight's first encounter waits for that only a talk script (an NPC's ESD, not ported) turns on, and
+    /// the entity the waiting event's action button belongs to. Friede's first encounter (14505810) waits for
+    /// 74500300, which Father Ariandel's dialogue sets, together with the "Talk" prompt at Ariandel; no event script
+    /// sets it, so walking up to her never started the fight (Devin, 1.0.383). The run's events turn such flags on
+    /// once the player comes within <see cref="TalkReach"/> of that entity (<see cref="AddWarps"/>), so the prompt
+    /// then starts the fight as in DS3. Only "IF Event Flag ... ON" conditions of an event that turns the
+    /// first-encounter flag on count.
+    /// </summary>
+    public static (List<uint> Flags, int Entity) TalkGate(EMEVD mapScript, IEnumerable<EMEVD> allScripts, int firstEncounter)
+    {
+        var turnedOn = allScripts.SelectMany(sc => FlagsTurnedOn(sc.Events.SelectMany(e => e.Instructions))).ToHashSet();
+        var flags = new List<uint>();
+        int entity = 0;
+        foreach (var e in mapScript.Events)
+        {
+            if (!FlagsTurnedOn(e.Instructions).Contains(firstEncounter))
+                continue;
+            for (int i = 0; i < e.Instructions.Count; i++)
+            {
+                var ins = e.Instructions[i];
+                if (e.Parameters.Any(p => p.InstructionIndex == i))
+                    continue;
+                // IF Event Flag (3[00]): group, state, flag type, flag.
+                if (ins.Bank == 3 && ins.ID == 0 && ins.ArgData.Length >= 8 && ins.ArgData[1] == 1 && ins.ArgData[2] == 0)
+                {
+                    var flag = BitConverter.ToInt32(ins.ArgData, 4);
+                    if (flag > 0 && !turnedOn.Contains(flag) && flag != firstEncounter && !flags.Contains((uint)flag))
+                        flags.Add((uint)flag);
+                }
+                // IF Action Button in Area (3[24]): group, row, entity.
+                if (ins.Bank == 3 && ins.ID == 24 && ins.ArgData.Length >= 12 && entity == 0)
+                    entity = BitConverter.ToInt32(ins.ArgData, 8);
+            }
+        }
+        return (flags, entity);
     }
 
     /// <summary>
@@ -121,7 +212,7 @@ public static class BossArenas
     }
 
     // DS3's Display Boss Health Bar (2003[11]): state, entity, slot, name. Only bars given an entity directly.
-    private static IEnumerable<(int Entity, int Slot)> HealthBars(EMEVD script)
+    internal static IEnumerable<(int Entity, int Slot)> HealthBars(EMEVD script)
     {
         foreach (var e in script.Events)
             for (int i = 0; i < e.Instructions.Count; i++)
@@ -135,21 +226,40 @@ public static class BossArenas
     }
 
     /// <summary>
-    /// Where the warp lands: a DS3 player point inside the arena area (FromSoftware placed those on the floor, like
-    /// the cutscene point 4502810 in Friede's arena), else the area's centre a little above its bottom (DS3's boss
-    /// area boxes start below the floor: Friede's at y 26.0 under a floor at 27.4).
+    /// Where the warp lands, on the arena floor:
+    /// <list type="number">
+    /// <item>a DS3 player point inside the arena area;</item>
+    /// <item>a point DS3's scripts warp the player to inside the area (FromSoftware's own landing spots, like Vordt's
+    /// post-cutscene point; <paramref name="warpPoints"/>);</item>
+    /// <item>the area's centre at the height of the boss's own placement when the boss stands in the area's height
+    /// range (+0.5 m): the boss stands on the arena floor. Without one, the area's bottom + up to 1.5 m.</item>
+    /// </list>
+    /// DS3's boss area boxes start well below the floor: Oceiros' at y -51.98 under a floor at -50.0, so the old
+    /// "bottom + 1.5 m" put the player 0.5 m inside the floor (1.0.383: stuck, and the fight never started because
+    /// the player never entered the area). Friede's starts 1.4 m under hers.
     /// </summary>
-    public static (Vector3 Point, string From) ArrivalPoint(MSB3 msb, MSB3.Region area)
+    public static (Vector3 Point, string From) ArrivalPoint(MSB3 msb, MSB3.Region area, IReadOnlySet<int>? warpPoints = null,
+        IReadOnlySet<int>? boss = null)
     {
         var inside = msb.Parts.Players.FirstOrDefault(p => Contains(area, p.Position));
         if (inside is not null)
             return (inside.Position, $"player point {inside.Name}");
-        var lift = area.Shape switch
+        var warp = warpPoints is null ? null
+            : msb.Regions.GetEntries().FirstOrDefault(r => r.EntityID > 0 && warpPoints.Contains(r.EntityID) && Contains(area, r.Position));
+        if (warp is not null)
+            return (warp.Position + new Vector3(0, 0.1f, 0), $"DS3 warp point {warp.EntityID}");
+        var height = area.Shape switch
         {
-            MSB.Shape.Box b => Math.Min(b.Height / 2, 1.5f),
-            MSB.Shape.Cylinder c => Math.Min(c.Height / 2, 1.5f),
-            _ => 0.5f,
+            MSB.Shape.Box b => b.Height,
+            MSB.Shape.Cylinder c => c.Height,
+            _ => 0f,
         };
+        var floor = boss is null ? null
+            : msb.Parts.Enemies.Where(e => boss.Contains(e.EntityID) && e.Position.Y >= area.Position.Y - 1 && e.Position.Y <= area.Position.Y + Math.Max(height, 1))
+                .Select(e => (float?)e.Position.Y).Min();
+        if (floor is { } y)
+            return (new Vector3(area.Position.X, y + 0.5f, area.Position.Z), $"area {area.Name} at the boss's floor + 0.5 m");
+        var lift = height > 0 ? Math.Min(height / 2, 1.5f) : 0.5f;
         return (area.Position + new Vector3(0, lift, 0), $"area {area.Name} + {lift:0.##} m");
     }
 
@@ -210,7 +320,14 @@ public static class BossArenas
             msb.Parts.Players.Add(part);
             uint Move(uint id) => id == 0 ? 0 : (uint)ds3.MoveEntity((int)id, er);
             arenas.Add(new Arena(ds3, er, slot.Name, f.Name, Move(f.Defeated), Move(f.Entry), Move(f.FirstEncounter),
-                f.Events.Select(Move).ToList(), entity));
+                f.Events.Select(Move).ToList(), entity)
+            {
+                TalkFlags = f.TalkFlags,
+                TalkEntity = Move((uint)f.TalkEntity),
+            });
+            if (f.TalkFlags.Count > 0)
+                notes.Add($"boss arenas: {f.Name}'s first encounter waits for {string.Join(", ", f.TalkFlags)}, which only a talk sets: "
+                          + $"turned on within {TalkReach} m of {f.TalkEntity}");
             notes.Add($"boss arenas: {f.Name} lands at {f.Point.X:0.#} {f.Point.Y:0.#} {f.Point.Z:0.#} ({f.PointFrom}), entity {entity}; "
                       + $"flags: defeated {Move(f.Defeated)}, entry {Move(f.Entry)}, first encounter {Move(f.FirstEncounter)}; {f.Events.Count} fight events reset");
         }
@@ -225,16 +342,18 @@ public static class BossArenas
     /// Adds (or replaces) one warp event per arena in common.emevd and starts each from the constructor. Each waits
     /// for its request flag, resets the fight's flags, warps, waits for the map and then begins the fight.
     /// </summary>
-    public static void AddWarps(EMEVD common, IReadOnlyList<Arena> arenas)
+    /// <param name="moveFlag">Moves a DS3 flag the way the converted scripts did (for the talk flags); null: no talk events.</param>
+    public static void AddWarps(EMEVD common, IReadOnlyList<Arena> arenas, Func<long, long>? moveFlag = null)
     {
-        common.Events.RemoveAll(e => IsArenaEvent(e.ID));
+        common.Events.RemoveAll(e => IsArenaEvent(e.ID) || IsTalkEvent(e.ID));
         var constructor = common.Events.FirstOrDefault(e => e.ID == 0);
         if (constructor is null)
         {
             constructor = new EMEVD.Event(0, EMEVD.Event.RestBehaviorType.Default);
             common.Events.Insert(0, constructor);
         }
-        constructor.Instructions.RemoveAll(i => i.Bank == 2000 && i.ID == 0 && i.ArgData.Length >= 8 && IsArenaEvent(BitConverter.ToUInt32(i.ArgData, 4)));
+        constructor.Instructions.RemoveAll(i => i.Bank == 2000 && i.ID == 0 && i.ArgData.Length >= 8
+                                                && (IsArenaEvent(BitConverter.ToUInt32(i.ArgData, 4)) || IsTalkEvent(BitConverter.ToUInt32(i.ArgData, 4))));
         for (int i = 0; i < arenas.Count; i++)
         {
             var a = arenas[i];
@@ -263,6 +382,21 @@ public static class BossArenas
             e.Instructions.Add(RunEvents.Make(1000, 4, (byte)1));
             common.Events.Add(e);
             constructor.Instructions.Add(RunEvents.Make(2000, 0, 0, EventId(a.Index), 0u));
+
+            // The talk a fight's first encounter waits for: turned on when the player comes near (TalkGate).
+            if (moveFlag is not null && a.TalkFlags.Count > 0 && a.TalkEntity > 0)
+            {
+                var t = new EMEVD.Event(TalkEventId(a.Index), EMEVD.Event.RestBehaviorType.Default);
+                t.Instructions.Add(RunEvents.Make(1003, 2, (byte)0, On, EventFlagType, a.Defeated));
+                if (a.FirstEncounter > 0)
+                    t.Instructions.Add(RunEvents.Make(1003, 2, (byte)0, On, EventFlagType, a.FirstEncounter));
+                // IF Entity In/Outside Radius Of Entity: group 0, inside, the player, the talk entity, reach, 1.
+                t.Instructions.Add(RunEvents.Make(3, 3, (sbyte)0, On, 10000u, a.TalkEntity, TalkReach, 1));
+                foreach (var flag in a.TalkFlags)
+                    t.Instructions.Add(SetFlag((uint)moveFlag(flag), On));
+                common.Events.Add(t);
+                constructor.Instructions.Add(RunEvents.Make(2000, 0, 0, TalkEventId(a.Index), 0u));
+            }
         }
     }
 

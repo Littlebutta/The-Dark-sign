@@ -147,6 +147,76 @@ int dks_parse_spawn_line(const char *line, DksSpawnable *out)
     return strcmp(out->game, "DS3") == 0 || strcmp(out->game, "ER") == 0;
 }
 
+static int parse_model(const char *model, int *out)
+{
+    char *end;
+    if ((model[0] != 'c' && model[0] != 'C') || !model[1])
+        return 0;
+    long chr = strtol(model + 1, &end, 10);
+    if (*end || chr <= 0 || chr > 9999)
+        return 0;
+    *out = (int)chr;
+    return 1;
+}
+
+static int parse_kit_character(const char *text, DksKitCharacter *out)
+{
+    char model[16];
+    char *end;
+    const char *colon = strchr(text, ':');
+    if (!colon || (size_t)(colon - text) >= sizeof model)
+        return 0;
+    memcpy(model, text, (size_t)(colon - text));
+    model[colon - text] = 0;
+    if (!parse_model(model, &out->chr))
+        return 0;
+    out->npc_param = (int)strtol(colon + 1, &end, 10);
+    if (*end != ':' || out->npc_param <= 0)
+        return 0;
+    out->think_param = (int)strtol(end + 1, &end, 10);
+    if (*end != ':')
+        return 0;
+    const char *digits = end + 1;
+    unsigned long entity = strtoul(digits, &end, 10);
+    if (end == digits || *end || entity == 0 || entity > 0xFFFFFFFFul)
+        return 0;
+    out->entity = (unsigned)entity;
+    return 1;
+}
+
+int dks_parse_kit_line(const char *line, DksBossKit *out)
+{
+    char model[16], npc[16], entity[16], companions[512] = "";
+    memset(out, 0, sizeof *out);
+    if (line[0] == '#' || !(line = next_field(line, model, sizeof model)) || !(line = next_field(line, npc, sizeof npc)) ||
+        !(line = next_field(line, entity, sizeof entity)))
+        return 0;
+    if ((line = next_field(line, out->name, sizeof out->name)))
+        next_field(line, companions, sizeof companions);
+    char *end;
+    if (!parse_model(model, &out->boss.chr))
+        return 0;
+    out->boss.npc_param = (int)strtol(npc, &end, 10);
+    if (*end || !npc[0] || out->boss.npc_param <= 0)
+        return 0;
+    unsigned long id = strtoul(entity, &end, 10);
+    if (*end || !entity[0] || id == 0 || id > 0xFFFFFFFFul)
+        return 0;
+    out->boss.entity = (unsigned)id;
+    /* Companions: comma-separated; one that doesn't parse is skipped rather than losing the boss. */
+    for (char *c = companions; *c && out->companions_len < DKS_KIT_COMPANIONS;) {
+        char *comma = strchr(c, ',');
+        if (comma)
+            *comma = 0;
+        if (parse_kit_character(c, &out->companions[out->companions_len]))
+            out->companions_len++;
+        if (!comma)
+            break;
+        c = comma + 1;
+    }
+    return 1;
+}
+
 int dks_spawn_has_own_model(const DksSpawnable *s)
 {
     if (strcmp(s->game, "DS3") != 0)

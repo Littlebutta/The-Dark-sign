@@ -12,6 +12,8 @@ public static partial class MapPortChecks
         yield return ("boss arenas: found from DS3's boss fight calls, named, landing in the arena, with the fight's own events", BossArenaFind);
         yield return ("boss arenas: placed only where the boss was placed, with a fresh arrival point, IDs moved to the slot", BossArenaPlace);
         yield return ("boss arenas: the warp event resets the fight, warps, waits for the map and begins the fight", BossArenaEvents);
+        foreach (var check in KitChecks())
+            yield return check;
     }
 
     // A Friede-like fight: two stages of one body in boss group 4505800 (first stage with the health bar), a second

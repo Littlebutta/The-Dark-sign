@@ -512,7 +512,7 @@ public static class MapPorter
         // MapRegistry.ListPath: builds 1.0.234-1.0.238 wrote it for the m50 probe and it crashed the boot; never again.
         foreach (var path in new[] { "/event/common.emevd.dcx", MapEvents.CommonFunc, MaterialBinder, OldMaterialBinder, ActionButtons.ModMenu, FlagAlloc.LegacyList, MapRegistry.ListPath })
             Delete(Local(path));
-        foreach (var file in new[] { MapEvents.FlagFile, "darksign_maps.tsv", BossArenas.ListFile, "darksign_maps_check.txt", FlagAlloc.ProbeFile,
+        foreach (var file in new[] { MapEvents.FlagFile, "darksign_maps.tsv", BossArenas.ListFile, BossKits.FileName, "darksign_maps_check.txt", FlagAlloc.ProbeFile,
                      DarkSign.Randomizer.Data.EnemyTables.PlacedFile, DarkSign.Randomizer.Data.EnemyTables.ErFile })
             Delete(Path.Combine(root, file));
     }
@@ -967,10 +967,12 @@ public static class MapPorter
             }
             report.AppendLine($"  time: objects {clock.Elapsed.TotalSeconds:F0} s");
         }
+        IReadOnlySet<int> warpPoints = new HashSet<int>();
         if (options.NoRegions)
             report.AppendLine("  regions: off (--no-regions)");
         else
         {
+            var playersBefore = layout.Msb.Parts.Players.Count;
             try
             {
                 var regions = RegionPort.Convert(ds3Msb, layout.Msb, ds3Id, erId, partNames);
@@ -978,10 +980,20 @@ public static class MapPorter
                 report.AppendLine("  " + regions.Summary);
                 foreach (var note in regions.Notes)
                     report.AppendLine($"  regions: {note}");
+                // DS3 warps land on regions, Elden Ring's on player parts (Vordt's door sent the player to the start).
+                var warpNotes = new List<string>();
+                warpPoints = MapEvents.WarpPoints(ctx, ds3, ds3Id);
+                RegionPort.AddWarpPoints(ds3Msb, layout.Msb, ds3Id, erId, warpPoints, warpNotes);
+                MSBE.Read(layout.Msb.Write());
+                foreach (var note in warpNotes)
+                    report.AppendLine($"  {note}");
             }
             catch (Exception ex) when (ex is not OutOfMemoryException)
             {
                 RegionPort.Strip(layout.Msb);
+                if (layout.Msb.Parts.Players.Count > playersBefore)
+                    layout.Msb.Parts.Players.RemoveRange(playersBefore, layout.Msb.Parts.Players.Count - playersBefore);
+                warpPoints = new HashSet<int>();
                 report.AppendLine($"  regions: FAILED ({ex.Message}); the map has no DS3 regions");
             }
         }
@@ -991,8 +1003,10 @@ public static class MapPorter
         {
             if (ds3.Contains(MapEvents.ScriptPath(ds3Id)))
             {
+                // Flags DS3's common events turn on aren't talk-only (BossArenas.TalkGate).
+                var ds3CommonFunc = ds3.Contains(MapEvents.CommonFunc) ? new[] { EMEVD.Read(ds3.Read(MapEvents.CommonFunc)) } : [];
                 var fights = BossArenas.Find(ds3Msb, EMEVD.Read(ds3.Read(MapEvents.ScriptPath(ds3Id))), ds3Id,
-                    e => _enemies?.Ds3Npc?[e.NPCParamID]?.Name);
+                    e => _enemies?.Ds3Npc?[e.NPCParamID]?.Name, warpPoints, ds3CommonFunc);
                 var notes = new List<string>();
                 var arenas = BossArenas.Place(layout.Msb, ds3Msb, fights, slot, notes);
                 _arenas.RemoveAll(a => a.Er == erId);
@@ -1442,7 +1456,13 @@ public static class MapPorter
                    ?? throw new InvalidDataException("no WarpPlayer target found in Elden Ring's event scripts to return to");
         RunEvents.AddTo(common, host, startEntity, back, RunEvents.AutoStart);
         RunEvents.AddWarps(common, warps);
-        BossArenas.AddWarps(common, arenas);
+        // Talk flags move the way the converted scripts moved them (darksign_flags.tsv, written by the events step).
+        var flags = FlagMap.Load(ctx.ModPath(MapEvents.FlagFile));
+        var defs = Emedf.Parse(File.ReadAllText(ctx.Data.Emedf("ds3-common")));
+        var slots = arenas.Select(a => (a.Ds3, a.Er)).Distinct().ToList();
+        var flagPort = new EventPort(defs, defs, slots, flags);
+        BossArenas.AddWarps(common, arenas, f => flagPort.Move(f, EventPort.Kind.Flag));
+        flags.Save(ctx.ModPath(MapEvents.FlagFile));
         File.WriteAllBytes(modCommon, DCX.Compress(common.Write(), compression));
         return $"run events: start warps to {host} entity {startEntity}; leave warps to {back.Map} entity {back.EntityId}; "
                + $"{warps.Count} per-map warps ({string.Join(", ", warps.Select(w => $"{w.Map} flag {RunEvents.WarpRequestFlag(w.Index)}"))}); "

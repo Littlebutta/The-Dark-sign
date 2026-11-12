@@ -57,10 +57,24 @@ x990-x999, which gets entity 45000990.
   arena area, entry flag, boss (entity or group) and first-encounter flag; the port reads those calls. The button
   sets flag 1039292400+i; an event in common.emevd turns the defeated, entry and first-encounter flags and the fight's
   own event flags off (so a fight already won runs again through every phase), warps to a new player point in the
-  arena (entity x9970+; a DS3 player point inside the arena area if there is one, else the area's centre 1.5 m above
-  its bottom), waits until the player is in the map and then turns the first-encounter flag and the entry flag on,
+  arena (entity x9970+; a DS3 player point inside the arena area if there is one, else a DS3 warp point inside it,
+  else the area's centre 0.5 m above the boss's floor, else 1.5 m above the area's bottom: DS3's areas start below
+  the floor, which put the player inside Oceiros' floor in 1.0.383), waits until the player is in the map and then turns the first-encounter flag and the entry flag on,
   which begins the fight without the fog wall, talk or cutscene. Fights whose boss isn't in the layout (the Champion
   Gundyr state of m40) get no button. The port-maps log lists each arena's landing point and flags.
+  A first encounter that waits on a flag only an NPC's dialogue sets (Friede: 74500300, set by Father Ariandel's
+  talk) is opened by a common.emevd event when the player comes within 8 m of the talk prompt's character
+  (`BossArenas.TalkGate`, events 1039291500+).
+- **Boss kits** (`Maps/BossKits.cs`, 2026-11-12): DS3 keeps part of each boss in the map script (Pontiff's
+  half-health clone, 13705880; Friede's stage swaps; Iudex Gundyr's sword pull), so a boss outside its DS3 map froze
+  at its phase change. Each fight's own events that only wait on its characters (no regions, objects, people or
+  warps; arena-only commands such as cutscenes, map effects, cameras and item lots are blanked) are added to
+  common.emevd for characters with fixed entity IDs, 1,190,000,000 + the DS3 entity, with the fight's flags in the
+  run block's reset range (1039292500+) and events 1039291600+. A kit's start waits until every kit character is
+  loaded, hides the companions a kit event brings in later, turns entry and first encounter on and then lets the
+  kit's events run. A boss placed in its home map keeps its map's own IDs and events, so kits never touch it.
+  `Mods\ER\darksign_boss_kits.tsv` tells the F1 spawner which entity a spawned boss and its companions get; the
+  `events:` log line counts kits and spawnable kits. The boss randomizer can place kit characters the same way.
 
 Flags are in the block of the empty sea tile m60_39_29 (1039290000+), the way JortPob allocates its flags.
 
@@ -340,6 +354,11 @@ Both games run the same event system, and DarkScript3 documents every instructio
   that doesn't is skipped until cutscenes are ported.
 - The report (`port-maps` log) counts events kept, instructions converted and the most common misses.
 
+- DS3's "IF Action Button in Area" already names an ActionButtonParam row, but a DS3 one (boss fog walls 4001800,
+  Gundyr's sword 8900, Ariandel's talk prompt 9373); each gets an Elden Ring copy (74000000+) with DS3's fields where
+  both games name them, from Elden Ring's fog row 10000 for DS3 fog prompts. DS3 warp destinations (Vordt's
+  post-cutscene point 3002810) are regions, and Elden Ring warps land only on player parts, so each gets a player part
+  with the region's ID (`RegionPort.AddWarpPoints`); before, Vordt's door sent the player to the map's start.
 - DS3's "IF Action Button" conditions (doors, levers, chests, elevators, boss fog) become "IF Action Button in Area".
   Each distinct prompt gets an ActionButtonParam row (74000000+) in the mod's regulation, copied from row 6000 the way
   JortPob does, with DS3's dummy poly, reach and angle. The prompt text is Elden Ring's when the words match ("Open"),
@@ -357,8 +376,8 @@ Both games run the same event system, and DarkScript3 documents every instructio
   unconditional skip/goto/end or a no-op), and "WAIT For Network Approval" is a no-op. Before this about half of each
   map's events were left out (m40 66 of 103, m45 52 of 112, DS3's common functions 119 of 200), among them every boss
   fight's start (common event 20005800), its phases and most doors; on the real scripts it is now m40 5, m30 0, m31 0,
-  m45 1, m37 2 and common functions 1. Still left out: map ceremonies, "IF Character DrawGroup State" (Pontiff's
-  second phase, 13705880, m37 has no slot yet) and "IF Object Backread".
+  m45 1, m37 2 and common functions 1. Still left out: map ceremonies and "IF Object Backread". "IF Character
+  DrawGroup State" counts as met when it shares a condition group with another check (Pontiff's 13705880).
 - Bosses who talk (Sister Friede, Father Ariandel) carry a talk ID in DS3. Placements that share a boss's entity group
   and body are bosses too (`EnemyPort.BossEncounter`), so they are ported and placed as enemies; the same body
   elsewhere without the group (Friede in the chapel) stays a person and never takes the boss stages' ported rows.

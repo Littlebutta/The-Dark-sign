@@ -65,6 +65,19 @@ int main(void)
     CHECK(!dks_parse_spawn_line("ER\tc2275\tabc\t22750000\t0\tX", &sp));
     CHECK(!dks_parse_spawn_line("ER\tc2275\t22750020", &sp));
 
+    DksBossKit kit;
+    CHECK(dks_parse_kit_line("c5140\t51400000\t1193700850\tPontiff Sulyvahn\tc5140:51400000:514000:1193700851\r\n", &kit));
+    CHECK(kit.boss.chr == 5140 && kit.boss.npc_param == 51400000 && kit.boss.entity == 1193700850u);
+    CHECK(strcmp(kit.name, "Pontiff Sulyvahn") == 0 && kit.companions_len == 1);
+    CHECK(kit.companions[0].chr == 5140 && kit.companions[0].think_param == 514000 && kit.companions[0].entity == 1193700851u);
+    CHECK(dks_parse_kit_line("c6020\t60200000\t1194500801\tFriede\tc6020:60200000:602000:1194500800,bad,c6010:60100000:601000:1194500802", &kit));
+    CHECK(kit.companions_len == 2 && kit.companions[1].chr == 6010 && kit.companions[1].entity == 1194500802u);
+    CHECK(dks_parse_kit_line("c5110\t51100000\t1194000800\tIudex Gundyr\t", &kit) && kit.companions_len == 0);
+    CHECK(dks_parse_kit_line("c5110\t51100000\t1194000800\tIudex Gundyr", &kit) && kit.companions_len == 0);
+    CHECK(!dks_parse_kit_line("# boss model\tNpcParam\tkit entity\tname\tcompanions", &kit));
+    CHECK(!dks_parse_kit_line("c5110\t51100000\tx\tIudex Gundyr", &kit));
+    CHECK(!dks_parse_kit_line("x5110\t51100000\t1194000800\tIudex Gundyr", &kit));
+
     float player[3] = {10, 5, 20}, out[3];
     float facing_z[4] = {0, 0, 0, 1};             /* no rotation: facing +Z */
     dks_spawn_position(player, facing_z, 2, out);  /* middle of the first row */

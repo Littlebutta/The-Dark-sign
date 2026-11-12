@@ -54,7 +54,8 @@ static uintptr_t g_image_lo, g_image_hi;
 
 typedef struct {
     DksSpawnable who;
-    int n; /* place in its batch, for the position */
+    int n;           /* place in its batch, for the position */
+    uint32_t entity; /* a boss kit's fixed entity ID (darksign_boss_kits.tsv), 0 for the next of the menu's own */
 } Request;
 
 static Request g_queue[MAX_QUEUE];
@@ -296,6 +297,53 @@ static int remove_wanted(void)
     return n > 0 && n < 8 && v[0] == L'1';
 }
 
+/* Boss kits (darksign_boss_kits.tsv next to the spawn list): a DS3 boss whose map-script mechanics run from
+   common.emevd once characters with the kit's entity IDs are loaded (Porter Maps/BossKits.cs). */
+#define MAX_KITS 128
+static DksBossKit *g_kits;
+static int g_kits_len;
+
+static void load_kits(void)
+{
+    wchar_t path[MAX_PATH];
+    DWORD n = GetEnvironmentVariableW(L"DKSIGN_ITEMS", path, MAX_PATH);
+    wchar_t *slash = n && n < MAX_PATH ? wcsrchr(path, L'\\') : NULL;
+    FILE *f = NULL;
+    if (slash && (size_t)(slash - path) + 30 < MAX_PATH) {
+        wcscpy(slash + 1, L"darksign_boss_kits.tsv");
+        f = _wfopen(path, L"rb");
+    }
+    if (!f) {
+        dks_log("spawn: no darksign_boss_kits.tsv; bosses spawn without their DS3 map scripts");
+        return;
+    }
+    g_kits = malloc(sizeof *g_kits * MAX_KITS);
+    char line[1024];
+    while (g_kits && g_kits_len < MAX_KITS && fgets(line, sizeof line, f))
+        if (dks_parse_kit_line(line, &g_kits[g_kits_len]))
+            g_kits_len++;
+    fclose(f);
+    dks_log("spawn: %d boss kits from darksign_boss_kits.tsv", g_kits_len);
+}
+
+static const DksBossKit *kit_for(const DksSpawnable *who)
+{
+    if (strcmp(who->game, "DS3") != 0)
+        return NULL;
+    const DksBossKit *by_model = NULL;
+    for (int i = 0; i < g_kits_len; i++)
+        if (g_kits[i].boss.chr == who->chr) {
+            if (g_kits[i].boss.npc_param == who->npc_param)
+                return &g_kits[i];
+            if (!by_model)
+                by_model = &g_kits[i];
+        }
+    return by_model;
+}
+
+/* 1 while a character the menu spawned with this entity ID is still there (a kit can be in the world only once). */
+static int entity_in_use(uint32_t entity);
+
 int dks_spawn_list(const DksSpawnable **out, int *from_file)
 {
     if (!g_list_loaded) {
@@ -336,6 +384,7 @@ int dks_spawn_list(const DksSpawnable **out, int *from_file)
                 g_list_len = 0;
         }
         dks_log("spawn: %d characters %s", g_list_len, g_list_from_file ? "from darksign_spawn_list.tsv" : "built in (no spawn list)");
+        load_kits();
     }
     *out = g_list;
     *from_file = g_list_from_file;
@@ -364,9 +413,30 @@ DksResult dks_spawn(const DksSpawnable *who, int count)
     if (count > 20)
         count = 20;
     int queued = 0;
+    /* A boss with a kit: the first one takes the kit's entity ID and brings the kit's companions (Pontiff's clone,
+       Friede's later stages), which the kit's events hide or bring in as DS3's map did. Only once at a time. */
+    const DksBossKit *kit = kit_for(who);
+    if (kit && entity_in_use(kit->boss.entity)) {
+        dks_log("spawn: %s's kit (entity %u) is already in the world; this one spawns without it", kit->name, kit->boss.entity);
+        kit = NULL;
+    }
     for (int i = 0; i < count && g_queue_len < MAX_QUEUE; i++, queued++)
-        g_queue[g_queue_len++] = (Request){*who, i};
-    set_status("Spawning %d x %s (%s)...", queued, who->name, who->game);
+        g_queue[g_queue_len++] = (Request){*who, i, i == 0 && kit ? kit->boss.entity : 0};
+    int companions = 0;
+    if (kit) {
+        for (int j = 0; j < kit->companions_len && g_queue_len < MAX_QUEUE; j++, companions++) {
+            const DksKitCharacter *c = &kit->companions[j];
+            DksSpawnable mate = {.chr = c->chr, .npc_param = c->npc_param, .think_param = c->think_param, .boss = 1, .body = DKS_BODY_DS3};
+            strcpy(mate.game, "DS3");
+            snprintf(mate.name, sizeof mate.name, "%s (kit c%04d)", kit->name, c->chr);
+            g_queue[g_queue_len++] = (Request){mate, queued + j, c->entity};
+        }
+        dks_log("spawn: %s spawns with its kit: entity %u, %d companions", kit->name, kit->boss.entity, companions);
+    }
+    if (companions)
+        set_status("Spawning %d x %s (%s) with its boss kit (%d more)...", queued, who->name, who->game, companions);
+    else
+        set_status("Spawning %d x %s (%s)...", queued, who->name, who->game);
     return DKS_OK;
 }
 
@@ -402,7 +472,7 @@ static int start_request(uintptr_t wcm, uintptr_t creator, const Request *r)
         return 0;
     dks_spawn_position(pos, quat, r->n, at);
 
-    uint32_t entity = ENTITY_BASE + (g_next_entity++ % ENTITY_COUNT);
+    uint32_t entity = r->entity ? r->entity : ENTITY_BASE + (g_next_entity++ % ENTITY_COUNT);
     int32_t npc = r->who.npc_param, think = r->who.think_param, talk = -1, init_param = -1;
     wchar_t name[0x20] = {0};
     _snwprintf(name, 0x1F, L"c%04d", r->who.chr);
@@ -490,6 +560,21 @@ void dks_spawn_update(void)
 }
 
 int dks_spawn_pending(void) { return g_queue_len + g_active; }
+
+static int entity_in_use(uint32_t entity)
+{
+    for (int i = 0; i < g_spawned_len; i++) {
+        uint32_t id = 0;
+        if (g_spawned[i].entity == entity && is_object(g_spawned[i].chr) && read_mem(g_spawned[i].chr + CHR_ENTITY_ID, &id, 4) &&
+            id == entity) {
+            int32_t hp = 0;
+            uintptr_t data = read_ptr(read_ptr(g_spawned[i].chr + CHR_MODULES) + MODULES_DATA);
+            if (data && read_mem(data + DATA_HP, &hp, 4) && hp > 0)
+                return 1;
+        }
+    }
+    return 0;
+}
 
 static uintptr_t chr_data(uintptr_t chr) { return read_ptr(read_ptr(chr + CHR_MODULES) + MODULES_DATA); }
 

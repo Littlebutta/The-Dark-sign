@@ -82,6 +82,26 @@ int dks_spawn_has_own_model(const DksSpawnable *s);
 
 int dks_parse_spawn_line(const char *line, DksSpawnable *out);
 
+/* One line of darksign_boss_kits.tsv (Porter Maps/BossKits.cs): a DS3 boss whose own map-script mechanics (Pontiff's
+   clone, Friede's stages) travel with it in common.emevd, keyed to fixed entity IDs.
+   "<boss model cNNNN>\t<NpcParam>\t<kit entity>\t<name>\t<companions: cNNNN:NpcParam:ThinkParam:entity,...>".
+   Returns 1 if valid. A spawned boss of that model gets the kit entity, and its companions are spawned with it. */
+#define DKS_KIT_COMPANIONS 8
+typedef struct {
+    int chr;
+    int npc_param;
+    int think_param;
+    unsigned entity;
+} DksKitCharacter;
+typedef struct {
+    DksKitCharacter boss; /* think_param unused: the spawn list's entry decides */
+    char name[DKS_NAME_MAX];
+    int companions_len;
+    DksKitCharacter companions[DKS_KIT_COMPANIONS];
+} DksBossKit;
+
+int dks_parse_kit_line(const char *line, DksBossKit *out);
+
 /* Where the n-th character of a spawn goes, from the player's position and facing (a Havok quaternion x, y, z, w):
    rows of five, three metres ahead and 1.5 m apart, a little above the ground. out = x, y, z. */
 void dks_spawn_position(const float player[3], const float quaternion[4], int n, float out[3]);
