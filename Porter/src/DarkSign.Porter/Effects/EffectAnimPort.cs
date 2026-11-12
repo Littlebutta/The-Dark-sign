@@ -68,6 +68,7 @@ public static class EffectAnimPort
             skeleton.m_floatSlots.Clear();
             skeleton.m_localFrames.Clear();
             skeleton.m_partitions.Clear();
+            skeleton.m_name = newStem;
             Enemies.ChrPort.MergeSkeleton(skeleton, ds3Skeleton, addBones: true);
             using var output = new MemoryStream();
             new HavokBinarySerializer().Write(root, output);
@@ -76,12 +77,26 @@ public static class EffectAnimPort
         }
 
         var h = template.Header; // the binder header of Elden Ring's own effect anibnd
+        // The template's animation binding names its skeleton ("s88730"); the converted files name the new one, and sit
+        // in its own folder (sfx\hkx\s900023\), as Elden Ring's do.
+        byte[] animTemplate;
+        lock (AnimPort.HavokLock)
+        {
+            var root = (hkRootLevelContainer)AnimPort.ReadEr(template.Animation.Bytes, null);
+            foreach (var binding in AnimPort.Container(root).m_bindings.Where(b => b is not null))
+                binding!.m_originalSkeletonName = newStem;
+            using var output = new MemoryStream();
+            new HavokBinarySerializer().Write(root, output);
+            animTemplate = output.ToArray();
+        }
+        var folder = template.Folder.Replace(template.Stem, newStem, StringComparison.OrdinalIgnoreCase);
+
         var result = new BND4
         {
             Format = h.Format, Version = h.Version, Unicode = h.Unicode, Extended = h.Extended,
             Unk04 = h.Unk04, Unk05 = h.Unk05, BigEndian = h.BigEndian, BitBigEndian = h.BitBigEndian,
         };
-        result.Files.Add(new BinderFile(template.Flags, 1000000, $"{template.Folder}{newStem}_skeleton.hkx", skeletonBytes));
+        result.Files.Add(new BinderFile(template.Flags, 1000000, $"{folder}{newStem}_skeleton.hkx", skeletonBytes));
         int animations = 0;
         var failed = new List<string>();
         foreach (var f in ds3.Files.Where(f => f != ds3SkeletonFile && f.Name.EndsWith(".hkx", StringComparison.OrdinalIgnoreCase)).OrderBy(f => f.ID))
@@ -91,8 +106,8 @@ public static class EffectAnimPort
             var suffix = a >= 0 ? leaf[a..] : $"_a000_{f.ID % 1000000:D6}.hkx";
             try
             {
-                var (hkx, _, _) = AnimPort.ConvertTimed(f.Bytes, ds3Skeleton, erSkeleton, template.Animation.Bytes, null, AnimPort.Spline);
-                result.Files.Add(new BinderFile(template.Flags, f.ID, $"{template.Folder}{newStem}{suffix}", hkx));
+                var (hkx, _, _) = AnimPort.ConvertTimed(f.Bytes, ds3Skeleton, erSkeleton, animTemplate, null, AnimPort.Spline);
+                result.Files.Add(new BinderFile(template.Flags, f.ID, $"{folder}{newStem}{suffix}", hkx));
                 animations++;
             }
             catch (Exception e) when (e is not OutOfMemoryException)
