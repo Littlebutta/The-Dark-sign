@@ -72,6 +72,17 @@ Flags are in the block of the empty sea tile m60_39_29 (1039290000+), the way Jo
 - `DarkSignPorter map-survey` reports both games' map files for the slots on a PC with the games installed: paths,
   binder entry names, the DS3 start point, the host collision template, map materials and texture folders, and the
   warp targets. Run it first on the PC; it answers the open questions below.
+- Every `port-maps` run ends with a **map coverage** block (and `Work\reports\map-coverage.tsv`): each ported map
+  side by side, with its map pieces written of DS3's, pieces left out because their model had nothing to draw,
+  models and meshes left out, faded triangles cut, collisions written (and DS3 files that are empty), objects,
+  enemies, boss warps and the steps that FAILED. Its `WARN` lines (also in `darksign_maps_check.txt` as
+  `coverage:`) name a map that loses 5% or more of its pieces, or has failures the other maps don't. Added after the
+  1.0.383 playtest (2026-11-12): every fix had been checked on map 1, while that build's piece reports showed
+  Undead Settlement missing 714 pieces and the Painted World 103 (one-layer vertex alpha read as a fade, fixed for
+  every map in #171). Check this block for every map, not only the one a fix was aimed at.
+- DS3 collision files with no root object (28 of the Painted World's `h45_00` files and one `l45_00` file; none in
+  m30, m31 or m40) are reported as "empty in DS3", not as failed conversions. Their collision parts are left out:
+  there is nothing to collide with.
 
 ### Why map pieces draw (fixed after the 2026-11-09 playtest)
 

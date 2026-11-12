@@ -259,6 +259,7 @@ public static class MapPorter
         var started = DateTime.Now;
         _placedEnemies.Clear();
         _arenas.Clear();
+        _coverage.Clear();
         _templates.Clear();
         _converted.Clear();
         _objects = null;
@@ -424,10 +425,28 @@ public static class MapPorter
         else
             report.AppendLine("run events: not added (Firelink Shrine / Cemetery of Ash was not ported)");
 
+        // Every ported map side by side, so a step that works on one map and loses pieces on another is seen (RULE 4).
+        var coverage = _coverage.Where(r => ported.Any(p => p.Slot.Er == r.Er)).ToList();
+        var coverageWarnings = MapCoverage.Warnings(coverage);
+        try
+        {
+            foreach (var line in MapCoverage.Summary(coverage))
+                report.AppendLine(line);
+            var coverageFile = ctx.WorkPath("reports", MapCoverage.ReportFile);
+            Directory.CreateDirectory(Path.GetDirectoryName(coverageFile)!);
+            File.WriteAllText(coverageFile, MapCoverage.Tsv(coverage));
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            report.AppendLine($"map coverage: FAILED: {ex.Message}");
+        }
+
         // Read everything back and check it, so the first test in game starts from a known state.
         try
         {
             var check = MapValidate.Validate(ctx, er);
+            foreach (var warning in coverageWarnings)
+                check.Warn("coverage: " + warning);
             MapValidate.Write(ctx, check);
             report.AppendLine($"validation: {check.Fails} FAIL, {check.Warns} WARN (Mods\\ER\\darksign_maps_check.txt)");
         }
@@ -588,6 +607,11 @@ public static class MapPorter
         MapTextures textures, List<BinderFile> materials, StringBuilder report)
     {
         var (ds3Id, erId) = (slot.Ds3, slot.Er);
+        int reportStart = report.Length;   // this map's part of the port log, for its coverage row (MapCoverage)
+        EnemyPort.Result? enemiesPlaced = null;
+        ObjectPort.Result? objectsPlaced = null;
+        (int Fights, int Warps) bossWarps = (0, 0);
+        int collisionFilesEmpty = 0, collisionFilesFailed = 0;
         // A slot with a template map (the spare IDs of map-slots B, the Painted World's m19_70) takes its formats and
         // template parts from the template, a colosseum proven to load; its per-map side files follow (NewIdFiles).
         var hostId = slot.Template is { } template && er.Contains(MsbPath(template)) ? template
@@ -627,6 +651,7 @@ public static class MapPorter
                 var placed = EnemyPort.Place(ds3Msb, layout.Msb, ds3Id, erId, new MsbPort.Options { AllVisible = !options.Ds3Groups, NoGroups = options.NoGroups, AllLayers = options.AllLayers },
                     enemies.Chooser, e => enemies.Describe(e, bosses), EnemyPort.AnyEnemyPart(enemies.Catalog), _placedEnemies, partNames,
                     enemies.People, seats, placePeople: !options.NoPeople, armour: options.ErPeople ? null : _armour, erStandIns: options.ErPeople);
+                enemiesPlaced = placed;
                 report.AppendLine($"  enemies: {placed.Placed} placed ({placed.Ported} ported DS3 characters, {placed.StandIns} Elden Ring stand-ins, "
                                   + $"{placed.People} people{(options.NoPeople ? ", people off (--no-people)" : options.ErPeople ? ", Elden Ring people stand in (--er-people)" : _armour is null ? ", DS3's own people only" : ", DS3's own people and DS3 humans in their DS3 armour")}), {placed.Npcs} people left out, {placed.Skipped} with nothing to stand in; {bosses.Count} DS3 boss entities");
                 foreach (var note in placed.Notes)
@@ -877,18 +902,25 @@ public static class MapPorter
 
         // Collision.
         var missingCollisions = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var emptyCollisions = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var collisionModels = layout.Msb.Models.Collisions.Select(m => m.Name).ToHashSet(StringComparer.OrdinalIgnoreCase);
         clock.Restart();
         foreach (var kind in new[] { "h", "l" })
         {
             var result = MapCollisions.Port(ctx, ds3, er, ds3Id, erId, kind, options, hostId);
             report.AppendLine($"  collision {kind}: {result.Summary}");
+            collisionFilesEmpty += result.Empty?.Count ?? 0;
+            collisionFilesFailed += result.Failed;
             if (kind == "h")
                 foreach (var name in collisionModels.Where(n => !result.Ported.Contains(ModelNumber(n))))
+                {
                     missingCollisions.Add(name);
+                    if (result.Empty?.Contains(ModelNumber(name)) == true)
+                        emptyCollisions.Add(name);
+                }
         }
         foreach (var name in missingCollisions)
-            report.AppendLine($"  collision {name}: left out (no converted file)");
+            report.AppendLine($"  collision {name}: left out ({(emptyCollisions.Contains(name) ? "its DS3 file is empty: no collision to convert" : "no converted file")})");
         report.AppendLine($"  time: collision {clock.Elapsed.TotalSeconds:F0} s");
         clock.Restart();
 
@@ -920,6 +952,7 @@ public static class MapPorter
                 var objects = Objects(ctx, ds3, er, options, models, report);
                 var placed = objects.Place(ds3Msb, layout.Msb, ds3Id, erId, groupOptions);
                 MSBE.Read(layout.Msb.Write());
+                objectsPlaced = placed;
                 foreach (var (from, to) in placed.PartNames)
                     partNames[from] = to;
                 report.AppendLine("  " + placed.Summary);
@@ -928,6 +961,7 @@ public static class MapPorter
             }
             catch (Exception ex) when (ex is not OutOfMemoryException)
             {
+                objectsPlaced = null;
                 ObjectPort.Strip(layout.Msb);
                 report.AppendLine($"  objects: FAILED ({ex.Message}); the map has no objects");
             }
@@ -964,6 +998,7 @@ public static class MapPorter
                 _arenas.RemoveAll(a => a.Er == erId);
                 _arenas.AddRange(arenas);
                 report.AppendLine($"  boss arenas: {arenas.Count} of {fights.Count} DS3 boss fights get an F1 warp");
+                bossWarps = (fights.Count, arenas.Count);
                 foreach (var note in notes)
                     report.AppendLine($"  {note}");
             }
@@ -976,6 +1011,7 @@ public static class MapPorter
 
         // Drop what has no model, then write the layout.
         var msb = layout.Msb;
+        int piecesNoModel = msb.Parts.MapPieces.Count(p => missingModels.Contains(p.ModelName));
         msb.Parts.MapPieces.RemoveAll(p => missingModels.Contains(p.ModelName));
         msb.Parts.MapPieces.RemoveAll(p => standIns.Contains(p.Name));
         var usedModels = msb.Parts.MapPieces.Select(p => p.ModelName).ToHashSet(StringComparer.OrdinalIgnoreCase);
@@ -1032,6 +1068,24 @@ public static class MapPorter
         File.WriteAllBytes(ctx.ModPath(ModParts(MsbPath(erId))), DCX.Compress(msb.Write(), msbCompression));
         report.AppendLine($"  written: {msb.Parts.MapPieces.Count} map pieces, {msb.Parts.Collisions.Count} collisions, {msb.Parts.Players.Count} player points, {msb.Parts.Enemies.Count} enemies, "
                           + $"{msb.Parts.Assets.Count} objects, {msb.Regions.GetEntries().Count} regions, {msb.Events.GetEntries().Count} map-file events");
+        if (!slot.Probe)
+            lock (_coverage)
+            {
+                _coverage.RemoveAll(r => r.Er == erId);
+                _coverage.Add(new MapCoverage.Row(ds3Id, erId, slot.Name)
+                {
+                    PiecesDs3 = ds3Msb.Parts.MapPieces.Count, PiecesWritten = msb.Parts.MapPieces.Count, PiecesNoModel = piecesNoModel,
+                    Models = mapPieces.Count, ModelsLeftOut = missingModels.Count, MeshesLeftOut = models.LeftOut.Values.Sum(),
+                    FadedCut = models.Overlays.OverlayTrianglesCut, FadedTotal = models.Overlays.OverlayTriangles,
+                    CollisionsDs3 = ds3Msb.Parts.Collisions.Count, CollisionsWritten = msb.Parts.Collisions.Count,
+                    CollisionFilesEmpty = collisionFilesEmpty, CollisionFilesFailed = collisionFilesFailed,
+                    ObjectsDs3 = ds3Msb.Parts.Objects.Count, ObjectsPlaced = objectsPlaced?.Placed ?? 0,
+                    EnemiesPlaced = enemiesPlaced?.Placed ?? 0, EnemiesPorted = enemiesPlaced?.Ported ?? 0,
+                    EnemyStandIns = enemiesPlaced?.StandIns ?? 0, EnemiesNothing = enemiesPlaced?.Skipped ?? 0,
+                    BossFights = bossWarps.Fights, BossWarps = bossWarps.Warps,
+                    Failed = MapCoverage.FailedLines(report.ToString(reportStart, report.Length - reportStart)),
+                });
+            }
 
         // The slot's own event script would run colosseum events; replace it with an empty one.
         // A new map ID gets one too, in the template's format.
@@ -1103,6 +1157,8 @@ public static class MapPorter
 
     /// <summary>The boss arenas of the maps ported so far (BossArenas), for the F1 menu's warps.</summary>
     private static readonly List<BossArenas.Arena> _arenas = [];
+    /// <summary>Each ported map's coverage row, for the side-by-side summary at the end of the run (<see cref="MapCoverage"/>).</summary>
+    private static readonly List<MapCoverage.Row> _coverage = [];
 
     private static EnemyContext Enemies(PorterContext ctx, GameArchives ds3, GameArchives er, Options options, StringBuilder report)
     {

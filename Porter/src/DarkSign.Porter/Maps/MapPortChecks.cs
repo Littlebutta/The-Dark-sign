@@ -40,6 +40,8 @@ public static partial class MapPortChecks
             yield return check;
         foreach (var check in ObjectChecks())
             yield return check;
+        foreach (var check in CoverageChecks())
+            yield return check;
         yield return ("validate: layout checks catch a missing start point and parts without models", ValidateLayout);
         yield return ("validate: run event checks pass on ported events and catch a missing one", ValidateEvents);
         yield return ("rebuild: a full run deletes port-maps' own old outputs (both slot methods) and keeps the other steps' files", CleanStale);
