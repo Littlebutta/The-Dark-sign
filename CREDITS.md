@@ -11,7 +11,7 @@ install, and no game files are distributed.
 | Work | Author | License | How we use it |
 |---|---|---|---|
 | [SoulsFormatsNEXT](https://github.com/soulsmods/SoulsFormatsNEXT) | soulsmods (after TKGP's SoulsFormats) | GPL-3.0 | Reading and writing BND4, DCX, PARAM, TAE, FLVER, TPF and more (git submodule) |
-| [HKLib](https://github.com/The12thAvenger/HKLib) | The12thAvenger | MIT | Reading and writing Elden Ring Havok 2018 animations and behaviour (git submodule) |
+| [HKLib](https://github.com/The12thAvenger/HKLib) | The12thAvenger | MIT | Reading and writing Elden Ring Havok 2018 animations, behaviour and collision (git submodule; `HavokRelArrays` adds the hkRelArray patch entries its binary writer leaves out) |
 | [SoulsAssetPipeline](https://github.com/Meowmaritus/SoulsAssetPipeline) | Meowmaritus | GPL-3.0 | HKX reader and spline decompression for DS3 animations (files copied, Porter/third_party/SoulsAssetPipeline-HKX) |
 | [@cccode/fxr](https://github.com/EvenTorset/fxr) | EvenTorset | Unlicense | Converting DS3 effects (FXR) to Elden Ring's format (Porter/third_party/fxr) |
 | [Paramdex](https://github.com/soulsmods/Paramdex) | soulsmods contributors | see repo | Param definitions and row names, downloaded at a pinned commit |

@@ -13,6 +13,7 @@ public static partial class MapPortChecks
     {
         yield return ("doors: a moving object keeps its meshes on their nodes (each part follows its bone) and names a node after the asset", MovingModel);
         yield return ("doors: a DS3 convex hull (door leaf, lever) becomes an Elden Ring convex polytope with one plane per face", ConvexHull);
+        yield return ("doors: a written convex hull lists its vertices, planes, faces and indices in the patch list (the game resolves only those; 1.0.410 crashed without)", ConvexHullPatches);
         yield return ("doors: bodies named after a moving bone get the door leaf's motion settings; the frame stays put", MovingBodies);
         yield return ("doors: DS3 ObjActParam rows are copied at 70,000,000 + the DS3 ID, keys dropped, prompts Elden Ring lacks replaced", ObjActRows);
         yield return ("doors: DS3 ObjAct events are placed for moving objects only, and get their flags when the scripts are converted", ObjActEvents);
@@ -90,6 +91,30 @@ public static partial class MapPortChecks
         try { CollisionPort.ConvertConvex(thin); }
         catch (InvalidDataException) { threw = true; }
         Expect(threw, "a hull with too few vertices or faces is refused (the file then fails, not the game)");
+    }
+
+    private static void ConvexHullPatches()
+    {
+        Expect(Havok.HavokRelArrays.Installed, $"HKLib's array writer is hooked ({Havok.HavokRelArrays.Failure})");
+        var hull = CollisionPort.ConvertConvex(Ds3Box(new Vector3(0, 0, -0.05f), new Vector3(1.2f, 2.2f, 0.05f)));
+        var system = new hknpPhysicsSystemData();
+        // Two bodies share the hull: it is written once, so its four arrays are four patches, not eight.
+        system.m_bodyCinfos.Add(new hknpPhysicsSystemData.bodyCinfoWithAttachment { m_name = "AEG920_007", m_shape = hull, m_motionPropertiesId = 0xFFFF });
+        system.m_bodyCinfos.Add(new hknpPhysicsSystemData.bodyCinfoWithAttachment { m_name = "AEG920_007_01", m_shape = hull, m_motionPropertiesId = 0xFFFF });
+        var scene = new hknpPhysicsSceneData();
+        scene.m_systemDatas.Add(system);
+        var root = new hkRootLevelContainer();
+        root.m_namedVariants.Add(new hkRootLevelContainer.NamedVariant { m_name = "Physics Scene Data", m_className = "hknpPhysicsSceneData", m_variant = scene });
+        byte[] bytes;
+        lock (AnimPort.HavokLock)
+            bytes = CollisionPort.Write(root, xml: false);
+        Expect(CollisionPort.RelArrayFields(root) == 4, $"one hull, four arrays ({CollisionPort.RelArrayFields(root)})");
+        var problems = Havok.HavokRelArrays.Check(bytes, 4);
+        Expect(problems.Count == 0, string.Join("; ", problems));
+        var counts = Havok.HavokRelArrays.Fields(bytes).Select(f => f.Count).Order().ToList();
+        Expect(counts.SequenceEqual([6, 6, 8, 24]), $"each patch names the item with that array's elements ({string.Join(", ", counts)})");
+        // The other direction: a file whose patch list misses the hull's arrays is reported (what 1.0.410 wrote).
+        Expect(Havok.HavokRelArrays.Check(bytes, 5).Count > 0, "a missing hkRelArray patch is reported");
     }
 
     private static void MovingBodies()
