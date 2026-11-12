@@ -1598,6 +1598,14 @@ public sealed class AttackParamPort(ParamStore er, ParamStore ds3, string behavi
 
     private readonly Dictionary<(int, int), int> _variations = new();
 
+    /// <summary>The variation a ported attack set gets: the first free one of the ten from <paramref name="wanted"/>
+    /// (never above <see cref="MaxVariation"/>), else the first free one from 9000.</summary>
+    public static int ChooseVariation(IReadOnlySet<int> used, int? wanted) =>
+        Enumerable.Range(0, 10).Select(k => wanted + k).OfType<int>()
+            .FirstOrDefault(v => v > 0 && v <= MaxVariation && !used.Contains(v), 0) is > 0 and var own
+            ? own
+            : Enumerable.Range(9000, 1000).First(v => !used.Contains(v));
+
     private static int Judge(PARAM.Row row) => Convert.ToInt32(row["behaviorJudgeId"].Value);
 
     /// <summary>
@@ -1611,6 +1619,14 @@ public sealed class AttackParamPort(ParamStore er, ParamStore ds3, string behavi
     /// </summary>
     public const int PrefixUnit = 100_000_000;
 
+    /// <summary>
+    /// The highest behaviour variation either game uses is five digits (Elden Ring 91000, DS3 99900): variation * 1000
+    /// + judge must stay below one prefix unit. Builds up to 1.0.368 gave every ported enemy its new character ID * 100
+    /// (Pontiff c7105 = 710500), so its rows (910500010...) sat where the prefix digit belongs: no ported DS3 enemy's
+    /// hit found its attack row and none could hurt the player.
+    /// </summary>
+    public const int MaxVariation = PrefixUnit / 1000 - 1;
+
     /// <summary>The prefix of a row numbered the games' way, else -1 (the few shared rows numbered on their own).</summary>
     public static int Prefix(PARAM.Row row)
     {
@@ -1621,6 +1637,8 @@ public sealed class AttackParamPort(ParamStore er, ParamStore ds3, string behavi
     /// <summary>The row ID the game computes for a hit, or -1 when it does not fit a row ID.</summary>
     public static int RowId(int prefix, int variation, int judge)
     {
+        if (variation > MaxVariation)
+            return -1;
         long id = (long)prefix * PrefixUnit + (long)variation * 1000 + judge;
         return id is > 0 and <= int.MaxValue ? (int)id : -1;
     }
@@ -1666,9 +1684,10 @@ public sealed class AttackParamPort(ParamStore er, ParamStore ds3, string behavi
                 foreach (var r in _erBehavior.Rows.Where(r => Convert.ToInt32(r["variationId"].Value) == v && Prefix(r) > 0))
                     templateRows.TryAdd((Prefix(r), Judge(r)), r);
         var used = _erBehavior.Rows.Select(r => Convert.ToInt32(r["variationId"].Value)).ToHashSet();
-        // Weapons take the first free variation from 9000; an enemy names its own (its new character ID * 100, the
-        // way Elden Ring numbers enemy variations).
-        int variation = newVariation is { } wanted && !used.Contains(wanted) ? wanted : Enumerable.Range(9000, 1000).First(v => !used.Contains(v));
+        // Weapons take the first free variation from 9000; an enemy asks for its own (its new character ID * 10, the
+        // way Elden Ring numbers enemy variations: c3570 Godskin Noble = 35700) and takes the next free one of its ten
+        // (a second DS3 NpcParam row of the same character, or an Elden Ring variation such as 70000 or 71000).
+        int variation = ChooseVariation(used, newVariation);
         var ds3Judges = new HashSet<(int Prefix, int Judge)>();
         foreach (var source in rows)
         {

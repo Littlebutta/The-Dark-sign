@@ -1747,7 +1747,7 @@ public static partial class ChrPort
             {
                 try
                 {
-                    int variation = attacks.PortVariation(Convert.ToInt32(ds3Var.Value), Convert.ToInt32(erVar.Value), plan.NewChr * 100);
+                    int variation = attacks.PortVariation(Convert.ToInt32(ds3Var.Value), Convert.ToInt32(erVar.Value), plan.NewChr * 10);
                     if (variation > 0)
                         Set(erVar, variation);
                 }
