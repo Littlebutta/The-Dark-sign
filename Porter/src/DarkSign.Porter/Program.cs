@@ -33,6 +33,7 @@ const string Usage = """
       port-weapons                 build the weapon rows into TheDarkSign\Mods\ER\regulation.bin
       validate-mod                 check the built mod offline: params, TAE, animations, clips, sounds, effects
       texture-check [weapon...]    check every ported weapon model's materials find their textures (grey models)
+      texture-names [er:<path>]    textures/materials the mod adds under a name Elden Ring (or another mod file) uses
       item-list                    write the test menu's item list (Elden Ring items only)
       chr-survey <DS3|ER> <chr id>...  report an enemy's files, binders, AI scripts and params (enemy port step 1)
       map-selftest                 offline checks of the map porter (no game files needed)
@@ -138,6 +139,7 @@ try
         "port-weapons" => Commands.PortWeapons(ctx),
         "validate-mod" => ModValidate.Run(ctx),
         "texture-check" => TextureCheck.Run(ctx, argList[1..]),
+        "texture-names" => TextureNames.Run(ctx, argList[1..]),
         "port-maps" => DarkSign.Porter.Maps.MapPorter.Run(ctx, argList[1..]),
         "port-enemies" => DarkSign.Porter.Enemies.ChrPort.Run(ctx),
         "drops-plan" => DarkSign.Porter.Enemies.DropPort.Plan(ctx),
