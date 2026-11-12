@@ -1270,6 +1270,7 @@ public static partial class ChrPort
         var ds3Textures = ds3.Entries.Where(e => e.Path is { } p && p.StartsWith($"/chr/c{x:D4}", StringComparison.OrdinalIgnoreCase)
                                                  && p.EndsWith(".texbnd.dcx", StringComparison.OrdinalIgnoreCase)).Select(e => e.Path!).ToList();
         var tpfs = new List<TPF>();
+        var notDds = new List<string>();
         // Textures the model names under another character's ID (the Undead Dog c2020 wears c2029's, c6080 some of
         // c6089's): that character's binders, only the textures named. Without them the mesh draws nothing.
         foreach (int owner in textureOwners)
@@ -1280,13 +1281,15 @@ public static partial class ChrPort
                     var tpf = TPF.Read(f.Bytes);
                     tpf.Textures.RemoveAll(tx => !textureNames.Contains(tx.Name));
                     if (tpf.Textures.Count > 0)
-                        tpfs.Add(ChrModel.ConvertTpf(tpf, x, n, !ownFile));
+                        tpfs.Add(ChrModel.ConvertTpf(tpf, x, n, !ownFile, notDds));
                 }
         foreach (var path in ds3Textures)
             foreach (var f in BND4.Read(ds3.Read(path)).Files.Where(f => TPF.Is(f.Bytes)))
-                tpfs.Add(ChrModel.ConvertTpf(TPF.Read(f.Bytes), x, n, !ownFile));
+                tpfs.Add(ChrModel.ConvertTpf(TPF.Read(f.Bytes), x, n, !ownFile, notDds));
         foreach (var f in ds3Chrbnd.Files.Where(f => TPF.Is(f.Bytes)))
-            tpfs.Add(ChrModel.ConvertTpf(TPF.Read(f.Bytes), x, n, !ownFile));
+            tpfs.Add(ChrModel.ConvertTpf(TPF.Read(f.Bytes), x, n, !ownFile, notDds));
+        if (notDds.Count > 0)
+            notes.Add($"FAIL textures: {notDds.Count} DS3 textures are not DDS files and are left out: {string.Join("; ", notDds.Take(6))}{(notDds.Count > 6 ? "; ..." : "")}");
         // Materials whose colour texture the port does not find (another sampler name, or a path left to the DS3
         // material file): they draw blank. Named here so one build report tells which enemies and why.
         var blank = flver.Materials.Where(m => !m.Textures.Any(tx => tx.Path.Length > 0
