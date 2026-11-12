@@ -34,6 +34,13 @@ public static partial class MovesetPort
     private static bool ArtsWithHks => ArtsMode != "nohks";
     // DARKSIGN_STANCE_CHAIN=0: stance light attacks don't chain (R1 after the first stance attack is a plain R1).
     private static readonly bool StanceChain = Environment.GetEnvironmentVariable("DARKSIGN_STANCE_CHAIN") != "0";
+    // DARKSIGN_ART_POOL=0: the art IDs go out as in builds up to 1.0.378 (unique-named arts first, generic-named own-section arts
+    // such as Demon's Scar's 'Spin Slash' with the class skills), no hks stance-only IDs, no shared IDs.
+    private static readonly bool ArtPool = Environment.GetEnvironmentVariable("DARKSIGN_ART_POOL") != "0";
+
+    /// <summary>IDs ividyon's hks lists in IsStanceArts as "UNUSED" and names nowhere else (fx16: not in
+    /// IsAttackStanceArts, no art row, no section): they play as a plain stance, so only a stance art gets one.</summary>
+    internal static readonly int[] StanceOnlyArtIds = [342, 343, 346, 347];
 
     /// <summary>First SwordArtsParam row of the ported arts (Elden Ring's own end at 5600).</summary>
     public const int FirstArtRow = 90000;
@@ -181,6 +188,11 @@ public static partial class MovesetPort
         var free = new Queue<int>(Enumerable.Range(300, 99).Concat(Enumerable.Range(170, 85)).Where(id => id is not (196 or 305 or 357 or 399))
             .Concat(extra)
             .Where(id => !hksNamed.Contains(id) && !usedIds.Contains(id) && !taeSections.Contains(600 + id) && !clipsBySection.ContainsKey(600 + id)));
+        // Four more IDs for stance arts only (art pool): the hks already makes them stances.
+        var stanceFree = new Queue<int>(ArtPool && hks is not null
+            ? StanceOnlyArtIds.Where(id => !usedIds.Contains(id) && !taeSections.Contains(600 + id) && !clipsBySection.ContainsKey(600 + id)
+                                           && !HksAttackStanceIds(hks).Contains(id))
+            : []);
 
         // Which DS3 moves make each weapon's art. A weapon with its own art section (spAtkCategory, Friede's a232) uses
         // that; every other weapon (spAtkCategory 0: Vordt's Great Hammer, the Dragonslayer Greataxe, most weapons) does
@@ -314,11 +326,36 @@ public static partial class MovesetPort
         // Order: Friede's, then every unique art (its own skill, not a generic class skill: see GenericArts), then the
         // generic ones by how many weapons they serve. The free IDs run out before the end; what's left takes Elden
         // Ring's own Ash of War of the same kind below.
-        jobs = jobs.OrderByDescending(j => j.Weapons.Any(p => p.Ds3Id == 10180000)).ThenBy(j => IsGenericArt(Kind(j.Weapons[0]).Name) ? 1 : 0)
-            .ThenByDescending(j => j.Weapons.Count).ThenBy(j => j.Ds3Section).ToList();
+        // Art pool (default): every art with its own DS3 section comes before every class skill, whatever its name. Its
+        // animations exist nowhere else (Demon's Scar's a257 'Spin Slash' is not the class's Spin Slash), while a class
+        // skill has an Elden Ring Ash of War of the same kind to fall back on. Up to 1.0.378 a generic name ranked an own
+        // art with the class skills, so 27 of them took an Elden Ring ash (Demon's Scar did Spinning Slash).
+        jobs = ArtPool
+            ? jobs.OrderByDescending(j => j.Weapons.Any(p => p.Ds3Id == 10180000)).ThenBy(j => j.Source == "own" ? 0 : 1)
+                .ThenBy(j => IsGenericArt(Kind(j.Weapons[0]).Name) ? 1 : 0).ThenByDescending(j => j.Weapons.Count).ThenBy(j => j.Ds3Section).ToList()
+            : jobs.OrderByDescending(j => j.Weapons.Any(p => p.Ds3Id == 10180000)).ThenBy(j => IsGenericArt(Kind(j.Weapons[0]).Name) ? 1 : 0)
+                .ThenByDescending(j => j.Weapons.Count).ThenBy(j => j.Ds3Section).ToList();
+        // Jobs whose DS3 moves are the same files with the same events (Golden Ritual Spear and Heysel Pick, the a48
+        // shield arts) share one art ID (art pool): the second weapon gets the first's Ash of War row.
+        string JobKey(ArtJob j)
+        {
+            var taes = new List<(int Section, TAE? Tae)> { (j.Ds3Section, ds3Tae(j.Ds3Section)), (j.ClassSection, ds3Tae(j.ClassSection)) }
+                .Where(t => t.Tae is not null).DistinctBy(t => t.Section).ToList();
+            var sb = new System.Text.StringBuilder($"{j.Stance}|{j.Ds3Start}");
+            foreach (var id in j.Skill)
+            {
+                if (FindDs3(taes, ds3Main, id) is not { } m)
+                    return $"unique:{j.Ds3Section}:{j.ClassSection}:{j.Ds3Start}:{j.Weapons[0].Ds3Id}";
+                sb.Append($"|{id}:{(m.FileName ?? m.HkxName).ToLowerInvariant()}");
+                foreach (var e in m.Events)
+                    sb.Append($";{e.Type}@{e.StartTime:F3}-{e.EndTime:F3}:{Convert.ToHexString(e.GetParameterBytes(false))}");
+            }
+            return sb.ToString();
+        }
+        var builtByKey = new Dictionary<string, (int Row, int ArtId)>();
         Console.WriteLine($"arts: {jobs.Count} DS3 weapon arts with skill animations ({jobs.Count(j => j.Stance)} stances, " +
                           $"{jobs.Count(j => j.Source == "class")} class skills for {jobs.Where(j => j.Source == "class").Sum(j => j.Weapons.Count)} weapons), " +
-                          $"{free.Count} free art IDs; {noClassSkill} weapons have no skill animations");
+                          $"{free.Count} free art IDs (+{stanceFree.Count} stance-only); {noClassSkill} weapons have no skill animations");
         foreach (var line in unknownBlocks)
             Console.WriteLine($"arts: skipped {line}: can't tell which of its class's skills it does");
 
@@ -343,7 +380,20 @@ public static partial class MovesetPort
         foreach (var job in jobs)
         {
             var label = string.Join(", ", job.Weapons.Select(p => p.Name).Take(3)) + (job.Weapons.Count > 3 ? $" +{job.Weapons.Count - 3}" : "");
-            if (free.Count == 0)
+            string? jobKey = ArtPool ? JobKey(job) : null;
+            if (jobKey is not null && builtByKey.TryGetValue(jobKey, out var shared))
+            {
+                foreach (var plan in job.Weapons)
+                    foreach (var w in erWeapons.Rows.Where(r => r.ID >= plan.NewId!.Value && r.ID < plan.NewId.Value + 10000))
+                        SetCell(w, "swordArtsParamId", shared.Row);
+                weapons += job.Weapons.Count;
+                Console.WriteLine($"arts: {label} (DS3 a{job.Ds3Section}, '{Kind(job.Weapons[0]).Name}') -> art {shared.ArtId} (SwordArtsParam {shared.Row} '{names.GetValueOrDefault(shared.Row)}'): " +
+                                  "the same DS3 moves and events as that art, so it shares its ID");
+                continue;
+            }
+            // A stance takes a stance-only ID first, so a general one is left for a one-shot.
+            bool stanceId = job.Stance && stanceFree.Count > 0;
+            if (free.Count == 0 && !stanceId)
             {
                 var kindName = Kind(job.Weapons[0]).Name;
                 gemNames ??= ItemText.Load(erArchives, "GemName");
@@ -364,7 +414,7 @@ public static partial class MovesetPort
             int templateRowId = Convert.ToInt32(templateWeapon["swordArtsParamId"].Value);
             var templateArtRow = artParam[templateRowId] ?? artParam.Rows.First(r => r.ID > 10);
             var (fp, fpLight, fpHeavy, ds3ArtName) = Ds3Art(ds3, ds3Weapons, job.Weapons[0].Ds3Id);
-            int artId = free.Peek(), section = 600 + artId;
+            int artId = stanceId ? stanceFree.Peek() : free.Peek(), section = 600 + artId;
             var ds3Taes = new List<(int Section, TAE? Tae)> { (job.Ds3Section, ds3Tae(job.Ds3Section)), (job.ClassSection, ds3Tae(job.ClassSection)) }
                 .Where(t => t.Tae is not null).DistinctBy(t => t.Section).ToList();
 
@@ -394,6 +444,35 @@ public static partial class MovesetPort
             {
                 Console.WriteLine($"arts: skipped {label}: {e.GetType().Name}: {e.Message}");
                 continue;
+            }
+            if (built is not null && stanceId && !built.Stance)
+            {
+                // The stance didn't build and a one-shot did: a stance-only ID would play it as a stance. Rebuild it on
+                // a general ID, or skip it when none is left.
+                Console.WriteLine($"arts: {label}: its stance didn't build, so it doesn't take stance-only ID {artId}");
+                built = null;
+                if (free.Count > 0)
+                {
+                    stanceId = false;
+                    artId = free.Peek();
+                    section = 600 + artId;
+                    reasons.Clear();
+                    try
+                    {
+                        foreach (var (stance, start) in attempts.Where(a => !a.Stance))
+                        {
+                            built = BuildArt(stance, start, out var reason);
+                            if (built is not null)
+                                break;
+                            reasons.Add($"{start}: {reason}");
+                        }
+                    }
+                    catch (Exception e) when (e is not OutOfMemoryException)
+                    {
+                        Console.WriteLine($"arts: skipped {label}: {e.GetType().Name}: {e.Message}");
+                        continue;
+                    }
+                }
             }
             if (built is null)
             {
@@ -432,7 +511,12 @@ public static partial class MovesetPort
             if (built.Chain.Count > 0)
                 chainIds.Add(artId);
             portedIds.Add(artId);
-            free.Dequeue();
+            if (stanceId)
+                stanceFree.Dequeue();
+            else
+                free.Dequeue();
+            if (jobKey is not null)
+                builtByKey[jobKey] = (nextRow, artId);
             arts++;
             weapons += job.Weapons.Count;
             if (built.Light is not null || built.Heavy is not null)
@@ -917,6 +1001,18 @@ public static partial class MovesetPort
         return ids;
     }
 
+    /// <summary>Numbers listed inside the hks's IsAttackStanceArts function (attack stances like Spinning Wheel, 340/341
+    /// in ividyon's): a stance-only ID listed there would play as one.</summary>
+    internal static HashSet<int> HksAttackStanceIds(string hks)
+    {
+        int at = hks.IndexOf("function IsAttackStanceArts", StringComparison.Ordinal);
+        if (at < 0)
+            return [];
+        int end = hks.IndexOf("\nend", at, StringComparison.Ordinal);
+        var body = end < 0 ? hks[at..] : hks[at..end];
+        return System.Text.RegularExpressions.Regex.Matches(body, @"\b(\d{1,3})\b").Select(m => int.Parse(m.Groups[1].Value)).ToHashSet();
+    }
+
     private const string ChainState = "W_SwordArtsOneShotComboEnd_MesmerSowrdArts";
     private const string ChainTest = "c_SwordArtsID == 318";
     private const string ChainFunction = "DarkSignIsStanceChain";
@@ -1022,6 +1118,9 @@ public static class ArtSelfTest
         bool threw = false;
         try { MovesetPort.PatchHks("function Other()\nend\n", [300]); } catch (InvalidDataException) { threw = true; }
         Check(threw, "hks: a file without IsStanceArts is refused (the build then skips the hks)");
+        var attack = MovesetPort.HksAttackStanceIds("function IsAttackStanceArts(arts_id)\n    if arts_id == 340 or arts_id == 341 then\n        return TRUE\n    end\nend\nfunction X()\n    return 342\nend\n");
+        Check(attack.SetEquals([340, 341]), "pool: IsAttackStanceArts' IDs are read up to its own end, not the next function's");
+        Check(MovesetPort.StanceOnlyArtIds.All(id => !attack.Contains(id)), "pool: the stance-only IDs aren't attack stances");
         var named = MovesetPort.HksNamedIds("if c_SwordArtsID == 318 then end\nif arts_id ~= 17 then end\nif 130 <= arts_id and arts_id <= 140 then end\n" +
                                             "local aow_list = {\n        10, -- Wild Strikes\n        372\n    }\nSwordArtsCategory = {\n    [26] = {SWORD_ART_DIFF_CAT_DEFAULT},\n}\nlocal idx = 0\nif idx == 26 then end\n");
         Check(named.SetEquals([318, 17, 10, 372, .. Enumerable.Range(130, 11)]), $"hks: art IDs with behaviour of their own found (got {string.Join(" ", named.Order())})");
