@@ -440,6 +440,12 @@ void draw_menu()
     if (!open)
         g_open = false;
 
+    bool god = dks_god_on() != 0;
+    if (ImGui::Checkbox("God mode (no damage, HP kept full)", &god))
+        dks_god_set(god);
+    ImGui::SameLine();
+    ImGui::TextDisabled("Ctrl+Shift+F5");
+
     bool changed = false, levels = false, run = false, spawn = false;
     if (ImGui::BeginTabBar("games")) {
         for (int i = 0; i < IM_ARRAYSIZE(GAME_LABELS); i++)
@@ -782,6 +788,7 @@ void render(IDXGISwapChain3 *swap_chain)
         toggle();
     g_f1_was_down = down;
     dks_spawn_update(); // spawns queued from the menu go on while it's closed
+    dks_god_update();   // god mode stays on while the menu is closed
     if (!g_open) {
         // Hold no back-buffer references while the menu is closed: a ResizeBuffers(1) the hooks miss (another overlay's
         // hook in front of ours, Alt+Enter) would otherwise fail with DXGI_ERROR_INVALID_CALL and take the game down.

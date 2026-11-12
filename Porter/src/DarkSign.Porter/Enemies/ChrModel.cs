@@ -37,12 +37,16 @@ public static class ChrModel
     [ThreadStatic] public static int VertexColoursSet;
     [ThreadStatic] public static int SecondLayers;
 
-    public static List<ChrMaterial> Convert(FLVER2 flver, FLVER2 template, int ds3Chr, int newChr, Func<string, long>? textureArea = null) =>
-        Convert(flver, template, ds3Chr, newChr, PlainMaterials, ErNodes, textureArea, ErVertexColours);
+    public static List<ChrMaterial> Convert(FLVER2 flver, FLVER2 template, int ds3Chr, int newChr, Func<string, long>? textureArea = null,
+        ChrGlow.Template? glow = null) =>
+        Convert(flver, template, ds3Chr, newChr, PlainMaterials, ErNodes, textureArea, ErVertexColours, glow);
+
+    /// <summary>From the last Convert on this thread: DS3 materials drawn on the glowing material.</summary>
+    [ThreadStatic] public static int Glowing;
 
     /// <param name="textureArea">Pixels of a texture by its new name (0 when unknown); picks the layer a two-layer material shows.</param>
     public static List<ChrMaterial> Convert(FLVER2 flver, FLVER2 template, int ds3Chr, int newChr, bool plainMaterials, bool erNodes,
-        Func<string, long>? textureArea = null, bool erColours = true)
+        Func<string, long>? textureArea = null, bool erColours = true, ChrGlow.Template? glow = null)
     {
         if (!ChrPort.HasBody(template) || flver.Materials.Count == 0)
             throw new InvalidDataException("the template or the DS3 model has nothing to draw");
@@ -64,7 +68,8 @@ public static class ChrModel
 
         var materials = new List<ChrMaterial>();
         int secondLayers = 0;
-        var plain = new Dictionary<(string?, string?, string?, bool), string>();
+        var plain = new Dictionary<(string?, string?, string?, bool, string?), string>();
+        int glowing = 0, glowGx = -1;
         string oldTag = $"c{ds3Chr:D4}", newTag = $"c{newChr:D4}";
         for (int i = 0; i < flver.Materials.Count; i++)
         {
@@ -88,6 +93,11 @@ public static class ChrModel
                 secondLayers++;
             }
             var metallic = specular is not null && specular.EndsWith("_r", StringComparison.OrdinalIgnoreCase) ? specular[..^2] + "_m" : null;
+            // DS3's glow map (g_EmissiveTexture: the Jailer's lantern, the Soul of Cinder's body and sword); SYSTEX
+            // dummies are the "no glow" placeholder.
+            var emissive = Ds3Texture("g_EmissiveTexture", "_EmissiveMap_0") is { } e && !e.StartsWith("SYSTEX", StringComparison.OrdinalIgnoreCase) ? e : null;
+            if (glow is null)
+                emissive = null;
             bool alphaTest = IsAlphaTested(m.MTD);
             // "#01#": the display mask the mesh belongs to (NpcParam modelDispMask1), the same in both games.
             m.Name = $"{MaskPrefix(m.Name)}{newTag}_{i}";
@@ -95,14 +105,27 @@ public static class ChrModel
             if (plainMaterials)
             {
                 // Meshes with the same textures share one material file.
-                var key = (albedo, normal, metallic, alphaTest);
+                var key = (albedo, normal, metallic, alphaTest, emissive);
                 if (!plain.TryGetValue(key, out var name))
                 {
                     plain[key] = name = $"C[{newTag}]_ds3_{plain.Count}";
-                    materials.Add(new ChrMaterial(ChrMaterial.PlainSource, name, albedo, normal, metallic)
-                        { Plain = true, AlphaTest = alphaTest, TextureFolder = $@"N:\GR\data\Model\chr\{newTag}\tex\" });
+                    materials.Add(new ChrMaterial(emissive is null ? ChrMaterial.PlainSource : glow!.Matbin, name, albedo, normal, metallic)
+                        { Plain = true, AlphaTest = alphaTest, TextureFolder = $@"N:\GR\data\Model\chr\{newTag}\tex\", Emissive = emissive });
                 }
                 m.MTD = $@"N:\GR\data\Material\mtd\Chr\matxml\{name}.matxml";
+                if (emissive is not null)
+                {
+                    // The glowing material is drawn with the GX list its own character uses for it.
+                    if (glowGx < 0)
+                    {
+                        glowGx = flver.GXLists.Count;
+                        flver.GXLists.Add(glow!.GX);
+                    }
+                    m.GXIndex = glowGx;
+                    m.Textures = glow!.Samplers.Select(n => new FLVER2.Texture(n, "", System.Numerics.Vector2.One, 0, 0, 0, 0, 0)).ToList();
+                    glowing++;
+                    continue;
+                }
                 m.Textures = new[] { PlainAlbedo, PlainMetallic, PlainNormal }
                     .Select(n => new FLVER2.Texture(n, "", System.Numerics.Vector2.One, 0, 0, 0, 0, 0)).ToList();
                 continue;
@@ -159,6 +182,7 @@ public static class ChrModel
                     vertex.Colors[c] = new FLVER.VertexColor(1f, 1f, 0f, 0f);
                 }
         SecondLayers = secondLayers;
+        Glowing = glowing;
         return materials;
     }
 
@@ -370,6 +394,8 @@ public sealed record ChrMaterial(string TemplateMatbin, string NewMatbin, string
 
     public bool Plain { get; init; }
     public bool AlphaTest { get; init; }
+    /// <summary>DS3's glow map: the material is a copy of Elden Ring's glowing character material (<see cref="ChrGlow"/>).</summary>
+    public string? Emissive { get; init; }
     /// <summary>Where a plain material's samplers say its textures are (the game finds them by file name).</summary>
     public string TextureFolder { get; init; } = "";
 
@@ -379,7 +405,8 @@ public sealed record ChrMaterial(string TemplateMatbin, string NewMatbin, string
         int swapped = 0;
         foreach (var sampler in matbin.Samplers)
         {
-            var texture = sampler.Type.Contains("Albedo", StringComparison.OrdinalIgnoreCase) ? Albedo
+            var texture = sampler.Type.Contains("Emissive", StringComparison.OrdinalIgnoreCase) ? Emissive
+                : sampler.Type.Contains("Albedo", StringComparison.OrdinalIgnoreCase) ? Albedo
                 : sampler.Type.Contains("Normal", StringComparison.OrdinalIgnoreCase) ? Normal
                 : sampler.Type.Contains("Metallic", StringComparison.OrdinalIgnoreCase) ? Metallic
                 : null;
@@ -397,6 +424,8 @@ public sealed record ChrMaterial(string TemplateMatbin, string NewMatbin, string
             sampler.Path = sampler.Path[..^leaf.Length] + texture + Path.GetExtension(leaf);
             swapped++;
         }
+        if (Plain && Emissive is not null)
+            ChrGlow.Whiten(matbin);
         if (Plain)
             foreach (var p in matbin.Params)
                 switch (p.Name)

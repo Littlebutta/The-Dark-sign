@@ -648,3 +648,60 @@ int dks_spawn_clear(void)
                remove ? "removed" : "killed");
     return cleared;
 }
+
+/* God mode (see spawn.h). The bit and the HP top-up are applied from the render thread every frame; turning it off
+   clears only the bit this sets, so the game's other debug bits are left alone. */
+#define DATA_DEBUG_FLAGS 0x19B
+#define DEBUG_NO_DAMAGE 0x02
+
+static volatile LONG g_god = -1; /* -1: DKSIGN_GOD not read yet */
+static volatile LONG g_god_applied;
+static int g_god_logged;
+
+int dks_god_on(void)
+{
+    if (g_god < 0) {
+        wchar_t v[8];
+        DWORD n = GetEnvironmentVariableW(L"DKSIGN_GOD", v, 8);
+        if (InterlockedCompareExchange(&g_god, n > 0 && n < 8 && v[0] == L'1', -1) == -1 && g_god > 0)
+            dks_log("god mode: on at launch (DKSIGN_GOD=1)");
+    }
+    return g_god > 0;
+}
+
+void dks_god_set(int on)
+{
+    dks_god_on();
+    InterlockedExchange(&g_god, on ? 1 : 0);
+    g_god_logged = 0;
+    dks_log("god mode: %s", on ? "on" : "off");
+}
+
+void dks_god_update(void)
+{
+    int on = dks_god_on();
+    if (!on && !g_god_applied)
+        return;
+    dks_spawn_scan();
+    uintptr_t player = main_player(world_chr_man());
+    uintptr_t data = is_object(player) ? chr_data(player) : 0;
+    if (!is_object(data)) {
+        g_god_logged = 0; /* loading screen: log again once a character is back */
+        return;
+    }
+    uint8_t flags = 0;
+    if (!read_mem(data + DATA_DEBUG_FLAGS, &flags, 1))
+        return;
+    uint8_t want = on ? (uint8_t)(flags | DEBUG_NO_DAMAGE) : (uint8_t)(flags & ~DEBUG_NO_DAMAGE);
+    if (want != flags)
+        write_mem(data + DATA_DEBUG_FLAGS, &want, 1);
+    InterlockedExchange(&g_god_applied, on);
+    int32_t hp = 0, max_hp = 0;
+    if (on && read_mem(data + DATA_HP, &hp, 4) && read_mem(data + DATA_HP_MAX, &max_hp, 4) && max_hp > 0 && hp > 0 &&
+        hp < max_hp)
+        write_mem(data + DATA_HP, &max_hp, 4);
+    if (on && !g_god_logged) {
+        g_god_logged = 1;
+        dks_log("god mode: applied to the player (debug flags %02x -> %02x, HP %d / %d)", flags, want, hp, max_hp);
+    }
+}

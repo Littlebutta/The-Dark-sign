@@ -93,12 +93,12 @@ static DWORD WINAPI watch(LPVOID unused)
 {
     (void)unused;
     load_warps();
-    dks_log("hotkeys: on (Ctrl+Shift+F1 start DS3 run, F2 leave, 1-%d warp, F3 give DS3 weapons, F4 clear spawned enemies)", g_warp_count);
+    dks_log("hotkeys: on (Ctrl+Shift+F1 start DS3 run, F2 leave, 1-%d warp, F3 give DS3 weapons, F4 clear spawned enemies, F5 god mode)", g_warp_count);
     int was[16] = {0};
     for (;;) {
         Sleep(50);
         int combo = game_has_focus() && down(VK_CONTROL) && down(VK_SHIFT);
-        int keys[] = {VK_F1, VK_F2, VK_F3, VK_F4, '1', '2', '3', '4', '5', '6', '7', '8', '9'};
+        int keys[] = {VK_F1, VK_F2, VK_F3, VK_F4, VK_F5, '1', '2', '3', '4', '5', '6', '7', '8', '9'};
         for (int k = 0; k < (int)(sizeof keys / sizeof keys[0]); k++) {
             int now = combo && down(keys[k]);
             if (now && !was[k]) {
@@ -112,6 +112,10 @@ static DWORD WINAPI watch(LPVOID unused)
                     /* The render thread does the clearing (it owns the spawn list); see dks_spawn_update. */
                     dks_spawn_request_clear();
                     dks_log("hotkey: clear spawned enemies");
+                    report(1);
+                }
+                else if (keys[k] == VK_F5) {
+                    dks_god_set(!dks_god_on());
                     report(1);
                 }
                 else if (keys[k] - '1' < g_warp_count && g_warp_flags[keys[k] - '1'])
