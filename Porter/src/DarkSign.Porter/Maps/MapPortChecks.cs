@@ -63,7 +63,7 @@ public static partial class MapPortChecks
                 ctx.ModPath("map", "worldmsblist.worldloadlistlist.dcx"), ctx.ModPath("map", "breakgeom", "lod0", "m50_00_00_00_lod0.breakgeom.dcx"),
                 ctx.ModPath("map", "m45", "m45_0000.tpfbhd"), ctx.ModPath("event", "common.emevd.dcx"), ctx.ModPath("event", "common_func.emevd.dcx"),
                 ctx.ModPath("event", "m51_00_00_00.emevd.dcx"), ctx.ModPath("material", "allmaterial_dlc01.matbinbnd.dcx"), ctx.ModPath("material", "allmaterial.matbinbnd.dcx"),
-                ctx.ModPath("msg", "engus", "menu_dlc02.msgbnd.dcx"), ctx.ModPath("darksign_flags.tsv"), ctx.ModPath("darksign_maps.tsv")];
+                ctx.ModPath("msg", "engus", "menu_dlc02.msgbnd.dcx"), ctx.ModPath("darksign_flags.tsv"), ctx.ModPath("darksign_maps.tsv"), ctx.ModPath(BossKits.FileName)];
             string[] theirs = [ctx.ModPath("regulation.bin"), ctx.ModPath("darksign_chr_map.tsv"), ctx.ModPath("material", "allmaterial_dlc02.matbinbnd.dcx"),
                 ctx.ModPath("msg", "engus", "item_dlc02.msgbnd.dcx"), ctx.ModPath("event", "m10_00_00_00.emevd.dcx")];
             foreach (var f in ours.Concat(theirs))

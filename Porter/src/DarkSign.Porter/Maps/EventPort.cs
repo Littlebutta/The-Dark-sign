@@ -19,7 +19,12 @@ namespace DarkSign.Porter.Maps;
 /// </summary>
 public sealed class EventPort
 {
-    public enum Kind { Other, Entity, Flag, FlagRangeStart, FlagRangeEnd, Event, Area, Block, PackedMap, Cutscene, SpEffect }
+    /// <summary>
+    /// What an instruction argument (or an event parameter) holds. WarpPoint: an entity the player is warped to or
+    /// respawns at (moved like any entity; the map port makes each one a spawn point, <see cref="WarpPoints"/>).
+    /// ActionButton: an ActionButtonParam row ID (DS3's rows get Elden Ring copies, <see cref="ActionButtons.RowForDs3"/>).
+    /// </summary>
+    public enum Kind { Other, Entity, Flag, FlagRangeStart, FlagRangeEnd, Event, Area, Block, PackedMap, Cutscene, SpEffect, WarpPoint, ActionButton }
 
     private readonly Emedf _ds3, _er;
     private readonly IReadOnlyList<(MapId Ds3, MapId Er)> _maps;
@@ -41,6 +46,12 @@ public sealed class EventPort
     /// </summary>
     public Func<long, long?>? SpEffects { get; init; }
 
+    /// <summary>
+    /// A move that comes before the usual ones, or null to move the usual way: the boss kits
+    /// (<see cref="BossKits"/>) send a boss's characters, flags and events to their own IDs.
+    /// </summary>
+    public Func<long, Kind, long?>? Override { get; init; }
+
     /// <summary>Where DS3 action button prompts get their ActionButtonParam rows; without it they don't convert.</summary>
     public ActionButtons? Buttons { get; init; }
 
@@ -52,6 +63,8 @@ public sealed class EventPort
         public int Events, EventsDropped, Instructions, Converted, NoOps;
         /// <summary>SpEffect IDs pointed at a ported row, and ones left at their DS3 ID (no ported row).</summary>
         public int SpEffectsMoved, SpEffectsKept;
+        /// <summary>DS3 ActionButtonParam IDs pointed at their Elden Ring copies.</summary>
+        public int ActionButtonsMoved;
         public SortedSet<long> SpEffectsKeptIds { get; } = [];
         public Dictionary<string, int> Unconverted { get; } = new();
         public List<string> Notes { get; } = [];
@@ -60,6 +73,7 @@ public sealed class EventPort
 
         public override string ToString() =>
             $"{Events - EventsDropped}/{Events} events, {Converted}/{Instructions} instructions converted, {NoOps} no-ops"
+            + (ActionButtonsMoved == 0 ? "" : $", {ActionButtonsMoved} DS3 action button rows pointed at their copies")
             + (SpEffectsMoved + SpEffectsKept == 0 ? "" : $", SpEffects: {SpEffectsMoved} to ported rows, {SpEffectsKept} kept"
                 + (SpEffectsKeptIds.Count == 0 ? "" : $" ({string.Join(" ", SpEffectsKeptIds.Take(12))})"))
             + (Unconverted.Count == 0 ? "" : "; not converted: " + string.Join(", ",
@@ -135,6 +149,12 @@ public sealed class EventPort
         var n = argName.ToLowerInvariant();
         if (n.Contains("cutscene id"))
             return Kind.Cutscene;
+        if (n.Contains("action button param"))
+            return Kind.ActionButton;
+        // Where the player lands: Warp Player's "Initial Area (Entity) ID", the respawn point, and the point a
+        // cutscene warps the player to (DS3's "Play Cutscene and Warp Player").
+        if (n.Contains("initial area") || n.Contains("respawn point") || n.Contains("respawn area") || n == "point entity id")
+            return Kind.WarpPoint;
         if (n.Contains("flag") && !n.Contains("state") && !n.Contains("type") && !n.Contains("bit") && !n.Contains("comparison")
             && !n.Contains("number") && !n.Contains("operation"))
             return n.Contains("start") || n.Contains("first") ? Kind.FlagRangeStart
@@ -150,7 +170,7 @@ public sealed class EventPort
             return Kind.SpEffect;
         if (n == "map id")
             return Kind.PackedMap;
-        if (n.Contains("entity") || n == "initial area id" || n.Contains("respawn point"))
+        if (n.Contains("entity"))
             return Kind.Entity;
         return Kind.Other;
     }
@@ -311,9 +331,12 @@ public sealed class EventPort
     {
         if (value <= 0)
             return value;
+        if (Override?.Invoke(value, kind) is { } over)
+            return over;
         switch (kind)
         {
             case Kind.Entity:
+            case Kind.WarpPoint:
             case Kind.Event:
                 foreach (var (ds3, er) in _maps)
                     if (ds3.OwnsDs3Id(value))
@@ -328,6 +351,14 @@ public sealed class EventPort
                     if (ds3.OwnsDs3Id(value))
                         return _commonMapFlags ? _flags.LocalFlag(value) : ds3.MoveEntity((int)value, er);
                 return _flags.Flag(value);
+            case Kind.ActionButton:
+                // DS3's ActionButtonParam rows mean other prompts (or nothing) in Elden Ring: each gets a copy.
+                if (Buttons?.RowForDs3((int)Math.Min(value, int.MaxValue)) is { } row)
+                {
+                    Stats.ActionButtonsMoved++;
+                    return row;
+                }
+                return value;
             case Kind.SpEffect:
                 if (SpEffects?.Invoke(value) is { } moved)
                 {
@@ -347,7 +378,18 @@ public sealed class EventPort
     /// that uses it as one (call <see cref="Learn"/> for every script first). The enemy port ports these rows too,
     /// so a script's effect exists at its new ID even when no enemy move casts it.
     /// </summary>
-    public SortedSet<int> ScriptSpEffects(IEnumerable<EMEVD> scripts)
+    public SortedSet<int> ScriptSpEffects(IEnumerable<EMEVD> scripts) => ScriptIds(scripts, Kind.SpEffect);
+
+    /// <summary>
+    /// Every DS3 entity these scripts warp the player to or make a respawn point (DS3 IDs; call <see cref="Learn"/>
+    /// first). In DS3 most of them are map regions (Vordt's arena point 3002810, Friede's 4502810); Elden Ring warps
+    /// land only on player parts, so the map port adds one at each (<see cref="RegionPort.AddWarpPoints"/>). A warp
+    /// to a region drops the player at the map's default start instead (Devin's 1.0.383 test: Vordt's door).
+    /// </summary>
+    public SortedSet<int> WarpPoints(IEnumerable<EMEVD> scripts) => ScriptIds(scripts, Kind.WarpPoint);
+
+    /// <summary>The DS3 values of one kind these scripts use: written in an instruction or passed to an event.</summary>
+    public SortedSet<int> ScriptIds(IEnumerable<EMEVD> scripts, Kind wanted)
     {
         var ids = new SortedSet<int>();
         void Add(long v)
@@ -367,14 +409,14 @@ public sealed class EventPort
                     var callee = BitConverter.ToUInt32(ins.ArgData, head - 4);
                     if (_paramKinds.TryGetValue(callee, out var kinds))
                         foreach (var (source, kind) in kinds)
-                            if (kind == Kind.SpEffect && head + source + 4 <= ins.ArgData.Length)
+                            if (kind == wanted && head + source + 4 <= ins.ArgData.Length)
                                 Add(BitConverter.ToInt32(ins.ArgData, head + (int)source));
                     continue;
                 }
                 if (_ds3.Get(ins.Bank, ins.ID) is not { } def)
                     continue;
                 foreach (var arg in def.Args)
-                    if (KindOf(arg.Name) == Kind.SpEffect
+                    if (KindOf(arg.Name) == wanted
                         && !e.Parameters.Any(p => p.InstructionIndex == i && p.TargetStartByte == arg.Offset))
                         Add(Emedf.Read(ins.ArgData, arg));
             }
@@ -444,8 +486,10 @@ public sealed class EventPort
             {
                 var name = _ds3.Get(ins.Bank, ins.ID)?.Name ?? $"{ins.Bank}[{ins.ID}]";
                 Stats.Miss(name);
-                // Conditions and flow decide what the event does; without them it would do something else.
-                if (ins.Bank < 2000)
+                // Conditions and flow decide what the event does; without them it would do something else. A
+                // condition Elden Ring has no form of that only narrows a group which other conditions also fill
+                // counts as met (AssumedMet: Pontiff's phase 2 waits for "not in a draw group", 13705880).
+                if (ins.Bank < 2000 && !(AssumedMet.Contains(name) && SharesGroup(e, i)))
                     return null;
                 converted = NoOp();
                 Stats.NoOps++;
@@ -482,6 +526,32 @@ public sealed class EventPort
             result.Parameters.Add(new EMEVD.Parameter(p.InstructionIndex, targetByte, p.SourceStartByte, byteCount));
         }
         return result;
+    }
+
+    /// <summary>
+    /// DS3 conditions Elden Ring has no form of that only narrow a group: "IF Character DrawGroup State" waits until
+    /// a character is (not) in a draw group, which Elden Ring scripts don't ask. DS3's Pontiff waits for it next to
+    /// the event message that starts his second phase; without the event his phase change never happened.
+    /// </summary>
+    private static readonly HashSet<string> AssumedMet = new(StringComparer.OrdinalIgnoreCase) { "IF Character DrawGroup State" };
+
+    /// <summary>Whether a condition (first argument: its group) adds to a group another condition of the event also fills.</summary>
+    private static bool SharesGroup(EMEVD.Event e, int index)
+    {
+        var ins = e.Instructions[index];
+        if (ins.ArgData.Length < 1 || e.Parameters.Any(p => p.InstructionIndex == index && p.TargetStartByte == 0))
+            return false;
+        var group = (sbyte)ins.ArgData[0];
+        if (group == 0)
+            return false;
+        for (int k = 0; k < e.Instructions.Count; k++)
+        {
+            var other = e.Instructions[k];
+            // Bank 0-4 conditions start with their result group; 0[00] adds a whole group.
+            if (k != index && other.Bank is >= 0 and <= 5 && other.ArgData.Length > 0 && (sbyte)other.ArgData[0] == group)
+                return true;
+        }
+        return false;
     }
 
     /// <summary>One instruction in Elden Ring's form, or null when it has none.</summary>

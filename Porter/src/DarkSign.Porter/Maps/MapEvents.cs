@@ -39,6 +39,9 @@ public static class MapEvents
                 port.Learn(ds3Common, common: true);
             foreach (var script in ds3Scripts.Values)
                 port.Learn(script);
+            // A DS3 button row's "invalid" flag (a fog wall's: the boss's defeated flag) moves like the scripts' flags.
+            if (buttons is not null)
+                buttons.FlagMover ??= v => port.Move(v, EventPort.Kind.Flag);
             return port;
         }
 
@@ -164,6 +167,18 @@ public static class MapEvents
             spNote = $"speffects: script SpEffect IDs kept at their DS3 IDs ({ex.Message})";
         }
         var result = Convert(ds3Defs, erDefs, flags, slots, ds3Scripts, ds3Common, s => Template(s).Script, erCommon, buttons, spEffects);
+        // Boss kits go through the same buttons, so their action button rows are written with the maps'.
+        (EMEVD Common, DCX.CompressionInfo Compression, string Note)? kits = null;
+        string KitNote(Exception ex) => $"boss kits: not added ({ex.Message}); bosses outside their DS3 map run no map scripts";
+        string kitNote = "";
+        try
+        {
+            kits = PortKits(ctx, ds3, er, ds3Defs, erDefs, flags, buttons, spEffects);
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            kitNote = KitNote(ex);
+        }
         if (buttons is not null && regulation is not null)
         {
             try
@@ -176,14 +191,29 @@ public static class MapEvents
                 buttonNote = $"action buttons: FAILED to write rows ({ex.Message}); converting again without them";
                 flags = FlagMap.Load(flagPath);
                 result = Convert(ds3Defs, erDefs, flags, slots, ds3Scripts, ds3Common, s => Template(s).Script, erCommon, null, spEffects);
+                try
+                {
+                    kits = PortKits(ctx, ds3, er, ds3Defs, erDefs, flags, null, spEffects);
+                }
+                catch (Exception kitEx) when (kitEx is not OutOfMemoryException)
+                {
+                    kits = null;
+                    kitNote = KitNote(kitEx);
+                }
             }
+        }
+        if (kits is { } k)
+        {
+            File.WriteAllBytes(ctx.ModPath(MapPorter.ModParts("/event/common.emevd.dcx")), DCX.Compress(k.Common.Write(), k.Compression));
+            kitNote = k.Note;
         }
         foreach (var slot in slots)
             if (result.Scripts.TryGetValue(slot.Er, out var script))
                 File.WriteAllBytes(ctx.ModPath(MapPorter.ModParts(ScriptPath(slot.Er))), DCX.Compress(script.Write(), Template(slot).Compression));
         File.WriteAllBytes(modCommon, DCX.Compress(result.CommonFunc.Write(), commonCompression));
         flags.Save(flagPath);
-        return "events:\n  " + result.Summary + (buttonNote.Length > 0 ? "\n  " + buttonNote : "") + (spNote.Length > 0 ? "\n  " + spNote : "");
+        return "events:\n  " + result.Summary + (buttonNote.Length > 0 ? "\n  " + buttonNote : "") + (spNote.Length > 0 ? "\n  " + spNote : "")
+               + (kitNote.Length > 0 ? "\n  " + kitNote : "");
     }
 
     /// <summary>The DS3 scripts of these slots' maps, and DS3's common_func (null when missing).</summary>
@@ -194,6 +224,24 @@ public static class MapEvents
             if (ds3.Contains(ScriptPath(id)))
                 scripts[id] = EMEVD.Read(ds3.Read(ScriptPath(id)));
         return (scripts, ds3.Contains(CommonFunc) ? EMEVD.Read(ds3.Read(CommonFunc)) : null);
+    }
+
+    /// <summary>
+    /// The DS3 entities one DS3 map's script (and the DS3 common events it starts) warps the player to or makes a
+    /// respawn point, for <see cref="RegionPort.AddWarpPoints"/>.
+    /// </summary>
+    public static SortedSet<int> WarpPoints(PorterContext ctx, GameArchives ds3, MapId ds3Map)
+    {
+        if (!ds3.Contains(ScriptPath(ds3Map)))
+            return [];
+        var defs = Emedf.Parse(File.ReadAllText(ctx.Data.Emedf("ds3-common")));
+        var script = EMEVD.Read(ds3.Read(ScriptPath(ds3Map)));
+        var common = ds3.Contains(CommonFunc) ? EMEVD.Read(ds3.Read(CommonFunc)) : null;
+        var port = new EventPort(defs, defs, [], new FlagMap());
+        if (common is not null)
+            port.Learn(common, common: true);
+        port.Learn(script);
+        return port.WarpPoints([script]);
     }
 
     /// <summary>
@@ -209,6 +257,56 @@ public static class MapEvents
             port.Learn(common, common: true);
         foreach (var s in scripts.Values)
             port.Learn(s);
-        return port.ScriptSpEffects(common is null ? scripts.Values : scripts.Values.Append(common));
+        var ids = port.ScriptSpEffects(common is null ? scripts.Values : scripts.Values.Append(common));
+        // Boss kits run in every map, so their SpEffects (Pontiff's 10636 and 10637) need rows whichever maps ported.
+        var kits = new EMEVD(EMEVD.Game.DarkSouls3);
+        kits.Events.AddRange(Kits(ctx, ds3).SelectMany(k => k.Events));
+        ids.UnionWith(port.ScriptSpEffects([kits]));
+        return ids;
+    }
+
+    private static List<BossKits.Kit>? _kits;
+    private static readonly List<string> _kitNotes = [];
+
+    /// <summary>Every DS3 boss's kit (<see cref="BossKits"/>), read once per run.</summary>
+    public static List<BossKits.Kit> Kits(PorterContext ctx, GameArchives ds3)
+    {
+        if (_kits is not null)
+            return _kits;
+        var defs = Emedf.Parse(File.ReadAllText(ctx.Data.Emedf("ds3-common")));
+        _kitNotes.Clear();
+        return _kits = BossKits.Plan(ds3, defs, null, _kitNotes);
+    }
+
+    /// <summary>
+    /// The boss kits in Elden Ring's common.emevd (the mod's copy when another step changed it), and
+    /// darksign_boss_kits.tsv for the F1 spawner. Returns the script to write and a summary.
+    /// </summary>
+    private static (EMEVD Common, DCX.CompressionInfo Compression, string Note) PortKits(PorterContext ctx, GameArchives ds3,
+        GameArchives er, Emedf ds3Defs, Emedf erDefs, FlagMap flags, ActionButtons? buttons, Func<long, long?>? spEffects)
+    {
+        const string Common = "/event/common.emevd.dcx";
+        var modCommon = ctx.ModPath(MapPorter.ModParts(Common));
+        var (vanilla, compression) = er.ReadWithCompression(Common);
+        var common = EMEVD.Read(File.Exists(modCommon) ? DCX.Decompress(File.ReadAllBytes(modCommon)) : vanilla);
+        var kits = Kits(ctx, ds3);
+        var note = BossKits.AddTo(common, kits, ds3Defs, erDefs, flags, spEffects, buttons);
+        // The F1 spawner's table: only kits whose every character the enemy port ported can be spawned whole.
+        var lines = new List<string>();
+        var mapPath = ctx.ModPath(EnemyPort.ChrMap.FileName);
+        if (File.Exists(mapPath))
+        {
+            var map = EnemyPort.ChrMap.Parse(File.ReadAllLines(mapPath));
+            EnemyPort.ErEnemy? Ported(BossKits.Character c)
+            {
+                var ds3Enemy = new EnemyPort.Ds3Enemy(c.Model, c.NpcParam, "", true, false);
+                var er = map.FindNpc(ds3Enemy) ?? map.Find(ds3Enemy);
+                return er is null ? null : er with { ThinkParam = map.Think(c.ThinkParam, c.Model) ?? er.ThinkParam };
+            }
+            lines = BossKits.Lines(kits, Ported);
+        }
+        File.WriteAllLines(ctx.ModPath(BossKits.FileName), lines);
+        var kitNotes = _kitNotes.Count > 0 ? "\n    " + string.Join("\n    ", _kitNotes) : "";
+        return (common, compression, $"{note}; {Math.Max(0, lines.Count - 1)} spawnable from F1 ({BossKits.FileName}){kitNotes}");
     }
 }

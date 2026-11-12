@@ -229,6 +229,60 @@ public static class RegionPort
         return new Result(regions, withEntity, routePoints, patrols, walking, platoons, generators, leftOut, notes);
     }
 
+    /// <summary>First map-local number for warp-point player parts whose own number is taken by another player part.</summary>
+    public const int WarpPointSpare = 9900;
+
+    /// <summary>
+    /// Makes every DS3 point the scripts warp the player to (or set as a respawn point) a player part: Elden Ring's
+    /// "Warp Player" and respawn points land on player parts, and DS3 mostly names map regions (Vordt's
+    /// post-cutscene point 3002810, Friede's 4502810). A warp to a region lands on the map's default start instead,
+    /// which is what sent Devin back to the High Wall's start at Vordt's door (1.0.383). Each gets a player part at the
+    /// region's spot and turn (a copy of the layout's first player part) with the region's entity ID; the region
+    /// gives the ID up, so the ID names one thing. DS3 points that are already player parts are left as they are.
+    /// </summary>
+    /// <param name="warpPoints">DS3 entity IDs the scripts use as warp destinations (<see cref="EventPort.WarpPoints"/>).</param>
+    public static int AddWarpPoints(MSB3 ds3, MSBE msb, MapId ds3Id, MapId erId, IEnumerable<int> warpPoints, List<string> notes)
+    {
+        var template = msb.Parts.Players.FirstOrDefault();
+        if (template is null)
+        {
+            notes.Add("warp points: the layout has no player part to copy; DS3's warps land on the map's start");
+            return 0;
+        }
+        var names = msb.Parts.GetEntries().Select(p => p.Name).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        int added = 0, spare = WarpPointSpare;
+        foreach (var id in warpPoints.Where(w => ds3Id.OwnsDs3Id(w)).Distinct().Order())
+        {
+            var entity = (uint)ds3Id.MoveEntity(id, erId);
+            if (msb.Parts.Players.Any(p => p.EntityID == entity))
+                continue;
+            var src = ds3.Regions.GetEntries().FirstOrDefault(r => r.EntityID == id);
+            if (src is null)
+            {
+                notes.Add($"warp points: {id} is not a region or player part of {ds3Id}; warps to it land on the start");
+                continue;
+            }
+            var local = (int)(entity % 10_000);
+            var name = $"c0000_{local:D4}";
+            while (names.Contains(name) && spare < 10_000)
+                name = $"c0000_{spare++:D4}";
+            names.Add(name);
+            var part = (MSBE.Part.Player)template.DeepCopy();
+            part.Name = name;
+            part.InstanceID = int.Parse(name[6..]);
+            part.EntityID = entity;
+            part.Position = src.Position;
+            part.Rotation = new System.Numerics.Vector3(0, src.Rotation.Y, 0);
+            msb.Parts.Players.Add(part);
+            foreach (var r in msb.Regions.GetEntries().Where(r => r.EntityID == entity))
+                r.EntityID = 0;
+            added++;
+        }
+        if (added > 0)
+            notes.Add($"warp points: {added} DS3 warp destinations are player parts now");
+        return added;
+    }
+
     /// <summary>
     /// Takes the regions and map-file events this step added back out (fallback "map-regions" B, or when the layout
     /// with them fails its write/read check): the map is then as it was before the step existed.
