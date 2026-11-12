@@ -65,6 +65,7 @@ public static class TextureNames
             catch (Exception e) when (e is not OutOfMemoryException)
             {
                 Interlocked.Increment(ref unreadable);
+                Console.Error.WriteLine($"warning: Elden Ring {path}: {e.GetType().Name}: {e.Message}");
             }
         });
         Console.WriteLine($"Elden Ring: {vanilla.Count} texture names in {erFiles.Count} parts/chr files ({unreadable} unreadable)");
@@ -123,7 +124,7 @@ public static class TextureNames
         Console.WriteLine($"names the mod shares with Elden Ring's own parts/chr files: {withVanilla}"
             + (byFolder.Count > 0 ? $" ({string.Join(", ", byFolder.Select(b => $"{b.Value} in mod {b.Key}\\"))})" : ""));
         Console.WriteLine($"names two different mod models share: {betweenMod}");
-        foreach (var line in sb.ToString().Split('\n').Skip(1).Where(l => l.Length > 0).Take(40))
+        foreach (var line in sb.ToString().Split('\n').Select(l => l.TrimEnd('\r')).Skip(1).Where(l => l.Length > 0).Take(40))
             Console.WriteLine("  " + line.Replace('\t', ' '));
         Console.WriteLine($"report: {report}");
         return 0;
