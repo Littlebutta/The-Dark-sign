@@ -1657,7 +1657,7 @@ public static partial class ChrPort
                     file.Bytes = tae.Write();
             }
         notes.Add($"{replaced} DS3 animations ({failed} failed; {filled} are the nearest DS3 move in place of a template move DS3 has no match for, {kept} template animations kept; {additive} additive flinch files matched with DS3 additive clips only), {merged} moves with DS3 events"
-                  + (signals.Count > 0 ? $"; map-script signal events kept: {string.Join(" ", signals.OrderBy(p => p.Key).Select(p => $"{p.Key}x{p.Value}"))}" : "")
+                  + (signals.Count > 0 ? $"; DS3 events kept that the template has no event of (231 map-script signal, 233 display mask change): {string.Join(" ", signals.OrderBy(p => p.Key).Select(p => $"{p.Key}x{p.Value}"))}" : "")
                   + (unlaid.Count > 0 ? $"; DS3 event types the template lays out differently or lacks, dropped: {string.Join(" ", unlaid.OrderByDescending(p => p.Value).ThenBy(p => p.Key).Take(8).Select(p => $"{p.Key}x{p.Value}"))}" : ""));
         if (extra.Count > 0)
         {

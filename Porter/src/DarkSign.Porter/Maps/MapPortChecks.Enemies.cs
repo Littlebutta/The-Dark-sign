@@ -341,6 +341,40 @@ public static partial class MapPortChecks
         Expect(layout.Msb.Parts.Enemies.All(e => e.EntityID != 45000500), "a human with no DS3 look stays out (no Elden Ring stand-in by default)");
         Expect(result.Notes.Any(n => n.Contains("1 DS3 people wear their DS3 armour")), $"reported: {string.Join(" | ", result.Notes)}");
 
+        // DS3's weapons in the person's row (the Champion's Gravetender held Inquisitor Ghiza's up to 1.0.403).
+        var charaDef = new PARAMDEF { ParamType = "CHARA_INIT_PARAM", Fields = [] };
+        foreach (var (field, erType, _) in PeopleArmour.WeaponSlots)
+        {
+            charaDef.Fields.Add(new PARAMDEF.Field(charaDef, PARAMDEF.DefType.s32, field) { Default = -1 });
+            if (erType is not null)
+                charaDef.Fields.Add(new PARAMDEF.Field(charaDef, PARAMDEF.DefType.u8, erType));
+        }
+        foreach (var (field, erType) in PeopleArmour.ErOnlySlots)
+        {
+            charaDef.Fields.Add(new PARAMDEF.Field(charaDef, PARAMDEF.DefType.s32, field) { Default = -1 });
+            charaDef.Fields.Add(new PARAMDEF.Field(charaDef, PARAMDEF.DefType.u8, erType));
+        }
+        var standIn = new PARAM.Row(PeopleArmour.CharaInitBase + 27200, "Gravetender", charaDef);
+        void Put(string f, int v) => standIn.Cells.First(c => c.Def.InternalName == f).Value = Convert.ChangeType(v, standIn.Cells.First(c => c.Def.InternalName == f).Value.GetType());
+        int Get(string f) => Convert.ToInt32(standIn.Cells.First(c => c.Def.InternalName == f).Value);
+        Put("equip_Wep_Right", 9000000); Put("wepParamType_Right1", 1); Put("equip_Subwep_Right", 9010000); Put("equip_Wep_Left", 9020000);
+        Put("equip_Subwep_Left", 9030000); Put("equip_Subwep_Right3", 9040000); Put("equip_Arrow", 50000000);
+        var gravetender = new PeopleArmour.Look(27200, "Champion's Gravetender", 0, [null, null, null, null],
+            [6260000, -1, 21290000 + 5, 2000000, 400000, -1, -1, -1]);
+        var mapped = new Dictionary<int, int> { [6260000] = 80010000, [21290005] = 30100000 };
+        var arming = PeopleArmour.WithModels();
+        arming.Arm(standIn, gravetender, ds3 => mapped.TryGetValue(ds3, out var er) ? er : null);
+        Expect(Get("equip_Wep_Right") == 80010000 && Get("wepParamType_Right1") == 0, "a mapped DS3 weapon is held as a plain weapon row");
+        Expect(Get("equip_Subwep_Right") == -1, "a slot DS3 leaves empty is emptied");
+        Expect(Get("equip_Wep_Left") == 30100000, "the mapper gets DS3's own ID (level and infusion included)");
+        Expect(Get("equip_Subwep_Left") == 9030000, "a DS3 weapon with no Elden Ring match keeps the stand-in's");
+        Expect(Get("equip_Subwep_Right3") == -1, "Elden Ring's third slots are emptied (DS3 has none)");
+        Expect(Get("equip_Arrow") == 50000000, "unmapped ammunition keeps the stand-in's");
+        Expect(arming.WeaponCounts == (2, 1, 1) && arming.Notes.Any(n => n.Contains("2000000") && n.Contains("Gravetender")), $"counted and named: {arming.WeaponCounts} {string.Join(" | ", arming.Notes)}");
+        var unarmed = new PARAM.Row(1, "", charaDef);
+        PeopleArmour.WithModels().Arm(unarmed, armour.Looks[25100], _ => 1);
+        Expect(unarmed.Cells.All(c => Convert.ToInt32(c.Value) is -1 or 0), "a look whose DS3 weapons weren't read leaves the row alone");
+
         // --er-people: the stand-ins' own looks, no DS3 armour.
         var erLayout = MsbPort.Convert(ds3, SyntheticHost(), Ds3Id, ErId);
         EnemyPort.Place(ds3, erLayout.Msb, Ds3Id, ErId, new MsbPort.Options(), new EnemyPort.Chooser(SyntheticCatalog(), null, EnemyPort.Method.Auto),

@@ -269,7 +269,7 @@ public sealed class DropPort
         }
     }
 
-    private static Dictionary<int, string> RowNames(PARAM? param) =>
+    public static Dictionary<int, string> RowNames(PARAM? param) =>
         param?.Rows.Where(r => !string.IsNullOrWhiteSpace(r.Name)).GroupBy(r => r.ID).ToDictionary(g => g.Key, g => g.First().Name!) ?? [];
 
     /// <summary>DS3 weapon ID to ported Elden Ring weapon ID, from the plan port-weapons wrote before the regulation.</summary>
