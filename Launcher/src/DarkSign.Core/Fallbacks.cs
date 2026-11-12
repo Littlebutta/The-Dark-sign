@@ -456,6 +456,14 @@ public static class Fallbacks
                 { MapsArgs = ["--no-regions"] },
         ]),
 
+        new("map-effects", "DS3 maps", "DS3's map effects (candles, fog, light shafts)", Stage.Build,
+            "A DS3 map crashes, hangs while loading or hitches since its effects were added, or a fog bank, light shaft or flame looks wrong or floats in the air.",
+        [
+            new("A", "DS3's map effects (default)", "The effects DS3 places in its maps (Firelink Shrine's candle flames, fog banks, light shafts, crows, flies and fires) are converted with the weapons' effects and stand where DS3 has them. Report: Work\\map-sfx.tsv lists any effect that couldn't be converted."),
+            new("B", "None", "The DS3 maps have none of DS3's map effects (DARKSIGN_MAP_SFX=0), as every build up to 1.0.366 was.")
+                { PorterEnv = Env("DARKSIGN_MAP_SFX", "0") },
+        ]),
+
         new("map-layers", "DS3 maps", "Which state of a DS3 map is ported", Stage.Build,
             "Enemies or objects you expected are missing from a DS3 map since 1.0.327 (for example on the way to Firelink Shrine), or you want to see the Untended Graves' enemies.",
         [

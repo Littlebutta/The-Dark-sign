@@ -362,6 +362,9 @@ public static class MapPorter
             }
             Time(report, "object params", objectClock);
         }
+        // DS3's map effects (Firelink's candles, fog, light shafts), converted by port-weapons into the common binder.
+        if (ported.Count > 0)
+            Step(report, "map effects", () => MapSfx.Apply(ctx, ds3, ported.Select(p => p.Slot)));
         if (enemyPort is not null)
         {
             // The SpEffects the maps' scripts use get rows too, so the events step can point the scripts at them.

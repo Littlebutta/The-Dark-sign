@@ -550,6 +550,20 @@ Not proven in game yet (first build with it: the one after 1.0.299). If enemies 
 3. If the files are right and the game still doesn't use them, generate the navmeshes with the game's own Havok code
    instead (ERNavmeshGen, as JortPob does) from the ported collision, and keep this list code for the result.
 
+## Map effects (candles, fog, light shafts)
+
+DS3 places its ambient effects as SFX regions: an effect ID at a spot. Firelink Shrine's candle flames are five of
+them (effect 840060, entities 4003500-4003504), next to fog (833002, 840040) and light shafts (840031); the High Wall
+has 238 SFX regions naming 22 effects and the Undead Settlement 76 naming 15. Up to 1.0.366 RegionPort left them out,
+so Firelink had its torches (objects) but no candle light.
+
+`MapSfx` ports them in two steps. port-weapons adds every effect the maps' SFX regions name to the effects it
+converts into Elden Ring's common effect binder (900,000,000 + DS3 ID) and writes which converted to
+`Work\map-sfx.tsv`. port-maps, after waiting for port-weapons, adds an Elden Ring SFX region for each DS3 one whose
+effect converted, with DS3's spot, shape, start state and moved entity ID. Unproven in game: that a map SFX region
+plays an effect from the resident common binder. Fallback `map-effects` B (DARKSIGN_MAP_SFX=0) turns them off.
+WindSFX regions (they need DS3's wind areas) are still left out.
+
 ## Next stages
 
 1. Navmesh: converted since PR #44, loaded by the game since the list is written too (see "Navigation"). If Elden Ring rejects converted navmeshes, generate them with the game's own Havok code (ERNavmeshGen, as JortPob does) or with Recast (NavMeshStudio, Smithbox). Then: DS3's jump and drop links as user edges, and the faces events close and open (node banks).

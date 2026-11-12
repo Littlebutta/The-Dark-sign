@@ -17,7 +17,8 @@ namespace DarkSign.Porter.Maps;
 /// <item>PatrolRoute, MovementPoint: an Elden Ring PatrolRoute point (JortPob's MakePart.PatrolRoute).</item>
 /// <item>Everything else (invasion points, sound and effect emitters, wind, messages, muffling, environment map
 /// points) is left out and counted: their IDs name DS3 sounds, effects and message rows, which other port steps
-/// own. Lighting's environment map box is added by <see cref="MapLighting"/>.</item>
+/// own. Lighting's environment map box is added by <see cref="MapLighting"/>, the effect emitters (SFX) by
+/// <see cref="MapSfx"/> once their effects are converted.</item>
 /// </list>
 ///
 /// Map-file events: PatrolInfo (an enemy's route: a list of points), PlatoonInfo (enemies that fight as a group)
