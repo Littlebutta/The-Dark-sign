@@ -279,6 +279,19 @@ host's with every light volume one even grey (its brightest channel's mean) and 
 its mean brightness. Map 2's DS3 textures were measured neutral (`map-diag colours`: vertex-weighted mean albedo
 93 89 80). Fallback `map-env-light` B (`--host-env-light`) keeps the host's files.
 
+**Baked light (DS3's shade).** DS3 bakes shade into per-piece lightmaps (`g_DOLTexture1/2`) and into light probes
+(`.btpb`, read with SoulsFormatsNEXT's `BTPB`: first-order spherical harmonics in RGB plus a sun mask per probe,
+14k to 434k probes 1.5 to 2 m apart). Elden Ring ships the DS3-style lightmap matbins but none of their shaders
+(`map-diag lightvol`, 2026-11-12), so the lightmaps cannot be drawn. `MapBakedLight` spreads the probes over a light
+volume of the map's own (environment point and box 900, `GIIV0900`, in every envmap binder, plus an ivinfo entry per
+time of day). Measured on vanilla files: a light volume spans the environment box of its number (colosseum 120 x 172 x
+156 texels over 246 x 350 x 316 m), texture rows go up, and each of W/X/Y/Z holds one coefficient (order 0, then the
+x/y/z terms of order 1) with its colour as 128 + 127 * c / |c| and its size in alpha (W's colour never drops below
+127; Y is 0.87 of W in open arenas, the ratio of the up term to order 0 for light from the sky). DS3's open sky is
+scaled to the host volume's open-sky alpha. Unproven until seen in game: column and slice directions (fallback
+`map-baked-light` C/D mirror them), that the smaller box with the higher UnkT34 wins over the catch-all box, and that
+alpha is linear. Fallback `map-baked-light` B (`--flat-env-light`) leaves the volume out.
+
 ### Sky
 
 Elden Ring keeps a second layout beside every legacy map, index 99 (`m45_02_00_99.msb` for `m45_02_00_00`): the
