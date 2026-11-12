@@ -142,6 +142,19 @@ public static class ChrEffectsSelfTest
         sp.BindVisuals(bound);
         Check("enemy SpEffects: an effect that only shows something is ported with its visual row, which names the converted effect",
             lantern == 700_011_900 && lanternVfx > 0 && erVfx[lanternVfx] is { } vfxRow && ParamDefaults.Int(vfxRow, "midstSfxId") == 800_000_500);
+        // Weapon effects (no Elden Ring row to start from): 1.0.353, a blank row put every damage multiplier at 0.
+        var weaponErSp = Param([.. erFields.Distinct().Select(f => (f, TypeOf(f))), ("iconId", S32), ("erOnly", U8), ("defPlayerDmgCorrectRate_Physics", F32)]);
+        for (int i = 0; i < 3; i++)
+            Add(weaponErSp, 10 + i, "", ("iconId", -1), ("erOnly", 4), ("maxHpRate", 1f), ("physicsDiffenceRate", 1f), ("replaceSpEffectId", -1), ("defPlayerDmgCorrectRate_Physics", 1f));
+        Add(ds3Sp, 143021910, "Friede's Great Scythe - Elfriede's Stance - Left", ("maxHpRate", 1f), ("physDefRate", 1f), ("changeHpPoint", 1), ("effectEndurance", 0.13f));
+        var weaponSp = new SpEffectPort(weaponErSp, ds3Sp, null, null, weapons);
+        int stance = weaponSp.Port(143021910);
+        var stanceRow = stance > 0 ? weaponErSp[stance] : null;
+        Check("weapon SpEffects: an effect with no Elden Ring row to start from gets Elden Ring's usual values (damage taken and dealt x1, not x0), DS3's where it sets them",
+            stanceRow is not null && Convert.ToSingle(stanceRow["defPlayerDmgCorrectRate_Physics"].Value) == 1f && Convert.ToSingle(stanceRow["physicsDiffenceRate"].Value) == 1f
+            && ParamDefaults.Int(stanceRow, "erOnly") == 4 && ParamDefaults.Int(stanceRow, "changeHpPoint") == 1 && ParamDefaults.Int(stanceRow, "replaceSpEffectId") == -1
+            && Convert.ToSingle(stanceRow["effectEndurance"].Value) == 0.13f);
+
         Check("NpcParam effects: ones that show, chain or change health are wanted; plain stat scaling is the template's business",
             ChrEffects.NpcEffectWanted(ds3Sp[11900]) && ChrEffects.NpcEffectWanted(ds3Sp[11880]) && ChrEffects.NpcEffectWanted(ds3Sp[11890]) && !ChrEffects.NpcEffectWanted(ds3Sp[7000]));
 

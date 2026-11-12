@@ -172,17 +172,18 @@ public sealed class VfxPort
 internal static class ParamDefaults
 {
     /// <summary>For each field, the value most rows of the param have (null for byte arrays and empty params).</summary>
-    public static object?[] Common(PARAM param)
+    public static object?[] Common(PARAM param, Func<PARAM.Row, bool>? own = null)
     {
         int cells = param.AppliedParamdef.Fields.Count;
         var result = new object?[cells];
-        if (param.Rows.Count == 0)
+        var rows = own is null ? param.Rows : param.Rows.Where(own).ToList();
+        if (rows.Count == 0)
             return result;
         for (int i = 0; i < cells; i++)
         {
-            if (param.Rows[0].Cells[i].Value is null or byte[])
+            if (rows[0].Cells[i].Value is null or byte[])
                 continue;
-            result[i] = param.Rows.GroupBy(r => r.Cells[i].Value!).OrderByDescending(g => g.Count()).First().Key;
+            result[i] = rows.GroupBy(r => r.Cells[i].Value!).OrderByDescending(g => g.Count()).First().Key;
         }
         return result;
     }
