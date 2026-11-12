@@ -153,6 +153,8 @@ public static class EffectSelfTest
         Check(ParamDefaults.Int(w, "sfxId_Bullet") == FxrPort.IdBase + 440034 && ParamDefaults.Int(w, "sfxId_Hit") == -1 && ParamDefaults.Int(w, "sfxId_Flick") == -1,
             "bullets: a converted effect gets its new ID, an unconverted one stays empty");
         Check(bullets.Port(5) == -1, "bullets: a bullet DS3 lacks is not ported");
+        Check(BulletPort.LaunchCondition(255) == 0 && BulletPort.LaunchCondition(254) == 0 && BulletPort.LaunchCondition(4) == 4 && BulletPort.LaunchCondition(0) == 0,
+            "bullets: DS3-only follow-up conditions (255 hit ground or enemy, 254 life ran out) become Elden Ring's 0, the shared ones stay");
         // The Moonlight Greatsword's charged wave in DS3 (a158:30320) and the same event as Elden Ring writes one.
         var ds3Event = Convert.FromHexString("88270000000000006A00000000000000FFFF0000000000000000000000000000");
         Check(Convert.ToHexString(BulletPort.ConvertEvent(ds3Event)) == "88270000000000006A000000000000000000FF00000000000000000000000000",
