@@ -100,6 +100,14 @@ public static class EnemyPort
         /// in her chapel, 4500710).
         /// </summary>
         public ErEnemy? PortedPerson(Ds3Enemy ds3) => _method == Method.Auto ? _ported?.FindPerson(ds3) : null;
+
+        /// <summary>
+        /// The ThinkParam a placement gets: for a ported character whose AI was ported, the row ported from the DS3
+        /// placement's own NpcThinkParam row (DS3 gives one enemy different goals by placement: a Jailer that patrols,
+        /// one that waits); otherwise the character's.
+        /// </summary>
+        public int ThinkFor(ErEnemy who, int ds3Think) =>
+            who.Source == "ported DS3 character" && _ported?.Think(ds3Think, who.Model) is { } think ? think : who.ThinkParam;
     }
 
     /// <summary>
@@ -157,7 +165,9 @@ public static class EnemyPort
     /// <summary>
     /// darksign_chr_map.tsv, written by the enemy porter: which DS3 characters it ported and as what.
     /// Lines: "npc &lt;DS3 NpcParam&gt; &lt;ER model&gt; &lt;ER NpcParam&gt; &lt;ER ThinkParam&gt; [name]" for one DS3 NpcParam row, and
-    /// "chr &lt;DS3 model&gt; &lt;ER model&gt; &lt;ER NpcParam&gt; &lt;ER ThinkParam&gt; [name]" for any row of a DS3 model, tab-separated.
+    /// "chr &lt;DS3 model&gt; &lt;ER model&gt; &lt;ER NpcParam&gt; &lt;ER ThinkParam&gt; [name]" for any row of a DS3 model, and
+    /// "think &lt;DS3 ThinkParam&gt; &lt;ER model&gt; &lt;ER ThinkParam&gt; [name]" for each DS3 NpcThinkParam row ported with
+    /// the character's AI (Enemies.AiPort), tab-separated.
     /// </summary>
     public sealed class ChrMap
     {
@@ -165,6 +175,10 @@ public static class EnemyPort
         private readonly Dictionary<int, ErEnemy> _byNpc = new();
         private readonly Dictionary<string, ErEnemy> _byModel = new(StringComparer.OrdinalIgnoreCase);
         private readonly HashSet<string> _npcModels = new(StringComparer.OrdinalIgnoreCase); // ER models with per-NpcParam rows
+        private readonly Dictionary<(int, string), int> _think = new();
+
+        /// <summary>The ported NpcThinkParam row for a DS3 placement's own row on this model, if its AI was ported.</summary>
+        public int? Think(int ds3Think, string model) => _think.TryGetValue((ds3Think, model.ToLowerInvariant()), out var t) ? t : null;
 
         public int Count => _byNpc.Count + _byModel.Count;
 
@@ -174,6 +188,11 @@ public static class EnemyPort
             foreach (var line in lines)
             {
                 var p = line.Split('\t');
+                if (!line.StartsWith('#') && p.Length >= 4 && p[0] == "think" && int.TryParse(p[1], out var ds3Think) && int.TryParse(p[3], out var erThink))
+                {
+                    map._think[(ds3Think, p[2].ToLowerInvariant())] = erThink;
+                    continue;
+                }
                 if (line.StartsWith('#') || p.Length < 5 || !int.TryParse(p[3], out var npc) || !int.TryParse(p[4], out var think))
                     continue;
                 var name = p.Length > 5 ? p[5] : p[1];
@@ -299,7 +318,7 @@ public static class EnemyPort
             partNames?.TryAdd(src.Name, part.Name);
             part.ModelName = who.Model;
             part.NPCParamID = who.NpcParam;
-            part.ThinkParamID = who.ThinkParam;
+            part.ThinkParamID = chooser.ThinkFor(who, src.ThinkParamID);
             part.TalkID = 0;
             part.PlatoonID = src.PlatoonID;
             // An Elden Ring person keeps the look of the placement it was copied from; anything else has none.
