@@ -134,7 +134,7 @@ public sealed class EventPort
             return cached;
         Mapping? m = null;
         if (_ds3.Get(bank, id) is { } from && CutsceneForms.TryGetValue(from.Name, out var toName) && _er.Get(toName) is { } to)
-            m = Build(from, to, warpOnly: false);
+            m = Build(from, to, warpOnly: false, cutscene: true);
         return _cutsceneMappings[(bank, id)] = m;
     }
 
@@ -262,7 +262,7 @@ public sealed class EventPort
     /// hold an ID of the same kind (entity, flag...), the only one of that kind left; then the best shared words
     /// ("Desired Flag State" / "State"). Arguments with no partner keep Elden Ring's default.
     /// </summary>
-    private static Mapping Build(Emedf.Instr from, Emedf.Instr to, bool warpOnly)
+    private static Mapping Build(Emedf.Instr from, Emedf.Instr to, bool warpOnly, bool cutscene = false)
     {
         var used = new bool[from.Args.Count];
         var source = Enumerable.Repeat(-1, to.Args.Count).ToArray();
@@ -270,7 +270,9 @@ public sealed class EventPort
         string Want(int i)
         {
             var w = Normalize(to.Args[i].Name);
-            return warpOnly && w == "initial area id" ? "point id" : w;
+            // A warp's arrival point: DS3 says Point Entity ID; Elden Ring's warp and cutscene warp say Area (Entity) ID,
+            // which without "entity" would read as DS3's Area ID (the map's area number).
+            return warpOnly && w == "initial area id" || cutscene && to.Args[i].Name.Equals("Area Entity ID", StringComparison.OrdinalIgnoreCase) ? "point id" : w;
         }
         // 1. Same name.
         for (int i = 0; i < to.Args.Count; i++)

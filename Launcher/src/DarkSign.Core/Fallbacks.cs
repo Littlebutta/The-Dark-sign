@@ -513,6 +513,14 @@ public static class Fallbacks
                 { PorterEnv = Env("DARKSIGN_MAP_SFX", "0") },
         ]),
 
+        new("map-cutscenes", "DS3 maps", "DS3's cutscenes (boss intros)", Stage.Build,
+            "The game crashes, hangs or shows a black screen when a DS3 cutscene should play (walking up to Ariandel for the Friede fight, a boss fog), or a cutscene looks broken and you'd rather go straight to the fight.",
+        [
+            new("A", "DS3's cutscenes (default)", "Every cutscene of the ported DS3 maps is converted from your DS3 files into Elden Ring's format and plays where DS3's scripts play it, with the ported bosses in it. They are silent (DS3's cutscene sound isn't ported yet). Report: the cutscenes section of the port-maps log."),
+            new("B", "None", "No DS3 cutscenes (DARKSIGN_CUTSCENES=0): the scripts skip them and a cutscene that moves you only moves you, as builds up to 1.0.38x did.")
+                { PorterEnv = Env("DARKSIGN_CUTSCENES", "0") },
+        ]),
+
         new("map-layers", "DS3 maps", "Which state of a DS3 map is ported", Stage.Build,
             "Enemies or objects you expected are missing from a DS3 map since 1.0.327 (for example on the way to Firelink Shrine), or you want to see the Untended Graves' enemies.",
         [

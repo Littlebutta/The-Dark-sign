@@ -270,6 +270,7 @@ public static class MapPorter
         var started = DateTime.Now;
         _placedEnemies.Clear();
         _arenas.Clear();
+        _partNames.Clear();
         _coverage.Clear();
         _templates.Clear();
         _converted.Clear();
@@ -406,8 +407,18 @@ public static class MapPorter
         // DS3's humans in their DS3 armour: models, materials and the rows the placed people name.
         if (_armour is { StandIns.Count: > 0 } armour && ported.Count > 0)
             Step(report, "people armour", () => PortArmour(ctx, ds3, er, armour, ported.Select(p => p.Slot).ToList()));
+        // DS3's cutscenes (boss intros...) converted first, so the events step can play the ones that made it.
+        Dictionary<int, int>? cutscenes = null;
         if (ported.Count > 0)
-            Step(report, "events", () => MapEvents.Port(ctx, ds3, er, ported.Select(p => p.Slot).ToList()));
+            Step(report, "cutscenes", () =>
+            {
+                var (done, summary) = CutscenePort.Port(ctx, ds3, er,
+                    ported.Select(p => new CutscenePort.MapInput(p.Slot, _partNames.GetValueOrDefault(p.Slot.Er) ?? new())).ToList());
+                cutscenes = done;
+                return summary;
+            });
+        if (ported.Count > 0)
+            Step(report, "events", () => MapEvents.Port(ctx, ds3, er, ported.Select(p => p.Slot).ToList(), cutscenes));
 
         // A slot under a registered ID that ships no map (map-slots B) gets what the game's own maps have: the
         // template's per-map files under the new ID, and a flag allocation line where the template has one. The map
@@ -502,6 +513,11 @@ public static class MapPorter
             Delete(Local(MsbPath(MapDistantView.Of(id))));
             Delete(Local(MapAtmosphere.GparamPath(id)));
             Delete(Local(MapEvents.ScriptPath(id)));
+            // Converted DS3 cutscenes (CutscenePort): sAA_BB_NNNN under the slot's area and block.
+            var cutsceneFolder = Path.GetDirectoryName(Local(CutscenePort.ErPath(CutscenePort.Name(id.Area * 1_000_000 + id.Block * 10_000))))!;
+            if (Directory.Exists(cutsceneFolder))
+                foreach (var file in Directory.GetFiles(cutsceneFolder, $"s{id.Area:D2}_{id.Block:D2}_*.cutscenebnd.dcx"))
+                    Delete(file);
             var folder = Local($"/map/{id.AreaFolder}/{id}/x")[..^2];
             if (Directory.Exists(folder))
                 foreach (var file in Directory.GetFiles(folder))
@@ -1009,6 +1025,8 @@ public static class MapPorter
             }
         }
 
+        _partNames[erId] = new Dictionary<string, string>(partNames, StringComparer.Ordinal);
+
         // An arrival point in each boss arena, for the F1 menu's boss warps. A failure leaves the map without them.
         try
         {
@@ -1201,6 +1219,8 @@ public static class MapPorter
 
     /// <summary>The boss arenas of the maps ported so far (BossArenas), for the F1 menu's warps.</summary>
     private static readonly List<BossArenas.Arena> _arenas = [];
+    /// <summary>Each ported map's DS3 -> Elden Ring part names, for the cutscene port (cutscenes name the parts they move).</summary>
+    private static readonly Dictionary<MapId, Dictionary<string, string>> _partNames = [];
     /// <summary>Each ported map's coverage row, for the side-by-side summary at the end of the run (<see cref="MapCoverage"/>).</summary>
     private static readonly List<MapCoverage.Row> _coverage = [];
 

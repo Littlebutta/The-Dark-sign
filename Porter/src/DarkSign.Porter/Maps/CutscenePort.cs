@@ -703,7 +703,7 @@ public static partial class CutscenePort
             try
             {
                 var regulation = ActionButtons.LoadRegulation(ctx);
-                lines.Add(WriteRows(regulation, rows));
+                lines.Add(WriteRows(regulation.Get(ParamName) ?? throw new InvalidDataException("Elden Ring has no " + ParamName), rows));
                 regulation.Save(ctx.ModPath("regulation.bin"));
             }
             catch (Exception ex) when (ex is not OutOfMemoryException)
@@ -720,9 +720,8 @@ public static partial class CutscenePort
     }
 
     /// <summary>Adds (or replaces) a CutsceneMapIdParam row per converted cutscene: the slot's map, no hit parts.</summary>
-    public static string WriteRows(ParamStore regulation, IReadOnlyList<(int Id, MapId Map)> rows)
+    public static string WriteRows(PARAM param, IReadOnlyList<(int Id, MapId Map)> rows)
     {
-        var param = regulation.Get(ParamName) ?? throw new InvalidDataException("Elden Ring has no " + ParamName);
         var template = param[TemplateRow] ?? param.Rows.LastOrDefault() ?? throw new InvalidDataException(ParamName + " has no rows to copy");
         foreach (var (id, map) in rows)
         {
@@ -807,7 +806,17 @@ public static partial class CutscenePort
                         var a = (hkaSplineCompressedAnimation)container.m_animations[i]!;
                         var sk = container.m_skeletons[i]!;
                         var line = $"    {sk.m_name}: {sk.m_bones.Count} bones, {a.m_numberOfTransformTracks}+{a.m_numberOfFloatTracks} tracks, {a.m_numFrames} frames, slots [{string.Join(",", sk.m_floatSlots)}]";
-                        if (t.Skeleton.Name.GetString() != PlayerPart || side.Havok.Player is null)
+                        bool copied = t.Skeleton.Name.GetString() != PlayerPart || side.Havok.Player is null;
+                        if (copied)
+                        {
+                            // Copied tracks: the spline data must be DS3's byte for byte.
+                            bool same = a.m_data.SequenceEqual(t.Animation.GetData()) && a.m_numberOfFloatTracks == t.Animation.FloatTrackCount
+                                        && a.m_numFrames == t.Animation.FrameCount && a.m_numBlocks == t.Animation.BlockCount;
+                            line += same ? ", data identical to DS3's" : ", DATA DIFFERS FROM DS3's";
+                            if (!same)
+                                failures++;
+                        }
+                        if (copied && t.Animation.FloatTrackCount == 0)
                         {
                             // Copied tracks: sample both and compare.
                             var want = SplineCompressedAnimation.ReadSplCmpAnimBytesAndSampleToUncomp(t.Animation.GetData(), t.Animation.TransformTrackCount, t.Animation.BlockCount, t.Animation.FrameCount, t.Animation.FramesPerBlock);

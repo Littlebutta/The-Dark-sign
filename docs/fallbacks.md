@@ -418,6 +418,13 @@ Try the next option if: A DS3 map crashes, hangs while loading or hitches since 
 - **A: DS3's map effects (default).** The effects DS3 places in its maps (Firelink Shrine's candle flames, fog banks, light shafts, crows, flies and fires) are converted with the weapons' effects and stand where DS3 has them. Report: Work\map-sfx.tsv lists any effect that couldn't be converted.
 - **B: None.** The DS3 maps have none of DS3's map effects (DARKSIGN_MAP_SFX=0), as every build up to 1.0.366 was. (`DARKSIGN_MAP_SFX=0`)
 
+### DS3's cutscenes (boss intros) (`map-cutscenes`, rebuilds the content)
+
+Try the next option if: The game crashes, hangs or shows a black screen when a DS3 cutscene should play (walking up to Ariandel for the Friede fight, a boss fog), or a cutscene looks broken and you'd rather go straight to the fight.
+
+- **A: DS3's cutscenes (default).** Every cutscene of the ported DS3 maps is converted from your DS3 files into Elden Ring's format and plays where DS3's scripts play it, with the ported bosses in it. They are silent (DS3's cutscene sound isn't ported yet). Report: the cutscenes section of the port-maps log.
+- **B: None.** No DS3 cutscenes (DARKSIGN_CUTSCENES=0): the scripts skip them and a cutscene that moves you only moves you, as builds up to 1.0.38x did. (`DARKSIGN_CUTSCENES=0`)
+
 ### Which state of a DS3 map is ported (`map-layers`, rebuilds the content)
 
 Try the next option if: Enemies or objects you expected are missing from a DS3 map since 1.0.327 (for example on the way to Firelink Shrine), or you want to see the Untended Graves' enemies.
