@@ -165,6 +165,13 @@ public static class MsbPort
         }
         if (start is null)
             notes.Add("DS3 map has no player start point; the run warp has nowhere to land");
+        else
+        {
+            var guarded = ds3.Parts.Players.Where(p => Guarded(ds3, p)).Select(p => $"{p.Name} ({p.EntityID})").ToList();
+            notes.Add($"start: {start.Name} (DS3 entity {start.EntityID}) at {start.Position.X:F0} {start.Position.Y:F0} {start.Position.Z:F0}"
+                      + (guarded.Count > 0 ? $"; passed over with an enemy within {StartClearance:F0} m: {string.Join(", ", guarded)}" : "")
+                      + (Guarded(ds3, start) ? "; every point has an enemy beside it" : ""));
+        }
 
         // Elden Ring's MSBs have one layer table entry list and reference models by index; SoulsFormats rebuilds
         // indices from names on write.
@@ -209,12 +216,35 @@ public static class MsbPort
 
     /// <summary>
     /// The DS3 player part the run starts at: one whose map-local entity number is 990-999 (arrival points), else
-    /// the first with an entity ID, else the first.
+    /// the first with an entity ID, else the first; in each case the first one no enemy stands beside. Some player
+    /// parts are where DS3's scripts drop the player into a fight: m30's first one (3000974) is half a metre from the
+    /// Dancer of the Boreal Valley, and starting there had the Dancer knock the player down on arrival (1.0.340 and
+    /// 1.0.353). Such a point is used only when every point has someone beside it.
     /// </summary>
-    public static MSB3.Part.Player? ChooseStart(MSB3 ds3, MapId ds3Id) =>
-        ds3.Parts.Players.FirstOrDefault(p => ds3Id.OwnsDs3Id(p.EntityID) && (p.EntityID - ds3Id.Ds3EntityBase) is >= 990 and < 1000)
-        ?? ds3.Parts.Players.FirstOrDefault(p => p.EntityID > 0)
-        ?? ds3.Parts.Players.FirstOrDefault();
+    public static MSB3.Part.Player? ChooseStart(MSB3 ds3, MapId ds3Id)
+    {
+        var all = ds3.Parts.Players;
+        var quiet = all.Where(p => !Guarded(ds3, p)).ToList();
+        bool Arrival(MSB3.Part.Player p) => ds3Id.OwnsDs3Id(p.EntityID) && (p.EntityID - ds3Id.Ds3EntityBase) is >= 990 and < 1000;
+        return quiet.FirstOrDefault(Arrival) ?? quiet.FirstOrDefault(p => p.EntityID > 0)
+            ?? all.FirstOrDefault(Arrival) ?? all.FirstOrDefault(p => p.EntityID > 0)
+            ?? quiet.FirstOrDefault() ?? all.FirstOrDefault();
+    }
+
+    /// <summary>How close an enemy may stand to a start point.</summary>
+    public const float StartClearance = 10f;
+
+    /// <summary>
+    /// Whether an enemy of the map's starting state stands within <see cref="StartClearance"/> of this player part.
+    /// People (c0000 and anyone with a talk script) and DS3's invisible dummy (c1000) don't count.
+    /// </summary>
+    public static bool Guarded(MSB3 ds3, MSB3.Part.Player p)
+    {
+        var layerOk = BaseLayerMeans(ds3);
+        return ds3.Parts.Enemies.Any(e => !OtherState(e, layerOk) && e.TalkID <= 0
+            && !e.ModelName.StartsWith("c0000", StringComparison.OrdinalIgnoreCase) && !e.ModelName.StartsWith("c1000", StringComparison.OrdinalIgnoreCase)
+            && Vector3.Distance(e.Position, p.Position) < StartClearance);
+    }
 
     internal static void CopyCommon(MSB3.Part src, MSBE.Part part, MapId ds3Id, MapId erId)
     {
