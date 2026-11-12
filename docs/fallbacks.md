@@ -38,6 +38,13 @@ Try the next option if: "Clear enemies spawned from this menu" (or Ctrl+Shift+F4
 - **A: Kill them (default).** Their HP is set to 0, so the game kills them the normal way: they fall and fade out (and may drop runes).
 - **B: Remove them.** The game's own RemoveChrIns takes them out of the world at once, no bodies (DKSIGN_SPAWN_REMOVE=1). Called from the menu's thread, not the game's, so it can crash: use it only if A doesn't clear them. (`DKSIGN_SPAWN_REMOVE=1`)
 
+### Bosses spawned from the F1 menu (`spawn-boss-kits`, at launch, no rebuild)
+
+Try the next option if: You want to try a DS3 boss's partners (Pontiff's clone, Friede's later stages) from the F1 spawn list instead of in the boss's own arena.
+
+- **A: The boss alone (default).** A DS3 boss spawned from the F1 menu comes alone. Its phases and partners run from DS3's map scripts, which never see characters the menu spawns, so fight a boss through all its phases in its own arena (the DS3 run tab's boss warps).
+- **B: The boss with its partners.** As up to 1.0.410: the boss comes with the partners its DS3 fight uses (DKSIGN_BOSS_KITS=1), all in plain sight, because the scripts that hide them and bring them in don't run for spawned characters. (`DKSIGN_BOSS_KITS=1`)
+
 ### Content build speed (`build-threads`, rebuilds the content)
 
 Try the next option if: The content build fails or gives different results from one run to the next.
