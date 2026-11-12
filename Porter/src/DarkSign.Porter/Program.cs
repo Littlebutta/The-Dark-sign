@@ -49,6 +49,7 @@ const string Usage = """
       effects-selftest             offline checks of the effect visual, bullet and resident effect ports
       map-survey [map ids]         report both games' map files for the ported slots (layouts, binders, textures, events)
       cutscene-survey [names] [er:names]  report DS3 remo and Elden Ring cutscene binders (layout, MQB timeline, Havok)
+      cutscene-test [names]        convert DS3 cutscenes into Work\\scratch\\cutscenes (not the mod) and check every result
       event-coverage <ds3.emedf.json> <er.emedf.json>  which DS3 event instructions convert to Elden Ring, and how
       port-enemies                 port DS3's enemies only (port-maps does this too) and check what the game will load
       drops-plan                   dry run of the DS3 enemy drops on the two regulations: every lot, mapping and unported item
@@ -141,6 +142,7 @@ try
         "enemy-diag" => DarkSign.Porter.Enemies.EnemyDiag.Run(ctx, argList[1..]),
         "map-survey" => DarkSign.Porter.Maps.MapSurvey.Run(ctx, argList[1..]),
         "cutscene-survey" => DarkSign.Porter.Maps.CutsceneSurvey.Run(ctx, argList[1..]),
+        "cutscene-test" => DarkSign.Porter.Maps.CutscenePort.Test(ctx, argList[1..]),
         "map-validate" => DarkSign.Porter.Maps.MapValidate.Run(ctx),
         "map-diag" => DarkSign.Porter.Maps.MapDiag.Run(ctx, argList[1..]),
         "randomize" => DarkSign.Porter.Rando.RandomizeCommand.Run(ctx, argList[1..]),

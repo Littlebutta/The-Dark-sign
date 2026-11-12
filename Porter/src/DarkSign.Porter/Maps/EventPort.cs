@@ -14,8 +14,9 @@ namespace DarkSign.Porter.Maps;
 ///
 /// What can't convert is handled so the script still runs: a command with no Elden Ring equivalent becomes a no-op
 /// on the same line (so SKIP counts and labels stay right); an event whose conditions or flow can't convert is
-/// left out, along with the lines that start it. Cutscenes aren't ported yet, so a cutscene that warps becomes the
-/// warp alone and one that doesn't is skipped. The report counts all of it.
+/// left out, along with the lines that start it. A cutscene the cutscene port converted (<see cref="Cutscenes"/>)
+/// plays under its Elden Ring ID; one it didn't is left out: when it warps it becomes the warp alone. The report
+/// counts all of it.
 /// </summary>
 public sealed class EventPort
 {
@@ -52,6 +53,13 @@ public sealed class EventPort
     /// </summary>
     public Func<long, Kind, long?>? Override { get; init; }
 
+    /// <summary>
+    /// The Elden Ring ID of a DS3 cutscene the cutscene port converted (<see cref="CutscenePort"/>), or null when it
+    /// wasn't. Null delegate: no cutscenes were converted, and every cutscene line is left out (a warping one keeps
+    /// its warp), as before the cutscene port.
+    /// </summary>
+    public Func<long, long?>? Cutscenes { get; init; }
+
     /// <summary>Where DS3 action button prompts get their ActionButtonParam rows; without it they don't convert.</summary>
     public ActionButtons? Buttons { get; init; }
 
@@ -65,6 +73,9 @@ public sealed class EventPort
         public int SpEffectsMoved, SpEffectsKept;
         /// <summary>DS3 ActionButtonParam IDs pointed at their Elden Ring copies.</summary>
         public int ActionButtonsMoved;
+        /// <summary>Cutscene lines that play a converted cutscene, and ones left out (or kept as their warp).</summary>
+        public int CutscenesPlayed, CutscenesLeftOut;
+        public SortedSet<long> CutscenesLeftOutIds { get; } = [];
         public SortedSet<long> SpEffectsKeptIds { get; } = [];
         public Dictionary<string, int> Unconverted { get; } = new();
         public List<string> Notes { get; } = [];
@@ -76,6 +87,8 @@ public sealed class EventPort
             + (ActionButtonsMoved == 0 ? "" : $", {ActionButtonsMoved} DS3 action button rows pointed at their copies")
             + (SpEffectsMoved + SpEffectsKept == 0 ? "" : $", SpEffects: {SpEffectsMoved} to ported rows, {SpEffectsKept} kept"
                 + (SpEffectsKeptIds.Count == 0 ? "" : $" ({string.Join(" ", SpEffectsKeptIds.Take(12))})"))
+            + (CutscenesPlayed + CutscenesLeftOut == 0 ? "" : $", cutscenes: {CutscenesPlayed} lines play a ported cutscene, {CutscenesLeftOut} left out"
+                + (CutscenesLeftOutIds.Count == 0 ? "" : $" ({string.Join(" ", CutscenesLeftOutIds.Take(12))})"))
             + (Unconverted.Count == 0 ? "" : "; not converted: " + string.Join(", ",
                 Unconverted.OrderByDescending(u => u.Value).Take(12).Select(u => $"{u.Key} x{u.Value}")));
     }
@@ -90,6 +103,46 @@ public sealed class EventPort
     }
 
     private sealed record Mapping(Emedf.Instr From, Emedf.Instr To, int[] Source, Kind[] Kinds, bool WarpOnly);
+
+    /// <summary>
+    /// The Elden Ring instruction each DS3 cutscene instruction plays a converted cutscene with. Elden Ring has one
+    /// "and Warp" form (Area Entity ID = DS3's Point Entity ID, Map ID = the slot), so DS3's time-period, ceremony and
+    /// second-point variants become it; the ones that don't warp become "Play Cutscene to Player". What DS3 does on
+    /// top (change the time period or ceremony, turn the player) has no Elden Ring form here and is left out.
+    /// </summary>
+    private static readonly Dictionary<string, string> CutsceneForms = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ["Play Cutscene to All"] = "Play Cutscene To All",
+        ["Play Cutscene to Player"] = "Play Cutscene to Player",
+        ["Play Cutscene and Rotate Player Around Vertical Axis"] = "Play Cutscene to Player",
+        ["Play Cutscene and Change Time Period"] = "Play Cutscene to Player",
+        ["Play Cutscene to Player and Change Current Map Ceremony"] = "Play Cutscene to Player",
+        ["Play Cutscene and Warp All Players"] = "Play Cutscene to Player and Warp",
+        ["Play Cutscene and Warp Player"] = "Play Cutscene to Player and Warp",
+        ["Play Cutscene, Change Time Period and Warp Player"] = "Play Cutscene to Player and Warp",
+        ["Play Cutscene, Change Map Ceremony and Warp Player"] = "Play Cutscene to Player and Warp",
+        ["Play Ongoing Cutscene and Warp Player"] = "Play Cutscene to Player and Warp",
+        ["Play Cutscene and Warp Player + UNKNOWN 2002[12]"] = "Play Cutscene to Player and Warp",
+    };
+
+    private readonly Dictionary<(int, int), Mapping?> _cutsceneMappings = new();
+
+    /// <summary>The mapping that plays the cutscene (<see cref="CutsceneForms"/>), or null for any other instruction.</summary>
+    private Mapping? CutsceneMappingFor(int bank, int id)
+    {
+        if (_cutsceneMappings.TryGetValue((bank, id), out var cached))
+            return cached;
+        Mapping? m = null;
+        if (_ds3.Get(bank, id) is { } from && CutsceneForms.TryGetValue(from.Name, out var toName) && _er.Get(toName) is { } to)
+            m = Build(from, to, warpOnly: false);
+        return _cutsceneMappings[(bank, id)] = m;
+    }
+
+    /// <summary>
+    /// DS3's Playback Method flags in Elden Ring's: bit 1 (unskippable) is the same; DS3's fade-out (8) is Elden
+    /// Ring's fade-out (16). DarkScript3: DS3 0/2/8/10, Elden Ring 0/2/16/18 (Skippable With Fade-Out Skip).
+    /// </summary>
+    public static long PlaybackMethod(long ds3) => (ds3 & 2) | ((ds3 & 8) != 0 ? 16 : 0);
 
     // DS3 instructions whose Elden Ring counterpart has another name (checked by hand against both definitions).
     private static readonly Dictionary<string, string> Renamed = new(StringComparer.OrdinalIgnoreCase)
@@ -363,6 +416,8 @@ public sealed class EventPort
                     return row;
                 }
                 return value;
+            case Kind.Cutscene:
+                return Cutscenes?.Invoke(value) ?? value;
             case Kind.SpEffect:
                 if (SpEffects?.Invoke(value) is { } moved)
                 {
@@ -487,7 +542,7 @@ public sealed class EventPort
         {
             var ins = e.Instructions[i];
             Stats.Instructions++;
-            var (converted, map) = ConvertInstruction(ins, e.Parameters.Any(p => p.InstructionIndex == i));
+            var (converted, map) = ConvertInstruction(ins, e.Parameters.Where(p => p.InstructionIndex == i).Select(p => p.TargetStartByte).ToHashSet());
             if (converted is null)
             {
                 var name = _ds3.Get(ins.Bank, ins.ID)?.Name ?? $"{ins.Bank}[{ins.ID}]";
@@ -561,8 +616,9 @@ public sealed class EventPort
     }
 
     /// <summary>One instruction in Elden Ring's form, or null when it has none.</summary>
-    private (EMEVD.Instruction? Instruction, Mapping? Map) ConvertInstruction(EMEVD.Instruction ins, bool parameterized)
+    private (EMEVD.Instruction? Instruction, Mapping? Map) ConvertInstruction(EMEVD.Instruction ins, IReadOnlySet<long> paramBytes)
     {
+        bool parameterized = paramBytes.Count > 0;
         // Starting events: the event ID moves, and so does each value passed in, by what the event uses it for.
         // DS3's InitializeCommonEvent has no slot argument; Elden Ring's does, so its arguments shift by 4 bytes.
         if (ins.Bank == 2000 && (ins.ID == 0 && ins.ArgData.Length >= 8 || ins.ID == 6 && ins.ArgData.Length >= 4))
@@ -599,7 +655,16 @@ public sealed class EventPort
         if (ins.Bank == 1000 && ins.ID == 9)
             return (NoOp(), null);
         // Same layout in both games and nothing to move (waits, labels, condition groups, plain flow).
-        var map = MappingFor(ins.Bank, ins.ID);
+        Mapping? map;
+        if (ins.Bank == 2002 && _ds3.Get(ins.Bank, ins.ID) is { } cutsceneDef && CutsceneForms.ContainsKey(cutsceneDef.Name))
+        {
+            var (cutsceneMap, keep) = CutsceneLine(ins, cutsceneDef, paramBytes);
+            if (!keep)
+                return (NoOp(), null);
+            map = cutsceneMap;
+        }
+        else
+            map = MappingFor(ins.Bank, ins.ID);
         if (map is null)
             return (null, null);
 
@@ -643,9 +708,33 @@ public sealed class EventPort
                     value = Move(value, map.Kinds[i]);
                     break;
             }
+            if (to.Bank == 2002 && arg.Name.Equals("Playback Method", StringComparison.OrdinalIgnoreCase) && map.Source[i] >= 0
+                && !paramBytes.Contains(from.Args[map.Source[i]].Offset))
+                value = PlaybackMethod(value);
             Emedf.Write(output, arg, value);
         }
         return (new EMEVD.Instruction(to.Bank, to.Id, output), map);
+    }
+
+    /// <summary>
+    /// How a DS3 cutscene line converts: the cutscene form (<see cref="CutsceneForms"/>) when its cutscene was converted
+    /// (or is passed in, so the caller's value moves), else the warp alone for a warping line (Keep, with the warp
+    /// mapping) or nothing (Keep false: a no-op).
+    /// </summary>
+    private (Mapping? Map, bool Keep) CutsceneLine(EMEVD.Instruction ins, Emedf.Instr def, IReadOnlySet<long> paramBytes)
+    {
+        var idArg = def.Args.FirstOrDefault(a => KindOf(a.Name) == Kind.Cutscene);
+        bool passedIn = idArg is not null && paramBytes.Contains(idArg.Offset);
+        long id = idArg is null ? 0 : Emedf.Read(ins.ArgData, idArg);
+        if (Cutscenes is not null && (passedIn || Cutscenes(id) is not null) && CutsceneMappingFor(ins.Bank, ins.ID) is { } play)
+        {
+            Stats.CutscenesPlayed++;
+            return (play, true);
+        }
+        Stats.CutscenesLeftOut++;
+        if (!passedIn && id > 0)
+            Stats.CutscenesLeftOutIds.Add(id);
+        return CutsceneWarps.Contains(def.Name) ? (MappingFor(ins.Bank, ins.ID), true) : (null, false);
     }
 
     /// <summary>
