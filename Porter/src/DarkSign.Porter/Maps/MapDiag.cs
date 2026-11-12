@@ -23,10 +23,13 @@ public static class MapDiag
     {
         if (args.Count > 0 && args[0].Equals("gparam", StringComparison.OrdinalIgnoreCase))
             return Gparams(ctx, args.Skip(1).ToList());
+        if (args.Count > 0 && args[0].Equals("envmap", StringComparison.OrdinalIgnoreCase))
+            return EnvMaps(ctx, args.Skip(1).ToList());
         if (args.Count == 0 || !args[0].Equals("colours", StringComparison.OrdinalIgnoreCase))
         {
             Console.Error.WriteLine("map-diag colours [DS3 map ID...]   (default: every slot's DS3 map)");
             Console.Error.WriteLine("map-diag gparam [map ID...]        (default: the slots' hosts, Stormveil and the DS3 maps)");
+            Console.Error.WriteLine("map-diag envmap [ER map ID...]     (default: the slots' hosts and Stormveil)");
             return 1;
         }
         var maps = args.Skip(1).Select(MapId.Parse).ToList();
@@ -408,4 +411,128 @@ public static class MapDiag
     private static string Fields(object region) => string.Join(" ", region.GetType().GetProperties()
         .Where(p => p.DeclaringType == region.GetType() && p.CanRead && (p.PropertyType.IsPrimitive || p.PropertyType == typeof(float)))
         .Select(p => $"{p.Name}={Show(p.GetValue(region))}"));
+
+    /// <summary>
+    /// "map-diag envmap": the environment map binders of the slots' hosts and Stormveil (what lights a ported map's
+    /// pieces through the environment box MapLighting copies from the host), to Work\reports\map-diag\envmap.txt:
+    /// each binder's entries, each texture's format, size, faces and mean colour (HDR for BC6H), and what DS3 keeps for
+    /// its own environment maps.
+    /// </summary>
+    private static int EnvMaps(PorterContext ctx, List<string> args)
+    {
+        var maps = args.Count > 0 ? args.Select(MapId.Parse).ToList()
+            : MapSlots.All.Select(s => s.Host).Distinct().Append(MapId.Parse("m10_00_00_00")).ToList();
+        var r = new StringBuilder();
+        using (var er = ctx.OpenArchives(PorterGame.EldenRing))
+            foreach (var map in maps)
+            {
+                var prefix = $"/map/{map.AreaFolder}/{map}/{map}_envmap_";
+                var files = er.Entries.Where(e => e.Path is not null && e.Path.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)).Select(e => e.Path!).Order().ToList();
+                r.AppendLine($"=== ER {map}: {files.Count} environment map binders");
+                foreach (var path in files)
+                {
+                    try
+                    {
+                        var bytes = er.Read(path);
+                        r.AppendLine($"{ItemText.Leaf(path)}: {(BND4.Is(bytes) ? "BND4" : TPF.Is(bytes) ? "TPF" : "other")} {bytes.Length:N0} bytes");
+                        var tpfs = new List<(string Entry, byte[] Bytes)>();
+                        if (BND4.Is(bytes))
+                        {
+                            var bnd = BND4.Read(bytes);
+                            r.AppendLine($"  BND4 version {bnd.Version} format {bnd.Format} unicode {bnd.Unicode}, {bnd.Files.Count} files");
+                            foreach (var f in bnd.Files.Take(40))
+                            {
+                                var inner = DCX.Is(f.Bytes) ? DCX.Decompress(f.Bytes) : f.Bytes;
+                                r.AppendLine($"  [{f.ID}] flags {f.Flags} {f.Name} {f.Bytes.Length:N0} bytes{(DCX.Is(f.Bytes) ? " (DCX)" : "")}");
+                                if (TPF.Is(inner))
+                                    tpfs.Add((f.Name, inner));
+                            }
+                        }
+                        else if (TPF.Is(bytes))
+                            tpfs.Add((path, bytes));
+                        bool measure = path.Contains("_high_", StringComparison.OrdinalIgnoreCase) || path.Contains("_00_", StringComparison.OrdinalIgnoreCase);
+                        foreach (var (entry, tb) in tpfs.Take(12))
+                        {
+                            var tpf = TPF.Read(tb);
+                            r.AppendLine($"    tpf platform {tpf.Platform} encoding {tpf.Encoding} flag2 {tpf.Flag2}, {tpf.Textures.Count} textures");
+                            foreach (var t in tpf.Textures.Take(8))
+                                r.AppendLine($"    texture {t.Name} format {t.Format} type {t.Type} mips {t.Mipmaps} flags1 {t.Flags1} {t.Bytes.Length:N0} bytes {(t.Bytes.Length >= 132 ? FormatName(t.Bytes) : "")} {DdsSize(t.Bytes)}"
+                                    + (measure ? " " + MeanColour(t.Bytes) : ""));
+                        }
+                    }
+                    catch (Exception ex) when (ex is not OutOfMemoryException)
+                    {
+                        r.AppendLine($"{ItemText.Leaf(path)}: {ex.GetType().Name}: {ex.Message}");
+                    }
+                }
+            }
+        using (var ds3 = ctx.OpenArchives(PorterGame.DarkSouls3))
+            foreach (var slot in MapSlots.All)
+            {
+                var id = slot.Ds3.ToString();
+                var files = ds3.Entries.Where(e => e.Path is not null && e.Path.Contains(id, StringComparison.OrdinalIgnoreCase)
+                    && (e.Path.Contains("env", StringComparison.OrdinalIgnoreCase) || e.Path.Contains("light", StringComparison.OrdinalIgnoreCase) || e.Path.Contains("gi", StringComparison.OrdinalIgnoreCase))
+                    && !e.Path.EndsWith(".mapbnd.dcx", StringComparison.OrdinalIgnoreCase)).Select(e => e.Path!).Order().ToList();
+                r.AppendLine($"=== DS3 {id}: {files.Count} environment/light files");
+                foreach (var f in files.Take(30))
+                    r.AppendLine("  " + f);
+                foreach (var f in files.Where(f => f.Contains("env", StringComparison.OrdinalIgnoreCase)).Take(2))
+                    try
+                    {
+                        var bytes = ds3.Read(f);
+                        var tpfs = TPF.Is(bytes) ? [TPF.Read(bytes)] : BND4.Is(bytes) ? BND4.Read(bytes).Files.Select(x => DCX.Is(x.Bytes) ? DCX.Decompress(x.Bytes) : x.Bytes).Where(TPF.Is).Select(TPF.Read).Take(4).ToList() : [];
+                        foreach (var t in tpfs.SelectMany(t => t.Textures).Take(6))
+                            r.AppendLine($"    {ItemText.Leaf(f)}: texture {t.Name} format {t.Format} type {t.Type} mips {t.Mipmaps} {FormatName(t.Bytes)} {DdsSize(t.Bytes)} {MeanColour(t.Bytes)}");
+                    }
+                    catch (Exception ex) when (ex is not OutOfMemoryException)
+                    {
+                        r.AppendLine($"    {ItemText.Leaf(f)}: {ex.GetType().Name}: {ex.Message}");
+                    }
+            }
+        var dir = ctx.WorkPath("reports", "map-diag");
+        Directory.CreateDirectory(dir);
+        var outPath = Path.Combine(dir, "envmap.txt");
+        File.WriteAllText(outPath, r.ToString());
+        Console.Write(r.ToString().Length > 6000 ? r.ToString()[..6000] + "\n..." : r.ToString());
+        Console.WriteLine($"report: {outPath}");
+        return 0;
+    }
+
+    private static string DdsSize(byte[] dds)
+    {
+        if (dds.Length < 128 || BitConverter.ToInt32(dds, 0) != 0x20534444)
+            return "(not DDS)";
+        int caps2 = BitConverter.ToInt32(dds, 112);
+        return $"{BitConverter.ToInt32(dds, 16)}x{BitConverter.ToInt32(dds, 12)} mips {BitConverter.ToInt32(dds, 28)}{((caps2 & 0x200) != 0 ? " cube" : "")}"
+               + (dds.Length >= 148 && Encoding.ASCII.GetString(dds, 84, 4) == "DX10" ? $" array {BitConverter.ToInt32(dds, 140)} misc {BitConverter.ToInt32(dds, 136)}" : "");
+    }
+
+    /// <summary>The mean colour of a texture's first face, as floats for HDR formats (BC6H), else 0-255.</summary>
+    private static string MeanColour(byte[] dds)
+    {
+        try
+        {
+            using var ms = new MemoryStream(dds);
+            var file = BCnEncoder.Shared.ImageFiles.DdsFile.Load(ms);
+            var decoder = new BCnEncoder.Decoder.BcDecoder();
+            var fmt = FormatName(dds);
+            if (fmt is "DXGI95" or "DXGI96")
+            {
+                var px = decoder.DecodeHdr(file);
+                double r = 0, g = 0, b = 0;
+                foreach (var c in px) { r += c.r; g += c.g; b += c.b; }
+                double n = Math.Max(1, px.Length);
+                return FormattableString.Invariant($"mean hdr {r / n:0.###} {g / n:0.###} {b / n:0.###} ({px.Length} px)");
+            }
+            var ldr = decoder.Decode(file);
+            double lr = 0, lg = 0, lb = 0;
+            foreach (var c in ldr) { lr += c.r; lg += c.g; lb += c.b; }
+            double m = Math.Max(1, ldr.Length);
+            return FormattableString.Invariant($"mean {lr / m:0} {lg / m:0} {lb / m:0} ({ldr.Length} px)");
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            return $"(not decoded: {ex.GetType().Name}: {ex.Message})";
+        }
+    }
 }
