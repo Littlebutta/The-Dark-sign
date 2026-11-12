@@ -39,6 +39,12 @@ public static class MapOverlays
 
     public enum Kind { None, Overlay, TwoLayer }
 
+    /// <summary>The name suffix of a two-layer material's second-layer copy.</summary>
+    public const string SecondLayerSuffix = "_2";
+
+    /// <summary>True for a DS3 two-layer map material type ("M[ARSN]_l_m").</summary>
+    public static bool IsTwoLayerMtd(string mtd) => TwoLayerMtd.IsMatch(mtd);
+
     // DS3's two-layer shaders (ColDifSpcBumpMulMask): "M[ARSN]_m", "M[ARSN]_l_m", "M[ARSN]_l_p_m", "M[ARSN]_l_m_snow".
     private static readonly Regex TwoLayerMtd = new(@"_m(?![a-z0-9])", RegexOptions.IgnoreCase);
     // Alpha means something else (terrain blends 2m/3m/4m, grass sway, snow, water, scrolling, parallax, translucency).
@@ -142,7 +148,7 @@ public static class MapOverlays
     /// <summary>A copy of a two-layer material that shows its second layer through the first layer's texture slots.</summary>
     public static FLVER2.Material SecondLayer(FLVER2.Material m)
     {
-        var copy = new FLVER2.Material { Name = m.Name + "_2", MTD = m.MTD, GXIndex = m.GXIndex, Index = m.Index };
+        var copy = new FLVER2.Material { Name = m.Name + SecondLayerSuffix, MTD = m.MTD, GXIndex = m.GXIndex, Index = m.Index };
         foreach (var t in m.Textures)
         {
             // "g_DiffuseTexture2" is now the first slot; "g_DOLTexture2" has no "g_DOLTexture" and stays as it is.

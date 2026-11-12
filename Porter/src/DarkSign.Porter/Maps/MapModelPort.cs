@@ -52,7 +52,44 @@ public sealed class MapModelPort
 
     /// <summary>A new port with the same templates and none of this one's materials (one per map).</summary>
     public MapModelPort Fresh() => new(_templates, _templateFlver)
-        { VanillaMaterials = VanillaMaterials, TemplateTextures = TemplateTextures, Ds3Alpha = Ds3Alpha };
+        { VanillaMaterials = VanillaMaterials, TemplateTextures = TemplateTextures, Ds3Alpha = Ds3Alpha, TintMaterials = TintMaterials };
+
+    /// <summary>
+    /// Diagnostic "--tint-materials": the albedo of each DS3 material family that keeps something in vertex alpha is a
+    /// solid colour (<see cref="Tints"/>), so one screenshot tells which family a wrong surface belongs to. Every
+    /// other material keeps its real texture. Not a launcher fallback: for test builds only.
+    /// </summary>
+    public bool TintMaterials { get; set; }
+
+    /// <summary>The tint textures: name, what they mark, colour (R5G6B5).</summary>
+    public static readonly (string Name, string Marks, ushort Rgb565)[] Tints =
+    [
+        ("DKS_tint_red", "two-layer material (_m), first layer", 0xF800),
+        ("DKS_tint_magenta", "two-layer material (_m), second layer", 0xF81F),
+        ("DKS_tint_green", "overlay that keeps DS3's vertex alpha fade", 0x07E0),
+        ("DKS_tint_blue", "terrain blend (2m/3m/4m), first layer shown", 0x001F),
+        ("DKS_tint_cyan", "snow material", 0x07FF),
+        ("DKS_tint_yellow", "one-layer material with vertex alpha the port ignores (grass, water, parallax...)", 0xFFE0),
+    ];
+
+    /// <summary>The tint a converted DS3 material gets under <see cref="TintMaterials"/>, or null to keep its texture.</summary>
+    public static string? TintFor(FLVER2.Material m)
+    {
+        var mtd = Path.GetFileNameWithoutExtension(ItemText.Leaf(m.MTD ?? ""));
+        if (MapOverlays.IsTwoLayerMtd(mtd))
+            return m.Name.EndsWith(MapOverlays.SecondLayerSuffix, StringComparison.Ordinal) ? "DKS_tint_magenta" : "DKS_tint_red";
+        if (m.Name.EndsWith(FadeSuffix, StringComparison.Ordinal))
+            return "DKS_tint_green";
+        if (Regex.IsMatch(mtd, @"\dm", RegexOptions.IgnoreCase))
+            return "DKS_tint_blue";
+        if (mtd.Contains("snow", StringComparison.OrdinalIgnoreCase))
+            return "DKS_tint_cyan";
+        if (Regex.IsMatch(mtd, @"grass|water|_p(?![a-z])|_tr(?![a-z])", RegexOptions.IgnoreCase))
+            return "DKS_tint_yellow";
+        return null;
+    }
+
+    private const string FadeSuffix = "_fade";
 
     /// <summary>
     /// True (the default): DS3's vertex alpha keeps its meaning (<see cref="MapOverlays"/>): overlays fade, two-layer
@@ -523,6 +560,21 @@ public sealed class MapModelPort
             keepAlpha = MapOverlays.Apply(flver, stats);
             Overlays.Add(stats);
         }
+        if (TintMaterials)
+            // A material shared by a faded overlay and a solid mesh: the overlay gets its own copy, so it can be told apart.
+            foreach (var mesh in keepAlpha)
+            {
+                var m = flver.Materials[mesh.MaterialIndex];
+                var name = m.Name + FadeSuffix;
+                int index = flver.Materials.FindIndex(x => x.Name == name);
+                if (index < 0)
+                {
+                    flver.Materials.Add(new FLVER2.Material { Name = name, MTD = m.MTD, GXIndex = m.GXIndex, Index = m.Index,
+                        Textures = m.Textures.Select(t => new FLVER2.Texture(t.ParamName, t.Path, t.TilingScale, t.TilingTypeU, t.TilingTypeV, t.Unk14, t.Unk18, t.Unk1C)).ToList() });
+                    index = flver.Materials.Count - 1;
+                }
+                mesh.MaterialIndex = index;
+            }
         var ds3Layouts = flver.BufferLayouts.ToList();
         flver.Skeletons = new FLVER2.SkeletonSet { BaseSkeleton = Bones(flver), AllSkeletons = Bones(flver) };
 
@@ -576,6 +628,8 @@ public sealed class MapModelPort
             static string? NameOf(FLVER2.Texture? t) => t is null ? null : Path.GetFileNameWithoutExtension(ItemText.Leaf(t.Path));
             var albedoTexture = Ds3Texture(m, "albedo");
             var albedo = NameOf(albedoTexture);
+            if (TintMaterials && TintFor(m) is { } tint)
+                albedo = tint;
             var normal = NameOf(Ds3Texture(m, "normal"));
             var scale = albedoTexture?.TilingScale ?? Vector2.One;
             if (scale.X <= 0 || scale.Y <= 0)
