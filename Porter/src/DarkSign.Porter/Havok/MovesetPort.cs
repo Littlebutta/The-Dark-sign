@@ -1307,6 +1307,8 @@ public static partial class MovesetPort
 
     /// <summary>DS3 sound events as Elden Ring PlaySound events for the ported sounds: in the layout of the move's
     /// own swing sound (129) when it has one, else of Elden Ring's most common character 129 (else 128).</summary>
+    private static readonly bool OverrideSame = string.Equals(Environment.GetEnvironmentVariable("DARKSIGN_SOUND_OVERRIDE"), "same", StringComparison.OrdinalIgnoreCase);
+
     private sealed class SoundEvents(SoundPort.Result sounds, byte[]? sample, byte[]? swingSample)
     {
         public TAE.Event? Convert(TAE.Event e, TAE.Event? erSwing)
@@ -1320,13 +1322,16 @@ public static partial class MovesetPort
             BitConverter.GetBytes(id).CopyTo(bytes, 4);
             // Wwise_PlaySound_BySlot (129; Smithbox's ER TAE defs): the template swing's StateInfo, its override sound
             // (+20 type, +24 ID) and its SoundIDOffsetType (+28; 2 adds the weapon's wepSeIdOffset) all belong to the
-            // Elden Ring whoosh. The community's copied sound events clear StateInfo; the override is set to the
-            // ported sound itself so either ID the game picks is ours, and -1 means no weapon offset.
+            // Elden Ring whoosh. The community's copied sound events clear StateInfo, and -1 means no weapon offset.
+            // The override is cleared (type 0, ID 0), as in about 99.9% of vanilla Elden Ring's ~24,900 129 events
+            // (fx20). Up to 1.0.410 it named the ported sound itself, so each DS3 swing sound could play twice at
+            // once, a hair apart: the Dragonslayer Greataxe's "jet engine" (two copies of one sound comb-filter into a
+            // flanger whoosh). DARKSIGN_SOUND_OVERRIDE=same sets it to the ported sound again.
             if (type == 129 && bytes.Length >= 32)
             {
                 BitConverter.GetBytes((short)0).CopyTo(bytes, 16);
-                BitConverter.GetBytes(s.Kind).CopyTo(bytes, 20);
-                BitConverter.GetBytes(id).CopyTo(bytes, 24);
+                BitConverter.GetBytes(OverrideSame ? s.Kind : 0).CopyTo(bytes, 20);
+                BitConverter.GetBytes(OverrideSame ? id : 0).CopyTo(bytes, 24);
                 bytes[28] = unchecked((byte)-1);
                 if (OneShot)
                 {

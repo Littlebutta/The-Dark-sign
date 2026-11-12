@@ -98,7 +98,8 @@ public static class ModelPort
     public static string PartsPath(int modelId, bool lod = false) =>
         $"/parts/wp_a_{modelId:D4}{(lod ? "_l" : "")}.partsbnd.dcx";
 
-    public static ConvertedModel? Convert(GameArchives ds3, GameArchives er, int ds3Model, int templateModel, int newModel, bool lod)
+    public static ConvertedModel? Convert(GameArchives ds3, GameArchives er, int ds3Model, int templateModel, int newModel, bool lod,
+        System.Numerics.Matrix4x4? holdTurn = null)
     {
         var ds3Path = PartsPath(ds3Model, lod);
         var erPath = PartsPath(templateModel, lod);
@@ -147,7 +148,7 @@ public static class ModelPort
                 if (WeaponHiddenParts.Collapse(flver, hiddenBones, hiddenMeshes) is > 0 and var moved)
                     Console.WriteLine($"models: {oldTag} -> {newTag}{(lod ? " LOD" : "")} {ItemText.Leaf(file.Name)}: hid {moved} vertices in meshes " +
                                       $"{string.Join(", ", hiddenMeshes)} on bones DS3's idle animation hides ({string.Join(", ", hiddenBones.Order())})");
-                ConvertFlver(flver, templateFlver, stem, oldTag, newTag, materials, Emissive(er));
+                ConvertFlver(flver, templateFlver, stem, oldTag, newTag, materials, Emissive(er), holdTurn);
                 FlverMaterialNumbers.Apply(flver);
                 files.Add(new BinderFile(file.Flags, file.ID, folder + leaf, flver.Write()));
             }
@@ -163,7 +164,7 @@ public static class ModelPort
     }
 
     private static void ConvertFlver(FLVER2 flver, FLVER2 template, string stem, string oldTag, string newTag,
-        List<NewMaterial> materials, EmissiveTemplate? emissive)
+        List<NewMaterial> materials, EmissiveTemplate? emissive, System.Numerics.Matrix4x4? holdTurn = null)
     {
         var bboxMin = flver.Header.BoundingBoxMin;
         var bboxMax = flver.Header.BoundingBoxMax;
@@ -176,6 +177,9 @@ public static class ModelPort
             Console.WriteLine($"models: {stem}: {baked}");
         if (WeaponNodes.UniqueNames(flver) is > 0 and var renamed)
             Console.WriteLine($"models: {stem}: renamed {renamed} nodes whose names repeated ignoring case");
+        // Shields: turned from DS3's hold frame onto Elden Ring's (WeaponHold).
+        if (holdTurn is { } turn && !WeaponHold.Apply(flver, turn))
+            Console.WriteLine($"models: {stem}: shield hold turn skipped (its nodes still place the meshes)");
 
         // FLVER 0x20017+ stores a skeleton set, which DS3 models (0x20014) lack. Elden Ring weapons use one bone
         // per node with the node's own hierarchy, in both the base and the full skeleton.

@@ -185,7 +185,8 @@ public static class Commands
         if (Parallelism.Serial)
             icons.GetAwaiter().GetResult();
         using (Timing.Stage("models"))
-            PortWeaponModels(ctx, erArchives, ds3Archives, plans, ds3, erWeapons);
+            PortWeaponModels(ctx, erArchives, ds3Archives, plans, ds3, erWeapons,
+                WeaponHold.Plan(erArchives, ds3Archives, erStore, ds3Store, plans));
         try
         {
             using var _ = Timing.Stage("model positions");
@@ -306,7 +307,7 @@ public static class Commands
     }
 
     private static void PortWeaponModels(PorterContext ctx, GameArchives er, GameArchives ds3, List<WeaponPlan> plans,
-        PARAM ds3Weapons, PARAM erWeapons)
+        PARAM ds3Weapons, PARAM erWeapons, Dictionary<WeaponPlan, System.Numerics.Matrix4x4>? holdTurns = null)
     {
         // Each weapon's model is independent (its own binder in, its own file out), so they convert on every core.
         // Results are kept per weapon and merged in plan order, so the materials list is the same on every run.
@@ -325,7 +326,8 @@ public static class Commands
             {
                 foreach (var lod in new[] { false, true })
                 {
-                    var model = ModelPort.Convert(ds3, er, ds3Model, templateModel, plan.NewModelId!.Value, lod);
+                    var model = ModelPort.Convert(ds3, er, ds3Model, templateModel, plan.NewModelId!.Value, lod,
+                        holdTurns is not null && holdTurns.TryGetValue(plan, out var turn) ? turn : null);
                     if (model is null)
                         continue;
                     var path = ctx.ModPath(["parts", ModelPort.PartsPath(plan.NewModelId.Value, lod)[7..]]);
