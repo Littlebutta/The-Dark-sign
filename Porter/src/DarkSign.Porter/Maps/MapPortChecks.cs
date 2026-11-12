@@ -252,8 +252,8 @@ public static partial class MapPortChecks
         var piece = msb.Parts.MapPieces.Single();
         Expect(piece.Name == "m000100_0000" && piece.ModelName == "m000100" && piece.Position == new Vector3(1, 2, 3), "map piece fields");
         Expect(piece.EntityID == 45000100, $"map piece entity {piece.EntityID}");
-        Expect(MapDrawGroups.Draw(piece.Unk1)[0] == 0x11 && MapDrawGroups.Display(piece.Unk1)[0] == 0x22 && piece.Unk1.Condition2 == 1,
-            "map pieces carry DS3's draw groups by default (culling)");
+        Expect(piece.Unk1.DisplayGroups.Concat(piece.Unk1.DrawGroups).Concat(piece.Unk1.CollisionMask).All(g => g == 0),
+            "map pieces carry no groups by default (everything visible; DS3 culling went wrong in 1.0.417)");
         Expect(piece.isUsePartsDrawParamID == 1 && piece.PartsDrawParamID == MapDrawParams.VanillaRow, "map pieces name a PartsDrawParam row");
         var collision = msb.Parts.Collisions.Single();
         Expect((int)collision.HitFilterID == 8 && collision.Rotation == new Vector3(0, 90, 0), "collision fields");
@@ -312,7 +312,8 @@ public static partial class MapPortChecks
         // DrawGroups are its draw groups (CollisionMask words 8-15), its DispGroups its display groups; the alternate
         // groups are copies and their masks keep every bit, so a swap or a merge changes nothing. DS3's load groups
         // (BackreadGroups) have no Elden Ring field and are not written.
-        var result = MsbPort.Convert(SyntheticDs3(), SyntheticHost(), Ds3Id, ErId);
+        var culling = new MsbPort.Options { Ds3Culling = true };
+        var result = MsbPort.Convert(SyntheticDs3(), SyntheticHost(), Ds3Id, ErId, culling);
         var msb = MSBE.Read(result.Msb.Write());
         var u = msb.Parts.MapPieces.Single().Unk1;
         Expect(MapDrawGroups.Draw(u)[0] == 0x11 && MapDrawGroups.AltDraw(u)[0] == 0x11, $"draw groups {MapDrawGroups.Draw(u)[0]:X}");
@@ -320,25 +321,30 @@ public static partial class MapPortChecks
         Expect(MapDrawGroups.AltDisplayMask(u).ToArray().All(g => g == 0xFFFFFFFF) && MapDrawGroups.AltDrawMask(u).ToArray().All(g => g == 0xFFFFFFFF),
             "alternate masks keep every bit");
         Expect(u.Condition1 == 0 && u.Condition2 == 1 && !u.CollisionMask.Contains(0x33u), "UseAltGroups on, no load groups written");
-        // A collision shows what DS3's DispGroups name, in both the group struct and the collision's own Unk2.
+        // A collision shows what DS3's DispGroups name, in both the group struct and the collision's own Unk2; it is
+        // never culled itself (no draw groups, as 104 of Stormveil's 111 collisions).
         var collisionSrc = SyntheticDs3();
         collisionSrc.Parts.Collisions[0].DispGroups[0] = 0x10;
         collisionSrc.Parts.Collisions[0].DrawGroups[0] = 0x4;
-        var c = MsbPort.Convert(collisionSrc, SyntheticHost(), Ds3Id, ErId).Msb.Parts.Collisions.Single();
-        Expect(MapDrawGroups.Display(c.Unk1)[0] == 0x10 && MapDrawGroups.Draw(c.Unk1)[0] == 0x4, "collision groups");
+        var c = MsbPort.Convert(collisionSrc, SyntheticHost(), Ds3Id, ErId, culling).Msb.Parts.Collisions.Single();
+        Expect(MapDrawGroups.Display(c.Unk1)[0] == 0x10 && MapDrawGroups.IsEmpty(MapDrawGroups.Draw(c.Unk1)) && MapDrawGroups.IsEmpty(MapDrawGroups.AltDraw(c.Unk1)),
+            "collision display groups, no draw groups");
         Expect(c.Unk2 is null || c.Unk2.DispGroups[0] == 0x10, "collision Unk2 groups");
         Expect(MapDrawGroups.DrawnFrom(MapDrawGroups.Draw(u), MapDrawGroups.Display(c.Unk1)), "the piece is drawn from the collision that shows group 0x10");
         // A piece with no DS3 groups carries none, and is drawn from everywhere.
         var bare = SyntheticDs3();
         Array.Clear(bare.Parts.MapPieces[0].DrawGroups);
         Array.Clear(bare.Parts.MapPieces[0].DispGroups);
-        var b = MsbPort.Convert(bare, SyntheticHost(), Ds3Id, ErId).Msb.Parts.MapPieces.Single().Unk1;
+        var b = MsbPort.Convert(bare, SyntheticHost(), Ds3Id, ErId, culling).Msb.Parts.MapPieces.Single().Unk1;
         Expect(b.DisplayGroups.Concat(b.DrawGroups).Concat(b.CollisionMask).All(g => g == 0) && b.Condition2 == 0, "no groups, no masks");
-        // map-groups B (--all-visible): nothing culled, pieces without masks, collisions and enemies with every group on.
-        var all = MsbPort.Convert(SyntheticDs3(), SyntheticHost(), Ds3Id, ErId, new MsbPort.Options { Ds3Culling = false }).Msb;
+        // map-groups A (default): nothing culled, pieces without masks, collisions and enemies with every group on.
+        var all = MsbPort.Convert(SyntheticDs3(), SyntheticHost(), Ds3Id, ErId).Msb;
         var a = all.Parts.MapPieces.Single().Unk1;
-        Expect(a.DisplayGroups.Concat(a.DrawGroups).Concat(a.CollisionMask).All(g => g == 0) && a.Condition2 == 0, "map-groups B: pieces carry no masks");
-        Expect(all.Parts.Collisions.Single().Unk1.CollisionMask.All(g => g == 0xFFFFFFFF), "map-groups B: collisions show everything");
+        Expect(a.DisplayGroups.Concat(a.DrawGroups).Concat(a.CollisionMask).All(g => g == 0) && a.Condition2 == 0, "map-groups A: pieces carry no masks");
+        Expect(all.Parts.Collisions.Single().Unk1.CollisionMask.All(g => g == 0xFFFFFFFF), "map-groups A: collisions show everything");
+        Expect(!MapPorter.Options.Parse([]).Ds3Culling && MapPorter.Options.Parse(["--ds3-culling"]).Ds3Culling
+               && !MapPorter.Options.Parse(["--all-visible"]).Ds3Culling && !MapPorter.Options.Parse(["--ds3-groups"]).Ds3Culling,
+            "culling only with --ds3-culling; older launchers' --all-visible / --ds3-groups mean the default");
         Expect(all.Parts.Players.All(pl => pl.Unk1.CollisionMask.All(g => g == 0xFFFFFFFF)), "player points drawn from everywhere");
         Expect(result.Msb.Parts.Players.All(pl => pl.Unk1.CollisionMask.All(g => g == 0xFFFFFFFF)), "player points drawn from everywhere with culling too");
     }

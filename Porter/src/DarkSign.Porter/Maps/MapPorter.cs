@@ -20,12 +20,19 @@ public static class MapPorter
     {
         public HashSet<string> Only { get; } = new(StringComparer.OrdinalIgnoreCase);
         /// <summary>
-        /// --all-visible (fallback "map-groups" B): every map part is drawn from everywhere, nothing culled, as every
-        /// build up to 1.0.4xx. Default: DS3's draw groups cull pieces, collisions and objects (<see cref="MapDrawGroups"/>).
-        /// "--ds3-groups" (the old B, which wrote DS3's masks into Elden Ring's alternate group fields and so never culled)
-        /// is accepted and means the default.
+        /// --ds3-culling (fallback "map-groups" B): DS3's draw groups cull pieces, collisions and objects
+        /// (<see cref="MapDrawGroups"/>), the default of 1.0.414-1.0.417, which hid the wrong things in game. Default:
+        /// every map part is drawn from everywhere, as up to 1.0.410; DS3's own lower detail models and draw distances
+        /// keep far scenery cheap instead (<see cref="MapDrawParams"/>). "--all-visible" and "--ds3-groups" (older
+        /// launchers' B) are accepted and mean the default.
         /// </summary>
-        public bool AllVisible { get; set; }
+        public bool Ds3Culling { get; set; }
+        /// <summary>
+        /// When pieces switch to DS3's own lower detail lists (<see cref="MapLod"/>, <see cref="MapDrawParams.LodRow"/>).
+        /// Default: vanilla Elden Ring's 30 / 60 m. "--no-lod" (fallback "map-lod" B): never, as up to 1.0.417;
+        /// "--far-lod" (C): 60 / 120 m.
+        /// </summary>
+        public MapDrawParams.Lod? Lod { get; set; } = MapDrawParams.Lod.Vanilla;
         /// <summary>--no-groups (fallback "map-groups" C): no group masks at all.</summary>
         public bool NoGroups { get; set; }
         /// <summary>Only the albedo-only material JortPob uses (fallback "map-materials" B).</summary>
@@ -139,7 +146,10 @@ public static class MapPorter
                 switch (list[i].ToLowerInvariant())
                 {
                     case "--ds3-groups": break;
-                    case "--all-visible": o.AllVisible = true; break;
+                    case "--all-visible": break;
+                    case "--ds3-culling": o.Ds3Culling = true; break;
+                    case "--no-lod": o.Lod = null; break;
+                    case "--far-lod": o.Lod = MapDrawParams.Lod.Far2; break;
                     case "--no-groups": o.NoGroups = true; break;
                     case "--plain-materials": o.PlainMaterials = true; break;
                     case "--no-piece-test": o.NoPieceTest = true; break;
@@ -376,7 +386,7 @@ public static class MapPorter
         if (ported.Count > 0 && !options.VanillaDrawParam)
             Step(report, "map piece draw settings", () =>
             {
-                var (row, note) = MapDrawParams.Write(ctx, options.TextureDetail == MapTextures.Detail.FullLow);
+                var (row, note) = MapDrawParams.Write(ctx, options.TextureDetail == MapTextures.Detail.FullLow, options.Lod);
                 if (row != MapDrawParams.FirstRow)
                     foreach (var p in ported)
                         Repoint(ctx, p.Slot.Er, row);
@@ -706,7 +716,7 @@ public static class MapPorter
             .Select(s => (s.Ds3, s.Er)).ToList();
         var layout = MsbPort.Convert(ds3Msb, host, ds3Id, erId, new MsbPort.Options
             {
-                Ds3Culling = !options.AllVisible, NoGroups = options.NoGroups, HelperPieces = options.HelperPieces,
+                Ds3Culling = options.Ds3Culling, NoGroups = options.NoGroups, HelperPieces = options.HelperPieces,
                 Ds3HitFilters = options.Ds3HitFilters,
                 DrawParamId = options.VanillaDrawParam ? MapDrawParams.VanillaRow : MapDrawParams.FirstRow,
             },
@@ -726,7 +736,7 @@ public static class MapPorter
                 var scripts = Ds3Scripts(ds3, ds3Id).ToList();
                 var bosses = EnemyPort.BossEncounter(ds3Msb, EnemyPort.BossEntities(scripts, ds3Layout: true));
                 var seats = EnemyPort.Seats(ds3Msb, EnemyPort.EventWarps(scripts));
-                var placed = EnemyPort.Place(ds3Msb, layout.Msb, ds3Id, erId, new MsbPort.Options { Ds3Culling = !options.AllVisible, NoGroups = options.NoGroups, AllLayers = options.AllLayers },
+                var placed = EnemyPort.Place(ds3Msb, layout.Msb, ds3Id, erId, new MsbPort.Options { Ds3Culling = options.Ds3Culling, NoGroups = options.NoGroups, AllLayers = options.AllLayers },
                     enemies.Chooser, e => enemies.Describe(e, bosses), EnemyPort.AnyEnemyPart(enemies.Catalog), _placedEnemies, partNames,
                     enemies.People, seats, placePeople: !options.NoPeople, armour: options.ErPeople ? null : _armour, erStandIns: options.ErPeople);
                 enemiesPlaced = placed;
@@ -914,7 +924,7 @@ public static class MapPorter
         // DS3's low-detail stand-ins, judged now that every model's meshes are known. A failure keeps them all.
         var standIns = new HashSet<string>(StringComparer.Ordinal);
         var farViews = new HashSet<string>(StringComparer.Ordinal);
-        bool culled = !options.AllVisible && !options.NoGroups;
+        bool culled = options.Ds3Culling && !options.NoGroups;
         if (culled && copied == 0 && test == PieceTest.None)
         {
             // How much less the game draws with DS3's culling, weighted by vertices (RULE 4: the port log says it).
@@ -1003,7 +1013,10 @@ public static class MapPorter
         if (!options.HostLighting)
             report.AppendLine($"  sunlight: {models.Materials.Count(m => m.Template.Kind == "nolight")} unlit materials (sky domes) cast no shadow");
         if (test != PieceTest.VanillaModel && copied == 0)
+        {
             report.AppendLine($"  load: {models.LoadSummary}");
+            report.AppendLine($"  {models.Lods.Summary(options.VanillaDrawParam ? null : options.Lod)}");
+        }
         if (copied == 0)
         {
             report.AppendLine("  " + (options.SolidOverlays ? "vertex alpha: every vertex solid, two-layer materials show their first layer (--solid-overlays)" : models.Overlays.Summary));
@@ -1056,7 +1069,7 @@ public static class MapPorter
         // checked by writing the layout and reading it back; one that fails is taken out again, so the map is never
         // worse off than without it.
         clock.Restart();
-        var groupOptions = new MsbPort.Options { Ds3Culling = !options.AllVisible, NoGroups = options.NoGroups, AllLayers = options.AllLayers };
+        var groupOptions = new MsbPort.Options { Ds3Culling = options.Ds3Culling, NoGroups = options.NoGroups, AllLayers = options.AllLayers };
         if (options.Objects == ObjectPort.Method.None)
             report.AppendLine($"  objects: off (--objects none); {ds3Msb.Parts.Objects.Count} DS3 objects not placed");
         else if (test != PieceTest.None)
@@ -1148,6 +1161,18 @@ public static class MapPorter
         msb.Parts.MapPieces.RemoveAll(p => standIns.Contains(p.Name));
         var usedModels = msb.Parts.MapPieces.Select(p => p.ModelName).ToHashSet(StringComparer.OrdinalIgnoreCase);
         msb.Models.MapPieces.RemoveAll(m => missingModels.Contains(m.Name) || (standIns.Count > 0 && !usedModels.Contains(m.Name)));
+        // Pieces whose model carries DS3's lower detail lists switch to them by distance (MapDrawParams.LodRow).
+        if (options.Lod is not null && !options.VanillaDrawParam)
+        {
+            int switching = 0;
+            lock (models.LodModels)
+                foreach (var piece in msb.Parts.MapPieces.Where(p => MapDrawParams.IsPieceRow(p.PartsDrawParamID) && models.LodModels.Contains(ModelNumber(p.ModelName))))
+                {
+                    piece.PartsDrawParamID += MapDrawParams.LodOffset;
+                    switching++;
+                }
+            report.AppendLine($"  lower detail by distance: {switching} of {msb.Parts.MapPieces.Count} map pieces (their PartsDrawParam row + {MapDrawParams.LodOffset}: {options.Lod})");
+        }
         msb.Parts.Collisions.RemoveAll(p => missingCollisions.Contains(p.ModelName));
         msb.Parts.ConnectCollisions.RemoveAll(p => missingCollisions.Contains(p.ModelName)
                                                    || msb.Parts.Collisions.All(c => c.Name != p.CollisionName));

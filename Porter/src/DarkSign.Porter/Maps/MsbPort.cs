@@ -20,12 +20,14 @@ public static class MsbPort
     public sealed class Options
     {
         /// <summary>
-        /// DS3's culling (default): map pieces, collisions and objects carry DS3's draw and display groups in Elden
-        /// Ring's real group fields (<see cref="MapDrawGroups"/>), so the game draws only what DS3 drew from where the
-        /// player stands. Off (fallback "map-groups" B): every part is drawn from everywhere, as up to 1.0.4xx.
-        /// Enemies and player points are drawn from everywhere either way (no vanilla Elden Ring enemy carries groups).
+        /// DS3's culling (opt-in, fallback "map-groups" B): map pieces, collisions and objects carry DS3's draw and
+        /// display groups in Elden Ring's real group fields (<see cref="MapDrawGroups"/>), so the game draws only what
+        /// DS3 drew from where the player stands. It was the default in 1.0.414-1.0.417 and Devin's walk (2026-11-12
+        /// 19:42Z) showed it wrong in game: Firelink's chairs hidden inside the shrine, the world outside phasing out,
+        /// the player vanishing near the Crystal Lizard, Friede's arena phasing. Default off: every part is drawn from
+        /// everywhere, as up to 1.0.410. Enemies and player points are drawn from everywhere either way.
         /// </summary>
-        public bool Ds3Culling { get; init; } = true;
+        public bool Ds3Culling { get; init; }
 
         /// <summary>
         /// Enemies and player points (and, without <see cref="Ds3Culling"/>, collisions) get every group on. Off: they
@@ -194,7 +196,7 @@ public static class MsbPort
 
         if (!Culls(options))
             notes.Add(options.NoGroups ? "draw groups: none (--no-groups); every piece is drawn from everywhere"
-                : "draw groups: off (--all-visible); every piece is drawn from everywhere, nothing is culled");
+                : "draw groups: off (default; --ds3-culling turns DS3's on); every piece is drawn from everywhere, nothing is culled");
 
         // Elden Ring's MSBs have one layer table entry list and reference models by index; SoulsFormats rebuilds
         // indices from names on write.
@@ -343,11 +345,17 @@ public static class MsbPort
             MapDrawGroups.Clear(unk1);
     }
 
-    /// <summary>Collisions: what standing on them shows is DS3's DispGroups when culling; otherwise everything.</summary>
+    /// <summary>
+    /// Collisions: what standing on them shows is DS3's DispGroups when culling; otherwise everything. A collision's
+    /// own draw groups stay empty, as 104 of vanilla Stormveil's 111 collisions have them (measured 2026-11-12 by the
+    /// "Fix DS3 map spawns" thread): a collision with draw groups may be switched off where it isn't drawn, and
+    /// enemies standing on it fall. Vanilla collisions also carry Unk2 DispGroups {2, own index} with Condition = own
+    /// index, where the port writes DS3's {0, own}; not changed, as nothing yet shows it matters.
+    /// </summary>
     internal static void ApplyCollisionGroups(MSB3.Part src, MSBE.Part.UnkStruct1? unk1, Options options)
     {
         if (Culls(options))
-            MapDrawGroups.Set(unk1, src.DispGroups, src.DrawGroups);
+            MapDrawGroups.Set(unk1, src.DispGroups, ReadOnlySpan<uint>.Empty);
         else
             ApplyGroups(src, unk1, options);
     }
