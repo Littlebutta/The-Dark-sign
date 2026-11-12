@@ -74,6 +74,9 @@ public static class MapPorter
         /// <summary>--flat-env-light / --baked-light-flip x|y|z: the DS3 map's own baked light volume off, or mirrored
         /// (fallback "map-baked-light"; see <see cref="MapBakedLight"/>).</summary>
         public MapBakedLight.Options BakedLight { get; set; } = MapBakedLight.Options.Default;
+        /// <summary>--no-light-offset: DS3's lamps and light probes stay in the map's own space instead of being moved
+        /// by DS3's map offset, as in earlier builds (fallback "map-light-place" B; see <see cref="MapLighting.PortLights"/>).</summary>
+        public bool NoLightOffset { get; set; }
         /// <summary>
         /// --host-sky: the host's distant view (its sky, the Erdtree) is left in place over the DS3 map, as in every
         /// build up to 1.0.299 (fallback "map-sky" B; see <see cref="MapDistantView"/>).
@@ -156,6 +159,7 @@ public static class MapPorter
                     case "--host-atmosphere": o.HostAtmosphere = true; break;
                     case "--host-env-light": o.HostEnvLight = true; break;
                     case "--flat-env-light": o.BakedLight = o.BakedLight with { Flat = true }; break;
+                    case "--no-light-offset": o.NoLightOffset = true; o.BakedLight = o.BakedLight with { NoOffset = true }; break;
                     case "--baked-light-flip" when i + 1 < list.Count:
                         var axes = list[++i].ToLowerInvariant();
                         o.BakedLight = o.BakedLight with { FlipX = axes.Contains('x'), FlipY = axes.Contains('y'), FlipZ = axes.Contains('z') };
@@ -967,6 +971,22 @@ public static class MapPorter
         {
             report.AppendLine($"  piece report: FAILED: {ex.Message}");
         }
+        // Large pieces load their full textures from further out (MapDrawParams.TextureBySize).
+        if (!options.VanillaDrawParam)
+        {
+            try
+            {
+                report.AppendLine("  " + MapDrawParams.PointBySize(layout.Msb, model =>
+                    models.ModelMeshes.TryGetValue(ModelNumber(model), out var meshes) && meshes.Any(m => m.Vertices > 0)
+                        ? Vector3.Distance(meshes.Where(m => m.Vertices > 0).Select(m => m.Min).Aggregate(Vector3.Min),
+                            meshes.Where(m => m.Vertices > 0).Select(m => m.Max).Aggregate(Vector3.Max)) / 2
+                        : null));
+            }
+            catch (Exception ex) when (ex is not OutOfMemoryException)
+            {
+                report.AppendLine($"  texture distance by size: FAILED ({ex.Message}); every piece keeps row {MapDrawParams.FirstRow}");
+            }
+        }
         if (options.TintMaterials)
         {
             foreach (var (name, marks, rgb) in MapModelPort.Tints)
@@ -1156,7 +1176,7 @@ public static class MapPorter
                          }),
                          ("environment light", () => MapEnvironment.Write(ctx, er, erId, hostId, options.HostEnvLight, baked)),
                          ("light volume info", () => MapBakedLight.WriteIvInfo(ctx, er, hostId, erId, baked)),
-                         ("lamps", () => MapLighting.PortLights(ctx, ds3, er, ds3Id, erId, hostId)),
+                         ("lamps", () => MapLighting.PortLights(ctx, ds3, er, ds3Id, erId, hostId, ds3Msb, options.NoLightOffset)),
                      })
             {
                 try

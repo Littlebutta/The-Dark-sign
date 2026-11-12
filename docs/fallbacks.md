@@ -307,7 +307,7 @@ Try the next option if: DS3 map geometry is invisible, black, far too dark or sh
 
 Try the next option if: A DS3 map hitches or stutters as you move through it, or its textures look blurrier up close than they did in 1.0.299.
 
-- **A: Full textures near you, half size beyond (default).** DS3's textures in full for map pieces within 128 m, and a half size low detail copy (a quarter of the memory) for everything further away, the way JortPob and Elden Ring's own maps keep a low detail copy.
+- **A: Full textures near you, half size beyond (default).** DS3's textures in full for map pieces within 128 m (further for large pieces: a floor or building 100 m across loads them from 128 m beyond its middle, the largest from 512 m beyond), and a half size low detail copy (a quarter of the memory) for everything further away, the way JortPob and Elden Ring's own maps keep a low detail copy.
 - **B: Half size textures.** Every DS3 map texture at half its width and height, and quarter size beyond 128 m (port-maps --half-textures): for a graphics card whose memory DS3's textures still don't fit in. (`port-maps --half-textures`)
 - **C: Full size twice, as up to 1.0.299.** The low detail copy is the full texture again and full textures load within 256 m (port-maps --full-low-textures): every texture of a map sits in graphics memory twice at full size. (`port-maps --full-low-textures`)
 
@@ -384,6 +384,13 @@ Try the next option if: A DS3 map's rooms, tunnels or courtyards are lit in the 
 - **B: One even light everywhere.** No baked light volume (port-maps --flat-env-light), as in builds before this option: the same flat light in tunnels as outside, no shade. (`port-maps --flat-env-light`)
 - **C: Baked light mirrored east-west.** The same baked light with the volume mirrored along x (port-maps --baked-light-flip x). Try it if dark patches sit across the map from where the rooms are. (`port-maps --baked-light-flip x`)
 - **D: Baked light mirrored north-south.** The same baked light with the volume mirrored along z (port-maps --baked-light-flip z). Try it if C didn't line the dark patches up with the rooms. (`port-maps --baked-light-flip z`)
+
+### Where DS3's lamps and baked light sit in the DS3 maps (`map-light-place`, rebuilds the content)
+
+Try the next option if: Since this option came in, a DS3 map's lamps glow where nothing is, its rooms are lit from the wrong side, or its shade falls in the wrong places when it didn't before.
+
+- **A: Moved onto the map (default).** DS3 keeps a map's lamps and light probes in the map's own space and moves them into place with the map offset the map file holds (map 1: 28 degrees and 200 m, map 3: 156 degrees and 600 m; map 2 has none). The port does the same, so Firelink's lamps light the shrine and the baked shade falls where DS3's does. Only the map's own light file is ported; the files for its other states (the Untended Graves) no longer stack on top.
+- **B: Left in the map's own space.** Lamps and light probes stay where earlier builds put them (port-maps --no-light-offset): on maps 1 and 3 that is far from where they belong. (`port-maps --no-light-offset`)
 
 ### How enemies find their way in the DS3 maps (`map-navmesh`, rebuilds the content)
 

@@ -43,7 +43,9 @@ public static class MapBakedLight
     public const float MinTexel = 2f;
     public const float Margin = 6f;
 
-    public sealed record Options(bool Flat, bool FlipX, bool FlipY, bool FlipZ)
+    /// <param name="NoOffset">"--no-light-offset" (fallback "map-light-place" B): the probes stay in the map's own
+    /// space, as in earlier builds, instead of being moved by DS3's map offset (<see cref="ReadProbes"/>).</param>
+    public sealed record Options(bool Flat, bool FlipX, bool FlipY, bool FlipZ, bool NoOffset = false)
     {
         public static Options Default { get; } = new(false, false, false, false);
     }
@@ -77,20 +79,35 @@ public static class MapBakedLight
     /// <summary>
     /// DS3's probes with their coefficients put in Elden Ring's order. DS3's file doesn't say which first-order term
     /// is which axis: the one that is largest under open sky (sun mask 768 or more) is up; of the other two the lower
-    /// index is taken as x unless up came first (then it is the standard y, z, x order). Positions are checked against
-    /// the DS3 layout: the probe file's own header box has z mirrored, so the probes are mirrored too if that holds
-    /// more of the map's enemies and start points.
+    /// index is taken as x unless up came first (then it is the standard y, z, x order).
+    /// <para>
+    /// The probe file is in the map's own space, like the map's collisions and light file: DS3's map offset
+    /// (<see cref="MapNavmesh.MapOffset"/>) moves it into the layout's (world) space, its first-order terms turned
+    /// with it. Measured on DS3's files, enemies and start points with a probe within about 4 m: m40 21 of 110 as
+    /// written, 91 moved; m31 0 of 181, 179 moved (m30 has no offset). Up to 1.0.422 the volumes were left in the
+    /// map's own space: map 1's turned 28 degrees and 200 m off, map 3's turned 156 degrees and some 600 m off, so
+    /// the shade DS3 baked for rooms and cliffs fell on open ground and the other way round.
+    /// Positions are then checked against the DS3 layout: if mirroring z holds more than twice as many of the map's
+    /// enemies and start points, the probes are mirrored (from 1.0.299's reading of the header box; with the offset
+    /// applied no DS3 map needs it).
+    /// </para>
     /// </summary>
-    public static List<Probe> ReadProbes(BTPB btpb, MSB3? ds3Msb, List<string> notes)
+    public static List<Probe> ReadProbes(BTPB btpb, MSB3? ds3Msb, List<string> notes, bool noOffset = false)
     {
         var raw = btpb.Groups.SelectMany(g => g.Probes).ToList();
         if (raw.Count == 0)
             return [];
+        var offset = noOffset ? null : MapNavmesh.MapOffset(ds3Msb);
+        var placed = raw.Select(p => offset is { } m ? Vector3.Transform(p.Position, m) : p.Position).ToList();
+        if (offset is { } off)
+            notes.Add(FormattableString.Invariant($"moved by DS3's map offset ({off.M41:0.#}, {off.M42:0.#}, {off.M43:0.#}, turned {MapLighting.OffsetDegrees(ds3Msb):0.#} degrees)"));
+        else if (noOffset && MapNavmesh.MapOffset(ds3Msb) is not null)
+            notes.Add("DS3's map offset not applied (--no-light-offset)");
         bool mirrorZ = false;
         if (ds3Msb is not null)
         {
             var places = ds3Msb.Parts.Enemies.Select(e => e.Position).Concat(ds3Msb.Parts.Players.Select(p => p.Position)).ToList();
-            var (min, max) = MapLighting.Bounds(raw.Select(p => p.Position).ToList());
+            var (min, max) = MapLighting.Bounds(placed);
             int Inside(bool mirror) => places.Count(p =>
             {
                 var q = mirror ? p with { Z = -p.Z } : p;
@@ -125,18 +142,23 @@ public static class MapBakedLight
         notes.Add(FormattableString.Invariant($"first-order terms against order 0 under open sky: {means[1]:0.00} {means[2]:0.00} {means[3]:0.00}; up = term {up}{(upSign < 0 ? " (negative)" : "")}, x = term {ix}, z = term {iz}"));
 
         var probes = new List<Probe>(raw.Count);
-        foreach (var p in raw)
+        for (int i = 0; i < raw.Count; i++)
         {
+            var p = raw[i];
             var sh = new float[12];
             var c = p.Coefficients;
             for (int ch = 0; ch < 3; ch++)
             {
                 sh[ch] = c[ch];
-                sh[3 + ch] = xSign * c[ix * 3 + ch];
-                sh[6 + ch] = upSign * c[up * 3 + ch];
-                sh[9 + ch] = zSign * c[iz * 3 + ch];
+                var v = new Vector3(xSign * c[ix * 3 + ch], upSign * c[up * 3 + ch], zSign * c[iz * 3 + ch]);
+                // The first-order terms are a direction: they turn with the map (the offset's translation doesn't apply).
+                if (offset is { } m)
+                    v = Vector3.TransformNormal(v, m);
+                sh[3 + ch] = v.X;
+                sh[6 + ch] = v.Y;
+                sh[9 + ch] = v.Z;
             }
-            var pos = mirrorZ ? p.Position with { Z = -p.Position.Z } : p.Position;
+            var pos = mirrorZ ? placed[i] with { Z = -placed[i].Z } : placed[i];
             probes.Add(new Probe(pos, sh, p.LightMask));
         }
         return probes;
@@ -290,7 +312,7 @@ public static class MapBakedLight
         if (hostPoint is null || hostBox is null)
             return (null, "baked light: the layout has no environment region to copy (ambient light step failed?); none written");
         var notes = new List<string>();
-        var probes = ReadProbes(BTPB.Read(ds3.Read(path)), ds3Msb, notes);
+        var probes = ReadProbes(BTPB.Read(ds3.Read(path)), ds3Msb, notes, options.NoOffset);
         if (probes.Count < 8)
             return (null, $"baked light: {ItemText.Leaf(path)} has {probes.Count} probes; the map keeps one even light volume");
         float hostAlpha = HostAlpha(er, hostId);
