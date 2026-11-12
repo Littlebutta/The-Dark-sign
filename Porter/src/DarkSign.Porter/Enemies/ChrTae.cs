@@ -10,15 +10,30 @@ namespace DarkSign.Porter.Enemies;
 /// variation, and the rest), joining the template's event group for that type. With a <see cref="ChrEffects.Session"/>
 /// (the full port) the effect events and the character's own sounds are DS3's instead of the template's, and DS3's
 /// SpEffect and projectile events come along converted.
+/// <para>DS3 events whose type the template's TAE lacks but Elden Ring lays out the same (<see cref="SharedTypes"/>)
+/// come along too, in a group of their own when no Elden Ring TAE has one: DS3's map scripts wait on them (type 231,
+/// the event message the Hollow Soldier's burst move 3010 sends so common event 20005415 swaps it for the Pus of
+/// Man). Fallbacks "enemy-ai": DARKSIGN_ENEMY_SIGNALS=0 drops them again, as up to 1.0.383.</para>
+/// Method (RULE 3): the type and its layout are DSAnimStudio's TAE templates (DS3 and Elden Ring both name type 231
+/// RequestMsgMapList: s32 EzStateRequestID and three s32, 16 bytes); its condition in EMEVD is "IF Character Has Event
+/// Message" (darkscript3's emedf).
 /// </summary>
 public static class ChrTae
 {
     /// <summary>Kept from the template: behaviour windows (0 JumpTable, 67, 608, 800) and ID-based sounds/effects.</summary>
     public static readonly HashSet<int> TemplateTypes = [0, 67, 608, 800, 96, 112, 128, 129, 133, 139, 224, 792, 907];
 
+    public static bool SignalsEnabled => Environment.GetEnvironmentVariable("DARKSIGN_ENEMY_SIGNALS")?.Trim() != "0";
+
+    /// <summary>DS3 event types Elden Ring reads the same, with their parameter length, kept even when the template's TAE has none.</summary>
+    public static readonly IReadOnlyDictionary<int, int> SharedTypes = new Dictionary<int, int>
+    {
+        [231] = 16, // RequestMsgMapList: the event message a map script's "Character Has Event Message" waits on
+    };
+
     public static List<TAE.Event> Merge(List<TAE.Event> ds3Events, TAE.Animation anim, IReadOnlyDictionary<int, int> erLengths,
         IReadOnlyDictionary<int, TAE.EventGroup> templateGroups, float ds3Duration, float erDuration, ChrEffects.Session? fx = null,
-        IReadOnlyDictionary<int, TAE.EventGroup>? otherGroups = null)
+        IReadOnlyDictionary<int, TAE.EventGroup>? otherGroups = null, Dictionary<int, int>? kept = null, Dictionary<int, int>? dropped = null)
     {
         float scale = ds3Duration > 0 && erDuration > 0 ? ds3Duration / erDuration : 1;
         var merged = new List<TAE.Event>();
@@ -30,9 +45,12 @@ public static class ChrTae
                 return g;
             // A type the template's TAE has no group of takes one from any other Elden Ring TAE (the art port's
             // lesson: DS3 effect events were dropped silently wherever the template section had none).
-            if (!templateGroups.TryGetValue(type, out var proto) && otherGroups?.TryGetValue(type, out proto) != true)
+            if (templateGroups.TryGetValue(type, out var proto) || otherGroups?.TryGetValue(type, out proto) == true)
+                g = proto!.GetClone();
+            else if (SignalsEnabled && SharedTypes.ContainsKey(type))
+                g = new TAE.EventGroup(type); // Elden Ring's own groups are the event type with GroupData0
+            else
                 return null;
-            g = proto.GetClone();
             anim.EventGroups.Add(g);
             return groupOf[type] = g;
         }
@@ -51,8 +69,19 @@ public static class ChrTae
             if (TemplateTypes.Contains(e.Type))
                 continue;
             var bytes = e.GetParameterBytes(false);
-            if (!erLengths.TryGetValue(e.Type, out var length) || length != bytes.Length || Group(e.Type) is not { } group)
+            bool known = erLengths.TryGetValue(e.Type, out var length);
+            if (!known && SignalsEnabled && SharedTypes.TryGetValue(e.Type, out length))
+            {
+                known = true;
+                if (length == bytes.Length && kept is not null)
+                    kept[e.Type] = kept.GetValueOrDefault(e.Type) + 1;
+            }
+            if (!known || length != bytes.Length || Group(e.Type) is not { } group)
+            {
+                if (dropped is not null)
+                    dropped[e.Type] = dropped.GetValueOrDefault(e.Type) + 1;
                 continue;
+            }
             merged.Add(new TAE.Event(e.StartTime, e.EndTime, e.Type, e.Unk04, (byte[])bytes.Clone(), false) { Group = group });
         }
         return merged.OrderBy(e => e.StartTime).ToList();

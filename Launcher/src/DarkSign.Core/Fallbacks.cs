@@ -556,13 +556,19 @@ public static class Fallbacks
                 { PorterEnv = Env("DARKSIGN_ENEMY_TEMPLATE_FX", "keep") },
         ]),
         new("enemy-ai", "DS3 maps", "Ported DS3 enemies' AI and attacks", Stage.Build,
-            "Ported DS3 enemies stand still, never attack, repeat one move, use Elden Ring attacks, or the game crashes or hangs when a ported enemy notices you.",
+            "Ported DS3 enemies stand still, never attack, repeat one move, use Elden Ring attacks, never do what DS3's map makes them do (the High Wall's Hollow Soldiers bursting into the Pus of Man), or the game crashes or hangs when a ported enemy notices you.",
         [
-            new("A", "DS3's AI and attacks (default)", "Every ported DS3 enemy thinks with DS3's own AI script (its battle and logic goals, ported into Elden Ring's AI files) and DS3's senses, and DS3 attacks its Elden Ring template has no slot for are added as new attacks. Work\\reports\\enemy-ai.tsv says what each enemy got."),
-            new("B", "DS3's AI, the template's attack slots", "As A, but no attacks are added: a DS3 attack the template has no slot for is not played (DARKSIGN_ENEMY_EXTRA_MOVES=0). Use when a ported enemy freezes or the game crashes when it attacks with A.")
+            new("A", "DS3's AI and attacks (default)", "Every ported DS3 enemy thinks with DS3's own AI script (its battle and logic goals, ported into Elden Ring's AI files, with the think rows they check for renumbered) and DS3's senses; DS3 attacks, waiting poses and map-script moves its Elden Ring template has no slot for are added, and the signals its moves send DS3's map scripts come along. Work\\reports\\enemy-ai.tsv says what each enemy got."),
+            new("B", "DS3's AI, the template's attack slots", "As A, but nothing is added: a DS3 attack, waiting pose or map-script move the template has no slot for is not played (DARKSIGN_ENEMY_EXTRA_MOVES=0). Use when a ported enemy freezes or the game crashes when it attacks with A.")
                 { PorterEnv = Env("DARKSIGN_ENEMY_EXTRA_MOVES", "0") },
             new("C", "The Elden Ring template's AI", "Ported enemies think with the AI of the Elden Ring enemy they are built on, which picks DS3 moves by the template's attack numbers (DARKSIGN_ENEMY_AI=template), as in builds before this option.")
                 { PorterEnv = Env("DARKSIGN_ENEMY_AI", "template") },
+            new("D", "No map-script signals in DS3 moves", "As A, but DS3 move events Elden Ring lays out the same that the template has none of are dropped again (DARKSIGN_ENEMY_SIGNALS=0), as up to 1.0.383, when the High Wall's Hollow Soldiers never burst into the Pus of Man. Use when a ported enemy's move freezes it or crashes the game with A.")
+                { PorterEnv = Env("DARKSIGN_ENEMY_SIGNALS", "0") },
+            new("E", "Added attacks only", "As A, but only attacks are added: DS3's waiting poses, getting-up moves and map-script moves the template has no slot for are not (DARKSIGN_ENEMY_EXTRA_MOVES=attacks), as up to 1.0.383. Use when a ported enemy freezes, stands in a T-pose or the game crashes as a map starts with A.")
+                { PorterEnv = Env("DARKSIGN_ENEMY_EXTRA_MOVES", "attacks") },
+            new("F", "DS3's think row numbers in the AI", "As A, but DS3's AI scripts keep comparing the think row they run under with DS3's row numbers (DARKSIGN_ENEMY_THINK_IDS=ds3), as up to 1.0.383; those checks never match a ported row. Use when a ported enemy behaves worse than with 1.0.383.")
+                { PorterEnv = Env("DARKSIGN_ENEMY_THINK_IDS", "ds3") },
         ]),
         new("enemy-glow", "DS3 maps", "Ported DS3 enemies' glows", Stage.Build,
             "A ported DS3 enemy's glow is the wrong colour or missing (the Jailer's lantern, Pontiff Sulyvahn's swords, the Soul of Cinder), a part of it glows far too brightly or draws black, or the game crashes or hangs loading a ported enemy that glows.",
