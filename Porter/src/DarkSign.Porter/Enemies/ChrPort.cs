@@ -387,6 +387,8 @@ public static partial class ChrPort
         public ChrEffects? Effects;
         /// <summary>DS3's AI for the fully ported characters (<see cref="AiPort"/>): their NpcThinkParam rows, added by the params step.</summary>
         public List<(Plan Plan, AiPort.ChrAi Ai)> Ai = [];
+        /// <summary>The DS3 SpEffects the ported AI scripts check, pointed at their ported rows: the params step adds those rows.</summary>
+        public IReadOnlyCollection<int> AiSpEffects = [];
         /// <summary>
         /// What went wrong when DS3 models that should have been built weren't: how many, and the reason most of them
         /// share (one cause usually fails them all). Null when every planned model was built. Printed as a FAIL line
@@ -527,6 +529,9 @@ public static partial class ChrPort
                 ds3Think = ctx.LoadParams(PorterGame.DarkSouls3).Get("NpcThinkParam") ?? throw new InvalidDataException("DS3 has no NpcThinkParam");
                 erThink = ctx.LoadParams(PorterGame.EldenRing).Get("NpcThinkParam") ?? throw new InvalidDataException("Elden Ring has no NpcThinkParam");
                 ai = AiPort.Create(erArchives, ds3Archives, erThink);
+                // The scripts' SpEffect checks point at the rows the effect port adds (700,000,000 + DS3 ID).
+                if (fx is not null && SpEffectPort.Enabled && ctx.LoadParams(PorterGame.DarkSouls3).Get("SpEffectParam") is { } ds3Sp)
+                    ai.SpEffectPorted = id => ds3Sp[id] is { } r && !(r.Name ?? "").TrimStart().StartsWith("[HKS]", StringComparison.OrdinalIgnoreCase);
             }
             catch (Exception ex) when (ex is not OutOfMemoryException)
             {
@@ -661,6 +666,7 @@ public static partial class ChrPort
                     File.WriteAllBytes(full, bytes);
                     written.Add(full);
                 }
+                result.AiSpEffects = ai.SpEffectIds;
                 File.WriteAllLines(ctx.WorkPath("reports", AiPort.ReportFile), ai.ReportLines());
                 Console.WriteLine($"enemies: {ai.Summary} (report: Work\\reports\\{AiPort.ReportFile})");
             }
@@ -702,6 +708,8 @@ public static partial class ChrPort
         var ds3 = ctx.LoadParams(PorterGame.DarkSouls3);
         // With the effect port, DS3's SpEffects and projectiles are ported along with the attacks (ChrEffects).
         var fx = result.Effects;
+        if (fx is not null)
+            fx.AiSpEffectIds = result.AiSpEffects.ToHashSet();
         var attacks = fx?.Attacks(regulation, ds3, result.Notes) ?? new AttackParamPort(regulation, ds3, "BehaviorParam", "AtkParam_Npc");
         int rows = 0, failed = 0;
         // DS3's drops for every ported row (one port for all of them: rows that share DS3 lots share the new ones).
@@ -1735,6 +1743,9 @@ public static partial class ChrPort
                 foreach (var field in new[] { "hp", "getSoul", "stamina", "mp" })
                     if (Cell(source, field) is { } from && Cell(row, field) is { } to)
                         Set(to, from.Value);
+            // DS3's body on a template's row: the body capsule is DS3's size (Ariandel's wolf kept the Elden Ring wolf's).
+            if (newModel && plan.Stage != Stage.Clone && ds3Npc?[ds3Id] is { } sizeSource)
+                CopyBodySize(sizeSource, row);
             // DS3's model hides and shows its "#NN#" meshes (weapon and armour variants) by DS3's display masks.
             if (newModel && plan.Stage != Stage.Clone && ds3Npc?[ds3Id] is { } maskSource)
                 CopyDisplayMasks(maskSource, row);
@@ -1771,6 +1782,28 @@ public static partial class ChrPort
         }
         npc.Rows.Sort((a, b) => a.ID.CompareTo(b.ID));
         return added;
+    }
+
+    public static bool BodySizeEnabled => Environment.GetEnvironmentVariable("DARKSIGN_ENEMY_BODY_SIZE")?.Trim().ToLowerInvariant() != "template";
+
+    /// <summary>
+    /// DS3's capsule size on a ported row. Both games name the capsule against the map hitHeight / hitRadius; Elden Ring
+    /// adds a second one against other characters (chrHitHeight / chrHitRadius), which DS3 doesn't have: it is scaled
+    /// by the same ratio, so the template's relation between the two stays. Up to 1.0.410 the row kept the template's
+    /// capsule (Ariandel's wolf: 1.2 / 0.6 for DS3's 1.7 / 0.55). Fallback enemy-model I: DARKSIGN_ENEMY_BODY_SIZE=template.
+    /// </summary>
+    public static void CopyBodySize(PARAM.Row ds3, PARAM.Row row)
+    {
+        if (!BodySizeEnabled)
+            return;
+        foreach (var (field, chrField) in new[] { ("hitHeight", "chrHitHeight"), ("hitRadius", "chrHitRadius") })
+        {
+            if (Cell(ds3, field)?.Value is not float size || size <= 0 || Cell(row, field) is not { Value: float old } to)
+                continue;
+            Set(to, size);
+            if (old > 0 && Cell(row, chrField) is { Value: float chr } chrCell && chr > 0)
+                Set(chrCell, chr * size / old);
+        }
     }
 
     /// <summary>

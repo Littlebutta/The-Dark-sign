@@ -458,6 +458,13 @@ public sealed class ChrEffects
     /// 700,000,000 + the DS3 ID even when no move casts it. The events step points the scripts there.
     /// </summary>
     public IReadOnlyCollection<int> ScriptSpEffectIds { get; set; } = [];
+
+    /// <summary>
+    /// DS3 SpEffects the ported AI scripts check (<see cref="AiPort.RenumberSpEffects"/>): ported too, and kept on an
+    /// NpcParam row that names them even when they show nothing (a state marker such as the wolf's 5020, which the
+    /// script reads to choose its attacks).
+    /// </summary>
+    public IReadOnlySet<int> AiSpEffectIds { get; set; } = new HashSet<int>();
     private AttackParamPort? _attacks;
 
     /// <summary>
@@ -513,6 +520,11 @@ public sealed class ChrEffects
                     ported++;
             }
             notes.Add($"enemy effects: {ported} of {ScriptSpEffectIds.Count} SpEffects the map scripts use ported ({missing} not in DS3's SpEffectParam)");
+        }
+        if (_sp is not null && AiSpEffectIds.Count > 0)
+        {
+            int ported = AiSpEffectIds.Order().Count(id => _sp.Port(id) > 0);
+            notes.Add($"enemy effects: {ported} of {AiSpEffectIds.Count} SpEffects the AI scripts check ported");
         }
         return _attacks;
     }
@@ -584,7 +596,7 @@ public sealed class ChrEffects
             {
                 if (_ds3SpEffects?[id] is not { } effect)
                     continue;
-                if (!NpcEffectWanted(effect) || _sp.Port(id) is not (> 0 and var newId))
+                if (!(NpcEffectWanted(effect) || AiSpEffectIds.Contains(id)) || _sp.Port(id) is not (> 0 and var newId))
                 {
                     built.NpcEffectsSkipped++;
                     continue;
