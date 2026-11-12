@@ -705,3 +705,113 @@ void dks_god_update(void)
         dks_log("god mode: applied to the player (debug flags %02x -> %02x, HP %d / %d)", flags, want, hp, max_hp);
     }
 }
+
+/* Fly and no-clip (see spawn.h). Offsets for the current game: ChrIns+0x58 is ChrCtrl and ChrCtrl+0xF0 its flags
+   word, bit 2 "disable map collision" and bit 3 "disable map collision 2" (fromsoftware-rs chr_ins.rs ChrCtrlFlags;
+   EldenRingTool's "No map collision" sets bit 3 of the same byte); ChrPhysicsModule+0x1D3 is the "no gravity" byte
+   EldenRingTool's "No gravity" sets (fromsoftware-rs physics.rs: fade_out_gravity_disabled). Bit 19 "disable object
+   collision" is reset by the game every frame (fromsoftware-rs), so it is set again every frame and may not hold. */
+#define CHR_CTRL 0x58
+#define CTRL_FLAGS 0xF0
+#define CTRL_NO_MAP_HIT ((1u << 2) | (1u << 3))
+#define CTRL_NO_OBJECT_HIT (1u << 19)
+#define PHYSICS_NO_GRAVITY 0x1D3
+#define FLY_SPEED_MIN 2.0f
+#define FLY_SPEED_MAX 100.0f
+
+static volatile LONG g_fly, g_noclip;
+static float g_fly_speed = 15.0f;
+static int g_gravity_applied;  /* we set the no-gravity byte */
+static uint32_t g_ctrl_applied; /* flag bits we set */
+static int g_fly_logged;
+static LARGE_INTEGER g_fly_last;
+
+void dks_fly_set(int on)
+{
+    InterlockedExchange(&g_fly, on ? 1 : 0);
+    g_fly_logged = 0;
+    dks_log("fly: %s", on ? "on" : "off");
+}
+
+int dks_fly_on(void) { return g_fly > 0; }
+
+void dks_noclip_set(int on)
+{
+    InterlockedExchange(&g_noclip, on ? 1 : 0);
+    g_fly_logged = 0;
+    dks_log("no-clip: %s", on ? "on" : "off");
+}
+
+int dks_noclip_on(void) { return g_noclip > 0; }
+
+float dks_fly_speed(void) { return g_fly_speed; }
+
+void dks_fly_set_speed(float metres_per_second)
+{
+    if (!(metres_per_second >= FLY_SPEED_MIN))
+        metres_per_second = FLY_SPEED_MIN;
+    if (metres_per_second > FLY_SPEED_MAX)
+        metres_per_second = FLY_SPEED_MAX;
+    g_fly_speed = metres_per_second;
+}
+
+static int key_down(int key) { return (GetAsyncKeyState(key) & 0x8000) != 0; }
+
+void dks_fly_update(int keys)
+{
+    int noclip = dks_noclip_on(), fly = dks_fly_on() || noclip;
+    LARGE_INTEGER now, freq;
+    QueryPerformanceCounter(&now);
+    QueryPerformanceFrequency(&freq);
+    float dt = g_fly_last.QuadPart && freq.QuadPart ? (float)(now.QuadPart - g_fly_last.QuadPart) / (float)freq.QuadPart : 0.0f;
+    g_fly_last = now;
+    if (dt > 0.1f)
+        dt = 0.1f; /* a hitch or a loading screen: don't jump */
+    if (!fly && !g_gravity_applied && !g_ctrl_applied)
+        return;
+    dks_spawn_scan();
+    uintptr_t player = main_player(world_chr_man());
+    uintptr_t physics = is_object(player) ? read_ptr(read_ptr(player + CHR_MODULES) + MODULES_PHYSICS) : 0;
+    uintptr_t ctrl = is_object(player) ? read_ptr(player + CHR_CTRL) : 0;
+    if (!is_object(physics) || !is_object(ctrl)) {
+        /* loading screen: the character is new afterwards, so nothing of ours is left on it */
+        g_gravity_applied = 0;
+        g_ctrl_applied = 0;
+        g_fly_logged = 0;
+        return;
+    }
+
+    uint8_t gravity = 0, want_gravity;
+    if (!read_mem(physics + PHYSICS_NO_GRAVITY, &gravity, 1))
+        return;
+    want_gravity = fly ? 1 : g_gravity_applied ? 0 : gravity;
+    if (want_gravity != gravity)
+        write_mem(physics + PHYSICS_NO_GRAVITY, &want_gravity, 1);
+    g_gravity_applied = fly;
+
+    uint32_t flags = 0, want_flags;
+    if (!read_mem(ctrl + CTRL_FLAGS, &flags, 4))
+        return;
+    uint32_t bits = noclip ? CTRL_NO_MAP_HIT | CTRL_NO_OBJECT_HIT : 0;
+    want_flags = (flags & ~(g_ctrl_applied & ~bits)) | bits;
+    if (want_flags != flags)
+        write_mem(ctrl + CTRL_FLAGS, &want_flags, 4);
+    g_ctrl_applied = bits;
+
+    if (fly && !g_fly_logged) {
+        g_fly_logged = 1;
+        dks_log("fly: applied to the player (no-gravity byte %u -> %u, ChrCtrl flags %08x -> %08x, no-clip %s)", gravity,
+                want_gravity, flags, want_flags, noclip ? "on" : "off");
+    }
+
+    if (!fly || !keys || !(dt > 0.0f))
+        return;
+    int up = key_down(VK_PRIOR) - key_down(VK_NEXT), forward = key_down(VK_HOME) - key_down(VK_END);
+    if (!up && !forward)
+        return;
+    float pos[3], quat[4], to[3];
+    if (!read_mem(physics + PHYSICS_POSITION, pos, sizeof pos) || !read_mem(physics + PHYSICS_ORIENTATION, quat, sizeof quat))
+        return;
+    dks_fly_step(pos, quat, forward, up, g_fly_speed, dt, to);
+    write_mem(physics + PHYSICS_POSITION, to, sizeof to);
+}

@@ -52,7 +52,8 @@ public sealed class MapModelPort
 
     /// <summary>A new port with the same templates and none of this one's materials (one per map).</summary>
     public MapModelPort Fresh() => new(_templates, _templateFlver)
-        { VanillaMaterials = VanillaMaterials, TemplateTextures = TemplateTextures, Ds3Alpha = Ds3Alpha, TerrainLayers = TerrainLayers, TintMaterials = TintMaterials };
+        { VanillaMaterials = VanillaMaterials, TemplateTextures = TemplateTextures, Ds3Alpha = Ds3Alpha, TerrainLayers = TerrainLayers, TintMaterials = TintMaterials,
+          OverlayBacking = OverlayBacking, CutFadedOverlays = CutFadedOverlays, FadeOverlays = FadeOverlays };
 
     /// <summary>
     /// Diagnostic "--tint-materials": the albedo of each DS3 material family that keeps something in vertex alpha is a
@@ -107,6 +108,34 @@ public sealed class MapModelPort
     /// its first layer, as every build up to 1.0.353.
     /// </summary>
     public bool TerrainLayers { get; set; } = true;
+
+    /// <summary>
+    /// The map's index of surfaces under faded overlay triangles (<see cref="MapOverlayBacking"/>): a faded triangle is
+    /// left out only where one lies behind it. Null: each model is tested against its own surfaces.
+    /// </summary>
+    public MapOverlayBacking? OverlayBacking { get; set; }
+
+    /// <summary>
+    /// True (fallback "map-overlays" D, --cut-faded-overlays): every faded overlay triangle is left out whatever lies
+    /// behind it, as 1.0.353 to 1.0.383, which left holes in Firelink Shrine's floor. Only with <see cref="FadeOverlays"/>.
+    /// </summary>
+    public bool CutFadedOverlays { get; set; }
+
+    /// <summary>
+    /// False (the default): a one-layer DS3 map mesh (M[ARSN]_l and the like) is drawn solid whatever its vertex alpha
+    /// says. That alpha is not a fade: Firelink Shrine's tunnel walls (m004001: 32,705 vertices, m004520: 3,016, both
+    /// wall_103) have alpha 0 on every vertex next to a mesh of the same wall at alpha 1, and Undead Settlement's
+    /// wooden houses (m000120) and the Painted World's stone walls lost every triangle to the overlay cut. DS3 draws
+    /// all of them. True (fallback "map-overlays" C, --fade-overlays): the overlay fade of 1.0.353 to 1.0.383
+    /// (<see cref="MapOverlays"/>, <see cref="MapOverlayBacking"/>). Two-layer materials are split by layer either way.
+    /// </summary>
+    public bool FadeOverlays { get; set; }
+
+    /// <summary>
+    /// FLVERs left out of a binder that kept another, drawable FLVER: they held only meshes the port can't draw
+    /// (shadow casters, water, effects). For the port log.
+    /// </summary>
+    public int EmptyFlvers { get; private set; }
 
     /// <summary>What <see cref="MapTerrainBlends"/> did to this port's models, for the port log.</summary>
     public MapTerrainBlends.Stats Blends { get; } = new();
@@ -379,15 +408,20 @@ public sealed class MapModelPort
     }
 
     /// <summary>Converts every FLVER in a DS3 mapbnd; the binder layout comes from the host's template binder.</summary>
-    public BND4 ConvertBinder(BND4 ds3, BND4 hostTemplate, MapId ds3Id, MapId erId, string modelNumber, MapId? hostId = null)
+    /// <param name="parsed">The binder's FLVERs already read, in binder order (so they aren't read twice).</param>
+    public BND4 ConvertBinder(BND4 ds3, BND4 hostTemplate, MapId ds3Id, MapId erId, string modelNumber, MapId? hostId = null,
+                              IReadOnlyList<FLVER2>? parsed = null)
     {
         var templateFile = hostTemplate.Files.First(f => FLVER2.Is(f.Bytes));
         var folder = ModelFolder(templateFile, erId, modelNumber, hostId);
 
         var files = new List<BinderFile>();
+        var emptyFlvers = new List<string>();
+        int index = 0;
         foreach (var file in ds3.Files.Where(f => FLVER2.Is(f.Bytes)))
         {
-            var flver = FLVER2.Read(file.Bytes);
+            var flver = parsed is not null && index < parsed.Count ? parsed[index] : FLVER2.Read(file.Bytes);
+            index++;
             var described = Describe(flver);
             lock (ModelMeshes)
             {
@@ -397,9 +431,15 @@ public sealed class MapModelPort
             }
             var ds3Leaf = ItemText.Leaf(file.Name);
             var leaf = ds3Leaf.Replace(ds3Id.ToString(), erId.ToString(), StringComparison.OrdinalIgnoreCase);
-            ConvertFlver(flver, ds3Id);
+            ConvertFlver(flver, ds3Id, modelNumber);
             if (flver.Meshes.Count == 0)
-                throw new InvalidDataException("only effect, decal, water or shadow meshes, which have no Elden Ring material yet");
+            {
+                // A FLVER of its own that holds only what the port can't draw (DS3 gives many trees, cages and
+                // hanging corpses a second FLVER with just their M[Shadow] caster): that FLVER is left out, not the
+                // whole binder. Up to 1.0.383 it took the drawable FLVER with it (354 trees in Undead Settlement).
+                emptyFlvers.Add(ds3Leaf);
+                continue;
+            }
             // As vanilla map pieces have them: the one node named after the model under its Elden Ring map ID, and
             // the materials numbered as Elden Ring numbers them (a repeated material keeps its first number).
             if (flver.Nodes.Count == 1)
@@ -412,6 +452,11 @@ public sealed class MapModelPort
             Count(flver, written.Length);
             files.Add(new BinderFile(templateFile.Flags, templateFile.ID + files.Count, folder + leaf, written));
         }
+        if (files.Count == 0)
+            throw new InvalidDataException("only effect, decal, water or shadow meshes, which have no Elden Ring material yet");
+        if (emptyFlvers.Count > 0)
+            lock (_materials)
+                EmptyFlvers += emptyFlvers.Count;
         var binder = new BND4
         {
             Version = hostTemplate.Version,
@@ -553,7 +598,8 @@ public sealed class MapModelPort
         };
     }
 
-    private void ConvertFlver(FLVER2 flver, MapId ds3Id)
+    /// <param name="model">The map piece's model number ("000080"), to find its placements in <see cref="OverlayBacking"/>; null for objects.</param>
+    private void ConvertFlver(FLVER2 flver, MapId ds3Id, string? model = null)
     {
         var bboxMin = flver.Header.BoundingBoxMin;
         var bboxMax = flver.Header.BoundingBoxMax;
@@ -571,7 +617,10 @@ public sealed class MapModelPort
         if (Ds3Alpha)
         {
             var stats = new MapOverlays.Stats();
-            keepAlpha = MapOverlays.Apply(flver, stats);
+            var behind = CutFadedOverlays ? MapOverlays.CutEverywhere
+                : model is not null && OverlayBacking is { } backing ? backing.For(model)
+                : null;
+            keepAlpha = MapOverlays.Apply(flver, stats, behind, FadeOverlays);
             Overlays.Add(stats);
         }
         // Terrain blends: one mesh per layer it shows (the weights are still in DS3's vertex layout here).

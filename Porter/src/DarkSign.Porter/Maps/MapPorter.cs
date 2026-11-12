@@ -43,6 +43,12 @@ public static class MapPorter
         /// <summary>--solid-overlays: every ported vertex is solid and a two-layer material shows its first layer, as
         /// up to 1.0.340 (fallback "map-overlays" B; see <see cref="MapOverlays"/>).</summary>
         public bool SolidOverlays { get; set; }
+        /// <summary>--cut-faded-overlays: every overlay triangle under half alpha is left out, whatever lies behind it, as
+        /// 1.0.353 to 1.0.383 (fallback "map-overlays" D; implies --fade-overlays; see <see cref="MapOverlayBacking"/>).</summary>
+        public bool CutFadedOverlays { get; set; }
+        /// <summary>--fade-overlays: one-layer DS3 meshes keep their vertex alpha as a fade and faded triangles with a
+        /// surface behind them are left out (PR #165; fallback "map-overlays" C; see <see cref="MapModelPort.FadeOverlays"/>).</summary>
+        public bool FadeOverlays { get; set; }
         /// <summary>--first-blend-layer: a DS3 terrain blend (2m/3m/4m) shows only its first layer, as up to 1.0.353
         /// (fallback "map-blend-layers" B; see <see cref="MapTerrainBlends"/>).</summary>
         public bool FirstBlendLayer { get; set; }
@@ -131,6 +137,8 @@ public static class MapPorter
                     case "--stand-ins": o.StandIns = true; break;
                     case "--solid-overlays": o.SolidOverlays = true; break;
                     case "--first-blend-layer": o.FirstBlendLayer = true; break;
+                    case "--cut-faded-overlays": o.CutFadedOverlays = true; o.FadeOverlays = true; break;
+                    case "--fade-overlays": o.FadeOverlays = true; break;
                     case "--tint-materials": o.TintMaterials = true; break;
                     case "--host-atmosphere": o.HostAtmosphere = true; break;
                     case "--host-env-light": o.HostEnvLight = true; break;
@@ -165,6 +173,8 @@ public static class MapPorter
     {
         port.Ds3Alpha = !options.SolidOverlays;
         port.TerrainLayers = !options.FirstBlendLayer;
+        port.CutFadedOverlays = options.CutFadedOverlays;
+        port.FadeOverlays = options.FadeOverlays;
         return port;
     }
 
@@ -654,6 +664,8 @@ public static class MapPorter
         models.Ds3Alpha = !options.SolidOverlays;
         models.TerrainLayers = !options.FirstBlendLayer;
         models.TintMaterials = options.TintMaterials;
+        models.CutFadedOverlays = options.CutFadedOverlays;
+        models.FadeOverlays = options.FadeOverlays;
         if (test != PieceTest.None)
             report.AppendLine(test switch
             {
@@ -664,6 +676,26 @@ public static class MapPorter
         report.AppendLine($"  material templates: {models.TemplateSummary} (binder layout from {binderMap})");
         lock (_layouts)
             _layouts.UnionWith(models.TemplateLayouts());
+
+        // Where faded overlay triangles have a surface behind them, over the whole map (see MapOverlayBacking). Each
+        // model's faded triangles are collected as it is first read; a model that has any is converted only after
+        // every model's surfaces have been checked against them. A failure leaves each model tested against its own
+        // surfaces.
+        MapOverlayBacking? backing = null;
+        if (models.Ds3Alpha && models.FadeOverlays && !options.CutFadedOverlays && test == PieceTest.None
+            && !(_converted.TryGetValue(ds3Id, out var done) && done.Er != erId && done.Er != default))
+        {
+            try
+            {
+                backing = new MapOverlayBacking(OverlayPlacements(ds3Msb, options));
+            }
+            catch (Exception ex) when (ex is not OutOfMemoryException)
+            {
+                report.AppendLine($"  overlay backing: FAILED ({ex.Message}); each model is tested against its own surfaces");
+            }
+        }
+        var deferred = new System.Collections.Concurrent.ConcurrentBag<int>();
+        bool collectFailed = false;
 
         // Every map piece binder converts in parallel (thousands per map). A probe slot copies what its main slot
         // already converted from the same DS3 map, renamed to its own map ID, instead of converting it again.
@@ -695,7 +727,27 @@ public static class MapPorter
                 var source = Ds3MapBndPath(ds3Id, number);
                 if (!ds3.Contains(source))
                     throw new FileNotFoundException(source);
-                var binder = models.ConvertBinder(BND4.Read(ds3.Read(source)), hostBnd, ds3Id, erId, number, binderMap);
+                var ds3Bnd = BND4.Read(ds3.Read(source));
+                List<FLVER2>? flvers = null;
+                if (backing is not null && !Volatile.Read(ref collectFailed))
+                {
+                    flvers = ds3Bnd.Files.Where(f => FLVER2.Is(f.Bytes)).Select(f => FLVER2.Read(f.Bytes)).ToList();
+                    try
+                    {
+                        if (backing.Collect(number, flvers))
+                        {
+                            deferred.Add(i);
+                            return;
+                        }
+                    }
+                    catch (Exception ex) when (ex is not OutOfMemoryException)
+                    {
+                        Volatile.Write(ref collectFailed, true);
+                        lock (report)
+                            report.AppendLine($"  overlay backing: FAILED collecting {number} ({ex.Message}); each model is tested against its own surfaces");
+                    }
+                }
+                var binder = models.ConvertBinder(ds3Bnd, hostBnd, ds3Id, erId, number, binderMap, flvers);
                 File.WriteAllBytes(target, DCX.Compress(binder.Write(), bndCompression));
             }
             catch (Exception ex)
@@ -703,6 +755,45 @@ public static class MapPorter
                 failures[i] = ex.Message;
             }
         });
+        if (!deferred.IsEmpty)
+        {
+            // Pass 2 over the whole map: every placed model's surfaces against the collected faded triangles. Then the
+            // models with faded triangles convert, cutting only the ones with a surface behind them.
+            var backingClock = System.Diagnostics.Stopwatch.StartNew();
+            if (!collectFailed)
+            {
+                try
+                {
+                    backing!.Seal();
+                    Parallel.ForEach(backing.Models, Parallelism.Options, number =>
+                    {
+                        var source = Ds3MapBndPath(ds3Id, number);
+                        if (ds3.Contains(source))
+                            backing.File(number, BND4.Read(ds3.Read(source)).Files.Where(f => FLVER2.Is(f.Bytes)).Select(f => FLVER2.Read(f.Bytes)));
+                    });
+                    models.OverlayBacking = backing;
+                    report.AppendLine($"  {backing.Summary} ({backingClock.Elapsed.TotalSeconds:F0} s)");
+                }
+                catch (Exception ex) when (ex is not OutOfMemoryException)
+                {
+                    report.AppendLine($"  overlay backing: FAILED ({ex.Message}); each model is tested against its own surfaces");
+                }
+            }
+            Parallel.ForEach(deferred, Parallelism.Options, i =>
+            {
+                var number = ModelNumber(mapPieces[i].Name);
+                try
+                {
+                    var binder = models.ConvertBinder(BND4.Read(ds3.Read(Ds3MapBndPath(ds3Id, number))), hostBnd, ds3Id, erId, number, binderMap);
+                    File.WriteAllBytes(ctx.ModPath(ModParts(ErMapBndPath(erId, number))), DCX.Compress(binder.Write(), bndCompression));
+                }
+                catch (Exception ex)
+                {
+                    failures[i] = ex.Message;
+                }
+            });
+            models.OverlayBacking = null;
+        }
         var missingModels = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         for (int i = 0; i < mapPieces.Count; i++)
             if (failures[i] is { } failure)
@@ -712,6 +803,8 @@ public static class MapPorter
             }
         foreach (var note in models.Notes.Distinct().Take(20))
             report.AppendLine($"  note: {note}");
+        if (models.EmptyFlvers > 0)
+            report.AppendLine($"  extra FLVERs: {models.EmptyFlvers} left out of their binders (only shadow casters, water or effects in them); the drawable FLVER beside each was kept");
         if (models.LeftOut.Count > 0)
             report.AppendLine($"  meshes left out (no Elden Ring material for them yet): {models.LeftOut.Values.Sum()} ("
                               + string.Join(", ", models.LeftOut.OrderByDescending(k => k.Value).Select(k => $"{k.Key} x{k.Value}")) + ")");
@@ -1199,6 +1292,19 @@ public static class MapPorter
     }
 
     public static string MsbPath(MapId id) => $"/map/mapstudio/{id}.msb.dcx";
+    /// <summary>
+    /// Where each map piece model sits in one DS3 map, for <see cref="MapOverlayBacking"/>: every map piece the port
+    /// places (helper pieces left out as <see cref="MsbPort.HelperKind"/> says), by model number.
+    /// </summary>
+    private static Dictionary<string, Matrix4x4[]> OverlayPlacements(MSB3 ds3Msb, Options options)
+    {
+        bool layerOk = MsbPort.BaseLayerMeans(ds3Msb);
+        return ds3Msb.Parts.MapPieces
+            .Where(p => options.HelperPieces || MsbPort.HelperKind(p, layerOk) is null)
+            .GroupBy(p => ModelNumber(p.ModelName), StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(g => g.Key, g => g.Select(MapOverlayBacking.Placement).ToArray(), StringComparer.OrdinalIgnoreCase);
+    }
+
     public static string Ds3MapBndPath(MapId id, string number) => $"/map/{id}/{id}_{number}.mapbnd.dcx";
     public static string ErMapBndPath(MapId id, string number) => $"/map/{id.AreaFolder}/{id}/{id}_{number}.mapbnd.dcx";
 

@@ -19,7 +19,9 @@ public static partial class MapPortChecks
         yield return ("visuals: test maps hold the host's own model, its own material, or the port's materials with vanilla textures", PieceTests);
         yield return ("visuals: fallbacks map-groups C and map-materials B", VisualFallbacks);
         yield return ("visuals: DS3's reflection proxies, shadow casters and off-layer pieces are left out and reported", HelperPieces);
-        yield return ("visuals: DS3 overlays keep their vertex alpha fade; two-layer materials show the layer each triangle shows", Overlays);
+        yield return ("visuals: one-layer DS3 meshes are solid whatever their vertex alpha (--fade-overlays fades them); two-layer materials show the layer each triangle shows", Overlays);
+        yield return ("visuals: a FLVER holding only a shadow caster is left out of its binder, the drawable FLVER beside it kept", ShadowOnlyFlver);
+        yield return ("visuals: a faded overlay triangle is left out only where a surface lies right behind it (map-overlays D cuts them all)", OverlayBacking);
         yield return ("visuals: DS3 terrain blends (2m/3m/4m) draw each triangle with the layer DS3 shows there", TerrainBlends);
     }
 
@@ -79,7 +81,7 @@ public static partial class MapPortChecks
         flver.Meshes.Add(Quad(0, [1f, 0.6f, 0.1f, 0.2f], 0));      // overlay: both triangles have a corner over half
         flver.Meshes.Add(Quad(0, [0.9f, 0.1f, 0.1f, 0.0f], 1));    // overlay: (0,1,2) has a corner at 0.9, (1,3,2) is cut
         flver.Meshes.Add(Quad(1, [1f, 1f, 0f, 0f], 2));            // two-layer: (0,1,2) mostly brick, (1,3,2) mostly ash
-        flver.Meshes.Add(Quad(2, [1f, 1f, 1f, 1f], 3));            // solid rock
+        flver.Meshes.Add(Quad(2, [1f, 1f, 1f, 1f], 0.9f));         // solid rock, 10 cm under the second overlay (what it fades into)
         flver.Meshes.Add(Quad(3, [0.3f, 0.3f, 0.3f, 0.3f], 4));    // grass: alpha is sway, untouched
         return FLVER2.Read(flver.Write());
     }
@@ -100,7 +102,28 @@ public static partial class MapPortChecks
             Expect(MapOverlays.KindOf(m) == kind, $"{mtd} is {MapOverlays.KindOf(m)}, not {kind}");
         }
 
+        // The default: one-layer meshes are solid whatever their alpha (DS3 draws Firelink's tunnel walls at alpha 0);
+        // two-layer meshes are still split by layer.
+        var (plain, plainBnd) = VisualPort();
+        var drawn = ConvertOne(plain, plainBnd, OverlayFlver());
+        int Tris(FLVER2.Mesh m) => m.FaceSets.Where(f => f.Flags == FLVER2.FaceSet.FSFlags.None).Sum(f => f.Triangulate(true).Count / 3);
+        Expect(drawn.Meshes.Count == 6 && Tris(drawn.Meshes[0]) == 2 && Tris(drawn.Meshes[1]) == 2,
+            $"by default no one-layer triangle is cut ({drawn.Meshes.Count} meshes, {Tris(drawn.Meshes[0])} and {Tris(drawn.Meshes[1])} triangles)");
+        Expect(drawn.Meshes.Take(2).All(m => m.Vertices.All(v => v.Colors.Single().A == 1)), "by default one-layer meshes are written solid");
+        Expect(Tris(drawn.Meshes[2]) == 1 && Tris(drawn.Meshes[3]) == 1, "by default the two-layer mesh is still split by layer");
+        Expect(plain.Overlays.OverlayMeshes == 0 && plain.Overlays.SolidOverlayMeshes == 2 && plain.Overlays.TwoLayerMeshes == 1,
+            $"counted: {plain.Overlays.Summary}");
+        // A mesh at alpha 0 everywhere (m004001's wall) stays whole.
+        var wall = OverlayFlver();
+        foreach (var v in wall.Meshes[0].Vertices)
+            v.Colors[0] = new FLVER.VertexColor(0f, 1f, 0f, 1f);
+        var (wallPort, wallBnd) = VisualPort();
+        Expect(Tris(ConvertOne(wallPort, wallBnd, wall).Meshes[0]) == 2, "a one-layer mesh at alpha 0 everywhere is drawn whole");
+
+        // Fallback map-overlays C (--fade-overlays): the fade of 1.0.353 to 1.0.383.
+        Expect(MapPorter.Options.Parse(["--fade-overlays"]).FadeOverlays && !new MapPorter.Options().FadeOverlays, "--fade-overlays is read");
         var (port, hostBnd) = VisualPort();
+        port.FadeOverlays = true;
         var flver = ConvertOne(port, hostBnd, OverlayFlver());
         Expect(flver.Meshes.Count == 6, $"the two-layer mesh is split in two: {flver.Meshes.Count} meshes");
         int Triangles(FLVER2.Mesh m) => m.FaceSets.Where(f => f.Flags == FLVER2.FaceSet.FSFlags.None).Sum(f => f.Triangulate(true).Count / 3);
@@ -120,6 +143,8 @@ public static partial class MapPortChecks
         Expect(port.Overlays.OverlayMeshes == 2 && port.Overlays.OverlayTrianglesCut == 1 && port.Overlays.TwoLayerMeshes == 1 && port.Overlays.SecondLayerTriangles == 1,
             $"counted: {port.Overlays.Summary}");
 
+        Expect(port.Overlays.FadedKept == 0, $"nothing kept solid: {port.Overlays.Summary}");
+
         // Fallback map-overlays B: as up to 1.0.340.
         Expect(MapPorter.Options.Parse(["--solid-overlays"]).SolidOverlays && !new MapPorter.Options().SolidOverlays, "--solid-overlays is read");
         var (solid, bnd) = VisualPort();
@@ -131,11 +156,83 @@ public static partial class MapPortChecks
         Expect(MapPorter.Options.Parse(["--tint-materials"]).TintMaterials, "--tint-materials is read");
         var (tinted, tbnd) = VisualPort();
         tinted.TintMaterials = true;
+        tinted.FadeOverlays = true;
         var t = ConvertOne(tinted, tbnd, OverlayFlver());
         var tints = t.Meshes.Select(m => tinted.Materials.Single(x => x.Name == t.Materials[m.MaterialIndex].Name).Albedo).ToList();
         Expect(tints.SequenceEqual(["DKS_tint_green", "DKS_tint_green", "DKS_tint_red", "DKS_tint_magenta", "m40_00_rock_a", "DKS_tint_yellow"]),
             $"tints {string.Join(", ", tints)}");
         Expect(MapModelPort.Tints.All(x => x.Name.StartsWith("DKS_tint_")) && ModelPort.SolidDxt1(0xF800).Length == ModelPort.FlatNormalDds().Length, "tint textures");
+    }
+
+    /// <summary>
+    /// The 1.0.37x holes (Firelink Shrine's floor, the cliffs and the tree above Iudex Gundyr): a faded overlay triangle
+    /// over nothing is kept, solid; one over a surface is left out; across a map, only when every placement has one.
+    /// </summary>
+    private static void OverlayBacking()
+    {
+        int Triangles(FLVER2.Mesh m) => m.FaceSets.Where(f => f.Flags == FLVER2.FaceSet.FSFlags.None).Sum(f => f.Triangulate(true).Count / 3);
+
+        // Without the rock under it, the second overlay's faded triangle has nothing to fade into.
+        var (port, hostBnd) = VisualPort();
+        port.FadeOverlays = true;
+        var bare = OverlayFlver();
+        bare.Meshes.RemoveAt(3);
+        var flver = ConvertOne(port, hostBnd, bare);
+        Expect(Triangles(flver.Meshes[1]) == 2, $"a faded triangle over nothing stays ({Triangles(flver.Meshes[1])} triangles)");
+        Expect(flver.Meshes[1].Vertices.Select(v => MathF.Round(v.Colors.Single().A, 1)).SequenceEqual([0.9f, 1f, 1f, 1f]),
+            $"its corners are solid: {string.Join(",", flver.Meshes[1].Vertices.Select(v => v.Colors.Single().A))}");
+        Expect(port.Overlays.OverlayTrianglesCut == 0 && port.Overlays.FadedKept == 1, $"counted: {port.Overlays.Summary}");
+
+        // Too far under it (beyond Reach) is nothing either.
+        var (far, farBnd) = VisualPort();
+        far.FadeOverlays = true;
+        var deep = OverlayFlver();
+        foreach (var v in deep.Meshes[3].Vertices)
+            v.Position = v.Position with { Y = 1 - MapOverlayBacking.Reach - 0.1f };
+        ConvertOne(far, farBnd, deep);
+        Expect(far.Overlays.FadedKept == 1, $"a surface {MapOverlayBacking.Reach + 0.1f} m under it doesn't count: {far.Overlays.Summary}");
+
+        // Fallback map-overlays D: as 1.0.353 to 1.0.383, every faded triangle cut.
+        Expect(MapPorter.Options.Parse(["--cut-faded-overlays"]) is { CutFadedOverlays: true, FadeOverlays: true } && !new MapPorter.Options().CutFadedOverlays,
+            "--cut-faded-overlays is read (and fades)");
+        var (cut, cutBnd) = VisualPort();
+        cut.FadeOverlays = true;
+        cut.CutFadedOverlays = true;
+        var c = ConvertOne(cut, cutBnd, bare);
+        Expect(Triangles(c.Meshes[1]) == 1 && cut.Overlays.OverlayTrianglesCut == 1, $"--cut-faded-overlays cuts it anyway: {cut.Overlays.Summary}");
+
+        // Across a map: the overlay model (the second overlay alone) placed twice, the rock model under one of them.
+        var overlay = OverlayFlver();
+        overlay.Meshes.RemoveAt(4);
+        overlay.Meshes.RemoveAt(3);
+        overlay.Meshes.RemoveAt(2);
+        overlay.Meshes.RemoveAt(0);
+        var rock = OverlayFlver();
+        rock.Meshes.RemoveRange(0, 3);
+        rock.Meshes.RemoveAt(1);
+        var at = (Vector3 p) => Matrix4x4.CreateTranslation(p);
+        var placements = new Dictionary<string, Matrix4x4[]>
+        {
+            ["000080"] = [at(new(100, 5, 100)), at(new(300, 5, 100))],
+            ["000081"] = [at(new(100, 5, 100))],
+            ["000082"] = [at(new(100, 5, 100))],
+        };
+        var models = new Dictionary<string, FLVER2[]> { ["000080"] = [overlay], ["000081"] = [rock], ["000082"] = [overlay] };
+        var map = MapOverlayBacking.Build(placements, n => models[n]);
+        Expect(map.Faded == 2 && map.Backed == 1, $"one model placed twice is cut only where both placements are backed: {map.Summary}");
+        var faded = MapOverlayBacking.FadedTriangles(overlay).Single();
+        Expect(!map.For("000080")(faded.A, faded.B, faded.C, faded.Normal), "the model placed over nothing once keeps it");
+        Expect(map.For("000082")(faded.A, faded.B, faded.C, faded.Normal), "the model placed over the rock leaves it out");
+        Expect(!map.For("000099")(faded.A, faded.B, faded.C, faded.Normal), "a model the map doesn't place keeps it");
+        var lone = new Dictionary<string, Matrix4x4[]> { ["000080"] = [at(new(100, 5, 100))], ["000081"] = [at(new(100, 5.2f, 100))] };
+        var above = MapOverlayBacking.Build(lone, n => models[n]);
+        Expect(above.Backed == 0, $"a surface 0.1 m in front of it (the side its normal faces) isn't behind it: {above.Summary}");
+        var turned = new Dictionary<string, Matrix4x4[]>
+        {
+            ["000080"] = [Matrix4x4.CreateRotationX(MathF.PI) * at(new(100, 7, 110))],   // at y 6, facing down, the rock 10 cm above
+            ["000081"] = [at(new(100, 5.2f, 100))],
+        };
+        Expect(MapOverlayBacking.Build(turned, n => models[n]).Backed == 1, "a placement upside down looks the other way");
     }
 
     /// <summary>
@@ -255,6 +352,7 @@ public static partial class MapPortChecks
         // Diagnostic --tint-materials: a colour per layer.
         var (tinted, tbnd) = VisualPort();
         tinted.TintMaterials = true;
+        tinted.FadeOverlays = true;
         var t = ConvertOne(tinted, tbnd, BlendFlver());
         var tints = t.Meshes.Select(m => tinted.Materials.Single(x => x.Name == t.Materials[m.MaterialIndex].Name).Albedo).ToList();
         Expect(tints.SequenceEqual(["DKS_tint_orange", "DKS_tint_purple", "DKS_tint_blue", "DKS_tint_orange", "DKS_tint_white", "DKS_tint_blue", "DKS_tint_orange"]),
@@ -446,6 +544,32 @@ public static partial class MapPortChecks
         var hostBnd = new BND4();
         hostBnd.Files.Add(new BinderFile(Binder.FileFlags.Flag1, 200, @"N:\GR\data\Model\map\m45_00_00_00\m45_00_00_00_001000\sib\m45_00_00_00_001000.flver", flvers[0].Write()));
         return (MapModelPort.Create(flvers, matbins, flvers[0], plain), hostBnd);
+    }
+
+    /// <summary>
+    /// A DS3 binder with a second FLVER that holds only a shadow caster (Undead Settlement's trees, cages and hanging
+    /// corpses): the shadow FLVER is left out, the drawable one is kept. Up to 1.0.383 the whole binder was dropped.
+    /// </summary>
+    private static void ShadowOnlyFlver()
+    {
+        var (port, hostBnd) = VisualPort();
+        var tree = OverlayFlver();
+        var shadow = OverlayFlver();
+        shadow.Materials[0].MTD = @"N:\FDP\data\Material\mtd\map\M[Shadow].mtd";
+        shadow.Meshes.RemoveRange(1, shadow.Meshes.Count - 1);
+        var bnd = new BND4();
+        bnd.Files.Add(new BinderFile(Binder.FileFlags.Flag1, 0, @"N:\FDP\data\Model\map\m31_00_00_00\sib\m31_00_00_00_002050.flver", tree.Write()));
+        bnd.Files.Add(new BinderFile(Binder.FileFlags.Flag1, 1, @"N:\FDP\data\Model\map\m31_00_00_00\sib\m31_00_00_00_002050_S.flver", shadow.Write()));
+        var written = BND4.Read(port.ConvertBinder(bnd, hostBnd, Ds3Id, ErId, "002050").Write());
+        Expect(written.Files.Count == 1 && FLVER2.Read(written.Files[0].Bytes).Meshes.Count > 0 && port.EmptyFlvers == 1,
+            $"the tree is kept, its shadow FLVER left out ({written.Files.Count} files, {port.EmptyFlvers} left out)");
+
+        var only = new BND4();
+        only.Files.Add(new BinderFile(Binder.FileFlags.Flag1, 0, @"N:\FDP\data\Model\map\m31_00_00_00\sib\m31_00_00_00_002051.flver", shadow.Write()));
+        bool threw = false;
+        try { port.ConvertBinder(only, hostBnd, Ds3Id, ErId, "002051"); }
+        catch (InvalidDataException) { threw = true; }
+        Expect(threw, "a binder with nothing drawable is still left out");
     }
 
     private static FLVER2 ConvertOne(MapModelPort port, BND4 hostBnd, FLVER2 ds3)

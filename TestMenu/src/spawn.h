@@ -59,6 +59,22 @@ void dks_god_set(int on);
 int dks_god_on(void);
 void dks_god_update(void);
 
+/* Fly and no-clip for getting around while testing (F1 menu checkboxes, Ctrl+Shift+F6 / F7).
+   Fly keeps the player's "no gravity" byte set, so the character stays at its height and walks on air with the game's
+   own controls; while the game has focus, Page Up / Page Down move straight up / down and Home / End fly forward /
+   back along the way the character faces, at dks_fly_speed metres per second (2-100).
+   No-clip also turns off the player's map collision (walls, floors) and, as far as the game lets it, object collision,
+   and implies fly so the player doesn't drop through the floor. Turning either off clears only what it set.
+   dks_fly_update applies both; the render thread calls it every frame, keys = 1 when the movement keys should count
+   (game focused, F1 menu not typing). Offsets: fromsoftware-rs and EldenRingTool (CREDITS.md). */
+void dks_fly_set(int on);
+int dks_fly_on(void);
+void dks_noclip_set(int on);
+int dks_noclip_on(void);
+float dks_fly_speed(void);
+void dks_fly_set_speed(float metres_per_second);
+void dks_fly_update(int keys);
+
 #ifdef __cplusplus
 }
 #endif
