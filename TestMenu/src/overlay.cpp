@@ -22,6 +22,7 @@
 #include "flagcheck.h"
 #include "sound.h"
 #include "spawn.h"
+#include "perf.h"
 
 extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND, UINT, WPARAM, LPARAM);
 
@@ -511,6 +512,13 @@ void draw_menu()
         ImGui::TextDisabled("PgUp/PgDn up/down, Home/End forward/back");
     }
 
+    bool perf = dks_perf_on() != 0;
+    if (ImGui::Checkbox("Record frame times", &perf))
+        dks_perf_request_toggle();
+    ImGui::SameLine();
+    ImGui::TextDisabled("Ctrl+Shift+F8");
+    ImGui::TextWrapped("%s", dks_perf_status());
+
     bool changed = false, levels = false, run = false, spawn = false;
     if (ImGui::BeginTabBar("games")) {
         for (int i = 0; i < IM_ARRAYSIZE(GAME_LABELS); i++)
@@ -901,12 +909,14 @@ void render(IDXGISwapChain3 *swap_chain)
 
 HRESULT STDMETHODCALLTYPE h_present(IDXGISwapChain3 *self, UINT sync, UINT flags)
 {
+    dks_perf_frame();
     render(self);
     return o_present(self, sync, flags);
 }
 
 HRESULT STDMETHODCALLTYPE h_present1(IDXGISwapChain3 *self, UINT sync, UINT flags, const DXGI_PRESENT_PARAMETERS *params)
 {
+    dks_perf_frame();
     render(self);
     return o_present1(self, sync, flags, params);
 }
