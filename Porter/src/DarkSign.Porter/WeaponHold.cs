@@ -24,7 +24,10 @@ public static class WeaponHold
 
     public readonly record struct Frame(string Bone, Vector3 Forward, Vector3 Up);
 
-    /// <summary>Each dummy poly of c0000 in model space at the bind pose (its frame put through its parent bone).</summary>
+    /// <summary>Each dummy poly of c0000 in model space at the bind pose. The FLVER stores a dummy's forward and up in
+    /// model space already: putting them through the bone's world matrix again (bbbf969) turned DS3's dummy 23 "up" onto
+    /// its forward, and the ported shields ended 61-68° off DS3's hold (fx20 part 2). As stored, vanilla Elden Ring's
+    /// 2208 on dummy 98 and 0503 on dummy 23 sit within 7-13° of DS3's Havel's / Knight Shield on DS3's dummy 23.</summary>
     public static Dictionary<int, Frame> PlayerFrames(GameArchives game)
     {
         var result = new Dictionary<int, Frame>();
@@ -40,33 +43,32 @@ public static class WeaponHold
             int bone = d.AttachBoneIndex >= 0 ? d.AttachBoneIndex : d.ParentBoneIndex;
             if (bone < 0 || bone >= flver.Nodes.Count)
                 continue;
-            int space = d.UsesAttachBoneIndex ? d.AttachBoneIndex : d.ParentBoneIndex;
-            var m = space >= 0 && space < flver.Nodes.Count ? World(flver.Nodes, space) : Matrix4x4.Identity;
-            result.TryAdd(d.ReferenceID, new Frame(flver.Nodes[bone].Name, Vector3.TransformNormal(d.Forward, m), Vector3.TransformNormal(d.Upward, m)));
+            result.TryAdd(d.ReferenceID, new Frame(flver.Nodes[bone].Name, d.Forward, d.Upward));
         }
         return result;
     }
 
-    private static Matrix4x4 World(IList<FLVER.Node> nodes, int i)
-    {
-        var m = Matrix4x4.Identity;
-        for (int guard = 0; i >= 0 && i < nodes.Count && guard < 256; i = nodes[i].ParentIndex, guard++)
-            m *= nodes[i].ComputeLocalTransform();
-        return m;
-    }
-
-    /// <summary>The rotation a dummy frame puts a model through (row vectors: model point times this = world).</summary>
+    /// <summary>
+    /// The rotation a dummy frame puts a model through (row vectors: model point times this = world). Model X goes to
+    /// up x forward, model Y to up, model Z to forward (the convention the fx20 hold check was validated with: vanilla
+    /// shields on Elden Ring's dummies and DS3's on DS3's agree within 7-13°; not Matrix4x4.CreateWorld, which sends
+    /// model Z to -forward).
+    /// </summary>
     public static Matrix4x4? Rotation(Frame f)
     {
         if (f.Forward.LengthSquared() < 1e-8f || f.Up.LengthSquared() < 1e-8f)
             return null;
         var forward = Vector3.Normalize(f.Forward);
-        var up = f.Up - Vector3.Dot(f.Up, forward) * forward;
-        if (up.LengthSquared() < 1e-8f)
+        var right = Vector3.Cross(f.Up, forward);
+        if (right.LengthSquared() < 1e-8f)
             return null;
-        var m = Matrix4x4.CreateWorld(Vector3.Zero, forward, Vector3.Normalize(up));
-        m.Translation = Vector3.Zero;
-        return m;
+        right = Vector3.Normalize(right);
+        var up = Vector3.Cross(forward, right);
+        return new Matrix4x4(
+            right.X, right.Y, right.Z, 0,
+            up.X, up.Y, up.Z, 0,
+            forward.X, forward.Y, forward.Z, 0,
+            0, 0, 0, 1);
     }
 
     /// <summary>The turn that puts a model held on DS3's dummy frame onto Elden Ring's: DS3's frame times the inverse of Elden Ring's.</summary>
@@ -122,7 +124,7 @@ public static class WeaponHold
                 continue;
             int ds3Dummy = Convert.ToInt32(ds3Cell.Value), erDummy = Convert.ToInt32(erCell.Value);
             if (!ds3Frames.TryGetValue(ds3Dummy, out var from) || !erFrames.TryGetValue(erDummy, out var to)
-                || !to.Bone.Contains("Shield", StringComparison.OrdinalIgnoreCase))
+                || !to.Bone.Contains("Shield", StringComparison.OrdinalIgnoreCase) || !HandBone(from.Bone))
                 continue;
             if (Turn(from, to) is not { } turn || Degrees(turn) < MinDegrees)
                 continue;
@@ -141,6 +143,11 @@ public static class WeaponHold
             Console.WriteLine("models: shield hold: no ported weapon needed a turn");
         return result;
     }
+
+    /// <summary>DS3 left-hand hold bones. The Giant Door Shield hangs on the body in DS3 (dummy 33 on Spine2): turning
+    /// that pose onto Elden Ring's hand dummy left it 37°/70° off vanilla shields (fx20 part 3), so it is left alone.</summary>
+    internal static bool HandBone(string bone) => bone is not null && (bone.Equals("L_Weapon", StringComparison.OrdinalIgnoreCase)
+        || bone.Equals("L_Hand", StringComparison.OrdinalIgnoreCase) || bone.Equals("L_Shield", StringComparison.OrdinalIgnoreCase));
 
     private static string Fmt(Vector3 v) => $"{v.X:0.##},{v.Y:0.##},{v.Z:0.##}";
 
@@ -198,6 +205,12 @@ public static class WeaponHold
                 $"hold: a point {p} sits where it did on DS3's dummy once turned onto Elden Ring's");
         Check(MathF.Abs(Degrees(turn) - 90f) < 0.01f, "hold: frames 90° apart about forward give a 90° turn");
         Check(Degrees(Turn(ds3, ds3)!.Value) < 0.01f, "hold: the same frame needs no turn");
+        Check(Near(Vector3.Transform(Vector3.UnitY, eWorld), Vector3.UnitY) && Near(Vector3.Transform(Vector3.UnitZ, eWorld), Vector3.UnitX),
+            "hold: a frame puts model Y on its up and model Z on its forward");
+        // Unit-less dummy vectors (c0000 stores them scaled, e.g. forward 0.115, up 0.072) give the same frame.
+        Check(Near(Vector3.Transform(new Vector3(0.3f, 0.2f, 0.1f), Rotation(new Frame("L_Shield", 0.3f * Vector3.UnitX, 0.07f * Vector3.UnitY))!.Value),
+            Vector3.Transform(new Vector3(0.3f, 0.2f, 0.1f), eWorld)), "hold: dummy vector lengths don't matter");
+        Check(!HandBone("Spine2") && HandBone("L_Weapon") && HandBone("L_Shield"), "hold: a shield DS3 hangs on the body (Giant Door Shield, Spine2) is not turned");
         var flver = new FLVER2();
         flver.Nodes.Add(new FLVER.Node { Name = "WP_A_1409", ParentIndex = -1 });
         var mesh = new FLVER2.Mesh { NodeIndex = 0, BoneIndices = [0] };
