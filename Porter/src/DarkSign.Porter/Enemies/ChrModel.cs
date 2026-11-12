@@ -81,18 +81,24 @@ public static class ChrModel
 
         var materials = new List<ChrMaterial>();
         int secondLayers = 0;
-        var plain = new Dictionary<(string?, string?, string?, bool, string?), string>();
+        var plain = new Dictionary<(string?, string?, string?, bool, string?, System.Numerics.Vector2), string>();
         int glowing = 0, glowGx = -1;
         for (int i = 0; i < flver.Materials.Count; i++)
         {
             var m = flver.Materials[i];
-            string? Ds3Texture(params string[] names) => m.Textures.FirstOrDefault(t => t.Path.Length > 0
-                    && names.Any(n => t.ParamName.Equals(n, StringComparison.Ordinal) || t.ParamName.EndsWith(n, StringComparison.Ordinal))) is { } t
+            FLVER2.Texture? Ds3Slot(params string[] names) => m.Textures.FirstOrDefault(t => t.Path.Length > 0
+                && names.Any(n => t.ParamName.Equals(n, StringComparison.Ordinal) || t.ParamName.EndsWith(n, StringComparison.Ordinal)));
+            string? Ds3Texture(params string[] names) => Ds3Slot(names) is { } t
                 ? rename(Path.GetFileNameWithoutExtension(ItemText.Leaf(t.Path)))
                 : null;
-            var albedo = Ds3Texture("g_DiffuseTexture", "_AlbedoMap_0");
-            var normal = Ds3Texture("g_BumpmapTexture", "_NormalMap_0");
-            var specular = Ds3Texture("g_SpecularTexture", "_ReflectanceMap_0");
+            // DS3's special shaders name their slots without the layer number (the Pus of Man's body,
+            // C[FlowVertexOffset]: FlowmapVertexOffset_snp_Texture2D_..._AlbedoMap), and tile their textures: that
+            // body's 128x128 albedo repeats 35 x 15 times. The plain material's UV scale takes the albedo's tiling;
+            // up to 1.0.368 it was 1, so the texture stretched once over the whole body.
+            var albedoSlot = Ds3Slot("g_DiffuseTexture", "_AlbedoMap_0", "_AlbedoMap");
+            var albedo = Ds3Texture("g_DiffuseTexture", "_AlbedoMap_0", "_AlbedoMap");
+            var normal = Ds3Texture("g_BumpmapTexture", "_NormalMap_0", "_NormalMap");
+            var specular = Ds3Texture("g_SpecularTexture", "_ReflectanceMap_0", "_ReflectanceMap");
             // A two-layer DS3 material (C[ARSN]_m: Pontiff Sulyvahn's body is a 512 "Corrosion" layer over the 2048
             // skin) blends by vertex alpha; the plain shader has one layer. The layer with the larger colour texture
             // is the surface itself, the smaller one a tiling overlay: up to 1.0.299 the first was taken whatever it was.
@@ -100,11 +106,13 @@ public static class ChrModel
                 && (albedo is null || textureArea(albedo2) > textureArea(albedo)))
             {
                 albedo = albedo2;
+                albedoSlot = Ds3Slot("g_DiffuseTexture2", "_AlbedoMap_1");
                 normal = Ds3Texture("g_BumpmapTexture2", "_NormalMap_1") ?? normal;
                 specular = Ds3Texture("g_SpecularTexture2", "_ReflectanceMap_1") ?? specular;
                 secondLayers++;
             }
             var metallic = specular is not null && specular.EndsWith("_r", StringComparison.OrdinalIgnoreCase) ? specular[..^2] + "_m" : null;
+            var uvScale = albedoSlot?.TilingScale is { X: > 0, Y: > 0 } tiling ? tiling : System.Numerics.Vector2.One;
             // DS3's glow map (g_EmissiveTexture: the Jailer's lantern, the Soul of Cinder's body and sword); SYSTEX
             // dummies are the "no glow" placeholder.
             // The Soul of Cinder's body names two: EmissiveMap_0 is a SYSTEX dummy (or, on the mantle, c5280_mantle_e,
@@ -123,12 +131,12 @@ public static class ChrModel
             if (plainMaterials)
             {
                 // Meshes with the same textures share one material file.
-                var key = (albedo, normal, metallic, alphaTest, emissive);
+                var key = (albedo, normal, metallic, alphaTest, emissive, uvScale);
                 if (!plain.TryGetValue(key, out var name))
                 {
                     plain[key] = name = $"C[{newTag}]_ds3_{plain.Count}";
                     materials.Add(new ChrMaterial(emissive is null ? ChrMaterial.PlainSource : glow!.Matbin, name, albedo, normal, metallic)
-                        { Plain = true, AlphaTest = alphaTest, TextureFolder = textureFolder, Emissive = emissive });
+                        { Plain = true, AlphaTest = alphaTest, TextureFolder = textureFolder, Emissive = emissive, UvScale = uvScale });
                 }
                 m.MTD = $@"N:\GR\data\Material\mtd\Chr\matxml\{name}.matxml";
                 if (emissive is not null)
@@ -145,7 +153,7 @@ public static class ChrModel
                     continue;
                 }
                 m.Textures = new[] { PlainAlbedo, PlainMetallic, PlainNormal }
-                    .Select(n => new FLVER2.Texture(n, "", System.Numerics.Vector2.One, 0, 0, 0, 0, 0)).ToList();
+                    .Select(n => new FLVER2.Texture(n, "", uvScale, 0, 0, 0, 0, 0)).ToList();
                 continue;
             }
             // The template material whose name shares the most with this one (body, cloth, hair...), else its first.
@@ -443,6 +451,8 @@ public sealed record ChrMaterial(string TemplateMatbin, string NewMatbin, string
     public string? Emissive { get; init; }
     /// <summary>Where a plain material's samplers say its textures are (the game finds them by file name).</summary>
     public string TextureFolder { get; init; } = "";
+    /// <summary>How many times a plain material's textures repeat across the UVs (DS3's albedo tiling; 1 1 for most).</summary>
+    public System.Numerics.Vector2 UvScale { get; init; } = System.Numerics.Vector2.One;
 
     /// <summary>The new material, made from <paramref name="matbin"/> (changed in place), and how many samplers now name a DS3 texture.</summary>
     public int Apply(MATBIN matbin)
@@ -479,7 +489,7 @@ public sealed record ChrMaterial(string TemplateMatbin, string NewMatbin, string
                     case "g_BlendMode": p.Value = 0; break;
                     case "C_AMSN__snp_0_color_0": p.Value = new[] { 1f, 1f, 1f, 1f, 1f }; break;
                     case "C_AMSN__snp_0_float_0" or "C_AMSN__snp_0_float_1": p.Value = 0f; break;
-                    case "group_1_CommonUV-UVParam": p.Value = new[] { 1f, 1f }; break;
+                    case "group_1_CommonUV-UVParam": p.Value = new[] { UvScale.X, UvScale.Y }; break;
                 }
         matbin.SourcePath = matbin.SourcePath.Replace(ModelPort.MatbinName(matbin.SourcePath), NewMatbin, StringComparison.OrdinalIgnoreCase);
         return swapped;

@@ -19,10 +19,12 @@ namespace DarkSign.Porter.Enemies;
 /// DARKSIGN_ENEMY_PORT):
 /// <list type="bullet">
 /// <item>A (default): DS3's model and DS3's animations. The template's skeleton takes DS3's bone positions, DS3's
-/// animations replace the template's with the same IDs (so the template's AI and behaviour, which ask for those IDs,
-/// play DS3's moves), their attack events come from DS3 with DS3's attack data (BehaviorParam / AtkParam_Npc) under
-/// the character's own behaviour variation. Moves DS3 doesn't have, the AI, behaviour, ragdoll, sounds and effects are
-/// the template's.</item>
+/// animations replace the template's with the same IDs (so the behaviour graph, which asks for those IDs, plays DS3's
+/// moves), their attack events come from DS3 with DS3's attack data (BehaviorParam / AtkParam_Npc) under the
+/// character's own behaviour variation. The character thinks with DS3's own AI scripts and NpcThinkParam senses
+/// (<see cref="AiPort"/>), DS3 attacks the template has no slot for get new behaviour states (<see cref="ChrMoves"/>),
+/// and the template's own SpEffects (a skeleton's revival) are taken off (<see cref="TemplateEffects"/>). The
+/// behaviour graph's other states, ragdoll and anything DS3 doesn't have are the template's.</item>
 /// <item>B ("model"): DS3's model on the template, which keeps all its own animations, attacks and AI.</item>
 /// <item>C ("stats"): no new files: the template's own model with DS3's name and health, so the DS3 maps and the
 /// randomizer get the best-matching Elden Ring body instead of a stand-in picked by name.</item>
@@ -345,6 +347,19 @@ public static partial class ChrPort
         }
     }
 
+    /// <summary>A chr map npc/chr line put back on its template's ThinkParam (when the AI port's scripts couldn't be written).</summary>
+    private static string RestoreThink(string line, IEnumerable<Plan> plans)
+    {
+        var p = line.Split('\t');
+        if (p.Length < 5 || p[0] is not ("npc" or "chr"))
+            return line;
+        var plan = plans.FirstOrDefault(x => $"c{x.NewChr:D4}" == p[2] || x.Template.Model == p[2]);
+        if (plan is null)
+            return line;
+        p[4] = plan.Template.ThinkParam.ToString();
+        return string.Join('\t', p);
+    }
+
     /// <summary>darksign_chr_map.tsv lines for a ported character (EnemyPort.ChrMap's format).</summary>
     public static IEnumerable<string> MapLines(Plan plan, IReadOnlyDictionary<int, int> npcRows, int thinkParam)
     {
@@ -370,6 +385,8 @@ public static partial class ChrPort
         public DropPort.Names? ItemNames;
         /// <summary>The effect, sound and ability port of this build (null: off or failed, the templates' stay).</summary>
         public ChrEffects? Effects;
+        /// <summary>DS3's AI for the fully ported characters (<see cref="AiPort"/>): their NpcThinkParam rows, added by the params step.</summary>
+        public List<(Plan Plan, AiPort.ChrAi Ai)> Ai = [];
         /// <summary>
         /// What went wrong when DS3 models that should have been built weren't: how many, and the reason most of them
         /// share (one cause usually fails them all). Null when every planned model was built. Printed as a FAIL line
@@ -501,6 +518,22 @@ public static partial class ChrPort
         var fx = method == Method.Full ? ChrEffects.Create(ctx, erArchives, ds3Archives, plans, notes) : null;
         result.Effects = fx;
 
+        // DS3's AI (AiPort): every fully ported character thinks with DS3's goal scripts; null keeps the templates'.
+        AiPort? ai = null;
+        PARAM? ds3Think = null, erThink = null;
+        if (method == Method.Full && AiPort.Enabled)
+            try
+            {
+                ds3Think = ctx.LoadParams(PorterGame.DarkSouls3).Get("NpcThinkParam") ?? throw new InvalidDataException("DS3 has no NpcThinkParam");
+                erThink = ctx.LoadParams(PorterGame.EldenRing).Get("NpcThinkParam") ?? throw new InvalidDataException("Elden Ring has no NpcThinkParam");
+                ai = AiPort.Create(erArchives, ds3Archives, erThink);
+            }
+            catch (Exception ex) when (ex is not OutOfMemoryException)
+            {
+                notes.Add($"enemy AI: not ported ({Describe(ex)}); the templates' AI stays");
+            }
+        var usedThink = erThink?.Rows.Select(r => r.ID).ToHashSet() ?? [];
+
         var mapLines = new List<string> { "# kind\tDS3\tElden Ring model\tNpcParam\tThinkParam\tname (written by DarkSignPorter port-maps, enemy port)" };
         var written = new List<string>();
         var portedModels = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -555,7 +588,24 @@ public static partial class ChrPort
                 portedModels.Add($"c{plan.NewChr:D4}");
             }
             result.Params.Add((effective, npcRows));
-            mapLines.AddRange(MapLines(effective, npcRows, effective.Template.ThinkParam));
+            AiPort.ChrAi? chrAi = null;
+            if (ai is not null && ds3Think is not null && files is not null && effective.Method == Method.Full)
+                try
+                {
+                    chrAi = ai.Port(plan.Ds3.Chr, plan.NewChr, plan.Ds3.Name, ds3Think, usedThink.Contains);
+                    if (chrAi is not null)
+                    {
+                        usedThink.UnionWith(chrAi.Rows.Select(r => r.ErThink));
+                        result.Ai.Add((effective, chrAi));
+                    }
+                }
+                catch (Exception ex) when (ex is not OutOfMemoryException)
+                {
+                    notes.Add($"c{plan.Ds3.Chr:D4} {plan.Ds3.Name}: DS3 AI not ported ({Describe(ex)}); the template's stays");
+                }
+            mapLines.AddRange(MapLines(effective, npcRows, chrAi?.Primary ?? effective.Template.ThinkParam));
+            if (chrAi is not null)
+                mapLines.AddRange(chrAi.Rows.Select(r => string.Join('\t', "think", r.Ds3Think, $"c{plan.NewChr:D4}", r.ErThink, plan.Ds3.Name.Replace('\t', ' '))));
             result.Characters++;
             result.NpcRows += npcRows.Count;
             result.Animations += files?.Animations ?? 0;
@@ -601,6 +651,27 @@ public static partial class ChrPort
         if (result.Tests > 0)
             Console.WriteLine($"enemies: test set: {result.Tests} staged builds at the top of the F1 spawn list (TEST 1-5), for pinning a fault to one port step");
 
+        if (ai is not null)
+            try
+            {
+                foreach (var (path, bytes) in ai.Finish())
+                {
+                    var full = ctx.ModPath(ModParts(path));
+                    Directory.CreateDirectory(Path.GetDirectoryName(full)!);
+                    File.WriteAllBytes(full, bytes);
+                    written.Add(full);
+                }
+                File.WriteAllLines(ctx.WorkPath("reports", AiPort.ReportFile), ai.ReportLines());
+                Console.WriteLine($"enemies: {ai.Summary} (report: Work\\reports\\{AiPort.ReportFile})");
+            }
+            catch (Exception ex) when (ex is not OutOfMemoryException)
+            {
+                // Without the scripts the new think rows would name goals that don't exist: the templates' AI stays.
+                notes.Add($"enemy AI: scripts not written ({Describe(ex)}); the templates' AI stays");
+                result.Ai.Clear();
+                mapLines.RemoveAll(l => l.StartsWith("think\t", StringComparison.Ordinal));
+                mapLines = mapLines.Select(l => RestoreThink(l, plans)).ToList();
+            }
         File.WriteAllLines(ctx.ModPath(EnemyPort.ChrMap.FileName), mapLines);
         WriteSpawnList(ctx, mapLines, catalog, plans.Where(p => p.Ds3.Boss).Select(p => $"c{p.Ds3.Chr:D4}").ToHashSet(), portedModels, testLines);
         if (fx is not null)
@@ -635,17 +706,33 @@ public static partial class ChrPort
         int rows = 0, failed = 0;
         // DS3's drops for every ported row (one port for all of them: rows that share DS3 lots share the new ones).
         var drops = DropPort.Create(ctx, regulation, ds3, result.ItemNames, result.Notes);
+        TemplateEffects? templateFx = null;
+        if (TemplateEffects.Enabled)
+            try { templateFx = new TemplateEffects(regulation.Get("NpcParam")!, regulation.Get("SpEffectParam")); }
+            catch (Exception ex) when (ex is not OutOfMemoryException) { result.Notes.Add($"template effects: kept ({Describe(ex)})"); }
         foreach (var (plan, npcRows) in result.Params)
         {
             try
             {
-                rows += PortParams(regulation, ds3, attacks, plan, npcRows, result.Notes, drops, fx);
+                rows += PortParams(regulation, ds3, attacks, plan, npcRows, result.Notes, drops, fx, templateFx);
             }
             catch (Exception ex) when (ex is not OutOfMemoryException)
             {
                 failed++;
                 result.Notes.Add($"c{plan.Ds3.Chr:D4} {plan.Ds3.Name}: params failed ({Describe(ex)})");
             }
+        }
+        int thinkRows = 0;
+        if (result.Ai.Count > 0 && regulation.Get("NpcThinkParam") is { } erThink)
+        {
+            var ds3Think = ds3.Get("NpcThinkParam");
+            foreach (var (plan, ai) in result.Ai)
+            {
+                try { thinkRows += AiPort.ApplyParams(erThink, ds3Think, plan.Template.ThinkParam, ai, result.Notes); }
+                catch (Exception ex) when (ex is not OutOfMemoryException) { result.Notes.Add($"c{plan.Ds3.Chr:D4} {plan.Ds3.Name}: NpcThinkParam rows failed ({Describe(ex)})"); }
+            }
+            // A placed character whose NpcThinkParam row is missing has no AI at all: every row the maps name exists.
+            thinkRows += EnsureNpcRows(erThink, result.Ai.SelectMany(a => a.Ai.Rows.Select(r => (a.Plan.Template.ThinkParam, r.ErThink))));
         }
         int fallback = EnsureNpcRows(regulation.Get("NpcParam")!,
             result.Params.SelectMany(p => p.NpcRows.Values.Select(row => (p.Plan.Template.NpcParam, row))));
@@ -657,6 +744,9 @@ public static partial class ChrPort
             dropSummary = "\n  " + drops.Finish(ctx);
             result.Notes.AddRange(drops.Notes);
         }
+        if (templateFx is not null)
+            try { File.WriteAllLines(ctx.WorkPath("reports", TemplateEffects.ReportFile), templateFx.ReportLines()); }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { result.Notes.Add($"template effects report not written ({ex.Message})"); }
         regulation.Save(ctx.ModPath("regulation.bin"));
         string effects = "";
         if (fx is not null)
@@ -672,7 +762,7 @@ public static partial class ChrPort
             result.Notes.Add($"materials: failed ({ex.Message}); ported models may render untextured");
         }
         WriteReport(ctx, result);
-        return $"enemies: {rows + fallback} NpcParam rows ({fallback} plain template copies), {attacks.Summary}" +
+        return $"enemies: {rows + fallback} NpcParam rows ({fallback} plain template copies), {thinkRows} NpcThinkParam rows (DS3 AI), {attacks.Summary}" +
                $"{(failed > 0 ? $", {failed} characters' params failed (first: {result.Notes.FirstOrDefault(n => n.Contains("params failed")) ?? ""})" : "")}" +
                $"{(result.Notes.FirstOrDefault(n => n.Contains("attacks not ported")) is { } a ? $"; {a}" : "")}" + effects + dropSummary;
     }
@@ -1452,6 +1542,33 @@ public static partial class ChrPort
         if (stage == Stage.Skeleton)
             return 0;
 
+        // DS3 attacks the template has no slot for (ChrMoves): a file and TAE entry each, filled below like any move,
+        // and a behaviour state once the events are in. Only with DS3's AI, which is what asks for them.
+        var extra = new List<ChrMoves.Added>();
+        if (stage == Stage.All && plan is not null && plan.Method == Method.Full && ChrMoves.Enabled && AiPort.Enabled)
+            try
+            {
+                var attackFiles = anibnds.SelectMany(b => b.Value.Bnd.Files.Select(f => (b.Value.Bnd, File: f)))
+                    .Select(p => (p.Bnd, p.File, Leaf: ItemText.Leaf(p.File.Name).ToLowerInvariant()))
+                    .Where(p => AnimLeaf().IsMatch(p.Leaf) && LeafKey(p.Leaf) is (0, var id) && ChrMoves.IsAttack(id)).ToList();
+                var templateFiles = attackFiles.Select(p => LeafKey(p.Leaf).Item2).ToHashSet();
+                var templateAdditive = attackFiles.Where(p => TemplateAdditive.GetOrAdd((templateChr, p.Leaf, p.File.Bytes.Length), _ =>
+                {
+                    try { return AnimPort.IsAdditive(p.File.Bytes, Compendium(p.Bnd) ?? compendium); }
+                    catch (Exception ex) when (ex is not OutOfMemoryException) { return false; }
+                })).Select(p => LeafKey(p.Leaf).Item2).ToHashSet();
+                var templateEntries = anibnds.SelectMany(b => b.Value.Bnd.Files)
+                    .Where(f => f.Name.EndsWith(".tae", StringComparison.OrdinalIgnoreCase) && TaeSection(f.Name) == 0)
+                    .SelectMany(f => TAE.Read(f.Bytes).Animations.Select(a => (int)a.ID)).ToHashSet();
+                var wanted = ChrMoves.Plan(wholeKeys.Where(k => k.Item1 == 0).Select(k => k.Item2), templateEntries, templateFiles, templateAdditive);
+                extra = ChrMoves.AddAnimations(anibnds.Select(b => b.Value.Bnd), wanted);
+            }
+            catch (Exception ex) when (ex is not OutOfMemoryException)
+            {
+                notes.Add($"extra DS3 attacks: not added ({Describe(ex)})");
+                extra.Clear();
+            }
+
         int replaced = 0, failed = 0, filled = 0, kept = 0, additive = 0;
         var durations = new Dictionary<(int, int), (float Ds3, float Er)>();
         var chosen = new Dictionary<(int, int), (int, int)>();
@@ -1534,6 +1651,14 @@ public static partial class ChrPort
                     file.Bytes = tae.Write();
             }
         notes.Add($"{replaced} DS3 animations ({failed} failed; {filled} are the nearest DS3 move in place of a template move DS3 has no match for, {kept} template animations kept; {additive} additive flinch files matched with DS3 additive clips only), {merged} moves with DS3 events");
+        if (extra.Count > 0)
+        {
+            int states = 0;
+            if (binders.TryGetValue($"/chr/c{n:D4}.behbnd.dcx", out var behbnd))
+                try { states = ChrMoves.AddStates(behbnd.Bnd, extra, notes); }
+                catch (Exception ex) when (ex is not OutOfMemoryException) { notes.Add($"extra DS3 attacks: behaviour states not added ({Describe(ex)})"); }
+            notes.Add($"{extra.Count} DS3 attacks the template has no slot for added ({string.Join(",", extra.Select(e => e.Id))}), {states} behaviour states");
+        }
         return replaced;
     }
 
@@ -1562,7 +1687,7 @@ public static partial class ChrPort
     /// DS3's attack data under its own behaviour variation). Returns how many NpcParam rows were added.
     /// </summary>
     private static int PortParams(ParamStore er, ParamStore ds3, AttackParamPort attacks, Plan plan, IReadOnlyDictionary<int, int> npcRows,
-        List<string>? notes = null, DropPort? drops = null, ChrEffects? fx = null)
+        List<string>? notes = null, DropPort? drops = null, ChrEffects? fx = null, TemplateEffects? templateFx = null)
     {
         var npc = er.Get("NpcParam")!;
         var ds3Npc = ds3.Get("NpcParam");
@@ -1604,6 +1729,9 @@ public static partial class ChrPort
             // DS3's drops with DS3's chances, on any body; the staged test set keeps the template's.
             if (plan.Stage == Stage.All && ds3Npc?[ds3Id] is { } dropSource)
                 drops?.Apply(dropSource, row);
+            // The template's own effects (a skeleton's revival) don't come with its body (TemplateEffects).
+            if (templateFx is not null && plan.Method == Method.Full && plan.Stage == Stage.All)
+                templateFx.Strip(row, plan.Template.NpcParam, plan.Template.Name);
             if (newModel && Cell(row, "SoundAddBankId") is { } bank && Convert.ToInt32(bank.Value) < 0)
                 Set(bank, plan.TemplateChr);
             // The row goes in first: a placed or spawned character whose NpcParam row is missing crashes the game, a

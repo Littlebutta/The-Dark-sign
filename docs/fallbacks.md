@@ -443,6 +443,15 @@ Try the next option if: A ported DS3 enemy crashes the game when it spawns or at
 - **A: DS3's effects, sounds and abilities (default).** Every ported DS3 enemy gets DS3's visual effects in an effect file of its own, DS3's sounds in a sound bank of its own, and the SpEffects and projectiles its DS3 row and moves use (the Jailer's lantern glow and health drain). Work\reports\enemy-effects.tsv says what each enemy got.
 - **B: DS3's effects and abilities, the template's sounds.** As A, but ported enemies keep the sounds of the Elden Ring enemy they are built on (DARKSIGN_ENEMY_SOUNDS=0). Use when ported enemies are silent, make wrong sounds, or the game crashes or hangs loading one with A. (`DARKSIGN_ENEMY_SOUNDS=0`)
 - **C: The Elden Ring template's effects and sounds.** Ported enemies keep the effects, sounds and abilities of the Elden Ring enemy they are built on (DARKSIGN_ENEMY_EFFECTS=0), as in every build up to 1.0.299. (`DARKSIGN_ENEMY_EFFECTS=0`)
+- **D: DS3's effects, plus the template's own.** As A, but a ported enemy also keeps the effects only its Elden Ring template has (DARKSIGN_ENEMY_TEMPLATE_FX=keep), as in builds before this option, when enemies built on the Giant Beast Skeleton came back to life unless hit again. Work\reports\enemy-template-effects.tsv lists what A takes off. (`DARKSIGN_ENEMY_TEMPLATE_FX=keep`)
+
+### Ported DS3 enemies' AI and attacks (`enemy-ai`, rebuilds the content)
+
+Try the next option if: Ported DS3 enemies stand still, never attack, repeat one move, use Elden Ring attacks, or the game crashes or hangs when a ported enemy notices you.
+
+- **A: DS3's AI and attacks (default).** Every ported DS3 enemy thinks with DS3's own AI script (its battle and logic goals, ported into Elden Ring's AI files) and DS3's senses, and DS3 attacks its Elden Ring template has no slot for are added as new attacks. Work\reports\enemy-ai.tsv says what each enemy got.
+- **B: DS3's AI, the template's attack slots.** As A, but no attacks are added: a DS3 attack the template has no slot for is not played (DARKSIGN_ENEMY_EXTRA_MOVES=0). Use when a ported enemy freezes or the game crashes when it attacks with A. (`DARKSIGN_ENEMY_EXTRA_MOVES=0`)
+- **C: The Elden Ring template's AI.** Ported enemies think with the AI of the Elden Ring enemy they are built on, which picks DS3 moves by the template's attack numbers (DARKSIGN_ENEMY_AI=template), as in builds before this option. (`DARKSIGN_ENEMY_AI=template`)
 
 ### Ported DS3 enemies' glows (`enemy-glow`, rebuilds the content)
 
