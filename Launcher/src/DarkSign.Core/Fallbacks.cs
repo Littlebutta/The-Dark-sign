@@ -385,11 +385,11 @@ public static class Fallbacks
             new("B", "DS3's hit filters", "Every collision keeps DS3's hit filter number (port-maps --ds3-hit-filters), as in every build up to 1.0.353: enemies fall through the floor where a filter-24 copy is the top surface.")
                 { MapsArgs = ["--ds3-hit-filters"] },
         ]),
-        new("map-stand-ins", "DS3 maps", "DS3's low-detail stand-ins", Stage.Build,
-            "A far part of a DS3 map is missing (a castle wall, a hall or a tower you could see from a distance), or blocky slabs and steps with stretched textures are back.",
+        new("map-stand-ins", "DS3 maps", "DS3's low-detail stand-ins and far views", Stage.Build,
+            "A far part of a DS3 map is missing (a castle wall, a hall, a tower or mountains you could see from a distance), or blocky slabs, steps or low-resolution polygons floating over the map are back.",
         [
-            new("A", "Left out where detailed pieces stand (default)", "DS3 shows a far area as one blocky piece with a stretched \"low\" texture, and only from where its detailed pieces are not drawn. The port draws everything at once, so such a stand-in is left out when detailed pieces DS3 never shows together with it stand inside it. One with nothing detailed under it (Lothric Castle seen from the High Wall) stays. The port log lists every stand-in and why it was kept or left out."),
-            new("B", "Kept", "Every stand-in is drawn (port-maps --stand-ins), as in every build before this option: blocky slabs and steps overlap the detailed scenery, but nothing far away is missing.")
+            new("A", "Left out where detailed pieces stand (default)", "DS3 shows a far area as one blocky piece with a stretched \"low\" texture, and only from where its detailed pieces are not drawn. The port draws everything at once, so such a stand-in is left out when detailed pieces DS3 never shows together with it stand inside it. One with nothing detailed under it (Lothric Castle seen from the High Wall) stays. Far views go the same way: low-detail copies of a whole area with ordinary textures (map 3's mountains, roofs and rock walls seen from one lookout), left out when they cover at least ten times their own detail that DS3 never draws with them. The port log lists every stand-in and far view and why it was kept or left out."),
+            new("B", "Kept", "Every stand-in and far view is drawn (port-maps --stand-ins), as in every build up to 1.0.366: blocky slabs, steps and low-resolution polygons overlap the detailed scenery, but nothing far away is missing.")
                 { MapsArgs = ["--stand-ins"] },
         ]),
         new("map-overlays", "DS3 maps", "DS3's ground overlays and two-layer ground", Stage.Build,
