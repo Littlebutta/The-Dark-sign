@@ -271,6 +271,13 @@ public static class EnemySelfTest
         Check("TAE merge: DS3's map-script signal event is kept in a group of its type, unknown types still dropped",
             signalMerged.Count == 1 && signalMerged[0] is { Type: 231, Group.GroupType: 231 } sig && BitConverter.ToInt32(sig.GetParameterBytes(false), 0) == 100
             && signalAnim.EventGroups.Contains(sig.Group!) && signalKept.GetValueOrDefault(231) == 1);
+        var mask = new byte[32];
+        mask[1] = 1;
+        var transform = new TAE.Animation(3010, new TAE.Animation.AnimMiniHeader.Standard(), "a000_003010.hkx");
+        var drawMask = ChrTae.Merge([new(0.4f, 0.5f, 233, 0, mask, false), new(0.4f, 0.5f, 233, 0, new byte[16], false), new(0.1f, 0.2f, 5, 0, new byte[4], false)],
+            transform, new Dictionary<int, int> { [0] = 16 }, new Dictionary<int, TAE.EventGroup>(), 1f, 1f);
+        Check("TAE merge: DS3's draw mask change (Iudex Gundyr's Pus of Man and red eyes) comes along though the template never uses it, with a group of its own; other unknown types don't",
+            drawMask.Count == 1 && drawMask[0] is { Type: 233, Group.GroupType: 233 } && drawMask[0].GetParameterBytes(false)[1] == 1 && transform.EventGroups.Contains(drawMask[0].Group!));
 
         // Every NpcParam row the maps and spawn list name exists, even when its params step failed (a missing row
         // crashed the game when a ported character loaded: 2026-11-07 test).

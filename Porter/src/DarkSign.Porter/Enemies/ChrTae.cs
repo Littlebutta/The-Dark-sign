@@ -13,7 +13,10 @@ namespace DarkSign.Porter.Enemies;
 /// <para>DS3 events whose type the template's TAE lacks but Elden Ring lays out the same (<see cref="SharedTypes"/>)
 /// come along too, in a group of their own when no Elden Ring TAE has one: DS3's map scripts wait on them (type 231,
 /// the event message the Hollow Soldier's burst move 3010 sends so common event 20005415 swaps it for the Pus of
-/// Man). Fallbacks "enemy-ai": DARKSIGN_ENEMY_SIGNALS=0 drops them again, as up to 1.0.383.</para>
+/// Man). Fallbacks "enemy-ai": DARKSIGN_ENEMY_SIGNALS=0 drops them again, as up to 1.0.383. Type 233
+/// ChangeChrDrawMask (32 bytes, one per display mask bit) shows or hides masked meshes mid-move: Iudex Gundyr's Pus of
+/// Man body, horns and red eyes (mask 1, which neither his NpcParam row nor m40's script turns on) appear through it
+/// when he transforms. Fallbacks "enemy-glow": DARKSIGN_ENEMY_DRAW_MASK=0 drops it again, as up to 1.0.403.</para>
 /// Method (RULE 3): the type and its layout are DSAnimStudio's TAE templates (DS3 and Elden Ring both name type 231
 /// RequestMsgMapList: s32 EzStateRequestID and three s32, 16 bytes); its condition in EMEVD is "IF Character Has Event
 /// Message" (darkscript3's emedf).
@@ -24,11 +27,18 @@ public static class ChrTae
     public static readonly HashSet<int> TemplateTypes = [0, 67, 608, 800, 96, 112, 128, 129, 133, 139, 224, 792, 907];
 
     public static bool SignalsEnabled => Environment.GetEnvironmentVariable("DARKSIGN_ENEMY_SIGNALS")?.Trim() != "0";
+    public static bool DrawMaskEnabled => Environment.GetEnvironmentVariable("DARKSIGN_ENEMY_DRAW_MASK")?.Trim() != "0";
+
+    /// <summary>Whether a <see cref="SharedTypes"/> type comes along (each has its own fallback switch).</summary>
+    public static bool Shared(int type) => SharedTypes.ContainsKey(type) && (type == DrawMaskType ? DrawMaskEnabled : SignalsEnabled);
+
+    public const int DrawMaskType = 233;
 
     /// <summary>DS3 event types Elden Ring reads the same, with their parameter length, kept even when the template's TAE has none.</summary>
     public static readonly IReadOnlyDictionary<int, int> SharedTypes = new Dictionary<int, int>
     {
         [231] = 16, // RequestMsgMapList: the event message a map script's "Character Has Event Message" waits on
+        [DrawMaskType] = 32, // ChangeChrDrawMask: one u8 per display mask bit (both games' TAE templates)
     };
 
     public static List<TAE.Event> Merge(List<TAE.Event> ds3Events, TAE.Animation anim, IReadOnlyDictionary<int, int> erLengths,
@@ -47,7 +57,7 @@ public static class ChrTae
             // lesson: DS3 effect events were dropped silently wherever the template section had none).
             if (templateGroups.TryGetValue(type, out var proto) || otherGroups?.TryGetValue(type, out proto) == true)
                 g = proto!.GetClone();
-            else if (SignalsEnabled && SharedTypes.ContainsKey(type))
+            else if (Shared(type))
                 g = new TAE.EventGroup(type); // Elden Ring's own groups are the event type with GroupData0
             else
                 return null;
@@ -70,7 +80,7 @@ public static class ChrTae
                 continue;
             var bytes = e.GetParameterBytes(false);
             bool known = erLengths.TryGetValue(e.Type, out var length);
-            if (!known && SignalsEnabled && SharedTypes.TryGetValue(e.Type, out length))
+            if (!known && Shared(e.Type) && SharedTypes.TryGetValue(e.Type, out length))
             {
                 known = true;
                 if (length == bytes.Length && kept is not null)

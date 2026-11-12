@@ -532,13 +532,15 @@ public static class Fallbacks
         new("map-people", "DS3 maps", "DS3's people (NPCs and hostile humans)", Stage.Build,
             "A DS3 map crashes or hangs while loading since people were added, a person who should be friendly attacks you (or the other way round), or people stand in the way of something.",
         [
-            new("A", "DS3's own people, humans in DS3 armour (default)", "DS3 characters with a body of their own (Fire Keeper, Ludleth) stand where DS3's scripts seat them, silent, when the enemy porter ported them. DS3's human NPCs and hostile humans (Hawkwood, Sirris, the Sword Master) wear their DS3 armour, converted, on an Elden Ring person's face, body and AI."),
+            new("A", "DS3's own people, humans in DS3 armour (default)", "DS3 characters with a body of their own (Fire Keeper, Ludleth) stand where DS3's scripts seat them, silent, when the enemy porter ported them. DS3's human NPCs and hostile humans (Hawkwood, Sirris, the Sword Master) wear their DS3 armour, converted, and hold their DS3 weapons (the ported weapon, or Elden Ring's of the same name), on an Elden Ring person's face, body and AI."),
             new("B", "Elden Ring people stand in", "As builds 1.0.326-1.0.353: where DS3 has a human or a talker with no ported body, a dressed Elden Ring person stands, silent; DS3's hostile humans get hostile Elden Ring humans (port-maps --er-people).")
                 { MapsArgs = ["--er-people"] },
             new("C", "Nobody", "DS3's people are left out of the maps, ported ones too (port-maps --no-people), as every build up to 1.0.299 was.")
                 { MapsArgs = ["--no-people"] },
             new("D", "DS3's own bodies only, no DS3 armour", "As builds 1.0.354-1.0.366: only DS3 characters with a body of their own stand; DS3's humans are left out (DARKSIGN_PEOPLE_ARMOUR=0). Try it if a person in DS3 armour crashes the game, is invisible or is a mess of stretched polygons.")
                 { PorterEnv = Env("DARKSIGN_PEOPLE_ARMOUR", "0") },
+            new("E", "DS3 armour, the stand-in's weapons", "As A, but DS3's humans hold the weapons of the Elden Ring person who stands in for them (DARKSIGN_PEOPLE_WEAPONS=0), as up to 1.0.403. Try it if a person holding a ported DS3 weapon crashes the game, T-poses or stands still.")
+                { PorterEnv = Env("DARKSIGN_PEOPLE_WEAPONS", "0") },
         ]),
 
         new("enemy-port", "DS3 maps", "How DS3's enemies and bosses are ported", Stage.Build,
@@ -614,6 +616,8 @@ public static class Fallbacks
                 { PorterEnv = Env("DARKSIGN_ENEMY_GLOW", "0") },
             new("D", "Every effect of the enemy row", "As A, but a ported enemy keeps every effect its DS3 row names, also those that lose to a higher priority effect of their category in DS3 (DARKSIGN_ENEMY_CATEGORIES=0), as in 1.0.340, when the Jailer showed its blue and cyan lights over the orange one.")
                 { PorterEnv = Env("DARKSIGN_ENEMY_CATEGORIES", "0") },
+            new("E", "Glows, without DS3's mid-move mask changes", "As A, but the moves that show or hide parts of a ported enemy's model (Iudex Gundyr's Pus of Man body and red eyes when he transforms) only do so when its Elden Ring template does that too (DARKSIGN_ENEMY_DRAW_MASK=0), as up to 1.0.403. Try it if a ported enemy turns invisible or grows extra parts in the middle of a move.")
+                { PorterEnv = Env("DARKSIGN_ENEMY_DRAW_MASK", "0") },
         ]),
         new("map-flags", "DS3 maps", "Where the DS3 maps' own flags are kept", Stage.Build,
             "In a DS3 map, bosses come back, opened doors and shortcuts close again or picked-up items return after a reload, or the pre-flight check says a map flag block is MISSING.",

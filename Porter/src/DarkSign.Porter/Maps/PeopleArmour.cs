@@ -16,7 +16,11 @@ namespace DarkSign.Porter.Maps;
 /// <item>The piece gets an EquipParamProtector row, <see cref="ProtectorBase"/> + its DS3 ID: a copy of the most
 /// common Elden Ring row of its slot (so it hides the body under it the usual way) naming the new model.</item>
 /// <item>The person gets a CharaInitParam row, <see cref="CharaInitBase"/> + the DS3 row: a copy of the Elden Ring
-/// person who stands in for them (their face, AI, NpcParam and weapons) wearing the DS3 pieces, with DS3's sex.</item>
+/// person who stands in for them (their face, AI and NpcParam) wearing the DS3 pieces, with DS3's sex, and holding
+/// DS3's weapons (<see cref="WeaponSlots"/>): the ported weapon (port-weapons' plan) or the Elden Ring weapon of the
+/// same name. A DS3 slot that is empty is emptied; a DS3 weapon with neither keeps the stand-in's weapon there and is
+/// named in the port log. Up to 1.0.403 every person held their stand-in's weapons (the Champion's Gravetender
+/// fought with Inquisitor Ghiza's). DARKSIGN_PEOPLE_WEAPONS=0 (fallback map-people E) keeps the stand-in's.</item>
 /// </list>
 /// The rows are added after port-weapons, so a failure there puts the placed people back on their stand-in's own
 /// look (<see cref="Revert"/>) instead of naming rows that don't exist. A piece whose model can't be converted is
@@ -26,6 +30,7 @@ namespace DarkSign.Porter.Maps;
 public sealed class PeopleArmour
 {
     public static bool Enabled => Environment.GetEnvironmentVariable("DARKSIGN_PEOPLE_ARMOUR") != "0";
+    public static bool WeaponsEnabled => Environment.GetEnvironmentVariable("DARKSIGN_PEOPLE_WEAPONS") != "0";
 
     /// <summary>Elden Ring's CharaInitParam rows end at 2,999,999.</summary>
     public const int CharaInitBase = 3_000_000;
@@ -45,8 +50,27 @@ public sealed class PeopleArmour
         (6, "lg", "equip_Leg", "equip_Leg"),
     ];
 
+    /// <summary>
+    /// The weapon slots both games' CharaInitParam share (same field names), with Elden Ring's slot type (0: an
+    /// EquipParamWeapon row; 1 would read EquipParamCustomWeapon) or null for ammunition. DS3 has no third slot, so
+    /// Elden Ring's is emptied with the others.
+    /// </summary>
+    public static readonly (string Field, string? ErType, bool Ammo)[] WeaponSlots =
+    [
+        ("equip_Wep_Right", "wepParamType_Right1", false),
+        ("equip_Subwep_Right", "wepParamType_Right2", false),
+        ("equip_Wep_Left", "wepParamType_Left1", false),
+        ("equip_Subwep_Left", "wepParamType_Left2", false),
+        ("equip_Arrow", null, true),
+        ("equip_Bolt", null, true),
+        ("equip_SubArrow", null, true),
+        ("equip_SubBolt", null, true),
+    ];
+    public static readonly (string Field, string ErType)[] ErOnlySlots = [("equip_Subwep_Right3", "wepParamType_Right3"), ("equip_Subwep_Left3", "wepParamType_Left3")];
+
     public sealed record Piece(int Ds3Protector, int Category, int Ds3Model, string Name);
-    public sealed record Look(int Ds3CharaInit, string Name, int Sex, IReadOnlyList<Piece?> Pieces);
+    /// <param name="Weapons">DS3's value of each of <see cref="WeaponSlots"/> (-1 empty); null: not read, the stand-in's are kept.</param>
+    public sealed record Look(int Ds3CharaInit, string Name, int Sex, IReadOnlyList<Piece?> Pieces, IReadOnlyList<int>? Weapons = null);
 
     private readonly Dictionary<int, Look> _looks = [];
     /// <summary>DS3 armour model -> its new number (one number for every slot of a DS3 set, so shared textures keep matching).</summary>
@@ -114,7 +138,7 @@ public sealed class PeopleArmour
                 }
                 pieces.Add(new Piece(protector, category, model, p.Name ?? ""));
             }
-            plan._looks[id] = new Look(id, row.Name ?? "", Cell(row, "NpcPlayerSex"), pieces);
+            plan._looks[id] = new Look(id, row.Name ?? "", Cell(row, "NpcPlayerSex"), pieces, WeaponSlots.Select(w => Cell(row, w.Field)).ToList());
         }
         return plan;
     }
@@ -229,8 +253,12 @@ public sealed class PeopleArmour
             .GroupBy(r => string.Concat(r.Cells.Where(c => c.Def.InternalName.StartsWith("invisibleFlag", StringComparison.Ordinal)).Select(c => System.Convert.ToString(c.Value))))
             .OrderByDescending(g => g.Count()).FirstOrDefault()?.OrderBy(r => r.ID).First();
 
-    /// <summary>Adds the protector and CharaInit rows to <paramref name="regulation"/>; returns the report line.</summary>
-    public string WriteParams(ParamStore regulation)
+    /// <summary>
+    /// Adds the protector and CharaInit rows to <paramref name="regulation"/>; returns the report line.
+    /// <paramref name="weapon"/> maps a DS3 weapon or ammunition ID to the Elden Ring row the person holds (null: none);
+    /// without it the people keep their stand-in's weapons.
+    /// </summary>
+    public string WriteParams(ParamStore regulation, Func<int, int?>? weapon = null)
     {
         var protector = regulation.Get("EquipParamProtector") ?? throw new InvalidDataException("no EquipParamProtector");
         var charaInit = regulation.Get("CharaInitParam") ?? throw new InvalidDataException("no CharaInitParam");
@@ -260,13 +288,64 @@ public sealed class PeopleArmour
                 SetCell(row, Slots[i].ErField, look.Pieces[i] is { } p && _converted.Contains(p.Ds3Protector) ? ProtectorBase + p.Ds3Protector : -1);
             if (look.Sex >= 0)
                 SetCell(row, "npcPlayerSex", look.Sex);
+            if (weapon is not null)
+                Arm(row, look, weapon);
             charaInit.Rows.Add(row);
             looks++;
         }
         protector.Rows.Sort((a, b) => a.ID.CompareTo(b.ID));
         charaInit.Rows.Sort((a, b) => a.ID.CompareTo(b.ID));
         return $"people armour: {protectors} EquipParamProtector rows, {looks} CharaInitParam rows (DS3 people in their armour)"
-               + (noStandIn > 0 ? $"; {noStandIn} stand-in rows missing" : "");
+               + (noStandIn > 0 ? $"; {noStandIn} stand-in rows missing" : "")
+               + (weapon is null ? "; weapons: the stand-ins' own" : $"; weapons: {_armed} DS3 weapons held, {_emptied} slots emptied as in DS3, {_unmapped} DS3 weapons not ported (stand-in's kept)");
+    }
+
+    private int _armed, _emptied, _unmapped;
+    public (int Armed, int Emptied, int Unmapped) WeaponCounts => (_armed, _emptied, _unmapped);
+
+    /// <summary>
+    /// Puts DS3's weapons in a person's row: a mapped weapon (slot type 0, a plain weapon row), an empty DS3 slot
+    /// emptied, and Elden Ring's third slots emptied once any DS3 weapon is held. Ammunition is set only when mapped.
+    /// </summary>
+    public void Arm(PARAM.Row row, Look look, Func<int, int?> weapon)
+    {
+        if (look.Weapons is not { } ds3Weapons)
+            return;
+        bool any = false;
+        for (int i = 0; i < WeaponSlots.Length && i < ds3Weapons.Count; i++)
+        {
+            var (field, erType, ammo) = WeaponSlots[i];
+            int ds3 = ds3Weapons[i];
+            if (ds3 <= 0)
+            {
+                if (!ammo && SetCell(row, field, -1))
+                    _emptied++;
+                continue;
+            }
+            if (weapon(ds3) is { } er)
+            {
+                SetCell(row, field, er);
+                if (erType is not null)
+                    SetCell(row, erType, 0);
+                if (!ammo)
+                {
+                    any = true;
+                    _armed++;
+                }
+            }
+            else if (!ammo)
+            {
+                _unmapped++;
+                if (Notes.Count(n => n.StartsWith("weapon ", StringComparison.Ordinal)) < 20)
+                    Notes.Add($"weapon {ds3} ({look.Name}, {field}): no ported or same-name Elden Ring weapon; the stand-in's is kept");
+            }
+        }
+        if (any)
+            foreach (var (field, erType) in ErOnlySlots)
+            {
+                SetCell(row, field, -1);
+                SetCell(row, erType, 0);
+            }
     }
 
     private static PARAM.Row CopyRow(PARAM param, PARAM.Row from, int id, string name)

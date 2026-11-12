@@ -558,7 +558,7 @@ public static class MapPorter
             if (materials.Count > 0)
                 DarkSign.Porter.Enemies.ChrMaterial.Write(ctx, er, materials);
             var regulation = ActionButtons.LoadRegulation(ctx);
-            lines.Add(armour.WriteParams(regulation));
+            lines.Add(armour.WriteParams(regulation, PeopleArmour.WeaponsEnabled ? PeopleWeapons(ctx, regulation, lines) : null));
             regulation.Save(ctx.ModPath("regulation.bin"));
         }
         catch (Exception ex) when (ex is not OutOfMemoryException)
@@ -567,6 +567,31 @@ public static class MapPorter
         }
         lines.AddRange(armour.Notes.Select(n => "  people armour: " + n));
         return string.Join(Environment.NewLine, lines);
+    }
+
+    /// <summary>
+    /// DS3 weapon or ammunition ID -> the Elden Ring row a ported person holds, by the drops' rule (the ported weapon,
+    /// else the Elden Ring item of the same name; <see cref="DarkSign.Porter.Enemies.DropPort.ItemMap"/>), only rows
+    /// the regulation has. Null (the stand-ins' own weapons) when the tables can't be read.
+    /// </summary>
+    private static Func<int, int?>? PeopleWeapons(PorterContext ctx, ParamStore regulation, List<string> lines)
+    {
+        try
+        {
+            var notes = new List<string>();
+            var items = new DarkSign.Porter.Enemies.DropPort.ItemMap(DarkSign.Porter.Enemies.DropPort.PortedWeapons(ctx, notes));
+            var erWeapons = regulation.Get("EquipParamWeapon") ?? throw new InvalidDataException("the regulation has no EquipParamWeapon");
+            var ds3Weapons = ctx.LoadParams(PorterGame.DarkSouls3).Get("EquipParamWeapon") ?? throw new InvalidDataException("DS3 has no EquipParamWeapon");
+            items.Add(DarkSign.Porter.Enemies.DropPort.Kind.Weapon, DarkSign.Porter.Enemies.DropPort.RowNames(ds3Weapons),
+                DarkSign.Porter.Enemies.DropPort.RowNames(erWeapons), erWeapons.Rows.Select(r => r.ID));
+            lines.AddRange(notes.Select(n => "  people weapons: " + n));
+            return ds3 => items.Map(DarkSign.Porter.Enemies.DropPort.Kind.Weapon, ds3)?.Id;
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            lines.Add($"  people weapons: not mapped ({ex.Message}); people hold their stand-in's weapons");
+            return null;
+        }
     }
 
     /// <summary>Points every map piece of a written layout at another PartsDrawParam row.</summary>
