@@ -12,11 +12,23 @@ namespace DarkSign.Porter.Enemies;
 /// used to guess this from the model's number (c7000-c7999), and Elden Ring ships characters in that range itself
 /// (c7000, the Fallen Hawks Soldier): a DS3 character left on that body was listed as having its DS3 model.
 /// The test menu (TestMenu/src/spawn.c) reads it; keep the two in step.
+/// An optional eighth column, "from cNNNN:NpcParam:ThinkParam", names the character a DS3 enemy grows out of
+/// (<see cref="Transforms"/>): the menu spawns that one first and swaps in the listed one when it transforms.
 /// </summary>
 public static class SpawnList
 {
     public const string FileName = "darksign_spawn_list.tsv";
-    public const string Header = "# game\tmodel\tNpcParam\tThinkParam\tboss\tname\tbody (written by DarkSignPorter port-maps, enemy port; read by the F1 menu)";
+    public const string Header = "# game\tmodel\tNpcParam\tThinkParam\tboss\tname\tbody\tfrom (written by DarkSignPorter port-maps, enemy port; read by the F1 menu)";
+
+    /// <summary>
+    /// DS3 enemies that start as another character: High Wall's Pus of Man bursts out of a hollow (m30_00_00_00.msb:
+    /// hollow 3000610, NpcParam 110070 / ThinkParam 110054, turns into the Pus 3000611, NpcParam 109000, at the same
+    /// spot; common_func 20005415). DS3's map script swaps them, which the F1 menu's debug spawns never run, so the menu
+    /// does the swap itself (fallback spawn-transform B, DKSIGN_NO_TRANSFORM=1 at launch, turns it off; 2026-11-12 playtest: "spawn as the regular undead first then transform ... if killed before
+    /// transforming it just dies"). Keyed by the DS3 model; the DS3 rows are looked up in the chr map's npc and think lines.
+    /// </summary>
+    public static readonly IReadOnlyDictionary<string, (int HollowNpc, int HollowThink)> Transforms =
+        new Dictionary<string, (int, int)> { ["c1090"] = (110070, 110054) };
 
     public static string Line(string game, string model, int npc, int think, bool boss, string name, bool ds3Body) =>
         string.Join('\t', game, model, npc, think, boss ? 1 : 0, Clean(name), ds3Body ? "ds3" : "er");
@@ -35,14 +47,31 @@ public static class SpawnList
         var lines = new List<string> { Header };
         lines.AddRange(testLines ?? []);
         var ds3 = new List<(bool Boss, string Name, string Line)>();
-        foreach (var line in chrMapLines)
+        var mapLines = chrMapLines as IReadOnlyCollection<string> ?? chrMapLines.ToList();
+        // The chr map's npc lines (npc, DS3 NpcParam, model, NpcParam, ThinkParam, name) and think lines (think, DS3
+        // ThinkParam, model, ThinkParam, name), for the characters an enemy grows out of.
+        var npcRows = new Dictionary<int, (string Model, int Npc, int Think)>();
+        var thinkRows = new Dictionary<(int, string), int>();
+        foreach (var p in mapLines.Where(l => !l.StartsWith('#')).Select(l => l.Split('\t')))
+            if (p.Length >= 5 && p[0] == "npc" && int.TryParse(p[1], out var dn) && int.TryParse(p[3], out var en) && int.TryParse(p[4], out var eth))
+                npcRows.TryAdd(dn, (p[2], en, eth));
+            else if (p.Length >= 4 && p[0] == "think" && int.TryParse(p[1], out var dt) && int.TryParse(p[3], out var et))
+                thinkRows.TryAdd((dt, p[2]), et);
+        string? From(string ds3Model)
+        {
+            if (!Transforms.TryGetValue(ds3Model, out var t) || !npcRows.TryGetValue(t.HollowNpc, out var hollow))
+                return null;
+            return $"from {hollow.Model}:{hollow.Npc}:{(thinkRows.TryGetValue((t.HollowThink, hollow.Model), out var think) ? think : hollow.Think)}";
+        }
+        foreach (var line in mapLines)
         {
             var p = line.Split('\t');
             // chr, DS3 model, Elden Ring model, NpcParam, ThinkParam, name
             if (line.StartsWith('#') || p.Length < 6 || p[0] != "chr" || !int.TryParse(p[3], out var npc) || !int.TryParse(p[4], out var think))
                 continue;
             var boss = ds3Bosses.Contains(p[1]);
-            ds3.Add((boss, p[5], Line("DS3", p[2], npc, think, boss, p[5], portedModels.Contains(p[2]))));
+            var entry = Line("DS3", p[2], npc, think, boss, p[5], portedModels.Contains(p[2]));
+            ds3.Add((boss, p[5], From(p[1]) is { } from ? entry + "\t" + from : entry));
         }
         lines.AddRange(ds3.OrderBy(d => d.Boss).ThenBy(d => d.Name, StringComparer.OrdinalIgnoreCase).Select(d => d.Line));
 

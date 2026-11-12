@@ -102,7 +102,12 @@ public static class ChrModel
             // A two-layer DS3 material (C[ARSN]_m: Pontiff Sulyvahn's body is a 512 "Corrosion" layer over the 2048
             // skin) blends by vertex alpha; the plain shader has one layer. The layer with the larger colour texture
             // is the surface itself, the smaller one a tiling overlay: up to 1.0.299 the first was taken whatever it was.
-            if (erColours && textureArea is not null && Ds3Texture("g_DiffuseTexture2", "_AlbedoMap_1") is { } albedo2
+            // DS3's fur (C[Fur], Ariandel's wolf): layer 0 on the first UV set is the strand atlas whose alpha cuts the
+            // fur cards out (g_AlphaRef 50), layer 1 on the second UV set the body texture that tints them. The plain
+            // shader draws one layer on the first UV set: the strands (mid grey, as the wolf's body is), cut out. Up to
+            // 1.0.422 the larger layer won: the body texture over the strand UVs, uncut, drawn as white shards.
+            bool fur = IsFur(m.MTD) && FurEnabled;
+            if (!fur && erColours && textureArea is not null && Ds3Texture("g_DiffuseTexture2", "_AlbedoMap_1") is { } albedo2
                 && (albedo is null || textureArea(albedo2) > textureArea(albedo)))
             {
                 albedo = albedo2;
@@ -124,7 +129,7 @@ public static class ChrModel
                 .FirstOrDefault(e => !e.StartsWith("SYSTEX", StringComparison.OrdinalIgnoreCase) && (textureArea is null || textureArea(e) > 0));
             if (glow is null)
                 emissive = null;
-            bool alphaTest = IsAlphaTested(m.MTD);
+            bool alphaTest = IsAlphaTested(m.MTD) || fur;
             // "#01#": the display mask the mesh belongs to (NpcParam modelDispMask1), the same in both games.
             m.Name = $"{MaskPrefix(m.Name)}{newTag}_{i}";
             m.GXIndex = 0;
@@ -236,6 +241,13 @@ public static class ChrModel
     /// A DS3 material file that cuts out by alpha: "_e" (edge), "_Edge", "_Alp" or "_al" after the shader's name
     /// ("C[ARSN]_e_Decal.mtd", hair, fur, cloth edges). Elden Ring's plain shader cuts out when its g_AlphaRef is set.
     /// </summary>
+    /// <summary>DS3's fur shader (C[Fur].mtd, Fur_FDP.spx): two layers on two UV sets, see <see cref="Convert"/>.</summary>
+    public static bool IsFur(string mtd) =>
+        Path.GetFileNameWithoutExtension(ItemText.Leaf(mtd)).StartsWith("C[Fur]", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>Fallback enemy-model K: DARKSIGN_ENEMY_FUR=0 draws DS3 fur as up to 1.0.422.</summary>
+    public static bool FurEnabled => Environment.GetEnvironmentVariable("DARKSIGN_ENEMY_FUR")?.Trim() != "0";
+
     public static bool IsAlphaTested(string mtd)
     {
         var name = Path.GetFileNameWithoutExtension(ItemText.Leaf(mtd));

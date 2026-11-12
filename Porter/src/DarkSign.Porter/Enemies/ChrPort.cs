@@ -1743,6 +1743,9 @@ public static partial class ChrPort
                 foreach (var field in new[] { "hp", "getSoul", "stamina", "mp" })
                     if (Cell(source, field) is { } from && Cell(row, field) is { } to)
                         Set(to, from.Value);
+            // DS3's damage taken, not the template's weaknesses (Pus of Man took the Giant Beast Skeleton's).
+            if (plan.Stage == Stage.All)
+                SetDamageRates(plan.Ds3.Chr, row);
             // DS3's body on a template's row: the body capsule is DS3's size (Ariandel's wolf kept the Elden Ring wolf's).
             if (newModel && plan.Stage != Stage.Clone && ds3Npc?[ds3Id] is { } sizeSource)
                 CopyBodySize(sizeSource, row);
@@ -1782,6 +1785,40 @@ public static partial class ChrPort
         }
         npc.Rows.Sort((a, b) => a.ID.CompareTo(b.ID));
         return added;
+    }
+
+    /// <summary>The NpcParam fields Elden Ring multiplies the damage of each kind a character takes by.</summary>
+    public static readonly string[] DamageRateFields =
+        ["neutralDamageCutRate", "slashDamageCutRate", "blowDamageCutRate", "thrustDamageCutRate",
+         "magicDamageCutRate", "fireDamageCutRate", "thunderDamageCutRate", "darkDamageCutRate"];
+
+    /// <summary>
+    /// Weaknesses DS3 enemies are known for that DS3's params don't carry: every DS3 NpcParam row has the same defences
+    /// (defPhys..defDark all 100) and no resident effect of the Pus of Man changes the damage it takes. Devin asked for the
+    /// Pus of Man's weakness to fire (2026-11-12 playtest).
+    /// </summary>
+    public static readonly IReadOnlyDictionary<int, (string Field, float Rate)[]> Ds3Weaknesses =
+        new Dictionary<int, (string, float)[]> { [1090] = [("fireDamageCutRate", 1.5f)] };
+
+    public static bool DamageRatesEnabled => Environment.GetEnvironmentVariable("DARKSIGN_ENEMY_DAMAGE_RATES")?.Trim().ToLowerInvariant() != "template";
+
+    /// <summary>
+    /// A ported row takes damage as DS3's character did: Elden Ring's per-kind damage rates all 1 (DS3's rows have none;
+    /// the template's were its own weaknesses, the Giant Beast Skeleton's 1.4 strike / 0.6 lightning on the Pus of Man),
+    /// then <see cref="Ds3Weaknesses"/>. DS3's own damage-changing effects (a phantom's 0.5) come on with its effects
+    /// (ChrEffects.NpcEffectWanted). Fallback enemy-stats B: DARKSIGN_ENEMY_DAMAGE_RATES=template.
+    /// </summary>
+    public static void SetDamageRates(int ds3Chr, PARAM.Row row)
+    {
+        if (!DamageRatesEnabled)
+            return;
+        foreach (var field in DamageRateFields)
+            if (Cell(row, field) is { Value: float } cell)
+                Set(cell, 1f);
+        if (Ds3Weaknesses.TryGetValue(ds3Chr, out var weak))
+            foreach (var (field, rate) in weak)
+                if (Cell(row, field) is { Value: float } cell)
+                    Set(cell, rate);
     }
 
     public static bool BodySizeEnabled => Environment.GetEnvironmentVariable("DARKSIGN_ENEMY_BODY_SIZE")?.Trim().ToLowerInvariant() != "template";

@@ -202,6 +202,20 @@ public static class EnemySelfTest
         Check("spawn list: header, one DS3 line per ported character on the new model, Elden Ring deduplicated, bosses last",
             spawn.Count == 4 && spawn[0].StartsWith('#') && spawn[1] == "DS3\tc7000\t70000000\t43000000\t0\tLothric Knight\tds3"
             && spawn[2] == "ER\tc4300\t43000000\t43000000\t0\tBanished Knight\ter" && spawn[3] == "ER\tc4410\t44100000\t44100000\t1\tWolf\ter");
+        // High Wall's Pus of Man grows out of a hollow: its line names the hollow's rows for the menu to spawn first.
+        var pusMap = new[]
+        {
+            "npc\t110070\tc7006\t70060011\t70069000\tHollow Soldier", "think\t110054\tc7006\t70069054\tHollow Soldier",
+            "chr\tc1100\tc7006\t70060000\t70069000\tHollow Soldier",
+            "npc\t109000\tc7005\t70050000\t70059000\tPus of Man", "chr\tc1090\tc7005\t70050000\t70059000\tPus of Man",
+        };
+        var pusSpawn = SpawnList.Lines(pusMap, [], new HashSet<string>(), new HashSet<string> { "c7005", "c7006" });
+        Check("spawn list: the Pus of Man names the hollow it bursts out of (DS3 NpcParam 110070, ThinkParam 110054), the hollow names none",
+            pusSpawn.Contains("DS3\tc7005\t70050000\t70059000\t0\tPus of Man\tds3\tfrom c7006:70060011:70069054")
+            && pusSpawn.Contains("DS3\tc7006\t70060000\t70069000\t0\tHollow Soldier\tds3"));
+        var noHollow = SpawnList.Lines(pusMap.Skip(3), [], new HashSet<string>(), new HashSet<string> { "c7005" });
+        Check("spawn list: without the hollow's rows the Pus of Man spawns as itself",
+            noHollow.Contains("DS3\tc7005\t70050000\t70059000\t0\tPus of Man\tds3"));
         // Elden Ring ships c7000 itself (Fallen Hawks Soldier): a DS3 character left on that body is an Elden Ring
         // body, whatever its number (1.0.242: "Tree Woman" on c7000 was the one enemy listed as having its DS3 model).
         var hawk = new EnemyPort.ErEnemy("c7000", 70001065, 70001000, "Fallen Hawks Soldier", false, "test");
@@ -401,6 +415,20 @@ public static class EnemySelfTest
         Check("a two-layer material shows the layer with the larger colour texture",
             layeredMaterials.Count == 1 && layeredMaterials[0] is { Albedo: "c7031_main part_a", Normal: "c7031_main part_n", Metallic: "c7031_main part_m" } && ChrModel.SecondLayers == 2);
         var firstLayer = ChrModel.Convert(Model(@"N:\FDP\data\Material\mtd\character\C[ARSN]_m.mtd"), erTemplate, 1310, 7031, plainMaterials: true, erNodes: true, textureArea: _ => 4);
+        // DS3 fur (Ariandel's wolf, C[Fur]): the strand atlas on the first UV set, cut out, though the body texture is larger.
+        var furModel = Model(@"N:\FDP\data\Material\mtd\character\C[Fur].mtd");
+        foreach (var m in furModel.Materials)
+            m.Textures =
+            [
+                new FLVER2.Texture("Fur_FDP_snp_Texture2D_2_AlbedoMap_1", @"N:\FDP\chr\c6040\tex\c6040_a.tif", System.Numerics.Vector2.One, 0, 0, 0, 0, 0),
+                new FLVER2.Texture("Fur_FDP_snp_Texture2D_1_AlbedoMap_0", @"N:\FDP\chr\c6040\tex\c6040_Hair_01_a.tif", System.Numerics.Vector2.One, 0, 0, 0, 0, 0),
+                new FLVER2.Texture("Fur_FDP_snp_Texture2D_3_NormalMap_0", @"N:\FDP\chr\c6040\tex\c6040_Hair_01_n.tif", System.Numerics.Vector2.One, 0, 0, 0, 0, 0),
+            ];
+        var furMaterials = ChrModel.Convert(furModel, erTemplate, 6040, 7128, plainMaterials: true, erNodes: true,
+            textureArea: name => name.EndsWith("Hair_01_a") ? 1024 * 1024 : 2048 * 2048);
+        Check("DS3 fur draws its strand layer, cut out, not the larger body texture over the strand UVs",
+            furMaterials.Count == 1 && furMaterials[0] is { AlphaTest: true, Albedo: "c7128_Hair_01_a", Normal: "c7128_Hair_01_n" } && ChrModel.SecondLayers == 0
+            && ChrModel.IsFur("C[Fur].mtd") && !ChrModel.IsFur("C[ARSN].mtd"));
         Check("a one-layer material keeps its textures", firstLayer.Count == 1 && firstLayer[0].Albedo == "c7031_a" && ChrModel.SecondLayers == 0);
 
         Check("display mask prefixes stay on material names", ChrModel.MaskPrefix("#01# spear") == "#01#" && ChrModel.MaskPrefix("c1280_body_mat") == ""
@@ -439,6 +467,37 @@ public static class EnemySelfTest
         float Size(string f) => (float)erSizeRow[f]!.Value;
         Check("DS3's capsule size replaces the template's; the character capsule scales with it, an unset one stays unset",
             Size("hitHeight") == 1.7f && Size("hitRadius") == 0.55f && Math.Abs(Size("chrHitHeight") - 0.85f) < 1e-5f && Size("chrHitRadius") == 0f);
+
+        // DS3's damage taken on the template's row: the template's weaknesses go, the Pus of Man is weak to fire.
+        var rateDef = new PARAMDEF { ParamType = "NPC_PARAM_ST", Fields = [] };
+        foreach (var f in ChrPort.DamageRateFields)
+            rateDef.Fields.Add(new PARAMDEF.Field(rateDef, PARAMDEF.DefType.f32, f));
+        PARAM.Row SkeletonRates(int id)
+        {
+            var r = new PARAM.Row(id, "giant beast skeleton", rateDef);
+            r["blowDamageCutRate"]!.Value = 1.4f;
+            r["thunderDamageCutRate"]!.Value = 0.6f;
+            return r;
+        }
+        var pusRates = SkeletonRates(3);
+        ChrPort.SetDamageRates(1090, pusRates);
+        var hollowRates = SkeletonRates(4);
+        ChrPort.SetDamageRates(1100, hollowRates);
+        Check("damage rates: the template's weaknesses reset to 1, the Pus of Man takes 1.5x fire",
+            (float)pusRates["fireDamageCutRate"]!.Value == 1.5f && (float)pusRates["blowDamageCutRate"]!.Value == 1f
+            && (float)pusRates["thunderDamageCutRate"]!.Value == 1f
+            && ChrPort.DamageRateFields.All(f => (float)hollowRates[f]!.Value == 1f));
+        var sp3Def = new PARAMDEF { ParamType = "SP_EFFECT_PARAM_ST", Fields = [] };
+        foreach (var f in ChrPort.DamageRateFields)
+            sp3Def.Fields.Add(new PARAMDEF.Field(sp3Def, PARAMDEF.DefType.f32, f) { Default = 1f });
+        var gaelPhantom = new PARAM.Row(221000, "", sp3Def);
+        foreach (var f in ChrPort.DamageRateFields)
+            gaelPhantom[f]!.Value = 0.57f;
+        var plainEffect = new PARAM.Row(30030, "NPC: Disable Curse", sp3Def);
+        foreach (var f in ChrPort.DamageRateFields)
+            plainEffect[f]!.Value = 1f;
+        Check("DS3 effects that change the damage a character takes come with it, others without a visible use don't",
+            ChrEffects.NpcEffectWanted(gaelPhantom) && !ChrEffects.NpcEffectWanted(plainEffect));
 
         MATBIN Matbin(string source, params (string Type, string Path)[] samplers)
         {

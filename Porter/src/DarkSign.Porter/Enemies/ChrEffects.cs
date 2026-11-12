@@ -538,7 +538,9 @@ public sealed class ChrEffects
         Enumerable.Range(0, 8).Any(k => ParamDefaults.Int(ds3Effect, $"EffectVfx{k}") > 0)
         || new[] { "replaceSpEffectId", "cycleOccurenceSpEffectId", "atkOccurenceSpEffectId" }.Any(f => ParamDefaults.Int(ds3Effect, f) > 0)
         || ParamDefaults.Int(ds3Effect, "changeHpPoint") != 0
-        || (ParamDefaults.Cell(ds3Effect, "changeHpRate")?.Value is { } rate and not byte[] && Convert.ToDouble(rate) != 0);
+        || (ParamDefaults.Cell(ds3Effect, "changeHpRate")?.Value is { } rate and not byte[] && Convert.ToDouble(rate) != 0)
+        // The damage it takes: DS3 gives phantoms and a few bosses their toughness this way (Gael's phantom 0.57).
+        || ChrPort.DamageRateFields.Any(f => ParamDefaults.Cell(ds3Effect, f)?.Value is float r && r > 0 && r != 1);
 
     /// <summary>
     /// A ported character's NpcParam row: DS3's own effects in the slots the template leaves free, and the row

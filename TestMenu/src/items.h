@@ -63,7 +63,9 @@ int dks_name_matches(const char *name, const char *query);
 
 /* One line of darksign_spawn_list.tsv (Porter Enemies/SpawnList.cs):
    "<game DS3|ER>\t<model cNNNN>\t<NpcParam>\t<ThinkParam>\t<boss 0|1>\t<name>\t<body ds3|er>". Returns 1 if valid.
-   The body column says whose model the character wears; a list written before it existed has none (DKS_BODY_UNKNOWN). */
+   The body column says whose model the character wears; a list written before it existed has none (DKS_BODY_UNKNOWN).
+   An optional eighth column "from cNNNN:NpcParam:ThinkParam" names the character it grows out of (the Pus of Man's
+   hollow): from_chr is 0 when there is none. */
 enum { DKS_BODY_UNKNOWN = 0, DKS_BODY_ER = 1, DKS_BODY_DS3 = 2 };
 typedef struct {
     char game[8];
@@ -73,6 +75,7 @@ typedef struct {
     int boss;
     char name[DKS_NAME_MAX];
     int body;            /* DKS_BODY_* */
+    int from_chr, from_npc, from_think; /* spawned first, then swapped for this one (spawn.c, transforms) */
 } DksSpawnable;
 
 /* 1 when a spawn list entry wears the model its name says: every Elden Ring entry, and a DS3 entry whose model the

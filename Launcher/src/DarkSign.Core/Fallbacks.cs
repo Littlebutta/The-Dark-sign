@@ -80,6 +80,13 @@ public static class Fallbacks
             new("B", "The boss with its partners", "As up to 1.0.410: the boss comes with the partners its DS3 fight uses (DKSIGN_BOSS_KITS=1), all in plain sight, because the scripts that hide them and bring them in don't run for spawned characters.")
                 { GameEnv = Env(BossKitsVariable, "1") },
         ]),
+        new("spawn-transform", "Starting the game", "Enemies that grow out of another in the F1 menu", Stage.Launch,
+            "The Pus of Man spawned from the F1 menu never turns up, turns up in the wrong place, or the game crashes when the hollow transforms.",
+        [
+            new("A", "A hollow first, then the Pus of Man (default)", "The Pus of Man spawns as the High Wall hollow it bursts out of; 8 seconds later, or 1.5 seconds after the hollow is first hit, the Pus of Man takes its place and the hollow is taken away. Killed before that, the hollow just dies."),
+            new("B", "The Pus of Man at once", "As up to 1.0.422: the Pus of Man spawns as itself (DKSIGN_NO_TRANSFORM=1).")
+                { GameEnv = Env(SpawnTransformVariable, "1") },
+        ]),
         new("build-threads", "Starting the game", "Content build speed", Stage.Build,
             "The content build fails or gives different results from one run to the next.",
         [
@@ -589,6 +596,10 @@ public static class Fallbacks
                 { PorterEnv = Env("DARKSIGN_MATERIAL_NUMBERS", "ds3") },
             new("I", "The template's body size", "As A, but a ported enemy keeps the Elden Ring template's body capsule (DARKSIGN_ENEMY_BODY_SIZE=template) instead of DS3's size, as up to 1.0.410. Use when ported enemies get stuck in doorways, sink into the floor or float above it with A.")
                 { PorterEnv = Env("DARKSIGN_ENEMY_BODY_SIZE", "template") },
+            new("J", "The template's weaknesses", "As A, but a ported enemy takes damage of each kind as the Elden Ring template does (DARKSIGN_ENEMY_DAMAGE_RATES=template), as up to 1.0.422, when the Pus of Man had the Giant Beast Skeleton's weakness to strike and resistance to lightning and no weakness to fire. Use when ported enemies take far too much or too little damage with A.")
+                { PorterEnv = Env("DARKSIGN_ENEMY_DAMAGE_RATES", "template") },
+            new("K", "DS3 fur as one solid layer", "As A, but DS3 fur (Ariandel's wolf) shows the larger of its two layers, uncut (DARKSIGN_ENEMY_FUR=0), as up to 1.0.422, when the wolf's fur drew as white shards. Use when a furry ported enemy turns invisible or bald with A.")
+                { PorterEnv = Env("DARKSIGN_ENEMY_FUR", "0") },
         ]),
         new("enemy-drops", "DS3 maps", "What ported DS3 enemies drop", Stage.Build,
             "A ported DS3 enemy drops nothing where DS3 drops something, drops the wrong item or far too often, the game crashes or hangs when a ported enemy dies, or the build's enemy params step says the drops were not ported.",
@@ -624,6 +635,8 @@ public static class Fallbacks
                 { PorterEnv = Env("DARKSIGN_ENEMY_THINK_IDS", "ds3") },
             new("G", "DS3's effect numbers in the AI", "As A, but DS3's AI scripts keep checking for their own effects by DS3's numbers (DARKSIGN_ENEMY_AI_SPEFFECTS=ds3), as up to 1.0.410, when those checks never matched a ported enemy's effects and Ariandel's wolf only circled. Use when a ported enemy freezes, attacks without pause or the game crashes when it notices you with A.")
                 { PorterEnv = Env("DARKSIGN_ENEMY_AI_SPEFFECTS", "ds3") },
+            new("H", "Each character's own AI rows only", "As A, but a DS3 enemy that DS3 places with another family's AI (the Cemetery of Ash hollows run the Hollow Soldiers' rows) gets its own character's first AI row instead of that family's (DARKSIGN_ENEMY_SHARED_THINK=0), as up to 1.0.417, when those hollows circled the player without attacking. Use when a ported enemy freezes or the game crashes when it notices you with A.")
+                { PorterEnv = Env("DARKSIGN_ENEMY_SHARED_THINK", "0") },
         ]),
         new("enemy-glow", "DS3 maps", "Ported DS3 enemies' glows", Stage.Build,
             "A ported DS3 enemy's glow is the wrong colour or missing (the Jailer's lantern, Pontiff Sulyvahn's swords, the Soul of Cinder), a part of it glows far too brightly or draws black, or the game crashes or hangs loading a ported enemy that glows.",
@@ -666,6 +679,9 @@ public static class Fallbacks
 
     /// <summary>Game variable: the F1 menu spawns a DS3 boss with its kit's partners (spawn-boss-kits B).</summary>
     public const string BossKitsVariable = "DKSIGN_BOSS_KITS";
+
+    /// <summary>Game variable: the F1 menu spawns an enemy that grows out of another as itself (spawn-transform B).</summary>
+    public const string SpawnTransformVariable = "DKSIGN_NO_TRANSFORM";
 
     /// <summary>Game variable: the test menu DLL doesn't hook DirectX 12 (no overlay), hotkeys only.</summary>
     public const string NoOverlayVariable = "DKSIGN_NO_OVERLAY";

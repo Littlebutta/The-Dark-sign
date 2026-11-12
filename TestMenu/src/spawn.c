@@ -56,7 +56,30 @@ typedef struct {
     DksSpawnable who;
     int n;           /* place in its batch, for the position */
     uint32_t entity; /* a boss kit's fixed entity ID (darksign_boss_kits.tsv), 0 for the next of the menu's own */
+    int growth;      /* transforms: 1 + the slot of the character this one grows into (the hollow's request) ... */
+    int replaces;    /* ... or 1 + the slot whose hollow this one replaces (the Pus of Man's request) */
+    int at_set;      /* spawn at "at" instead of in front of the player */
+    float at[3];
 } Request;
+
+/* Transforms (the spawn list's "from" column): a DS3 enemy that grows out of another, High Wall's Pus of Man out of a
+   hollow. DS3's map script (common_func 20005415) forces the hollow into its burst and enables the Pus in its place;
+   the debug creator's characters never run map scripts, so the menu does the swap: the hollow is spawned first, and
+   GROWTH_AFTER_MS later (DS3's own timer), or GROWTH_HIT_MS after it is first hit, the Pus is spawned where the hollow
+   stands and the hollow is taken away. A hollow killed before that just dies. Off with DKSIGN_NO_TRANSFORM=1. */
+#define MAX_GROWTH 16
+#define GROWTH_AFTER_MS 8000
+#define GROWTH_HIT_MS 1500
+typedef struct {
+    int used;
+    DksSpawnable into;
+    uintptr_t chr; /* the hollow, 0 until created */
+    uint32_t entity;
+    ULONGLONG born, hit;
+    int32_t hp;
+    int queued;    /* the grown character is asked for */
+} Growth;
+static Growth g_growth[MAX_GROWTH];
 
 static Request g_queue[MAX_QUEUE];
 static int g_queue_len;
@@ -195,9 +218,9 @@ static int g_list_len, g_list_from_file, g_list_loaded;
 
 /* Elden Ring's own enemies that stand in when there's no spawn list yet (from souls-client's spawn_name). */
 static const DksSpawnable BUILT_IN[] = {
-    {"ER", 2275, 22750020, 22750000, 0, "Giant Crab", DKS_BODY_ER},
-    {"ER", 4351, 43510010, 43510000, 0, "Knight (First Step test spawn)", DKS_BODY_ER},
-    {"ER", 5130, 51300099, 51300000, 1, "Messmer the Impaler", DKS_BODY_ER},
+    {"ER", 2275, 22750020, 22750000, 0, "Giant Crab", DKS_BODY_ER, 0, 0, 0},
+    {"ER", 4351, 43510010, 43510000, 0, "Knight (First Step test spawn)", DKS_BODY_ER, 0, 0, 0},
+    {"ER", 5130, 51300099, 51300000, 1, "Messmer the Impaler", DKS_BODY_ER, 0, 0, 0},
 };
 
 static void set_status(const char *fmt, ...)
@@ -352,6 +375,21 @@ static const DksBossKit *kit_for(const DksSpawnable *who)
 /* 1 while a character the menu spawned with this entity ID is still there (a kit can be in the world only once). */
 static int entity_in_use(uint32_t entity);
 
+static int transforms_enabled(void)
+{
+    wchar_t v[8] = {0};
+    DWORD n = GetEnvironmentVariableW(L"DKSIGN_NO_TRANSFORM", v, 8);
+    return !(n > 0 && n < 8 && v[0] == L'1');
+}
+
+static int growth_slot(void)
+{
+    for (int i = 0; i < MAX_GROWTH; i++)
+        if (!g_growth[i].used)
+            return i;
+    return -1;
+}
+
 int dks_spawn_list(const DksSpawnable **out, int *from_file)
 {
     if (!g_list_loaded) {
@@ -431,8 +469,28 @@ DksResult dks_spawn(const DksSpawnable *who, int count)
         dks_log("spawn: %s's kit (entity %u) is already in the world; this one spawns without it", kit->name, kit->boss.entity);
         kit = NULL;
     }
+    if (who->from_chr && transforms_enabled()) {
+        int grown = 0;
+        for (int i = 0; i < count && g_queue_len < MAX_QUEUE; i++) {
+            int slot = growth_slot();
+            if (slot < 0)
+                break;
+            DksSpawnable hollow = {.chr = who->from_chr, .npc_param = who->from_npc, .think_param = who->from_think,
+                                   .body = who->body};
+            strcpy(hollow.game, who->game);
+            snprintf(hollow.name, sizeof hollow.name, "%s (as the hollow it grows out of)", who->name);
+            g_growth[slot] = (Growth){.used = 1, .into = *who};
+            g_growth[slot].into.from_chr = 0;
+            g_queue[g_queue_len++] = (Request){.who = hollow, .n = i, .growth = slot + 1};
+            grown++;
+        }
+        dks_log("spawn: %d x %s as c%04d (NpcParam %d ThinkParam %d) first; it turns into c%04d after %d s or when hit", grown,
+                who->name, who->from_chr, who->from_npc, who->from_think, who->chr, GROWTH_AFTER_MS / 1000);
+        set_status("Spawning %d x %s: a hollow first, which transforms after %d s or when hit.", grown, who->name, GROWTH_AFTER_MS / 1000);
+        return grown ? DKS_OK : DKS_NOT_FOUND;
+    }
     for (int i = 0; i < count && g_queue_len < MAX_QUEUE; i++, queued++)
-        g_queue[g_queue_len++] = (Request){*who, i, i == 0 && kit ? kit->boss.entity : 0};
+        g_queue[g_queue_len++] = (Request){.who = *who, .n = i, .entity = i == 0 && kit ? kit->boss.entity : 0};
     int companions = 0;
     if (kit) {
         for (int j = 0; j < kit->companions_len && g_queue_len < MAX_QUEUE; j++, companions++) {
@@ -440,7 +498,7 @@ DksResult dks_spawn(const DksSpawnable *who, int count)
             DksSpawnable mate = {.chr = c->chr, .npc_param = c->npc_param, .think_param = c->think_param, .boss = 1, .body = DKS_BODY_DS3};
             strcpy(mate.game, "DS3");
             snprintf(mate.name, sizeof mate.name, "%s (kit c%04d)", kit->name, c->chr);
-            g_queue[g_queue_len++] = (Request){mate, queued + j, c->entity};
+            g_queue[g_queue_len++] = (Request){.who = mate, .n = queued + j, .entity = c->entity};
         }
         dks_log("spawn: %s spawns with its kit: entity %u, %d companions", kit->name, kit->boss.entity, companions);
     }
@@ -467,6 +525,8 @@ int dks_player_position(float pos[3])
 }
 
 static void spawn_watch(void);
+static void growth_update(void);
+static void growth_created(const Request *r, uintptr_t chr, uint32_t entity);
 
 static void track(uintptr_t chr, uint32_t entity)
 {
@@ -489,7 +549,10 @@ static int start_request(uintptr_t wcm, uintptr_t creator, const Request *r)
     uintptr_t player = main_player(wcm);
     if (!player || !read_player_place(player, pos, quat))
         return 0;
-    dks_spawn_position(pos, quat, r->n, at);
+    if (r->at_set)
+        at[0] = r->at[0], at[1] = r->at[1], at[2] = r->at[2];
+    else
+        dks_spawn_position(pos, quat, r->n, at);
 
     uint32_t entity = r->entity ? r->entity : ENTITY_BASE + (g_next_entity++ % ENTITY_COUNT);
     int32_t npc = r->who.npc_param, think = r->who.think_param, talk = -1, init_param = -1;
@@ -525,6 +588,7 @@ void dks_spawn_update(void)
     if (InterlockedExchange(&g_clear_requested, 0))
         dks_spawn_clear();
     spawn_watch();
+    growth_update();
     if (g_pending_open && !g_active && g_pending_spawned && GetTickCount64() - g_pending_spawned > SPAWN_SAFE_MS)
         pending_clear();
     if (!g_active && !g_queue_len)
@@ -545,6 +609,7 @@ void dks_spawn_update(void)
                    (id == g_current_entity || last != g_current_before);
         if (ours) {
             track(last, id == g_current_entity ? g_current_entity : id);
+            growth_created(&g_current, last, id);
             g_pending_spawned = GetTickCount64();
             if (id != g_current_entity)
                 dks_log("spawn: c%04d created with entity %u, not %u", g_current.who.chr, id, g_current_entity);
@@ -563,6 +628,7 @@ void dks_spawn_update(void)
                        flag ? " (the request was never picked up)" : " (model or params missing from the mod?)");
             g_active = 0;
             g_queue_len = 0;
+            memset(g_growth, 0, sizeof g_growth);
             pending_clear();
             return;
         } else
@@ -705,6 +771,68 @@ static void spawn_watch(void)
     }
 }
 
+/* A transform's character is in the world: the hollow starts its clock; the grown one takes the hollow's place, which
+   is moved out of sight below the map and killed there (the menu's clear does the same to any it spawned). */
+static void growth_created(const Request *r, uintptr_t chr, uint32_t entity)
+{
+    if (r->growth > 0 && r->growth <= MAX_GROWTH && g_growth[r->growth - 1].used) {
+        Growth *g = &g_growth[r->growth - 1];
+        g->chr = chr;
+        g->entity = entity;
+        g->born = GetTickCount64();
+        g->hp = 0;
+        read_mem(chr_data(chr) + DATA_HP, &g->hp, 4);
+        dks_log("transform: %u is the hollow for %s (hp %d)", entity, g->into.name, g->hp);
+    } else if (r->replaces > 0 && r->replaces <= MAX_GROWTH && g_growth[r->replaces - 1].used) {
+        Growth *g = &g_growth[r->replaces - 1];
+        uint32_t id = 0;
+        if (is_object(g->chr) && read_mem(g->chr + CHR_ENTITY_ID, &id, 4) && id == g->entity) {
+            uintptr_t physics = read_ptr(read_ptr(g->chr + CHR_MODULES) + MODULES_PHYSICS);
+            float pos[3];
+            int moved = physics && read_mem(physics + PHYSICS_POSITION, pos, sizeof pos) && (pos[1] -= 200.0f, 1) &&
+                        write_mem(physics + PHYSICS_POSITION, pos, sizeof pos);
+            int32_t zero = 0;
+            write_mem(chr_data(g->chr) + DATA_HP, &zero, 4);
+            dks_log("transform: %u became %s (%u); the hollow was %s and killed", g->entity, g->into.name, entity,
+                    moved ? "moved 200 m down" : "left in place (position not writable)");
+        }
+        memset(g, 0, sizeof *g);
+    }
+}
+
+/* Each frame: a hollow that died is let go; one that has stood GROWTH_AFTER_MS, or GROWTH_HIT_MS since it was first
+   hit, gets its grown character asked for where it stands. */
+static void growth_update(void)
+{
+    ULONGLONG now = GetTickCount64();
+    for (int i = 0; i < MAX_GROWTH; i++) {
+        Growth *g = &g_growth[i];
+        if (!g->used || !g->chr || g->queued)
+            continue;
+        uint32_t id = 0;
+        int32_t hp = 0;
+        if (!is_object(g->chr) || !read_mem(g->chr + CHR_ENTITY_ID, &id, 4) || id != g->entity ||
+            !read_mem(chr_data(g->chr) + DATA_HP, &hp, 4) || hp <= 0) {
+            dks_log("transform: %u died (or left) before turning into %s", g->entity, g->into.name);
+            memset(g, 0, sizeof *g);
+            continue;
+        }
+        if (hp < g->hp && !g->hit)
+            g->hit = now;
+        g->hp = hp;
+        int due = now - g->born >= GROWTH_AFTER_MS || (g->hit && now - g->hit >= GROWTH_HIT_MS);
+        float pos[3], quat[4];
+        if (!due || g_queue_len >= MAX_QUEUE || !read_player_place(g->chr, pos, quat))
+            continue;
+        Request r = {.who = g->into, .replaces = i + 1, .at_set = 1};
+        r.at[0] = pos[0], r.at[1] = pos[1], r.at[2] = pos[2];
+        g_queue[g_queue_len++] = r;
+        g->queued = 1;
+        dks_log("transform: %u turns into %s at %.1f %.1f %.1f (%s)", g->entity, g->into.name, pos[0], pos[1], pos[2],
+                g->hit ? "it was hit" : "its time came");
+    }
+}
+
 int dks_spawn_alive(void)
 {
     int alive = 0;
@@ -748,6 +876,7 @@ int dks_spawn_clear(void)
         }
     }
     g_spawned_len = 0;
+    memset(g_growth, 0, sizeof g_growth);
     set_status(cleared ? "Cleared %d spawned enem%s (%s)." : "No spawned enemies to clear.", cleared, cleared == 1 ? "y" : "ies",
                remove ? "removed" : "killed");
     return cleared;
