@@ -114,6 +114,10 @@ public static class WeaponHold
             return result;
         }
         var byPair = new Dictionary<(int, int), List<string>>();
+        // Every ported weapon Elden Ring hangs on a shield bone is a shield (the entry marks it for ShieldShape, even when
+        // its turn is nothing). Shields DS3 hangs on the body (the Giant Door Shield, dummy 33 on Spine2) start from the
+        // turn of DS3's usual hand-held shield dummy instead, and ShieldShape lays them on their template from there.
+        var shields = new List<(WeaponPlan Plan, int Ds3Dummy, int ErDummy, bool Hand)>();
         foreach (var plan in plans.Where(p => p.Status == "port" && p.TemplateId is not null))
         {
             if (ds3Weapons[plan.Ds3Id] is not { } ds3Row || erWeapons[plan.TemplateId!.Value] is not { } template)
@@ -123,14 +127,24 @@ public static class WeaponHold
             if (ds3AbsorpRow?["OneHandDamipolyId1"] is not { } ds3Cell || erAbsorpRow?["left_0"] is not { } erCell)
                 continue;
             int ds3Dummy = Convert.ToInt32(ds3Cell.Value), erDummy = Convert.ToInt32(erCell.Value);
-            if (!ds3Frames.TryGetValue(ds3Dummy, out var from) || !erFrames.TryGetValue(erDummy, out var to)
-                || !to.Bone.Contains("Shield", StringComparison.OrdinalIgnoreCase) || !HandBone(from.Bone))
+            if (!erFrames.TryGetValue(erDummy, out var to) || !to.Bone.Contains("Shield", StringComparison.OrdinalIgnoreCase))
                 continue;
-            if (Turn(from, to) is not { } turn || Degrees(turn) < MinDegrees)
-                continue;
+            shields.Add((plan, ds3Dummy, erDummy, ds3Frames.TryGetValue(ds3Dummy, out var from) && HandBone(from.Bone)));
+        }
+        int? usualHand = shields.Where(s => s.Hand).GroupBy(s => s.Ds3Dummy).OrderByDescending(g => g.Count()).Select(g => (int?)g.Key).FirstOrDefault();
+        var body = new List<string>();
+        foreach (var (plan, ds3Dummy, erDummy, hand) in shields)
+        {
+            int from = hand ? ds3Dummy : usualHand ?? ds3Dummy;
+            if (!hand)
+                body.Add($"{plan.Name} (DS3 dummy {ds3Dummy}{(ds3Frames.TryGetValue(ds3Dummy, out var f) ? " on " + f.Bone : "")})");
+            var turn = ds3Frames.TryGetValue(from, out var fromFrame) && Turn(fromFrame, erFrames[erDummy]) is { } t && Degrees(t) >= MinDegrees
+                ? t : Matrix4x4.Identity;
             result[plan] = turn;
-            if (!byPair.TryGetValue((ds3Dummy, erDummy), out var names))
-                byPair[(ds3Dummy, erDummy)] = names = [];
+            if (turn.IsIdentity)
+                continue;
+            if (!byPair.TryGetValue((from, erDummy), out var names))
+                byPair[(from, erDummy)] = names = [];
             names.Add(plan.Name);
         }
         foreach (var ((d, e), names) in byPair)
@@ -139,13 +153,15 @@ public static class WeaponHold
             Console.WriteLine($"models: shield hold: DS3 dummy {d} on {ds3Frames[d].Bone} (up {Fmt(ds3Frames[d].Up)}) -> Elden Ring dummy {e} on {erFrames[e].Bone} " +
                               $"(up {Fmt(erFrames[e].Up)}): turned {Degrees(turn):0}° for {names.Count} weapons ({string.Join(", ", names.Take(6))}{(names.Count > 6 ? ", ..." : "")}) [DARKSIGN_SHIELD_HOLD=0 off]");
         }
-        if (byPair.Count == 0)
-            Console.WriteLine("models: shield hold: no ported weapon needed a turn");
+        if (body.Count > 0)
+            Console.WriteLine($"models: shield hold: {body.Count} shields DS3 hangs on the body start from DS3's hand-held shield dummy {usualHand?.ToString() ?? "(none)"}: {string.Join(", ", body)}");
+        Console.WriteLine($"models: shield hold: {result.Count} ported shields ({byPair.Values.Sum(n => n.Count)} turned by the hold frames); each is checked against its template's shape (ShieldShape)");
         return result;
     }
 
     /// <summary>DS3 left-hand hold bones. The Giant Door Shield hangs on the body in DS3 (dummy 33 on Spine2): turning
-    /// that pose onto Elden Ring's hand dummy left it 37°/70° off vanilla shields (fx20 part 3), so it is left alone.</summary>
+    /// that pose onto Elden Ring's hand dummy left it 37°/70° off vanilla shields (fx20 part 3), so it starts from DS3's
+    /// usual hand-held shield dummy instead (see Plan).</summary>
     internal static bool HandBone(string bone) => bone is not null && (bone.Equals("L_Weapon", StringComparison.OrdinalIgnoreCase)
         || bone.Equals("L_Hand", StringComparison.OrdinalIgnoreCase) || bone.Equals("L_Shield", StringComparison.OrdinalIgnoreCase));
 

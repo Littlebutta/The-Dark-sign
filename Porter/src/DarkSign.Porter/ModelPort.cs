@@ -10,7 +10,17 @@ namespace DarkSign.Porter;
 /// </summary>
 public static class ModelPort
 {
-    public sealed record ConvertedModel(BND4 Binder, DCX.CompressionInfo Compression, List<NewMaterial> Materials);
+    public sealed record ConvertedModel(BND4 Binder, DCX.CompressionInfo Compression, List<NewMaterial> Materials)
+    {
+        /// <summary>For a shield: the turn ShieldShape chose from the main model (identity when none), for its LOD.</summary>
+        public System.Numerics.Matrix4x4? ShapeTurn { get; init; }
+    }
+
+    /// <summary>A shield's shape turn: decided once from the binder's first model, then applied to every model in it.</summary>
+    private sealed class ShapeState
+    {
+        public System.Numerics.Matrix4x4? Turn;
+    }
 
     /// <summary>
     /// A material the converted model needs: a copy of a template MATBIN pointed at the textures (TPF names) the
@@ -98,9 +108,13 @@ public static class ModelPort
     public static string PartsPath(int modelId, bool lod = false) =>
         $"/parts/wp_a_{modelId:D4}{(lod ? "_l" : "")}.partsbnd.dcx";
 
+    /// <summary>Converts one DS3 weapon binder onto its Elden Ring template's. A non-null <paramref name="holdTurn"/> marks a
+    /// shield (WeaponHold); its shape is then laid on the template's (ShieldShape), or turned by <paramref name="shapeTurn"/>
+    /// when the main model already decided it (the LOD).</summary>
     public static ConvertedModel? Convert(GameArchives ds3, GameArchives er, int ds3Model, int templateModel, int newModel, bool lod,
-        System.Numerics.Matrix4x4? holdTurn = null)
+        System.Numerics.Matrix4x4? holdTurn = null, System.Numerics.Matrix4x4? shapeTurn = null)
     {
+        var shape = holdTurn is null ? null : new ShapeState { Turn = shapeTurn };
         var ds3Path = PartsPath(ds3Model, lod);
         var erPath = PartsPath(templateModel, lod);
         if (!ds3.Contains(ds3Path) || !er.Contains(erPath))
@@ -148,7 +162,7 @@ public static class ModelPort
                 if (WeaponHiddenParts.Collapse(flver, hiddenBones, hiddenMeshes) is > 0 and var moved)
                     Console.WriteLine($"models: {oldTag} -> {newTag}{(lod ? " LOD" : "")} {ItemText.Leaf(file.Name)}: hid {moved} vertices in meshes " +
                                       $"{string.Join(", ", hiddenMeshes)} on bones DS3's idle animation hides ({string.Join(", ", hiddenBones.Order())})");
-                ConvertFlver(flver, templateFlver, stem, oldTag, newTag, materials, Emissive(er), holdTurn);
+                ConvertFlver(flver, templateFlver, stem, oldTag, newTag, materials, Emissive(er), holdTurn, shape);
                 FlverMaterialNumbers.Apply(flver);
                 files.Add(new BinderFile(file.Flags, file.ID, folder + leaf, flver.Write()));
             }
@@ -160,11 +174,11 @@ public static class ModelPort
         }
 
         template.Files = files;
-        return new ConvertedModel(template, compression, materials);
+        return new ConvertedModel(template, compression, materials) { ShapeTurn = shape?.Turn };
     }
 
     private static void ConvertFlver(FLVER2 flver, FLVER2 template, string stem, string oldTag, string newTag,
-        List<NewMaterial> materials, EmissiveTemplate? emissive, System.Numerics.Matrix4x4? holdTurn = null)
+        List<NewMaterial> materials, EmissiveTemplate? emissive, System.Numerics.Matrix4x4? holdTurn = null, ShapeState? shape = null)
     {
         var bboxMin = flver.Header.BoundingBoxMin;
         var bboxMax = flver.Header.BoundingBoxMax;
@@ -178,8 +192,29 @@ public static class ModelPort
         if (WeaponNodes.UniqueNames(flver) is > 0 and var renamed)
             Console.WriteLine($"models: {stem}: renamed {renamed} nodes whose names repeated ignoring case");
         // Shields: turned from DS3's hold frame onto Elden Ring's (WeaponHold).
-        if (holdTurn is { } turn && !WeaponHold.Apply(flver, turn))
+        if (holdTurn is { } turn && !turn.IsIdentity && !WeaponHold.Apply(flver, turn))
             Console.WriteLine($"models: {stem}: shield hold turn skipped (its nodes still place the meshes)");
+        // Shields: laid on the shape of the Elden Ring shield they are built on (ShieldShape).
+        if (shape is not null && ShieldShape.Enabled)
+        {
+            if (shape.Turn is null)
+            {
+                shape.Turn = System.Numerics.Matrix4x4.Identity;
+                var mine = ShieldShape.Measure(ShieldShape.Points(flver));
+                var theirs = ShieldShape.Measure(ShieldShape.Points(template));
+                if (mine is null || theirs is null)
+                    Console.WriteLine($"models: {stem}: shield shape: too few vertices to measure, left as it is");
+                else
+                {
+                    var match = ShieldShape.Match(mine, theirs);
+                    if (match.Turn is { } m)
+                        shape.Turn = m;
+                    Console.WriteLine($"models: {stem}: shield shape: {match.Note} (ported {mine}; template {theirs}) [DARKSIGN_SHIELD_SHAPE=0 off]");
+                }
+            }
+            if (!shape.Turn.Value.IsIdentity && !WeaponHold.Apply(flver, shape.Turn.Value))
+                Console.WriteLine($"models: {stem}: shield shape turn skipped (its nodes still place the meshes)");
+        }
 
         // FLVER 0x20017+ stores a skeleton set, which DS3 models (0x20014) lack. Elden Ring weapons use one bone
         // per node with the node's own hierarchy, in both the base and the full skeleton.

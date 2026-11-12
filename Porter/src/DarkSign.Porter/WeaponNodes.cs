@@ -23,7 +23,7 @@ public static class WeaponNodes
 {
     public static readonly bool BakeEnabled = Environment.GetEnvironmentVariable("DARKSIGN_BAKE_NODES") != "0";
 
-    private static Matrix4x4 World(IList<FLVER.Node> nodes, int i)
+    internal static Matrix4x4 World(IList<FLVER.Node> nodes, int i)
     {
         var m = Matrix4x4.Identity;
         for (int guard = 0; i >= 0 && i < nodes.Count && guard < 256; i = nodes[i].ParentIndex, guard++)

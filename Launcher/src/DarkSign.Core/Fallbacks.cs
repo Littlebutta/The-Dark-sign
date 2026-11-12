@@ -231,6 +231,8 @@ public static class Fallbacks
                 { PorterEnv = Env("DARKSIGN_BAKE_NODES", "0") },
             new("F", "Shields keep DS3's hold turn", "As A, but ported shields are not turned onto Elden Ring's shield hold point (DARKSIGN_SHIELD_HOLD=0), as up to 1.0.410, when they were held turned about 90° (most visible when guarding). Use it if a shield sits worse than before.")
                 { PorterEnv = Env("DARKSIGN_SHIELD_HOLD", "0") },
+            new("G", "Shields skip the template shape check", "As A, but ported shields are only turned by the hold frames (DARKSIGN_SHIELD_SHAPE=0), as in 1.0.420, and not laid on the shape of the Elden Ring shield they are built on. Use it if a shield that looked right in 1.0.420 sits worse now.")
+                { PorterEnv = Env("DARKSIGN_SHIELD_SHAPE", "0") },
         ]),
 
         // ---- Weapon sounds and effects ----
