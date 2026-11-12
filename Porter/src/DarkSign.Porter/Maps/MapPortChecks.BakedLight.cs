@@ -16,6 +16,7 @@ public static partial class MapPortChecks
         yield return ("baked light: probes spread to near texels, the rest take the nearest", BakedSpread);
         yield return ("baked light: indoors darker than open sky, open sky as bright as the host, Y about 0.87 of W", BakedEncoding);
         yield return ("baked light: DS3's up term is found, z mirrored when the layout says so", BakedAxes);
+        yield return ("baked light: probes move and turn by DS3's map offset", BakedOffset);
         yield return ("baked light: environment point/box over the probes, GIIV0900 textures added to the binder", BakedRegionAndBinder);
         yield return ("baked light: --flat-env-light and --baked-light-flip are read", BakedOptions);
     }
@@ -145,6 +146,27 @@ public static partial class MapPortChecks
         Expect(mirrored.All(p => p.Position.Z > 0), "probes mirrored onto the layout's z");
         var straight = MapBakedLight.ReadProbes(SyntheticBtpb(1, 1, 1), msb, []);
         Expect(straight.All(p => p.Position.Z > 0), "probes that already match stay as they are");
+    }
+
+    private static void BakedOffset()
+    {
+        // m31's offset: turned -156 degrees and moved 600 m; one probe lit from +x in map space.
+        var msb = new MSB3();
+        msb.Events.MapOffsets.Add(new MSB3.Event.MapOffset { Name = "map offset", Position = new Vector3(50, -155, -580), Degree = -156 });
+        var btpb = SyntheticBtpb(2, 1, 1);
+        foreach (var p in btpb.Groups[0].Probes)
+            for (int ch = 0; ch < 3; ch++)
+                p.Coefficients[3 + ch] = 300; // term 1 = x (up is term 2)
+        var raw = btpb.Groups[0].Probes[5].Position;
+        var moved = MapBakedLight.ReadProbes(btpb, msb, []);
+        var m = Matrix4x4.CreateRotationY(-156 * MathF.PI / 180) * Matrix4x4.CreateTranslation(50, -155, -580);
+        Expect(Vector3.Distance(moved[5].Position, Vector3.Transform(raw, m)) < 0.01f, $"position moved by the offset: {moved[5].Position}");
+        var dir = new Vector3(moved[5].Sh[3], moved[5].Sh[6], moved[5].Sh[9]);
+        var want = Vector3.TransformNormal(new Vector3(300, 800, 0), m);
+        Expect(Vector3.Distance(dir, want) < 0.5f, $"first-order terms turn with the map: {dir} (want {want})");
+        Expect(moved[5].Sh[0] == 1000, "order 0 unchanged");
+        var kept = MapBakedLight.ReadProbes(SyntheticBtpb(2, 1, 1), msb, [], noOffset: true);
+        Expect(kept[5].Position == raw, "--no-light-offset leaves them in the map's space");
     }
 
     private static void BakedRegionAndBinder()

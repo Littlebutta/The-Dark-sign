@@ -1,3 +1,4 @@
+using System.Numerics;
 using SoulsFormats;
 
 namespace DarkSign.Porter.Maps;
@@ -39,27 +40,79 @@ public static class MapDrawParams
 
     public static bool IsOurs(int id) => id is >= FirstRow and <= LastRow;
 
-    /// <summary>Adds (or replaces) the row and returns its ID.</summary>
+    /// <summary>
+    /// Large map pieces load their full textures from further out: radius (half the model box's diagonal, metres)
+    /// up to which a row applies, and the metres added to <see cref="TextureDistance"/>. Row
+    /// <see cref="FirstRow"/> + i is size i. A DS3 map piece can be a whole floor, cliff or building 100 to 500 m
+    /// across (17 to 20% of the ported vertices are in pieces over 64 m across, measured on the 1.0.4xx map-pieces
+    /// reports), where an Elden Ring piece is a few metres. Up to 1.0.422 every piece switched to its half size copy
+    /// at the same 128 m, so on a large floor or building whose middle is 128 m away the textures under the
+    /// player's feet were the low detail ones (Devin, 2026-11-12: floor and building textures not always at full
+    /// detail). Which point of a piece the game measures from is unconfirmed; with the radius added, the near edge of
+    /// a large piece is never further than the small pieces' distance. Rows FirstRow + 1 to + 5 sit below the
+    /// objects' rows (<see cref="ObjectPort.FirstDrawRow"/> = FirstRow + 10).
+    /// </summary>
+    public static readonly (float Radius, float Extra)[] TextureBySize =
+    [
+        (16f, 0f), (32f, 32f), (64f, 64f), (128f, 128f), (256f, 256f), (float.MaxValue, 512f),
+    ];
+
+    /// <summary>The row for a map piece of this radius (metres).</summary>
+    public static short RowFor(float radius)
+    {
+        for (int i = 0; i < TextureBySize.Length; i++)
+            if (radius <= TextureBySize[i].Radius)
+                return (short)(FirstRow + i);
+        return (short)(FirstRow + TextureBySize.Length - 1);
+    }
+
+    /// <summary>
+    /// Points each map piece of a layout that names <see cref="FirstRow"/> at the row for its size: the radius of its
+    /// model's box (<paramref name="radiusOf"/>, null when unknown, which keeps the row) times the piece's largest scale.
+    /// Returns a line for the log.
+    /// </summary>
+    public static string PointBySize(MSBE msb, Func<string, float?> radiusOf)
+    {
+        var counts = new int[TextureBySize.Length];
+        foreach (var piece in msb.Parts.MapPieces)
+        {
+            if (piece.PartsDrawParamID != FirstRow || radiusOf(piece.ModelName) is not { } radius)
+                continue;
+            var scale = piece.Scale == Vector3.Zero ? 1f : MathF.Max(MathF.Abs(piece.Scale.X), MathF.Max(MathF.Abs(piece.Scale.Y), MathF.Abs(piece.Scale.Z)));
+            var row = RowFor(radius * scale);
+            piece.PartsDrawParamID = row;
+            counts[row - FirstRow]++;
+        }
+        var parts = Enumerable.Range(0, counts.Length).Where(i => counts[i] > 0)
+            .Select(i => $"{counts[i]} {(i == 0 ? $"up to {TextureBySize[0].Radius:0} m" : i == counts.Length - 1 ? $"over {TextureBySize[i - 1].Radius:0} m" : $"up to {TextureBySize[i].Radius:0} m")} (+{TextureBySize[i].Extra:0} m)");
+        return $"texture distance by size: pieces by radius, and how much further out they load full textures: {string.Join(", ", parts)}";
+    }
+
+    /// <summary>Adds (or replaces) the rows (one per size of <see cref="TextureBySize"/>) and returns the first one's ID.</summary>
     public static short AddRow(PARAM param, bool legacyTextures = false)
     {
-        param.Rows.RemoveAll(r => IsOurs(r.ID));
+        param.Rows.RemoveAll(r => r.ID >= FirstRow && r.ID < FirstRow + TextureBySize.Length);
         var template = param[TemplateRow] ?? param[VanillaRow] ?? param.Rows.FirstOrDefault()
                        ?? throw new InvalidDataException("PartsDrawParam has no rows to copy");
-        var row = new PARAM.Row(template) { ID = FirstRow, Name = "DS3 map piece" };
-        Set(row, "lv01_BorderDist", None);
-        Set(row, "lv01_PlayDist", 0f);
-        Set(row, "drawDist", None);
-        Set(row, "drawFadeRange", 0f);
-        Set(row, "tex_lv01_BorderDist", legacyTextures ? LegacyTextureDistance : TextureDistance);
-        Set(row, "tex_lv01_PlayDist", legacyTextures ? LegacyTextureBand : TextureBand);
-        Set(row, "IncludeLodMapLv", (sbyte)0);
-        Set(row, "lodType", (byte)1);
-        Set(row, "DistantViewModel_BorderDist", None);
-        Set(row, "DistantViewModel_PlayDist", 0f);
-        // Whatever the template says, the row must not turn a piece into a shadow or reflection proxy.
-        Set(row, "isShadowOnly", (sbyte)0);
-        Set(row, "drawOnlyReflectCam", (sbyte)0);
-        param.Rows.Add(row);
+        float distance = legacyTextures ? LegacyTextureDistance : TextureDistance;
+        for (int i = 0; i < TextureBySize.Length; i++)
+        {
+            var row = new PARAM.Row(template) { ID = FirstRow + i, Name = i == 0 ? "DS3 map piece" : $"DS3 map piece, radius up to {TextureBySize[i].Radius:0} m" };
+            Set(row, "lv01_BorderDist", None);
+            Set(row, "lv01_PlayDist", 0f);
+            Set(row, "drawDist", None);
+            Set(row, "drawFadeRange", 0f);
+            Set(row, "tex_lv01_BorderDist", distance + TextureBySize[i].Extra);
+            Set(row, "tex_lv01_PlayDist", legacyTextures ? LegacyTextureBand : TextureBand);
+            Set(row, "IncludeLodMapLv", (sbyte)0);
+            Set(row, "lodType", (byte)1);
+            Set(row, "DistantViewModel_BorderDist", None);
+            Set(row, "DistantViewModel_PlayDist", 0f);
+            // Whatever the template says, the row must not turn a piece into a shadow or reflection proxy.
+            Set(row, "isShadowOnly", (sbyte)0);
+            Set(row, "drawOnlyReflectCam", (sbyte)0);
+            param.Rows.Add(row);
+        }
         param.Rows.Sort((a, b) => a.ID.CompareTo(b.ID));
         return FirstRow;
     }
@@ -85,7 +138,8 @@ public static class MapDrawParams
             var id = AddRow(param, legacyTextures);
             regulation.Save(ctx.ModPath("regulation.bin"));
             return (id, $"map piece draw settings: PartsDrawParam row {id} (a copy of row {template}, unlimited draw distance, no LOD switching, "
-                        + $"full textures within {(legacyTextures ? LegacyTextureDistance : TextureDistance):F0} m)");
+                        + $"full textures within {(legacyTextures ? LegacyTextureDistance : TextureDistance):F0} m, "
+                        + $"further for larger pieces: rows {id + 1} to {id + TextureBySize.Length - 1})");
         }
         catch (Exception ex) when (ex is not OutOfMemoryException)
         {

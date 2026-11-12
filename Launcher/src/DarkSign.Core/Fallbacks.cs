@@ -389,7 +389,7 @@ public static class Fallbacks
         new("map-texture-detail", "DS3 maps", "Texture detail of the DS3 maps", Stage.Build,
             "A DS3 map hitches or stutters as you move through it, or its textures look blurrier up close than they did in 1.0.299.",
         [
-            new("A", "Full textures near you, half size beyond (default)", "DS3's textures in full for map pieces within 128 m, and a half size low detail copy (a quarter of the memory) for everything further away, the way JortPob and Elden Ring's own maps keep a low detail copy."),
+            new("A", "Full textures near you, half size beyond (default)", "DS3's textures in full for map pieces within 128 m (further for large pieces: a floor or building 100 m across loads them from 128 m beyond its middle, the largest from 512 m beyond), and a half size low detail copy (a quarter of the memory) for everything further away, the way JortPob and Elden Ring's own maps keep a low detail copy."),
             new("B", "Half size textures", "Every DS3 map texture at half its width and height, and quarter size beyond 128 m (port-maps --half-textures): for a graphics card whose memory DS3's textures still don't fit in.")
                 { MapsArgs = ["--half-textures"] },
             new("C", "Full size twice, as up to 1.0.299", "The low detail copy is the full texture again and full textures load within 256 m (port-maps --full-low-textures): every texture of a map sits in graphics memory twice at full size.")
@@ -472,6 +472,13 @@ public static class Fallbacks
                 { MapsArgs = ["--baked-light-flip", "x"] },
             new("D", "Baked light mirrored north-south", "The same baked light with the volume mirrored along z (port-maps --baked-light-flip z). Try it if C didn't line the dark patches up with the rooms.")
                 { MapsArgs = ["--baked-light-flip", "z"] },
+        ]),
+        new("map-light-place", "DS3 maps", "Where DS3's lamps and baked light sit in the DS3 maps", Stage.Build,
+            "Since this option came in, a DS3 map's lamps glow where nothing is, its rooms are lit from the wrong side, or its shade falls in the wrong places when it didn't before.",
+        [
+            new("A", "Moved onto the map (default)", "DS3 keeps a map's lamps and light probes in the map's own space and moves them into place with the map offset the map file holds (map 1: 28 degrees and 200 m, map 3: 156 degrees and 600 m; map 2 has none). The port does the same, so Firelink's lamps light the shrine and the baked shade falls where DS3's does. Only the map's own light file is ported; the files for its other states (the Untended Graves) no longer stack on top."),
+            new("B", "Left in the map's own space", "Lamps and light probes stay where earlier builds put them (port-maps --no-light-offset): on maps 1 and 3 that is far from where they belong.")
+                { MapsArgs = ["--no-light-offset"] },
         ]),
         new("map-navmesh", "DS3 maps", "How enemies find their way in the DS3 maps", Stage.Build,
             "A DS3 map crashes or hangs while loading since launcher 1.0.300, enemies stand still or refuse to cross ground they should walk on, or they walk through closed doors.",
