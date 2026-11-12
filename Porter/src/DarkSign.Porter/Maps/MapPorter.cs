@@ -43,6 +43,9 @@ public static class MapPorter
         /// <summary>--host-atmosphere: the slot keeps its Elden Ring colosseum's colour, fog and sun settings untouched
         /// (fallback "map-atmosphere" B; see <see cref="MapAtmosphere"/>).</summary>
         public bool HostAtmosphere { get; set; }
+        /// <summary>--host-env-light: the slot keeps its Elden Ring colosseum's baked light volumes and reflection cubes,
+        /// which light every DS3 map piece in the colosseum's colour (fallback "map-env-light" B; see <see cref="MapEnvironment"/>).</summary>
+        public bool HostEnvLight { get; set; }
         /// <summary>
         /// --host-sky: the host's distant view (its sky, the Erdtree) is left in place over the DS3 map, as in every
         /// build up to 1.0.299 (fallback "map-sky" B; see <see cref="MapDistantView"/>).
@@ -108,6 +111,7 @@ public static class MapPorter
                     case "--helper-pieces": o.HelperPieces = true; break;
                     case "--stand-ins": o.StandIns = true; break;
                     case "--host-atmosphere": o.HostAtmosphere = true; break;
+                    case "--host-env-light": o.HostEnvLight = true; break;
                     case "--half-textures": o.TextureDetail = MapTextures.Detail.Half; break;
                     case "--full-low-textures": o.TextureDetail = MapTextures.Detail.FullLow; break;
                     case "--host-navmesh-list": o.HostNavmeshList = true; break;
@@ -787,6 +791,7 @@ public static class MapPorter
             foreach (var (name, step) in new (string, Func<string>)[]
                      {
                          ("ambient light", () => MapLighting.AddAmbient(msb, host, ds3Msb)),
+                         ("environment light", () => MapEnvironment.Write(ctx, er, erId, hostId, options.HostEnvLight)),
                          ("lamps", () => MapLighting.PortLights(ctx, ds3, er, ds3Id, erId, hostId)),
                      })
             {
@@ -1070,7 +1075,7 @@ public static class MapPorter
     // "/map/m45/x.dcx" -> ["map", "m45", "x.dcx"]
     public static string[] ModParts(string archivePath) => archivePath.TrimStart('/').Split('/');
 
-    private static Dictionary<string, BinderFile> AllMatbins(GameArchives er)
+    internal static Dictionary<string, BinderFile> AllMatbins(GameArchives er)
     {
         var all = new Dictionary<string, BinderFile>(StringComparer.OrdinalIgnoreCase);
         foreach (var binder in Explore.MaterialBinders.Where(er.Contains))

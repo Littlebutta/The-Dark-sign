@@ -176,6 +176,16 @@ colours from DS3's fog 0 and its amounts from Stormveil (m10_00, first time of d
 where one in twenty of the map's enemies and player points stand lower; colour grading off. Fallback
 `map-atmosphere` B (`--host-atmosphere`) keeps the host's file.
 
+**Environment light.** Elden Ring lights map pieces with light baked per environment map point: a light volume
+(GIIV, four BC7 volume textures W/X/Y/Z) and a reflection cube (GILM, BC6H) per time of day and detail level, in
+`map/mAA/mAA_BB_00_00/mAA_BB_00_00_envmap_NN_{high,middle,low}_00.tpfbnd.dcx`. The ambient box `MapLighting` copies from
+the host spread the colosseum's over the whole DS3 map (measured with `map-diag envmap`: Caelid's volume averages
+252 136 132, Leyndell's 252 227 171, Limgrave's 228 248 251), while characters light from the separate irradiance
+volume (ivinfo): red map surfaces on map 2 under an untinted player. `MapEnvironment` writes the slot's binders as the
+host's with every light volume one even grey (its brightest channel's mean) and every reflection cube one even grey of
+its mean brightness. Map 2's DS3 textures were measured neutral (`map-diag colours`: vertex-weighted mean albedo
+93 89 80). Fallback `map-env-light` B (`--host-env-light`) keeps the host's files.
+
 ### Sky
 
 Elden Ring keeps a second layout beside every legacy map, index 99 (`m45_02_00_99.msb` for `m45_02_00_00`): the
