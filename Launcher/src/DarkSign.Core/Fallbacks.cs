@@ -494,6 +494,8 @@ public static class Fallbacks
                 { PorterEnv = Env("DARKSIGN_ENEMY_SCRIPT_EFFECTS", "0") },
             new("C", "No glowing materials", "Glowing DS3 materials are drawn plain, without their glow (DARKSIGN_ENEMY_GLOW=0), as up to 1.0.326. Use when a ported enemy draws black or crashes the game with A.")
                 { PorterEnv = Env("DARKSIGN_ENEMY_GLOW", "0") },
+            new("D", "Every effect of the enemy row", "As A, but a ported enemy keeps every effect its DS3 row names, also those that lose to a higher priority effect of their category in DS3 (DARKSIGN_ENEMY_CATEGORIES=0), as in 1.0.340, when the Jailer showed its blue and cyan lights over the orange one.")
+                { PorterEnv = Env("DARKSIGN_ENEMY_CATEGORIES", "0") },
         ]),
         new("map-flags", "DS3 maps", "Where the DS3 maps' own flags are kept", Stage.Build,
             "In a DS3 map, bosses come back, opened doors and shortcuts close again or picked-up items return after a reload, or the pre-flight check says a map flag block is MISSING.",

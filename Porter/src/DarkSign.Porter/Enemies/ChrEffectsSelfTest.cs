@@ -244,6 +244,13 @@ public static class ChrEffectsSelfTest
         var pontiffFx = scripts.Apply(514000, [5404, 10642]);
         Check("scripts: Pontiff's row gains the sword auras his script puts on him and never takes off",
             pontiffFx.Added.SequenceEqual([10640, 10641]) && pontiffFx.Dropped.Count == 0 && pontiffFx.Effects.SequenceEqual([5404, 10642, 10640, 10641]));
+        // One effect of a category: the Jailer's three lights in category 100, orange 11899 has the highest priority.
+        Add(ds3Sp, 11899, "Jailer - Weapon VFX", ("spCategory", 100), ("categoryPriority", 4));
+        Add(ds3Sp, 11902, "Jailer - Eye VFX", ("spCategory", 100), ("categoryPriority", 2));
+        Add(ds3Sp, 11903, "Jailer - Lantern light", ("spCategory", 100), ("categoryPriority", 1));
+        var (kept, lost) = ChrEffects.OnePerCategory([11903, 11899, 11902, 7000, 11899, 424242], id => ds3Sp[id]);
+        Check("category: of the Jailer's three lights in one category only the highest priority (orange 11899) stays; effects without a category stay",
+            kept.SequenceEqual([11899, 7000, 424242]) && lost.SequenceEqual([11903, 11902]));
         var aura = Add(ds3Sp, 10640, "Pontiff - Heat Up", ("EffectVfx0", 4000), ("maxHpRate", 1f), ("physDefRate", 1f));
         var pontiffNpc = Add(ds3Npc, 514000, "Pontiff", ("spEffectId0", 7000), ("spEffectId1", -1), ("spEffectId2", -1), ("spEffectId3", -1));
         var pontiffRow = Add(erNpc, 71050000, "Pontiff", ("spEffectID0", 5400), ("spEffectID1", -1), ("spEffectID2", -1), ("spEffectID3", -1),

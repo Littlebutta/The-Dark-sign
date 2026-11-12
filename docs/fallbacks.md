@@ -404,6 +404,7 @@ Try the next option if: A ported DS3 enemy's glow is the wrong colour or missing
 - **A: DS3's glows (default).** DS3 materials with a glow map are drawn on Elden Ring's glowing character material with DS3's glow texture, and the effects DS3's map scripts keep on an enemy (Pontiff's sword auras) are part of its enemy row.
 - **B: Glowing materials, effects from the enemy row only.** As A, but ported enemies get only the effects their DS3 enemy row names, not the ones DS3's map scripts add or take off (DARKSIGN_ENEMY_SCRIPT_EFFECTS=0), as up to 1.0.326. (`DARKSIGN_ENEMY_SCRIPT_EFFECTS=0`)
 - **C: No glowing materials.** Glowing DS3 materials are drawn plain, without their glow (DARKSIGN_ENEMY_GLOW=0), as up to 1.0.326. Use when a ported enemy draws black or crashes the game with A. (`DARKSIGN_ENEMY_GLOW=0`)
+- **D: Every effect of the enemy row.** As A, but a ported enemy keeps every effect its DS3 row names, also those that lose to a higher priority effect of their category in DS3 (DARKSIGN_ENEMY_CATEGORIES=0), as in 1.0.340, when the Jailer showed its blue and cyan lights over the orange one. (`DARKSIGN_ENEMY_CATEGORIES=0`)
 
 ### Where the DS3 maps' own flags are kept (`map-flags`, rebuilds the content)
 
