@@ -62,6 +62,17 @@ public static partial class MapPortChecks
         var withPorted = new EnemyPort.Chooser(SyntheticCatalog(), ported, EnemyPort.Method.Auto);
         Expect(withPorted.Choose(new("c1240", 124001, "Lothric Knight", false, false))?.Model == "c9124", "a ported model should be used for any of its rows");
         Expect(withPorted.Choose(new("c1105", 110500, "Hollow Soldier", false, false))?.NpcParam == 91105000, "a ported NpcParam row should be used");
+        // DS3 places the Cemetery of Ash hollows (c1430) with the Hollow Soldiers' AI rows (110005): ported with c1100.
+        var thinks = EnemyPort.ChrMap.Parse([
+            "chr\tc1430\tc7042\t70420000\t70429010\tHollow (Cemetery of Ash)",
+            "think\t143030\tc7042\t70429030\tHollow (Cemetery of Ash)",
+            "think\t110005\tc7006\t70069005\tHollow Soldier",
+        ]);
+        var thinkChooser = new EnemyPort.Chooser(SyntheticCatalog(), thinks, EnemyPort.Method.Auto);
+        var hollow = thinkChooser.Choose(new("c1430", 143000, "Hollow", false, false))!;
+        Expect(thinkChooser.ThinkFor(hollow, 143030) == 70429030 && thinkChooser.ThinkFor(hollow, 110005) == 70069005
+               && thinkChooser.ThinkFor(hollow, 999999) == 70429010 && thinkChooser.BorrowedThinks == 1,
+            "a placement keeps its own model's ported think row, borrows one ported with another character, else gets the character's");
         var standIns = new EnemyPort.Chooser(SyntheticCatalog(), ported, EnemyPort.Method.StandIn);
         Expect(standIns.Choose(new("c1240", 124001, "Lothric Knight", false, false))?.Model == "c3100", "method B should ignore ported characters");
         var none = new EnemyPort.Chooser(SyntheticCatalog(), ported, EnemyPort.Method.None);

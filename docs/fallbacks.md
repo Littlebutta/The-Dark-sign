@@ -45,6 +45,13 @@ Try the next option if: You want to try a DS3 boss's partners (Pontiff's clone, 
 - **A: The boss alone (default).** A DS3 boss spawned from the F1 menu comes alone. Its phases and partners run from DS3's map scripts, which never see characters the menu spawns, so fight a boss through all its phases in its own arena (the DS3 run tab's boss warps).
 - **B: The boss with its partners.** As up to 1.0.410: the boss comes with the partners its DS3 fight uses (DKSIGN_BOSS_KITS=1), all in plain sight, because the scripts that hide them and bring them in don't run for spawned characters. (`DKSIGN_BOSS_KITS=1`)
 
+### Enemies that grow out of another in the F1 menu (`spawn-transform`, at launch, no rebuild)
+
+Try the next option if: The Pus of Man spawned from the F1 menu never turns up, turns up in the wrong place, or the game crashes when the hollow transforms.
+
+- **A: A hollow first, then the Pus of Man (default).** The Pus of Man spawns as the High Wall hollow it bursts out of; 8 seconds later, or 1.5 seconds after the hollow is first hit, the Pus of Man takes its place and the hollow is taken away. Killed before that, the hollow just dies.
+- **B: The Pus of Man at once.** As up to 1.0.422: the Pus of Man spawns as itself (DKSIGN_NO_TRANSFORM=1). (`DKSIGN_NO_TRANSFORM=1`)
+
 ### Content build speed (`build-threads`, rebuilds the content)
 
 Try the next option if: The content build fails or gives different results from one run to the next.
@@ -175,7 +182,8 @@ Try the next option if: A ported weapon looks rusty, patchy or grey over its own
 - **C: No glowing materials.** Vertex colours as in A, but every material uses the plain template material, no glow (DARKSIGN_EMISSIVE=0). (`DARKSIGN_EMISSIVE=0`)
 - **D: Show parts DS3 hides by animation.** As A, but parts DS3 hides with the weapon's idle animation are drawn (DARKSIGN_HIDDEN_PARTS=0), as in builds up to 1.0.378. With A, the bones the idle animation (a999_000000 in the weapon's parts .anibnd, which Elden Ring can't load) scales to almost nothing have their vertices pulled to the bone, as the scale does in DS3: the Black Blade, Chaos Blade, Darkdrift, Frayed Blade and Washing Pole keep a full scabbard on bone "Case" in model 0. Use D if part of a ported weapon has gone missing. (`DARKSIGN_HIDDEN_PARTS=0`)
 - **E: Keep DS3's node rotations.** As A, but ported weapon models keep DS3's node transforms (DARKSIGN_BAKE_NODES=0), as in builds up to 1.0.385. With A, each rigid mesh's vertices (with normals and tangents) and the dummy polys are moved into model space through their node, and every node is left at identity like Elden Ring's own weapons: DS3 turns Havel's Greatshield 90° and the Knight Shield about 25° with the root node, and the ported shields were held turned by exactly that. A also renames nodes whose names repeat ignoring case (Dummy_SFX / Dummy_Sfx on the Immolation Tinder and four others) and writes each mesh's culling box the way Elden Ring reads it (centre, half size, rotation; it held DS3's corners with a zero centre, so weapons could vanish when the game culled them). Use E if a weapon is held at an odd angle or its hit or effect points moved. (`DARKSIGN_BAKE_NODES=0`)
-- **F: Shields keep DS3's hold turn.** As A, but ported shields are not turned onto Elden Ring's hold point (DARKSIGN_SHIELD_HOLD=0), as up to 1.0.410. A weapon sits on a dummy poly of the player model, in its frame: DS3 holds a shield on dummy 23 on L_Weapon (up +Z), Elden Ring's shield rows on dummy 98 or 23 on L_Shield (up in the XY plane), about 90° apart about forward, so every ported shield was held turned about 90° about its face (most visible when guarding, which plays Elden Ring's own animation). With A each ported shield is turned by DS3's dummy frame times the inverse of Elden Ring's, at the player model's bind pose. Use F if a shield sits worse than before. (`DARKSIGN_SHIELD_HOLD=0`)
+- **F: Shields keep DS3's hold turn.** As A, but ported shields are not turned onto Elden Ring's hold point (DARKSIGN_SHIELD_HOLD=0), as up to 1.0.410. A weapon sits on a dummy poly of the player model, in its frame: DS3 holds a shield on dummy 23 on L_Weapon (up +Z), Elden Ring's shield rows on dummy 98 or 23 on L_Shield (up in the XY plane), about 90° apart about forward, so every ported shield was held turned about 90° about its face (most visible when guarding, which plays Elden Ring's own animation). With A each ported shield is turned by DS3's dummy frame times the inverse of Elden Ring's, at the player model's bind pose. Use F if a shield sits worse than before. F also skips the shape check in G's description. (`DARKSIGN_SHIELD_HOLD=0`)
+- **G: Shields skip the template shape check.** As A, but ported shields are only turned by the hold frames (DARKSIGN_SHIELD_SHAPE=0), as in 1.0.420. With A each ported shield (the Giant Door Shield too, which DS3 hangs on the body) is then laid on the shape of the vanilla Elden Ring shield it is built on: the principal axes of both models' vertices give each a face (signed by where the plate lies from the grip), a length and a width, and the smallest rotation that puts the ported axes on the template's is applied when it is 15° or more. A quarter turn either way about the face is decided by where the plate's centre lies from the grip along its length, and left alone (logged as ambiguous) when that is unclear. Round shields only have their face laid on the template's. The porter log has one "shield shape" line per shield. Use G if a shield that looked right in 1.0.420 sits worse now. (`DARKSIGN_SHIELD_SHAPE=0`)
 
 
 ## Weapon sounds and effects
@@ -243,6 +251,7 @@ Try the next option if: A ported weapon shows no glow, buff effect or projectile
 - **G: Projectiles without the weapon's attack power.** As A, but a projectile's hit doesn't count the weapon's own attack power or status build-up (DARKSIGN_BULLET_BASE_ATK=0), as in builds up to 1.0.279, where DS3 projectiles hit for nothing. Try this if a projectile hits far too hard. (`DARKSIGN_BULLET_BASE_ATK=0`)
 - **H: No projectiles for weapons built as their class.** As A, but a weapon whose own DS3 moves found no free motion category, and so is built as its class, loses the projectiles its own moves fire (DARKSIGN_BORROW_BULLETS=0), as in builds up to 1.0.282: the Moonlight Greatsword's charged heavy fired no wave. (`DARKSIGN_BORROW_BULLETS=0`)
 - **I: No animated effect models.** As A, but DS3 effects whose 3D model is animated (Demon's Scar's art) are left out (DARKSIGN_FX_ANIMATED_MODELS=0), as in builds up to 1.0.378. With A, the model's anibnd (same number as the model in both games: sXXXXX_skeleton plus sXXXXX_a000_0000NN animations) is converted onto an Elden Ring effect anibnd from the common effect binders: its skeleton takes DS3's bones and each animation goes through the moveset's animation converter. Try I if the game crashes or shows a broken shape when such an effect plays. (`DARKSIGN_FX_ANIMATED_MODELS=0`)
+- **J: DS3 follow-up projectile conditions.** As A, but a projectile that makes another where it lands keeps DS3's condition for it (255 hit the ground or an enemy, 254 life ran out), which Elden Ring's own projectiles never use (DARKSIGN_BULLET_LAUNCH=ds3), as in builds up to 1.0.420. With A they become Elden Ring's 0 (whenever the projectile ends), so trails of projectiles that each land where the last fell (the Immolation Tinder's fire trail) can go on. Try J if a ported trail or burst now spawns too much. (`DARKSIGN_BULLET_LAUNCH=ds3`)
 - **off: Off.** Neither (DARKSIGN_BULLETS=0 and DARKSIGN_EFFECT_VISUALS=0): only the effects in a move's own effect events show, as in builds up to 1.0.242. (`DARKSIGN_BULLETS=0`, `DARKSIGN_EFFECT_VISUALS=0`)
 
 
@@ -282,18 +291,28 @@ Try the next option if: You fall through the floor of a DS3 map, or the game han
 
 Try the next option if: Parts of a DS3 map vanish or pop in as you move, a room is empty until you step inside, or the map lags far more than an Elden Ring map.
 
-- **A: DS3's draw groups (default).** Each DS3 map area shows only the map pieces, collisions and objects DS3 showed from it, the way DS3 culls its maps (about a fifth of the map at a time; the port log's "draw groups" line says how much per map). DS3's groups are written into Elden Ring's own draw and display groups (Smithbox's reading of the part struct). Low-detail stand-ins and far views are kept, since the game now shows each only where DS3 does.
-- **B: Everything visible, as up to 1.0.410.** Every map part draws from everywhere in the map, nothing culled (port-maps --all-visible): map pieces carry no draw or display groups, collisions and enemies have every group on. Compare with A to see what culling changes, or use it if parts of a map go missing on A. (`port-maps --all-visible`)
+- **A: Everything visible (default).** Every map part draws from everywhere in the map, nothing culled: map pieces and objects carry no draw or display groups, collisions and enemies have every group on, as in every build up to 1.0.410 and again after 1.0.417. DS3's own lower detail models keep far scenery cheap instead ("Lower detail models far away").
+- **B: DS3's draw groups, as 1.0.414 to 1.0.417.** Each DS3 map area shows only the map pieces, collisions and objects DS3 showed from it (port-maps --ds3-culling), written into Elden Ring's own draw and display groups (Smithbox's reading of the part struct); collisions themselves are never culled. In 1.0.417 this hid Firelink Shrine's chairs until you stepped outside, faded the world outside the shrine, made the player vanish near the Crystal Lizard and made Friede's arena flicker, so it is only for comparison. (`port-maps --ds3-culling`)
 - **C: No draw groups.** Parts carry no draw or display groups at all (port-maps --no-groups), as the colosseums' own parts and JortPob's maps have them; nothing is culled. (`port-maps --no-groups`)
 
-How it works: a DS3 collision lists the groups shown while the player stands on it, and a part is drawn only while one of its own groups is shown. Elden Ring does the same, but the porter's SoulsFormats reads Elden Ring's group struct as three unnamed arrays; Smithbox's MSBE (vawser/Smithbox, `DisplayDataStruct`) reads the same bytes as display groups, alternate display groups and mask, draw groups, alternate draw groups and mask. Up to 1.0.410, B (then `--ds3-groups`) wrote DS3's masks into the first two arrays, so the real draw groups stayed empty and nothing was ever culled. `--ds3-groups` is still accepted and now means A. See `Porter/src/DarkSign.Porter/Maps/MapDrawGroups.cs`.
+How it works: a DS3 collision lists the groups shown while the player stands on it, and a part is drawn only while one of its own groups is shown. Elden Ring does the same, but the porter's SoulsFormats reads Elden Ring's group struct as three unnamed arrays; Smithbox's MSBE (vawser/Smithbox, `DisplayDataStruct`) reads the same bytes as display groups, alternate display groups and mask, draw groups, alternate draw groups and mask. Up to 1.0.410, the old B (`--ds3-groups`) wrote DS3's masks into the first two arrays, so the real draw groups stayed empty and nothing was ever culled. 1.0.414 to 1.0.417 culled by default (now B) and it went wrong in game, so A is the default again. `--ds3-groups` and `--all-visible` are still accepted and mean A. See `Porter/src/DarkSign.Porter/Maps/MapDrawGroups.cs`.
 
 ### Draw distance settings of the DS3 map pieces (`map-draw`, rebuilds the content)
 
 Try the next option if: DS3 map geometry is invisible or pops in only when close.
 
-- **A: The port's own row (default).** Every map piece names a PartsDrawParam row the port adds (unlimited draw distance, no LOD switching, as JortPob's maps have).
+- **A: The port's own rows (default).** Every map piece names a PartsDrawParam row the port adds (unlimited draw distance, as JortPob's maps have); pieces whose models carry DS3's lower detail models name a second row that switches to them by distance ("Lower detail models far away").
 - **B: A vanilla row.** Map pieces name Stormveil Castle's most common PartsDrawParam row, 2046 (port-maps --vanilla-draw-param), and nothing is added to the regulation. (`port-maps --vanilla-draw-param`)
+
+### Lower detail models far away (`map-lod`, rebuilds the content)
+
+Try the next option if: A DS3 map lags or stutters when you look across it, or distant buildings and rocks look blocky, flicker or vanish when you move away from them.
+
+- **A: DS3's lower detail models by distance (default).** DS3 ships a simpler copy of most map models inside the model itself (5,078 lower detail lists in Undead Settlement's). The game switches a piece to the first beyond 30 m and the second beyond 60 m, as vanilla Elden Ring does for its own map pieces that have them; pieces whose models have none are always drawn in full. The port log's "lower detail" lines say how many triangles each level keeps.
+- **B: Full detail everywhere, as up to 1.0.417.** Every piece is drawn at full detail at any distance (port-maps --no-lod): every triangle of the whole map in view at once. (`port-maps --no-lod`)
+- **C: Twice as far.** The switch happens beyond 60 m and 120 m (port-maps --far-lod): sharper distant scenery for more to draw. (`port-maps --far-lod`)
+
+How it works: every mesh of a DS3 (and Elden Ring) map model can hold three triangle lists, full detail and two lower detail levels, and the game draws the one its PartsDrawParam row picks by distance. Up to 1.0.417 the port's row never switched, so map 3 drew every triangle of the town at full detail whenever the player faced it (a steady 3 fps on the frame-time recorder). A model only switches when every one of its meshes has every level; a mesh that lacks one gets a copy of its next more detailed list, since a mesh with no list for a level is believed to draw nothing there. See `Porter/src/DarkSign.Porter/Maps/MapLod.cs`.
 
 ### Materials of the DS3 map pieces (`map-materials`, rebuilds the content)
 
@@ -306,7 +325,7 @@ Try the next option if: DS3 map geometry is invisible, black, far too dark or sh
 
 Try the next option if: A DS3 map hitches or stutters as you move through it, or its textures look blurrier up close than they did in 1.0.299.
 
-- **A: Full textures near you, half size beyond (default).** DS3's textures in full for map pieces within 128 m, and a half size low detail copy (a quarter of the memory) for everything further away, the way JortPob and Elden Ring's own maps keep a low detail copy.
+- **A: Full textures near you, half size beyond (default).** DS3's textures in full for map pieces within 128 m (further for large pieces: a floor or building 100 m across loads them from 128 m beyond its middle, the largest from 512 m beyond), and a half size low detail copy (a quarter of the memory) for everything further away, the way JortPob and Elden Ring's own maps keep a low detail copy.
 - **B: Half size textures.** Every DS3 map texture at half its width and height, and quarter size beyond 128 m (port-maps --half-textures): for a graphics card whose memory DS3's textures still don't fit in. (`port-maps --half-textures`)
 - **C: Full size twice, as up to 1.0.299.** The low detail copy is the full texture again and full textures load within 256 m (port-maps --full-low-textures): every texture of a map sits in graphics memory twice at full size. (`port-maps --full-low-textures`)
 
@@ -342,7 +361,7 @@ Try the next option if: Enemies stand in mid-air or on surfaces they shouldn't s
 
 Try the next option if: A far part of a DS3 map is missing (a castle wall, a hall, a tower or mountains you could see from a distance), or blocky slabs, steps or low-resolution polygons floating over the map are back.
 
-- **A: Left out where detailed pieces stand (default).** DS3 shows a far area as one blocky piece with a stretched "low" texture, and only from where its detailed pieces are not drawn. With DS3's culling on ("Which map parts are drawn" A) the game does the same and every stand-in is kept. Without it the port draws everything at once, so such a stand-in is left out when detailed pieces DS3 never shows together with it stand inside it. One with nothing detailed under it (Lothric Castle seen from the High Wall) stays. Far views go the same way: low-detail copies of a whole area with ordinary textures (map 3's mountains, roofs and rock walls seen from one lookout), left out when they cover at least ten times their own detail that DS3 never draws with them. The port log lists every stand-in and far view and why it was kept or left out.
+- **A: Left out where detailed pieces stand (default).** DS3 shows a far area as one blocky piece with a stretched "low" texture, and only from where its detailed pieces are not drawn. With DS3's culling on ("Which map parts are drawn" B) the game does the same and every stand-in is kept. Without it (the default) the port draws everything at once, so such a stand-in is left out when detailed pieces DS3 never shows together with it stand inside it. One with nothing detailed under it (Lothric Castle seen from the High Wall) stays. Far views go the same way: low-detail copies of a whole area with ordinary textures (map 3's mountains, roofs and rock walls seen from one lookout), left out when they cover at least ten times their own detail that DS3 never draws with them. The port log lists every stand-in and far view and why it was kept or left out.
 - **B: Kept.** Every stand-in and far view is drawn (port-maps --stand-ins), as in every build up to 1.0.366: blocky slabs, steps and low-resolution polygons overlap the detailed scenery, but nothing far away is missing. (`port-maps --stand-ins`)
 
 ### DS3's ground overlays and two-layer ground (`map-overlays`, rebuilds the content)
@@ -384,6 +403,13 @@ Try the next option if: A DS3 map's rooms, tunnels or courtyards are lit in the 
 - **C: Baked light mirrored east-west.** The same baked light with the volume mirrored along x (port-maps --baked-light-flip x). Try it if dark patches sit across the map from where the rooms are. (`port-maps --baked-light-flip x`)
 - **D: Baked light mirrored north-south.** The same baked light with the volume mirrored along z (port-maps --baked-light-flip z). Try it if C didn't line the dark patches up with the rooms. (`port-maps --baked-light-flip z`)
 
+### Where DS3's lamps and baked light sit in the DS3 maps (`map-light-place`, rebuilds the content)
+
+Try the next option if: Since this option came in, a DS3 map's lamps glow where nothing is, its rooms are lit from the wrong side, or its shade falls in the wrong places when it didn't before.
+
+- **A: Moved onto the map (default).** DS3 keeps a map's lamps and light probes in the map's own space and moves them into place with the map offset the map file holds (map 1: 28 degrees and 200 m, map 3: 156 degrees and 600 m; map 2 has none). The port does the same, so Firelink's lamps light the shrine and the baked shade falls where DS3's does. Only the map's own light file is ported; the files for its other states (the Untended Graves) no longer stack on top.
+- **B: Left in the map's own space.** Lamps and light probes stay where earlier builds put them (port-maps --no-light-offset): on maps 1 and 3 that is far from where they belong. (`port-maps --no-light-offset`)
+
 ### How enemies find their way in the DS3 maps (`map-navmesh`, rebuilds the content)
 
 Try the next option if: A DS3 map crashes or hangs while loading since launcher 1.0.300, enemies stand still or refuse to cross ground they should walk on, or they walk through closed doors.
@@ -407,6 +433,13 @@ Try the next option if: A DS3 map crashes, hangs while loading or hitches since 
 - **A: DS3's objects as Elden Ring assets (default).** Every DS3 object (statues, candles, crates, doors, ladders, the bonfire's sword) is converted to an Elden Ring asset and stands where DS3 has it, with its DS3 entity ID so the converted events find it. Objects that don't break also get DS3's collision; doors, lifts and levers move (see "DS3 doors, lifts and levers"); crates and barrels can be walked through until breaking is ported. Report: Work\reports\object-port.tsv.
 - **B: Objects without collision.** The same objects, but none of them is solid (port-maps --objects nocollision). Tells whether an object's collision is what blocks the way or breaks the map. (`port-maps --objects nocollision`)
 - **off: Off (no objects).** The DS3 maps have no objects (port-maps --objects none), as every build up to 1.0.299 was. (`port-maps --objects none`)
+
+### DS3 corpses in their poses (`map-object-poses`, rebuilds the content)
+
+Try the next option if: A DS3 map crashes or hangs while loading since corpses were posed, or a corpse or skeleton lying in a DS3 map is a tangle of stretched polygons.
+
+- **A: Corpses in DS3's poses (default).** DS3's corpses and skeletons (and any other object a DS3 map file poses with an animation) are drawn in the pose DS3 gives each one: slumped, lying, hanging. The pose is baked into a copy of the model per pose. Report: the "pose" rows of Work\reports\object-port.tsv.
+- **B: Unposed.** Corpses stand in the model's bind pose, arms out (DARKSIGN_OBJECT_POSES=0), as every build up to 1.0.42x drew them. (`DARKSIGN_OBJECT_POSES=0`)
 
 ### DS3 doors, lifts and levers (`map-doors`, rebuilds the content)
 
@@ -478,6 +511,8 @@ Try the next option if: A ported DS3 enemy is invisible, black, shiny or wears t
 - **G: DS3's vertex colours.** As A, but the model keeps DS3's vertex colours (white where DS3 has none) and a two-layer material shows its first layer (DARKSIGN_ENEMY_COLOURS=ds3), as in builds up to 1.0.299, where the Soul of Cinder and Pontiff Sulyvahn drew without textures. Use when ported enemies that had textures lose them, or turn red, with A. (`DARKSIGN_ENEMY_COLOURS=ds3`)
 - **H: DS3's material numbers.** As A, but every ported model (enemies, weapons, armour, objects, effect models and map pieces) keeps DS3's material numbers, 0 in every material, instead of Elden Ring's numbering (DARKSIGN_MATERIAL_NUMBERS=ds3), as in builds up to 1.0.383, where ported enemies showed their textures and cut-outs only while frostbitten. Use when ported models turn invisible, wear another part's textures or crash the game with A. (`DARKSIGN_MATERIAL_NUMBERS=ds3`)
 - **I: The template's body size.** As A, but a ported enemy keeps the Elden Ring template's body capsule (DARKSIGN_ENEMY_BODY_SIZE=template) instead of DS3's size, as up to 1.0.410. Use when ported enemies get stuck in doorways, sink into the floor or float above it with A. (`DARKSIGN_ENEMY_BODY_SIZE=template`)
+- **J: The template's weaknesses.** As A, but a ported enemy takes damage of each kind as the Elden Ring template does (DARKSIGN_ENEMY_DAMAGE_RATES=template), as up to 1.0.422, when the Pus of Man had the Giant Beast Skeleton's weakness to strike and resistance to lightning and no weakness to fire. Use when ported enemies take far too much or too little damage with A. (`DARKSIGN_ENEMY_DAMAGE_RATES=template`)
+- **K: DS3 fur as one solid layer.** As A, but DS3 fur (Ariandel's wolf) shows the larger of its two layers, uncut (DARKSIGN_ENEMY_FUR=0), as up to 1.0.422, when the wolf's fur drew as white shards. Use when a furry ported enemy turns invisible or bald with A. (`DARKSIGN_ENEMY_FUR=0`)
 
 ### What ported DS3 enemies drop (`enemy-drops`, rebuilds the content)
 
@@ -506,6 +541,7 @@ Try the next option if: Ported DS3 enemies stand still, never attack, repeat one
 - **E: Added attacks only.** As A, but only attacks are added: DS3's waiting poses, getting-up moves and map-script moves the template has no slot for are not (DARKSIGN_ENEMY_EXTRA_MOVES=attacks), as up to 1.0.383. Use when a ported enemy freezes, stands in a T-pose or the game crashes as a map starts with A. (`DARKSIGN_ENEMY_EXTRA_MOVES=attacks`)
 - **F: DS3's think row numbers in the AI.** As A, but DS3's AI scripts keep comparing the think row they run under with DS3's row numbers (DARKSIGN_ENEMY_THINK_IDS=ds3), as up to 1.0.383; those checks never match a ported row. Use when a ported enemy behaves worse than with 1.0.383. (`DARKSIGN_ENEMY_THINK_IDS=ds3`)
 - **G: DS3's effect numbers in the AI.** As A, but DS3's AI scripts keep checking for their own effects by DS3's numbers (DARKSIGN_ENEMY_AI_SPEFFECTS=ds3), as up to 1.0.410, when those checks never matched a ported enemy's effects and Ariandel's wolf only circled. Use when a ported enemy freezes, attacks without pause or the game crashes when it notices you with A. (`DARKSIGN_ENEMY_AI_SPEFFECTS=ds3`)
+- **H: Each character's own AI rows only.** As A, but a DS3 enemy that DS3 places with another family's AI (the Cemetery of Ash hollows run the Hollow Soldiers' rows) gets its own character's first AI row instead of that family's (DARKSIGN_ENEMY_SHARED_THINK=0), as up to 1.0.417, when those hollows circled the player without attacking. Use when a ported enemy freezes or the game crashes when it notices you with A. (`DARKSIGN_ENEMY_SHARED_THINK=0`)
 
 ### Ported DS3 enemies' glows (`enemy-glow`, rebuilds the content)
 
@@ -521,8 +557,9 @@ Try the next option if: A ported DS3 enemy's glow is the wrong colour or missing
 
 Try the next option if: In a DS3 map, bosses come back, opened doors and shortcuts close again or picked-up items return after a reload, or the pre-flight check says a map flag block is MISSING.
 
-- **A: The slot map's own flags (default).** A DS3 map's flags move with it into its Elden Ring slot's map flags (e.g. 4500xxxx for m45_00), the way Elden Ring's legacy dungeons number theirs.
+- **A: The slot map's own flags where the game keeps them (default).** A DS3 map's flags move with it into its Elden Ring slot's map flags (e.g. 4500xxxx for m45_00), the way Elden Ring's legacy dungeons number theirs, wherever the game keeps that block; flags of blocks it doesn't keep (all of the Painted World's m19_70, each colosseum's 7th block) get numbers in JortPob's saved blocks, as with B.
 - **B: JortPob's saved blocks.** The maps' own flags get new numbers in the saved ranges of the bottom-edge sea tiles (1030294000 and up), the blocks JortPob's Morrowind port keeps all its flags in (DARKSIGN_MAP_FLAGS=common). Saves made with A lose their DS3 map progress. (`DARKSIGN_MAP_FLAGS=common`)
+- **C: Every flag in the slot.** As up to 1.0.422: every DS3 map flag moves into its slot's map flags, including blocks the game doesn't keep (DARKSIGN_MAP_FLAGS=slot), where the Painted World's flags were never set and Friede's fight and cutscene pot broke. (`DARKSIGN_MAP_FLAGS=slot`)
 
 
 ## Seamless Co-op

@@ -18,6 +18,7 @@ public static partial class MapPortChecks
         yield return ("objects: a DS3 object model becomes an asset binder with its vertices in model space and its textures", ObjectModel);
         yield return ("objects: every DS3 object part becomes an asset part with its entity ID, and can be taken out again", ObjectParts);
         yield return ("objects: asset rows are copies of the template row with a draw distance by size", ObjectRows);
+        yield return ("objects: a corpse's DS3 pose (its part's first animation) is baked into a posed copy of its skinned model", ObjectPoseBake);
         yield return ("objects: a param def that differs from the game's only in its data version number still applies (1.0.326 lost every object to it)", DefVersionFit);
     }
 
@@ -210,6 +211,66 @@ public static partial class MapPortChecks
         Expect(MapModelPort.BakeNodes(skinned) == 0 && skinned.Meshes[0].Vertices.Select(v => v.Position).SequenceEqual(rest) && !skinned.Meshes[0].UseBoneWeights, "skinned meshes keep their vertices");
     }
 
+    private static void ObjectPoseBake()
+    {
+        // Two bones: a root at the origin and an arm 1 m up. A skinned vertex fully on the arm (at its tip, 1 m
+        // above the arm's joint), one half on each bone, one unskinned vertex hanging off the arm.
+        FLVER.Node Node(string name, int parent, Vector3 at) => new() { Name = name, ParentIndex = (short)parent, Translation = at, Scale = Vector3.One, FirstChildIndex = -1, NextSiblingIndex = -1, PreviousSiblingIndex = -1 };
+        var flver = new FLVER2();
+        flver.Nodes.Add(Node("root", -1, Vector3.Zero));
+        flver.Nodes.Add(Node("arm", 0, new Vector3(0, 1, 0)));
+        FLVER.Vertex Vertex(Vector3 at, int a, float wa, int b, float wb)
+        {
+            var v = new FLVER.Vertex { Bitangent = new Vector4(1, 0, 0, 1) };
+            v.Positions.Add(at);
+            v.Normals.Add(Vector3.UnitY);
+            v.BoneIndices[0] = a;
+            v.BoneIndices[1] = b;
+            v.BoneWeights[0] = wa;
+            v.BoneWeights[1] = wb;
+            v.NormalWs.Add(1);
+            return v;
+        }
+        var skinnedMesh = new FLVER2.Mesh { UseBoneWeights = true, BoneIndices = [0, 1] };
+        skinnedMesh.Vertices.Add(Vertex(new Vector3(0, 2, 0), 1, 1, 0, 0));
+        skinnedMesh.Vertices.Add(Vertex(new Vector3(0, 2, 0), 0, 0.5f, 1, 0.5f));
+        var rigidMesh = new FLVER2.Mesh { UseBoneWeights = false, BoneIndices = [0, 1] };
+        rigidMesh.Vertices.Add(Vertex(new Vector3(0, 1, 0), 0, 0, 0, 0));
+        flver.Meshes.Add(skinnedMesh);
+        flver.Meshes.Add(rigidMesh);
+        Expect(ObjectPoses.Skinned(flver), "the corpse model is skinned");
+
+        // The pose turns the arm 90 degrees about Z: its tip (0,2,0) goes to (-1,1,0).
+        var pose = new Dictionary<string, ObjectPoses.Local> { ["arm"] = new(new Vector3(0, 1, 0), Quaternion.CreateFromAxisAngle(Vector3.UnitZ, MathF.PI / 2), Vector3.One) };
+        int moved = ObjectPoses.Apply(flver, pose);
+        static bool Near(Vector3 a, Vector3 b) => Vector3.Distance(a, b) < 1e-4f;
+        Expect(Near(skinnedMesh.Vertices[0].Position, new Vector3(-1, 1, 0)), $"the vertex on the arm follows it: {skinnedMesh.Vertices[0].Position}");
+        Expect(Near(skinnedMesh.Vertices[1].Position, new Vector3(-0.5f, 1.5f, 0)), $"a half-weighted vertex lands half way: {skinnedMesh.Vertices[1].Position}");
+        Expect(Near(rigidMesh.Vertices[0].Position, new Vector3(-1, 1, 0)), $"an unskinned vertex follows the node it hangs off: {rigidMesh.Vertices[0].Position}");
+        Expect(Near(skinnedMesh.Vertices[0].Normal, new Vector3(-1, 0, 0)), $"normals turn with the bone: {skinnedMesh.Vertices[0].Normal}");
+        Expect(moved == 3 && flver.Meshes.All(m => !m.UseBoneWeights && m.BoneIndices.Count == 0 && m.Vertices.All(v => v.NormalWs[0] == 0)),
+            "every mesh ends rigid on the root");
+        // The object conversion then leaves the posed vertices where they are.
+        var before = skinnedMesh.Vertices.Select(v => v.Position).ToList();
+        MapModelPort.BakeNodes(flver);
+        Expect(skinnedMesh.Vertices.Select(v => v.Position).SequenceEqual(before), "baking the nodes afterwards moves nothing");
+
+        // Parts: a posed part gets its posed copy once that converted, the plain model otherwise.
+        var plain = new ObjectPort.Asset { Ds3Model = "o000250", Index = 0, Name = "AEG920_000", Converted = true };
+        var posed = new ObjectPort.Asset { Ds3Model = "o000250", Pose = 10, Index = 1, Name = "AEG920_001" };
+        var table = new Dictionary<string, ObjectPort.Asset>(StringComparer.OrdinalIgnoreCase) { ["o000250"] = plain, [ObjectPoses.Key("o000250", 10)] = posed };
+        var part = new MSB3.Part.Object { Name = "o000250_1000", ModelName = "o000250" };
+        part.AnimIDs[0] = 10;
+        Expect(ObjectPort.AssetFor(part, k => table.GetValueOrDefault(k)) == plain, "a posed copy that didn't convert falls back to the plain model");
+        posed.Converted = true;
+        Expect(ObjectPort.AssetFor(part, k => table.GetValueOrDefault(k)) == posed, "a posed part is placed as its posed copy");
+        var still = new MSB3.Part.Object { Name = "o000250_1001", ModelName = "o000250" };
+        still.AnimIDs[0] = -1;
+        Expect(ObjectPort.AssetFor(still, k => table.GetValueOrDefault(k)) == plain, "a part without a pose is the plain model");
+        var planned = ObjectPort.PlanPoses([part, still, part]);
+        Expect(planned.Count == 1 && planned[0] == ("o000250", 10), $"one posed copy per model and pose: {string.Join(", ", planned)}");
+    }
+
     private static TPF ObjectTpf()
     {
         var tpf = new TPF { Platform = TPF.TPFPlatform.PC, Encoding = 1, Flag2 = 3 };
@@ -244,8 +305,8 @@ public static partial class MapPortChecks
         Expect(part.UnkT54PartName == part.Name && part.UnkPartNames[4] == part.Name && part.UnkPartNames[5] == part.Name, "names itself where JortPob's assets do");
         Expect(part.AssetSfxParamRelativeID == -1 && part.UnkE0F == 1 && part.TileLoad.MapID.All(b => b == 255) && part.AssetUnk2.Unk04 == 100
                && part.AssetUnk3.DisableWhenMapLoadedMapID.All(b => b == -1), "JortPob's generic asset settings");
-        Expect(MapDrawGroups.Draw(part.Unk1).ToArray().SequenceEqual(ds3.Parts.Objects.First(o => o.ModelName == "o302590").DrawGroups.Take(8)),
-            "DS3's draw groups (culling), like the map pieces");
+        Expect(part.Unk1.DisplayGroups.Concat(part.Unk1.DrawGroups).Concat(part.Unk1.CollisionMask).All(g => g == 0),
+            "no draw groups by default (drawn from everywhere), like the map pieces");
         Expect(msb.Parts.Assets.Count == 2 && msb.Parts.Assets[1].Name == "AEG920_007_9001", "the second instance gets the next number");
         var model = msb.Models.Assets.Single();
         Expect(model.Name == "AEG920_007" && model.SibPath == @"N:\GR\data\Asset\Environment\geometry\AEG920\AEG920_007\sib\AEG920_007.sib", $"one model entry ({model.SibPath})");

@@ -106,8 +106,30 @@ public static class EnemyPort
         /// placement's own NpcThinkParam row (DS3 gives one enemy different goals by placement: a Jailer that patrols,
         /// one that waits); otherwise the character's.
         /// </summary>
-        public int ThinkFor(ErEnemy who, int ds3Think) =>
-            who.Source == "ported DS3 character" && _ported?.Think(ds3Think, who.Model) is { } think ? think : who.ThinkParam;
+        public int ThinkFor(ErEnemy who, int ds3Think)
+        {
+            if (who.Source != "ported DS3 character" || _ported is null)
+                return who.ThinkParam;
+            if (_ported.Think(ds3Think, who.Model) is { } own)
+                return own;
+            // DS3 places one model with another family's AI rows (the Cemetery of Ash's hollows, c1430, mostly run the
+            // Hollow Soldiers' 110005 / 110010 / 110060). Rows are ported per character (row / 100 = character), so
+            // those have no row on this model; up to 1.0.417 they took the character's first row (143010, a goal
+            // DS3 never places there) and circled the player without attacking. An NpcThinkParam row names goals
+            // and senses only, so the row ported with the other character serves this one as DS3 does.
+            if (SharedThinks && _ported.ThinkAny(ds3Think) is { } shared)
+            {
+                BorrowedThinks++;
+                return shared;
+            }
+            return who.ThinkParam;
+        }
+
+        /// <summary>Placements given a DS3 think row ported with another character (see <see cref="ThinkFor"/>).</summary>
+        public int BorrowedThinks { get; private set; }
+
+        /// <summary>Fallback enemy-ai H: DARKSIGN_ENEMY_SHARED_THINK=0 gives such placements their character's first row, as up to 1.0.417.</summary>
+        public static bool SharedThinks => Environment.GetEnvironmentVariable("DARKSIGN_ENEMY_SHARED_THINK") != "0";
     }
 
     /// <summary>
@@ -180,6 +202,10 @@ public static class EnemyPort
         /// <summary>The ported NpcThinkParam row for a DS3 placement's own row on this model, if its AI was ported.</summary>
         public int? Think(int ds3Think, string model) => _think.TryGetValue((ds3Think, model.ToLowerInvariant()), out var t) ? t : null;
 
+        /// <summary>The ported NpcThinkParam row for a DS3 row on whichever model it was ported with (the first listed), if any.</summary>
+        public int? ThinkAny(int ds3Think) => _thinkAny.TryGetValue(ds3Think, out var t) ? t : null;
+        private readonly Dictionary<int, int> _thinkAny = new();
+
         public int Count => _byNpc.Count + _byModel.Count;
 
         /// <summary>A ported DS3 model's name (c6020 -> Sister Friede), or null.</summary>
@@ -194,6 +220,7 @@ public static class EnemyPort
                 if (!line.StartsWith('#') && p.Length >= 4 && p[0] == "think" && int.TryParse(p[1], out var ds3Think) && int.TryParse(p[3], out var erThink))
                 {
                     map._think[(ds3Think, p[2].ToLowerInvariant())] = erThink;
+                    map._thinkAny.TryAdd(ds3Think, erThink);
                     continue;
                 }
                 if (line.StartsWith('#') || p.Length < 5 || !int.TryParse(p[3], out var npc) || !int.TryParse(p[4], out var think))
@@ -238,7 +265,7 @@ public static class EnemyPort
         Dictionary<string, string>? partNames = null, People? people = null, IReadOnlyDictionary<string, Seat>? seats = null,
         bool placePeople = true, PeopleArmour? armour = null, bool erStandIns = true)
     {
-        int dressed = 0;
+        int dressed = 0, borrowedBefore = chooser.BorrowedThinks;
         int placed = 0, ported = 0, standIns = 0, npcs = 0, skipped = 0, peoplePlaced = 0, seated = 0, sameSeat = 0;
         var takenSeats = new List<Vector3>();
         var peopleUse = new Dictionary<string, int>();
@@ -390,6 +417,8 @@ public static class EnemyPort
             notes.Add("people: " + string.Join("; ", peopleUse.OrderBy(s => s.Key, StringComparer.Ordinal).Take(30).Select(s => $"{s.Key} x{s.Value}")));
         if (dressed > 0)
             notes.Add($"people: {dressed} DS3 people wear their DS3 armour (CharaInit {PeopleArmour.CharaInitBase}+, on an Elden Ring person's face and AI)");
+        if (chooser.BorrowedThinks > borrowedBefore)
+            notes.Add($"AI: {chooser.BorrowedThinks - borrowedBefore} placements run a DS3 think row ported with another character (DS3 places them with that family's AI)");
         return new Result(placed, ported, standIns, npcs, skipped, notes, peoplePlaced);
     }
 

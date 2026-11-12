@@ -59,6 +59,12 @@ int main(void)
     CHECK(sp.body == DKS_BODY_DS3 && dks_spawn_has_own_model(&sp));
     CHECK(dks_parse_spawn_line("DS3\tc3061\t70310000\t43000000\t0\tBoreal Outrider Knight\ter", &sp) && !dks_spawn_has_own_model(&sp));
     CHECK(dks_parse_spawn_line("ER\tc7000\t70001065\t70001000\t0\tFallen Hawks Soldier\ter", &sp) && dks_spawn_has_own_model(&sp));
+    /* The from column: the Pus of Man is spawned as its hollow first (Porter SpawnList.Transforms). */
+    CHECK(dks_parse_spawn_line("DS3\tc7005\t70050000\t70059000\t0\tPus of Man\tds3\tfrom c7006:70060011:70069054\r\n", &sp));
+    CHECK(sp.body == DKS_BODY_DS3 && sp.from_chr == 7006 && sp.from_npc == 70060011 && sp.from_think == 70069054);
+    CHECK(sp.chr == 7005 && sp.npc_param == 70050000 && strcmp(sp.name, "Pus of Man") == 0);
+    CHECK(dks_parse_spawn_line("DS3\tc7031\t70310000\t43000000\t0\tBoreal Outrider Knight\tds3\n", &sp) && sp.from_chr == 0);
+    CHECK(dks_parse_spawn_line("DS3\tc7005\t70050000\t70059000\t0\tPus of Man\tds3\tfrom nonsense", &sp) && sp.from_chr == 0);
     CHECK(!dks_parse_spawn_line("# game\tmodel\tNpcParam\tThinkParam\tboss\tname", &sp));
     CHECK(!dks_parse_spawn_line("BB\tc2275\t22750020\t22750000\t0\tX", &sp));
     CHECK(!dks_parse_spawn_line("ER\tx2275\t22750020\t22750000\t0\tX", &sp));

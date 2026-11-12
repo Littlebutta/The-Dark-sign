@@ -16,6 +16,7 @@ public static partial class MapPortChecks
         yield return ("visuals: DS3 materials sort into kinds; effect, decal, water and shadow meshes are left out", MaterialKinds);
         yield return ("visuals: UVs that a short can't hold are rescaled or moved by whole tiles", UvRange);
         yield return ("visuals: pieces name a PartsDrawParam row, carry no masks", DrawSettings);
+        yield return ("visuals: pieces whose models carry DS3's lower detail lists switch to them at vanilla's distances", LowerDetail);
         yield return ("visuals: test maps hold the host's own model, its own material, or the port's materials with vanilla textures", PieceTests);
         yield return ("visuals: fallbacks map-groups C and map-materials B", VisualFallbacks);
         yield return ("visuals: DS3's reflection proxies, shadow casters and off-layer pieces are left out and reported", HelperPieces);
@@ -453,7 +454,7 @@ public static partial class MapPortChecks
         Expect(MapValidate.CheckPieceDraw(host.Parts.MapPieces[0]) is not null, "the validator rejects a piece that names no row");
 
         // DS3's masks, when asked for, come with Condition2 as vanilla parts with masks have it.
-        var masked = MsbPort.Convert(SyntheticDs3(), host, Ds3Id, ErId, new MsbPort.Options());
+        var masked = MsbPort.Convert(SyntheticDs3(), host, Ds3Id, ErId, new MsbPort.Options { Ds3Culling = true });
         foreach (var p in masked.Msb.Parts.MapPieces)
             Expect(MapValidate.CheckPieceDraw(p) is null, "masks never come without Condition2");
 
@@ -476,6 +477,63 @@ public static partial class MapPortChecks
                && (float)row.Cells.Single(c => c.Def.InternalName == "lv01_BorderDist").Value > 9000f, "unlimited draw distance, no LOD switch");
         Expect((sbyte)row.Cells.Single(c => c.Def.InternalName == "drawOnlyReflectCam").Value == 0, "never a reflection proxy");
         Expect((float)param[MapDrawParams.TemplateRow]!.Cells.Single(c => c.Def.InternalName == "drawDist").Value == 120f, "the template row is untouched");
+        Expect(param[MapDrawParams.LodRow] is null, "no LOD row unless asked for");
+    }
+
+    private static void LowerDetail()
+    {
+        // The LOD row: the first row's settings, switching at vanilla's 30 / 60 m (Stormveil's rows 2006/2304/2404).
+        var def = new PARAMDEF { ParamType = "PARTS_DRAW_PARAM_ST", DataVersion = 1 };
+        foreach (var name in new[] { "lv01_BorderDist", "lv01_PlayDist", "lv12_BorderDist", "lv12_PlayDist", "lv23_BorderDist", "drawDist" })
+            def.Fields.Add(new PARAMDEF.Field(def, PARAMDEF.DefType.f32, name));
+        var param = new PARAM { ParamType = def.ParamType, Rows = [] };
+        param.ApplyParamdef(def);
+        param.Rows.Add(new PARAM.Row(MapDrawParams.TemplateRow, "", def));
+        MapDrawParams.AddRow(param, lod: MapDrawParams.Lod.Vanilla);
+        float Cell(int id, string name) => (float)param[id]!.Cells.Single(c => c.Def.InternalName == name).Value;
+        Expect(Cell(MapDrawParams.FirstRow, "lv01_BorderDist") > 9000f, "the first row still never switches");
+        Expect(Cell(MapDrawParams.LodRow, "lv01_BorderDist") == 30f && Cell(MapDrawParams.LodRow, "lv12_BorderDist") == 60f
+               && Cell(MapDrawParams.LodRow, "lv01_PlayDist") == 1f && Cell(MapDrawParams.LodRow, "lv12_PlayDist") == 2f
+               && Cell(MapDrawParams.LodRow, "lv23_BorderDist") > 9000f, "LOD row switches at 30 and 60 m, never to a third level");
+        Expect(Cell(MapDrawParams.LodRow, "drawDist") > 9000f, "LOD row pieces still draw at any distance");
+        Expect(MapDrawParams.FirstRow + MapDrawParams.LodOffset >= ObjectPort.FirstDrawRow + ObjectPort.DrawBySize.Length
+               && MapDrawParams.FirstRow + MapDrawParams.LodOffset + 9 <= MapDrawParams.LastRow, "LOD twins don't collide with the objects' rows");
+        // Every map piece row of ours gets a twin (rows by size, PR #187), replacing an earlier run's.
+        param.Rows.Add(new PARAM.Row(MapDrawParams.FirstRow + 3, "by size", def));
+        param.Rows.Add(new PARAM.Row(MapDrawParams.FirstRow + MapDrawParams.LodOffset + 9, "stale twin", def));
+        MapDrawParams.AddLodTwins(param, MapDrawParams.Lod.Far2);
+        Expect(Cell(MapDrawParams.FirstRow + 3 + MapDrawParams.LodOffset, "lv01_BorderDist") == 60f && param[MapDrawParams.FirstRow + 9 + MapDrawParams.LodOffset] is null
+               && param.Rows.Count(r => r.ID == MapDrawParams.LodRow) == 1, "a twin per piece row, stale twins gone");
+        Expect(MapPorter.Options.Parse([]).Lod == MapDrawParams.Lod.Vanilla && MapPorter.Options.Parse(["--no-lod"]).Lod is null
+               && MapPorter.Options.Parse(["--far-lod"]).Lod == MapDrawParams.Lod.Far2, "map-lod A default, B --no-lod, C --far-lod");
+
+        // Completing a model: a mesh that lacks a level gets a copy of its next more detailed list.
+        static FLVER2.Mesh Mesh(params (FLVER2.FaceSet.FSFlags Flags, int[] Indices)[] sets)
+        {
+            var mesh = new FLVER2.Mesh();
+            for (int i = 0; i < 6; i++)
+                mesh.Vertices.Add(new FLVER.Vertex());
+            foreach (var (flags, indices) in sets)
+                mesh.FaceSets.Add(new FLVER2.FaceSet(flags, false, true, 0, [.. indices]));
+            return mesh;
+        }
+        const FLVER2.FaceSet.FSFlags None = FLVER2.FaceSet.FSFlags.None, L1 = FLVER2.FaceSet.FSFlags.LodLevel1,
+            L2 = FLVER2.FaceSet.FSFlags.LodLevel2, Blur = FLVER2.FaceSet.FSFlags.MotionBlur;
+        var flver = new FLVER2();
+        flver.Meshes.Add(Mesh((None, [0, 1, 2, 3, 4, 5]), (L1, [0, 1, 2]), (L2, [0, 1, 2]), (Blur, [0, 1, 2, 3, 4, 5]), (Blur | L1, [0, 1, 2]), (Blur | L2, [0, 1, 2])));
+        flver.Meshes.Add(Mesh((None, [0, 1, 2, 3, 4, 5]), (L1, [3, 4, 5])));
+        flver.Meshes.Add(Mesh((None, [0, 1, 2])));
+        var r = MapLod.Complete(flver);
+        Expect(r.HasLod && r.Copies == 3, $"three lists copied ({r.Copies})");
+        Expect(flver.Meshes[0].FaceSets.Count == 6, "a complete mesh is left as it is");
+        Expect(flver.Meshes[1].FaceSets.Single(f => f.Flags == L2).Indices.SequenceEqual([3, 4, 5]), "a missing level 2 copies level 1");
+        Expect(flver.Meshes[2].FaceSets.Single(f => f.Flags == L1).Indices.SequenceEqual([0, 1, 2])
+               && flver.Meshes[2].FaceSets.Any(f => f.Flags == L2) && !flver.Meshes[2].FaceSets.Any(f => (f.Flags & Blur) != 0),
+            "a mesh with only full detail gets both levels, and no motion blur lists it never had");
+        Expect(r.FullTriangles == 5 && r.Lod1Triangles == 3 && r.Lod2Triangles == 3, $"triangle counts {r.FullTriangles}/{r.Lod1Triangles}/{r.Lod2Triangles}");
+        var plain = new FLVER2();
+        plain.Meshes.Add(Mesh((None, [0, 1, 2])));
+        Expect(!MapLod.Complete(plain).HasLod && plain.Meshes[0].FaceSets.Count == 1, "a model without lower detail lists is left alone (it never switches)");
     }
 
     private static void PieceTests()

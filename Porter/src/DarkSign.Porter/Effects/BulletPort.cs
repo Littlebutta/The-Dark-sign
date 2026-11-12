@@ -90,7 +90,7 @@ public sealed class BulletPort
     private readonly Dictionary<int, int> _ported = [];
     private readonly List<(PARAM.Row Row, string Field, int Ds3Fxr)> _pending = [];
     private int _next = FirstNewId;
-    private int _bound, _unbound;
+    private int _bound, _unbound, _launchChanged;
     private FxrPort.Result? _effects;
 
     /// <param name="portAttack">Ports a DS3 AtkParam_Pc row and returns its Elden Ring ID (the DS3 ID when it has no row).</param>
@@ -111,7 +111,8 @@ public sealed class BulletPort
 
     public int Count => _ported.Count(p => p.Value > 0);
 
-    public string Summary => $"{Count} DS3 bullets ported, {_bound} of their effects shown, {_unbound} left empty (effect not converted)";
+    public string Summary => $"{Count} DS3 bullets ported, {_bound} of their effects shown, {_unbound} left empty (effect not converted), " +
+        $"{_launchChanged} follow-up conditions DS3-only (254/255) made Elden Ring's 0{(Ds3LaunchConditions ? " (kept: DARKSIGN_BULLET_LAUNCH=ds3)" : "")}";
 
     /// <summary>The Elden Ring ID for a DS3 bullet, porting it (and what it references) on first use; -1 when DS3 has none.</summary>
     public int Port(int ds3Id)
@@ -138,6 +139,10 @@ public sealed class BulletPort
         ParamDefaults.Set(row, "FollowType", Bits(source, "FollowType0", "FollowType1", "FollowType2"));
         ParamDefaults.Set(row, "EmittePosType", Bits(source, "EmittePosType0", "EmittePosType1", "EmittePosType2"));
         ParamDefaults.Set(row, "attachEffectType", Bits(source, "attachEffectType0", "attachEffectType1"));
+        int launch = ParamDefaults.Int(source, "launchConditionType");
+        ParamDefaults.Set(row, "launchConditionType", LaunchCondition(launch));
+        if (LaunchCondition(launch) != launch)
+            _launchChanged++;
         // DS3's one "goes through" byte is Elden Ring's two bits, characters and objects.
         int penetrate = ParamDefaults.Int(source, "isPenetrate") != 0 ? 1 : 0;
         ParamDefaults.Set(row, "isPenetrateChr", penetrate);
@@ -170,6 +175,22 @@ public sealed class BulletPort
             BindPending();
         return row.ID;
     }
+
+    /// <summary>Fallback "weapon-visuals" J: DARKSIGN_BULLET_LAUNCH=ds3 keeps DS3's follow-up bullet conditions
+    /// 254/255 as they are, as in builds up to 1.0.420.</summary>
+    public static bool Ds3LaunchConditions => Environment.GetEnvironmentVariable("DARKSIGN_BULLET_LAUNCH") == "ds3";
+
+    /// <summary>
+    /// When a bullet's follow-up (HitBulletID) is made, in Elden Ring's terms. Both games' field holds the same small
+    /// conditions (0 always, 1 hit water, 2 hit water or swamp, 3 didn't hit an enemy, 4 hit an enemy, ...), but DS3
+    /// also writes 254 (life ran out) and 255 (hit the ground or an enemy): Smithbox's DS3 enum, RULE 3. Elden Ring's
+    /// own 15,475 bullets never use 254 or 255 (measured on 1.0.417's vanilla regulation.bin, fx21), Yapped Rune Bear's
+    /// Elden Ring enum lists only 0-6, and 80% of its bullets that make a follow-up use 0. DS3 chains a ground trail
+    /// with 255 (the Immolation Tinder's art: ten bullets, each made where the last one lands); with 255 kept, the
+    /// ported trail never showed in game (Devin, 1.0.417); that 255 is why is an inference, not seen in game. Both become 0: the follow-up is made whenever the
+    /// bullet ends, which for a bullet falling to the ground (the trails) is where it lands, as in DS3.
+    /// </summary>
+    internal static int LaunchCondition(int ds3) => ds3 is 254 or 255 && !Ds3LaunchConditions ? 0 : ds3;
 
     private int PortEffect(int ds3Id) => ds3Id > 0 && _spEffects?.Port(ds3Id) is > 0 and var id ? id : -1;
 

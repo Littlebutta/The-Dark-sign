@@ -1,3 +1,4 @@
+using System.Numerics;
 using System.Buffers.Binary;
 using SoulsFormats;
 
@@ -190,6 +191,27 @@ public static partial class MapPortChecks
         Expect(Cell(row, "drawDist") > 9000f, "pieces themselves still draw at any distance");
         var legacy = Row(true);
         Expect(Cell(legacy, "tex_lv01_BorderDist") == 256f && Cell(legacy, "tex_lv01_PlayDist") == 32f, "--full-low-textures keeps JortPob's distances");
+
+        // Larger pieces load full textures from further out.
+        var param = new PARAM { ParamType = def.ParamType, Rows = [] };
+        param.ApplyParamdef(def);
+        param.Rows.Add(new PARAM.Row(MapDrawParams.TemplateRow, "", def));
+        param.Rows.Add(new PARAM.Row(ObjectPort.FirstDrawRow, "object", def));
+        MapDrawParams.AddRow(param);
+        var dists = Enumerable.Range(0, MapDrawParams.TextureBySize.Length).Select(i => Cell(param[MapDrawParams.FirstRow + i]!, "tex_lv01_BorderDist")).ToList();
+        Expect(dists[0] == MapDrawParams.TextureDistance && dists.Zip(dists.Skip(1)).All(d => d.Second > d.First), "one row per size, further out as pieces grow: " + string.Join(", ", dists));
+        Expect(param[ObjectPort.FirstDrawRow] is not null && MapDrawParams.FirstRow + MapDrawParams.TextureBySize.Length <= ObjectPort.FirstDrawRow, "the objects' rows are left alone");
+        Expect(MapDrawParams.RowFor(3) == MapDrawParams.FirstRow && MapDrawParams.RowFor(100) == MapDrawParams.FirstRow + 3
+               && MapDrawParams.RowFor(13000) == MapDrawParams.FirstRow + MapDrawParams.TextureBySize.Length - 1, "rows by radius");
+        var msb = new MSBE();
+        msb.Parts.MapPieces.Add(new MSBE.Part.MapPiece { Name = "m000001_0000", ModelName = "m000001", PartsDrawParamID = MapDrawParams.FirstRow });
+        msb.Parts.MapPieces.Add(new MSBE.Part.MapPiece { Name = "m004520_1000", ModelName = "m004520", PartsDrawParamID = MapDrawParams.FirstRow, Scale = new Vector3(2, 2, 2) });
+        msb.Parts.MapPieces.Add(new MSBE.Part.MapPiece { Name = "m009999_0000", ModelName = "m009999", PartsDrawParamID = MapDrawParams.FirstRow });
+        msb.Parts.MapPieces.Add(new MSBE.Part.MapPiece { Name = "m000002_0000", ModelName = "m000002", PartsDrawParamID = MapDrawParams.VanillaRow });
+        var line = MapDrawParams.PointBySize(msb, model => model switch { "m000001" => 5f, "m004520" => 40f, "m000002" => 500f, _ => null });
+        var rows = msb.Parts.MapPieces.Select(p => p.PartsDrawParamID).ToList();
+        Expect(rows.SequenceEqual(new short[] { MapDrawParams.FirstRow, (short)(MapDrawParams.FirstRow + 3), MapDrawParams.FirstRow, MapDrawParams.VanillaRow }),
+            $"small stays, scaled large moves, unknown and vanilla rows stay: {string.Join(", ", rows)} ({line})");
     }
 
     private static void CollisionFormat()

@@ -15,6 +15,7 @@ public static partial class MapPortChecks
         yield return ("lighting: unlit DS3 materials (sky domes) cast no shadow, lit ones still do", UnlitCastsNoShadow);
         yield return ("lighting: the host's environment map box is carried over, grown to hold the whole DS3 map", AmbientBox);
         yield return ("lighting: DS3 lamps are written in the host's light file version, the DS3 sun is left out", Lamps);
+        yield return ("lighting: DS3 lamps move by the map offset onto the layout (Firelink's lights into the shrine)", LampsOffset);
     }
 
     private static void UnlitCastsNoShadow()
@@ -122,5 +123,26 @@ public static partial class MapPortChecks
         Expect(source[0].Unk54 == 2 && source[0].Name == "candle", "the DS3 lights read are not changed");
         Expect(MapLighting.ErLightPath(ErId) == "/map/m45/m45_00_00_00/m45_00_00_00_0000.btl.dcx"
                && MapLighting.Ds3LightPath(Ds3Id, 1) == "/map/m40_00_00_00/m40_00_00_00_0001.btl.dcx", "light file paths");
+    }
+
+    private static void LampsOffset()
+    {
+        // m40's map offset event and two of its lamps as DS3's light file holds them (map space).
+        var msb = new MSB3();
+        msb.Events.MapOffsets.Add(new MSB3.Event.MapOffset { Name = "map offset", Position = new Vector3(-203.6f, 7.3f, 33.5f), Degree = 28 });
+        var hub = new BTL.Light { Name = "hub_001", Type = BTL.LightType.Point, Position = new Vector3(149.9f, -58.0f, 727.9f), Radius = 12, UnkA0 = [0, 0, 2, 0] };
+        var spot = new BTL.Light { Name = "spot_001", Type = BTL.LightType.Spot, Position = new Vector3(12.4f, -57.9f, 562.8f), Rotation = new Vector3(0.68f, -2.90f, 0), UnkA0 = [0, 0, 2, 1] };
+        var offset = MapNavmesh.MapOffset(msb) ?? throw new Exception("no offset read");
+        var ported = MapLighting.Convert([hub, spot], 18, true, out _, offset, MapLighting.OffsetDegrees(msb)).Lights;
+        // Firelink Shrine's floor in the layout (the Firekeeper stands at 271, -56, 605).
+        Expect(Vector3.Distance(ported[0].Position, new Vector3(271, -50.7f, 605)) < 4, $"Firelink's lamp lands in the shrine: {ported[0].Position}");
+        float turned = ported[1].Rotation.Y - spot.Rotation.Y;
+        Expect(MathF.Abs(MathF.IEEERemainder(turned - 28 * MathF.PI / 180, 2 * MathF.PI)) < 1e-4f && ported[1].Rotation.X == 0.68f,
+            $"a spot's yaw turns with the map ({turned} rad)");
+        Expect(hub.Position == new Vector3(149.9f, -58.0f, 727.9f), "the DS3 lights read are not changed");
+        var none = MapLighting.Convert([hub], 18, true, out _).Lights[0];
+        Expect(none.Position == hub.Position, "no offset, no move (m30 has none)");
+        Expect(MapPorter.Options.Parse(["--no-light-offset"]) is { NoLightOffset: true, BakedLight.NoOffset: true }
+               && !MapPorter.Options.Parse([]).NoLightOffset, "--no-light-offset (fallback map-light-place B) reaches lamps and baked light");
     }
 }

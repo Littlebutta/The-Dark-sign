@@ -56,7 +56,7 @@ const string Usage = """
       port-enemies                 port DS3's enemies only (port-maps does this too) and check what the game will load
       drops-plan                   dry run of the DS3 enemy drops on the two regulations: every lot, mapping and unported item
       map-validate                 read back the ported maps in the mod folder and check them (port-maps runs this too)
-      port-maps [map ids] [--all-visible|--no-groups] [--plain-materials] [--vanilla-draw-param] [--host-lighting] [--host-sky] [--helper-pieces] [--ds3-hit-filters] [--stand-ins] [--host-atmosphere] [--host-env-light] [--flat-env-light] [--baked-light-flip x|y|z] [--half-textures|--full-low-textures] [--no-piece-test] [--piece-test <er map id>=<vanilla-model|vanilla-material|ported-material|none>] [--xml-collision] [--simd] [--after-pid <port-weapons pid>]
+      port-maps [map ids] [--ds3-culling|--no-groups] [--no-lod|--far-lod] [--plain-materials] [--vanilla-draw-param] [--host-lighting] [--host-sky] [--helper-pieces] [--ds3-hit-filters] [--stand-ins] [--host-atmosphere] [--host-env-light] [--flat-env-light] [--baked-light-flip x|y|z] [--half-textures|--full-low-textures] [--no-piece-test] [--piece-test <er map id>=<vanilla-model|vanilla-material|ported-material|none>] [--xml-collision] [--simd] [--after-pid <port-weapons pid>]
                                    port the DS3 maps that have an Elden Ring slot, and the F1 menu's DS3 run events
       randomize [--profile <name>] [--seed <n>]
                                    make a profile's cross-game randomized world (checked finishable) and its spoiler log
@@ -97,7 +97,7 @@ try
     if (argList[0].Equals("sound-selftest", StringComparison.OrdinalIgnoreCase))
         return SoundSelfTest.Run();
     if (argList[0].Equals("texture-selftest", StringComparison.OrdinalIgnoreCase))
-        return WeaponTextures.SelfTest() | WeaponHiddenParts.SelfTest() | WeaponNodes.SelfTest() | WeaponHold.SelfTest();
+        return WeaponTextures.SelfTest() | WeaponHiddenParts.SelfTest() | WeaponNodes.SelfTest() | WeaponHold.SelfTest() | ShieldShape.SelfTest();
     if (argList[0].Equals("timing-selftest", StringComparison.OrdinalIgnoreCase))
         return MoveTiming.SelfTest();
     if (argList[0].Equals("enemy-selftest", StringComparison.OrdinalIgnoreCase))

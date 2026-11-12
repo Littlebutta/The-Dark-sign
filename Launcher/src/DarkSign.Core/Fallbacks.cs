@@ -80,6 +80,13 @@ public static class Fallbacks
             new("B", "The boss with its partners", "As up to 1.0.410: the boss comes with the partners its DS3 fight uses (DKSIGN_BOSS_KITS=1), all in plain sight, because the scripts that hide them and bring them in don't run for spawned characters.")
                 { GameEnv = Env(BossKitsVariable, "1") },
         ]),
+        new("spawn-transform", "Starting the game", "Enemies that grow out of another in the F1 menu", Stage.Launch,
+            "The Pus of Man spawned from the F1 menu never turns up, turns up in the wrong place, or the game crashes when the hollow transforms.",
+        [
+            new("A", "A hollow first, then the Pus of Man (default)", "The Pus of Man spawns as the High Wall hollow it bursts out of; 8 seconds later, or 1.5 seconds after the hollow is first hit, the Pus of Man takes its place and the hollow is taken away. Killed before that, the hollow just dies."),
+            new("B", "The Pus of Man at once", "As up to 1.0.422: the Pus of Man spawns as itself (DKSIGN_NO_TRANSFORM=1).")
+                { GameEnv = Env(SpawnTransformVariable, "1") },
+        ]),
         new("build-threads", "Starting the game", "Content build speed", Stage.Build,
             "The content build fails or gives different results from one run to the next.",
         [
@@ -231,6 +238,8 @@ public static class Fallbacks
                 { PorterEnv = Env("DARKSIGN_BAKE_NODES", "0") },
             new("F", "Shields keep DS3's hold turn", "As A, but ported shields are not turned onto Elden Ring's shield hold point (DARKSIGN_SHIELD_HOLD=0), as up to 1.0.410, when they were held turned about 90° (most visible when guarding). Use it if a shield sits worse than before.")
                 { PorterEnv = Env("DARKSIGN_SHIELD_HOLD", "0") },
+            new("G", "Shields skip the template shape check", "As A, but ported shields are only turned by the hold frames (DARKSIGN_SHIELD_SHAPE=0), as in 1.0.420, and not laid on the shape of the Elden Ring shield they are built on. Use it if a shield that looked right in 1.0.420 sits worse now.")
+                { PorterEnv = Env("DARKSIGN_SHIELD_SHAPE", "0") },
         ]),
 
         // ---- Weapon sounds and effects ----
@@ -326,6 +335,8 @@ public static class Fallbacks
                 { PorterEnv = Env("DARKSIGN_BORROW_BULLETS", "0") },
             new("I", "No animated effect models", "As A, but DS3 effects whose 3D model is animated (Demon's Scar's art) are left out (DARKSIGN_FX_ANIMATED_MODELS=0), as in builds up to 1.0.378. Try it if the game crashes or shows a broken shape when such an effect plays.")
                 { PorterEnv = Env("DARKSIGN_FX_ANIMATED_MODELS", "0") },
+            new("J", "DS3 follow-up projectile conditions", "As A, but a projectile that makes another where it lands keeps DS3's condition for it (255 hit the ground or an enemy, 254 life ran out), which Elden Ring's own projectiles never use (DARKSIGN_BULLET_LAUNCH=ds3), as in builds up to 1.0.420. With A they become Elden Ring's 0 (whenever the projectile ends), so trails of projectiles that each land where the last fell (the Immolation Tinder's fire trail) can go on. Try J if a ported trail or burst now spawns too much.")
+                { PorterEnv = Env("DARKSIGN_BULLET_LAUNCH", "ds3") },
             new("off", "Off", "Neither (DARKSIGN_BULLETS=0 and DARKSIGN_EFFECT_VISUALS=0): only the effects in a move's own effect events show, as in builds up to 1.0.242.")
                 { PorterEnv = Env("DARKSIGN_BULLETS", "0", "DARKSIGN_EFFECT_VISUALS", "0") },
         ]),
@@ -366,18 +377,27 @@ public static class Fallbacks
         new("map-groups", "DS3 maps", "Which map parts are drawn (culling)", Stage.Build,
             "Parts of a DS3 map vanish or pop in as you move, a room is empty until you step inside, or the map lags far more than an Elden Ring map.",
         [
-            new("A", "DS3's draw groups (default)", "Each DS3 map area shows only the map pieces, collisions and objects DS3 showed from it, the way DS3 culls its maps (about a fifth of the map at a time; the port log's \"draw groups\" line says how much per map). DS3's groups are written into Elden Ring's own draw and display groups (Smithbox's reading of the part struct). Low-detail stand-ins and far views are kept, since the game now shows each only where DS3 does."),
-            new("B", "Everything visible, as up to 1.0.410", "Every map part draws from everywhere in the map, nothing culled (port-maps --all-visible): map pieces carry no draw or display groups, collisions and enemies have every group on. Compare with A to see what culling changes, or use it if parts of a map go missing on A.")
-                { MapsArgs = ["--all-visible"] },
+            new("A", "Everything visible (default)", "Every map part draws from everywhere in the map, nothing culled: map pieces and objects carry no draw or display groups, collisions and enemies have every group on, as in every build up to 1.0.410 and again after 1.0.417. DS3's own lower detail models keep far scenery cheap instead (\"Lower detail models far away\")."),
+            new("B", "DS3's draw groups, as 1.0.414 to 1.0.417", "Each DS3 map area shows only the map pieces, collisions and objects DS3 showed from it (port-maps --ds3-culling), written into Elden Ring's own draw and display groups (Smithbox's reading of the part struct); collisions themselves are never culled. In 1.0.417 this hid Firelink Shrine's chairs until you stepped outside, faded the world outside the shrine, made the player vanish near the Crystal Lizard and made Friede's arena flicker, so it is only for comparison.")
+                { MapsArgs = ["--ds3-culling"] },
             new("C", "No draw groups", "Parts carry no draw or display groups at all (port-maps --no-groups), as the colosseums' own parts and JortPob's maps have them; nothing is culled.")
                 { MapsArgs = ["--no-groups"] },
         ]),
         new("map-draw", "DS3 maps", "Draw distance settings of the DS3 map pieces", Stage.Build,
             "DS3 map geometry is invisible or pops in only when close.",
         [
-            new("A", "The port's own row (default)", "Every map piece names a PartsDrawParam row the port adds (unlimited draw distance, no LOD switching, as JortPob's maps have)."),
+            new("A", "The port's own rows (default)", "Every map piece names a PartsDrawParam row the port adds (unlimited draw distance, as JortPob's maps have); pieces whose models carry DS3's lower detail models name a second row that switches to them by distance (\"Lower detail models far away\")."),
             new("B", "A vanilla row", "Map pieces name Stormveil Castle's most common PartsDrawParam row, 2046 (port-maps --vanilla-draw-param), and nothing is added to the regulation.")
                 { MapsArgs = ["--vanilla-draw-param"] },
+        ]),
+        new("map-lod", "DS3 maps", "Lower detail models far away", Stage.Build,
+            "A DS3 map lags or stutters when you look across it, or distant buildings and rocks look blocky, flicker or vanish when you move away from them.",
+        [
+            new("A", "DS3's lower detail models by distance (default)", "DS3 ships a simpler copy of most map models inside the model itself (5,078 lower detail lists in Undead Settlement's). The game switches a piece to the first beyond 30 m and the second beyond 60 m, as vanilla Elden Ring does for its own map pieces that have them; pieces whose models have none are always drawn in full. The port log's \"lower detail\" lines say how many triangles each level keeps."),
+            new("B", "Full detail everywhere, as up to 1.0.417", "Every piece is drawn at full detail at any distance (port-maps --no-lod): every triangle of the whole map in view at once.")
+                { MapsArgs = ["--no-lod"] },
+            new("C", "Twice as far", "The switch happens beyond 60 m and 120 m (port-maps --far-lod): sharper distant scenery for more to draw.")
+                { MapsArgs = ["--far-lod"] },
         ]),
         new("map-materials", "DS3 maps", "Materials of the DS3 map pieces", Stage.Build,
             "DS3 map geometry is invisible, black, far too dark or shiny, or foliage and fences are solid cards.",
@@ -389,7 +409,7 @@ public static class Fallbacks
         new("map-texture-detail", "DS3 maps", "Texture detail of the DS3 maps", Stage.Build,
             "A DS3 map hitches or stutters as you move through it, or its textures look blurrier up close than they did in 1.0.299.",
         [
-            new("A", "Full textures near you, half size beyond (default)", "DS3's textures in full for map pieces within 128 m, and a half size low detail copy (a quarter of the memory) for everything further away, the way JortPob and Elden Ring's own maps keep a low detail copy."),
+            new("A", "Full textures near you, half size beyond (default)", "DS3's textures in full for map pieces within 128 m (further for large pieces: a floor or building 100 m across loads them from 128 m beyond its middle, the largest from 512 m beyond), and a half size low detail copy (a quarter of the memory) for everything further away, the way JortPob and Elden Ring's own maps keep a low detail copy."),
             new("B", "Half size textures", "Every DS3 map texture at half its width and height, and quarter size beyond 128 m (port-maps --half-textures): for a graphics card whose memory DS3's textures still don't fit in.")
                 { MapsArgs = ["--half-textures"] },
             new("C", "Full size twice, as up to 1.0.299", "The low detail copy is the full texture again and full textures load within 256 m (port-maps --full-low-textures): every texture of a map sits in graphics memory twice at full size.")
@@ -426,7 +446,7 @@ public static class Fallbacks
         new("map-stand-ins", "DS3 maps", "DS3's low-detail stand-ins and far views", Stage.Build,
             "A far part of a DS3 map is missing (a castle wall, a hall, a tower or mountains you could see from a distance), or blocky slabs, steps or low-resolution polygons floating over the map are back.",
         [
-            new("A", "Left out where detailed pieces stand (default)", "DS3 shows a far area as one blocky piece with a stretched \"low\" texture, and only from where its detailed pieces are not drawn. With DS3's culling on (\"Which map parts are drawn\" A) the game does the same and every stand-in is kept. Without it the port draws everything at once, so such a stand-in is left out when detailed pieces DS3 never shows together with it stand inside it. One with nothing detailed under it (Lothric Castle seen from the High Wall) stays. Far views go the same way: low-detail copies of a whole area with ordinary textures (map 3's mountains, roofs and rock walls seen from one lookout), left out when they cover at least ten times their own detail that DS3 never draws with them. The port log lists every stand-in and far view and why it was kept or left out."),
+            new("A", "Left out where detailed pieces stand (default)", "DS3 shows a far area as one blocky piece with a stretched \"low\" texture, and only from where its detailed pieces are not drawn. With DS3's culling on (\"Which map parts are drawn\" B) the game does the same and every stand-in is kept. Without it (the default) the port draws everything at once, so such a stand-in is left out when detailed pieces DS3 never shows together with it stand inside it. One with nothing detailed under it (Lothric Castle seen from the High Wall) stays. Far views go the same way: low-detail copies of a whole area with ordinary textures (map 3's mountains, roofs and rock walls seen from one lookout), left out when they cover at least ten times their own detail that DS3 never draws with them. The port log lists every stand-in and far view and why it was kept or left out."),
             new("B", "Kept", "Every stand-in and far view is drawn (port-maps --stand-ins), as in every build up to 1.0.366: blocky slabs, steps and low-resolution polygons overlap the detailed scenery, but nothing far away is missing.")
                 { MapsArgs = ["--stand-ins"] },
         ]),
@@ -473,6 +493,13 @@ public static class Fallbacks
             new("D", "Baked light mirrored north-south", "The same baked light with the volume mirrored along z (port-maps --baked-light-flip z). Try it if C didn't line the dark patches up with the rooms.")
                 { MapsArgs = ["--baked-light-flip", "z"] },
         ]),
+        new("map-light-place", "DS3 maps", "Where DS3's lamps and baked light sit in the DS3 maps", Stage.Build,
+            "Since this option came in, a DS3 map's lamps glow where nothing is, its rooms are lit from the wrong side, or its shade falls in the wrong places when it didn't before.",
+        [
+            new("A", "Moved onto the map (default)", "DS3 keeps a map's lamps and light probes in the map's own space and moves them into place with the map offset the map file holds (map 1: 28 degrees and 200 m, map 3: 156 degrees and 600 m; map 2 has none). The port does the same, so Firelink's lamps light the shrine and the baked shade falls where DS3's does. Only the map's own light file is ported; the files for its other states (the Untended Graves) no longer stack on top."),
+            new("B", "Left in the map's own space", "Lamps and light probes stay where earlier builds put them (port-maps --no-light-offset): on maps 1 and 3 that is far from where they belong.")
+                { MapsArgs = ["--no-light-offset"] },
+        ]),
         new("map-navmesh", "DS3 maps", "How enemies find their way in the DS3 maps", Stage.Build,
             "A DS3 map crashes or hangs while loading since launcher 1.0.300, enemies stand still or refuse to cross ground they should walk on, or they walk through closed doors.",
         [
@@ -500,6 +527,13 @@ public static class Fallbacks
                 { MapsArgs = ["--objects", "nocollision"] },
             new("off", "Off (no objects)", "The DS3 maps have no objects (port-maps --objects none), as every build up to 1.0.299 was.")
                 { MapsArgs = ["--objects", "none"] },
+        ]),
+        new("map-object-poses", "DS3 maps", "DS3 corpses in their poses", Stage.Build,
+            "A DS3 map crashes or hangs while loading since corpses were posed, or a corpse or skeleton lying in a DS3 map is a tangle of stretched polygons.",
+        [
+            new("A", "Corpses in DS3's poses (default)", "DS3's corpses and skeletons (and any other object a DS3 map file poses with an animation) are drawn in the pose DS3 gives each one: slumped, lying, hanging. The pose is baked into a copy of the model per pose. Report: the \"pose\" rows of Work\\reports\\object-port.tsv."),
+            new("B", "Unposed", "Corpses stand in the model's bind pose, arms out (DARKSIGN_OBJECT_POSES=0), as every build up to 1.0.42x drew them.")
+                { PorterEnv = Env("DARKSIGN_OBJECT_POSES", "0") },
         ]),
         new("map-doors", "DS3 maps", "DS3 doors, lifts and levers", Stage.Build,
             "A DS3 map crashes or hangs while loading since doors and lifts were added, a door or gate blocks the way and won't open, a lift drops you through it, or doors and gates look broken (parts in the wrong place, stretched).",
@@ -591,6 +625,10 @@ public static class Fallbacks
                 { PorterEnv = Env("DARKSIGN_MATERIAL_NUMBERS", "ds3") },
             new("I", "The template's body size", "As A, but a ported enemy keeps the Elden Ring template's body capsule (DARKSIGN_ENEMY_BODY_SIZE=template) instead of DS3's size, as up to 1.0.410. Use when ported enemies get stuck in doorways, sink into the floor or float above it with A.")
                 { PorterEnv = Env("DARKSIGN_ENEMY_BODY_SIZE", "template") },
+            new("J", "The template's weaknesses", "As A, but a ported enemy takes damage of each kind as the Elden Ring template does (DARKSIGN_ENEMY_DAMAGE_RATES=template), as up to 1.0.422, when the Pus of Man had the Giant Beast Skeleton's weakness to strike and resistance to lightning and no weakness to fire. Use when ported enemies take far too much or too little damage with A.")
+                { PorterEnv = Env("DARKSIGN_ENEMY_DAMAGE_RATES", "template") },
+            new("K", "DS3 fur as one solid layer", "As A, but DS3 fur (Ariandel's wolf) shows the larger of its two layers, uncut (DARKSIGN_ENEMY_FUR=0), as up to 1.0.422, when the wolf's fur drew as white shards. Use when a furry ported enemy turns invisible or bald with A.")
+                { PorterEnv = Env("DARKSIGN_ENEMY_FUR", "0") },
         ]),
         new("enemy-drops", "DS3 maps", "What ported DS3 enemies drop", Stage.Build,
             "A ported DS3 enemy drops nothing where DS3 drops something, drops the wrong item or far too often, the game crashes or hangs when a ported enemy dies, or the build's enemy params step says the drops were not ported.",
@@ -626,6 +664,8 @@ public static class Fallbacks
                 { PorterEnv = Env("DARKSIGN_ENEMY_THINK_IDS", "ds3") },
             new("G", "DS3's effect numbers in the AI", "As A, but DS3's AI scripts keep checking for their own effects by DS3's numbers (DARKSIGN_ENEMY_AI_SPEFFECTS=ds3), as up to 1.0.410, when those checks never matched a ported enemy's effects and Ariandel's wolf only circled. Use when a ported enemy freezes, attacks without pause or the game crashes when it notices you with A.")
                 { PorterEnv = Env("DARKSIGN_ENEMY_AI_SPEFFECTS", "ds3") },
+            new("H", "Each character's own AI rows only", "As A, but a DS3 enemy that DS3 places with another family's AI (the Cemetery of Ash hollows run the Hollow Soldiers' rows) gets its own character's first AI row instead of that family's (DARKSIGN_ENEMY_SHARED_THINK=0), as up to 1.0.417, when those hollows circled the player without attacking. Use when a ported enemy freezes or the game crashes when it notices you with A.")
+                { PorterEnv = Env("DARKSIGN_ENEMY_SHARED_THINK", "0") },
         ]),
         new("enemy-glow", "DS3 maps", "Ported DS3 enemies' glows", Stage.Build,
             "A ported DS3 enemy's glow is the wrong colour or missing (the Jailer's lantern, Pontiff Sulyvahn's swords, the Soul of Cinder), a part of it glows far too brightly or draws black, or the game crashes or hangs loading a ported enemy that glows.",
@@ -643,9 +683,11 @@ public static class Fallbacks
         new("map-flags", "DS3 maps", "Where the DS3 maps' own flags are kept", Stage.Build,
             "In a DS3 map, bosses come back, opened doors and shortcuts close again or picked-up items return after a reload, or the pre-flight check says a map flag block is MISSING.",
         [
-            new("A", "The slot map's own flags (default)", "A DS3 map's flags move with it into its Elden Ring slot's map flags (e.g. 4500xxxx for m45_00), the way Elden Ring's legacy dungeons number theirs."),
+            new("A", "The slot map's own flags where the game keeps them (default)", "A DS3 map's flags move with it into its Elden Ring slot's map flags (e.g. 4500xxxx for m45_00), the way Elden Ring's legacy dungeons number theirs, wherever the game keeps that block; flags of blocks it doesn't keep (all of the Painted World's m19_70, each colosseum's 7th block) get numbers in JortPob's saved blocks, as with B."),
             new("B", "JortPob's saved blocks", "The maps' own flags get new numbers in the saved ranges of the bottom-edge sea tiles (1030294000 and up), the blocks JortPob's Morrowind port keeps all its flags in (DARKSIGN_MAP_FLAGS=common). Saves made with A lose their DS3 map progress.")
                 { PorterEnv = Env("DARKSIGN_MAP_FLAGS", "common") },
+            new("C", "Every flag in the slot", "As up to 1.0.422: every DS3 map flag moves into its slot's map flags, including blocks the game doesn't keep (DARKSIGN_MAP_FLAGS=slot), where the Painted World's flags were never set and Friede's fight and cutscene pot broke.")
+                { PorterEnv = Env("DARKSIGN_MAP_FLAGS", "slot") },
         ]),
 
         // ---- Co-op ----
@@ -668,6 +710,9 @@ public static class Fallbacks
 
     /// <summary>Game variable: the F1 menu spawns a DS3 boss with its kit's partners (spawn-boss-kits B).</summary>
     public const string BossKitsVariable = "DKSIGN_BOSS_KITS";
+
+    /// <summary>Game variable: the F1 menu spawns an enemy that grows out of another as itself (spawn-transform B).</summary>
+    public const string SpawnTransformVariable = "DKSIGN_NO_TRANSFORM";
 
     /// <summary>Game variable: the test menu DLL doesn't hook DirectX 12 (no overlay), hotkeys only.</summary>
     public const string NoOverlayVariable = "DKSIGN_NO_OVERLAY";

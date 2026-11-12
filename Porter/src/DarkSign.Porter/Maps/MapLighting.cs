@@ -106,8 +106,22 @@ public static class MapLighting
     /// <summary>
     /// Writes the DS3 map's lamps as the slot's light file, in the host file's version. Returns a line for the log.
     /// A map with no DS3 light file, or a host with none to take the format from, keeps the host's lights.
+    /// <para>
+    /// Only the map's own light file is ported: the first one, normally _0000. A DS3 map's further light files are
+    /// the same lamps for another state of the map (m40's _0001 is the Untended Graves: 38 of its 41 lights sit on
+    /// _0000's at the same strength, plus three "闇" (dark) variants), and DS3 loads one of them at a time. Up to
+    /// 1.0.422 every file was written into one, so most lamps shone twice or more over each other.
+    /// </para>
+    /// <para>
+    /// The lamps are moved by DS3's map offset (<see cref="MapNavmesh.MapOffset"/>): a light file is in the map's own
+    /// space, like its collisions, while the ported layout keeps DS3's world space. Measured on DS3's files: m40's lamps
+    /// sit a median 67 m from the nearest part as written and 3.8 m once moved (Firelink's interior lights were 175 m
+    /// north-west of the shrine), m31's 184 m and 2.6 m; m30 has no offset. <paramref name="noOffset"/>
+    /// ("--no-light-offset", fallback "map-light-place" B) leaves them where they were.
+    /// </para>
     /// </summary>
-    public static string PortLights(PorterContext ctx, GameArchives ds3, GameArchives er, MapId ds3Id, MapId erId, MapId hostId)
+    public static string PortLights(PorterContext ctx, GameArchives ds3, GameArchives er, MapId ds3Id, MapId erId, MapId hostId,
+        MSB3? ds3Msb = null, bool noOffset = false)
     {
         var hostPath = ErLightPath(hostId);
         if (!er.Contains(hostPath))
@@ -118,23 +132,36 @@ public static class MapLighting
 
         var (hostBytes, compression) = er.ReadWithCompression(hostPath);
         var hostLights = BTL.Read(hostBytes);
-        var ds3Lights = sources.SelectMany(path => BTL.Read(ds3.Read(path)).Lights).ToList();
-        var ported = Convert(ds3Lights, hostLights.Version, hostLights.LongOffsets, out var skipped);
+        var source = sources[0];
+        var ds3Lights = BTL.Read(ds3.Read(source)).Lights;
+        var offset = noOffset ? null : MapNavmesh.MapOffset(ds3Msb);
+        var ported = Convert(ds3Lights, hostLights.Version, hostLights.LongOffsets, out var skipped, offset, OffsetDegrees(ds3Msb));
         var target = ctx.ModPath(MapPorter.ModParts(ErLightPath(erId)));
         Directory.CreateDirectory(Path.GetDirectoryName(target)!);
         File.WriteAllBytes(target, DCX.Compress(ported.Write(), compression));
+        var inv = System.Globalization.CultureInfo.InvariantCulture;
         return $"lamps: {ported.Lights.Count} DS3 lights ({ported.Lights.Count(l => l.Type == BTL.LightType.Point)} point, " +
-               $"{ported.Lights.Count(l => l.Type == BTL.LightType.Spot)} spot) replace the host's {hostLights.Lights.Count}" +
-               (skipped > 0 ? $"; {skipped} directional left out (the sun is the host's)" : "");
+               $"{ported.Lights.Count(l => l.Type == BTL.LightType.Spot)} spot) from {ItemText.Leaf(source)} replace the host's {hostLights.Lights.Count}" +
+               (skipped > 0 ? $"; {skipped} directional left out (the sun is the host's)" : "") +
+               (sources.Count > 1 ? $"; {sources.Count - 1} light files of other map states left out ({string.Join(", ", sources.Skip(1).Select(ItemText.Leaf))})" : "") +
+               (offset is null
+                   ? (noOffset ? "; DS3's map offset not applied (--no-light-offset)" : "; the map has no map offset")
+                   : string.Create(inv, $"; moved by DS3's map offset ({offset.Value.M41:0.#}, {offset.Value.M42:0.#}, {offset.Value.M43:0.#}, turned {OffsetDegrees(ds3Msb):0.#} degrees)"));
     }
+
+    /// <summary>The turn of DS3's map offset in degrees, 0 without one.</summary>
+    public static float OffsetDegrees(MSB3? msb) =>
+        msb?.Events.MapOffsets.FirstOrDefault(o => o.Position != Vector3.Zero || o.Degree != 0)?.Degree ?? 0;
 
     /// <summary>
     /// DS3 lights (file version 6) as an Elden Ring light file. What a lamp is (kind, colours, strength, reach,
     /// cone, place, flicker, sharpness) is DS3's. The fields Elden Ring's version adds, and the ones that hold one
     /// value in all 251 lights of Stormveil's and the colosseum's files but another in DS3, take Elden Ring's value.
-    /// Directional lights are left out: the map's sun comes from the host's draw params.
+    /// Directional lights are left out: the map's sun comes from the host's draw params. With <paramref name="offset"/>
+    /// (DS3's map offset) each lamp is moved from the map's own space into the layout's, its yaw turned with it.
     /// </summary>
-    public static BTL Convert(IEnumerable<BTL.Light> ds3Lights, int version, bool longOffsets, out int skipped)
+    public static BTL Convert(IEnumerable<BTL.Light> ds3Lights, int version, bool longOffsets, out int skipped,
+        Matrix4x4? offset = null, float offsetDegrees = 0)
     {
         var btl = new BTL { Version = version, LongOffsets = longOffsets };
         skipped = 0;
@@ -152,6 +179,15 @@ public static class MapLighting
             for (int n = 2; !names.Add(name); n++)
                 name = $"{light.Name}_{n}";
             light.Name = name;
+            if (offset is { } m)
+            {
+                // Position into the layout's space; the yaw (radians) turns with the map.
+                light.Position = Vector3.Transform(light.Position, m);
+                var r = light.Rotation;
+                float yaw = r.Y + offsetDegrees * MathF.PI / 180;
+                yaw = MathF.IEEERemainder(yaw, 2 * MathF.PI);
+                light.Rotation = new Vector3(r.X, yaw, r.Z);
+            }
             bool spot = light.Type == BTL.LightType.Spot;
             light.Unk30 = 0;
             light.Unk54 = 0;
