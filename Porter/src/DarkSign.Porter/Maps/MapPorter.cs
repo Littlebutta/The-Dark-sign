@@ -44,8 +44,11 @@ public static class MapPorter
         /// up to 1.0.340 (fallback "map-overlays" B; see <see cref="MapOverlays"/>).</summary>
         public bool SolidOverlays { get; set; }
         /// <summary>--cut-faded-overlays: every overlay triangle under half alpha is left out, whatever lies behind it, as
-        /// 1.0.353 to 1.0.37x (fallback "map-overlays" C; see <see cref="MapOverlayBacking"/>).</summary>
+        /// 1.0.353 to 1.0.383 (fallback "map-overlays" D; implies --fade-overlays; see <see cref="MapOverlayBacking"/>).</summary>
         public bool CutFadedOverlays { get; set; }
+        /// <summary>--fade-overlays: one-layer DS3 meshes keep their vertex alpha as a fade and faded triangles with a
+        /// surface behind them are left out (PR #165; fallback "map-overlays" C; see <see cref="MapModelPort.FadeOverlays"/>).</summary>
+        public bool FadeOverlays { get; set; }
         /// <summary>--first-blend-layer: a DS3 terrain blend (2m/3m/4m) shows only its first layer, as up to 1.0.353
         /// (fallback "map-blend-layers" B; see <see cref="MapTerrainBlends"/>).</summary>
         public bool FirstBlendLayer { get; set; }
@@ -134,7 +137,8 @@ public static class MapPorter
                     case "--stand-ins": o.StandIns = true; break;
                     case "--solid-overlays": o.SolidOverlays = true; break;
                     case "--first-blend-layer": o.FirstBlendLayer = true; break;
-                    case "--cut-faded-overlays": o.CutFadedOverlays = true; break;
+                    case "--cut-faded-overlays": o.CutFadedOverlays = true; o.FadeOverlays = true; break;
+                    case "--fade-overlays": o.FadeOverlays = true; break;
                     case "--tint-materials": o.TintMaterials = true; break;
                     case "--host-atmosphere": o.HostAtmosphere = true; break;
                     case "--host-env-light": o.HostEnvLight = true; break;
@@ -170,6 +174,7 @@ public static class MapPorter
         port.Ds3Alpha = !options.SolidOverlays;
         port.TerrainLayers = !options.FirstBlendLayer;
         port.CutFadedOverlays = options.CutFadedOverlays;
+        port.FadeOverlays = options.FadeOverlays;
         return port;
     }
 
@@ -660,6 +665,7 @@ public static class MapPorter
         models.TerrainLayers = !options.FirstBlendLayer;
         models.TintMaterials = options.TintMaterials;
         models.CutFadedOverlays = options.CutFadedOverlays;
+        models.FadeOverlays = options.FadeOverlays;
         if (test != PieceTest.None)
             report.AppendLine(test switch
             {
@@ -676,7 +682,7 @@ public static class MapPorter
         // every model's surfaces have been checked against them. A failure leaves each model tested against its own
         // surfaces.
         MapOverlayBacking? backing = null;
-        if (models.Ds3Alpha && !options.CutFadedOverlays && test == PieceTest.None
+        if (models.Ds3Alpha && models.FadeOverlays && !options.CutFadedOverlays && test == PieceTest.None
             && !(_converted.TryGetValue(ds3Id, out var done) && done.Er != erId && done.Er != default))
         {
             try
@@ -797,6 +803,8 @@ public static class MapPorter
             }
         foreach (var note in models.Notes.Distinct().Take(20))
             report.AppendLine($"  note: {note}");
+        if (models.EmptyFlvers > 0)
+            report.AppendLine($"  extra FLVERs: {models.EmptyFlvers} left out of their binders (only shadow casters, water or effects in them); the drawable FLVER beside each was kept");
         if (models.LeftOut.Count > 0)
             report.AppendLine($"  meshes left out (no Elden Ring material for them yet): {models.LeftOut.Values.Sum()} ("
                               + string.Join(", ", models.LeftOut.OrderByDescending(k => k.Value).Select(k => $"{k.Key} x{k.Value}")) + ")");

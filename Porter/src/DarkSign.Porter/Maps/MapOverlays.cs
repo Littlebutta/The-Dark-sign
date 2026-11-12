@@ -67,20 +67,25 @@ public static class MapOverlays
         public int OverlayMeshes, OverlayTrianglesCut, OverlayTriangles, TwoLayerMeshes, SecondLayerTriangles, TwoLayerTriangles;
         /// <summary>Faded overlay triangles kept solid because no surface lies behind them (see <see cref="MapOverlayBacking"/>).</summary>
         public int FadedKept;
+        /// <summary>One-layer meshes with vertex alpha under 1 drawn solid (no overlay fade; the default).</summary>
+        public int SolidOverlayMeshes;
 
         public void Add(Stats other)
         {
             Interlocked.Add(ref OverlayMeshes, other.OverlayMeshes);
             Interlocked.Add(ref OverlayTrianglesCut, other.OverlayTrianglesCut);
             Interlocked.Add(ref FadedKept, other.FadedKept);
+            Interlocked.Add(ref SolidOverlayMeshes, other.SolidOverlayMeshes);
             Interlocked.Add(ref OverlayTriangles, other.OverlayTriangles);
             Interlocked.Add(ref TwoLayerMeshes, other.TwoLayerMeshes);
             Interlocked.Add(ref SecondLayerTriangles, other.SecondLayerTriangles);
             Interlocked.Add(ref TwoLayerTriangles, other.TwoLayerTriangles);
         }
 
-        public string Summary =>
-            $"vertex alpha: {OverlayMeshes} overlay meshes keep DS3's fade ({OverlayTrianglesCut:N0} of {OverlayTriangles:N0} triangles under half visible left out, "
+        public string Summary => OverlayMeshes == 0
+            ? $"vertex alpha: {SolidOverlayMeshes} one-layer meshes with vertex alpha under 1 drawn solid (DS3 draws them; --fade-overlays fades them); "
+              + $"{TwoLayerMeshes} two-layer meshes split by layer ({SecondLayerTriangles:N0} of {TwoLayerTriangles:N0} triangles show the second layer)"
+            : $"vertex alpha: {OverlayMeshes} overlay meshes keep DS3's fade ({OverlayTrianglesCut:N0} of {OverlayTriangles:N0} triangles under half visible left out, "
             + $"{FadedKept:N0} more kept solid: no surface lies under them); "
             + $"{TwoLayerMeshes} two-layer meshes split by layer ({SecondLayerTriangles:N0} of {TwoLayerTriangles:N0} triangles show the second layer)";
     }
@@ -94,10 +99,15 @@ public static class MapOverlays
     /// Only such a triangle is left out; one with nothing behind it would leave a hole. Null: the model's own surfaces
     /// (<see cref="MapOverlayBacking.Of"/>). <see cref="CutEverywhere"/> passes one that always says yes (fallback C).
     /// </param>
-    public static HashSet<FLVER2.Mesh> Apply(FLVER2 flver, Stats stats, Func<Vector3, Vector3, Vector3, Vector3, bool>? behind = null)
+    /// <param name="fadeOverlays">
+    /// False: one-layer meshes are left as they are (drawn solid), only two-layer meshes are split. Their vertex alpha
+    /// turned out not to be a fade (see <see cref="MapModelPort.FadeOverlays"/>).
+    /// </param>
+    public static HashSet<FLVER2.Mesh> Apply(FLVER2 flver, Stats stats, Func<Vector3, Vector3, Vector3, Vector3, bool>? behind = null,
+                                             bool fadeOverlays = true)
     {
         // The model's own surfaces, indexed before any mesh here changes (only when something here fades).
-        if (behind is null && flver.Meshes.Any(m => m.MaterialIndex >= 0 && m.MaterialIndex < flver.Materials.Count
+        if (fadeOverlays && behind is null && flver.Meshes.Any(m => m.MaterialIndex >= 0 && m.MaterialIndex < flver.Materials.Count
                                                     && MapOverlayBacking.IsFading(flver.Materials[m.MaterialIndex], m)))
             behind = MapOverlayBacking.Of(flver).For("");
         behind ??= CutEverywhere;   // nothing fades: never asked
@@ -113,6 +123,11 @@ public static class MapOverlays
                 case Kind.Overlay:
                     if (mesh.Vertices.All(v => Alpha(v) >= 0.999f))
                         break;
+                    if (!fadeOverlays)
+                    {
+                        stats.SolidOverlayMeshes++;
+                        break;
+                    }
                     // A faded triangle goes only where DS3 shows a surface through it; elsewhere it stays, solid.
                     var backed = new Dictionary<(int, int, int), bool>();
                     // Judged on DS3's alpha, before kept triangles' corners are made solid below.

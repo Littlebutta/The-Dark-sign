@@ -194,7 +194,7 @@ its triangles whose three corners are all under 0.5, and splits a two-layer mesh
 triangle going to the layer its corners mostly show (Elden Ring has no two-layer map shader in use to blend them:
 one mesh in all of Stormveil names `[Mb2]`). Terrain blends (2m/3m/4m), grass, snow and water keep their alpha
 untouched. The port log's `vertex alpha:` line counts both; fallback `map-overlays` B (`--solid-overlays`) restores
-the old solid drawing.
+the old solid drawing (see below: the one-layer fade was later found not to be one and is off by default).
 
 **Faded triangles are cut only over ground.** Cutting every faded triangle (1.0.353 to 1.0.37x) opened holes to the
 sky wherever an overlay fades out over nothing: measured on m40 with every map piece placed by its MSB part, Firelink
@@ -206,7 +206,22 @@ of its model. The port collects faded triangles during its first read of each mo
 any, checks every placed model's surfaces against them in a second read, then converts the deferred models (about one
 extra read of the map: 44 s for m40 on 4 cores). On m40, 158,502 of 431,313 faded triangles are cut and the holes
 around the shrine and circle fall to 11 m² (mostly faded edges of the m001110 walls, not yet looked at).
-The port log's `overlay backing:` line counts them; fallback `map-overlays` C (`--cut-faded-overlays`) cuts them all.
+The port log's `overlay backing:` line counts them; fallback `map-overlays` D (`--cut-faded-overlays`) cuts them all.
+
+**One-layer vertex alpha is not a fade (1.0.383 playtest, now the default).** Whole meshes DS3 plainly draws have
+alpha 0 on every vertex: Firelink Shrine's m004001 (a 32,705 vertex wall_103 mesh beside a 5,170 vertex mesh of the
+same wall at alpha 1) and m004520 (3,016 vertices, wall_103), Undead Settlement's wooden houses (m000120, every triangle
+cut in 1.0.383) and the Painted World's Stone_Standard walls (103 pieces lost). DS3's one-layer materials are opaque
+(MTD BlendMode 0), so nothing there can hide them; the brick shards of 1.0.340 were terrain blends (the
+`--tint-materials` test showed them blue), not overlays. So one-layer meshes are drawn whole and solid by default;
+two-layer meshes are still split by layer. Fallback `map-overlays` C (`--fade-overlays`) restores the fade with the
+backing test above.
+
+**A shadow-only FLVER no longer takes its binder with it.** Many DS3 binders (Undead Settlement's m002050 trees, 354
+placements, m002610/m002620 hanging corpses, m003200 iron cages) hold a second FLVER with only an `M[Shadow]` caster.
+That FLVER converts to nothing, and up to 1.0.383 the "only effect, decal, water or shadow meshes" error dropped the
+whole binder, drawable FLVER included. Now such a FLVER is left out on its own (port log `extra FLVERs:`), and a binder
+is left out only when none of its FLVERs can be drawn.
 
 **Terrain blends: one layer per triangle.** Most of DS3's ground and many walls use `M[ARSN]_2m/_3m/_4m`
 (MultiBlend2/3/4_et1): two to four textures (`GSBlendMap_AlbedoMap_0..3`, each with its own tiling on UV 1) painted
