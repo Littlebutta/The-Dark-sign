@@ -104,7 +104,7 @@ public static class MapPorter
 
         /// <summary>
         /// --er-people (launcher Fallbacks "map-people" B): Elden Ring people stand in for DS3 people that have no
-        /// ported body (every c0000 human). Off by default: only DS3's own people (ported bodies) are placed.
+        /// ported body (every c0000 human), in their own Elden Ring looks. Off by default: DS3 bodies, and DS3 humans in their DS3 armour (PeopleArmour).
         /// </summary>
         public bool ErPeople { get; set; }
         /// <summary>--no-regions (launcher Fallbacks "map-regions" B): no DS3 regions, patrol routes or generators (<see cref="RegionPort"/>).</summary>
@@ -379,6 +379,9 @@ public static class MapPorter
                 }
             Step(report, "enemy params", () => ChrPort.ApplyParams(ctx, er, enemyPort));
         }
+        // DS3's humans in their DS3 armour: models, materials and the rows the placed people name.
+        if (_armour is { StandIns.Count: > 0 } armour && ported.Count > 0)
+            Step(report, "people armour", () => PortArmour(ctx, ds3, er, armour, ported.Select(p => p.Slot).ToList()));
         if (ported.Count > 0)
             Step(report, "events", () => MapEvents.Port(ctx, ds3, er, ported.Select(p => p.Slot).ToList()));
 
@@ -475,6 +478,31 @@ public static class MapPorter
         foreach (var file in new[] { MapEvents.FlagFile, "darksign_maps.tsv", "darksign_maps_check.txt", FlagAlloc.ProbeFile,
                      DarkSign.Randomizer.Data.EnemyTables.PlacedFile, DarkSign.Randomizer.Data.EnemyTables.ErFile })
             Delete(Path.Combine(root, file));
+    }
+
+    /// <summary>
+    /// Writes the DS3 armour the placed people wear and their rows; if the rows can't be written, the people go back
+    /// to their stand-in's own look so no part names a row that doesn't exist.
+    /// </summary>
+    private static string PortArmour(PorterContext ctx, GameArchives ds3, GameArchives er, PeopleArmour armour, List<MapSlots.Slot> slots)
+    {
+        var lines = new List<string>();
+        try
+        {
+            var materials = new List<DarkSign.Porter.Enemies.ChrMaterial>();
+            lines.Add(armour.WriteModels(ctx, ds3, er, materials));
+            if (materials.Count > 0)
+                DarkSign.Porter.Enemies.ChrMaterial.Write(ctx, er, materials);
+            var regulation = ActionButtons.LoadRegulation(ctx);
+            lines.Add(armour.WriteParams(regulation));
+            regulation.Save(ctx.ModPath("regulation.bin"));
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            lines.Add($"people armour: FAILED ({ex.Message}); {armour.Revert(ctx, slots)} people put back on their Elden Ring stand-in's look");
+        }
+        lines.AddRange(armour.Notes.Select(n => "  people armour: " + n));
+        return string.Join(Environment.NewLine, lines);
     }
 
     /// <summary>Points every map piece of a written layout at another PartsDrawParam row.</summary>
@@ -578,9 +606,9 @@ public static class MapPorter
                 var seats = EnemyPort.Seats(ds3Msb, EnemyPort.EventWarps(scripts));
                 var placed = EnemyPort.Place(ds3Msb, layout.Msb, ds3Id, erId, new MsbPort.Options { AllVisible = !options.Ds3Groups, NoGroups = options.NoGroups, AllLayers = options.AllLayers },
                     enemies.Chooser, e => enemies.Describe(e, bosses), EnemyPort.AnyEnemyPart(enemies.Catalog), _placedEnemies, partNames,
-                    options.ErPeople ? enemies.People : null, seats, placePeople: !options.NoPeople);
+                    enemies.People, seats, placePeople: !options.NoPeople, armour: options.ErPeople ? null : _armour, erStandIns: options.ErPeople);
                 report.AppendLine($"  enemies: {placed.Placed} placed ({placed.Ported} ported DS3 characters, {placed.StandIns} Elden Ring stand-ins, "
-                                  + $"{placed.People} people{(options.NoPeople ? ", people off (--no-people)" : options.ErPeople ? ", Elden Ring people stand in (--er-people)" : ", DS3's own people only")}), {placed.Npcs} people left out, {placed.Skipped} with nothing to stand in; {bosses.Count} DS3 boss entities");
+                                  + $"{placed.People} people{(options.NoPeople ? ", people off (--no-people)" : options.ErPeople ? ", Elden Ring people stand in (--er-people)" : _armour is null ? ", DS3's own people only" : ", DS3's own people and DS3 humans in their DS3 armour")}), {placed.Npcs} people left out, {placed.Skipped} with nothing to stand in; {bosses.Count} DS3 boss entities");
                 foreach (var note in placed.Notes)
                     report.AppendLine($"  enemies: {note}");
             }
@@ -940,6 +968,8 @@ public static class MapPorter
     }
 
     private static EnemyContext? _enemies;
+    /// <summary>DS3's humans in their DS3 armour (null: off, or not planned).</summary>
+    private static PeopleArmour? _armour;
     /// <summary>darksign_enemies.tsv rows for this run: every DS3 enemy placed, for the randomizer.</summary>
     private static readonly List<string> _placedEnemies = [];
 
@@ -959,6 +989,21 @@ public static class MapPorter
         try { ds3Npc = ctx.LoadParams(PorterGame.DarkSouls3).Get("NpcParam"); }
         catch (Exception ex) { notes.Add($"DS3 NpcParam names unavailable ({ex.Message}); every DS3 enemy gets the most common stand-in"); }
         var catalog = EnemyPort.BuildCatalog(er, erNpc, notes, out var people, erCharaInit);
+        _armour = null;
+        if (PeopleArmour.Enabled && !options.NoPeople && !options.ErPeople)
+            try
+            {
+                var ds3Params = ctx.LoadParams(PorterGame.DarkSouls3);
+                var maps = MapSlots.All.Select(s => s.Ds3).Distinct().Where(id => ds3.Contains(MsbPath(id))).Select(id => MSB3.Read(ds3.Read(MsbPath(id))));
+                _armour = PeopleArmour.Plan(ds3Params.Get("CharaInitParam")!, ds3Params.Get("EquipParamProtector")!, PeopleArmour.PeopleIn(maps),
+                    n => PeopleArmour.Slots.Any(slot => er.Contains(PeopleArmour.PartsPath(slot.Prefix, 'm', n, false))));
+                notes.Add($"people armour: {_armour.Looks.Count} DS3 people's looks planned, {_armour.Models.Count} DS3 armour sets to convert");
+                notes.AddRange(_armour.Notes);
+            }
+            catch (Exception ex) when (ex is not OutOfMemoryException)
+            {
+                notes.Add($"people armour: not planned ({ex.Message}); DS3's humans are left out");
+            }
         EnemyPort.ChrMap? ported = null;
         var mapPath = ctx.ModPath(EnemyPort.ChrMap.FileName);
         if (options.Enemies == EnemyPort.Method.Auto && File.Exists(mapPath))

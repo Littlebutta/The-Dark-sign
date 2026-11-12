@@ -475,11 +475,13 @@ public static class Fallbacks
         new("map-people", "DS3 maps", "DS3's people (NPCs and hostile humans)", Stage.Build,
             "A DS3 map crashes or hangs while loading since people were added, a person who should be friendly attacks you (or the other way round), or people stand in the way of something.",
         [
-            new("A", "DS3's own people only (default)", "DS3 characters with a body of their own (Fire Keeper, Ludleth) stand where DS3's scripts seat them, silent, when the enemy porter ported them. DS3's human NPCs and hostile humans (built from DS3 armour) are left out until they can be ported: no Elden Ring stand-ins."),
+            new("A", "DS3's own people, humans in DS3 armour (default)", "DS3 characters with a body of their own (Fire Keeper, Ludleth) stand where DS3's scripts seat them, silent, when the enemy porter ported them. DS3's human NPCs and hostile humans (Hawkwood, Sirris, the Sword Master) wear their DS3 armour, converted, on an Elden Ring person's face, body and AI."),
             new("B", "Elden Ring people stand in", "As builds 1.0.326-1.0.353: where DS3 has a human or a talker with no ported body, a dressed Elden Ring person stands, silent; DS3's hostile humans get hostile Elden Ring humans (port-maps --er-people).")
                 { MapsArgs = ["--er-people"] },
             new("C", "Nobody", "DS3's people are left out of the maps, ported ones too (port-maps --no-people), as every build up to 1.0.299 was.")
                 { MapsArgs = ["--no-people"] },
+            new("D", "DS3's own bodies only, no DS3 armour", "As builds 1.0.354-1.0.366: only DS3 characters with a body of their own stand; DS3's humans are left out (DARKSIGN_PEOPLE_ARMOUR=0). Try it if a person in DS3 armour crashes the game, is invisible or is a mess of stretched polygons.")
+                { PorterEnv = Env("DARKSIGN_PEOPLE_ARMOUR", "0") },
         ]),
 
         new("enemy-port", "DS3 maps", "How DS3's enemies and bosses are ported", Stage.Build,
