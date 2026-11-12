@@ -474,6 +474,25 @@ public static partial class MapPortChecks
         var flat = MapDiag.Measure(ModelPort.FlatNormalDds());
         Expect(flat is not null && Math.Abs(flat.Mean[0] - 128) < 6 && Math.Abs(flat.Mean[2] - 128) < 6 && flat.Spread[0] < 1, $"map-diag channel figures of a flat texture ({(flat is null ? "unread" : string.Join(" ", flat.Mean))})");
 
+        // Environment light: one-colour BC7 and BC6H blocks decode to the colour asked for (MapEnvironment).
+        var (bc7, _, _) = WeaponTextures.Decode(MapEnvironment.TestDds(MapEnvironment.DxgiBc7, MapEnvironment.Bc7Block(201, 201, 201, 140)));
+        Expect(bc7.Length == 16 && bc7.All(c => c.r == 201 && c.g == 201 && c.b == 201 && c.a == 141), $"BC7 one-colour block ({bc7[0].r} {bc7[0].g} {bc7[0].b} {bc7[0].a})");
+        foreach (var grey in new[] { 0.028f, 0.137f, 1.5f })
+        {
+            var decoded = MapEnvironment.DecodeGrey(MapEnvironment.TestDds(MapEnvironment.DxgiBc6hUf16, MapEnvironment.Bc6hBlock(grey)));
+            Expect(Math.Abs(decoded - grey) <= grey * 0.02f, $"BC6H one-colour block {grey} decodes to {decoded}");
+        }
+        var volume = new SoulsFormats.TPF.Texture("m45_01_00_00_GIIV0000_00_W", 102, 128,
+            MapEnvironment.TestDds(MapEnvironment.DxgiBc7, MapEnvironment.Bc7Block(252, 136, 132, 200)), SoulsFormats.TPF.TPFPlatform.PC);
+        var volumeLine = MapEnvironment.NeutraliseVolume(volume);
+        var (neutral, _, _) = WeaponTextures.Decode(volume.Bytes);
+        Expect(neutral.All(c => c.r == 252 && c.g == 252 && c.b == 252), $"a red light volume becomes grey at its brightest channel ({volumeLine})");
+        var cube = new SoulsFormats.TPF.Texture("m45_01_00_00_GILM0000_00_rem", 115, 128,
+            MapEnvironment.TestDds(MapEnvironment.DxgiBc6hUf16, MapEnvironment.Bc6hBlock(0.05f)), SoulsFormats.TPF.TPFPlatform.PC);
+        Expect(!MapEnvironment.NeutraliseCube(cube).StartsWith('!') && Math.Abs(MapEnvironment.DecodeGrey(cube.Bytes) - 0.05f) < 0.002f, "a reflection cube stays at its brightness");
+        Expect(MapEnvironment.NeutraliseVolume(cube).StartsWith('!'), "a BC6H texture is not taken for a light volume");
+        Expect(MapPorter.Options.Parse(["--host-env-light"]).HostEnvLight && !new MapPorter.Options().HostEnvLight, "--host-env-light is read");
+
         // Elden Ring's sampler names, from real MATBINs.
         Expect(MapModelPort.Role("M_A__snp_Texture2D_0_AlbedoMap_0") == ("albedo", 0), "plain albedo");
         Expect(MapModelPort.Role("M_AMSN_V__Grass_snp_Texture2D_1_NormalMap_0") == ("normal", 0), "plain normal");

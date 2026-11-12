@@ -390,6 +390,13 @@ public static class Fallbacks
             new("B", "The colosseum's own", "The map keeps the Elden Ring colosseum's colour, fog and sun settings (port-maps --host-atmosphere), as in every build before this option: a red tint on map 2 and thick golden fog on map 1.")
                 { MapsArgs = ["--host-atmosphere"] },
         ]),
+        new("map-env-light", "DS3 maps", "Light the DS3 map pieces get from around them", Stage.Build,
+            "A DS3 map's walls and ground look flat, too dark or too grey, or shine oddly since the colosseum's colour was taken out of their light.",
+        [
+            new("A", "Even grey (default)", "Elden Ring lights map pieces with light baked for the map they stand in (a light volume and a reflection cube per place). The DS3 maps had the colosseum's: red on map 2, golden on map 1, pale blue on map 3. That light is made one even grey of the same strength, so the map's own textures, sun and fog give the colour."),
+            new("B", "The colosseum's own", "The map pieces keep the colosseum's baked light (port-maps --host-env-light), as in every build before this option: red map surfaces on map 2.")
+                { MapsArgs = ["--host-env-light"] },
+        ]),
         new("map-navmesh", "DS3 maps", "How enemies find their way in the DS3 maps", Stage.Build,
             "A DS3 map crashes or hangs while loading since launcher 1.0.300, enemies stand still or refuse to cross ground they should walk on, or they walk through closed doors.",
         [
