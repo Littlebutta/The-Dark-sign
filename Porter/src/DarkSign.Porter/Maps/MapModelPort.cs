@@ -83,7 +83,7 @@ public sealed class MapModelPort
             return m.Name.EndsWith(MapOverlays.SecondLayerSuffix, StringComparison.Ordinal) ? "DKS_tint_magenta" : "DKS_tint_red";
         if (m.Name.EndsWith(FadeSuffix, StringComparison.Ordinal))
             return "DKS_tint_green";
-        if (Regex.IsMatch(mtd, @"\dm", RegexOptions.IgnoreCase))
+        if (MapTerrainBlends.LayerCount(mtd) > 0)
             return MapTerrainBlends.LayerOf(m) switch { 1 => "DKS_tint_orange", 2 => "DKS_tint_white", 3 => "DKS_tint_purple", _ => "DKS_tint_blue" };
         if (mtd.Contains("snow", StringComparison.OrdinalIgnoreCase))
             return "DKS_tint_cyan";

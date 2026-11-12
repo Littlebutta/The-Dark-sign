@@ -36,13 +36,21 @@ public static class MapTerrainBlends
 
     // "M[ARSN]_4m_l", "MultiBlend\M[ARSN]_2m_et1_l", "M[ARSN]_3m": the digit is the number of layers.
     private static readonly Regex BlendMtd = new(@"_([2-4])m(?![a-z])", RegexOptions.IgnoreCase);
+    // Unlit or scrolling "2m" materials are sky domes (m009000 of m31 and m40: "M[A]_2m_NoLight_scroll"), whose two
+    // layers are cloud textures the sky shader cross-fades and scrolls, not ground painted per vertex. Splitting one by
+    // its blend bytes drew the 1.0.366 dome as a patchwork of sky and cloud triangles (blue shards over map 3's church).
+    private static readonly Regex NotGround = new(@"NoLight|scroll", RegexOptions.IgnoreCase);
     private static readonly Regex FirstLayerSlot = new(@"(GSBlendMap_[A-Za-z]+Map_)0$", RegexOptions.IgnoreCase);
 
-    /// <summary>How many layers a DS3 terrain blend material type has, or 0 for any other material.</summary>
+    /// <summary>
+    /// How many layers a DS3 terrain blend material type has, or 0 for any other material (sky domes included: their
+    /// layers keep the first one, as every build up to 1.0.353 drew them).
+    /// </summary>
     public static int LayerCount(string mtd)
     {
-        var m = BlendMtd.Match(Path.GetFileNameWithoutExtension(ItemText.Leaf(mtd ?? "")));
-        return m.Success ? m.Groups[1].Value[0] - '0' : 0;
+        var name = Path.GetFileNameWithoutExtension(ItemText.Leaf(mtd ?? ""));
+        var m = BlendMtd.Match(name);
+        return m.Success && !NotGround.IsMatch(name) ? m.Groups[1].Value[0] - '0' : 0;
     }
 
     /// <summary>The layer (from 1) a material is the copy for, or 0 for a terrain blend's own material.</summary>
