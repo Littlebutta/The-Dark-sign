@@ -52,6 +52,7 @@ public static class CutsceneSoundSurvey
         Section("DS3 sound files", () => Ds3SoundFiles(ctx, ds3));
         var ds3Events = SoundPort.Ds3Events(ctx, ds3);
         Section("DS3 cutscene sound event files", () => Ds3EventFiles(ctx, ds3));
+        Section("DS3 events by letter (all event files)", () => ByLetter(ds3Events));
         foreach (var name in ds3Names)
             Section($"DS3 {name}", () => Ds3Cutscene(ctx, ds3, name, ds3Events));
 
@@ -255,6 +256,17 @@ public static class CutsceneSoundSurvey
                          string.Join(" ", fev.Events.Values.Take(40).Select(e =>
                              $"{e.Name}[{e.Layers.Count}L {string.Join("+", e.Layers.Select(l => l.Waves.Count))}w{(e.OneShot ? "" : " loop")} {Fev.Decibels(e.Volume):0.#}dB]"));
         }
+    }
+
+    // How many DS3 events each sound letter has, and the cutscene-type (p) ones and the Painted World's (45) by name.
+    private static IEnumerable<string> ByLetter(Dictionary<string, (Fev.Event Event, string Fsb)> events)
+    {
+        foreach (var g in events.GroupBy(e => e.Key[0]).OrderBy(g => g.Key))
+            yield return $"{g.Key}: {g.Count()} events in {string.Join(" ", g.Select(e => e.Value.Fsb).Distinct().Order().Take(12))}; e.g. " +
+                         string.Join(" ", g.Select(e => e.Key).Order().Take(8));
+        yield return "p events: " + string.Join(" ", events.Keys.Where(k => k[0] == 'p').Order().Take(80));
+        yield return "events with 45 or 40 after the letter (first 60): " +
+                     string.Join(" ", events.Keys.Where(k => k.Length >= 3 && (k[1..3] == "45" || k[1..3] == "40")).Order().Take(60).Select(k => $"{k}@{events[k].Fsb}"));
     }
 
     private static IEnumerable<string> Ds3Cutscene(PorterContext ctx, GameArchives ds3, string name, Dictionary<string, (Fev.Event Event, string Fsb)> events)
