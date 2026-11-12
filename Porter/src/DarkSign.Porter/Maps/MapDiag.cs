@@ -25,11 +25,14 @@ public static class MapDiag
             return Gparams(ctx, args.Skip(1).ToList());
         if (args.Count > 0 && args[0].Equals("envmap", StringComparison.OrdinalIgnoreCase))
             return EnvMaps(ctx, args.Skip(1).ToList());
+        if (args.Count > 0 && args[0].Equals("collision", StringComparison.OrdinalIgnoreCase))
+            return MapCollisionDiag.Run(ctx, args.Skip(1).ToList());
         if (args.Count == 0 || !args[0].Equals("colours", StringComparison.OrdinalIgnoreCase))
         {
             Console.Error.WriteLine("map-diag colours [DS3 map ID...]   (default: every slot's DS3 map)");
             Console.Error.WriteLine("map-diag gparam [map ID...]        (default: the slots' hosts, Stormveil and the DS3 maps)");
             Console.Error.WriteLine("map-diag envmap [ER map ID...]     (default: the slots' hosts and Stormveil)");
+            Console.Error.WriteLine("map-diag collision [DS3 map ID...] [--at x,y,z ...]   (h/l body settings, collision parts, ground under points)");
             return 1;
         }
         var maps = args.Skip(1).Select(MapId.Parse).ToList();
