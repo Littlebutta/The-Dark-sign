@@ -24,7 +24,7 @@ public sealed class EventPort
     /// respawns at (moved like any entity; the map port makes each one a spawn point, <see cref="WarpPoints"/>).
     /// ActionButton: an ActionButtonParam row ID (DS3's rows get Elden Ring copies, <see cref="ActionButtons.RowForDs3"/>).
     /// </summary>
-    public enum Kind { Other, Entity, Flag, FlagRangeStart, FlagRangeEnd, Event, Area, Block, PackedMap, Cutscene, SpEffect, WarpPoint, ActionButton }
+    public enum Kind { Other, Entity, Flag, FlagRangeStart, FlagRangeEnd, Event, Area, Block, PackedMap, Cutscene, SpEffect, WarpPoint, ActionButton, ObjAct }
 
     private readonly Emedf _ds3, _er;
     private readonly IReadOnlyList<(MapId Ds3, MapId Er)> _maps;
@@ -168,6 +168,10 @@ public sealed class EventPort
             return Kind.Block;
         if (n == "speffect id")
             return Kind.SpEffect;
+        // DS3 "Object Parameter ID" / Elden Ring "ObjAct Param ID" (Initialize ObjAct, Set ObjAct State): an
+        // ObjActParam row, which the object port moves (ObjectPort.ObjActRow).
+        if (n.Contains("objact param") || n == "object parameter id")
+            return Kind.ObjAct;
         if (n == "map id")
             return Kind.PackedMap;
         if (n.Contains("entity"))
@@ -368,6 +372,8 @@ public sealed class EventPort
                 Stats.SpEffectsKept++;
                 Stats.SpEffectsKeptIds.Add(value);
                 return value;
+            case Kind.ObjAct:
+                return ObjectPort.ObjActRow(value);
             default:
                 return value;
         }

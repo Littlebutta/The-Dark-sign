@@ -231,7 +231,9 @@ public static class AnimPort
 
     /// <summary><see cref="Convert(byte[], Ds3Skeleton, ErSkeleton, byte[], byte[], bool)"/>, plus the Elden Ring
     /// template animation's own length in seconds (0 when it has none), which the moveset port's timing needs.</summary>
-    public static (byte[] Hkx, string Summary, float TemplateDuration) ConvertTimed(byte[] ds3Hkx, Ds3Skeleton ds3, ErSkeleton er, byte[] erTemplate, byte[]? compendium, bool spline)
+    /// <param name="skeletonName">The skeleton the binding names (an object's asset name); null keeps the template's.</param>
+    public static (byte[] Hkx, string Summary, float TemplateDuration) ConvertTimed(byte[] ds3Hkx, Ds3Skeleton ds3, ErSkeleton er, byte[] erTemplate, byte[]? compendium, bool spline,
+        string? skeletonName = null)
     {
         var hkx = HKX.Read(ds3Hkx, HKX.HKXVariation.HKXDS3, false);
         var source = hkx.DataSection.Objects.OfType<HKX.HKASplineCompressedAnimation>().FirstOrDefault()
@@ -301,6 +303,8 @@ public static class AnimPort
             erBinding.m_transformTrackToBoneIndices = bound.Select(b => (short)b).ToList();
             erBinding.m_floatTrackToFloatSlotIndices = [];
             erBinding.m_partitionIndices = [];
+            if (skeletonName is not null)
+                erBinding.m_originalSkeletonName = skeletonName;
             new HavokBinarySerializer().Write(root, output);
         }
         var summary = $"{source.Duration:0.###}s, {frames} frames, {mapped} of {erBones} bones from DS3, root motion {(refFrame is null ? "none" : $"{refFrame.ReferenceFrameSamples.Size} samples")}";

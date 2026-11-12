@@ -482,11 +482,20 @@ public static class Fallbacks
         new("map-objects", "DS3 maps", "DS3 objects in the DS3 maps", Stage.Build,
             "A DS3 map crashes, hangs while loading or hitches since objects were added, objects float or are a mess of polygons, or something invisible blocks the way.",
         [
-            new("A", "DS3's objects as Elden Ring assets (default)", "Every DS3 object (statues, candles, crates, doors, ladders, the bonfire's sword) is converted to an Elden Ring asset and stands where DS3 has it, with its DS3 entity ID so the converted events find it. Objects that never move or break also get DS3's collision; doors, lifts and crates can be walked through until their animations and breaking are ported. Report: Work\\reports\\object-port.tsv."),
+            new("A", "DS3's objects as Elden Ring assets (default)", "Every DS3 object (statues, candles, crates, doors, ladders, the bonfire's sword) is converted to an Elden Ring asset and stands where DS3 has it, with its DS3 entity ID so the converted events find it. Objects that don't break also get DS3's collision; doors, lifts and levers move (see \"DS3 doors, lifts and levers\"); crates and barrels can be walked through until breaking is ported. Report: Work\\reports\\object-port.tsv."),
             new("B", "Objects without collision", "The same objects, but none of them is solid (port-maps --objects nocollision). Tells whether an object's collision is what blocks the way or breaks the map.")
                 { MapsArgs = ["--objects", "nocollision"] },
             new("off", "Off (no objects)", "The DS3 maps have no objects (port-maps --objects none), as every build up to 1.0.299 was.")
                 { MapsArgs = ["--objects", "none"] },
+        ]),
+        new("map-doors", "DS3 maps", "DS3 doors, lifts and levers", Stage.Build,
+            "A DS3 map crashes or hangs while loading since doors and lifts were added, a door or gate blocks the way and won't open, a lift drops you through it, or doors and gates look broken (parts in the wrong place, stretched).",
+        [
+            new("A", "Doors, lifts and levers move (default)", "DS3's objects that move (doors, gates, lifts, levers, chests) get their DS3 animations, collision that moves with them, and DS3's ObjAct events and ObjActParam rows, so a door opens when you use it and a lift carries you when DS3's scripts start it. Locked doors open without their key (keys aren't ported). They move silently. Report: the \"moves in Elden Ring\" column of Work\\reports\\object-port.tsv."),
+            new("B", "They move, without collision", "The same, but doors, lifts and levers aren't solid (port-maps --moving-objects nocollision). Tells whether their collision is what blocks the way or breaks the map; lifts can't carry you.")
+                { MapsArgs = ["--moving-objects", "nocollision"] },
+            new("off", "Off (they stand still)", "Doors, lifts and levers are drawn standing still, without collision or ObjAct events (port-maps --moving-objects off), as every build before doors were ported was.")
+                { MapsArgs = ["--moving-objects", "off"] },
         ]),
         new("map-regions", "DS3 maps", "DS3 regions, patrol routes and generators", Stage.Build,
             "A DS3 map crashes or hangs while loading since regions were added, enemies walk into walls or stand in a pile, or an event fires in the wrong place.",

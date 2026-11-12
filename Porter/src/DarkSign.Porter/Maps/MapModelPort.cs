@@ -481,14 +481,125 @@ public sealed class MapModelPort
     /// (cloth, chains) are already in model space and are drawn in their rest pose. Nodes and dummy points stay, so
     /// effects, prompts and ladders still find their dummy polys.
     /// </summary>
-    public void ConvertObject(FLVER2 flver, MapId ds3Id)
+    /// <param name="keepNodes">For an object that moves (a door, a lift, a lever, see <see cref="ObjectPort"/>): its
+    /// meshes stay on DS3's nodes, so each part follows the bone of the same name when the object's animation plays
+    /// (<see cref="KeepNodes"/>), instead of being baked into one rigid model.</param>
+    /// <returns>A note when <paramref name="keepNodes"/> could not keep every vertex on its node, else null.</returns>
+    public string? ConvertObject(FLVER2 flver, MapId ds3Id, bool keepNodes = false)
     {
-        BakeNodes(flver);
+        Dictionary<FLVER.Vertex, int>? nodes = keepNodes ? KeepNodes(flver) : null;
+        if (!keepNodes)
+            BakeNodes(flver);
         ConvertFlver(flver, ds3Id);
         if (flver.Meshes.Count == 0)
             throw new InvalidDataException("only effect, decal, water or shadow meshes, which have no Elden Ring material yet");
         for (int i = 0; i < flver.Materials.Count; i++)
             flver.Materials[i].Index = i;
+        return nodes is null ? null : RestoreNodes(flver, nodes);
+    }
+
+    /// <summary>
+    /// The node each vertex of an object hangs off, before the conversion flattens the meshes. A DS3 object mesh that
+    /// isn't skinned keeps each vertex in the space of the node its NormalW names (through the mesh's bone list when
+    /// it has one), and Elden Ring's own moving assets do the same: the door AEG219_000 is one mesh with no bone list
+    /// whose leaf's 5,600 vertices carry NormalW 1, its node "Model_AEG219_000_01", the skeleton bone the open/close
+    /// animation turns. So every mesh becomes a plain one on node 0 with NormalW = the vertex's node, which
+    /// <see cref="RestoreNodes"/> writes back after the vertex layouts are rebuilt. A skinned mesh (cloth, chains) is
+    /// in model space; it is moved into the root's space and stays on the root, drawn in its rest pose.
+    /// </summary>
+    public static Dictionary<FLVER.Vertex, int> KeepNodes(FLVER2 flver)
+    {
+        var result = new Dictionary<FLVER.Vertex, int>(ReferenceEqualityComparer.Instance);
+        var root = flver.Nodes.Count > 0 ? WorldTransforms(flver)[0] : Matrix4x4.Identity;
+        if (root.IsIdentity || !Matrix4x4.Invert(root, out var rootInverse))
+            rootInverse = Matrix4x4.Identity;
+        foreach (var mesh in flver.Meshes)
+        {
+            foreach (var v in mesh.Vertices)
+            {
+                int node = 0;
+                if (mesh.UseBoneWeights)
+                {
+                    if (!rootInverse.IsIdentity)
+                    {
+                        v.Position = Vector3.Transform(v.Position, rootInverse);
+                        v.Normal = SafeNormal(Vector3.TransformNormal(v.Normal, rootInverse), v.Normal);
+                    }
+                }
+                else
+                {
+                    int index = v.NormalWs.Count > 0 ? v.NormalWs[0] : 0;
+                    node = index >= 0 && index < mesh.BoneIndices.Count ? mesh.BoneIndices[index] : index;
+                    if (node < 0 || node >= flver.Nodes.Count)
+                        node = mesh.NodeIndex >= 0 && mesh.NodeIndex < flver.Nodes.Count ? mesh.NodeIndex : 0;
+                }
+                result[v] = node;
+            }
+            mesh.UseBoneWeights = false;
+            mesh.NodeIndex = 0;
+            mesh.BoneIndices = [];
+        }
+        return result;
+    }
+
+    /// <summary>
+    /// Puts back the node <see cref="KeepNodes"/> recorded on every vertex and sizes each mesh's culling box from the
+    /// rest pose (the vertices are in their nodes' spaces, not the model's). Returns a note when a vertex was lost
+    /// track of (a mesh split into copies) or the layout can't hold the node number.
+    /// </summary>
+    public static string? RestoreNodes(FLVER2 flver, Dictionary<FLVER.Vertex, int> nodes)
+    {
+        int lost = 0;
+        var world = WorldTransforms(flver);
+        foreach (var mesh in flver.Meshes)
+        {
+            var min = new Vector3(float.MaxValue);
+            var max = new Vector3(float.MinValue);
+            foreach (var v in mesh.Vertices)
+            {
+                if (!nodes.TryGetValue(v, out var node))
+                {
+                    lost++;
+                    node = 0;
+                }
+                if (node > 255)
+                    throw new InvalidDataException($"node {node}: a vertex can only name nodes 0-255");
+                if (v.NormalWs.Count == 0)
+                    v.NormalWs.Add(node);
+                else
+                    v.NormalWs[0] = node;
+                var p = node < world.Length ? Vector3.Transform(v.Positions[0], world[node]) : v.Positions[0];
+                min = Vector3.Min(min, p);
+                max = Vector3.Max(max, p);
+            }
+            if (mesh.Vertices.Count > 0)
+                mesh.BoundingBox = flver.Header.Version >= 0x2001A
+                    ? new FLVER2.Mesh.BoundingBoxes { Min = (max - min) / 2, Max = Vector3.Zero, Unk = (max + min) / 2 }
+                    : new FLVER2.Mesh.BoundingBoxes { Min = min, Max = max };
+        }
+        return lost == 0 ? null : $"{lost} vertices lost their node (copied when a mesh was split); they stay on the root";
+    }
+
+    /// <summary>Each node's rest transform in model space.</summary>
+    public static Matrix4x4[] WorldTransforms(FLVER2 flver)
+    {
+        var world = new Matrix4x4[flver.Nodes.Count];
+        var done = new bool[flver.Nodes.Count];
+        Matrix4x4 World(int i, int depth)
+        {
+            if (i < 0 || i >= world.Length || depth > 64)
+                return Matrix4x4.Identity;
+            if (done[i])
+                return world[i];
+            var local = flver.Nodes[i].ComputeLocalTransform();
+            var parent = flver.Nodes[i].ParentIndex;
+            world[i] = parent >= 0 && parent < world.Length && parent != i ? local * World(parent, depth + 1) : local;
+            done[i] = true;
+            return world[i];
+        }
+        for (int i = 0; i < world.Length; i++)
+            World(i, 0);
+        return world;
     }
 
     /// <summary>

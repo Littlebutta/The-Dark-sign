@@ -211,9 +211,33 @@ public static class MapEvents
             if (result.Scripts.TryGetValue(slot.Er, out var script))
                 File.WriteAllBytes(ctx.ModPath(MapPorter.ModParts(ScriptPath(slot.Er))), DCX.Compress(script.Write(), Template(slot).Compression));
         File.WriteAllBytes(modCommon, DCX.Compress(result.CommonFunc.Write(), commonCompression));
+        var objActNote = RemapObjActFlags(ctx, ds3Defs, erDefs, flags, slots);
         flags.Save(flagPath);
         return "events:\n  " + result.Summary + (buttonNote.Length > 0 ? "\n  " + buttonNote : "") + (spNote.Length > 0 ? "\n  " + spNote : "")
-               + (kitNote.Length > 0 ? "\n  " + kitNote : "");
+               + (kitNote.Length > 0 ? "\n  " + kitNote : "")
+               + (objActNote.Length > 0 ? "\n  " + objActNote : "");
+    }
+
+    /// <summary>
+    /// The ported ObjAct events (doors, levers, chests) wait in the map files with DS3's flags; they get the flag
+    /// numbers the scripts were just given (<see cref="ObjectPort.RemapObjActFlags(PorterContext, MapId, Func{long, long})"/>),
+    /// so "IF ObjAct Event Flag" in the converted scripts and the ObjAct name the same flag.
+    /// </summary>
+    private static string RemapObjActFlags(PorterContext ctx, Emedf ds3Defs, Emedf erDefs, FlagMap flags, IReadOnlyList<MapSlots.Slot> slots)
+    {
+        var main = slots.Where(s => !s.Probe).Select(s => (s.Ds3, s.Er)).ToList();
+        int changed = 0;
+        var failed = new List<string>();
+        foreach (var slot in slots)
+        {
+            var maps = new List<(MapId, MapId)> { (slot.Ds3, slot.Er) };
+            maps.AddRange(main.Where(m => m.Ds3 != slot.Ds3));
+            var port = new EventPort(ds3Defs, erDefs, maps, flags);
+            try { changed += ObjectPort.RemapObjActFlags(ctx, slot.Er, v => port.Move(v, EventPort.Kind.Flag)); }
+            catch (Exception ex) when (ex is not OutOfMemoryException) { failed.Add($"{slot.Er}: {ex.Message}"); }
+        }
+        return (changed > 0 ? $"ObjActs: {changed} given Elden Ring flags" : "")
+               + (failed.Count > 0 ? $"{(changed > 0 ? "; " : "")}ObjAct flags NOT moved in {string.Join("; ", failed)}" : "");
     }
 
     /// <summary>The DS3 scripts of these slots' maps, and DS3's common_func (null when missing).</summary>

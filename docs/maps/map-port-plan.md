@@ -19,7 +19,7 @@ after `port-weapons`. If it fails, the weapons still load and the game starts; t
 | Map events | `event/m40_00_00_00.emevd.dcx` | `event/m45_00_00_00.emevd.dcx`, converted instruction by instruction (see "Event scripts" below); the slot's own Elden Ring events no longer run | `Maps/EventPort.cs`, `Maps/MapEvents.cs` |
 | Common events | `event/common_func.emevd.dcx` (only the events the ported maps start, and the ones those start) | added to `event/common_func.emevd.dcx` under IDs 103x291000-103x291999 | `Maps/MapEvents.cs`, `Maps/FlagMap.cs` |
 | Enemies and bosses | MSB3 enemy parts | MSBE enemy parts at DS3's spot, on DS3's collision, with DS3's entity ID moved to the slot. The character is the ported DS3 one when `Mods\ER\darksign_chr_map.tsv` lists it, otherwise an Elden Ring stand-in of the same kind copied from a vanilla legacy-dungeon placement; DS3 bosses (boss health bar in DS3's events) get Elden Ring bosses. DS3's people get Elden Ring people (see "People" below). Fallbacks `map-enemies`, `map-people`. | `Maps/EnemyPort.cs` |
-| Objects | MSB3 object parts, `obj/oNNNNNN.objbnd.dcx` | MSBE asset parts at DS3's spot with DS3's entity ID; each DS3 object model becomes an asset `asset/aeg/aeg92x/aeg92x_NNN.geombnd.dcx` (+ `_l.geomhkxbnd.dcx` collision for objects that never move or break) with a row in AssetEnvironmentGeometryParam, built the way JortPob builds assets. Fallbacks `map-objects`. See "Objects, regions and map-file events". | `Maps/ObjectPort.cs` |
+| Objects | MSB3 object parts, `obj/oNNNNNN.objbnd.dcx` | MSBE asset parts at DS3's spot with DS3's entity ID; each DS3 object model becomes an asset `asset/aeg/aeg92x/aeg92x_NNN.geombnd.dcx` (+ `_l.geomhkxbnd.dcx` collision for objects that don't break) with a row in AssetEnvironmentGeometryParam, built the way JortPob builds assets. Doors, lifts and levers move: animation binder, moving collision, ObjAct events and ObjActParam rows. Fallbacks `map-objects`, `map-doors`. See "Objects, regions and map-file events" and "Doors, lifts and levers". | `Maps/ObjectPort.cs`, `Maps/ObjectAnims.cs` |
 | Regions and map-file events | MSB3 regions (event areas, warp, spawn and patrol points), PatrolInfo, PlatoonInfo, Generator | MSBE "Other" regions, spawn points and patrol route points with DS3's shape and entity ID; patrol routes, platoons and generators naming the ported enemies and points. Fallbacks `map-regions`. | `Maps/RegionPort.cs` |
 | Map connections | MSB3 connect collisions | MSBE connect collisions copied from a legacy dungeon's, pointing at the neighbouring map's slot (ones to unported maps are left out) | `Maps/MsbPort.cs` |
 | Run start/leave | | two events in `common.emevd` wait for flags the F1 menu sets, then use the game's WarpPlayer | `Maps/RunEvents.cs`, `TestMenu/src/overlay.cpp` |
@@ -395,8 +395,9 @@ Both games run the same event system, and DarkScript3 documents every instructio
   and body are bosses too (`EnemyPort.BossEncounter`), so they are ported and placed as enemies; the same body
   elsewhere without the group (Friede in the chapel) stays a person and never takes the boss stages' ported rows.
 
-Not converted yet: sound and BGM instructions, map ceremonies and world tendency. Doors and levers only work once the
-DS3 objects themselves are ported (the next stage); until then the events wait for assets that aren't there.
+Not converted yet: sound and BGM instructions, map ceremonies and world tendency. Doors, levers and lifts are ported
+assets that move (see "Doors, lifts and levers"); their ObjActParam rows sit at 70,000,000 + the DS3 ID, and the
+scripts' ObjAct arguments are moved there.
 
 ### Enemy placement and the enemy porter
 
@@ -486,6 +487,48 @@ Stage 1 (2026-11-11, not yet playtested; written without game files, checked off
 Still missing after stage 1: object effects (candle and bonfire flames, torches), doors/levers/lifts (ObjAct events,
 ObjActParam, object animations), ladders, bonfires as sites of grace, fog walls, breakable objects, treasure
 (items lying in the map), what people say and sell (see below), sound regions.
+
+### Doors, lifts and levers (objects that move)
+
+2026-11-12, not yet playtested; checked offline by `map-selftest` ("doors: ...") and on DS3's o300310, o300320,
+o300500, o300510 and o400340 against Elden Ring's door AEG219_000 in a cloud thread. Fallback `map-doors`.
+
+- **Which objects.** Every DS3 object whose objbnd has an animation binder and that doesn't break or serve as a ladder
+  (`ObjectPort.ConvertMoving`). They are converted one at a time after the still objects, because their animations go
+  through HKLib under AnimPort's lock while the still objects' collision serializes lock-free.
+- **Model.** The meshes stay on their nodes (`MapModelPort.KeepNodes` / `RestoreNodes`): every mesh becomes a plain
+  one on node 0 with NormalW = the vertex's node, as Elden Ring's door AEG219_000 is built (one mesh, no bone list,
+  the leaf's 5,600 vertices NormalW 1 = node "Model_AEG219_000_01"). DS3's root node ("o300310") is renamed to the
+  asset name in the model, the skeleton and the collision alike; a model with no such node gets one added last.
+- **Animations** (`Maps/ObjectAnims.cs`). Elden Ring's door binder layout: file 400 of the asset binder is an
+  animation binder holding `hkx_compendium\skeleton.hkx` (1000000), `tae\AEGxxx_yyy.tae` (3000000), the compendium
+  (7000000) and `hkx_compendium000_00000N.hkx` (1000000000 + ID). DS3's objbnd has the same pieces under the same IDs
+  (Havok 2014). The skeleton is DS3's (bones, parents, rest pose) in Elden Ring's skeleton file; each animation goes
+  through `AnimPort` onto that same skeleton (nothing to retarget); the TAE has one entry per animation in Elden
+  Ring's format (SDT, bank 36). DS3's TAE events (the creak, dust) are left out: the objects move silently.
+- **Collision.** Elden Ring's door collision has one body per part named after the bone it follows (the leaf is a box
+  named "Model_AEG219_000_01"; the frame stays put). DS3's object collision is laid out the same way, so bodies
+  named after a non-root bone take the leaf's settings (motion type 1, its motion properties, no motion ID:
+  `ObjectAnims.MovingBodies`). DS3 convex hulls (door leaves, levers; 31 of the first build's still objects had only
+  these and got no collision) now convert (`CollisionPort.ConvertConvex`). A body whose compressed mesh points past
+  its vertices (the placeholder frames of o400340 and o300500) is left out instead of failing the file.
+- **Rows.** Moving assets get behaviorType 0 (Elden Ring's door and lift have collision and 0) and isMoveObj from
+  DS3's ObjectParam (lifts: 304822, 342400, 404822...; Elden Ring's lift 219020 has it). Every DS3 ObjActParam row is
+  copied at 70,000,000 + the DS3 ID (Elden Ring shares 49 of DS3's 118 IDs and has nothing in 70-75 million) as a
+  copy of Elden Ring's door row 219000 with DS3's fields by name; item requirements (DS3's keys, not ported) are
+  dropped, so locked doors open; the one-sided check (type 2, 4150) stays; prompt rows Elden Ring lacks become 7200
+  (door) or 8301 (lever). The scripts' "Object Parameter ID" / "ObjAct Param ID" arguments move the same way
+  (`EventPort.Kind.ObjAct`).
+- **ObjAct events.** Placed for moving objects only, laid out like Stormveil's (no part/region/map of their own,
+  UnkE0C 255, UnkS0C -1), naming the asset part, the ported row and DS3's state type (0 lever, 1 one-way door, 4
+  two-way, 5 chest, the same values in both games). Their flag stays DS3's (marked "[DS3 flag] ") until the event step
+  gives the scripts their flags; then `ObjectPort.RemapObjActFlags` moves it the same way, so "IF ObjAct Event Flag"
+  and the ObjAct agree.
+- **Lifts** need nothing more: DS3's scripts play their animations ("Force Animation Playback" on the lift's entity).
+- **Unproven until a playtest:** that Elden Ring follows hierarchical FLVER nodes on an asset as DS3 did; that a convex
+  polytope without a connectivity table collides; that the moving bodies follow the bones (a moving lift carries the
+  player only if they do). Report columns in `object-port.tsv`: "moves in Elden Ring" (animations, bones, or why the
+  object stands still), "lift"; the collision column counts moving bodies.
 
 ### People (stage 2)
 
