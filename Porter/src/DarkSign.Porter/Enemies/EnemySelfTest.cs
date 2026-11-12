@@ -30,6 +30,14 @@ public static class EnemySelfTest
         var hound = new EnemyPort.ErEnemy("c4410", 44100000, 44100000, "Wolf", false, "test");
         var impEnemy = new EnemyPort.ErEnemy("c3080", 30800000, 30800000, "Imp", false, "test");
         var shapes = new Dictionary<string, ChrPort.Shape> { ["c4300"] = human, ["c4310"] = human, ["c4410"] = dog, ["c3080"] = imp };
+        // Behaviour variations stay five digits (both games' highest: Elden Ring 91000, DS3 99900). Up to 1.0.368 a
+        // ported enemy got its character ID * 100 (Pontiff c7105 = 710500, rows 910500010...) and no hit found its row.
+        Check("attack variation: a ported enemy gets its character ID * 10, the next free one of its ten when taken, never six digits",
+            AttackParamPort.ChooseVariation(new HashSet<int>(), 7105 * 10) == 71050
+            && AttackParamPort.ChooseVariation(new HashSet<int> { 70000 }, 7000 * 10) == 70001
+            && AttackParamPort.ChooseVariation(new HashSet<int> { 71050 }, 7105 * 10) == 71051
+            && AttackParamPort.ChooseVariation(new HashSet<int>(), 7105 * 100) == 9000
+            && AttackParamPort.RowId(2, 71050, 10) == 271050010 && AttackParamPort.RowId(2, 710500, 10) == -1);
         Check("kept bones: equal skeletons keep all, names are case-insensitive",
             ChrPort.KeptBones(human, Sk(2, ("master", -1), ("PELVIS", 0), ("Spine", 1))) == 3);
         Check("kept bones: a bone under another parent that comes earlier is kept, under a new bone it is not",

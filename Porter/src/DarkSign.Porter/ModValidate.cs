@@ -159,7 +159,13 @@ public static partial class ModValidate
             if (lost.Count > 0)
                 r.Error($"{name}: {lost.Count} rows of {lost.Select(b => Field(b, "variationId")).Distinct().Count()} variations are numbered variation * 1000 + judge " +
                         $"with no prefix (e.g. {lost[0].ID}); the game looks hits up as prefix * 100000000 + variation * 1000 + judge and never finds them");
-            Console.WriteLine($"validate: {name}: {table.Rows.Count(b => Field(b, "variationId") > 0 && AttackParamPort.Prefix(b) > 0)} rows numbered the way the game looks them up, {lost.Count} not");
+            // A variation of six digits or more (builds up to 1.0.368 gave each ported enemy its character ID * 100,
+            // e.g. 710500) runs into the prefix digit: neither game uses one, and no ported enemy could hurt the player.
+            var wide = table.Rows.Where(b => Field(b, "variationId") > AttackParamPort.MaxVariation).ToList();
+            if (wide.Count > 0)
+                r.Error($"{name}: {wide.Count} rows of {wide.Select(b => Field(b, "variationId")).Distinct().Count()} variations above {AttackParamPort.MaxVariation} " +
+                        $"(e.g. row {wide[0].ID}, variation {Field(wide[0], "variationId")}); variation * 1000 reaches the prefix digit and the game never finds them");
+            Console.WriteLine($"validate: {name}: {table.Rows.Count(b => Field(b, "variationId") > 0 && AttackParamPort.Prefix(b) > 0)} rows numbered the way the game looks them up, {lost.Count} not, {wide.Count} with a variation above {AttackParamPort.MaxVariation}");
         }
         // Ported hits need a hitbox: an attack row with a sphere/capsule (radius > 0 on a dummy poly). 1.0.183 copied
         // DS3 attack rows with radius 0 and DS3 weapons hit nothing (enemies or walls).
