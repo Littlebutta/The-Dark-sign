@@ -94,6 +94,8 @@ public sealed class ObjectPort
     public sealed class Asset
     {
         public required string Ds3Model { get; init; }
+        /// <summary>A posed copy of the model (<see cref="ObjectPoses"/>): the DS3 animation baked into it; -1 for the plain model.</summary>
+        public int Pose { get; init; } = -1;
         public required int Index { get; init; }
         public required string Name { get; init; }          // "AEG920_001"
         public string Group => Name[..6];                   // "AEG920"
@@ -164,9 +166,16 @@ public sealed class ObjectPort
                 if (msb.Parts.Objects.FirstOrDefault(o => o.Name == act.ObjActPartName) is { } target)
                     _objActTargets.Add(target.ModelName);
         var names = Plan(maps.SelectMany(m => m.Parts.Objects).Select(o => o.ModelName));
-        FirstGroup = FreeGroup(er.Entries.Select(e => e.Path), (names.Count + 999) / 1000);
+        // Posed copies (corpses, ObjectPoses) after the plain models, so the plain models keep their numbers.
+        var poses = ObjectPoses.Enabled ? PlanPoses(maps.SelectMany(m => m.Parts.Objects)) : [];
+        FirstGroup = FreeGroup(er.Entries.Select(e => e.Path), (names.Count + poses.Count + 999) / 1000);
         foreach (var (model, index) in names)
             _assets[model] = new Asset { Ds3Model = model, Index = index, Name = AssetName(FirstGroup, index) };
+        for (int i = 0; i < poses.Count; i++)
+        {
+            int index = names.Count + i;
+            _assets[ObjectPoses.Key(poses[i].Model, poses[i].Pose)] = new Asset { Ds3Model = poses[i].Model, Pose = poses[i].Pose, Index = index, Name = AssetName(FirstGroup, index) };
+        }
 
         // The binder settings and the FLVER entry's flags come from a vanilla asset when the game has it.
         _binderTemplate = new BND4 { Version = "07D7R6" };
@@ -210,6 +219,17 @@ public sealed class ObjectPort
         models.Where(m => !string.IsNullOrWhiteSpace(m)).Select(m => m.ToLowerInvariant()).Distinct()
             .OrderBy(m => m, StringComparer.Ordinal).Select((m, i) => (m, i)).ToList();
 
+    /// <summary>Each distinct (model, pose) DS3's object parts ask for (<see cref="ObjectPoses.PoseOf"/>), in order.</summary>
+    public static List<(string Model, int Pose)> PlanPoses(IEnumerable<MSB3.Part.Object> parts) =>
+        parts.Where(p => !string.IsNullOrWhiteSpace(p.ModelName) && ObjectPoses.PoseOf(p) >= 0)
+            .Select(p => (Model: p.ModelName.ToLowerInvariant(), Pose: ObjectPoses.PoseOf(p))).Distinct()
+            .OrderBy(p => p.Model, StringComparer.Ordinal).ThenBy(p => p.Pose).ToList();
+
+    /// <summary>The asset a DS3 object part is placed as: its posed copy when it asks for a pose and that converted, else the plain model's.</summary>
+    public static Asset? AssetFor(MSB3.Part.Object part, Func<string, Asset?> lookup) =>
+        (ObjectPoses.PoseOf(part) is var pose and >= 0 && lookup(ObjectPoses.Key(part.ModelName, pose)) is { Converted: true } posed ? posed : null)
+        ?? lookup(part.ModelName);
+
     public static string AssetName(int firstGroup, int index) => $"AEG{firstGroup + index / 1000:D3}_{index % 1000:D3}";
 
     /// <summary>
@@ -249,7 +269,9 @@ public sealed class ObjectPort
         if (_method == Method.None)
             return new Result(0, 0, ds3.Parts.Objects.Count, 0, partNames, notes);
 
-        var wanted = ds3.Parts.Objects.Select(o => o.ModelName).Distinct(StringComparer.OrdinalIgnoreCase)
+        var wanted = ds3.Parts.Objects.Select(o => o.ModelName)
+            .Concat(ds3.Parts.Objects.Where(o => ObjectPoses.PoseOf(o) >= 0).Select(o => ObjectPoses.Key(o.ModelName, ObjectPoses.PoseOf(o))))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
             .Select(m => _assets.GetValueOrDefault(m)).Where(a => a is not null && !a.Tried).Select(a => a!).ToList();
         var moving = new System.Collections.Concurrent.ConcurrentBag<Asset>();
         Parallel.ForEach(wanted, Parallelism.Options, asset =>
@@ -307,7 +329,7 @@ public sealed class ObjectPort
                 otherState++;
                 continue;
             }
-            var asset = lookup(src.ModelName);
+            var asset = AssetFor(src, lookup);
             if (asset is null || !asset.Converted)
             {
                 leftOut++;
@@ -350,6 +372,8 @@ public sealed class ObjectPort
             notes.Add(PlaceObjActs(ds3, msb, ds3Id, erId, partNames, placedAssets));
         if (otherState > 0)
             notes.Add($"{otherState} object parts left out: they belong to another state of the map (off DS3's layer bit 0, e.g. the Untended Graves)");
+        if (placedAssets.Values.Count(a => a.Pose >= 0) is var posedParts and > 0)
+            notes.Add($"{posedParts} object parts (corpses) in their DS3 pose, on {placedAssets.Values.Where(a => a.Pose >= 0).Select(a => a.Name).Distinct().Count()} posed models");
         return new Result(placed, ds3.Parts.Objects.Select(o => o.ModelName).Distinct(StringComparer.OrdinalIgnoreCase).Count(m => lookup(m)?.Converted == true),
             leftOut + otherState, withCollision, partNames, notes);
     }
@@ -506,6 +530,11 @@ public sealed class ObjectPort
             throw new FileNotFoundException($"DS3 has no {path}");
         var bnd = BND4.Read(_ds3.Read(path));
         asset.Contents = Describe(bnd);
+        if (asset.Pose >= 0)
+        {
+            ConvertPosed(asset, bnd);
+            return true;
+        }
         asset.Animated = bnd.Files.Any(f => ItemText.Leaf(f.Name).EndsWith(".anibnd", StringComparison.OrdinalIgnoreCase));
         asset.ObjActTarget = _objActTargets.Contains(asset.Ds3Model);
         if (_objectParam is not null && int.TryParse(asset.Ds3Model.AsSpan(1), out var objectId) && _objectParam[objectId] is { } row)
@@ -558,6 +587,34 @@ public sealed class ObjectPort
         else
             ConvertCollision(asset, bnd, null);
         return true;
+    }
+
+    /// <summary>
+    /// A posed copy of a skinned object (a corpse): the DS3 pose baked into a still model (<see cref="ObjectPoses"/>),
+    /// without collision (DS3's is the bind pose's). Throws when the model isn't skinned or the pose can't be read;
+    /// the part then falls back to the plain model.
+    /// </summary>
+    private void ConvertPosed(Asset asset, BND4 bnd)
+    {
+        asset.Animated = true;
+        var pose = ObjectPoses.Sample(bnd, asset.Pose);
+        int moved = 0;
+        var result = ConvertBinder(bnd, asset.Ds3Model, asset.Name, _models, _binderTemplate, _fileFlags, null, out _, flver =>
+        {
+            if (!ObjectPoses.Skinned(flver))
+                throw new InvalidDataException($"not skinned: DS3 pose {asset.Pose} is left to the plain model");
+            moved = ObjectPoses.Apply(flver, pose);
+        });
+        asset.MovingNote = $"posed: DS3 animation {asset.Pose} baked in ({pose.Count} bones posed, {moved} vertices moved)";
+        asset.Meshes = result.Flver.Meshes.Count;
+        asset.Dummies = result.Flver.Dummies.Count;
+        asset.Radius = Vector3.Distance(result.Flver.Header.BoundingBoxMin, result.Flver.Header.BoundingBoxMax) / 2;
+        asset.Textures = result.Textures.Keys.ToList();
+        lock (_textures)
+            foreach (var (name, texture) in result.Textures)
+                _textures.TryAdd(name, texture);
+        Write(GeomBndPath(asset.Name), DCX.Compress(result.Binder.Write(), _compression));
+        asset.CollisionNote = "none: a posed corpse (DS3's collision is the unposed model's)";
     }
 
     /// <summary>
@@ -667,12 +724,13 @@ public sealed class ObjectPort
     /// (the DS3 root to the asset name, as in <see cref="ObjectAnims.Build"/>); a node named after the asset is added
     /// when none is, as Elden Ring's door has one. Null: a still object (meshes baked onto the root).</param>
     public static Converted ConvertBinder(BND4 objbnd, string ds3Model, string assetName, MapModelPort models, BND4 template, Binder.FileFlags flags,
-        IReadOnlyDictionary<string, string>? moving, out string? nodeNote)
+        IReadOnlyDictionary<string, string>? moving, out string? nodeNote, Action<FLVER2>? prepare = null)
     {
         var file = objbnd.Files.FirstOrDefault(f => ItemText.Leaf(f.Name).Equals(ds3Model + ".flver", StringComparison.OrdinalIgnoreCase))
                    ?? objbnd.Files.FirstOrDefault(f => FLVER2.Is(f.Bytes))
                    ?? throw new InvalidDataException("the objbnd holds no model");
         var flver = FLVER2.Read(file.Bytes);
+        prepare?.Invoke(flver);
         if (moving is not null)
         {
             foreach (var node in flver.Nodes)
@@ -984,11 +1042,11 @@ public sealed class ObjectPort
         var tried = _assets.Values.Where(a => a.Tried).OrderBy(a => a.Index).ToList();
         File.WriteAllLines(_ctx.ModPath(TableFile),
             ["# DS3 object\tElden Ring asset\tasset row\tcollision (written by DarkSignPorter port-maps)",
-             .. tried.Where(a => a.Converted).Select(a => $"{a.Ds3Model}\t{a.Name}\t{a.Row}\t{(a.Collision ? 1 : 0)}")]);
+             .. tried.Where(a => a.Converted && a.Pose < 0).Select(a => $"{a.Ds3Model}\t{a.Name}\t{a.Row}\t{(a.Collision ? 1 : 0)}")]);
 
         var report = new StringBuilder("DS3 object\tasset\tparts placed\tresult\tmeshes\tdummy points\tradius\tcollision\tanimated\tmoves in Elden Ring\tlift\tbreaks\tladder\tObjAct target\ttextures\tobjbnd holds\n");
         foreach (var a in tried)
-            report.Append(string.Join('\t', a.Ds3Model, a.Name, a.Placed, a.Converted ? "ok" : "FAILED: " + Clean(a.Failure), a.Meshes, a.Dummies,
+            report.Append(string.Join('\t', a.Pose >= 0 ? $"{a.Ds3Model} pose {a.Pose}" : a.Ds3Model, a.Name, a.Placed, a.Converted ? "ok" : "FAILED: " + Clean(a.Failure), a.Meshes, a.Dummies,
                 a.Radius.ToString("0.0", System.Globalization.CultureInfo.InvariantCulture), Clean(a.CollisionNote), a.Animated ? 1 : 0,
                 a.Moving ? "yes: " + Clean(a.MovingNote) : Clean(a.MovingNote), a.MoveObj ? 1 : 0, a.Breakable ? 1 : 0,
                 a.Ladder ? 1 : 0, a.ObjActTarget ? 1 : 0, a.Textures.Count, Clean(a.Contents))).Append('\n');
@@ -999,7 +1057,8 @@ public sealed class ObjectPort
                       + $"{AssetName(FirstGroup, 0)} and up ({tried.Count(a => a.Collision)} with collision, "
                       + $"{tried.Count(a => a.Converted && a.Breakable)} that break have none yet; "
                       + $"{tried.Count(a => a.Moving)} move: doors, levers, lifts ({tried.Count(a => a.Moving && a.MoveObj)} lifts, {tried.Count(a => a.Moving && a.MovingBodies > 0)} with moving collision), "
-                      + $"{tried.Count(a => a.Converted && a.Animated && !a.Moving)} animated ones stand still); "
+                      + $"{tried.Count(a => a.Converted && a.Animated && !a.Moving && a.Pose < 0)} animated ones stand still, "
+                      + $"{tried.Count(a => a.Converted && a.Pose >= 0)} posed copies of corpses); "
                       + $"report Work\\reports\\{ReportFile}";
         if (failed.Count > 0)
             summary += $"\n  FAIL {failed.Count} object models not converted: "
