@@ -244,8 +244,8 @@ public static partial class MapPortChecks
         Expect(part.UnkT54PartName == part.Name && part.UnkPartNames[4] == part.Name && part.UnkPartNames[5] == part.Name, "names itself where JortPob's assets do");
         Expect(part.AssetSfxParamRelativeID == -1 && part.UnkE0F == 1 && part.TileLoad.MapID.All(b => b == 255) && part.AssetUnk2.Unk04 == 100
                && part.AssetUnk3.DisableWhenMapLoadedMapID.All(b => b == -1), "JortPob's generic asset settings");
-        Expect(MapDrawGroups.Draw(part.Unk1).ToArray().SequenceEqual(ds3.Parts.Objects.First(o => o.ModelName == "o302590").DrawGroups.Take(8)),
-            "DS3's draw groups (culling), like the map pieces");
+        Expect(part.Unk1.DisplayGroups.Concat(part.Unk1.DrawGroups).Concat(part.Unk1.CollisionMask).All(g => g == 0),
+            "no draw groups by default (drawn from everywhere), like the map pieces");
         Expect(msb.Parts.Assets.Count == 2 && msb.Parts.Assets[1].Name == "AEG920_007_9001", "the second instance gets the next number");
         var model = msb.Models.Assets.Single();
         Expect(model.Name == "AEG920_007" && model.SibPath == @"N:\GR\data\Asset\Environment\geometry\AEG920\AEG920_007\sib\AEG920_007.sib", $"one model entry ({model.SibPath})");

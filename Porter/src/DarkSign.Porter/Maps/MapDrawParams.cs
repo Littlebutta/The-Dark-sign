@@ -9,8 +9,15 @@ namespace DarkSign.Porter.Maps;
 /// piece, a reflection proxy, names none, and pieces copied from it stayed invisible in the 2026-11-10 playtest
 /// although their models, materials and draw flags were in order.
 ///
-/// The row is made the way JortPob makes its rows (Paramanager.GeneratePartDrawParams): a copy of vanilla row 1001
-/// with an unlimited draw distance and no LOD switching (DS3's far meshes are their own map pieces).
+/// The rows are made the way JortPob makes its rows (Paramanager.GeneratePartDrawParams): copies of vanilla row 1001
+/// with an unlimited draw distance. Row <see cref="FirstRow"/> never switches detail; its twin <see cref="LodOffset"/> up (<see cref="LodRow"/>) switches
+/// to DS3's own lower detail triangle lists (FLVER face sets LodLevel1 and LodLevel2, which DS3 ships inside most map
+/// models: 5,078 of them in Undead Settlement's) at <see cref="Lod"/>'s distances, the way vanilla Elden Ring's map
+/// pieces with such lists do (Stormveil's rows 2006, 2304 and 2404: lv01 30 m, lv12 60 m, cross-fade on; measured on
+/// Devin's regulation.bin 2026-11-12). Up to 1.0.417 every ported piece named the first row, so each map drew every
+/// triangle of every piece at full detail however far away it was: about 30 million vertices per map, which held map 3
+/// at 3 fps whenever the player faced the town (frame-time recorder, 1.0.417). Only pieces whose model has lower
+/// detail lists in every mesh name the LOD row (<see cref="MapLod"/>); the rest keep the first.
 ///
 /// The row also says how near a map piece must be for its textures to load in full: beyond
 /// <see cref="TextureDistance"/> the game draws it with the low detail copies (<see cref="MapTextures"/>).
@@ -37,6 +44,31 @@ public static class MapDrawParams
 
     /// <summary>JortPob's values, which every build up to 1.0.299 used ("--full-low-textures").</summary>
     public const float LegacyTextureDistance = 256f, LegacyTextureBand = 32f;
+
+    /// <summary>
+    /// Pieces whose models carry DS3's lower detail lists name a twin of their row this far up (see <see cref="Lod"/>):
+    /// map piece rows are FirstRow to FirstRow + 9 (texture distance by size), objects' FirstRow + 10 to + 19.
+    /// </summary>
+    public const int LodOffset = 20;
+    /// <summary>The twin of <see cref="FirstRow"/> that switches to lower detail lists.</summary>
+    public const short LodRow = FirstRow + LodOffset;
+
+    /// <summary>A map piece row of ours that has an LOD twin.</summary>
+    public static bool IsPieceRow(int id) => id >= FirstRow && id < FirstRow + 10;
+
+    /// <summary>
+    /// When the game switches a piece to DS3's lower detail lists: LodLevel1 beyond <see cref="Near"/> metres and
+    /// LodLevel2 beyond <see cref="Far"/>, with bands of <see cref="NearBand"/> and <see cref="FarBand"/> in which it
+    /// doesn't switch back (vanilla's 1 and 2 m).
+    /// </summary>
+    public sealed record Lod(float Near, float Far, float NearBand = 1f, float FarBand = 2f)
+    {
+        /// <summary>Vanilla Elden Ring's distances for map pieces with lower detail lists (default).</summary>
+        public static readonly Lod Vanilla = new(30f, 60f);
+        /// <summary>Twice as far ("--far-lod", fallback "map-lod" C): sharper far scenery, more to draw.</summary>
+        public static readonly Lod Far2 = new(60f, 120f);
+        public override string ToString() => $"lower detail beyond {Near:F0} m, lowest beyond {Far:F0} m";
+    }
 
     public static bool IsOurs(int id) => id is >= FirstRow and <= LastRow;
 
@@ -88,8 +120,8 @@ public static class MapDrawParams
         return $"texture distance by size: pieces by radius, and how much further out they load full textures: {string.Join(", ", parts)}";
     }
 
-    /// <summary>Adds (or replaces) the rows (one per size of <see cref="TextureBySize"/>) and returns the first one's ID.</summary>
-    public static short AddRow(PARAM param, bool legacyTextures = false)
+    /// <summary>Adds (or replaces) the rows (one per size of <see cref="TextureBySize"/>) and returns the first one's ID. With <paramref name="lod"/>, each gets an LOD twin (<see cref="AddLodTwins"/>).</summary>
+    public static short AddRow(PARAM param, bool legacyTextures = false, Lod? lod = null)
     {
         param.Rows.RemoveAll(r => r.ID >= FirstRow && r.ID < FirstRow + TextureBySize.Length);
         var template = param[TemplateRow] ?? param[VanillaRow] ?? param.Rows.FirstOrDefault()
@@ -113,8 +145,32 @@ public static class MapDrawParams
             Set(row, "drawOnlyReflectCam", (sbyte)0);
             param.Rows.Add(row);
         }
+        if (lod is not null)
+            AddLodTwins(param, lod);
         param.Rows.Sort((a, b) => a.ID.CompareTo(b.ID));
         return FirstRow;
+    }
+
+    /// <summary>
+    /// For every map piece row of ours (<see cref="IsPieceRow"/>), a twin <see cref="LodOffset"/> up with the same
+    /// settings that switches to DS3's lower detail lists at <paramref name="lod"/>'s distances.
+    /// </summary>
+    public static void AddLodTwins(PARAM param, Lod lod)
+    {
+        param.Rows.RemoveAll(r => IsPieceRow(r.ID - LodOffset));
+        foreach (var row in param.Rows.Where(r => IsPieceRow(r.ID)).ToList())
+        {
+            var twin = new PARAM.Row(row) { ID = row.ID + LodOffset, Name = row.Name + ", lower detail by distance" };
+            Set(twin, "lv01_BorderDist", lod.Near);
+            Set(twin, "lv01_PlayDist", lod.NearBand);
+            Set(twin, "lv12_BorderDist", lod.Far);
+            Set(twin, "lv12_PlayDist", lod.FarBand);
+            Set(twin, "lv23_BorderDist", None);
+            Set(twin, "lv23_PlayDist", 0f);
+            // Vanilla's LOD rows fade one level into the next instead of popping.
+            Set(twin, "enableCrossFade", 1u);
+            param.Rows.Add(twin);
+        }
     }
 
     private static void Set(PARAM.Row row, string field, object value)
@@ -128,18 +184,20 @@ public static class MapDrawParams
     /// Writes the row into the mod's regulation and returns the ID map pieces should name. If that fails the pieces
     /// name a vanilla row instead, so they are never left pointing at a row that doesn't exist.
     /// </summary>
-    public static (short Row, string Note) Write(PorterContext ctx, bool legacyTextures = false)
+    public static (short Row, string Note) Write(PorterContext ctx, bool legacyTextures = false, Lod? lod = null)
     {
         try
         {
             var regulation = ActionButtons.LoadRegulation(ctx);
             var param = regulation.Get(ParamName) ?? throw new InvalidDataException("Elden Ring has no PartsDrawParam");
             var template = param[TemplateRow] is not null ? TemplateRow : param[VanillaRow] is not null ? VanillaRow : param.Rows[0].ID;
-            var id = AddRow(param, legacyTextures);
+            // The LOD row is always written: a one-map rebuild with --no-lod must not take it from the other maps' pieces.
+            var id = AddRow(param, legacyTextures, lod ?? Lod.Vanilla);
             regulation.Save(ctx.ModPath("regulation.bin"));
             return (id, $"map piece draw settings: PartsDrawParam row {id} (a copy of row {template}, unlimited draw distance, no LOD switching, "
                         + $"full textures within {(legacyTextures ? LegacyTextureDistance : TextureDistance):F0} m, "
-                        + $"further for larger pieces: rows {id + 1} to {id + TextureBySize.Length - 1})");
+                        + $"further for larger pieces: rows {id + 1} to {id + TextureBySize.Length - 1})"
+                        + (lod is null ? $"; LOD twins (row + {LodOffset}) written but unused by this run's pieces (--no-lod)" : $"; LOD twins (row + {LodOffset}) the same with DS3's {lod} for models that have them"));
         }
         catch (Exception ex) when (ex is not OutOfMemoryException)
         {

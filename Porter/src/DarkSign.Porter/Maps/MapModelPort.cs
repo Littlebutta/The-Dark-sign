@@ -335,12 +335,12 @@ public sealed class MapModelPort
 
     /// <summary>
     /// What the game has to hold and draw for this map's pieces: models, meshes, vertices, full detail triangles,
-    /// and how many lower detail triangle lists DS3 shipped inside the models (drawn only where the PartsDrawParam
-    /// row switches detail by distance, which <see cref="MapDrawParams"/> turns off).
+    /// and how many lower detail triangle lists DS3 shipped inside the models (drawn where the PartsDrawParam row
+    /// switches detail by distance, <see cref="MapDrawParams.LodRow"/>; see <see cref="Lods"/>).
     /// </summary>
     public string LoadSummary =>
         $"{_models} models, {_meshes} meshes, {_vertices:N0} vertices, {_triangles:N0} triangles at full detail "
-        + $"({_lodFaceSets} lower detail triangle lists from DS3 go unused), {_modelBytes / 1048576.0:F0} MB of model data";
+        + $"({_lodFaceSets} lower detail triangle lists from DS3), {_modelBytes / 1048576.0:F0} MB of model data";
 
     private void Count(FLVER2 flver, int bytes)
     {
@@ -363,6 +363,12 @@ public sealed class MapModelPort
         Interlocked.Add(ref _lodFaceSets, lods);
         Interlocked.Add(ref _modelBytes, bytes);
     }
+
+    /// <summary>Models (DS3 model numbers) whose every FLVER carries DS3's lower detail lists in every mesh (<see cref="MapLod"/>).</summary>
+    public HashSet<string> LodModels { get; } = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>What <see cref="MapLod.Complete"/> found in this map's models.</summary>
+    public MapLod.Stats Lods { get; } = new();
 
     /// <summary>Meshes left out of the converted models, by DS3 material type ("M[A]_Add_NoLight" -> 12).</summary>
     public Dictionary<string, int> LeftOut { get; } = new(StringComparer.OrdinalIgnoreCase);
@@ -417,6 +423,7 @@ public sealed class MapModelPort
 
         var files = new List<BinderFile>();
         var emptyFlvers = new List<string>();
+        bool allLod = true;
         int index = 0;
         foreach (var file in ds3.Files.Where(f => FLVER2.Is(f.Bytes)))
         {
@@ -447,6 +454,10 @@ public sealed class MapModelPort
             if (FlverMaterialNumbers.Apply(flver) == 0 && !FlverMaterialNumbers.Enabled)
                 for (int i = 0; i < flver.Materials.Count; i++)
                     flver.Materials[i].Index = i;
+            // DS3's lower detail lists, completed so the model can switch to them (MapLod).
+            var lod = MapLod.Complete(flver);
+            Lods.Add(lod.HasLod, lod);
+            allLod &= lod.HasLod;
             // The template's file ID (200 in every vanilla map piece binder), not a count from 0.
             var written = flver.Write();
             Count(flver, written.Length);
@@ -454,6 +465,9 @@ public sealed class MapModelPort
         }
         if (files.Count == 0)
             throw new InvalidDataException("only effect, decal, water or shadow meshes, which have no Elden Ring material yet");
+        if (allLod)
+            lock (LodModels)
+                LodModels.Add(modelNumber);
         if (emptyFlvers.Count > 0)
             lock (_materials)
                 EmptyFlvers += emptyFlvers.Count;

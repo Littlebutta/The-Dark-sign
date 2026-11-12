@@ -331,11 +331,12 @@ Not changed, and the next suspects if a map still hitches:
 - Collision and navmesh are XML tagfiles, some 55 times the size of DS3's binary (a 4.7 MB file is 260 MB of XML
   the game parses). JortPob ships XML and calls binary "worse in engine" without saying how; fallback
   `map-collision` B wrote binary and was untested in game (binary is the default since 1.0.31x, see below).
-- Every map piece draws from everywhere (no draw groups, unlimited draw distance, no detail switch by distance),
-  including DS3's far stand-in pieces. DS3 culls by draw group (`map-groups` B up to 1.0.410 wrote DS3's masks into
-  Elden Ring's alternate group fields and never culled; since this PR DS3's groups are the default, see
-  `Maps/MapDrawGroups.cs`), and its models carry lower detail triangle lists the row never switches to
-  (counted on the `load:` line).
+- Every map piece draws from everywhere (no draw groups, unlimited draw distance). DS3 culls by draw group; DS3's
+  groups written into Elden Ring's real group fields (`Maps/MapDrawGroups.cs`) were the default in 1.0.414-1.0.417
+  and hid the wrong things in game, so they are fallback `map-groups` B now. Instead, pieces whose models carry DS3's
+  lower detail triangle lists (LodLevel1/2 face sets; on map 3 about 60% and 20% of the full triangles) switch to them
+  at vanilla Elden Ring's 30 / 60 m (`Maps/MapLod.cs`, a twin of each piece row 20 up, 9420 and on, fallback `map-lod`; the port log's
+  `lower detail` lines).
 - Enemies that can't find a path (the navmesh's links are a separate problem) ask again every few seconds.
 
 2026-11-11, 1.0.304 playtest: the texture change did not fix it (the Undead Settlement still "really really bad",

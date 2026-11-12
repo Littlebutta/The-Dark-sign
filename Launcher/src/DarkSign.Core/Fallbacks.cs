@@ -368,18 +368,27 @@ public static class Fallbacks
         new("map-groups", "DS3 maps", "Which map parts are drawn (culling)", Stage.Build,
             "Parts of a DS3 map vanish or pop in as you move, a room is empty until you step inside, or the map lags far more than an Elden Ring map.",
         [
-            new("A", "DS3's draw groups (default)", "Each DS3 map area shows only the map pieces, collisions and objects DS3 showed from it, the way DS3 culls its maps (about a fifth of the map at a time; the port log's \"draw groups\" line says how much per map). DS3's groups are written into Elden Ring's own draw and display groups (Smithbox's reading of the part struct). Low-detail stand-ins and far views are kept, since the game now shows each only where DS3 does."),
-            new("B", "Everything visible, as up to 1.0.410", "Every map part draws from everywhere in the map, nothing culled (port-maps --all-visible): map pieces carry no draw or display groups, collisions and enemies have every group on. Compare with A to see what culling changes, or use it if parts of a map go missing on A.")
-                { MapsArgs = ["--all-visible"] },
+            new("A", "Everything visible (default)", "Every map part draws from everywhere in the map, nothing culled: map pieces and objects carry no draw or display groups, collisions and enemies have every group on, as in every build up to 1.0.410 and again after 1.0.417. DS3's own lower detail models keep far scenery cheap instead (\"Lower detail models far away\")."),
+            new("B", "DS3's draw groups, as 1.0.414 to 1.0.417", "Each DS3 map area shows only the map pieces, collisions and objects DS3 showed from it (port-maps --ds3-culling), written into Elden Ring's own draw and display groups (Smithbox's reading of the part struct); collisions themselves are never culled. In 1.0.417 this hid Firelink Shrine's chairs until you stepped outside, faded the world outside the shrine, made the player vanish near the Crystal Lizard and made Friede's arena flicker, so it is only for comparison.")
+                { MapsArgs = ["--ds3-culling"] },
             new("C", "No draw groups", "Parts carry no draw or display groups at all (port-maps --no-groups), as the colosseums' own parts and JortPob's maps have them; nothing is culled.")
                 { MapsArgs = ["--no-groups"] },
         ]),
         new("map-draw", "DS3 maps", "Draw distance settings of the DS3 map pieces", Stage.Build,
             "DS3 map geometry is invisible or pops in only when close.",
         [
-            new("A", "The port's own row (default)", "Every map piece names a PartsDrawParam row the port adds (unlimited draw distance, no LOD switching, as JortPob's maps have)."),
+            new("A", "The port's own rows (default)", "Every map piece names a PartsDrawParam row the port adds (unlimited draw distance, as JortPob's maps have); pieces whose models carry DS3's lower detail models name a second row that switches to them by distance (\"Lower detail models far away\")."),
             new("B", "A vanilla row", "Map pieces name Stormveil Castle's most common PartsDrawParam row, 2046 (port-maps --vanilla-draw-param), and nothing is added to the regulation.")
                 { MapsArgs = ["--vanilla-draw-param"] },
+        ]),
+        new("map-lod", "DS3 maps", "Lower detail models far away", Stage.Build,
+            "A DS3 map lags or stutters when you look across it, or distant buildings and rocks look blocky, flicker or vanish when you move away from them.",
+        [
+            new("A", "DS3's lower detail models by distance (default)", "DS3 ships a simpler copy of most map models inside the model itself (5,078 lower detail lists in Undead Settlement's). The game switches a piece to the first beyond 30 m and the second beyond 60 m, as vanilla Elden Ring does for its own map pieces that have them; pieces whose models have none are always drawn in full. The port log's \"lower detail\" lines say how many triangles each level keeps."),
+            new("B", "Full detail everywhere, as up to 1.0.417", "Every piece is drawn at full detail at any distance (port-maps --no-lod): every triangle of the whole map in view at once.")
+                { MapsArgs = ["--no-lod"] },
+            new("C", "Twice as far", "The switch happens beyond 60 m and 120 m (port-maps --far-lod): sharper distant scenery for more to draw.")
+                { MapsArgs = ["--far-lod"] },
         ]),
         new("map-materials", "DS3 maps", "Materials of the DS3 map pieces", Stage.Build,
             "DS3 map geometry is invisible, black, far too dark or shiny, or foliage and fences are solid cards.",
@@ -428,7 +437,7 @@ public static class Fallbacks
         new("map-stand-ins", "DS3 maps", "DS3's low-detail stand-ins and far views", Stage.Build,
             "A far part of a DS3 map is missing (a castle wall, a hall, a tower or mountains you could see from a distance), or blocky slabs, steps or low-resolution polygons floating over the map are back.",
         [
-            new("A", "Left out where detailed pieces stand (default)", "DS3 shows a far area as one blocky piece with a stretched \"low\" texture, and only from where its detailed pieces are not drawn. With DS3's culling on (\"Which map parts are drawn\" A) the game does the same and every stand-in is kept. Without it the port draws everything at once, so such a stand-in is left out when detailed pieces DS3 never shows together with it stand inside it. One with nothing detailed under it (Lothric Castle seen from the High Wall) stays. Far views go the same way: low-detail copies of a whole area with ordinary textures (map 3's mountains, roofs and rock walls seen from one lookout), left out when they cover at least ten times their own detail that DS3 never draws with them. The port log lists every stand-in and far view and why it was kept or left out."),
+            new("A", "Left out where detailed pieces stand (default)", "DS3 shows a far area as one blocky piece with a stretched \"low\" texture, and only from where its detailed pieces are not drawn. With DS3's culling on (\"Which map parts are drawn\" B) the game does the same and every stand-in is kept. Without it (the default) the port draws everything at once, so such a stand-in is left out when detailed pieces DS3 never shows together with it stand inside it. One with nothing detailed under it (Lothric Castle seen from the High Wall) stays. Far views go the same way: low-detail copies of a whole area with ordinary textures (map 3's mountains, roofs and rock walls seen from one lookout), left out when they cover at least ten times their own detail that DS3 never draws with them. The port log lists every stand-in and far view and why it was kept or left out."),
             new("B", "Kept", "Every stand-in and far view is drawn (port-maps --stand-ins), as in every build up to 1.0.366: blocky slabs, steps and low-resolution polygons overlap the detailed scenery, but nothing far away is missing.")
                 { MapsArgs = ["--stand-ins"] },
         ]),
