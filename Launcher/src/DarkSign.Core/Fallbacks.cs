@@ -306,8 +306,17 @@ public static class Fallbacks
             "Warping into a DS3 map fails (nothing happens, endless loading, crash, or you land in the colosseum).",
         [
             new("A", "Colosseum slots (default)", "Firelink/Cemetery of Ash, High Wall and Undead Settlement replace the three colosseum arenas (m45_00-02), which single-player never visits."),
-            new("B", "Spare map IDs", "Each DS3 map gets a map ID of its own that Elden Ring lists but ships no map for (m11_70, m11_72, m19_70), built from the colosseums' file formats. Untested; IDs the game doesn't list at all crash it at boot.")
+            new("B", "Spare map IDs", "Each DS3 map gets a map ID of its own that Elden Ring lists and single-player never visits (m11_70, m11_72, m19_70), built from the colosseums' file formats; the Painted World takes the first colosseum. Untested; IDs the game doesn't list at all crash it at boot.")
                 { PorterEnv = Env("DARKSIGN_MAP_SLOTS", "new") },
+        ]),
+        new("map-painted-world", "DS3 maps", "Where the Painted World of Ariandel goes", Stage.Build,
+            "Warping to the Painted World (or the F1 menu's Friede fight) fails: nothing happens, endless loading, or a crash.",
+        [
+            new("A", "Own map ID (default)", "The Painted World gets m19_70, a map Elden Ring ships and single-player never visits, built from the first colosseum's formats and side files. The three colosseum maps stay as they are."),
+            new("B", "In a colosseum", "The Painted World replaces the Undead Settlement in the third colosseum (m45_02), the slot kind every DS3 map is proven to load from. The Undead Settlement is left out.")
+                { PorterEnv = Env("DARKSIGN_PAINTED_WORLD", "colosseum") },
+            new("C", "Left out", "No Painted World: the three colosseum maps only, as builds before 1.0.37x had it.")
+                { PorterEnv = Env("DARKSIGN_PAINTED_WORLD", "0") },
         ]),
         new("run-start", "DS3 maps", "Getting into the DS3 run", Stage.Build,
             "Neither the F1 menu's Start button nor Ctrl+Shift+F1 takes you to the Cemetery of Ash.",

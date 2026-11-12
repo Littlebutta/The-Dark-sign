@@ -146,6 +146,15 @@ struct PortedMap {
 };
 std::vector<PortedMap> g_maps;
 bool g_maps_loaded;
+
+// The DS3 boss fights with a warp, from darksign_bosses.tsv (BossArenas in the porter):
+// "DS3 map<TAB>Elden Ring slot<TAB>map name<TAB>boss<TAB>warp request flag". The warp event resets the fight's flags,
+// so a fight already won starts again from its first phase.
+struct BossArena {
+    std::string ds3, er, map, boss;
+    uint32_t warp_flag;
+};
+std::vector<BossArena> g_bosses;
 std::string g_run_status = "Starts a Dark Souls III run inside Elden Ring.";
 std::string g_map_check;        // "0 FAIL, 2 WARN" from darksign_maps_check.txt
 uint32_t g_pending_flag = 0;    // the request flag last set, until the event clears it
@@ -195,6 +204,29 @@ void load_maps()
     }
     fclose(f);
     dks_log("maps: %d ported", (int)g_maps.size());
+
+    wcscpy(slash + 1, L"darksign_bosses.tsv");
+    if (FILE *b = _wfopen(path, L"rb")) {
+        while (fgets(line, sizeof line, b)) {
+            line[strcspn(line, "\r\n")] = 0;
+            if (line[0] == '#')
+                continue;
+            char *cols[5] = {line};
+            int n = 1;
+            for (char *p = line; *p && n < 5; ++p)
+                if (*p == '\t') {
+                    *p = 0;
+                    cols[n++] = p + 1;
+                }
+            if (n < 5)
+                continue;
+            uint32_t flag = (uint32_t)strtoul(cols[4], nullptr, 10);
+            if (flag)
+                g_bosses.push_back({cols[0], cols[1], cols[2], cols[3], flag});
+        }
+        fclose(b);
+    }
+    dks_log("maps: %d boss arenas", (int)g_bosses.size());
 }
 
 void request_flag(uint32_t flag, const char *done)
@@ -242,6 +274,20 @@ void draw_ds3_run()
                     request_flag(m.warp_flag, "Warping...");
                 ImGui::PopID();
             }
+        }
+    }
+    if (!g_bosses.empty()) {
+        ImGui::Spacing();
+        ImGui::TextUnformatted("Boss fights (resets the fight and starts it from the first phase):");
+        for (const BossArena &b : g_bosses) {
+            ImGui::BulletText("%s  (%s)", b.boss.c_str(), b.map.c_str());
+            ImGui::SameLine();
+            ImGui::PushID((int)b.warp_flag);
+            if (ImGui::SmallButton("Fight")) {
+                dks_log("bosses: warp to %s in %s (%s as %s), request flag %u", b.boss.c_str(), b.map.c_str(), b.ds3.c_str(), b.er.c_str(), b.warp_flag);
+                request_flag(b.warp_flag, "Warping to the boss arena...");
+            }
+            ImGui::PopID();
         }
     }
     ImGui::Spacing();

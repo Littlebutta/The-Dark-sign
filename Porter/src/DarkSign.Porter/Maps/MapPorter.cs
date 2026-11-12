@@ -247,6 +247,7 @@ public static class MapPorter
         var options = Options.Parse(args);
         var started = DateTime.Now;
         _placedEnemies.Clear();
+        _arenas.Clear();
         _templates.Clear();
         _converted.Clear();
         _objects = null;
@@ -390,13 +391,19 @@ public static class MapPorter
 
         var warps = ported.Select((p, i) => new RunEvents.Warp(p.Slot.Er, (uint)p.StartEntity, i)).ToList();
         WriteMapList(ctx, ported.Select(p => p.Slot), warps);
+        // Only arenas of maps that made it, numbered in port order.
+        // Their warp events go into common.emevd with the run events, so without the start map there are none.
+        var hasRun = ported.Any(p => p.Slot.Ds3 == MapId.Parse("m40_00_00_00") && !p.Slot.Probe);
+        var arenas = _arenas.Where(a => hasRun && ported.Any(p => p.Slot.Er == a.Er)).Take(BossArenas.MaxArenas)
+            .Select((a, i) => a with { Index = i }).ToList();
+        File.WriteAllLines(ctx.ModPath(BossArenas.ListFile), BossArenas.ListLines(arenas));
         // The vertex layouts the map pieces were written in, for map-validate (a mesh in any other layout isn't drawn).
         if (_layouts.Count > 0)
             File.WriteAllLines(ctx.ModPath(LayoutsFile), _layouts.Order(StringComparer.Ordinal));
         Step(report, "enemy tables", () => WriteEnemyTables(ctx, ported.Select(p => p.Slot.Ds3.ToString()).ToHashSet()));
         var startMap = ported.FirstOrDefault(p => p.Slot.Ds3 == MapId.Parse("m40_00_00_00") && !p.Slot.Probe);
         if (startMap.Slot is not null)
-            Step(report, "run events", () => AddRunEvents(ctx, er, startMap.Slot.Er, (uint)startMap.StartEntity, warps));
+            Step(report, "run events", () => AddRunEvents(ctx, er, startMap.Slot.Er, (uint)startMap.StartEntity, warps, arenas));
         else
             report.AppendLine("run events: not added (Firelink Shrine / Cemetery of Ash was not ported)");
 
@@ -440,7 +447,7 @@ public static class MapPorter
             }
         }
 
-        var every = MapSlots.Colosseums.Concat(MapSlots.NewIdSlots()).Concat(MapSlots.LegacyNewIdSlots()).ToList();
+        var every = MapSlots.PaintedWorldSlots(null).Concat(MapSlots.NewIdSlots()).Concat(MapSlots.LegacyNewIdSlots()).ToList();
         var ids = every.Select(s => s.Er).Distinct().ToList();
         foreach (var id in ids)
         {
@@ -469,7 +476,7 @@ public static class MapPorter
         // MapRegistry.ListPath: builds 1.0.234-1.0.238 wrote it for the m50 probe and it crashed the boot; never again.
         foreach (var path in new[] { "/event/common.emevd.dcx", MapEvents.CommonFunc, MaterialBinder, OldMaterialBinder, ActionButtons.ModMenu, FlagAlloc.LegacyList, MapRegistry.ListPath })
             Delete(Local(path));
-        foreach (var file in new[] { MapEvents.FlagFile, "darksign_maps.tsv", "darksign_maps_check.txt", FlagAlloc.ProbeFile,
+        foreach (var file in new[] { MapEvents.FlagFile, "darksign_maps.tsv", BossArenas.ListFile, "darksign_maps_check.txt", FlagAlloc.ProbeFile,
                      DarkSign.Randomizer.Data.EnemyTables.PlacedFile, DarkSign.Randomizer.Data.EnemyTables.ErFile })
             Delete(Path.Combine(root, file));
     }
@@ -539,12 +546,14 @@ public static class MapPorter
         MapTextures textures, List<BinderFile> materials, StringBuilder report)
     {
         var (ds3Id, erId) = (slot.Ds3, slot.Er);
-        // A map ID Elden Ring doesn't ship takes its formats and template parts from the slot's template map.
-        var hostId = er.Contains(MsbPath(erId)) ? erId : slot.Host;
-        if (slot.Probe && hostId == erId)
+        // A slot with a template map (the spare IDs of map-slots B, the Painted World's m19_70) takes its formats and
+        // template parts from the template, a colosseum proven to load; its per-map side files follow (NewIdFiles).
+        var hostId = slot.Template is { } template && er.Contains(MsbPath(template)) ? template
+            : er.Contains(MsbPath(erId)) ? erId : slot.Host;
+        if (slot.Probe && er.Contains(MsbPath(erId)))
             throw new InvalidDataException($"{erId} already exists in Elden Ring, so it can't test new map IDs");
         if (hostId != erId)
-            report.AppendLine($"  {erId} is a new map ID; formats come from {hostId}");
+            report.AppendLine($"  {erId}: formats, template parts and per-map side files come from {hostId}");
         var ds3Msb = MSB3.Read(ds3.Read(MsbPath(ds3Id)));
         var (hostBytes, msbCompression) = er.ReadWithCompression(MsbPath(hostId));
         var host = MSBE.Read(hostBytes);
@@ -571,7 +580,7 @@ public static class MapPorter
             {
                 var enemies = Enemies(ctx, ds3, er, options, report);
                 var scripts = Ds3Scripts(ds3, ds3Id).ToList();
-                var bosses = EnemyPort.BossEntities(scripts, ds3Layout: true);
+                var bosses = EnemyPort.BossEncounter(ds3Msb, EnemyPort.BossEntities(scripts, ds3Layout: true));
                 var seats = EnemyPort.Seats(ds3Msb, EnemyPort.EventWarps(scripts));
                 var placed = EnemyPort.Place(ds3Msb, layout.Msb, ds3Id, erId, new MsbPort.Options { AllVisible = !options.Ds3Groups, NoGroups = options.NoGroups, AllLayers = options.AllLayers },
                     enemies.Chooser, e => enemies.Describe(e, bosses), EnemyPort.AnyEnemyPart(enemies.Catalog), _placedEnemies, partNames,
@@ -816,6 +825,28 @@ public static class MapPorter
             }
         }
 
+        // An arrival point in each boss arena, for the F1 menu's boss warps. A failure leaves the map without them.
+        try
+        {
+            if (ds3.Contains(MapEvents.ScriptPath(ds3Id)))
+            {
+                var fights = BossArenas.Find(ds3Msb, EMEVD.Read(ds3.Read(MapEvents.ScriptPath(ds3Id))), ds3Id,
+                    e => _enemies?.Ds3Npc?[e.NPCParamID]?.Name);
+                var notes = new List<string>();
+                var arenas = BossArenas.Place(layout.Msb, ds3Msb, fights, slot, notes);
+                _arenas.RemoveAll(a => a.Er == erId);
+                _arenas.AddRange(arenas);
+                report.AppendLine($"  boss arenas: {arenas.Count} of {fights.Count} DS3 boss fights get an F1 warp");
+                foreach (var note in notes)
+                    report.AppendLine($"  {note}");
+            }
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            layout.Msb.Parts.Players.RemoveAll(p => p.EntityID % 10_000 >= BossArenas.FirstPointNumber && p.EntityID % 10_000 < BossArenas.FirstPointNumber + 30);
+            report.AppendLine($"  boss arenas: FAILED ({ex.Message}); no boss warps for this map");
+        }
+
         // Drop what has no model, then write the layout.
         var msb = layout.Msb;
         msb.Parts.MapPieces.RemoveAll(p => missingModels.Contains(p.ModelName));
@@ -899,7 +930,8 @@ public static class MapPorter
             var name = Ds3Npc?[e.NPCParamID]?.Name;
             if (string.IsNullOrWhiteSpace(name))
                 name = e.ModelName;
-            var npc = e.ModelName.StartsWith("c0000", StringComparison.OrdinalIgnoreCase) || e.TalkID > 0;
+            // A talker in a boss fight (Friede, Ariandel) is the boss, not a person (EnemyPort.BossEncounter).
+            var npc = EnemyPort.IsPerson(e, bosses);
             return new EnemyPort.Ds3Enemy(e.ModelName, e.NPCParamID, name, bosses.Contains(e.EntityID), npc);
         }
     }
@@ -939,6 +971,9 @@ public static class MapPorter
     private static EnemyContext? _enemies;
     /// <summary>darksign_enemies.tsv rows for this run: every DS3 enemy placed, for the randomizer.</summary>
     private static readonly List<string> _placedEnemies = [];
+
+    /// <summary>The boss arenas of the maps ported so far (BossArenas), for the F1 menu's warps.</summary>
+    private static readonly List<BossArenas.Arena> _arenas = [];
 
     private static EnemyContext Enemies(PorterContext ctx, GameArchives ds3, GameArchives er, Options options, StringBuilder report)
     {
@@ -1179,7 +1214,8 @@ public static class MapPorter
         File.WriteAllLines(ctx.ModPath("darksign_maps.tsv"), lines);
     }
 
-    private static string AddRunEvents(PorterContext ctx, GameArchives er, MapId host, uint startEntity, IReadOnlyList<RunEvents.Warp> warps)
+    private static string AddRunEvents(PorterContext ctx, GameArchives er, MapId host, uint startEntity, IReadOnlyList<RunEvents.Warp> warps,
+        IReadOnlyList<BossArenas.Arena> arenas)
     {
         const string Common = "/event/common.emevd.dcx";
         var modCommon = ctx.ModPath(ModParts(Common));
@@ -1193,8 +1229,10 @@ public static class MapPorter
                    ?? throw new InvalidDataException("no WarpPlayer target found in Elden Ring's event scripts to return to");
         RunEvents.AddTo(common, host, startEntity, back, RunEvents.AutoStart);
         RunEvents.AddWarps(common, warps);
+        BossArenas.AddWarps(common, arenas);
         File.WriteAllBytes(modCommon, DCX.Compress(common.Write(), compression));
         return $"run events: start warps to {host} entity {startEntity}; leave warps to {back.Map} entity {back.EntityId}; "
-               + $"{warps.Count} per-map warps ({string.Join(", ", warps.Select(w => $"{w.Map} flag {RunEvents.WarpRequestFlag(w.Index)}"))})";
+               + $"{warps.Count} per-map warps ({string.Join(", ", warps.Select(w => $"{w.Map} flag {RunEvents.WarpRequestFlag(w.Index)}"))}); "
+               + $"{arenas.Count} boss arena warps ({string.Join(", ", arenas.Select(a => $"{a.Name} flag {BossArenas.RequestFlag(a.Index)}"))})";
     }
 }

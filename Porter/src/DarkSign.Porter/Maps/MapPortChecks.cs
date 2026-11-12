@@ -21,10 +21,10 @@ public static partial class MapPortChecks
         yield return ("events: run events have DarkScript3's Elden Ring layouts and survive a write", RunEventLayout);
         yield return ("events: adding the run events twice leaves one copy", RunEventsIdempotent);
         yield return ("events: one warp event per ported map, started from the constructor, replaced on a rerun", PerMapWarps);
-        yield return ("slots: every default slot is a map ID Elden Ring ships (no probe under an unshipped ID)", DefaultSlots);
+        yield return ("slots: the colosseums plus the Painted World in m19_70, with the colosseum and off fallbacks", DefaultSlots);
         yield return ("events: the return point prefers a Roundtable Hold warp", ReturnPoint);
         yield return ("fallbacks: auto-start adds one start request per load outside a run, and a rerun without it removes it", AutoStartRun);
-        yield return ("fallbacks: the new-map-ID slots give each DS3 map a registered file-less ID, built from a colosseum", NewIdSlots);
+        yield return ("fallbacks: the new-map-ID slots give each DS3 map a registered, never-visited ID, built from a colosseum", NewIdSlots);
         yield return ("names: collision and texture binder entries", Names);
         foreach (var check in NavmeshChecks())
             yield return check;
@@ -619,9 +619,10 @@ public static partial class MapPortChecks
         Expect(MapValidate.CheckRunEvents(common, ErId).Count() == 0, "run events still valid");
     }
 
-    // Every map ID Elden Ring 2.7.2's registry names (worldmsblist + _dlc02, read 2026-11-08) that single-player
-    // never visits and the game ships no files for: the only IDs a slot may use besides the colosseums.
-    private static readonly HashSet<string> RegisteredFileless =
+    // Map IDs Elden Ring 2.7.2's registry names (worldmsblist + _dlc02, read 2026-11-08) that single-player never
+    // visits: the only IDs a slot may use besides the colosseums. m11_70, m11_72 and m19_70 ship a layout, map pieces,
+    // collision and navmesh (archive index, 2026-11-12); the last three ship nothing.
+    private static readonly HashSet<string> RegisteredUnvisited =
         ["m11_70_00_00", "m11_72_00_00", "m19_70_00_00", "m70_51_54_00", "m80_50_50_00", "m88_50_52_00"];
 
     private static void NewIdSlots()
@@ -629,15 +630,33 @@ public static partial class MapPortChecks
         var slots = MapSlots.NewIdSlots();
         Expect(slots.Select(s => s.Ds3).SequenceEqual(MapSlots.Colosseums.Select(s => s.Ds3)), "same DS3 maps");
         Expect(slots.All(s => s.Template is { Area: 45 } && s.Host != s.Er && !s.Probe), "colosseum templates, own IDs");
-        Expect(slots.All(s => RegisteredFileless.Contains(s.Er.ToString())), "every new ID is one the game's registry names: " + string.Join(" ", slots.Select(s => s.Er)));
+        Expect(slots.All(s => RegisteredUnvisited.Contains(s.Er.ToString())), "every new ID is one the game's registry names: " + string.Join(" ", slots.Select(s => s.Er)));
         Expect(slots.Select(s => s.Er).Distinct().Count() == slots.Count, "one ID each");
         Expect(MapSlots.LegacyNewIdSlots().All(s => s.Er.Area >= 50), "the legacy m50-m52 IDs stay known for cleaning");
     }
 
     private static void DefaultSlots()
     {
-        Expect(MapSlots.All.All(s => !s.Probe && s.Template is null && s.Er.Area == 45), "default slots are the colosseums only: " + string.Join(" ", MapSlots.All.Select(s => s.Er)));
+        var all = MapSlots.Choose(false, null);
+        var colosseums = all.Where(s => s.Ds3 != MapSlots.PaintedWorld).ToList();
+        Expect(colosseums.SequenceEqual(MapSlots.Colosseums), "the colosseum slots come first and unchanged: " + string.Join(" ", all.Select(s => s.Er)));
+        var painted = all.Single(s => s.Ds3 == MapSlots.PaintedWorld);
+        Expect(painted.Er.ToString() == "m19_70_00_00" && painted.Template?.ToString() == "m45_00_00_00" && !painted.Probe,
+            $"the Painted World takes m19_70 with the first colosseum as template: {painted.Er} {painted.Template}");
+        Expect(RegisteredUnvisited.Contains(painted.Er.ToString()), "the Painted World's ID is one the registry names");
+        Expect(all.All(s => !s.Probe), "no probe slots by default");
+        Expect(all.Select(s => s.Er).Distinct().Count() == all.Count, "slots must not share an Elden Ring map");
         Expect(MapSlots.ForDs3(Ds3Id)?.Er == ErId, "ForDs3 must return the real slot");
-        Expect(MapSlots.All.Select(s => s.Er).Distinct().Count() == MapSlots.All.Count, "slots must not share an Elden Ring map");
+        Expect(MapSlots.All.Select(s => s.Er).Distinct().Count() == MapSlots.All.Count, "slots in use must not share an Elden Ring map");
+
+        var off = MapSlots.Choose(false, "0");
+        Expect(off.SequenceEqual(MapSlots.Colosseums), "DARKSIGN_PAINTED_WORLD=0 leaves the Painted World out");
+        var inColosseum = MapSlots.Choose(false, "colosseum");
+        Expect(inColosseum.Count == 3 && inColosseum.All(s => s.Er.Area == 45 && s.Template is null), "colosseum mode stays in the three colosseums");
+        Expect(inColosseum.Single(s => s.Ds3 == MapSlots.PaintedWorld).Er.ToString() == "m45_02_00_00", "colosseum mode takes the Undead Settlement's slot");
+        Expect(inColosseum.All(s => s.Ds3.ToString() != "m31_00_00_00"), "colosseum mode leaves the Undead Settlement out");
+        var newIds = MapSlots.Choose(true, null);
+        Expect(newIds.Count == 4 && newIds.Select(s => s.Er).Distinct().Count() == 4, "method B: three new IDs and the Painted World");
+        Expect(newIds.Single(s => s.Ds3 == MapSlots.PaintedWorld).Er.ToString() == "m45_00_00_00", "method B puts the Painted World in the first colosseum");
     }
 }

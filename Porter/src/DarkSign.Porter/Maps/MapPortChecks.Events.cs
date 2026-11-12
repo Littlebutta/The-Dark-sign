@@ -17,6 +17,7 @@ public static partial class MapPortChecks
         yield return ("layout: connect collisions point at the neighbouring map's slot; ones to unported maps are left out", ConnectCollisions);
         yield return ("event port: SpEffect IDs go to the enemy port's rows (700,000,000 + DS3 ID) where they exist, written or passed in", EventSpEffects);
         yield return ("event port: DS3 action buttons become IF Action Button in Area with one ActionButtonParam row per prompt", EventActionButtons);
+        yield return ("event port: DS3's online checks become Elden Ring's single-player forms (world type, co-op clients, invaders = none)", EventOnlineChecks);
     }
 
     private static void EventCommonMapFlags()
@@ -45,6 +46,8 @@ public static partial class MapPortChecks
           { "name": "Result Condition Group", "type": 3 }, { "name": "Desired Flag State", "type": 0 },
           { "name": "Target Event Flag Type", "type": 0 }, { "name": "Target Event Flag ID", "type": 2 } ] },
         { "name": "IF Steam Disconnected", "index": 38, "args": [ { "name": "Result Condition Group", "type": 3 } ] },
+        { "name": "IF Player Is Not In Own World (Excludes Arena)", "index": 26, "args": [
+          { "name": "Result Condition Group", "type": 3 }, { "name": "Is Not In", "type": 0, "default": 1 } ] },
         { "name": "IF Action Button", "index": 5, "args": [
           { "name": "Result Condition Group", "type": 3 }, { "name": "Target Entity Type", "type": 5 },
           { "name": "Target Entity ID", "type": 5 }, { "name": "Reaction Angle (deg)", "type": 6 },
@@ -54,6 +57,28 @@ public static partial class MapPortChecks
           { "name": "Result Condition Group", "type": 3 }, { "name": "Desired Flag State", "type": 0 },
           { "name": "Target Event Flag Type", "type": 0 }, { "name": "Starting Target Event Flag ID", "type": 2 },
           { "name": "Ending Target Event Flag ID", "type": 2 } ] },
+      ] },
+      { "index": 4, "instrs": [
+        { "name": "IF Character Damaged By", "index": 1, "args": [
+          { "name": "Result Condition Group", "type": 3 }, { "name": "Target Entity ID", "type": 5 }, { "name": "Attacker Entity ID", "type": 5 } ] },
+      ] },
+      { "index": 1000, "instrs": [
+        { "name": "WAIT For Network Approval", "index": 9, "args": [ { "name": "Timeout (s)", "type": 6, "default": 3.0 } ] },
+      ] },
+      { "index": 1003, "instrs": [
+        { "name": "GOTO IF Player Is Not In Own World (Excludes Arena)", "index": 12, "args": [
+          { "name": "Label", "type": 0 }, { "name": "Is Not In", "type": 0, "default": 1 } ] },
+        { "name": "END IF Player Is Not In Own World (Excludes Arena)", "index": 13, "args": [
+          { "name": "Execution End Type", "type": 0 }, { "name": "Is Not In", "type": 0, "default": 1 } ] },
+        { "name": "SKIP IF Number of Clients of Type", "index": 14, "args": [
+          { "name": "Number Of Skipped Lines", "type": 0, "default": 1 }, { "name": "Client Type", "type": 0 },
+          { "name": "Comparison Type", "type": 0 }, { "name": "Target Number of Clients", "type": 0 } ] },
+        { "name": "GOTO IF Number of Clients of Type", "index": 15, "args": [
+          { "name": "Label", "type": 0 }, { "name": "Client Type", "type": 0 },
+          { "name": "Comparison Type", "type": 0 }, { "name": "Target Number of Clients", "type": 0 } ] },
+        { "name": "END IF Number of Clients of Type", "index": 16, "args": [
+          { "name": "Execution End Type", "type": 0 }, { "name": "Client Type", "type": 0 },
+          { "name": "Comparison Type", "type": 0 }, { "name": "Target Number of Clients", "type": 0 } ] },
       ] },
       { "index": 2003, "instrs": [
         { "name": "Set Event Flag", "index": 2, "args": [ { "name": "Event Flag ID", "type": 2 }, { "name": "Flag State", "type": 0 } ] },
@@ -81,9 +106,32 @@ public static partial class MapPortChecks
           { "name": "Result Condition Group", "type": 3 }, { "name": "Desired Flag State", "type": 0 },
           { "name": "Target Event Flag Type", "type": 0 }, { "name": "Starting Target Event Flag ID", "type": 2 },
           { "name": "Ending Target Event Flag ID", "type": 2 } ] },
+        { "name": "IF Damage Type", "index": 23, "args": [
+          { "name": "Result Condition Group", "type": 3 }, { "name": "Target Entity ID", "type": 2 },
+          { "name": "Attacker Entity ID", "type": 2 }, { "name": "Damage Type", "type": 0 } ] },
+        { "name": "IF Player Is In World Type", "index": 26, "args": [
+          { "name": "Result Condition Group", "type": 3 }, { "name": "World Type", "type": 0, "default": 1 } ] },
         { "name": "IF Action Button in Area", "index": 24, "args": [
           { "name": "Result Condition Group", "type": 3 }, { "name": "Action Button Parameter ID", "type": 5, "default": -1 },
           { "name": "Target Entity ID", "type": 2 } ] },
+      ] },
+      { "index": 1000, "instrs": [
+        { "name": "SKIP Unconditionally", "index": 3, "args": [ { "name": "Number Of Skipped Lines", "type": 0, "default": 1 } ] },
+        { "name": "END Unconditionally", "index": 4, "args": [ { "name": "Execution End Type", "type": 0 } ] },
+        { "name": "GOTO Unconditionally", "index": 103, "args": [ { "name": "Label", "type": 0 } ] },
+      ] },
+      { "index": 1003, "instrs": [
+        { "name": "SKIP IF Number of Co-op Clients", "index": 9, "args": [
+          { "name": "Number Of Skipped Lines", "type": 0, "default": 1 }, { "name": "Comparison Type", "type": 0 },
+          { "name": "Target Number of Clients", "type": 0 } ] },
+        { "name": "END IF Number of Co-op Clients", "index": 10, "args": [
+          { "name": "Execution End Type", "type": 0 }, { "name": "Comparison Type", "type": 0 }, { "name": "Target Number of Clients", "type": 0 } ] },
+        { "name": "GOTO IF Player Is In World Type", "index": 13, "args": [
+          { "name": "Label", "type": 0 }, { "name": "World Type", "type": 0, "default": 1 } ] },
+        { "name": "END IF Player Is In World Type", "index": 14, "args": [
+          { "name": "Execution End Type", "type": 0 }, { "name": "World Type", "type": 0, "default": 1 } ] },
+        { "name": "GOTO IF Number of Co-op Clients", "index": 109, "args": [
+          { "name": "Label", "type": 0 }, { "name": "Comparison Type", "type": 0 }, { "name": "Target Number of Clients", "type": 0 } ] },
       ] },
       { "index": 2003, "instrs": [
         { "name": "Set Event Flag", "index": 66, "args": [
@@ -401,4 +449,37 @@ public static partial class MapPortChecks
         var none = MsbPort.Convert(ds3, SyntheticHost(), Ds3Id, ErId);
         Expect(none.Msb.Parts.ConnectCollisions.Count == 0, "connect collisions ported without knowing the slots");
     }
+
+    private static void EventOnlineChecks()
+    {
+        var er = Emedf.Parse(ErDefs);
+        var script = OneEvent(14000800,
+            Ins(3, 26, (sbyte)1, (byte)0),                     // IF in own world (Is Not In = 0)
+            Ins(1003, 12, (byte)2, (byte)1),                   // GOTO 2 IF in another world
+            Ins(1003, 13, (byte)0, (byte)1),                   // END IF in another world
+            Ins(4, 1, (sbyte)2, 4000800, 10000),               // IF the boss is damaged by the player
+            Ins(1003, 14, (byte)3, (byte)0, (byte)3, (byte)0), // SKIP 3 IF co-op clients > 0
+            Ins(1003, 15, (byte)1, (byte)1, (byte)0, (byte)0), // GOTO 1 IF invaders == 0: always, with none
+            Ins(1003, 16, (byte)0, (byte)2, (byte)3, (byte)0), // END IF invaders > 0: never
+            Ins(1000, 9, 3f),                                  // WAIT For Network Approval
+            Ins(2003, 2, 14000500u, (byte)1));
+        var result = NewEventPort().Convert(script, EMEVD.Game.Sekiro, MoveToSlot);
+        Expect(result.Events.Count == 1, "the event must survive: its online checks have single-player forms");
+        var ins = result.Events[0].Instructions;
+        Expect(ins.Count == 9, $"{ins.Count} instructions, want one per DS3 line");
+        Expect(ins[0].Bank == 3 && ins[0].ID == 26 && Arg(ins[0], "World Type", er) == 0, "own world -> IF Player Is In World Type 0 (own world)");
+        Expect(ins[1].Bank == 1003 && ins[1].ID == 13 && Arg(ins[1], "World Type", er) == 1 && Arg(ins[1], "Label", er) == 2, "GOTO IF in another world keeps its label and world type 1");
+        Expect(ins[2].Bank == 1003 && ins[2].ID == 14 && Arg(ins[2], "World Type", er) == 1, "END IF in another world");
+        Expect(ins[3].Bank == 3 && ins[3].ID == 23 && Arg(ins[3], "Target Entity ID", er) == ErId.EntityBase + 800
+               && Arg(ins[3], "Attacker Entity ID", er) == 10000 && Arg(ins[3], "Damage Type", er) == 0,
+            "Damaged By -> IF Damage Type (any type), the boss moved to the slot");
+        Expect(ins[4].Bank == 1003 && ins[4].ID == 9 && Arg(ins[4], "Number Of Skipped Lines", er) == 3 && Arg(ins[4], "Comparison Type", er) == 3,
+            "co-op client count -> SKIP IF Number of Co-op Clients");
+        Expect(ins[5].Bank == 1000 && ins[5].ID == 103 && ins[5].ArgData[0] == 1, "GOTO IF no invaders -> GOTO unconditionally (there are none)");
+        Expect(IsNoOp(ins[6]), "END IF invaders > 0 -> no-op (never true)");
+        Expect(IsNoOp(ins[7]), "WAIT For Network Approval -> no-op");
+    }
+
+    // EventPort's no-op: WAIT 0 seconds.
+    private static bool IsNoOp(EMEVD.Instruction ins) => ins.Bank == 1001 && ins.ID == 0 && BitConverter.ToSingle(ins.ArgData, 0) == 0;
 }
