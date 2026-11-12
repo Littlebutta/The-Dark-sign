@@ -309,6 +309,27 @@ public static class ChrEffectsSelfTest
             ChrModel.Glowing == 1 && glowMade.Count == 2 && glowMade[0] is { TemplateMatbin: "C[c3570]_Body_Glow", Emissive: "c7071_weapon_e" }
             && glowMade[1] is { TemplateMatbin: ChrMaterial.PlainSource, Emissive: null }
             && glowModel.Materials[0].GXIndex == 1 && glowModel.GXLists.Count == 2 && glowModel.Materials[0].Textures.Count == 4 && glowModel.Materials[1].GXIndex == 0);
+        // The Soul of Cinder's mantle: EmissiveMap_0 names c5280_mantle_e, which no binder holds (1.0.353: a white strip),
+        // EmissiveMap_1 its _em ember map; a material whose only glow map is missing glows not at all.
+        var cinder = new FLVER2();
+        cinder.Header.Version = 0x20014;
+        cinder.Nodes.Add(new FLVER.Node { Name = "Master" });
+        cinder.GXLists.Add(new FLVER2.GXList());
+        cinder.Materials.Add(new FLVER2.Material { Name = "mantle", MTD = @"N:\FDP\data\Material\mtd\character\C[ARSN][cinder]_em_e_Glow.mtd", Textures =
+        [
+            new FLVER2.Texture("C_ARSN_cinder_em_snp_Texture2D_5_AlbedoMap_0", @"N:\FDP\data\Model\chr\c5280\tex\c5280_mantle_a.tif", System.Numerics.Vector2.One, 0, 0, 0, 0, 0),
+            new FLVER2.Texture("C_ARSN_cinder_em_snp_Texture2D_0_EmissiveMap_0", @"N:\FDP\data\Model\chr\c5280\tex\c5280_mantle_e.tif", System.Numerics.Vector2.One, 0, 0, 0, 0, 0),
+            new FLVER2.Texture("C_ARSN_cinder_em_snp_Texture2D_6_EmissiveMap_1", @"N:\FDP\data\Model\chr\c5280\tex\c5280_mantle_em.tif", System.Numerics.Vector2.One, 0, 0, 0, 0, 0),
+        ] });
+        cinder.Materials.Add(new FLVER2.Material { Name = "hood", MTD = @"N:\FDP\data\Material\mtd\character\C[ARSN]_em_Glow.mtd", Textures =
+        [
+            new FLVER2.Texture("g_DiffuseTexture", @"N:\FDP\data\Model\chr\c5280\tex\c5280_HD_a.tif", System.Numerics.Vector2.One, 0, 0, 0, 0, 0),
+            new FLVER2.Texture("g_EmissiveTexture", @"N:\FDP\data\Model\chr\c5280\tex\c5280_HD_e.tif", System.Numerics.Vector2.One, 0, 0, 0, 0, 0),
+        ] });
+        var held = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "c7121_mantle_a", "c7121_mantle_em", "c7121_HD_a" };
+        var cinderMade = ChrModel.Convert(cinder, glowTemplateModel, 5280, 7121, plainMaterials: true, erNodes: false, textureArea: name => held.Contains(name) ? 1024 : 0, glow: glowTemplate);
+        Check($"glow: of two glow maps the one the character has is used (Cinder's mantle: _em, not the missing _e); one whose only glow map is missing gets none ({string.Join(" ", cinderMade.Select(c => c.Emissive ?? "-"))})",
+            cinderMade.Count == 2 && cinderMade[0].Emissive == "c7121_mantle_em" && cinderMade[1].Emissive is null && ChrModel.Glowing == 1);
         int named = glowMade[0].Apply(glowMatbin);
         Check("glow: the copy names DS3's colour and glow textures, clears the slots DS3 has nothing for, and its glow colour is white with Elden Ring's strength kept",
             named == 2 && glowMatbin.Samplers[3].Path.EndsWith(@"\c7071_weapon_e.tif") && glowMatbin.Samplers[0].Path.EndsWith(@"\c7071_weapon_a.tif") && glowMatbin.Samplers[1].Path == ""

@@ -95,7 +95,13 @@ public static class ChrModel
             var metallic = specular is not null && specular.EndsWith("_r", StringComparison.OrdinalIgnoreCase) ? specular[..^2] + "_m" : null;
             // DS3's glow map (g_EmissiveTexture: the Jailer's lantern, the Soul of Cinder's body and sword); SYSTEX
             // dummies are the "no glow" placeholder.
-            var emissive = Ds3Texture("g_EmissiveTexture", "_EmissiveMap_0") is { } e && !e.StartsWith("SYSTEX", StringComparison.OrdinalIgnoreCase) ? e : null;
+            // The Soul of Cinder's body names two: EmissiveMap_0 is a SYSTEX dummy (or, on the mantle, c5280_mantle_e,
+            // which is in no DS3 binder: 1.0.353 drew it as a plain white strip) and EmissiveMap_1 his own _em ember
+            // map. The first that is a texture the character has is taken.
+            var emissive = m.Textures
+                .Where(t => t.Path.Length > 0 && (t.ParamName.Equals("g_EmissiveTexture", StringComparison.Ordinal) || t.ParamName.Contains("_EmissiveMap_", StringComparison.Ordinal)))
+                .Select(t => TextureName(Path.GetFileNameWithoutExtension(ItemText.Leaf(t.Path)), oldTag, newTag))
+                .FirstOrDefault(e => !e.StartsWith("SYSTEX", StringComparison.OrdinalIgnoreCase) && (textureArea is null || textureArea(e) > 0));
             if (glow is null)
                 emissive = null;
             bool alphaTest = IsAlphaTested(m.MTD);
