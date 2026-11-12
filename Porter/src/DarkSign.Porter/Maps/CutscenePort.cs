@@ -36,7 +36,7 @@ namespace DarkSign.Porter.Maps;
 /// <item>Elden Ring needs a CutsceneMapIdParam row per cutscene (the map it is placed against): one is added.</item>
 /// </list>
 /// Cutscene IDs move with the map: DS3 sAA_BB_NNNN becomes the slot's sCC_DD_NNNN (s45_00_0000, the Painted
-/// World's Friede intro, becomes s19_70_0000 by default). Not ported: DS3 sound (FMOD banks) and DS3 effect, light
+/// World's Friede intro, becomes s19_70_0000 by default). Sound: see CutsceneSound. Not ported: DS3 effect, light
 /// and gparam IDs inside events, which point at DS3 data Elden Ring doesn't have.
 ///
 /// Credits: the Elden Ring cutscene binder layout and the use of SoulsFormats' MQB class follow JortPob's
@@ -580,8 +580,9 @@ public static partial class CutscenePort
     /// <summary>
     /// Converts one DS3 remo binder into an Elden Ring cutscene binder (uncompressed BND4; the caller compresses).
     /// </summary>
+    /// <param name="sound">Rewrites the DS3 timeline's sound events first (<see cref="CutsceneSound.Prepare"/>), or null.</param>
     public static (BND4 Binder, BinderStats Stats) ConvertBinder(BND4 ds3, string ds3Name, string erName, Func<string, string?> rename,
-        MapId ds3Map, MapId erMap, ErSide side)
+        MapId ds3Map, MapId erMap, ErSide side, Action<MQB>? sound = null)
     {
         var stats = new BinderStats();
         var bnd = new BND4
@@ -595,6 +596,7 @@ public static partial class CutscenePort
             byte[] converted;
             if (MQB.IsRead(data, out MQB? mqb))
             {
+                sound?.Invoke(mqb);
                 stats.Mqb.Add(ConvertMqb(mqb, ds3Name, erName, rename, ds3Map, erMap, side.Catalog));
                 converted = mqb.Write();
             }
@@ -674,6 +676,24 @@ public static partial class CutscenePort
                   + $"camera float slots {side.Havok.Camera?.m_floatSlots.Count.ToString() ?? "none"} ({string.Join(" ", side.Havok.Camera?.m_floatSlots ?? [])})");
         var total = new BinderStats();
         var rows = new List<(int Id, MapId Map)>();
+        // The cutscenes' sound (CutsceneSound): one bank per cutscene, built as each is converted.
+        CutsceneSound? sounds = null;
+        if (CutsceneSound.Enabled)
+        {
+            try
+            {
+                sounds = CutsceneSound.Create(ctx, ds3, er, notes);
+                if (sounds is not null)
+                    lines.Add($"sound: template bank {sounds.TemplateName}, {sounds.EventCount} DS3 sound events, {sounds.VoiceCount} DS3 talks with a voice");
+            }
+            catch (Exception ex) when (ex is not OutOfMemoryException)
+            {
+                lines.Add($"sound: FAILED to start ({ex.GetType().Name}: {ex.Message}); cutscenes stay silent");
+            }
+        }
+        else
+            lines.Add("sound: off (DARKSIGN_CUTSCENE_SOUND=0, fallback map-cutscenes C)");
+        int soundIndex = 0;
         foreach (var map in maps.Where(m => !m.Slot.Probe))
         {
             var rename = Renamer(map.PartNames);
@@ -685,7 +705,10 @@ public static partial class CutscenePort
                 try
                 {
                     var source = BND4.Read(ds3.Read(Ds3Path(name)));
-                    var (bnd, stats) = ConvertBinder(source, name, erName, rename, map.Slot.Ds3, map.Slot.Er, side);
+                    CutsceneSound.Plan? plan = null;
+                    int thisIndex = soundIndex++;
+                    Action<MQB>? prepare = sounds is null ? null : m => plan = CutsceneSound.Prepare(m, erName, thisIndex, sounds.Known, sounds.Voice);
+                    var (bnd, stats) = ConvertBinder(source, name, erName, rename, map.Slot.Ds3, map.Slot.Er, side, prepare);
                     // Checked by reading it back before it is written.
                     foreach (var f in bnd.Files)
                         if (f.Name.EndsWith(".mqb", StringComparison.OrdinalIgnoreCase))
@@ -701,6 +724,13 @@ public static partial class CutscenePort
                     total.Mqb.Add(stats.Mqb);
                     total.Hkx.Add(stats.Hkx);
                     total.OtherFiles += stats.OtherFiles;
+                    if (sounds is not null && plan is not null)
+                    {
+                        string built;
+                        try { built = sounds.Build(plan); }
+                        catch (Exception ex) when (ex is not OutOfMemoryException) { built = $"bank FAILED ({ex.GetType().Name}: {ex.Message})"; }
+                        lines.Add($"{name} sound: {plan}; {built}");
+                    }
                     lines.Add($"{name} -> {erName}: {stats.Hkx.Files} cut files ({stats.Hkx.Animations} animations, {stats.Hkx.Renamed} renamed parts"
                               + $"{(stats.Hkx.Retargeted > 0 ? ", player retargeted" : "")}), timeline {stats.Mqb.Resources - stats.Mqb.ResourcesDropped}/{stats.Mqb.Resources} resources, "
                               + $"{stats.Mqb.Events - stats.Mqb.EventsDropped}/{stats.Mqb.Events} events kept, {stats.Mqb.Renamed} names renamed, {stats.Mqb.MapsMoved} map numbers moved"
@@ -729,6 +759,11 @@ public static partial class CutscenePort
                 ported.Clear();
                 infos.Clear();
             }
+        }
+        if (sounds is not null)
+        {
+            try { lines.Add("sound " + sounds.WriteIndex(er)); }
+            catch (Exception ex) when (ex is not OutOfMemoryException) { lines.Add($"sound index: FAILED ({ex.Message}); the cutscene banks may stay silent"); }
         }
         if (total.Mqb.DroppedKinds.Count > 0)
             lines.Add("left out (kind: count; negative kind = events of a kind Elden Ring has, dropped for a parameter it doesn't): "
@@ -785,6 +820,11 @@ public static partial class CutscenePort
         var outDir = ctx.WorkPath("scratch", "cutscenes");
         Directory.CreateDirectory(outDir);
         int failures = 0;
+        var soundNotes = new List<string>();
+        var sounds = CutsceneSound.Enabled ? CutsceneSound.Create(ctx, ds3, er, soundNotes) : null;
+        r.AppendLine(sounds is null ? $"  sound: none ({string.Join("; ", soundNotes)})"
+            : $"  sound: template bank {sounds.TemplateName}, {sounds.EventCount} DS3 sound events, {sounds.VoiceCount} DS3 talks with a voice{string.Concat(soundNotes.Select(n => "; " + n))}");
+        int soundNumber = 0;
         foreach (var name in names)
         {
             var ds3Id = IdOf(name) ?? throw new FormatException($"not a cutscene name: {name}");
@@ -796,7 +836,20 @@ public static partial class CutscenePort
             try
             {
                 var source = BND4.Read(ds3.Read(Ds3Path(name)));
-                var (bnd, stats) = ConvertBinder(source, name, erName, _ => null, ds3Map, erMap, side);
+                CutsceneSound.Plan? plan = null;
+                int thisIndex = soundNumber++;
+                var (bnd, stats) = ConvertBinder(source, name, erName, _ => null, ds3Map, erMap, side,
+                    sounds is null ? null : m => plan = CutsceneSound.Prepare(m, erName, thisIndex, sounds.Known, sounds.Voice));
+                if (sounds is not null && plan is not null)
+                {
+                    var soundDir = Path.Combine(outDir, "sd");
+                    r.AppendLine($"  sound: {plan}; {sounds.Build(plan, soundDir)}");
+                    var mqbFile = bnd.Files.First(f => f.Name.EndsWith(".mqb", StringComparison.OrdinalIgnoreCase));
+                    var (soundLines, soundFailures) = CutsceneSoundCheck.Check(MQB.Read(mqbFile.Bytes), Path.Combine(soundDir, erName + ".bnk"));
+                    foreach (var l in soundLines)
+                        r.AppendLine("    " + l);
+                    failures += soundFailures;
+                }
                 r.AppendLine($"  timeline: {stats.Mqb.Resources - stats.Mqb.ResourcesDropped}/{stats.Mqb.Resources} resources, {stats.Mqb.Events - stats.Mqb.EventsDropped}/{stats.Mqb.Events} events, "
                              + $"{stats.Mqb.ParamsDropped} parameters left out, {stats.Mqb.MapsMoved} map numbers moved; dropped kinds {string.Join(", ", stats.Mqb.DroppedKinds.Select(k => $"{k.Key}:{k.Value}"))}");
                 r.AppendLine($"  havok: {stats.Hkx.Files} files, {stats.Hkx.Animations} animations ({stats.Hkx.Copied} copied, {stats.Hkx.Retargeted} retargeted); notes: {string.Join("; ", stats.Hkx.Notes.Distinct())}");

@@ -527,6 +527,11 @@ public static class MapPorter
             if (Directory.Exists(cutsceneFolder))
                 foreach (var file in Directory.GetFiles(cutsceneFolder, $"s{id.Area:D2}_{id.Block:D2}_*.cutscenebnd.dcx"))
                     Delete(file);
+            // Their sound banks (CutsceneSound): sd\sAA_BB_NNNN.bnk.
+            var soundFolder = Path.Combine(root, "sd");
+            if (Directory.Exists(soundFolder))
+                foreach (var file in Directory.GetFiles(soundFolder, $"s{id.Area:D2}_{id.Block:D2}_*.bnk"))
+                    Delete(file);
             var folder = Local($"/map/{id.AreaFolder}/{id}/x")[..^2];
             if (Directory.Exists(folder))
                 foreach (var file in Directory.GetFiles(folder))

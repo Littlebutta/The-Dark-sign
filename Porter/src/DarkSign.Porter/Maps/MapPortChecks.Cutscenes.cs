@@ -11,7 +11,63 @@ public static partial class MapPortChecks
         yield return ("cutscenes: timelines keep Elden Ring's resource kinds and parameters, rename parts and move the map", CutsceneTimeline);
         yield return ("cutscenes: script lines play converted cutscenes in Elden Ring's forms; others are left out or keep their warp", CutsceneScriptLines);
         yield return ("cutscenes: CutsceneMapIdParam rows place each cutscene on its slot", CutsceneRows);
+        yield return ("cutscenes: sound events become Elden Ring's kind 135 form with the cutscene's own IDs; armour to seType 15, speech to its voice", CutsceneSoundEvents);
         yield return ("cutscenes: the F1 Cutscenes tab's events warp to the map, then play the cutscene; its list names the characters", CutsceneMenuEvents);
+    }
+
+    private static void CutsceneSoundEvents()
+    {
+        var mqb = new MQB { Version = MQB.MQBVersion.DarkSouls3, Name = "s45_00_0000", Framerate = 30, ResourceDirectory = "", Resources = [], Cuts = [] };
+        mqb.Resources.Add(new MQB.Resource { Name = "a0000.HKT", ParentIndex = -1, Unk48 = 266 });
+        mqb.Resources.Add(new MQB.Resource { Name = "カットシーンSE", ParentIndex = -1, Unk48 = 138 });
+        mqb.Resources.Add(new MQB.Resource { Name = "SE", ParentIndex = -1, Unk48 = 135 });
+        mqb.Resources.Add(new MQB.Resource { Name = "字幕", ParentIndex = -1, Unk48 = 27 });
+        mqb.Resources.Add(new MQB.Resource { Name = "動作音　中", ParentIndex = -1, Unk48 = 135 });
+        var cut = new MQB.Cut { Name = "cut0010", Duration = 300, Timelines = [] };
+        var main = new MQB.Timeline();
+        main.Events.Add(new MQB.Event { ResourceIndex = 1, Duration = 300, Parameters = [P("seType", MQB.Parameter.DataType.UInt, 4u), P("seId", MQB.Parameter.DataType.Int, 450000002)] });
+        var fx = new MQB.Timeline();
+        fx.Events.Add(new MQB.Event { ResourceIndex = 2, StartFrame = 10, Duration = 8, Parameters = [P("seType", MQB.Parameter.DataType.UInt, 4u), P("seId", MQB.Parameter.DataType.Int, 140000050), P("dmypolyId", MQB.Parameter.DataType.Int, 3), P("slotNo", MQB.Parameter.DataType.Int, -1)] });
+        fx.Events.Add(new MQB.Event { ResourceIndex = 2, StartFrame = 20, Duration = 8, Parameters = [P("seType", MQB.Parameter.DataType.UInt, 4u), P("seId", MQB.Parameter.DataType.Int, 140000099), P("dmypolyId", MQB.Parameter.DataType.Int, -1), P("slotNo", MQB.Parameter.DataType.Int, -1)] });
+        fx.Events.Add(new MQB.Event { ResourceIndex = 2, StartFrame = 30, Duration = 8, Parameters = [P("seType", MQB.Parameter.DataType.UInt, 4u), P("seId", MQB.Parameter.DataType.Int, 140000050), P("dmypolyId", MQB.Parameter.DataType.Int, -1), P("slotNo", MQB.Parameter.DataType.Int, -1)] });
+        var talk = new MQB.Timeline();
+        talk.Events.Add(new MQB.Event { ResourceIndex = 3, StartFrame = 40, Duration = 90, Parameters = [P("talkParamId", MQB.Parameter.DataType.Int, 45001000), P("dmypolyId", MQB.Parameter.DataType.Int, -1)] });
+        talk.Events.Add(new MQB.Event { ResourceIndex = 3, StartFrame = 140, Duration = 90, Parameters = [P("talkParamId", MQB.Parameter.DataType.Int, 777), P("dmypolyId", MQB.Parameter.DataType.Int, -1)] });
+        var armour = new MQB.Timeline();
+        armour.Events.Add(new MQB.Event { ResourceIndex = 4, StartFrame = 5, Duration = 20, Parameters = [P("seType", MQB.Parameter.DataType.UInt, 9u), P("seId", MQB.Parameter.DataType.Int, 100), P("dmypolyId", MQB.Parameter.DataType.Int, -1), P("slotNo", MQB.Parameter.DataType.Int, -1)] });
+        cut.Timelines.AddRange([main, fx, talk, armour]);
+        mqb.Cuts.Add(cut);
+
+        var known = new HashSet<string> { "p450000002", "p140000050", "v004005000" };
+        var plan = CutsceneSound.Prepare(mqb, "s19_70_0000", 2, known.Contains, t => t == 45001000 ? 4005000 : null);
+        int Id(MQB.Event e) => (int)e.Parameters.First(p => p.Name == "seId").Value;
+        uint Type(MQB.Event e) => (uint)e.Parameters.First(p => p.Name == "seType").Value;
+        Expect(mqb.Resources[1].Unk48 == 135, "cutscene SE resource becomes kind 135");
+        Expect(Id(main.Events[0]) == 990_002_000 && main.Events[0].Parameters.Count == 5 && main.Events[0].Parameters[4].Name == "IsForceRefLocalPlayerEquipData",
+            "main audio: first new ID of cutscene 2, Elden Ring's five parameters");
+        Expect(fx.Events.Count == 2 && Id(fx.Events[0]) == 990_002_001 && Id(fx.Events[1]) == 990_002_001 && (int)fx.Events[0].Parameters[2].Value == 3,
+            "an effect sound keeps its dummy poly; the same sound twice gets one ID; an unknown one is left out");
+        Expect(talk.Events.Count == 1 && talk.Events[0].ResourceIndex == 5 && mqb.Resources[5].Unk48 == 135 && Id(talk.Events[0]) == 990_002_002 && Type(talk.Events[0]) == 4,
+            "a talk with a voice plays it through a new sound resource; one without is left out");
+        Expect(Type(armour.Events[0]) == 15 && Id(armour.Events[0]) == 100, "armour movement: DS3 seType 9 -> 15");
+        Expect(plan.Sounds.Count == 3 && plan.Main == 1 && plan.Effects == 2 && plan.Voices == 1 && plan.Armour == 1 && plan.Dropped == 2,
+            plan.ToString());
+        Expect(plan.Sounds["v004005000"] == 990_002_002, "voice name");
+
+        // The rewritten timeline survives the cutscene port's filter of Elden Ring kinds and parameters.
+        var catalog = new CutscenePort.Catalog();
+        var er = new MQB { Version = MQB.MQBVersion.DarkSouls3, Name = "s10_00_0050", Framerate = 30, ResourceDirectory = "", Resources = [], Cuts = [] };
+        er.Resources.Add(new MQB.Resource { Name = "a0000.HKT", ParentIndex = -1, Unk48 = 266 });
+        er.Resources.Add(new MQB.Resource { Name = "SE_1", ParentIndex = -1, Unk48 = 135 });
+        er.Resources.Add(new MQB.Resource { Name = "字幕", ParentIndex = -1, Unk48 = 27 });
+        var erCut = new MQB.Cut { Name = "cut0010", Duration = 100, Timelines = [] };
+        var erTl = new MQB.Timeline();
+        erTl.Events.Add(new MQB.Event { ResourceIndex = 1, Duration = 100, Parameters = CutsceneSound.SoundParams(4, 100000500) });
+        erCut.Timelines.Add(erTl);
+        er.Cuts.Add(erCut);
+        catalog.Add(er);
+        var stats = CutscenePort.ConvertMqb(mqb, "s45_00_0000", "s19_70_0000", _ => null, MapId.Parse("m45_00_00_00"), MapId.Parse("m19_70_00_00"), catalog);
+        Expect(stats.EventsDropped == 0, $"sound events kept by the filter ({stats.EventsDropped} dropped)");
     }
 
     private static void CutsceneMenuEvents()
