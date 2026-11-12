@@ -127,10 +127,13 @@ never loads when not. The porter therefore:
 - never writes `worldmsblist*.worldloadlistlist.dcx`; a full `port-maps` run deletes the copy an older build left,
   and `map-validate` fails if one is still in the mod folder,
 - skips any slot whose ID the shipped registry doesn't name (a `SKIPPED` line in the report),
-- gives map-slots B the registry's file-less IDs instead of m50-m52: **m11_70, m11_72, m19_70** (the Souls Modding
+- gives map-slots B registered, never-visited IDs instead of m50-m52: **m11_70, m11_72, m19_70** (the Souls Modding
   map list's "Unknown" maps). The template's per-map files and flag-list lines are copied under them as before.
   Whether the executable's table has anything odd for those three IDs is untested; the m70/m80/m88 `testmap=1`
   IDs and the sea tiles are the next candidates if it does.
+- (2026-11-12) The three are not file-less: the archive index lists a layout, map pieces, collision, navmesh, envmaps
+  and lights for each. The Painted World of Ariandel now uses m19_70 by default (template m45_00), the first of these
+  IDs to be built for the default run; fallback `map-painted-world` B moves it into the colosseum m45_02.
 
 The second crash of the day was then not the map-load crash at all: the Cemetery and High Wall loads (PR #98's
 motion-properties fix) are untested on 1.0.238 and later, because the game never got that far.

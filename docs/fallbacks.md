@@ -236,7 +236,15 @@ Try the next option if: A ported weapon shows no glow, buff effect or projectile
 Try the next option if: Warping into a DS3 map fails (nothing happens, endless loading, crash, or you land in the colosseum).
 
 - **A: Colosseum slots (default).** Firelink/Cemetery of Ash, High Wall and Undead Settlement replace the three colosseum arenas (m45_00-02), which single-player never visits.
-- **B: Spare map IDs.** Each DS3 map gets a map ID of its own that Elden Ring lists in its map registry but ships no map for (m11_70, m11_72, m19_70), built from the colosseums' file formats. Untested in game. A map ID the game doesn't list at all is not an option: registering one crashed the game at boot (1.0.238); see `docs/maps/own-map-ids.md`. (`DARKSIGN_MAP_SLOTS=new`)
+- **B: Spare map IDs.** Each DS3 map gets a map ID of its own that Elden Ring lists in its map registry and single-player never visits (m11_70, m11_72, m19_70; each ships a small map of its own), built from the colosseums' file formats. The Painted World then takes the first colosseum. Untested in game. A map ID the game doesn't list at all is not an option: registering one crashed the game at boot (1.0.238); see `docs/maps/own-map-ids.md`. (`DARKSIGN_MAP_SLOTS=new`)
+
+### Where the Painted World of Ariandel goes (`map-painted-world`, rebuilds the content)
+
+Try the next option if: Warping to the Painted World (or the F1 menu's Friede fight) fails: nothing happens, endless loading, or a crash.
+
+- **A: Own map ID (default).** The Painted World gets m19_70, a map Elden Ring ships and single-player never visits, built from the first colosseum's formats and side files. The three colosseum maps stay as they are.
+- **B: In a colosseum.** The Painted World replaces the Undead Settlement in the third colosseum (m45_02), the slot kind every DS3 map is proven to load from. The Undead Settlement is left out. (`DARKSIGN_PAINTED_WORLD=colosseum`)
+- **C: Left out.** No Painted World: the three colosseum maps only, as builds before 1.0.37x had it. (`DARKSIGN_PAINTED_WORLD=0`)
 
 ### Getting into the DS3 run (`run-start`, rebuilds the content)
 

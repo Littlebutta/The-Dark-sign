@@ -34,8 +34,14 @@ DS3 maps take over the colosseum arenas, which single-player never visits:
 | m40_00 Firelink Shrine / Cemetery of Ash | m45_00 |
 | m30_00 High Wall of Lothric | m45_01 |
 | m31_00 Undead Settlement | m45_02 |
+| m45_00 Painted World of Ariandel | m19_70 (template m45_00) |
 
-The other DS3 maps need more slots (or proof that new IDs load) and are listed in `MapSlots.Ds3Maps`.
+The Painted World takes m19_70, a small map Elden Ring ships (layout, map pieces, collision, navmesh) that the
+single-player game never visits (area m19 is otherwise only the final boss arena). Its formats, template parts and
+per-map side files come from m45_00, the colosseum every slot is proven to load from. Fallback `map-painted-world` B
+puts it in m45_02 instead (the Undead Settlement is then left out), C leaves it out.
+
+The other DS3 maps need more slots and are listed in `MapSlots.Ds3Maps`.
 Entity IDs move with the map: 4000xxxx becomes 4500xxxx. The run starts at the DS3 player point with entity
 x990-x999, which gets entity 45000990.
 
@@ -46,6 +52,15 @@ x990-x999, which gets entity 45000990.
 - **Leave DS3 run** sets 1039292101. The event clears the run flag and warps to the first Roundtable Hold warp target
   found in Elden Ring's own scripts.
 - The tab lists the ported maps from `Mods\ER\darksign_maps.tsv`.
+- **Boss fights** lists every DS3 boss fight of the ported maps with a **Fight** button (`Mods\ER\darksign_bosses.tsv`,
+  `Maps/BossArenas.cs`). Every DS3 boss fight is started by common event 20005800, called with the defeated flag, fog,
+  arena area, entry flag, boss (entity or group) and first-encounter flag; the port reads those calls. The button
+  sets flag 1039292400+i; an event in common.emevd turns the defeated, entry and first-encounter flags and the fight's
+  own event flags off (so a fight already won runs again through every phase), warps to a new player point in the
+  arena (entity x9970+; a DS3 player point inside the arena area if there is one, else the area's centre 1.5 m above
+  its bottom), waits until the player is in the map and then turns the first-encounter flag and the entry flag on,
+  which begins the fight without the fog wall, talk or cutscene. Fights whose boss isn't in the layout (the Champion
+  Gundyr state of m40) get no button. The port-maps log lists each arena's landing point and flags.
 
 Flags are in the block of the empty sea tile m60_39_29 (1039290000+), the way JortPob allocates its flags.
 
@@ -298,6 +313,18 @@ Both games run the same event system, and DarkScript3 documents every instructio
   the row exists even when no move casts it; an ID with no ported row keeps its DS3 ID. The `events:` log line of each
   map counts `SpEffects: N to ported rows, M kept (ids)`, and the enemy port notes `SpEffects the map scripts use ported`.
 
+- DS3's online checks have single-player forms (2026-11-12): "Player Is Not In Own World" (IF/GOTO/END) is Elden Ring's
+  "Player Is In World Type" (the values match), "IF Character Damaged By" is "IF Damage Type" with any damage type,
+  "Number of Clients of Type" counts co-op clients for type 0 and treats invaders as none (the line becomes an
+  unconditional skip/goto/end or a no-op), and "WAIT For Network Approval" is a no-op. Before this about half of each
+  map's events were left out (m40 66 of 103, m45 52 of 112, DS3's common functions 119 of 200), among them every boss
+  fight's start (common event 20005800), its phases and most doors; on the real scripts it is now m40 5, m30 0, m31 0,
+  m45 1, m37 2 and common functions 1. Still left out: map ceremonies, "IF Character DrawGroup State" (Pontiff's
+  second phase, 13705880, m37 has no slot yet) and "IF Object Backread".
+- Bosses who talk (Sister Friede, Father Ariandel) carry a talk ID in DS3. Placements that share a boss's entity group
+  and body are bosses too (`EnemyPort.BossEncounter`), so they are ported and placed as enemies; the same body
+  elsewhere without the group (Friede in the chapel) stays a person and never takes the boss stages' ported rows.
+
 Not converted yet: sound and BGM instructions, map ceremonies and world tendency. Doors and levers only work once the
 DS3 objects themselves are ported (the next stage); until then the events wait for assets that aren't there.
 
@@ -484,8 +511,9 @@ After the 1.0.326 playtest (no one in Firelink Shrine, Black Knights around it, 
    45016, 45026, the m50 slot's none, and the JortPob-style sea-tile blocks kept. Registering m50 in that list
    (PR #95) then crashed the game at boot on every launch of 1.0.238 (eldenring.exe+0xAED000, a null per-map entry):
    the executable keeps its own table of map IDs, and the registry only selects among them. So port-maps never writes
-   the registry, skips a slot whose ID the shipped registry doesn't name, and map-slots B uses the registry's
-   file-less IDs (m11_70, m11_72, m19_70). The template's other per-map files (`NewIdFiles.Copy`) and flag-list lines
+   the registry, skips a slot whose ID the shipped registry doesn't name, and map-slots B uses registered IDs the
+   single-player game never visits (m11_70, m11_72, m19_70; each ships a small map of its own, read from the archive
+   index on 2026-11-12, so they are not file-less as first thought). The template's other per-map files (`NewIdFiles.Copy`) and flag-list lines
    (`FlagAlloc.WriteForNewIds`) are still copied under such a slot. See `docs/maps/own-map-ids.md`.
 8. The vanilla colosseum's other per-map files (`.mfr`, envmaps, ivinfo, `map/onav`, `breakgeom`) stay as they are
    and describe the colosseum, not the DS3 map. (`.btl` lights and the `.nva` navmesh list are the port's own now.)

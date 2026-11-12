@@ -93,6 +93,13 @@ public static class EnemyPort
 
         /// <summary>The ported DS3 character for this one, if the enemy porter made it (method A only).</summary>
         public ErEnemy? Ported(Ds3Enemy ds3) => _method == Method.Auto ? _ported?.Find(ds3) : null;
+
+        /// <summary>
+        /// The ported character for a person: only a row ported for this very NpcParam. A body ported because its boss
+        /// placements fight (Friede) must not put that hostile boss row where DS3 has the same body as a person (Friede
+        /// in her chapel, 4500710).
+        /// </summary>
+        public ErEnemy? PortedPerson(Ds3Enemy ds3) => _method == Method.Auto ? _ported?.FindPerson(ds3) : null;
     }
 
     /// <summary>
@@ -157,6 +164,7 @@ public static class EnemyPort
         public const string FileName = "darksign_chr_map.tsv";
         private readonly Dictionary<int, ErEnemy> _byNpc = new();
         private readonly Dictionary<string, ErEnemy> _byModel = new(StringComparer.OrdinalIgnoreCase);
+        private readonly HashSet<string> _npcModels = new(StringComparer.OrdinalIgnoreCase); // ER models with per-NpcParam rows
 
         public int Count => _byNpc.Count + _byModel.Count;
 
@@ -171,12 +179,24 @@ public static class EnemyPort
                 var name = p.Length > 5 ? p[5] : p[1];
                 var enemy = new ErEnemy(p[2], npc, think, name, false, "ported DS3 character");
                 if (p[0] == "npc" && int.TryParse(p[1], out var ds3Npc))
+                {
                     map._byNpc[ds3Npc] = enemy;
+                    map._npcModels.Add(enemy.Model);
+                }
                 else if (p[0] == "chr")
                     map._byModel[p[1]] = enemy;
             }
             return map;
         }
+
+        public ErEnemy? FindNpc(Ds3Enemy ds3) => _byNpc.TryGetValue(ds3.NpcParam, out var e) ? e with { Boss = ds3.Boss } : null;
+
+        /// <summary>
+        /// For a person: their own NpcParam's row, or the model's row when the model was ported without per-NpcParam
+        /// rows. A model ported with rows for other NpcParams (Friede's two boss stages) doesn't lend them to this one.
+        /// </summary>
+        public ErEnemy? FindPerson(Ds3Enemy ds3) =>
+            FindNpc(ds3) ?? (_byModel.TryGetValue(ds3.Model, out var m) && !_npcModels.Contains(m.Model) ? m with { Boss = ds3.Boss } : null);
 
         public ErEnemy? Find(Ds3Enemy ds3) =>
             _byNpc.TryGetValue(ds3.NpcParam, out var e) ? e with { Boss = ds3.Boss }
@@ -233,7 +253,7 @@ public static class EnemyPort
                 // A DS3 human (c0000) with a DS3 look (PeopleArmour) is an Elden Ring person wearing DS3's armour.
                 who = !placePeople ? null
                     : People.IsHuman(what.Model) ? (erStandIns || armour?.LookFor(src.CharaInitID) is not null ? people?.Choose(what, src.TalkID > 0) : null)
-                    : chooser.Ported(what) ?? (People.IsDummy(what.Model) || !erStandIns ? null : people?.Choose(what with { Model = People.Human }, talks: true));
+                    : chooser.PortedPerson(what) ?? (People.IsDummy(what.Model) || !erStandIns ? null : people?.Choose(what with { Model = People.Human }, talks: true));
                 if (who is null)
                 {
                     npcs++;
@@ -400,6 +420,31 @@ public static class EnemyPort
         bosses.Remove(0);
         return bosses;
     }
+
+    /// <summary>
+    /// Every placement that is part of a boss fight: the boss entities (<see cref="BossEntities"/>) and, for a boss's
+    /// own body, its other placements that share one of the boss's entity groups. DS3 gives bosses who speak a talk
+    /// script (Sister Friede 4500801/4500800 and Father Ariandel 4500803/4500802 in the Painted World: TalkIDs
+    /// 450551, 450552, 450560, 450561), and the port took every placement with a talk script for a person, so neither
+    /// was ported or placed and the Friede fight had nobody in it. Ariandel's first-phase placement (4500803) never
+    /// shows a health bar; it shares the fight's group 4505800. Friede's chapel placement (4500710, no group) stays a
+    /// person. Humans (c0000) are never counted: their look is equipment, not a body the enemy porter can build.
+    /// </summary>
+    public static HashSet<long> BossEncounter(MSB3 msb, IReadOnlySet<long> bosses)
+    {
+        var encounter = new HashSet<long>(bosses);
+        var bossParts = msb.Parts.Enemies.Where(e => e.EntityID > 0 && bosses.Contains(e.EntityID) && !People.IsHuman(e.ModelName)).ToList();
+        var models = bossParts.Select(e => e.ModelName).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var groups = bossParts.SelectMany(e => e.EntityGroups).Where(g => g > 0).ToHashSet();
+        foreach (var e in msb.Parts.Enemies)
+            if (e.EntityID > 0 && models.Contains(e.ModelName) && e.EntityGroups.Any(groups.Contains))
+                encounter.Add(e.EntityID);
+        return encounter;
+    }
+
+    /// <summary>A DS3 placement the port treats as a person: a human, or a talker that is not part of a boss fight.</summary>
+    public static bool IsPerson(MSB3.Part.Enemy e, IReadOnlySet<long> encounter) =>
+        People.IsHuman(e.ModelName) || e.TalkID > 0 && !encounter.Contains(e.EntityID);
 
     // ---- Where DS3's scripts move characters ----
 

@@ -92,6 +92,23 @@ public sealed class EventPort
         ["Request Animation Playback"] = "Force Animation Playback",
         ["Character Warp Request"] = "Issue Short Warp Request",
         ["Display Message"] = "Display Blinking Message",
+        // DS3's online-world check is Elden Ring's world-type check: DS3's "Is Not In" (0 = in your own world, 1 =
+        // in someone else's) holds the same values as Elden Ring's World Type (0 Own World, 1 Other World), and the
+        // one remaining byte argument pairs with the other. Nearly every DS3 boss fight, door and NPC event asks it.
+        ["IF Player Is Not In Own World (Excludes Arena)"] = "IF Player Is In World Type",
+        ["GOTO IF Player Is Not In Own World (Excludes Arena)"] = "GOTO IF Player Is In World Type",
+        ["END IF Player Is Not In Own World (Excludes Arena)"] = "END IF Player Is In World Type",
+        // DS3 keeps both forms; Elden Ring only "IF Damage Type", whose Damage Type 0 (Unspecified, its default) is
+        // any hit: what "Damaged By" asks. NPCs that turn hostile when hit and bosses woken by a hit wait on it.
+        ["IF Character Damaged By"] = "IF Damage Type",
+    };
+
+    // DS3 "Number of Clients of Type" (SKIP 1003[14], GOTO 1003[15], END 1003[16]): Elden Ring only counts co-op
+    // clients (1003[09], [109], [10]). Client type 0 (Co-op) becomes that; invaders (types 1 and 2) are never in a
+    // ported world, so the check is decided here with a count of 0: an unconditional skip, goto or end, or a no-op.
+    private static readonly Dictionary<int, (int CoopId, int AlwaysId)> ClientChecks = new()
+    {
+        [14] = (9, 3), [15] = (109, 103), [16] = (10, 4),
     };
 
     // DS3 cutscene instructions that also warp the player: ported as the warp alone until cutscenes are.
@@ -500,6 +517,11 @@ public sealed class EventPort
         }
         if (ins.Bank == 3 && ActionButtonIds.Contains(ins.ID))
             return ActionButton(ins);
+        if (ins.Bank == 1003 && ClientChecks.ContainsKey(ins.ID))
+            return ClientCheck(ins, parameterized);
+        // "WAIT For Network Approval": nothing to wait for outside an online session.
+        if (ins.Bank == 1000 && ins.ID == 9)
+            return (NoOp(), null);
         // Same layout in both games and nothing to move (waits, labels, condition groups, plain flow).
         var map = MappingFor(ins.Bank, ins.ID);
         if (map is null)
@@ -578,6 +600,27 @@ public sealed class EventPort
         Emedf.Write(output, to.Args[2], Move(Emedf.Read(ins.ArgData, from.Args[entity]), Kind.Entity));
         return (new EMEVD.Instruction(to.Bank, to.Id, output),
             new Mapping(from, to, [group, -1, entity], [Kind.Other, Kind.Other, Kind.Entity], false));
+    }
+
+    /// <summary>
+    /// DS3 "SKIP/GOTO/END IF Number of Clients of Type" (first argument: lines, label or end type; then Client Type,
+    /// Comparison Type, Target Number of Clients). See <see cref="ClientChecks"/>.
+    /// </summary>
+    private (EMEVD.Instruction?, Mapping?) ClientCheck(EMEVD.Instruction ins, bool parameterized)
+    {
+        var (coopId, alwaysId) = ClientChecks[ins.ID];
+        if (ins.ArgData.Length < 4)
+            return (null, null);
+        byte first = ins.ArgData[0], clientType = ins.ArgData[1], comparison = ins.ArgData[2], count = ins.ArgData[3];
+        if (parameterized)
+            return (null, null); // a value passed in decides it: can't be settled here
+        if (clientType == 0)
+            return (RunEvents.Make(1003, coopId, first, comparison, count), null);
+        bool holds = comparison switch
+        {
+            0 => count == 0, 1 => count != 0, 2 => false, 3 => count > 0, 4 => count == 0, 5 => true, _ => false,
+        };
+        return (holds ? RunEvents.Make(1000, alwaysId, first) : NoOp(), null);
     }
 
     /// <summary>`event-coverage [ds3.emedf.json er.emedf.json]`: which DS3 instructions convert, and to what.</summary>

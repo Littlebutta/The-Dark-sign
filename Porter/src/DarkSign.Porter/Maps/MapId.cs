@@ -78,21 +78,59 @@ public static class MapSlots
     }
 
     /// <summary>
-    /// The slots in use: <see cref="Colosseums"/>, or <see cref="NewIds"/> when DARKSIGN_MAP_SLOTS=new (launcher
-    /// fallback "map-slots" B).
+    /// The slots in use: <see cref="Colosseums"/> plus the Painted World (<see cref="PaintedWorldSlots"/>), or
+    /// <see cref="NewIdSlots"/> when DARKSIGN_MAP_SLOTS=new (launcher fallback "map-slots" B).
     /// </summary>
-    public static IReadOnlyList<Slot> All => _all ??=
-        string.Equals(Environment.GetEnvironmentVariable("DARKSIGN_MAP_SLOTS"), "new", StringComparison.OrdinalIgnoreCase)
-            ? NewIdSlots() : Colosseums;
+    public static IReadOnlyList<Slot> All => _all ??= Choose(
+        string.Equals(Environment.GetEnvironmentVariable("DARKSIGN_MAP_SLOTS"), "new", StringComparison.OrdinalIgnoreCase),
+        Environment.GetEnvironmentVariable("DARKSIGN_PAINTED_WORLD"));
 
     private static IReadOnlyList<Slot>? _all;
 
+    /// <summary>The slot list for a map-slots method and a DARKSIGN_PAINTED_WORLD value (null, "colosseum" or "0").</summary>
+    public static IReadOnlyList<Slot> Choose(bool newIds, string? paintedWorld) =>
+        !newIds ? PaintedWorldSlots(paintedWorld)
+        : PaintedWorldOff(paintedWorld) ? NewIdSlots()
+        : [.. NewIdSlots(), PaintedWorldInColosseum(MapId.Parse("m45_00_00_00"))];
+
+    private static bool PaintedWorldOff(string? mode) =>
+        mode is "0" || string.Equals(mode, "off", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>DS3's Painted World of Ariandel (DLC 1: Sister Friede, Father Ariandel, Champion's Gravetender).</summary>
+    public static readonly MapId PaintedWorld = MapId.Parse("m45_00_00_00");
+
+    public const string PaintedWorldName = "Painted World of Ariandel";
+
+    /// <summary>
+    /// The colosseum slots and the Painted World. By default the Painted World gets m19_70_00_00, a map Elden Ring
+    /// ships (a layout, two map pieces, collision, navmesh, envmaps and lights in the archives; Souls Modding lists
+    /// its contents as "Unknown") and single-player never visits. Its formats, template parts and per-map side files
+    /// come from m45_00, the colosseum every slot is proven to load from. DARKSIGN_PAINTED_WORLD=colosseum (fallback
+    /// "map-painted-world" B) puts it in the Undead Settlement's colosseum slot instead, leaving that map out; =0
+    /// leaves the Painted World out.
+    /// </summary>
+    public static IReadOnlyList<Slot> PaintedWorldSlots(string? mode)
+    {
+        if (PaintedWorldOff(mode))
+            return Colosseums;
+        if (string.Equals(mode, "colosseum", StringComparison.OrdinalIgnoreCase))
+        {
+            var taken = MapId.Parse("m45_02_00_00");
+            return [.. Colosseums.Where(s => s.Er != taken), PaintedWorldInColosseum(taken)];
+        }
+        return [.. Colosseums, new(PaintedWorld, MapId.Parse("m19_70_00_00"), PaintedWorldName, Template: MapId.Parse("m45_00_00_00"))];
+    }
+
+    private static Slot PaintedWorldInColosseum(MapId colosseum) => new(PaintedWorld, colosseum, PaintedWorldName);
+
     /// <summary>
     /// Fallback: every DS3 map under a map ID of its own, built from the colosseum's formats. For when the colosseum
-    /// slots won't load or their own settings get in the way. The IDs are ones Elden Ring's map registry names but
-    /// ships no map for (the Souls Modding map list calls them "Unknown": m11_70, m11_72, m19_70), because an ID
-    /// outside the executable's table crashes the game at boot (the m50 probe, 1.0.238). Untested in game. Each
-    /// map's entities, events and flags move to that ID's range.
+    /// slots won't load or their own settings get in the way. The IDs are maps Elden Ring ships and single-player
+    /// never visits (the Souls Modding map list calls them "Unknown": m11_70, m11_72, m19_70; each has a layout, map
+    /// pieces, collision, navmesh and envmaps in the game's archives, read from the archive index on 2026-11-12),
+    /// because an ID outside the executable's table crashes the game at boot (the m50 probe, 1.0.238). Untested in
+    /// game. Each map's entities, events and flags move to that ID's range. The Painted World then takes the first
+    /// colosseum (<see cref="Choose"/>).
     /// </summary>
     public static IReadOnlyList<Slot> NewIdSlots() =>
     [

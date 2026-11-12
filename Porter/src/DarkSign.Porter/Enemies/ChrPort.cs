@@ -816,7 +816,7 @@ public static partial class ChrPort
 
     // ---- DS3 side ----
 
-    /// <summary>Every enemy character (not c0000 humans, not talkers) placed in DS3's single-player maps.</summary>
+    /// <summary>Every enemy character (not c0000 humans, not talkers unless they are a boss) placed in DS3's single-player maps.</summary>
     public static List<Ds3Chr> Ds3Characters(GameArchives ds3, PARAM? ds3Npc)
     {
         var byChr = new SortedDictionary<int, Ds3Chr>();
@@ -833,11 +833,12 @@ public static partial class ChrPort
             foreach (var script in new[] { MapEvents.ScriptPath(mapId), MapEvents.CommonFunc })
                 if (ds3.Contains(script))
                     try { scripts.Add(EMEVD.Read(ds3.Read(script))); } catch (Exception) { }
-            var bosses = EnemyPort.BossEntities(scripts, ds3Layout: true);
+            var bosses = EnemyPort.BossEncounter(msb, EnemyPort.BossEntities(scripts, ds3Layout: true));
             foreach (var e in msb.Parts.Enemies)
             {
                 int chr = ChrId(e.ModelName);
-                if (chr <= 0 || e.TalkID > 0 || e.NPCParamID <= 0)
+                // Talkers are people, except bosses who speak (Friede, Ariandel): see EnemyPort.BossEncounter.
+                if (chr <= 0 || e.TalkID > 0 && !bosses.Contains(e.EntityID) || e.NPCParamID <= 0)
                     continue;
                 var name = ds3Npc?[e.NPCParamID]?.Name is { Length: > 0 } n ? n : $"c{chr:D4}";
                 if (!byChr.TryGetValue(chr, out var known))

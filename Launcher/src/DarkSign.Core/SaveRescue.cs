@@ -13,15 +13,16 @@ namespace DarkSign.Core;
 /// with the ported script hidden the vanilla arena script ran instead and put the player in the colosseum's lobby
 /// state, where Elden Ring's enemies ignored the player and took no damage until the game was restarted (Devin's
 /// 1.0.221 test). common.emevd stays too, so the run's leave warp still works, and so do the weapons and enemies.
-/// A spare map ID the game ships no map for (m11_70, m11_72, m19_70 under map-slots B) has no arena to fall back
-/// to, so a save left there can't be rescued this way; the launcher says so.
+/// The spare map IDs (m19_70 for the Painted World, and m11_70, m11_72, m19_70 under map-slots B) are small maps the
+/// game ships too, so hiding the ported files falls back to the game's own map there in the same way.
 /// </summary>
 public static class SaveRescue
 {
     public const string HiddenFolderName = "rescue-hidden-maps";
 
     /// <summary>
-    /// The ported map IDs: colosseum slots, the spare-ID slots of map-slots B (Porter MapSlots.NewIdSlots) and the
+    /// The ported map IDs: colosseum slots, the Painted World's m19_70, the spare-ID slots of map-slots B (Porter
+/// MapSlots.NewIdSlots) and the
     /// m50-m52 IDs builds up to 1.0.238 used, so an older build's leftovers are hidden too.
     /// </summary>
     public static readonly string[] MapIds =
