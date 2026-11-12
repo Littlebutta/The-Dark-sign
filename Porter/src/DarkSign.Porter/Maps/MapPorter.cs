@@ -334,7 +334,7 @@ public static class MapPorter
             if (enemyPort.Effects is { } fx && ported.Count > 0)
                 try
                 {
-                    fx.ScriptEffects = MapEvents.ScriptSpEffects(ctx, ds3, ported.Select(p => p.Slot).ToList());
+                    fx.ScriptSpEffectIds = MapEvents.ScriptSpEffects(ctx, ds3, ported.Select(p => p.Slot).ToList());
                 }
                 catch (Exception ex) when (ex is not OutOfMemoryException)
                 {
