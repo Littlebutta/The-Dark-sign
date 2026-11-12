@@ -12,6 +12,7 @@ public static partial class MapPortChecks
         yield return ("enemies: stand-ins by kind, bosses spread over bosses, ported characters first, NPCs and 'none' left out", EnemyChooser);
         yield return ("enemies: boss entities come from boss health bars, given directly or passed to the event", EnemyBosses);
         yield return ("people: DS3 talkers get silent Elden Ring people, DS3 hostile humans get hostile ones, the same person every time", PeoplePlacement);
+        yield return ("people: people without body armour stay out of the pools; DS3 summons and invaders aren't placed", PeopleLooks);
         yield return ("enemies, objects: another state of the map (off DS3's layer bit 0, m40's Untended Graves) is left out, with a switch to keep it", OtherStateLeftOut);
         yield return ("people: those DS3 parks at a holding spot stand where its scripts warp them, parameterised events included", PeopleSeated);
         yield return ("enemies: placed at DS3's spot with the DS3 entity moved to the slot, on its collision, and read back", EnemyPlacement);
@@ -122,6 +123,24 @@ public static partial class MapPortChecks
             "every placed model needs a model entry");
         var back = MSBE.Read(layout.Msb.Write());
         Expect(back.Parts.Enemies.Count == 3 && back.Parts.Enemies.Any(e => e.EntityID == 45000800 && e.NPCParamID == boss.NPCParamID), "enemies don't read back");
+    }
+
+    private static void PeopleLooks()
+    {
+        static EnemyPort.ErEnemy Human(int npc, string name) => new("c0000", npc, npc + 1, name, false, "m10_00_00_00",
+            new MSBE.Part.Enemy { Name = $"c0000_{npc}", ModelName = "c0000", NPCParamID = npc, CharaInitID = npc + 5, TalkID = 1 });
+        var notes = new List<string>();
+        var people = EnemyPort.SortPeople(
+            [(Human(100, "Merchant"), true), (Human(200, "Boc"), true), (Human(300, "Nobody"), true)],
+            SyntheticCatalog().Where(c => !c.Boss), _ => 6, notes,
+            who => who.NpcParam == 200 ? "no body armour" : who.NpcParam == 300 ? "no CharaInitParam row" : null);
+        Expect(people.Friendly.Count == 1 && people.Friendly[0].NpcParam == 100, $"pool: {string.Join(", ", people.Friendly.Select(f => f.Name))}");
+        Expect(notes.Any(n => n.Contains("no body armour x1 (Boc (200/205))") && n.Contains("no CharaInitParam row x1")), "the left-out people are logged: " + string.Join(" | ", notes));
+        foreach (var (name, phantom) in new[] { ("Hawkwood the Deserter - White Phantom", true), ("Holy Knight Hodrick - Mad Phantom - Undead Settlement", true),
+                     ("Dark Spirit Ringfinger Leonhard", true), ("Fire Keeper - Firelink Shrine", false), ("Patrol Leader - Collective Patrol", false) })
+            Expect(EnemyPort.People.IsPhantom(name) == phantom, $"{name}: phantom {EnemyPort.People.IsPhantom(name)}");
+        // No CharaInitParam to look in: nothing rejected (no data, no guess).
+        Expect(EnemyPort.PersonLooksWrong(null, 23420) is null, "no params, nothing rejected");
     }
 
     private static void PeoplePlacement()

@@ -119,6 +119,14 @@ public static class EnemyPort
         /// <summary>DS3's invisible dummy character (c1000): talk and menu points, bullet sources.</summary>
         public static bool IsDummy(string model) => model.StartsWith("c1000", StringComparison.OrdinalIgnoreCase);
 
+        /// <summary>
+        /// A DS3 summon or invader ("... - White Phantom", "... - Mad Phantom", "Dark Spirit ..."): DS3 places them
+        /// out of sight and only an event or a summon sign brings them in. Standing as a hostile Elden Ring person they
+        /// attacked the player at map 2's start (1.0.340: knocked down again and again), so they are left out.
+        /// </summary>
+        public static bool IsPhantom(string name) =>
+            name.Contains("Phantom", StringComparison.OrdinalIgnoreCase) || name.Contains("Dark Spirit", StringComparison.OrdinalIgnoreCase);
+
         public ErEnemy? Choose(Ds3Enemy ds3, bool talks)
         {
             var pool = talks ? Friendly : Hostile;
@@ -188,7 +196,7 @@ public static class EnemyPort
         var standInUse = new Dictionary<string, int>();
 
         var layerOk = !options.AllLayers && MsbPort.BaseLayerMeans(ds3);
-        int otherState = 0;
+        int otherState = 0, phantoms = 0;
         var otherStateNames = new Dictionary<string, int>();
         foreach (var src in ds3.Parts.Enemies)
         {
@@ -200,6 +208,12 @@ public static class EnemyPort
                 continue;
             }
             ErEnemy? who;
+            if (what.Npc && People.IsPhantom(what.Name))
+            {
+                phantoms++;
+                npcs++;
+                continue;
+            }
             if (what.Npc)
             {
                 // A person: the ported DS3 character if it isn't the human body (Fire Keeper, Ludleth...), else an
@@ -299,6 +313,8 @@ public static class EnemyPort
         if (otherState > 0)
             notes.Add($"{otherState} left out that belong to another state of the map (off DS3's layer bit 0, e.g. the Untended Graves): "
                       + string.Join("; ", otherStateNames.OrderByDescending(n => n.Value).Take(12).Select(n => $"{n.Key} x{n.Value}")));
+        if (phantoms > 0)
+            notes.Add($"people: {phantoms} DS3 summons and invaders (White/Mad Phantom, Dark Spirit) left out: they only appear when summoned or invading");
         if (seated > 0)
             notes.Add($"people: {seated} moved from DS3's holding spot to the seat DS3's scripts warp them to"
                       + (sameSeat > 0 ? $"; {sameSeat} other versions of a seated person left out (DS3 shows one by quest state)" : ""));
@@ -469,10 +485,23 @@ public static class EnemyPort
     /// Hostile: no talk script, and on a team the ordinary enemies of the catalog are on (so the game already
     /// treats it as an enemy; summons, corpses and quest phantoms are on other teams and are left out).
     /// </summary>
-    public static People SortPeople(IEnumerable<(ErEnemy Who, bool Talks)> humans, IEnumerable<ErEnemy> catalog, Func<int, int> teamOf, List<string> notes)
+    public static People SortPeople(IEnumerable<(ErEnemy Who, bool Talks)> humans, IEnumerable<ErEnemy> catalog, Func<int, int> teamOf, List<string> notes,
+        Func<ErEnemy, string?>? looksWrong = null)
     {
         var enemyTeams = catalog.Select(c => teamOf(c.NpcParam)).Where(t => t >= 0).ToHashSet();
-        var list = humans.ToList();
+        var all = humans.ToList();
+        // A person must look dressed (1.0.340: a naked man at Firelink).
+        var rejected = new Dictionary<string, List<string>>();
+        var list = all.Where(h =>
+        {
+            if (looksWrong?.Invoke(h.Who) is not { } why)
+                return true;
+            (rejected.TryGetValue(why, out var l) ? l : rejected[why] = []).Add($"{h.Who.Name} ({h.Who.NpcParam}/{h.Who.Part?.CharaInitID})");
+            return false;
+        }).ToList();
+        if (rejected.Count > 0)
+            notes.Add("people: left out of the pools: " + string.Join("; ", rejected.Select(r =>
+                $"{r.Key} x{r.Value.Count} ({string.Join(", ", r.Value.Distinct().Take(8))})")));
         var friendly = list.Where(h => h.Talks).Select(h => h.Who).DistinctBy(h => (h.NpcParam, h.Part?.CharaInitID)).ToList();
         var hostile = list.Where(h => !h.Talks && enemyTeams.Contains(teamOf(h.Who.NpcParam))).Select(h => h.Who)
             .DistinctBy(h => (h.NpcParam, h.Part?.CharaInitID)).ToList();
@@ -483,7 +512,22 @@ public static class EnemyPort
         return new People(friendly, hostile);
     }
 
-    public static List<ErEnemy> BuildCatalog(GameArchives er, PARAM? npcParam, List<string> notes, out People people)
+    /// <summary>
+    /// Why an Elden Ring human placement can't stand in for a DS3 person, or null when it can: its CharaInitParam
+    /// row has no body armour, so it stands there bare-chested or naked (1.0.340: the Fire Keeper's spot got Boc the
+    /// Seamster, CharaInit 23420, a hood and nothing else). 220 of Elden Ring's 3,273 rows have no body armour.
+    /// </summary>
+    public static string? PersonLooksWrong(PARAM? charaInit, int chara)
+    {
+        if (charaInit is null)
+            return null;
+        if (charaInit[chara] is not { } c)
+            return "no CharaInitParam row";
+        var body = c.Cells.FirstOrDefault(x => x.Def.InternalName == "equip_Armer")?.Value;
+        return body is null or byte[] || System.Convert.ToInt32(body) <= 0 ? "no body armour" : null;
+    }
+
+    public static List<ErEnemy> BuildCatalog(GameArchives er, PARAM? npcParam, List<string> notes, out People people, PARAM? charaInit = null)
     {
         var catalog = new List<ErEnemy>();
         var humans = new List<(ErEnemy, bool)>();
@@ -536,7 +580,8 @@ public static class EnemyPort
         }
         if (bystanders > 0)
             notes.Add($"catalog: {bystanders} wildlife and helper placements left out (deer, eagles, dummies, bonfires)");
-        people = SortPeople(humans, catalog.Where(c => !c.Boss), id => TeamOf(npcParam, id), notes);
+        people = SortPeople(humans, catalog.Where(c => !c.Boss), id => TeamOf(npcParam, id), notes,
+            who => PersonLooksWrong(charaInit, who.Part?.CharaInitID ?? -1));
         return catalog;
     }
 
