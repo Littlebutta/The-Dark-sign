@@ -67,6 +67,10 @@ void dks_god_update(void);
    and implies fly so the player doesn't drop through the floor. Turning either off clears only what it set.
    dks_fly_update applies both; the render thread calls it every frame, keys = 1 when the movement keys should count
    (game focused, F1 menu not typing). Offsets: fromsoftware-rs and EldenRingTool (CREDITS.md). */
+/* The main player's position (the F1 log's coordinates), 1 when there is a player to read; for the frame-time
+   recorder (perf.c). */
+int dks_player_position(float pos[3]);
+
 void dks_fly_set(int on);
 int dks_fly_on(void);
 void dks_noclip_set(int on);

@@ -19,7 +19,14 @@ public static class MapPorter
     public sealed class Options
     {
         public HashSet<string> Only { get; } = new(StringComparer.OrdinalIgnoreCase);
-        public bool Ds3Groups { get; set; }
+        /// <summary>
+        /// --all-visible (fallback "map-groups" B): every map part is drawn from everywhere, nothing culled, as every
+        /// build up to 1.0.4xx. Default: DS3's draw groups cull pieces, collisions and objects (<see cref="MapDrawGroups"/>).
+        /// "--ds3-groups" (the old B, which wrote DS3's masks into Elden Ring's alternate group fields and so never culled)
+        /// is accepted and means the default.
+        /// </summary>
+        public bool AllVisible { get; set; }
+        /// <summary>--no-groups (fallback "map-groups" C): no group masks at all.</summary>
         public bool NoGroups { get; set; }
         /// <summary>Only the albedo-only material JortPob uses (fallback "map-materials" B).</summary>
         public bool PlainMaterials { get; set; }
@@ -128,7 +135,8 @@ public static class MapPorter
             for (int i = 0; i < list.Count; i++)
                 switch (list[i].ToLowerInvariant())
                 {
-                    case "--ds3-groups": o.Ds3Groups = true; break;
+                    case "--ds3-groups": break;
+                    case "--all-visible": o.AllVisible = true; break;
                     case "--no-groups": o.NoGroups = true; break;
                     case "--plain-materials": o.PlainMaterials = true; break;
                     case "--no-piece-test": o.NoPieceTest = true; break;
@@ -680,7 +688,7 @@ public static class MapPorter
             .Select(s => (s.Ds3, s.Er)).ToList();
         var layout = MsbPort.Convert(ds3Msb, host, ds3Id, erId, new MsbPort.Options
             {
-                AllVisible = !options.Ds3Groups, NoGroups = options.NoGroups, HelperPieces = options.HelperPieces,
+                Ds3Culling = !options.AllVisible, NoGroups = options.NoGroups, HelperPieces = options.HelperPieces,
                 Ds3HitFilters = options.Ds3HitFilters,
                 DrawParamId = options.VanillaDrawParam ? MapDrawParams.VanillaRow : MapDrawParams.FirstRow,
             },
@@ -700,7 +708,7 @@ public static class MapPorter
                 var scripts = Ds3Scripts(ds3, ds3Id).ToList();
                 var bosses = EnemyPort.BossEncounter(ds3Msb, EnemyPort.BossEntities(scripts, ds3Layout: true));
                 var seats = EnemyPort.Seats(ds3Msb, EnemyPort.EventWarps(scripts));
-                var placed = EnemyPort.Place(ds3Msb, layout.Msb, ds3Id, erId, new MsbPort.Options { AllVisible = !options.Ds3Groups, NoGroups = options.NoGroups, AllLayers = options.AllLayers },
+                var placed = EnemyPort.Place(ds3Msb, layout.Msb, ds3Id, erId, new MsbPort.Options { Ds3Culling = !options.AllVisible, NoGroups = options.NoGroups, AllLayers = options.AllLayers },
                     enemies.Chooser, e => enemies.Describe(e, bosses), EnemyPort.AnyEnemyPart(enemies.Catalog), _placedEnemies, partNames,
                     enemies.People, seats, placePeople: !options.NoPeople, armour: options.ErPeople ? null : _armour, erStandIns: options.ErPeople);
                 enemiesPlaced = placed;
@@ -888,8 +896,30 @@ public static class MapPorter
         // DS3's low-detail stand-ins, judged now that every model's meshes are known. A failure keeps them all.
         var standIns = new HashSet<string>(StringComparer.Ordinal);
         var farViews = new HashSet<string>(StringComparer.Ordinal);
+        bool culled = !options.AllVisible && !options.NoGroups;
+        if (culled && copied == 0 && test == PieceTest.None)
+        {
+            // How much less the game draws with DS3's culling, weighted by vertices (RULE 4: the port log says it).
+            try
+            {
+                bool layerOk = MsbPort.BaseLayerMeans(ds3Msb);
+                var drawn = ds3Msb.Parts.MapPieces
+                    .Where(p => !missingModels.Contains(p.ModelName) && (options.HelperPieces || MsbPort.HelperKind(p, layerOk) is null)).ToList();
+                long Vertices(string model) => models.ModelMeshes.TryGetValue(model, out var meshes) ? meshes.Sum(m => (long)m.Vertices) : 0;
+                report.AppendLine("  " + MapDrawGroups.Summary(ds3Msb, drawn, Vertices));
+            }
+            catch (Exception ex) when (ex is not OutOfMemoryException)
+            {
+                report.AppendLine($"  draw groups: could not measure ({ex.Message})");
+            }
+        }
         if (options.StandIns)
             report.AppendLine("  low-detail stand-ins and far views: kept (--stand-ins)");
+        else if (culled)
+            // DS3 draws a stand-in only from where the detail it stands for is culled. With DS3's culling the game does the
+            // same, so leaving it out (needed while everything was drawn from everywhere, PRs #143 and #161) would leave a
+            // hole in the distance wherever the detail is hidden.
+            report.AppendLine("  low-detail stand-ins and far views: kept (DS3's draw groups show each only where DS3 does)");
         else if (copied > 0 || test != PieceTest.None)
             report.AppendLine("  low-detail stand-ins: not judged in a copied or test map");
         else
@@ -992,7 +1022,7 @@ public static class MapPorter
         // checked by writing the layout and reading it back; one that fails is taken out again, so the map is never
         // worse off than without it.
         clock.Restart();
-        var groupOptions = new MsbPort.Options { AllVisible = !options.Ds3Groups, NoGroups = options.NoGroups, AllLayers = options.AllLayers };
+        var groupOptions = new MsbPort.Options { Ds3Culling = !options.AllVisible, NoGroups = options.NoGroups, AllLayers = options.AllLayers };
         if (options.Objects == ObjectPort.Method.None)
             report.AppendLine($"  objects: off (--objects none); {ds3Msb.Parts.Objects.Count} DS3 objects not placed");
         else if (test != PieceTest.None)

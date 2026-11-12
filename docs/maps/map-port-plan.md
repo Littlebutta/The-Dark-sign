@@ -332,8 +332,9 @@ Not changed, and the next suspects if a map still hitches:
   the game parses). JortPob ships XML and calls binary "worse in engine" without saying how; fallback
   `map-collision` B wrote binary and was untested in game (binary is the default since 1.0.31x, see below).
 - Every map piece draws from everywhere (no draw groups, unlimited draw distance, no detail switch by distance),
-  including DS3's far stand-in pieces. DS3 culls by draw group (`map-groups` B, whose mapping onto Elden Ring's
-  three mask arrays is unconfirmed), and its models carry lower detail triangle lists the row never switches to
+  including DS3's far stand-in pieces. DS3 culls by draw group (`map-groups` B up to 1.0.410 wrote DS3's masks into
+  Elden Ring's alternate group fields and never culled; since this PR DS3's groups are the default, see
+  `Maps/MapDrawGroups.cs`), and its models carry lower detail triangle lists the row never switches to
   (counted on the `load:` line).
 - Enemies that can't find a path (the navmesh's links are a separate problem) ask again every few seconds.
 
