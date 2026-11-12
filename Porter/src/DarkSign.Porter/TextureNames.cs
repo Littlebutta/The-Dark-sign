@@ -183,6 +183,67 @@ public static class TextureNames
     private static List<string> GetOrAdd(this Dictionary<string, List<string>> d, string key) =>
         d.TryGetValue(key, out var list) ? list : d[key] = [];
 
+    /// <summary>
+    /// The build-time half of this check (map-validate, run at the end of port-maps): reads the mod's character and
+    /// parts texture binders only and returns one line per problem: a texture name two different ported models
+    /// ship, or a ported character / DS3 armour texture that doesn't carry its file's own tag (cNNNN, BD_M_NNNN):
+    /// a name without the tag can match one Elden Ring uses. Elden Ring's own files aren't read (that takes minutes;
+    /// the full `texture-names` command does it).
+    /// </summary>
+    public static List<string> CheckMod(string modRoot, out int files, out int names)
+    {
+        var holders = new ConcurrentDictionary<string, ConcurrentBag<string>>(StringComparer.OrdinalIgnoreCase);
+        var untagged = new ConcurrentBag<(string File, string Name)>();
+        var list = new[] { "parts", "chr" }.Select(d => Path.Combine(modRoot, d)).Where(Directory.Exists)
+            .SelectMany(d => Directory.EnumerateFiles(d, "*.dcx", SearchOption.TopDirectoryOnly))
+            .Where(f => f.EndsWith(".partsbnd.dcx", StringComparison.OrdinalIgnoreCase) || f.EndsWith(".texbnd.dcx", StringComparison.OrdinalIgnoreCase)
+                        || f.EndsWith(".chrbnd.dcx", StringComparison.OrdinalIgnoreCase)).ToList();
+        var problems = new ConcurrentBag<string>();
+        Parallel.ForEach(list, Parallelism.Options, file =>
+        {
+            var relative = "/" + Path.GetRelativePath(modRoot, file).Replace('\\', '/');
+            var tag = OwnTag(relative);
+            try
+            {
+                foreach (var (name, _) in Textures(File.ReadAllBytes(file)))
+                {
+                    holders.GetOrAdd(name, _ => []).Add(relative);
+                    if (tag is not null && Enemies.ChrModel.Owned(name, tag) != name)
+                        untagged.Add((relative, name));
+                }
+            }
+            catch (Exception e) when (e is not OutOfMemoryException)
+            {
+                problems.Add($"{relative} does not read: {e.GetType().Name}: {e.Message}");
+            }
+        });
+        files = list.Count;
+        names = holders.Count;
+        var lines = problems.Order().ToList();
+        foreach (var (name, where) in holders.OrderBy(h => h.Key, StringComparer.OrdinalIgnoreCase))
+        {
+            var mine = where.Distinct(StringComparer.OrdinalIgnoreCase).Order().ToList();
+            if (mine.Select(ModelKey).Distinct(StringComparer.OrdinalIgnoreCase).Count() > 1)
+                lines.Add($"texture {name} is in {mine.Count} files of different models ({string.Join(", ", mine.Select(ItemText.Leaf).Take(6))}); when one unloads the others can lose it");
+        }
+        foreach (var group in untagged.GroupBy(u => u.File).OrderBy(g => g.Key, StringComparer.OrdinalIgnoreCase))
+            lines.Add($"{ItemText.Leaf(group.Key)}: {group.Count()} textures without the file's own name ({string.Join(", ", group.Select(u => u.Name).Order().Take(4))}); a name Elden Ring also uses would be shared");
+        return lines;
+    }
+
+    /// <summary>The tag every texture of a ported file carries ("c7007", "BD_M_5003", "BD_M_5003_L"), or null for files the check doesn't hold to it.</summary>
+    public static string? OwnTag(string modFile)
+    {
+        var leaf = ItemText.Leaf(modFile);
+        var chr = System.Text.RegularExpressions.Regex.Match(leaf, @"^(c7\d{3})[._]", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        if (chr.Success && modFile.Contains("/chr/", StringComparison.OrdinalIgnoreCase))
+            return chr.Groups[1].Value.ToLowerInvariant();
+        var armour = System.Text.RegularExpressions.Regex.Match(leaf, @"^(hd|bd|am|lg)_([mf])_(\d{4})(_l)?\.", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        if (armour.Success && int.Parse(armour.Groups[3].Value) >= Maps.PeopleArmour.FirstModel)
+            return $"{armour.Groups[1].Value}_{armour.Groups[2].Value}_{armour.Groups[3].Value}{(armour.Groups[4].Success ? "_L" : "")}".ToUpperInvariant();
+        return null;
+    }
+
     /// <summary>"/parts/bd_f_5003_l.partsbnd.dcx" -> "parts/bd_5003": a model's high/low detail and male/female files are one model.</summary>
     public static string ModelKey(string modFile)
     {
