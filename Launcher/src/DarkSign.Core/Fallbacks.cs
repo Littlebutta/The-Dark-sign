@@ -239,6 +239,8 @@ public static class Fallbacks
                 { PorterEnv = Env("DARKSIGN_SOUND_LEVELS", "0") },
             new("I", "Without loops and Stop events", "A, but DS3 sounds that loop play through once, no ported sound has a Stop event, and effects play the sounds they hold once (DARKSIGN_SOUND_LOOPS=0), as earlier builds did. Use it if a ported sound is cut off early, never ends, or the game misbehaves when an effect or move ends.")
                 { PorterEnv = Env("DARKSIGN_SOUND_LOOPS", "0") },
+            new("J", "Elden Ring's other swing sounds on every DS3 hitbox", "A, but a DS3 swing with no Elden Ring swing of its own repeats the template's remaining swing sounds even when the move plays DS3's sounds (DARKSIGN_SWING_SOUND_REPEAT=1), as up to 1.0.347, where a swing with several hitboxes (the Dragonslayer Greataxe) played them several times. Use it if some moves lose a sound they had.")
+                { PorterEnv = Env("DARKSIGN_SWING_SOUND_REPEAT", "1") },
             new("off", "Off (Elden Ring sounds)", "Ported weapons keep the Elden Ring template's swing sounds (DARKSIGN_DS3_SOUND_EVENTS=0). Not DS3, but never silent.")
                 { PorterEnv = Env("DARKSIGN_DS3_SOUND_EVENTS", "0") },
         ]),

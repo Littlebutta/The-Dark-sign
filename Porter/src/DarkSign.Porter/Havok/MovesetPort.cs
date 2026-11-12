@@ -1214,8 +1214,12 @@ public static partial class MovesetPort
         }
 
         // DS3 swings with no Elden Ring hit of their own (e.g. a 3-hit combo on a 2-hit template) repeat the
-        // swing sounds of the nearest paired hit.
-        if (erHits.Count > 0)
+        // swing sounds of the nearest paired hit. Only when the move plays Elden Ring's swing sounds: with DS3's own
+        // (every DS3 sound event is ported, one per DS3 swing), what is left of Elden Ring's (kinds other than c and
+        // s) was copied once per extra DS3 hitbox, so a swing with several hitboxes played them several times
+        // (1.0.347: the Dragonslayer Greataxe; 261 moves, +4,187 events). DARKSIGN_SWING_SOUND_REPEAT=1 repeats them
+        // anyway, as before.
+        if (erHits.Count > 0 && (!ds3Sounds || SwingSoundRepeat))
             for (int d = 0; d < ds3Hits.Count; d++)
             {
                 if (pairedDs3.Contains(d))
@@ -1304,6 +1308,7 @@ public static partial class MovesetPort
     private static readonly bool KeepErEffects = Environment.GetEnvironmentVariable("DARKSIGN_KEEP_ER_EFFECTS") == "1";
     private static readonly bool Ds3SoundEvents = Environment.GetEnvironmentVariable("DARKSIGN_DS3_SOUND_EVENTS") != "0";
     private static readonly bool SwingAlign = Environment.GetEnvironmentVariable("DARKSIGN_SWING_ALIGN") != "0";
+    private static readonly bool SwingSoundRepeat = Environment.GetEnvironmentVariable("DARKSIGN_SWING_SOUND_REPEAT") == "1";
     private static readonly bool AddGroups = Environment.GetEnvironmentVariable("DARKSIGN_ADD_EVENT_GROUPS") != "0";
 
     // Sound events repeated for extra DS3 swings.
