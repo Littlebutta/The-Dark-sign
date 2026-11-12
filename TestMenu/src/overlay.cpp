@@ -491,6 +491,25 @@ void draw_menu()
         dks_god_set(god);
     ImGui::SameLine();
     ImGui::TextDisabled("Ctrl+Shift+F5");
+    bool fly = dks_fly_on() != 0;
+    if (ImGui::Checkbox("Fly", &fly))
+        dks_fly_set(fly);
+    ImGui::SameLine();
+    ImGui::TextDisabled("Ctrl+Shift+F6");
+    ImGui::SameLine(0, 24);
+    bool noclip = dks_noclip_on() != 0;
+    if (ImGui::Checkbox("No-clip (through walls, flies too)", &noclip))
+        dks_noclip_set(noclip);
+    ImGui::SameLine();
+    ImGui::TextDisabled("Ctrl+Shift+F7");
+    if (fly || noclip) {
+        float speed = dks_fly_speed();
+        ImGui::SetNextItemWidth(220);
+        if (ImGui::SliderFloat("Fly speed", &speed, 2.0f, 100.0f, "%.0f m/s"))
+            dks_fly_set_speed(speed);
+        ImGui::SameLine();
+        ImGui::TextDisabled("PgUp/PgDn up/down, Home/End forward/back");
+    }
 
     bool changed = false, levels = false, run = false, spawn = false;
     if (ImGui::BeginTabBar("games")) {
@@ -835,6 +854,8 @@ void render(IDXGISwapChain3 *swap_chain)
     g_f1_was_down = down;
     dks_spawn_update(); // spawns queued from the menu go on while it's closed
     dks_god_update();   // god mode stays on while the menu is closed
+    // Fly keys count while the game has focus and the menu isn't taking the keyboard (a text box, a list).
+    dks_fly_update(GetForegroundWindow() == g_hwnd && (!g_open || !ImGui::GetIO().WantCaptureKeyboard));
     if (!g_open) {
         // Hold no back-buffer references while the menu is closed: a ResizeBuffers(1) the hooks miss (another overlay's
         // hook in front of ours, Alt+Enter) would otherwise fail with DXGI_ERROR_INVALID_CALL and take the game down.

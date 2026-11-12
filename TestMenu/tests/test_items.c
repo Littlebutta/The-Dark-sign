@@ -76,6 +76,14 @@ int main(void)
     dks_spawn_position(player, broken, 7, out);    /* second row, no facing: still somewhere near */
     CHECK(out[2] > 24.4f && out[2] < 24.6f);
 
+    /* Fly: 20 m/s for half a second along the facing, or straight up/down. */
+    dks_fly_step(player, facing_x, 1, 0, 20.0f, 0.5f, out);
+    CHECK(out[0] > 19.99f && out[0] < 20.01f && out[1] > 4.99f && out[1] < 5.01f && out[2] > 19.99f && out[2] < 20.01f);
+    dks_fly_step(player, facing_z, 0, -1, 20.0f, 0.5f, out);
+    CHECK(out[0] > 9.99f && out[0] < 10.01f && out[1] > -5.01f && out[1] < -4.99f && out[2] > 19.99f && out[2] < 20.01f);
+    dks_fly_step(player, broken, 1, 1, 20.0f, -1.0f, out); /* a bad frame time doesn't move anything */
+    CHECK(out[0] == player[0] && out[1] == player[1] && out[2] == player[2]);
+
     if (failures)
         return 1;
     printf("test_items: all passed\n");
