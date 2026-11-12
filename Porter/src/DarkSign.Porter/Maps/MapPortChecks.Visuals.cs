@@ -215,7 +215,8 @@ public static partial class MapPortChecks
         Expect(ds3.Meshes[0].Vertices[0].UVs.Count == 4 && MathF.Abs(ds3.Meshes[0].Vertices[0].UVs[3].X - 0.74f) < 0.01f,
             "SoulsFormats reads the four weight bytes as two UV entries (c0, c1 and c2, c3)");
         Expect(MapTerrainBlends.WeightEntry(ds3, ds3.Meshes[0]) == 2, "the weights are UV entry 2");
-        foreach (var (mtd, n) in new[] { ("M[ARSN]_4m_l", 4), ("MultiBlend\\M[ARSN]_2m_et1_l", 2), ("M[ARSN]_3m", 3), ("M[ARSN]_l_m", 0), ("M[ARSN]_l", 0), ("M[ARSN]_m", 0) })
+        foreach (var (mtd, n) in new[] { ("M[ARSN]_4m_l", 4), ("MultiBlend\\M[ARSN]_2m_et1_l", 2), ("M[ARSN]_3m", 3), ("M[ARSN]_l_m", 0), ("M[ARSN]_l", 0), ("M[ARSN]_m", 0),
+                                         ("M[ARSN]_2m_pom_l", 2), ("M[A]_2m_NoLight_scroll", 0) })
             Expect(MapTerrainBlends.LayerCount(mtd) == n, $"{mtd} has {MapTerrainBlends.LayerCount(mtd)} layers, not {n}");
 
         var (port, hostBnd) = VisualPort();
@@ -232,6 +233,15 @@ public static partial class MapPortChecks
         Expect(MapValidate.CheckFlverDraw(flver, port.TemplateLayouts()).ToList() is { Count: 0 }, "the validator accepts the converted model");
         var b = port.Blends;
         Expect(b.Meshes == 4 && b.Triangles == 8 && b.LayerTriangles.SequenceEqual([3, 3, 1, 1]) && b.NoWeights == 0, $"counted: {b.Summary}");
+
+        // A sky dome (m31/m40 m009000: "M[A]_2m_NoLight_scroll") has two cloud layers and blend bytes too, but stays
+        // whole on its first layer: split, it drew blue shards across map 3's sky (1.0.366).
+        var sky = BlendFlver();
+        sky.Materials[2].MTD = @"N:\FDP\data\Material\mtd\map\M[A]_2m_NoLight_scroll.mtd";
+        var skyStats = new MapTerrainBlends.Stats();
+        MapTerrainBlends.Apply(sky, skyStats);
+        Expect(skyStats.Meshes == 3 && sky.Meshes.Count(m => m.MaterialIndex == 2) == 1 && Triangles(sky.Meshes.Single(m => m.MaterialIndex == 2)) == 2,
+            $"the sky dome stays one mesh on its first layer ({skyStats.Summary})");
 
         // Fallback map-blend-layers B: the first layer everywhere, as up to 1.0.353.
         Expect(MapPorter.Options.Parse(["--first-blend-layer"]).FirstBlendLayer && !new MapPorter.Options().FirstBlendLayer, "--first-blend-layer is read");

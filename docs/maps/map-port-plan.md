@@ -190,7 +190,9 @@ showed only layer 0, which around Firelink Shrine is the dark brick under the as
 every shard of map 1 as a terrain blend. `MapTerrainBlends` gives each triangle the highest layer whose weight averages
 0.5 or more over its corners, and splits the mesh into one mesh per layer with that layer's textures and tiling.
 The port log's `terrain blends:` line counts triangles per layer; fallback `map-blend-layers` B
-(`--first-blend-layer`) shows the first layer everywhere again.
+(`--first-blend-layer`) shows the first layer everywhere again. Unlit or scrolling "2m" materials are not ground:
+DS3's sky domes (`m009000` of m31 and m40, `M[A]_2m_NoLight_scroll`) cross-fade two cloud layers with the same bytes,
+and splitting one drew blue sky shards over map 3 in 1.0.366, so they stay whole on their first layer.
 
 **Atmosphere.** A slot used to keep its colosseum's gparam: Caelid's red volumetric fog lit at 1.6 on map 2,
 Leyndell's golden colour grading (LUT 101) and fog out to 2 km on map 1. `MapAtmosphere` writes the slot's
