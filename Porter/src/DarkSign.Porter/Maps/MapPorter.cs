@@ -329,7 +329,19 @@ public static class MapPorter
             Time(report, "object params", objectClock);
         }
         if (enemyPort is not null)
+        {
+            // The SpEffects the maps' scripts use get rows too, so the events step can point the scripts at them.
+            if (enemyPort.Effects is { } fx && ported.Count > 0)
+                try
+                {
+                    fx.ScriptSpEffectIds = MapEvents.ScriptSpEffects(ctx, ds3, ported.Select(p => p.Slot).ToList());
+                }
+                catch (Exception ex) when (ex is not OutOfMemoryException)
+                {
+                    report.AppendLine($"enemy params: script SpEffects not read ({ex.Message}); scripts keep DS3 IDs where no move casts them");
+                }
             Step(report, "enemy params", () => ChrPort.ApplyParams(ctx, er, enemyPort));
+        }
         if (ported.Count > 0)
             Step(report, "events", () => MapEvents.Port(ctx, ds3, er, ported.Select(p => p.Slot).ToList()));
 

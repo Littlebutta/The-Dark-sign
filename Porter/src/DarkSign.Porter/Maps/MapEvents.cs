@@ -25,7 +25,7 @@ public static class MapEvents
     /// <param name="erCommon">Elden Ring's common_func.emevd; ported DS3 common events from an earlier run are replaced.</param>
     public static Result Convert(Emedf ds3Defs, Emedf erDefs, FlagMap flags, IReadOnlyList<MapSlots.Slot> slots,
         IReadOnlyDictionary<MapId, EMEVD> ds3Scripts, EMEVD? ds3Common, Func<MapSlots.Slot, EMEVD> erTemplate, EMEVD erCommon,
-        ActionButtons? buttons = null)
+        ActionButtons? buttons = null, Func<long, long?>? spEffects = null)
     {
         var main = slots.Where(s => !s.Probe).Select(s => (s.Ds3, s.Er)).ToList();
         var summary = new List<string>();
@@ -34,7 +34,7 @@ public static class MapEvents
 
         EventPort NewPort(IReadOnlyList<(MapId, MapId)> maps)
         {
-            var port = new EventPort(ds3Defs, erDefs, maps, flags) { Buttons = buttons };
+            var port = new EventPort(ds3Defs, erDefs, maps, flags) { Buttons = buttons, SpEffects = spEffects };
             if (ds3Common is not null)
                 port.Learn(ds3Common, common: true);
             foreach (var script in ds3Scripts.Values)
@@ -115,12 +115,7 @@ public static class MapEvents
         var erDefs = Emedf.Parse(File.ReadAllText(ctx.Data.Emedf("er-common")));
         var flagPath = ctx.ModPath(FlagFile);
         var flags = FlagMap.Load(flagPath);
-
-        var ds3Scripts = new Dictionary<MapId, EMEVD>();
-        foreach (var id in slots.Select(s => s.Ds3).Distinct())
-            if (ds3.Contains(ScriptPath(id)))
-                ds3Scripts[id] = EMEVD.Read(ds3.Read(ScriptPath(id)));
-        var ds3Common = ds3.Contains(CommonFunc) ? EMEVD.Read(ds3.Read(CommonFunc)) : null;
+        var (ds3Scripts, ds3Common) = ReadDs3(ds3, slots);
 
         var templates = new Dictionary<MapId, (EMEVD Script, DCX.CompressionInfo Compression)>();
         (EMEVD Script, DCX.CompressionInfo Compression) Template(MapSlots.Slot slot)
@@ -156,7 +151,19 @@ public static class MapEvents
             buttonNote = $"action buttons: not converted ({ex.Message}); events that wait for them are left out";
         }
 
-        var result = Convert(ds3Defs, erDefs, flags, slots, ds3Scripts, ds3Common, s => Template(s).Script, erCommon, buttons);
+        // SpEffects: a DS3 ID the enemy port gave a row (700,000,000 + the ID) is pointed at that row.
+        Func<long, long?>? spEffects = null;
+        string spNote = "";
+        try
+        {
+            var sp = (regulation ?? ActionButtons.LoadRegulation(ctx)).Get("SpEffectParam") ?? throw new InvalidDataException("no SpEffectParam");
+            spEffects = id => Enemies.ChrEffects.SpEffectId((int)Math.Min(id, int.MaxValue)) is > 0 and var n && sp[n] is not null ? n : null;
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            spNote = $"speffects: script SpEffect IDs kept at their DS3 IDs ({ex.Message})";
+        }
+        var result = Convert(ds3Defs, erDefs, flags, slots, ds3Scripts, ds3Common, s => Template(s).Script, erCommon, buttons, spEffects);
         if (buttons is not null && regulation is not null)
         {
             try
@@ -168,7 +175,7 @@ public static class MapEvents
                 // Scripts that point at rows which were never written must not ship: fall back to leaving them out.
                 buttonNote = $"action buttons: FAILED to write rows ({ex.Message}); converting again without them";
                 flags = FlagMap.Load(flagPath);
-                result = Convert(ds3Defs, erDefs, flags, slots, ds3Scripts, ds3Common, s => Template(s).Script, erCommon);
+                result = Convert(ds3Defs, erDefs, flags, slots, ds3Scripts, ds3Common, s => Template(s).Script, erCommon, null, spEffects);
             }
         }
         foreach (var slot in slots)
@@ -176,6 +183,32 @@ public static class MapEvents
                 File.WriteAllBytes(ctx.ModPath(MapPorter.ModParts(ScriptPath(slot.Er))), DCX.Compress(script.Write(), Template(slot).Compression));
         File.WriteAllBytes(modCommon, DCX.Compress(result.CommonFunc.Write(), commonCompression));
         flags.Save(flagPath);
-        return "events:\n  " + result.Summary + (buttonNote.Length > 0 ? "\n  " + buttonNote : "");
+        return "events:\n  " + result.Summary + (buttonNote.Length > 0 ? "\n  " + buttonNote : "") + (spNote.Length > 0 ? "\n  " + spNote : "");
+    }
+
+    /// <summary>The DS3 scripts of these slots' maps, and DS3's common_func (null when missing).</summary>
+    public static (Dictionary<MapId, EMEVD> Maps, EMEVD? Common) ReadDs3(GameArchives ds3, IEnumerable<MapSlots.Slot> slots)
+    {
+        var scripts = new Dictionary<MapId, EMEVD>();
+        foreach (var id in slots.Select(s => s.Ds3).Distinct())
+            if (ds3.Contains(ScriptPath(id)))
+                scripts[id] = EMEVD.Read(ds3.Read(ScriptPath(id)));
+        return (scripts, ds3.Contains(CommonFunc) ? EMEVD.Read(ds3.Read(CommonFunc)) : null);
+    }
+
+    /// <summary>
+    /// The DS3 SpEffect IDs the ported maps' scripts (and DS3's common events) set, clear or check, for the enemy
+    /// port to give rows, so <see cref="Port"/> can point the scripts at them.
+    /// </summary>
+    public static SortedSet<int> ScriptSpEffects(PorterContext ctx, GameArchives ds3, IReadOnlyList<MapSlots.Slot> slots)
+    {
+        var defs = Emedf.Parse(File.ReadAllText(ctx.Data.Emedf("ds3-common")));
+        var (scripts, common) = ReadDs3(ds3, slots);
+        var port = new EventPort(defs, defs, [], new FlagMap());
+        if (common is not null)
+            port.Learn(common, common: true);
+        foreach (var s in scripts.Values)
+            port.Learn(s);
+        return port.ScriptSpEffects(common is null ? scripts.Values : scripts.Values.Append(common));
     }
 }
