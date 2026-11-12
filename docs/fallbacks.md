@@ -45,6 +45,13 @@ Try the next option if: You want to try a DS3 boss's partners (Pontiff's clone, 
 - **A: The boss alone (default).** A DS3 boss spawned from the F1 menu comes alone. Its phases and partners run from DS3's map scripts, which never see characters the menu spawns, so fight a boss through all its phases in its own arena (the DS3 run tab's boss warps).
 - **B: The boss with its partners.** As up to 1.0.410: the boss comes with the partners its DS3 fight uses (DKSIGN_BOSS_KITS=1), all in plain sight, because the scripts that hide them and bring them in don't run for spawned characters. (`DKSIGN_BOSS_KITS=1`)
 
+### Enemies that grow out of another in the F1 menu (`spawn-transform`, at launch, no rebuild)
+
+Try the next option if: The Pus of Man spawned from the F1 menu never turns up, turns up in the wrong place, or the game crashes when the hollow transforms.
+
+- **A: A hollow first, then the Pus of Man (default).** The Pus of Man spawns as the High Wall hollow it bursts out of; 8 seconds later, or 1.5 seconds after the hollow is first hit, the Pus of Man takes its place and the hollow is taken away. Killed before that, the hollow just dies.
+- **B: The Pus of Man at once.** As up to 1.0.422: the Pus of Man spawns as itself (DKSIGN_NO_TRANSFORM=1). (`DKSIGN_NO_TRANSFORM=1`)
+
 ### Content build speed (`build-threads`, rebuilds the content)
 
 Try the next option if: The content build fails or gives different results from one run to the next.
@@ -503,6 +510,8 @@ Try the next option if: A ported DS3 enemy is invisible, black, shiny or wears t
 - **G: DS3's vertex colours.** As A, but the model keeps DS3's vertex colours (white where DS3 has none) and a two-layer material shows its first layer (DARKSIGN_ENEMY_COLOURS=ds3), as in builds up to 1.0.299, where the Soul of Cinder and Pontiff Sulyvahn drew without textures. Use when ported enemies that had textures lose them, or turn red, with A. (`DARKSIGN_ENEMY_COLOURS=ds3`)
 - **H: DS3's material numbers.** As A, but every ported model (enemies, weapons, armour, objects, effect models and map pieces) keeps DS3's material numbers, 0 in every material, instead of Elden Ring's numbering (DARKSIGN_MATERIAL_NUMBERS=ds3), as in builds up to 1.0.383, where ported enemies showed their textures and cut-outs only while frostbitten. Use when ported models turn invisible, wear another part's textures or crash the game with A. (`DARKSIGN_MATERIAL_NUMBERS=ds3`)
 - **I: The template's body size.** As A, but a ported enemy keeps the Elden Ring template's body capsule (DARKSIGN_ENEMY_BODY_SIZE=template) instead of DS3's size, as up to 1.0.410. Use when ported enemies get stuck in doorways, sink into the floor or float above it with A. (`DARKSIGN_ENEMY_BODY_SIZE=template`)
+- **J: The template's weaknesses.** As A, but a ported enemy takes damage of each kind as the Elden Ring template does (DARKSIGN_ENEMY_DAMAGE_RATES=template), as up to 1.0.422, when the Pus of Man had the Giant Beast Skeleton's weakness to strike and resistance to lightning and no weakness to fire. Use when ported enemies take far too much or too little damage with A. (`DARKSIGN_ENEMY_DAMAGE_RATES=template`)
+- **K: DS3 fur as one solid layer.** As A, but DS3 fur (Ariandel's wolf) shows the larger of its two layers, uncut (DARKSIGN_ENEMY_FUR=0), as up to 1.0.422, when the wolf's fur drew as white shards. Use when a furry ported enemy turns invisible or bald with A. (`DARKSIGN_ENEMY_FUR=0`)
 
 ### What ported DS3 enemies drop (`enemy-drops`, rebuilds the content)
 
@@ -531,6 +540,7 @@ Try the next option if: Ported DS3 enemies stand still, never attack, repeat one
 - **E: Added attacks only.** As A, but only attacks are added: DS3's waiting poses, getting-up moves and map-script moves the template has no slot for are not (DARKSIGN_ENEMY_EXTRA_MOVES=attacks), as up to 1.0.383. Use when a ported enemy freezes, stands in a T-pose or the game crashes as a map starts with A. (`DARKSIGN_ENEMY_EXTRA_MOVES=attacks`)
 - **F: DS3's think row numbers in the AI.** As A, but DS3's AI scripts keep comparing the think row they run under with DS3's row numbers (DARKSIGN_ENEMY_THINK_IDS=ds3), as up to 1.0.383; those checks never match a ported row. Use when a ported enemy behaves worse than with 1.0.383. (`DARKSIGN_ENEMY_THINK_IDS=ds3`)
 - **G: DS3's effect numbers in the AI.** As A, but DS3's AI scripts keep checking for their own effects by DS3's numbers (DARKSIGN_ENEMY_AI_SPEFFECTS=ds3), as up to 1.0.410, when those checks never matched a ported enemy's effects and Ariandel's wolf only circled. Use when a ported enemy freezes, attacks without pause or the game crashes when it notices you with A. (`DARKSIGN_ENEMY_AI_SPEFFECTS=ds3`)
+- **H: Each character's own AI rows only.** As A, but a DS3 enemy that DS3 places with another family's AI (the Cemetery of Ash hollows run the Hollow Soldiers' rows) gets its own character's first AI row instead of that family's (DARKSIGN_ENEMY_SHARED_THINK=0), as up to 1.0.417, when those hollows circled the player without attacking. Use when a ported enemy freezes or the game crashes when it notices you with A. (`DARKSIGN_ENEMY_SHARED_THINK=0`)
 
 ### Ported DS3 enemies' glows (`enemy-glow`, rebuilds the content)
 
@@ -546,8 +556,9 @@ Try the next option if: A ported DS3 enemy's glow is the wrong colour or missing
 
 Try the next option if: In a DS3 map, bosses come back, opened doors and shortcuts close again or picked-up items return after a reload, or the pre-flight check says a map flag block is MISSING.
 
-- **A: The slot map's own flags (default).** A DS3 map's flags move with it into its Elden Ring slot's map flags (e.g. 4500xxxx for m45_00), the way Elden Ring's legacy dungeons number theirs.
+- **A: The slot map's own flags where the game keeps them (default).** A DS3 map's flags move with it into its Elden Ring slot's map flags (e.g. 4500xxxx for m45_00), the way Elden Ring's legacy dungeons number theirs, wherever the game keeps that block; flags of blocks it doesn't keep (all of the Painted World's m19_70, each colosseum's 7th block) get numbers in JortPob's saved blocks, as with B.
 - **B: JortPob's saved blocks.** The maps' own flags get new numbers in the saved ranges of the bottom-edge sea tiles (1030294000 and up), the blocks JortPob's Morrowind port keeps all its flags in (DARKSIGN_MAP_FLAGS=common). Saves made with A lose their DS3 map progress. (`DARKSIGN_MAP_FLAGS=common`)
+- **C: Every flag in the slot.** As up to 1.0.422: every DS3 map flag moves into its slot's map flags, including blocks the game doesn't keep (DARKSIGN_MAP_FLAGS=slot), where the Painted World's flags were never set and Friede's fight and cutscene pot broke. (`DARKSIGN_MAP_FLAGS=slot`)
 
 
 ## Seamless Co-op

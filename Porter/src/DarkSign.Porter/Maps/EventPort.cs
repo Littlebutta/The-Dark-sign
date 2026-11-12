@@ -31,8 +31,6 @@ public sealed class EventPort
     private readonly IReadOnlyList<(MapId Ds3, MapId Er)> _maps;
     private readonly FlagMap _flags;
 
-    /// <summary>Fallback "map-flags" B: the ported maps' own flags get numbers in JortPob's blocks (<see cref="MapFlags"/>).</summary>
-    private readonly bool _commonMapFlags = MapFlags.Common;
     private readonly Dictionary<(int, int), Mapping?> _mappings = new();
     private readonly Dictionary<long, Dictionary<long, Kind>> _paramKinds = new();
     private readonly HashSet<long> _commonEvents = new();
@@ -376,7 +374,7 @@ public sealed class EventPort
                         long s = Emedf.Read(ins.ArgData, start), en = Emedf.Read(ins.ArgData, end);
                         if (s > 0 && en >= s && !OwnedByPortedMap(s))
                             _flags.Range(s, en);
-                        else if (s > 0 && en >= s && _commonMapFlags)
+                        else if (s > 0 && en >= s && _maps.First(m => m.Ds3.OwnsDs3Id(s)) is var (rd, re) && !MapFlags.RangeKept(rd, re, s, en))
                             _flags.LocalRange(s, en);
                     }
                 }
@@ -408,7 +406,7 @@ public sealed class EventPort
             case Kind.FlagRangeEnd:
                 foreach (var (ds3, er) in _maps)
                     if (ds3.OwnsDs3Id(value))
-                        return _commonMapFlags ? _flags.LocalFlag(value) : ds3.MoveEntity((int)value, er);
+                        return MapFlags.Move(_flags, ds3, er, value);
                 return _flags.Flag(value);
             case Kind.ActionButton:
                 // DS3's ActionButtonParam rows mean other prompts (or nothing) in Elden Ring: each gets a copy.

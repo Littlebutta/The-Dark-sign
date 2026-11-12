@@ -14,6 +14,7 @@ public static partial class MapPortChecks
         yield return ("event port: DS3 common events are ported once, under saved IDs, with Elden Ring's slot argument", EventCommon);
         yield return ("event port: flag ranges stay consecutive and the flag table reads back the same", EventFlagTable);
         yield return ("fallbacks: map-flags B gives map flags JortPob numbers and still moves entities to the slot", EventCommonMapFlags);
+        yield return ("flags: a ported map's own flags stay in the slot only in blocks the game keeps (m19_70 has none, 450x6 missing)", EventKeptFlagBlocks);
         yield return ("layout: connect collisions point at the neighbouring map's slot; ones to unported maps are left out", ConnectCollisions);
         yield return ("event port: SpEffect IDs go to the enemy port's rows (700,000,000 + DS3 ID) where they exist, written or passed in", EventSpEffects);
         yield return ("event port: DS3 action buttons become IF Action Button in Area with one ActionButtonParam row per prompt", EventActionButtons);
@@ -36,6 +37,36 @@ public static partial class MapPortChecks
             Environment.SetEnvironmentVariable("DARKSIGN_MAP_FLAGS", null);
         }
         Expect(NewEventPort().Move(Ds3Id.Ds3FlagBase + 800, EventPort.Kind.Flag) == ErId.EntityBase + 800, "method A moves map flags to the slot");
+    }
+
+    private static void EventKeptFlagBlocks()
+    {
+        // The Painted World (DS3 m45_00) in the m19_70 slot: Devin's 1.0.417 flag check had no block 19700-19709.
+        var painted = MapId.Parse("m45_00_00_00");
+        var slot = MapId.Parse("m19_70_00_00");
+        var flags = new FlagMap();
+        var port = new EventPort(Emedf.Parse(Ds3Defs), Emedf.Parse(ErDefs), [(painted, slot), (Ds3Id, ErId)], flags);
+        long friede = painted.Ds3FlagBase + 800;
+        var moved = port.Move(friede, EventPort.Kind.Flag);
+        Expect(moved == FlagMap.LocalSlot(0) && DarkSign.Core.Preflight.JortPobLayout(moved) == "saved", $"Painted World flag became {moved}");
+        Expect(port.Move(friede, EventPort.Kind.Flag) == moved, "the same flag keeps its number");
+        Expect(port.Move(painted.Ds3EntityBase + 800, EventPort.Kind.Entity) == slot.EntityBase + 800, "entities still move to the slot");
+        // A colosseum slot keeps its blocks, except each map's 7th (45006).
+        Expect(port.Move(Ds3Id.Ds3FlagBase + 800, EventPort.Kind.Flag) == ErId.EntityBase + 800, "block 45000 is kept");
+        var seventh = port.Move(Ds3Id.Ds3FlagBase + 6100, EventPort.Kind.Flag);
+        Expect(seventh != ErId.EntityBase + 6100 && DarkSign.Core.Preflight.JortPobLayout(seventh) == "saved", $"block 45006 flag became {seventh}");
+        Expect(MapFlags.SlotBlockKept(45029999) && !MapFlags.SlotBlockKept(45016000) && !MapFlags.SlotBlockKept(19700800) && !MapFlags.SlotBlockKept(11700800),
+            "kept blocks: the colosseums' but their 7th, no other slot's");
+        Environment.SetEnvironmentVariable("DARKSIGN_MAP_FLAGS", "slot");
+        try
+        {
+            Expect(NewEventPort().Move(MapId.Parse("m40_00_00_00").Ds3FlagBase + 6100, EventPort.Kind.Flag) == ErId.EntityBase + 6100,
+                "map-flags C keeps every flag in the slot, as up to 1.0.422");
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("DARKSIGN_MAP_FLAGS", null);
+        }
     }
 
     // Made-up definitions in DarkScript3's format, shaped like the real ones where it matters.

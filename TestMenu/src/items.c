@@ -119,14 +119,14 @@ int dks_level_for(const int attributes[DKS_ATTRIBUTES])
 
 int dks_parse_spawn_line(const char *line, DksSpawnable *out)
 {
-    char model[16], npc[16], think[16], boss[4], body[8] = "";
+    char model[16], npc[16], think[16], boss[4], body[8] = "", from[64] = "";
     memset(out, 0, sizeof *out);
     if (line[0] == '#' || !(line = next_field(line, out->game, sizeof out->game)) || !(line = next_field(line, model, sizeof model)) ||
         !(line = next_field(line, npc, sizeof npc)) || !(line = next_field(line, think, sizeof think)) ||
         !(line = next_field(line, boss, sizeof boss)))
         return 0;
-    if ((line = next_field(line, out->name, sizeof out->name)))
-        next_field(line, body, sizeof body);
+    if ((line = next_field(line, out->name, sizeof out->name)) && (line = next_field(line, body, sizeof body)))
+        next_field(line, from, sizeof from);
     out->body = strcmp(body, "ds3") == 0 ? DKS_BODY_DS3 : strcmp(body, "er") == 0 ? DKS_BODY_ER : DKS_BODY_UNKNOWN;
     char *end;
     if ((model[0] != 'c' && model[0] != 'C') || !model[1])
@@ -144,6 +144,9 @@ int dks_parse_spawn_line(const char *line, DksSpawnable *out)
     out->boss = boss[0] == '1';
     if (!out->name[0])
         snprintf(out->name, sizeof out->name, "c%04d", out->chr);
+    int fc = 0, fn = 0, ft = 0;
+    if (sscanf(from, "from c%d:%d:%d", &fc, &fn, &ft) == 3 && fc > 0 && fc <= 9999 && fn > 0 && ft >= 0)
+        out->from_chr = fc, out->from_npc = fn, out->from_think = ft;
     return strcmp(out->game, "DS3") == 0 || strcmp(out->game, "ER") == 0;
 }
 

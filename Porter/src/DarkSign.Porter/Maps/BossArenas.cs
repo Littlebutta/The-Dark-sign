@@ -52,6 +52,14 @@ public static class BossArenas
     {
         public int Index { get; init; }
 
+        /// <summary>
+        /// The defeated, entry and first-encounter flags in DS3's numbering: <see cref="AddWarps"/> moves them the way the
+        /// converted scripts did (<see cref="MapFlags.Move"/>: the Painted World's go to kept blocks, not m19_70's).
+        /// </summary>
+        public uint Ds3Defeated { get; init; }
+        public uint Ds3Entry { get; init; }
+        public uint Ds3FirstEncounter { get; init; }
+
         /// <summary>The talk-only flags in DS3's numbering (moved when the events are written) and the talk entity, moved.</summary>
         public IReadOnlyList<uint> TalkFlags { get; init; } = [];
         public uint TalkEntity { get; init; }
@@ -324,6 +332,9 @@ public static class BossArenas
             {
                 TalkFlags = f.TalkFlags,
                 TalkEntity = Move((uint)f.TalkEntity),
+                Ds3Defeated = f.Defeated,
+                Ds3Entry = f.Entry,
+                Ds3FirstEncounter = f.FirstEncounter,
             });
             if (f.TalkFlags.Count > 0)
                 notes.Add($"boss arenas: {f.Name}'s first encounter waits for {string.Join(", ", f.TalkFlags)}, which only a talk sets: "
@@ -361,6 +372,14 @@ public static class BossArenas
                 throw new ArgumentOutOfRangeException(nameof(arenas), $"boss arena index {a.Index}");
             var e = new EMEVD.Event(EventId(a.Index), EMEVD.Event.RestBehaviorType.Default);
             var m = a.Er;
+            // The fight's flags as the converted scripts number them (the slot's map flags only where the game keeps them).
+            uint Flag(uint ds3, uint moved) => moveFlag is not null && ds3 > 0 ? (uint)moveFlag(ds3) : moved;
+            a = a with
+            {
+                Defeated = Flag(a.Ds3Defeated, a.Defeated),
+                Entry = Flag(a.Ds3Entry, a.Entry),
+                FirstEncounter = Flag(a.Ds3FirstEncounter, a.FirstEncounter),
+            };
             e.Instructions.Add(RunEvents.Make(1003, 0, On, EventFlagType, RequestFlag(a.Index)));
             e.Instructions.Add(SetFlag(RequestFlag(a.Index), Off));
             e.Instructions.Add(SetFlag(RunEvents.Ds3RunActive, On));
