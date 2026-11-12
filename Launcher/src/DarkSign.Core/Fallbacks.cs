@@ -510,6 +510,13 @@ public static class Fallbacks
             new("off", "Off (no objects)", "The DS3 maps have no objects (port-maps --objects none), as every build up to 1.0.299 was.")
                 { MapsArgs = ["--objects", "none"] },
         ]),
+        new("map-object-poses", "DS3 maps", "DS3 corpses in their poses", Stage.Build,
+            "A DS3 map crashes or hangs while loading since corpses were posed, or a corpse or skeleton lying in a DS3 map is a tangle of stretched polygons.",
+        [
+            new("A", "Corpses in DS3's poses (default)", "DS3's corpses and skeletons (and any other object a DS3 map file poses with an animation) are drawn in the pose DS3 gives each one: slumped, lying, hanging. The pose is baked into a copy of the model per pose. Report: the \"pose\" rows of Work\\reports\\object-port.tsv."),
+            new("B", "Unposed", "Corpses stand in the model's bind pose, arms out (DARKSIGN_OBJECT_POSES=0), as every build up to 1.0.42x drew them.")
+                { PorterEnv = Env("DARKSIGN_OBJECT_POSES", "0") },
+        ]),
         new("map-doors", "DS3 maps", "DS3 doors, lifts and levers", Stage.Build,
             "A DS3 map crashes or hangs while loading since doors and lifts were added, a door or gate blocks the way and won't open, a lift drops you through it, or doors and gates look broken (parts in the wrong place, stretched).",
         [

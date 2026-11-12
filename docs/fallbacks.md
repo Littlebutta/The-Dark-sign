@@ -416,6 +416,13 @@ Try the next option if: A DS3 map crashes, hangs while loading or hitches since 
 - **B: Objects without collision.** The same objects, but none of them is solid (port-maps --objects nocollision). Tells whether an object's collision is what blocks the way or breaks the map. (`port-maps --objects nocollision`)
 - **off: Off (no objects).** The DS3 maps have no objects (port-maps --objects none), as every build up to 1.0.299 was. (`port-maps --objects none`)
 
+### DS3 corpses in their poses (`map-object-poses`, rebuilds the content)
+
+Try the next option if: A DS3 map crashes or hangs while loading since corpses were posed, or a corpse or skeleton lying in a DS3 map is a tangle of stretched polygons.
+
+- **A: Corpses in DS3's poses (default).** DS3's corpses and skeletons (and any other object a DS3 map file poses with an animation) are drawn in the pose DS3 gives each one: slumped, lying, hanging. The pose is baked into a copy of the model per pose. Report: the "pose" rows of Work\reports\object-port.tsv.
+- **B: Unposed.** Corpses stand in the model's bind pose, arms out (DARKSIGN_OBJECT_POSES=0), as every build up to 1.0.42x drew them. (`DARKSIGN_OBJECT_POSES=0`)
+
 ### DS3 doors, lifts and levers (`map-doors`, rebuilds the content)
 
 Try the next option if: A DS3 map crashes or hangs while loading since doors and lifts were added, a door or gate blocks the way and won't open, a lift drops you through it, or doors and gates look broken (parts in the wrong place, stretched).
