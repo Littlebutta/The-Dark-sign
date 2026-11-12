@@ -153,6 +153,25 @@ public static class MapCollisionDiag
                     foreach (var (y, file) in Column(list, at, 60))
                         line(FormattableString.Invariant($"      {kind} surface at y {y:0.00} ({at.Y - y:0.0} m below) {file}"));
         }
+        // The hknpMaterial records of the files under the asked-for points, and of the game's own collision, side by side.
+        if (extra.Count > 0)
+        {
+            line("");
+            line("--- materials (m_materials of each file's physics system; bodies point at them by material id)");
+            var asked = new HashSet<string>();
+            foreach (var (_, at) in extra)
+                foreach (var (_, list) in surfaces)
+                    foreach (var (_, file) in Column(list, at, 60))
+                        asked.Add(file.Split(' ')[0]);
+            foreach (var (kind, files) in ds3Files)
+                foreach (var (leaf, root) in files.Where(f => asked.Contains(f.Leaf)))
+                {
+                    var systems = (root.m_namedVariants ?? []).Select(v => v.m_variant).OfType<Ds3.hknpPhysicsSceneData>().SelectMany(sc => sc.m_systemDatas ?? []).ToList();
+                    foreach (var system in systems)
+                        for (int i = 0; i < (system.m_materials?.Count ?? 0); i++)
+                            line($"  DS3 {leaf} material {i}: {Ds3Material(system.m_materials![i])}");
+                }
+        }
         line($"summary: {points.Count} points: {both} over h and l, {hOnly} over h only, {lOnly} over l only, {none} over neither");
         if (hOnlyNames.Count > 0)
             line($"over h only: {string.Join("; ", hOnlyNames.Take(30))}");
@@ -178,6 +197,7 @@ public static class MapCollisionDiag
             var compendiumFile = bxf.Files.FirstOrDefault(f => f.Name.Contains(".compendium", StringComparison.OrdinalIgnoreCase));
             var compendium = compendiumFile is null ? null : DCX.Is(compendiumFile.Bytes) ? DCX.Decompress(compendiumFile.Bytes) : compendiumFile.Bytes;
             var sets = new Dictionary<string, int>();
+            var materials = new Dictionary<string, int>();
             int files = 0, failed = 0, xml = 0;
             string? firstError = null;
             foreach (var f in bxf.Files.Where(f => f.Name.Contains(".hkx", StringComparison.OrdinalIgnoreCase)))
@@ -192,8 +212,12 @@ public static class MapCollisionDiag
                     foreach (var variant in root.m_namedVariants)
                         if (variant.m_variant is hknpPhysicsSceneData scene)
                             foreach (var system in scene.m_systemDatas)
+                            {
+                                foreach (var mat in system?.m_materials ?? [])
+                                    Count(materials, ErMaterial(mat));
                                 foreach (var b in system?.m_bodyCinfos ?? [])
                                     Count(sets, $"filter {b.m_collisionFilterInfo:X8} flags {b.m_flags:X} cntrl {b.m_collisionCntrl} quality {b.m_qualityId} motion {b.m_motionType} material {b.m_materialId} shape {b.m_shape?.GetType().Name}");
+                            }
                 }
                 catch (Exception ex) when (ex is not OutOfMemoryException)
                 {
@@ -205,6 +229,9 @@ public static class MapCollisionDiag
                  + (failed > 0 ? $", {failed} unreadable (first: {firstError})" : ""));
             foreach (var (k, n) in sets.OrderByDescending(s => s.Value).Take(20))
                 line($"  {n,5} x {k}");
+            line($"  {materials.Count} distinct materials:");
+            foreach (var (k, n) in materials.OrderByDescending(s => s.Value).Take(25))
+                line($"  {n,5} x material {k}");
         }
         catch (Exception ex) when (ex is not OutOfMemoryException)
         {
@@ -215,6 +242,18 @@ public static class MapCollisionDiag
     private static IEnumerable<Ds3.hknpBodyCinfo> Ds3Bodies(Ds3.hkRootLevelContainer root) =>
         (root.m_namedVariants ?? []).Select(v => v.m_variant).OfType<Ds3.hknpPhysicsSceneData>()
         .SelectMany(s => s.m_systemDatas ?? []).SelectMany(s => s.m_bodyCinfos ?? []);
+
+    private static string Ds3Material(Ds3.hknpMaterial m) =>
+        $"name '{m.m_name}' exclusive {m.m_isExclusive} flags 0x{m.m_flags:X} trigger {m.m_triggerType} tolerance {m.m_triggerManifoldTolerance?.m_value} "
+        + $"friction {m.m_dynamicFriction}/{m.m_staticFriction} restitution {m.m_restitution} combine {m.m_frictionCombinePolicy}/{m.m_restitutionCombinePolicy} "
+        + $"welding {m.m_weldingTolerance} maxImpulse {m.m_maxContactImpulse} clipped {m.m_fractionOfClippedImpulseToApply} massChanger {m.m_massChangerCategory}/{m.m_massChangerHeavyObjectFactor} "
+        + $"soft {m.m_softContactForceFactor}/{m.m_softContactDampFactor}/{m.m_softContactSeperationVelocity?.m_value} disableCvx {m.m_disablingCollisionsBetweenCvxCvxDynamicObjectsDistance} user {m.m_userData} shared {m.m_isShared}";
+
+    private static string ErMaterial(hknpMaterial m) =>
+        $"name '{m.m_name}' exclusive {m.m_isExclusive} flags 0x{(int)m.m_flags:X} trigger {m.m_triggerType} tolerance {m.m_triggerManifoldTolerance?.m_value} "
+        + $"friction {m.m_dynamicFriction}/{m.m_staticFriction} restitution {m.m_restitution} combine {m.m_frictionCombinePolicy}/{m.m_restitutionCombinePolicy} "
+        + $"welding {m.m_weldingTolerance} maxImpulse {m.m_maxContactImpulse} clipped {m.m_fractionOfClippedImpulseToApply} massChanger {m.m_massChangerCategory}/{m.m_massChangerHeavyObjectFactor} "
+        + $"soft {m.m_softContactForceFactor}/{m.m_softContactDampFactor}/{m.m_softContactSeparationVelocity?.m_value} disableCvx {m.m_disablingCollisionsBetweenCvxCvxDynamicObjectsDistance} user {m.m_userData}";
 
     private static void Count(Dictionary<string, int> sets, string key) => sets[key] = sets.GetValueOrDefault(key) + 1;
 
@@ -237,7 +276,6 @@ public static class MapCollisionDiag
                 var scale = part.Scale == Vector3.Zero ? Vector3.One : part.Scale;
                 var partM = Matrix4x4.CreateScale(scale) * Matrix4x4.CreateRotationX(r.X * rad) * Matrix4x4.CreateRotationZ(r.Z * rad)
                             * Matrix4x4.CreateRotationY(r.Y * rad) * Matrix4x4.CreateTranslation(part.Position);
-                var tris = new List<(Vector3, Vector3, Vector3)>();
                 for (int b = 0; b < decoded.Count; b++)
                 {
                     var body = bodies.FirstOrDefault(x => x.m_name == decoded[b].Name) ?? (b < bodies.Count ? bodies[b] : null);
@@ -245,19 +283,20 @@ public static class MapCollisionDiag
                         : Matrix4x4.CreateFromQuaternion(body.m_orientation == default ? Quaternion.Identity : body.m_orientation)
                           * Matrix4x4.CreateTranslation(body.m_position.X, body.m_position.Y, body.m_position.Z);
                     var m = bodyM * partM;
+                    var tris = new List<(Vector3, Vector3, Vector3)>();
                     foreach (var (a, bb, c) in decoded[b].Triangles)
                         tris.Add((Vector3.Transform(a, m), Vector3.Transform(bb, m), Vector3.Transform(c, m)));
+                    if (tris.Count == 0)
+                        continue;
+                    var lo = new Vector3(float.MaxValue);
+                    var hi = new Vector3(float.MinValue);
+                    foreach (var (a, bb, c) in tris)
+                    {
+                        lo = Vector3.Min(lo, Vector3.Min(a, Vector3.Min(bb, c)));
+                        hi = Vector3.Max(hi, Vector3.Max(a, Vector3.Max(bb, c)));
+                    }
+                    result.Add(new Surface($"{leaf} ({part.Name}) body {b}/{decoded.Count} '{body?.m_name}' material {body?.m_materialId}", lo, hi, tris));
                 }
-                if (tris.Count == 0)
-                    continue;
-                var lo = new Vector3(float.MaxValue);
-                var hi = new Vector3(float.MinValue);
-                foreach (var (a, b, c) in tris)
-                {
-                    lo = Vector3.Min(lo, Vector3.Min(a, Vector3.Min(b, c)));
-                    hi = Vector3.Max(hi, Vector3.Max(a, Vector3.Max(b, c)));
-                }
-                result.Add(new Surface($"{leaf} ({part.Name})", lo, hi, tris));
             }
         }
         return result;
