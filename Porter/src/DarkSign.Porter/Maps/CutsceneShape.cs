@@ -84,6 +84,11 @@ public sealed class CutsceneShape
     public int Files { get; private set; }
     public Dictionary<float, int> Framerates { get; } = new();
     public Rule? CutUnk44 { get; private set; }
+    /// <summary>For each kind, how many of Elden Ring's events end after their cut (end frame > cut length + 1), and how many events there are.</summary>
+    public Dictionary<int, (int Past, int Total)> PastCut { get; } = new();
+
+    /// <summary>Whether Elden Ring never lets events of this kind end after their cut (so a converted one that does is cut short).</summary>
+    public bool NeverPastCut(int kind) => PastCut.TryGetValue(kind, out var p) && p.Total >= RuleMinimum && p.Past == 0;
 
     private static string ValueKey(MQB.Parameter p) => p.Value switch
     {
@@ -169,6 +174,8 @@ public sealed class CutsceneShape
                     {
                         int k = ev.ResourceIndex >= 0 && ev.ResourceIndex < mqb.Resources.Count ? mqb.Resources[ev.ResourceIndex].Unk48 : -1;
                         Tally(evSig, k).Add(ev.Parameters);
+                        var pc = shape.PastCut.GetValueOrDefault(k);
+                        shape.PastCut[k] = (pc.Past + (ev.StartFrame + ev.Duration > cut.Duration + 1 ? 1 : 0), pc.Total + 1);
                         if (!hits.TryGetValue(k, out var h))
                             hits[k] = h = (Fields.Select(_ => new Dictionary<string, int>()).ToArray(), Fields.Select(_ => new Dictionary<int, int>()).ToArray(), 0);
                         for (int f = 0; f < Fields.Length; f++)
@@ -242,7 +249,8 @@ public sealed class CutsceneShape
             if (ResourceParams.TryGetValue(k, out var rs) && rs.Params.Count > 0) sb.Append($" resource params [{rs.Key}] ({rs.Hits}/{rs.Total});");
             if (TimelineParams.TryGetValue(k, out var ts) && ts.Params.Count > 0) sb.Append($" timeline params [{ts.Key}] ({ts.Hits}/{ts.Total}) typical {string.Join(" ", ts.Params.Select(p => $"{p.Name}={ValueKey(p.Typical)}"))};");
             if (PlayerTimelineParams.TryGetValue(k, out var ps) && ps.Params.Count > 0) sb.Append($" player timeline params [{ps.Key}] ({ps.Hits}/{ps.Total}) typical {string.Join(" ", ps.Params.Select(p => $"{p.Name}={ValueKey(p.Typical)}"))};");
-            if (EventParams.TryGetValue(k, out var es) && es.Params.Count > 0) sb.Append($" event params [{es.Key}] ({es.Hits}/{es.Total})");
+            if (EventParams.TryGetValue(k, out var es) && es.Params.Count > 0) sb.Append($" event params [{es.Key}] ({es.Hits}/{es.Total});");
+            if (PastCut.TryGetValue(k, out var pc)) sb.Append($" events ending after their cut {pc.Past}/{pc.Total}");
             yield return sb.ToString();
         }
     }
@@ -298,8 +306,8 @@ public sealed class CutsceneShape
                                     $"{cut.Name} start {ev.StartFrame} dur {ev.Duration}: {Get(ev, f)}, want {rules[f].Want(ev, cut)}");
                     if (EventParams.TryGetValue(k, out var es) && SigHolds(es) && string.Join(",", ev.Parameters.Select(x => x.Name)) != es.Key)
                         Note($"kind {k} event params [{string.Join(",", ev.Parameters.Select(x => x.Name))}], Elden Ring [{es.Key}]", cut.Name);
-                    if (ev.StartFrame + ev.Duration > cut.Duration + 1)
-                        Note($"kind {k} event ends after its cut (end frame > cut length + 1)", $"{cut.Name} start {ev.StartFrame} dur {ev.Duration}, cut {cut.Duration}");
+                    if (NeverPastCut(k) && ev.StartFrame + ev.Duration > cut.Duration + 1)
+                        Note($"kind {k} event ends after its cut (end frame > cut length + 1; Elden Ring 0/{PastCut[k].Total})", $"{cut.Name} start {ev.StartFrame} dur {ev.Duration}, cut {cut.Duration}");
                 }
             }
         }
@@ -332,8 +340,27 @@ public sealed class CutsceneShape
                 changed++;
             }
         foreach (var cut in mqb.Cuts)
+        {
+            // Elden Ring's cuts all carry the same Unk44 (0); DS3's Dancer cut0042 has 2.
+            if (CutUnk44 is { Holds: true } c44 && cut.Unk44 != c44.Value)
+            {
+                cut.Unk44 = c44.Value;
+                changed++;
+            }
             foreach (var tl in cut.Timelines)
             {
+                // Events that run past the cut's end (DS3 sfx, sound, depth of field, subtitles) are cut short to it, and
+                // events that start after it are left out, for the kinds Elden Ring never lets run past a cut.
+                int end = cut.Duration + 1;
+                int before = tl.Events.Count;
+                tl.Events.RemoveAll(ev => NeverPastCut(KindOf(mqb, ev)) && ev.StartFrame >= end);
+                changed += before - tl.Events.Count;
+                foreach (var ev in tl.Events)
+                    if (NeverPastCut(KindOf(mqb, ev)) && ev.StartFrame + ev.Duration > end)
+                    {
+                        ev.Duration = end - ev.StartFrame;
+                        changed++;
+                    }
                 var tk = CutscenePort.TimelineKind(mqb, tl);
                 if (TimelineUnk10.TryGetValue(tk, out var u) && u.Holds && tl.Unk10 != u.Value)
                 {
@@ -364,8 +391,12 @@ public sealed class CutsceneShape
                     }
                 }
             }
+        }
         return changed;
     }
+
+    private static int KindOf(MQB mqb, MQB.Event ev) =>
+        ev.ResourceIndex >= 0 && ev.ResourceIndex < mqb.Resources.Count ? mqb.Resources[ev.ResourceIndex].Unk48 : -1;
 
     private static MQB.Parameter Copy(MQB.Parameter p) => new()
     {

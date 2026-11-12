@@ -129,6 +129,13 @@ public static partial class MapPortChecks
                 : [P("areaNo", MQB.Parameter.DataType.Int, 45), P("blockNo", MQB.Parameter.DataType.Int, 0)],
         };
         part.Events.Add(new MQB.Event { ResourceIndex = 1, Duration = cutFrames + 1, Parameters = [P("ZSortOffset", MQB.Parameter.DataType.Float, 0f)] });
+        if (!er)
+        {
+            // DS3 events that run past the cut's end, or start after it, and a cut Unk44 Elden Ring never uses.
+            part.Events.Add(new MQB.Event { ResourceIndex = 1, StartFrame = cutFrames - 5, Duration = 30, Parameters = [P("ZSortOffset", MQB.Parameter.DataType.Float, 0f)] });
+            part.Events.Add(new MQB.Event { ResourceIndex = 1, StartFrame = cutFrames + 4, Duration = 10, Parameters = [P("ZSortOffset", MQB.Parameter.DataType.Float, 0f)] });
+            cut.Unk44 = 2;
+        }
         cut.Timelines.AddRange([off, part]);
         mqb.Cuts.Add(cut);
         return mqb;
@@ -139,6 +146,8 @@ public static partial class MapPortChecks
         var shape = CutsceneShape.Learn(Enumerable.Range(0, 8).Select(i => ShapeSample($"s10_00_00{i}0", 100 + i * 7, er: true)));
         var ds3 = ShapeSample("s45_00_0000", 300, er: false);
         var before = shape.Check(ds3);
+        Expect(shape.NeverPastCut(1) && shape.CutUnk44 is { Value: 0, Holds: true }, "learned: Elden Ring's kind 1 events never end after their cut; cut Unk44 0");
+        Expect(before.Any(l => l.Contains("ends after its cut")) && before.Any(l => l.Contains("cut Unk44 2")), string.Join(" | ", before));
         Expect(before.Any(l => l.Contains("kind 265 event Unk18")) && before.Any(l => l.Contains("kind 1 timeline Unk10")) && before.Any(l => l.Contains("kind 1 timeline params")),
             string.Join(" | ", before));
         int changed = shape.Conform(ds3);
@@ -150,6 +159,9 @@ public static partial class MapPortChecks
         Expect(tl.Unk10 == 1 && string.Join(",", tl.Parameters.Select(p => p.Name)) == "areaNo,blockNo,mapNo,equipDispType"
                && (int)tl.Parameters[0].Value == 45 && (int)tl.Parameters[2].Value == -1 && (int)tl.Parameters[3].Value == 0,
             "part timeline: DS3's map kept, Elden Ring's other parameters added at its usual values, in its order");
+        Expect(ds3.Cuts[0].Unk44 == 0, "cut Unk44 set to Elden Ring's 0");
+        Expect(tl.Events.Count == 2 && tl.Events[1].StartFrame == 295 && tl.Events[1].Duration == 6,
+            $"an event past the cut is cut short to cut + 1 (301), one starting after it is left out ({string.Join(" ", tl.Events.Select(x => $"{x.StartFrame}+{x.Duration}"))})");
     }
 
     private static void CutsceneMenuEvents()

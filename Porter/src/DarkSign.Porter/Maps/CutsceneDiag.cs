@@ -61,7 +61,12 @@ public static class CutsceneDiag
                 var ds3Map = slot?.Ds3 ?? new MapId(ds3Id / 1_000_000, ds3Id / 10_000 % 100, 0, 0);
                 var erName = CutscenePort.Name(CutscenePort.ErId(ds3Id, erMap));
                 var source = BND4.Read(ds3.Read(CutscenePort.Ds3Path(name)));
-                var mqbFile = source.Files.First(f => f.Name.EndsWith(".mqb", StringComparison.OrdinalIgnoreCase));
+                var mqbFile = source.Files.FirstOrDefault(f => f.Name.EndsWith(".mqb", StringComparison.OrdinalIgnoreCase));
+                if (mqbFile is null)
+                {
+                    r.AppendLine($"  no timeline (.mqb) in the DS3 binder ({string.Join(" ", source.Files.Select(f => ItemText.Leaf(f.Name)))}); the port leaves it out");
+                    continue;
+                }
                 var mqb = MQB.Read(mqbFile.Bytes);
                 r.AppendLine($"  {erName}: {mqb.Framerate} fps, {mqb.Cuts.Count} cuts ({string.Join(" ", mqb.Cuts.Select(c => $"{c.Name}:{c.Duration}f"))}), "
                              + $"binder files {string.Join(" ", source.Files.Select(f => $"[{f.ID}]{ItemText.Leaf(f.Name)}"))}");
