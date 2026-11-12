@@ -13,8 +13,9 @@ namespace DarkSign.Porter.Maps;
 /// Ring's FLVER on plain character materials (<see cref="Enemies.ChrModel"/>), with its textures, under a new model
 /// number from <see cref="FirstModel"/>. Both the male and female file are written (the DS3 one that exists stands
 /// in for the other), so the body the person gets doesn't decide whether the piece shows.</item>
-/// <item>The piece gets an EquipParamProtector row, <see cref="ProtectorBase"/> + its DS3 ID: a copy of the most
-/// common Elden Ring row of its slot (so it hides the body under it the usual way) naming the new model.</item>
+/// <item>The piece gets an EquipParamProtector row, <see cref="ProtectorBase"/> + its DS3 ID: a copy of the Elden
+/// Ring row of its slot that hides the body most like the DS3 piece does (<see cref="ProtectorTemplate"/>), naming the
+/// new model.</item>
 /// <item>The person gets a CharaInitParam row, <see cref="CharaInitBase"/> + the DS3 row: a copy of the Elden Ring
 /// person who stands in for them (their face, AI and NpcParam) wearing the DS3 pieces, with DS3's sex, and holding
 /// DS3's weapons (<see cref="WeaponSlots"/>): the ported weapon (port-weapons' plan) or the Elden Ring weapon of the
@@ -31,6 +32,16 @@ public sealed class PeopleArmour
 {
     public static bool Enabled => Environment.GetEnvironmentVariable("DARKSIGN_PEOPLE_ARMOUR") != "0";
     public static bool WeaponsEnabled => Environment.GetEnvironmentVariable("DARKSIGN_PEOPLE_WEAPONS") != "0";
+    /// <summary>Off (fallback map-people F, DARKSIGN_PEOPLE_HIDES=common): every piece hides the body like its slot's most common Elden Ring row, as up to 1.0.42x.</summary>
+    public static bool MatchHides => Environment.GetEnvironmentVariable("DARKSIGN_PEOPLE_HIDES") != "common";
+
+    /// <summary>
+    /// The body parts a piece hides: DS3's Mask00-97 and Elden Ring's invisibleFlag_SexVer00-95 count the same parts
+    /// (Elden Ring's def: 00-01 fringe, 02 sideburns, 03-04 crown, 05-06 back hair, 07 collar; both games hide 60-69
+    /// under every closed helm, 10-11 and 26-30 under gauntlets, 12-16 and 72 under leggings). Measured on the 17 pieces
+    /// both games name alike (Knight Helm, Black Knight Gauntlets ...): 2 to 11 of 96 flags differ for helms and hands.
+    /// </summary>
+    public const int HideFlags = 96;
 
     /// <summary>Elden Ring's CharaInitParam rows end at 2,999,999.</summary>
     public const int CharaInitBase = 3_000_000;
@@ -68,7 +79,8 @@ public sealed class PeopleArmour
     ];
     public static readonly (string Field, string ErType)[] ErOnlySlots = [("equip_Subwep_Right3", "wepParamType_Right3"), ("equip_Subwep_Left3", "wepParamType_Left3")];
 
-    public sealed record Piece(int Ds3Protector, int Category, int Ds3Model, string Name);
+    /// <param name="Hides">DS3's hide flags (<see cref="Ds3Hides"/>), or null when the DS3 row has none.</param>
+    public sealed record Piece(int Ds3Protector, int Category, int Ds3Model, string Name, byte[]? Hides = null);
     /// <param name="Weapons">DS3's value of each of <see cref="WeaponSlots"/> (-1 empty); null: not read, the stand-in's are kept.</param>
     public sealed record Look(int Ds3CharaInit, string Name, int Sex, IReadOnlyList<Piece?> Pieces, IReadOnlyList<int>? Weapons = null);
 
@@ -136,7 +148,7 @@ public sealed class PeopleArmour
                         next++;
                     plan._models[model] = next++;
                 }
-                pieces.Add(new Piece(protector, category, model, p.Name ?? ""));
+                pieces.Add(new Piece(protector, category, model, p.Name ?? "", Ds3Hides(p)));
             }
             plan._looks[id] = new Look(id, row.Name ?? "", Cell(row, "NpcPlayerSex"), pieces, WeaponSlots.Select(w => Cell(row, w.Field)).ToList());
         }
@@ -244,14 +256,65 @@ public sealed class PeopleArmour
         return $"people armour: {written} armour binders written for {pieces.Count} DS3 armour pieces ({_converted.Count} converted, {failed} DS3 models failed)";
     }
 
+    /// <summary>DS3's hide flags of a protector row (Mask00-95), or null when the row has none.</summary>
+    public static byte[]? Ds3Hides(PARAM.Row row) => Hides(row, "Mask");
+
+    /// <summary>Elden Ring's hide flags of a protector row (invisibleFlag_SexVer00-95), or null when the row has none.</summary>
+    public static byte[]? ErHides(PARAM.Row row) => Hides(row, "invisibleFlag_SexVer");
+
+    private static byte[]? Hides(PARAM.Row row, string prefix)
+    {
+        var flags = new byte[HideFlags];
+        bool any = false;
+        foreach (var cell in row.Cells)
+        {
+            var name = cell.Def.InternalName;
+            if (name.Length != prefix.Length + 2 || !name.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)
+                || !int.TryParse(name.AsSpan(prefix.Length), out var i) || i < 0 || i >= HideFlags || cell.Value is null or byte[])
+                continue;
+            any = true;
+            flags[i] = System.Convert.ToInt32(cell.Value) != 0 ? (byte)1 : (byte)0;
+        }
+        return any ? flags : null;
+    }
+
+    /// <summary>How many body parts two pieces hide differently.</summary>
+    public static int HideDistance(byte[] a, byte[] b)
+    {
+        int d = 0;
+        for (int i = 0; i < Math.Min(a.Length, b.Length); i++)
+            d += a[i] != b[i] ? 1 : 0;
+        return d;
+    }
+
     /// <summary>
-    /// The row a slot's new pieces copy: the most common invisibility pattern among Elden Ring's rows of that slot
-    /// (the parts of the body it hides), lowest ID first.
+    /// The row a new piece copies, among Elden Ring's own rows of its slot. With <paramref name="ds3Hides"/>: the row
+    /// whose hide flags are nearest DS3's (fewest flags different), so an open DS3 helm (Hawkwood's Chain Helm: Elden
+    /// Ring's Chain Coif, 6 flags off) leaves the face and hair shown. Up to 1.0.42x every piece copied its slot's most
+    /// common pattern, a closed helm's (14 flags off the Chain Helm), which hid the head under open helms, hoods and
+    /// crowns. Ties go to the more common pattern, then the lowest ID; without DS3 flags, the most common pattern.
     /// </summary>
-    public static PARAM.Row? ProtectorTemplate(PARAM erProtector, int category) =>
-        erProtector.Rows.Where(r => Cell(r, "equipModelCategory") == category && Cell(r, "equipModelId") > 0)
+    public static PARAM.Row? ProtectorTemplate(PARAM erProtector, int category, byte[]? ds3Hides = null) =>
+        ProtectorTemplate(erProtector, category, ds3Hides, out _);
+
+    public static PARAM.Row? ProtectorTemplate(PARAM erProtector, int category, byte[]? ds3Hides, out int distance)
+    {
+        distance = -1;
+        var patterns = erProtector.Rows
+            .Where(r => r.ID < ProtectorBase && Cell(r, "equipModelCategory") == category && Cell(r, "equipModelId") > 0)
             .GroupBy(r => string.Concat(r.Cells.Where(c => c.Def.InternalName.StartsWith("invisibleFlag", StringComparison.Ordinal)).Select(c => System.Convert.ToString(c.Value))))
-            .OrderByDescending(g => g.Count()).FirstOrDefault()?.OrderBy(r => r.ID).First();
+            .OrderByDescending(g => g.Count()).ThenBy(g => g.Min(r => r.ID))
+            .ToList();
+        if (patterns.Count == 0)
+            return null;
+        if (ds3Hides is null || !MatchHides)
+            return patterns[0].OrderBy(r => r.ID).First();
+        var best = patterns
+            .Select((g, rank) => (Group: g, Rank: rank, Distance: ErHides(g.First()) is { } er ? HideDistance(er, ds3Hides) : int.MaxValue))
+            .OrderBy(x => x.Distance).ThenBy(x => x.Rank).First();
+        distance = best.Distance;
+        return best.Group.OrderBy(r => r.ID).First();
+    }
 
     /// <summary>
     /// Adds the protector and CharaInit rows to <paramref name="regulation"/>; returns the report line.
@@ -266,8 +329,10 @@ public sealed class PeopleArmour
         foreach (var piece in _looks.Values.SelectMany(l => l.Pieces).OfType<Piece>().DistinctBy(p => p.Ds3Protector).Where(p => _converted.Contains(p.Ds3Protector)))
         {
             var id = ProtectorBase + piece.Ds3Protector;
-            if (protector[id] is not null || ProtectorTemplate(protector, piece.Category) is not { } template)
+            if (protector[id] is not null || ProtectorTemplate(protector, piece.Category, piece.Hides, out var distance) is not { } template)
                 continue;
+            if (distance >= 0)
+                Notes.Add($"armour {piece.Name} ({piece.Ds3Protector}): hides the body as Elden Ring's {template.Name} ({template.ID}) does, {distance} of {HideFlags} flags off DS3's");
             var row = CopyRow(protector, template, id, piece.Name);
             SetCell(row, "equipModelId", _models[piece.Ds3Model]);
             protector.Rows.Add(row);

@@ -386,6 +386,42 @@ public static partial class MapPortChecks
         PeopleArmour.WithModels().Arm(unarmed, armour.Looks[25100], _ => 1);
         Expect(unarmed.Cells.All(c => Convert.ToInt32(c.Value) is -1 or 0), "a look whose DS3 weapons weren't read leaves the row alone");
 
+        // Which body parts a piece hides: the nearest Elden Ring row's flags, not the slot's most common (a closed helm's),
+        // which hid Hawkwood's head under his open Chain Helm in 1.0.417.
+        var protDef = new PARAMDEF { ParamType = "EQUIP_PARAM_PROTECTOR_ST", Fields = [] };
+        protDef.Fields.Add(new PARAMDEF.Field(protDef, PARAMDEF.DefType.u8, "equipModelCategory"));
+        protDef.Fields.Add(new PARAMDEF.Field(protDef, PARAMDEF.DefType.u16, "equipModelId"));
+        for (int i = 0; i < PeopleArmour.HideFlags; i++)
+            protDef.Fields.Add(new PARAMDEF.Field(protDef, PARAMDEF.DefType.u8, $"invisibleFlag_SexVer{i:D2}"));
+        var ds3Def = new PARAMDEF { ParamType = "EQUIP_PARAM_PROTECTOR_ST", Fields = [] };
+        for (int i = 0; i < 98; i++)
+            ds3Def.Fields.Add(new PARAMDEF.Field(ds3Def, PARAMDEF.DefType.u8, $"Mask{i:D2}"));
+        PARAM.Row Prot(int id, string name, int category, params int[] hides)
+        {
+            var row = new PARAM.Row(id, name, protDef);
+            row.Cells.First(c => c.Def.InternalName == "equipModelCategory").Value = (byte)category;
+            row.Cells.First(c => c.Def.InternalName == "equipModelId").Value = (ushort)(category == 5 ? 1000 + id % 1000 : 1);
+            foreach (var h in hides)
+                row.Cells.First(c => c.Def.InternalName == $"invisibleFlag_SexVer{h:D2}").Value = (byte)1;
+            return row;
+        }
+        int[] closed = [0, 1, 2, 3, 4, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69], coif = [3, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69];
+        var erProt = new PARAM { ParamType = "EQUIP_PARAM_PROTECTOR_ST", Rows =
+            [Prot(40000, "Iron Helmet", 5, closed), Prot(50000, "Kaiden Helm", 5, closed), Prot(60000, "Drake Knight Helm", 5, closed),
+             Prot(1100000, "Chain Coif", 5, [.. coif, 23]), Prot(1200000, "Crown", 5, 60), Prot(40100, "Leather Armor", 2, 7, 11)] };
+        var chainHelm = new PARAM.Row(70000000, "Chain Helm", ds3Def);
+        foreach (var h in coif.Append(31).Append(32).Append(35))
+            chainHelm.Cells.First(c => c.Def.InternalName == $"Mask{h:D2}").Value = (byte)1;
+        var ds3Hides = PeopleArmour.Ds3Hides(chainHelm);
+        Expect(ds3Hides is { Length: PeopleArmour.HideFlags } && ds3Hides[3] == 1 && ds3Hides[0] == 0 && ds3Hides[60] == 1, "DS3's Mask flags are read");
+        Expect(PeopleArmour.ProtectorTemplate(erProt, 5)?.ID == 40000, "without DS3 flags: the slot's most common pattern, lowest ID");
+        Expect(PeopleArmour.ProtectorTemplate(erProt, 5, ds3Hides, out var off)?.ID == 1100000 && off == 4,
+            $"an open DS3 helm hides the body as the nearest Elden Ring row does (got {PeopleArmour.ProtectorTemplate(erProt, 5, ds3Hides)?.Name}, {off} off)");
+        Expect(PeopleArmour.ProtectorTemplate(erProt, 5, PeopleArmour.ErHides(Prot(1, "", 5, closed)))?.ID == 40000, "a closed helm still gets the closed pattern");
+        Expect(PeopleArmour.ProtectorTemplate(erProt, 2, ds3Hides)?.ID == 40100, "only rows of the piece's own slot");
+        erProt.Rows.Add(Prot(PeopleArmour.ProtectorBase + 1, "ours", 5, coif));
+        Expect(PeopleArmour.ProtectorTemplate(erProt, 5, ds3Hides)?.ID == 1100000, "rows the port added are never a template");
+
         // --er-people: the stand-ins' own looks, no DS3 armour.
         var erLayout = MsbPort.Convert(ds3, SyntheticHost(), Ds3Id, ErId);
         EnemyPort.Place(ds3, erLayout.Msb, Ds3Id, ErId, new MsbPort.Options(), new EnemyPort.Chooser(SyntheticCatalog(), null, EnemyPort.Method.Auto),
