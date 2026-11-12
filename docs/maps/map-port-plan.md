@@ -421,6 +421,18 @@ After the 1.0.326 playtest (no one in Firelink Shrine, Black Knights around it, 
   Phantom", "Mad Phantom", "Dark Spirit") were placed as hostile Elden Ring invaders; on map 2 three of them became
   Inquisitor Ghiza, Maureen and Mary, who cast at the player at the start. They are no longer placed
   (`People.IsPhantom`), since DS3 only brings them in by summon sign or invasion.
+- **1.0.353: map 2 still knocked the player down.** The start point itself was the cause: m30 has no x990 arrival
+  point, so the first player part with an entity was used, 3000974, which DS3's scripts use for the Dancer fight and
+  which stands half a metre from the Dancer of the Boreal Valley (c5270). `MsbPort.ChooseStart` now passes over any
+  player part with an enemy of the starting state within 10 m (people and the c1000 dummy don't count). m30 now starts
+  at the High Wall bonfire (3000970); m40 and m31 keep their starts. The port log's `start:` line names the point
+  and the ones passed over.
+- **No Elden Ring stand-ins for people (after 1.0.353).** Devin wants DS3's own people at Firelink or nobody. By
+  default only people with a ported DS3 body (Fire Keeper, Ludleth...) are placed; DS3's human NPCs (c0000, built
+  from DS3 armour) are left out until they can be ported. The Elden Ring stand-ins are fallback `map-people` B
+  (`--er-people`), nobody at all is C (`--no-people`). DS3's logic characters (talk dummy c1000, invisible platoon
+  leader c0100 "Patrol Leader - Collective Patrol", "... target dummy character") no longer get a visible Elden Ring
+  enemy either (`People.IsLogic`): m30 and m31 had six Mausoleum Exile Soldiers and a crossbow skeleton that way.
 
 ## Open questions (answered by the first `map-survey` and in-game test)
 

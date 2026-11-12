@@ -372,8 +372,9 @@ Try the next option if: Enemies or objects you expected are missing from a DS3 m
 
 Try the next option if: A DS3 map crashes or hangs while loading since people were added, a person who should be friendly attacks you (or the other way round), or people stand in the way of something.
 
-- **A: Elden Ring people stand in (default).** Where DS3 has someone to talk to, an Elden Ring person stands, silent (no dialogue or shop yet), on the seat DS3's scripts move them to. DS3's hostile humans get hostile Elden Ring humans. DS3 characters with their own body (Fire Keeper, Ludleth) are their ported body when the enemy porter made one, else an Elden Ring person.
-- **B: Nobody.** DS3's people are left out of the maps (port-maps --no-people), as every build up to 1.0.299 was. (`port-maps --no-people`)
+- **A: DS3's own people only (default).** DS3 characters with a body of their own (Fire Keeper, Ludleth) stand where DS3's scripts seat them, silent, when the enemy porter ported them. DS3's human NPCs and hostile humans (built from DS3 armour) are left out until they can be ported: no Elden Ring stand-ins.
+- **B: Elden Ring people stand in.** As builds 1.0.326-1.0.353: where DS3 has a human or a talker with no ported body, a dressed Elden Ring person stands, silent; DS3's hostile humans get hostile Elden Ring humans (port-maps --er-people). (`port-maps --er-people`)
+- **C: Nobody.** DS3's people are left out of the maps, ported ones too (port-maps --no-people), as every build up to 1.0.299 was. (`port-maps --no-people`)
 
 ### How DS3's enemies and bosses are ported (`enemy-port`, rebuilds the content)
 

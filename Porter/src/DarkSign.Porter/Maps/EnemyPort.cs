@@ -120,6 +120,15 @@ public static class EnemyPort
         public static bool IsDummy(string model) => model.StartsWith("c1000", StringComparison.OrdinalIgnoreCase);
 
         /// <summary>
+        /// A DS3 character that is only logic, never seen: the talk dummy (c1000), the invisible platoon leader c0100
+        /// ("Patrol Leader - Collective Patrol") and target dummies ("... target dummy character"). An Elden Ring
+        /// stand-in there would put a visible enemy where DS3 shows nothing.
+        /// </summary>
+        public static bool IsLogic(string model, string name) =>
+            IsDummy(model) || model.StartsWith("c0100", StringComparison.OrdinalIgnoreCase)
+            || name.Contains("dummy", StringComparison.OrdinalIgnoreCase);
+
+        /// <summary>
         /// A DS3 summon or invader ("... - White Phantom", "... - Mad Phantom", "Dark Spirit ..."): DS3 places them
         /// out of sight and only an event or a summon sign brings them in. Standing as a hostile Elden Ring person they
         /// attacked the player at map 2's start (1.0.340: knocked down again and again), so they are left out.
@@ -184,7 +193,8 @@ public static class EnemyPort
     /// </summary>
     public static Result Place(MSB3 ds3, MSBE msb, MapId ds3Id, MapId erId, MsbPort.Options options, Chooser chooser,
         Func<MSB3.Part.Enemy, Ds3Enemy> describe, MSBE.Part.Enemy? fallbackTemplate = null, List<string>? table = null,
-        Dictionary<string, string>? partNames = null, People? people = null, IReadOnlyDictionary<string, Seat>? seats = null)
+        Dictionary<string, string>? partNames = null, People? people = null, IReadOnlyDictionary<string, Seat>? seats = null,
+        bool placePeople = true)
     {
         int placed = 0, ported = 0, standIns = 0, npcs = 0, skipped = 0, peoplePlaced = 0, seated = 0, sameSeat = 0;
         var takenSeats = new List<Vector3>();
@@ -196,7 +206,7 @@ public static class EnemyPort
         var standInUse = new Dictionary<string, int>();
 
         var layerOk = !options.AllLayers && MsbPort.BaseLayerMeans(ds3);
-        int otherState = 0, phantoms = 0;
+        int otherState = 0, phantoms = 0, logic = 0;
         var otherStateNames = new Dictionary<string, int>();
         foreach (var src in ds3.Parts.Enemies)
         {
@@ -216,18 +226,23 @@ public static class EnemyPort
             }
             if (what.Npc)
             {
-                // A person: the ported DS3 character if it isn't the human body (Fire Keeper, Ludleth...), else an
-                // Elden Ring person. Without either the spot stays empty, as it was before people were placed.
-                who = people is null ? null
-                    : People.IsHuman(what.Model) ? people.Choose(what, src.TalkID > 0)
-                    // A talker with a body of its own (Fire Keeper, Ludleth): the ported body, else a silent person.
-                    // c1000 is DS3's invisible talk dummy (bonfires, menus): nothing to stand there.
-                    : chooser.Ported(what) ?? (People.IsDummy(what.Model) ? null : people.Choose(what with { Model = People.Human }, talks: true));
+                // A person: the ported DS3 character if it has a body of its own (Fire Keeper, Ludleth...). Elden Ring
+                // people stand in only when asked (--er-people, fallback map-people B): Devin wants DS3's own people
+                // at Firelink or nobody (1.0.353). c1000 is DS3's invisible talk dummy (bonfires, menus): nobody.
+                who = !placePeople ? null
+                    : People.IsHuman(what.Model) ? people?.Choose(what, src.TalkID > 0)
+                    : chooser.Ported(what) ?? (People.IsDummy(what.Model) ? null : people?.Choose(what with { Model = People.Human }, talks: true));
                 if (who is null)
                 {
                     npcs++;
                     continue;
                 }
+            }
+            else if (People.IsLogic(what.Model, what.Name))
+            {
+                logic++;
+                skipped++;
+                continue;
             }
             else
                 who = chooser.Choose(what);
@@ -313,6 +328,8 @@ public static class EnemyPort
         if (otherState > 0)
             notes.Add($"{otherState} left out that belong to another state of the map (off DS3's layer bit 0, e.g. the Untended Graves): "
                       + string.Join("; ", otherStateNames.OrderByDescending(n => n.Value).Take(12).Select(n => $"{n.Key} x{n.Value}")));
+        if (logic > 0)
+            notes.Add($"{logic} DS3 logic characters left out (talk dummy c1000, platoon leader c0100, target dummies): DS3 shows nothing there");
         if (phantoms > 0)
             notes.Add($"people: {phantoms} DS3 summons and invaders (White/Mad Phantom, Dark Spirit) left out: they only appear when summoned or invading");
         if (seated > 0)

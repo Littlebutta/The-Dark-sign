@@ -204,6 +204,28 @@ public static partial class MapPortChecks
         var layout3 = MsbPort.Convert(ds3, SyntheticHost(), Ds3Id, ErId);
         var result3 = EnemyPort.Place(ds3, layout3.Msb, Ds3Id, ErId, new MsbPort.Options(), chooser, Describe);
         Expect(result3.People == 0 && result3.Npcs == 3 && layout3.Msb.Parts.Enemies.Count == 1, "without people, DS3's people are left out as before");
+
+        // The default (no Elden Ring stand-ins): DS3's own people only, the ported Fire Keeper stands, the humans don't.
+        var layout4 = MsbPort.Convert(ds3, SyntheticHost(), Ds3Id, ErId);
+        var result4 = EnemyPort.Place(ds3, layout4.Msb, Ds3Id, ErId, new MsbPort.Options(), new EnemyPort.Chooser(SyntheticCatalog(), ported, EnemyPort.Method.Auto), Describe);
+        Expect(result4.People == 1 && result4.Npcs == 2 && layout4.Msb.Parts.Enemies.All(e => e.ModelName != "c0000")
+               && layout4.Msb.Parts.Enemies.Any(e => e.EntityID == 45000720 && e.ModelName == "c7001"),
+            $"default: people {result4.People}, left out {result4.Npcs}; only the ported Fire Keeper should stand");
+        // --no-people: not even the ported Fire Keeper.
+        var layout5 = MsbPort.Convert(ds3, SyntheticHost(), Ds3Id, ErId);
+        var result5 = EnemyPort.Place(ds3, layout5.Msb, Ds3Id, ErId, new MsbPort.Options(), new EnemyPort.Chooser(SyntheticCatalog(), ported, EnemyPort.Method.Auto), Describe,
+            placePeople: false);
+        Expect(result5.People == 0 && result5.Npcs == 3, "--no-people leaves out ported people too");
+
+        // DS3's logic characters (platoon leader c0100, target dummies) get no Elden Ring enemy.
+        Expect(EnemyPort.People.IsLogic("c0100", "Patrol Leader - Collective Patrol") && EnemyPort.People.IsLogic("c1240", "City Map Sniper Platoon target dummy character")
+               && EnemyPort.People.IsLogic("c1000", "x") && !EnemyPort.People.IsLogic("c1240", "Lothric Knight"), "logic characters");
+        ds3.Parts.Enemies.Add(new MSB3.Part.Enemy { Name = "c0100_0000", ModelName = "c0100", EntityID = 4000730, NPCParamID = 10000, CollisionName = collision });
+        ds3.Models.Enemies.Add(new MSB3.Model.Enemy { Name = "c0100" });
+        var layout6 = MsbPort.Convert(ds3, SyntheticHost(), Ds3Id, ErId);
+        var result6 = EnemyPort.Place(ds3, layout6.Msb, Ds3Id, ErId, new MsbPort.Options(), chooser, Describe);
+        Expect(layout6.Msb.Parts.Enemies.All(e => e.EntityID != 45000730) && result6.Notes.Any(n => n.Contains("logic characters left out")),
+            "the invisible platoon leader must not become a visible enemy");
     }
 
     private static void OtherStateLeftOut()

@@ -15,6 +15,7 @@ public static partial class MapPortChecks
         yield return ("map ids: parse, names and entity moves", MapIds);
         yield return ("layout: DS3 map pieces, collisions and players become Elden Ring parts that write and read back", Layout);
         yield return ("layout: the run start is the DS3 arrival point (entity x990-x999) with entity 45000990", LayoutStart);
+        yield return ("layout: the run start is never beside an enemy (m30's Dancer point), people and dummies don't count", LayoutStartClear);
         yield return ("layout: DS3 group masks are copied by position when asked", LayoutGroups);
         yield return ("events: run events have DarkScript3's Elden Ring layouts and survive a write", RunEventLayout);
         yield return ("events: adding the run events twice leaves one copy", RunEventsIdempotent);
@@ -260,6 +261,26 @@ public static partial class MapPortChecks
         var start = result.Msb.Parts.Players.Single(p => p.EntityID == 45000990);
         Expect(start.Position == new Vector3(7, 8, 9) && start.Name == "c0000_9990", $"start {start.Name} {start.Position}");
         Expect(result.Msb.Parts.Players.Any(p => p.EntityID == 45000500), "other player point keeps its moved entity");
+    }
+
+    private static void LayoutStartClear()
+    {
+        var ds3 = new MSB3();
+        var dancerSpot = new MSB3.Part.Player { Name = "c0000_0001", ModelName = "c0000", EntityID = 3000974, Position = new Vector3(27.65f, -9.84f, 158.02f) };
+        var bonfire = new MSB3.Part.Player { Name = "c0000_0002", ModelName = "c0000", EntityID = 3000970, Position = new Vector3(-16.68f, 41.23f, -13.09f) };
+        ds3.Parts.Players.Add(new MSB3.Part.Player { Name = "c0000_0000", ModelName = "c0000", EntityID = -1 });
+        ds3.Parts.Players.Add(dancerSpot);
+        ds3.Parts.Players.Add(bonfire);
+        ds3.Parts.Enemies.Add(new MSB3.Part.Enemy { Name = "c5270_0001", ModelName = "c5270", MapStudioLayer = 0xFFFFFFFF, Position = dancerSpot.Position + new Vector3(0.5f, 0, 0) });
+        ds3.Parts.Enemies.Add(new MSB3.Part.Enemy { Name = "c1100_0000", ModelName = "c1100", MapStudioLayer = 0xFFFFFFFF, Position = bonfire.Position + new Vector3(18, 0, 0) });
+        // People and DS3's talk dummy beside a point don't make it a fight.
+        ds3.Parts.Enemies.Add(new MSB3.Part.Enemy { Name = "c1000_0004", ModelName = "c1000", MapStudioLayer = 0xFFFFFFFF, TalkID = 300003, Position = bonfire.Position });
+        var m30 = MapId.Parse("m30_00_00_00");
+        Expect(MsbPort.ChooseStart(ds3, m30) == bonfire, $"start {MsbPort.ChooseStart(ds3, m30)?.Name}, expected the bonfire point, not the Dancer's");
+        Expect(MsbPort.Guarded(ds3, dancerSpot) && !MsbPort.Guarded(ds3, bonfire), "guarded points");
+        // Every point guarded: the old choice stands.
+        ds3.Parts.Enemies.Add(new MSB3.Part.Enemy { Name = "c1100_0001", ModelName = "c1100", MapStudioLayer = 0xFFFFFFFF, Position = bonfire.Position });
+        Expect(MsbPort.ChooseStart(ds3, m30) == dancerSpot, "with every point guarded the first with an entity is used");
     }
 
     private static void LayoutGroups()
