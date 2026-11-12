@@ -470,6 +470,10 @@ public static partial class MapPortChecks
         Expect(samplers.SequenceEqual(["m40_00_stone_a", "m40_00_stone_n", MapModelPort.BlackMetallic]), $"samplers {string.Join(",", samplers)} (bare texture names)");
         Expect(port.Fresh().Textures.Count == 0 && port.Fresh().TemplateSummary == port.TemplateSummary, "a fresh port keeps the templates, not the materials");
 
+        // map-diag colours reads a texture's channels (a flat 128 grey DXT1 block reads about 128 in each colour channel; 565 rounding gives 132 130 132).
+        var flat = MapDiag.Measure(ModelPort.FlatNormalDds());
+        Expect(flat is not null && Math.Abs(flat.Mean[0] - 128) < 6 && Math.Abs(flat.Mean[2] - 128) < 6 && flat.Spread[0] < 1, $"map-diag channel figures of a flat texture ({(flat is null ? "unread" : string.Join(" ", flat.Mean))})");
+
         // Elden Ring's sampler names, from real MATBINs.
         Expect(MapModelPort.Role("M_A__snp_Texture2D_0_AlbedoMap_0") == ("albedo", 0), "plain albedo");
         Expect(MapModelPort.Role("M_AMSN_V__Grass_snp_Texture2D_1_NormalMap_0") == ("normal", 0), "plain normal");

@@ -1065,7 +1065,7 @@ public static class MapPorter
     // "/map/m45/x.dcx" -> ["map", "m45", "x.dcx"]
     public static string[] ModParts(string archivePath) => archivePath.TrimStart('/').Split('/');
 
-    private static Dictionary<string, BinderFile> AllMatbins(GameArchives er)
+    internal static Dictionary<string, BinderFile> AllMatbins(GameArchives er)
     {
         var all = new Dictionary<string, BinderFile>(StringComparer.OrdinalIgnoreCase);
         foreach (var binder in Explore.MaterialBinders.Where(er.Contains))

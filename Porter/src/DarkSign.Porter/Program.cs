@@ -140,6 +140,7 @@ try
         "enemy-diag" => DarkSign.Porter.Enemies.EnemyDiag.Run(ctx, argList[1..]),
         "map-survey" => DarkSign.Porter.Maps.MapSurvey.Run(ctx, argList[1..]),
         "map-validate" => DarkSign.Porter.Maps.MapValidate.Run(ctx),
+        "map-diag" => DarkSign.Porter.Maps.MapDiag.Run(ctx, argList[1..]),
         "randomize" => DarkSign.Porter.Rando.RandomizeCommand.Run(ctx, argList[1..]),
         "rando-survey" => DarkSign.Porter.Rando.RandomizeCommand.Survey(ctx),
         "item-list" => Commands.ItemListOnly(ctx),
