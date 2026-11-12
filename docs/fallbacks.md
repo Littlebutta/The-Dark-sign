@@ -165,6 +165,7 @@ Try the next option if: A ported weapon looks rusty, patchy or grey over its own
 - **A: Elden Ring vertex colours and emissive materials (default).** Ported meshes take the template weapon's vertex colour, so Elden Ring's detail layers (rust, bone, leather) don't mix over the DS3 texture, and DS3 materials with their own glow map get a copy of an Elden Ring glowing weapon material.
 - **B: Keep DS3 vertex colours.** Glowing materials as in A, but DS3's own vertex colours are kept (DARKSIGN_VCOLOR=keep). (`DARKSIGN_VCOLOR=keep`)
 - **C: No glowing materials.** Vertex colours as in A, but every material uses the plain template material, no glow (DARKSIGN_EMISSIVE=0). (`DARKSIGN_EMISSIVE=0`)
+- **D: Show parts DS3 hides by animation.** As A, but parts DS3 hides with the weapon's idle animation are drawn (DARKSIGN_HIDDEN_PARTS=0), as in builds up to 1.0.378. With A, the bones the idle animation (a999_000000 in the weapon's parts .anibnd, which Elden Ring can't load) scales to almost nothing have their vertices pulled to the bone, as the scale does in DS3: the Black Blade, Chaos Blade, Darkdrift, Frayed Blade and Washing Pole keep a full scabbard on bone "Case" in model 0. Use D if part of a ported weapon has gone missing. (`DARKSIGN_HIDDEN_PARTS=0`)
 
 
 ## Weapon sounds and effects

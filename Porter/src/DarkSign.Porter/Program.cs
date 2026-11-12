@@ -37,7 +37,7 @@ const string Usage = """
       chr-survey <DS3|ER> <chr id>...  report an enemy's files, binders, AI scripts and params (enemy port step 1)
       map-selftest                 offline checks of the map porter (no game files needed)
       sound-selftest               offline checks of how ported sounds are added to a Wwise bank (no game files needed)
-      texture-selftest             offline checks of the DS3 reflectance -> Elden Ring metallic texture conversion
+      texture-selftest             offline checks of the DS3 reflectance -> Elden Ring metallic texture conversion and hidden weapon parts
       timing-selftest              offline checks that ported moves' combo/cancel windows don't cut DS3 swings short
       enemy-diag survey|unpack <file>...  enemy port diagnostics: every character's skeleton and animation IDs; decompress files
       enemy-diag tae <anibnd> [from-to...]  a decompressed animation binder's TAE entries and events, and each file's length and blend hint
@@ -93,7 +93,7 @@ try
     if (argList[0].Equals("sound-selftest", StringComparison.OrdinalIgnoreCase))
         return SoundSelfTest.Run();
     if (argList[0].Equals("texture-selftest", StringComparison.OrdinalIgnoreCase))
-        return WeaponTextures.SelfTest();
+        return WeaponTextures.SelfTest() | WeaponHiddenParts.SelfTest();
     if (argList[0].Equals("timing-selftest", StringComparison.OrdinalIgnoreCase))
         return MoveTiming.SelfTest();
     if (argList[0].Equals("enemy-selftest", StringComparison.OrdinalIgnoreCase))

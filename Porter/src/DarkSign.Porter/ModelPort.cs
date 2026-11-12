@@ -115,6 +115,18 @@ public static class ModelPort
 
         var materials = new List<NewMaterial>();
         var files = new List<BinderFile>();
+        // Parts DS3 hides with the weapon's idle animation (the Black Blade's scabbard), which can't come along: see
+        // WeaponHiddenParts. A LOD binder has no anibnd of its own; the main binder's says what to hide.
+        var hiddenBones = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        string hiddenNote = "";
+        if (WeaponHiddenParts.Enabled)
+        {
+            hiddenBones = WeaponHiddenParts.IdleHiddenBones(source, out hiddenNote);
+            if (hiddenBones.Count == 0 && lod && ds3.Contains(PartsPath(ds3Model)))
+                hiddenBones = WeaponHiddenParts.IdleHiddenBones(BND4.Read(ds3.Read(PartsPath(ds3Model))), out hiddenNote);
+            if (hiddenNote.Length > 0)
+                Console.WriteLine($"models: {oldTag}{(lod ? " LOD" : "")}: hidden parts not read: {hiddenNote}");
+        }
         foreach (var file in source.Files)
         {
             var leaf = ItemText.Leaf(file.Name).Replace(oldTag, newTag, StringComparison.OrdinalIgnoreCase);
@@ -122,6 +134,10 @@ public static class ModelPort
             {
                 var flver = FLVER2.Read(file.Bytes);
                 var stem = Path.GetFileNameWithoutExtension(leaf);
+                var hiddenMeshes = new List<int>();
+                if (WeaponHiddenParts.Collapse(flver, hiddenBones, hiddenMeshes) is > 0 and var moved)
+                    Console.WriteLine($"models: {oldTag} -> {newTag}{(lod ? " LOD" : "")} {ItemText.Leaf(file.Name)}: hid {moved} vertices in meshes " +
+                                      $"{string.Join(", ", hiddenMeshes)} on bones DS3's idle animation hides ({string.Join(", ", hiddenBones.Order())})");
                 ConvertFlver(flver, templateFlver, stem, oldTag, newTag, materials, Emissive(er));
                 files.Add(new BinderFile(file.Flags, file.ID, folder + leaf, flver.Write()));
             }

@@ -216,6 +216,8 @@ public static class Fallbacks
                 { PorterEnv = Env("DARKSIGN_VCOLOR", "keep") },
             new("C", "No glowing materials", "Vertex colours as in A, but every material uses the plain template material, no glow (DARKSIGN_EMISSIVE=0).")
                 { PorterEnv = Env("DARKSIGN_EMISSIVE", "0") },
+            new("D", "Show parts DS3 hides by animation", "As A, but parts DS3 hides with the weapon's idle animation are drawn (DARKSIGN_HIDDEN_PARTS=0), as in builds up to 1.0.378: the Black Blade, Chaos Blade, Darkdrift, Frayed Blade and Washing Pole show their scabbard along the blade. Use it if part of a ported weapon has gone missing.")
+                { PorterEnv = Env("DARKSIGN_HIDDEN_PARTS", "0") },
         ]),
 
         // ---- Weapon sounds and effects ----
