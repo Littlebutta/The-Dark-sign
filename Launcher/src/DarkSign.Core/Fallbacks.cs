@@ -216,6 +216,8 @@ public static class Fallbacks
                 { PorterEnv = Env("DARKSIGN_VCOLOR", "keep") },
             new("C", "No glowing materials", "Vertex colours as in A, but every material uses the plain template material, no glow (DARKSIGN_EMISSIVE=0).")
                 { PorterEnv = Env("DARKSIGN_EMISSIVE", "0") },
+            new("D", "Show parts DS3 hides by animation", "As A, but parts DS3 hides with the weapon's idle animation are drawn (DARKSIGN_HIDDEN_PARTS=0), as in builds up to 1.0.378: the Black Blade, Chaos Blade, Darkdrift, Frayed Blade and Washing Pole show their scabbard along the blade. Use it if part of a ported weapon has gone missing.")
+                { PorterEnv = Env("DARKSIGN_HIDDEN_PARTS", "0") },
         ]),
 
         // ---- Weapon sounds and effects ----
@@ -267,6 +269,10 @@ public static class Fallbacks
                 { PorterEnv = Env("DARKSIGN_WEAPON_ARTS", "unlocked") },
             new("D", "DS3 arts, stance attacks don't chain", "Same as A, but a stance's light attack doesn't chain into DS3's second and third (DARKSIGN_STANCE_CHAIN=0): R1 after the first stance attack is a plain R1, as in builds up to 1.0.238. Try it if the stance's second hit plays the wrong move or freezes the character.")
                 { PorterEnv = Env("DARKSIGN_STANCE_CHAIN", "0") },
+            new("E", "DS3 arts, old art ID order", "Same as A, but the art IDs go out as in builds up to 1.0.378 (DARKSIGN_ART_POOL=0): no stance-only IDs, no shared IDs, and unique-named arts first. Try it if a weapon's art plays the wrong move or a stance misbehaves in newer builds.")
+                { PorterEnv = Env("DARKSIGN_ART_POOL", "0") },
+            new("F", "DS3 arts, unique arts first", "Same as A, but every art with its own DS3 moves gets an ID before any class skill (DARKSIGN_ART_POOL=unique): Demon's Scar, the Frayed Blade and others keep their own art, but about 40 weapons whose class skill has an Elden Ring Ash of War of the same kind (the Black Blade's Hold becomes Unsheathe) take that ash instead.")
+                { PorterEnv = Env("DARKSIGN_ART_POOL", "unique") },
             new("off", "Off (Elden Ring Ashes of War)", "Ported weapons keep their template's Elden Ring Ash of War (DARKSIGN_WEAPON_ARTS=0), as in builds up to 1.0.169.")
                 { PorterEnv = Env("DARKSIGN_WEAPON_ARTS", "0") },
         ]),
@@ -299,6 +305,8 @@ public static class Fallbacks
                 { PorterEnv = Env("DARKSIGN_BULLET_BASE_ATK", "0") },
             new("H", "No projectiles for weapons built as their class", "As A, but a weapon whose own DS3 moves found no free motion category, and so is built as its class, loses the projectiles its own moves fire (DARKSIGN_BORROW_BULLETS=0), as in builds up to 1.0.282: the Moonlight Greatsword's charged heavy fired no wave.")
                 { PorterEnv = Env("DARKSIGN_BORROW_BULLETS", "0") },
+            new("I", "No animated effect models", "As A, but DS3 effects whose 3D model is animated (Demon's Scar's art) are left out (DARKSIGN_FX_ANIMATED_MODELS=0), as in builds up to 1.0.378. Try it if the game crashes or shows a broken shape when such an effect plays.")
+                { PorterEnv = Env("DARKSIGN_FX_ANIMATED_MODELS", "0") },
             new("off", "Off", "Neither (DARKSIGN_BULLETS=0 and DARKSIGN_EFFECT_VISUALS=0): only the effects in a move's own effect events show, as in builds up to 1.0.242.")
                 { PorterEnv = Env("DARKSIGN_BULLETS", "0", "DARKSIGN_EFFECT_VISUALS", "0") },
         ]),

@@ -115,9 +115,11 @@ public static partial class FxrPort
             FxrScript.Info info;
             try { info = js.Inspect(file.File.Bytes); }
             catch (Exception e) { Fail(id, "unreadable"); Console.WriteLine($"effects: can't read DS3 f{id:D9}: {Short(e)}"); continue; }
-            // Models are converted onto Elden Ring's effect materials (EffectModelPort); animated ones (anibnd, DS3's
-            // Havok) are not, and neither is a model whose material Elden Ring has nothing like.
-            if (info.Anibnds.Any(m => m > 0))
+            // Models are converted onto Elden Ring's effect materials (EffectModelPort), and a model's animations
+            // (an anibnd with the model's own number) through EffectAnimPort; not a model whose material Elden Ring
+            // has nothing like.
+            if (info.Anibnds.Any(m => m > 0) && (!EffectAnimPort.Enabled || !EffectModelPort.Enabled
+                    || info.Anibnds.Any(a => a > 0 && (!info.Models.Contains(a) || !ds3.Resources.ContainsKey((Kind.Anibnd, a))))))
             {
                 Fail(id, "uses animated models");
                 continue;
@@ -174,7 +176,7 @@ public static partial class FxrPort
         int nextModel = ResourceBase;
         foreach (var m in modelTextures.Keys.Order())
         {
-            while (erIds.Contains((".flver", nextModel)))
+            while (erIds.Contains((".flver", nextModel)) || erIds.Contains((".anibnd", nextModel)))
                 nextModel++;
             models[m] = nextModel++;
         }
@@ -200,6 +202,9 @@ public static partial class FxrPort
             ["sfx"] = effects.Keys.ToDictionary(id => id.ToString(), id => IdBase + id),
             [((int)Kind.Texture).ToString()] = textures.ToDictionary(t => t.Key.ToString(), t => t.Value),
             [((int)Kind.Model).ToString()] = models.ToDictionary(t => t.Key.ToString(), t => t.Value),
+            // An animated model's anibnd has the model's number in both games.
+            [((int)Kind.Anibnd).ToString()] = effects.Values.SelectMany(e => e.Info.Anibnds).Where(models.ContainsKey).Distinct()
+                .ToDictionary(a => a.ToString(), a => models[a]),
             // DS3 effect sounds are DS3 s-sounds: they play the ported copy (SoundPort, same ID base). Unmapped they
             // played whatever Elden Ring sound has that number. DARKSIGN_FXR_SOUNDS=0 leaves them as they were.
             [((int)Kind.Sound).ToString()] = PortFxrSounds ? FxrSounds(effects.Values.SelectMany(e => e.Info.Sounds))
@@ -216,6 +221,31 @@ public static partial class FxrPort
                 Console.WriteLine($"effects: can't convert DS3 model s{old:D5}: {Short(e)}");
                 foreach (var (id, _) in effects.Where(x => x.Value.Info.Models.Contains(old)).ToList())
                     Fail(id, $"model s{old} conversion failed");
+            }
+        }
+        // Their animations: each anibnd onto an Elden Ring effect anibnd (skeleton and animation files).
+        var convertedAnibnds = new Dictionary<int, byte[]>();
+        var animated = effects.Where(e => !failed.Contains(e.Key)).SelectMany(e => e.Value.Info.Anibnds).Where(a => a > 0 && convertedModels.ContainsKey(a)).Distinct().Order().ToList();
+        if (animated.Count > 0)
+        {
+            var template = EffectAnimPort.FindTemplate(erBinders.SelectMany(b => b.Bnd.Files).Where(f => Ext(f.Name) == ".anibnd"));
+            if (template is null)
+                Console.WriteLine("effects: no Elden Ring effect anibnd to convert DS3's animated models onto");
+            foreach (var old in animated)
+            {
+                try
+                {
+                    if (template is null)
+                        throw new InvalidDataException("no Elden Ring template");
+                    convertedAnibnds[old] = EffectAnimPort.Convert(ds3.Resources[(Kind.Anibnd, old)].File.Bytes, models[old], template, out var note);
+                    Console.WriteLine($"effects: animated model s{old:D5} -> s{models[old]:D5} on Elden Ring's {template.Stem}: {note}");
+                }
+                catch (Exception e) when (e is not OutOfMemoryException)
+                {
+                    Console.WriteLine($"effects: can't convert DS3 anibnd s{old:D5}: {Short(e)}");
+                    foreach (var (id, _) in effects.Where(x => x.Value.Info.Anibnds.Contains(old)).ToList())
+                        Fail(id, "animated model conversion failed");
+                }
             }
         }
         foreach (var id in failed)
@@ -247,6 +277,8 @@ public static partial class FxrPort
             var leaf = Digits().Replace(ItemText.Leaf(ds3.Resources[(Kind.Model, old)].File.Name), newId.ToString(), 1);
             Add(erBinders, ".flver", leaf, convertedModels[old], added);
         }
+        foreach (var (old, bytes) in convertedAnibnds.Where(a => effects.Values.Any(e => e.Info.Anibnds.Contains(a.Key))).OrderBy(a => models[a.Key]))
+            Add(erBinders, ".anibnd", $"s{models[old]:D5}.anibnd", bytes, added);
         if (modelPort is not null)
             foreach (var (ds3Material, erMaterial) in modelPort.Used)
                 Console.WriteLine($"effects: model material {ds3Material} -> {(erMaterial.Length > 0 ? erMaterial : "no Elden Ring equivalent")}");
@@ -269,7 +301,9 @@ public static partial class FxrPort
         foreach (var id in effects.Keys.Order())
             AddResourceList(erBinders, IdBase + id,
                 TexturesOf(effects[id].Info).SelectMany(t => textureNames[t]).Select(n => n + ".tif")
-                    .Concat(effects[id].Info.Models.Where(models.ContainsKey).Distinct().Select(m => $"s{models[m]:D5}.sib")), added);
+                    .Concat(effects[id].Info.Models.Where(models.ContainsKey).Distinct().Select(m => $"s{models[m]:D5}.sib"))
+                    // Elden Ring's lists name an animated model's skeleton too (f000450940: s88880_skeleton.hkt).
+                    .Concat(effects[id].Info.Anibnds.Where(convertedAnibnds.ContainsKey).Distinct().Select(a => $"s{models[a]:D5}_skeleton.hkt")), added);
         result.Failed.AddRange(failed.Order().Select(id => $"f{id}"));
 
         // Compressing the common effect binder (Kraken, one thread, ~200 MB) takes minutes; nothing else in the build
