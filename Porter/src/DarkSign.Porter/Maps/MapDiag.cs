@@ -25,6 +25,8 @@ public static class MapDiag
             return Gparams(ctx, args.Skip(1).ToList());
         if (args.Count > 0 && args[0].Equals("envmap", StringComparison.OrdinalIgnoreCase))
             return EnvMaps(ctx, args.Skip(1).ToList());
+        if (args.Count > 0 && args[0].Equals("lightvol", StringComparison.OrdinalIgnoreCase))
+            return MapLightDiag.Run(ctx, args.Skip(1).ToList());
         if (args.Count > 0 && args[0].Equals("collision", StringComparison.OrdinalIgnoreCase))
             return MapCollisionDiag.Run(ctx, args.Skip(1).ToList());
         if (args.Count > 0 && args[0].Equals("stand-ins", StringComparison.OrdinalIgnoreCase))
@@ -34,6 +36,7 @@ public static class MapDiag
             Console.Error.WriteLine("map-diag colours [DS3 map ID...]   (default: every slot's DS3 map)");
             Console.Error.WriteLine("map-diag gparam [map ID...]        (default: the slots' hosts, Stormveil and the DS3 maps)");
             Console.Error.WriteLine("map-diag envmap [ER map ID...]     (default: the slots' hosts and Stormveil)");
+            Console.Error.WriteLine("map-diag lightvol [ER map ID...]   (light volumes, ivinfo, lightmap materials; DS3 light probes and lightmaps)");
             Console.Error.WriteLine("map-diag collision [DS3 map ID...] [--at x,y,z ...]   (h/l body settings, collision parts, ground under points)");
             Console.Error.WriteLine("map-diag stand-ins [DS3 map ID...] (low-detail stand-ins and far views the port leaves out, from DS3's files)");
             return 1;
