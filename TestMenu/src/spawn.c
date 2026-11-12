@@ -326,6 +326,14 @@ static void load_kits(void)
     dks_log("spawn: %d boss kits from darksign_boss_kits.tsv", g_kits_len);
 }
 
+/* DKSIGN_BOSS_KITS=1 brings a kit boss's companions along (as up to 1.0.410). */
+static int kits_enabled(void)
+{
+    wchar_t v[8] = {0};
+    DWORD n = GetEnvironmentVariableW(L"DKSIGN_BOSS_KITS", v, 8);
+    return n > 0 && n < 8 && v[0] == L'1';
+}
+
 static const DksBossKit *kit_for(const DksSpawnable *who)
 {
     if (strcmp(who->game, "DS3") != 0)
@@ -414,8 +422,11 @@ DksResult dks_spawn(const DksSpawnable *who, int count)
         count = 20;
     int queued = 0;
     /* A boss with a kit: the first one takes the kit's entity ID and brings the kit's companions (Pontiff's clone,
-       Friede's later stages), which the kit's events hide or bring in as DS3's map did. Only once at a time. */
-    const DksBossKit *kit = kit_for(who);
+       Friede's later stages), which the kit's events hide or bring in as DS3's map did. Only once at a time.
+       Off unless DKSIGN_BOSS_KITS=1: the game's event scripts never see characters the debug creator spawns, even
+       under the kit's entity IDs (1.0.410: Pontiff came with his clone in plain sight, Friede with three more
+       units), so by default a boss spawns alone and its phases are tested in its own arena (F1 boss warps). */
+    const DksBossKit *kit = kits_enabled() ? kit_for(who) : NULL;
     if (kit && entity_in_use(kit->boss.entity)) {
         dks_log("spawn: %s's kit (entity %u) is already in the world; this one spawns without it", kit->name, kit->boss.entity);
         kit = NULL;

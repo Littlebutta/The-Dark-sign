@@ -73,6 +73,13 @@ public static class Fallbacks
             new("B", "Remove them", "The game's own RemoveChrIns takes them out of the world at once, no bodies (DKSIGN_SPAWN_REMOVE=1). Called from the menu's thread, not the game's, so it can crash: use it only if A doesn't clear them.")
                 { GameEnv = Env(SpawnRemoveVariable, "1") },
         ]),
+        new("spawn-boss-kits", "Starting the game", "Bosses spawned from the F1 menu", Stage.Launch,
+            "You want to try a DS3 boss's partners (Pontiff's clone, Friede's later stages) from the F1 spawn list instead of in the boss's own arena.",
+        [
+            new("A", "The boss alone (default)", "A DS3 boss spawned from the F1 menu comes alone. Its phases and partners run from DS3's map scripts, which never see characters the menu spawns, so fight a boss through all its phases in its own arena (the DS3 run tab's boss warps)."),
+            new("B", "The boss with its partners", "As up to 1.0.410: the boss comes with the partners its DS3 fight uses (DKSIGN_BOSS_KITS=1), all in plain sight, because the scripts that hide them and bring them in don't run for spawned characters.")
+                { GameEnv = Env(BossKitsVariable, "1") },
+        ]),
         new("build-threads", "Starting the game", "Content build speed", Stage.Build,
             "The content build fails or gives different results from one run to the next.",
         [
@@ -656,6 +663,9 @@ public static class Fallbacks
 
     /// <summary>Game variable: the F1 menu removes spawned enemies instead of killing them (spawn-clear B).</summary>
     public const string SpawnRemoveVariable = "DKSIGN_SPAWN_REMOVE";
+
+    /// <summary>Game variable: the F1 menu spawns a DS3 boss with its kit's partners (spawn-boss-kits B).</summary>
+    public const string BossKitsVariable = "DKSIGN_BOSS_KITS";
 
     /// <summary>Game variable: the test menu DLL doesn't hook DirectX 12 (no overlay), hotkeys only.</summary>
     public const string NoOverlayVariable = "DKSIGN_NO_OVERLAY";
