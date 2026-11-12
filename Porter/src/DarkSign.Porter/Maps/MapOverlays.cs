@@ -65,11 +65,14 @@ public static class MapOverlays
     public sealed class Stats
     {
         public int OverlayMeshes, OverlayTrianglesCut, OverlayTriangles, TwoLayerMeshes, SecondLayerTriangles, TwoLayerTriangles;
+        /// <summary>Faded overlay triangles kept solid because no surface lies behind them (see <see cref="MapOverlayBacking"/>).</summary>
+        public int FadedKept;
 
         public void Add(Stats other)
         {
             Interlocked.Add(ref OverlayMeshes, other.OverlayMeshes);
             Interlocked.Add(ref OverlayTrianglesCut, other.OverlayTrianglesCut);
+            Interlocked.Add(ref FadedKept, other.FadedKept);
             Interlocked.Add(ref OverlayTriangles, other.OverlayTriangles);
             Interlocked.Add(ref TwoLayerMeshes, other.TwoLayerMeshes);
             Interlocked.Add(ref SecondLayerTriangles, other.SecondLayerTriangles);
@@ -77,7 +80,8 @@ public static class MapOverlays
         }
 
         public string Summary =>
-            $"vertex alpha: {OverlayMeshes} overlay meshes keep DS3's fade ({OverlayTrianglesCut:N0} of {OverlayTriangles:N0} triangles under half visible left out); "
+            $"vertex alpha: {OverlayMeshes} overlay meshes keep DS3's fade ({OverlayTrianglesCut:N0} of {OverlayTriangles:N0} triangles under half visible left out, "
+            + $"{FadedKept:N0} more kept solid: no surface lies under them); "
             + $"{TwoLayerMeshes} two-layer meshes split by layer ({SecondLayerTriangles:N0} of {TwoLayerTriangles:N0} triangles show the second layer)";
     }
 
@@ -85,8 +89,18 @@ public static class MapOverlays
     /// Rewrites a DS3 FLVER's overlay and two-layer meshes in place (before the materials are converted) and returns
     /// the meshes whose vertex alpha is a fade the converted vertices should keep.
     /// </summary>
-    public static HashSet<FLVER2.Mesh> Apply(FLVER2 flver, Stats stats)
+    /// <param name="behind">
+    /// Whether a surface lies behind a faded triangle (model-space corners and normal; <see cref="MapOverlayBacking.For"/>).
+    /// Only such a triangle is left out; one with nothing behind it would leave a hole. Null: the model's own surfaces
+    /// (<see cref="MapOverlayBacking.Of"/>). <see cref="CutEverywhere"/> passes one that always says yes (fallback C).
+    /// </param>
+    public static HashSet<FLVER2.Mesh> Apply(FLVER2 flver, Stats stats, Func<Vector3, Vector3, Vector3, Vector3, bool>? behind = null)
     {
+        // The model's own surfaces, indexed before any mesh here changes (only when something here fades).
+        if (behind is null && flver.Meshes.Any(m => m.MaterialIndex >= 0 && m.MaterialIndex < flver.Materials.Count
+                                                    && MapOverlayBacking.IsFading(flver.Materials[m.MaterialIndex], m)))
+            behind = MapOverlayBacking.Of(flver).For("");
+        behind ??= CutEverywhere;   // nothing fades: never asked
         var keepAlpha = new HashSet<FLVER2.Mesh>();
         var secondLayer = new Dictionary<int, int>();   // material index -> its second-layer copy
         foreach (var mesh in flver.Meshes.ToList())
@@ -99,7 +113,33 @@ public static class MapOverlays
                 case Kind.Overlay:
                     if (mesh.Vertices.All(v => Alpha(v) >= 0.999f))
                         break;
-                    var (cut, total) = Keep(mesh, tri => tri.Any(i => Alpha(mesh.Vertices[i]) >= OverlayCut));
+                    // A faded triangle goes only where DS3 shows a surface through it; elsewhere it stays, solid.
+                    var backed = new Dictionary<(int, int, int), bool>();
+                    // Judged on DS3's alpha, before kept triangles' corners are made solid below.
+                    var under = mesh.Vertices.Select(v => Alpha(v) < OverlayCut).ToArray();
+                    bool Faded(int[] tri) => tri.All(i => under[i]);
+                    bool Backed(int[] tri)
+                    {
+                        var key = (tri[0], tri[1], tri[2]);
+                        if (!backed.TryGetValue(key, out bool b))
+                        {
+                            var (va, vb, vc) = (mesh.Vertices[tri[0]], mesh.Vertices[tri[1]], mesh.Vertices[tri[2]]);
+                            backed[key] = b = behind(va.Position, vb.Position, vc.Position, va.Normal + vb.Normal + vc.Normal);
+                        }
+                        return b;
+                    }
+                    var solid = new HashSet<int>();
+                    foreach (var (i, j, k) in MapOverlayBacking.Triangles(mesh))
+                        if (Faded([i, j, k]) && !Backed([i, j, k]))
+                        {
+                            stats.FadedKept++;
+                            solid.UnionWith([i, j, k]);
+                        }
+                    // Kept faded triangles are drawn solid (a fade with nothing behind it would show the sky).
+                    foreach (int i in solid)
+                        if (mesh.Vertices[i].Colors.Count > 0 && mesh.Vertices[i].Colors[0] is var c)
+                            mesh.Vertices[i].Colors[0] = new FLVER.VertexColor(1f, c.R, c.G, c.B);
+                    var (cut, total) = Keep(mesh, tri => !Faded(tri) || !Backed(tri));
                     if (mesh.Vertices.Count == 0)
                         flver.Meshes.Remove(mesh);   // nothing of it is more than half visible in DS3
                     else
@@ -144,6 +184,9 @@ public static class MapOverlays
     }
 
     public static float Alpha(FLVER.Vertex v) => v.Colors.Count > 0 ? v.Colors[0].A : 1f;
+
+    /// <summary>A test that says every faded triangle has a surface behind it: each one is cut, as 1.0.353 to 1.0.37x (fallback map-overlays C).</summary>
+    public static readonly Func<Vector3, Vector3, Vector3, Vector3, bool> CutEverywhere = (_, _, _, _) => true;
 
     /// <summary>A copy of a two-layer material that shows its second layer through the first layer's texture slots.</summary>
     public static FLVER2.Material SecondLayer(FLVER2.Material m)
