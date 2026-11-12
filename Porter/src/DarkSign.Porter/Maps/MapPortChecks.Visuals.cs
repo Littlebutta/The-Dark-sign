@@ -19,6 +19,112 @@ public static partial class MapPortChecks
         yield return ("visuals: test maps hold the host's own model, its own material, or the port's materials with vanilla textures", PieceTests);
         yield return ("visuals: fallbacks map-groups C and map-materials B", VisualFallbacks);
         yield return ("visuals: DS3's reflection proxies, shadow casters and off-layer pieces are left out and reported", HelperPieces);
+        yield return ("visuals: DS3 overlays keep their vertex alpha fade; two-layer materials show the layer each triangle shows", Overlays);
+    }
+
+    /// <summary>
+    /// A DS3 model as m40's m000080 has them: a brick overlay fading out by vertex alpha, an ash-over-brick two-layer
+    /// mesh, a solid rock and grass (whose colour sways it).
+    /// </summary>
+    private static FLVER2 OverlayFlver()
+    {
+        var flver = SyntheticFlver(0x20014, @"N:\FDP\data\Material\mtd\map\M[ARSN]_l.mtd",
+            ("g_DiffuseTexture", @"N:\x\m40_00_brick_001_a.tif"), ("g_BumpmapTexture", @"N:\x\m40_00_brick_001_n.tif"));
+        flver.BufferLayouts[0] =
+        [
+            new FLVER.LayoutMember(FLVER.LayoutType.Float3, FLVER.LayoutSemantic.Position),
+            new FLVER.LayoutMember(FLVER.LayoutType.UByte4Norm, FLVER.LayoutSemantic.Normal),
+            new FLVER.LayoutMember(FLVER.LayoutType.UByte4Norm, FLVER.LayoutSemantic.Tangent),
+            new FLVER.LayoutMember(FLVER.LayoutType.UByte4Norm, FLVER.LayoutSemantic.Tangent, 1),
+            new FLVER.LayoutMember(FLVER.LayoutType.UByte4Norm, FLVER.LayoutSemantic.VertexColor, 1),
+            new FLVER.LayoutMember(FLVER.LayoutType.Float2, FLVER.LayoutSemantic.UV),
+            new FLVER.LayoutMember(FLVER.LayoutType.Float2, FLVER.LayoutSemantic.UV, 1),
+        ];
+        FLVER2.Material Material(string mtd, params (string Param, string Path, float Scale)[] textures)
+        {
+            var m = new FLVER2.Material("m", @"N:\FDP\data\Material\mtd\map\" + mtd + ".mtd", 0) { GXIndex = 0 };
+            foreach (var (param, path, scale) in textures)
+                m.Textures.Add(new FLVER2.Texture(param, path, new Vector2(scale), 0, 0, 0, 0, 0));
+            return m;
+        }
+        flver.Materials.Add(Material("M[ARSN]_l_m", ("g_DiffuseTexture", @"N:\x\m40_00_brick_001_a.tif", 1), ("g_DiffuseTexture2", @"N:\x\m40_00_ash_332_a.tif", 0.5f),
+            ("g_BumpmapTexture", @"N:\x\m40_00_brick_001_n.tif", 1), ("g_BumpmapTexture2", @"N:\x\m40_00_ash_332_n.tif", 0.5f)));
+        flver.Materials.Add(Material("M[ARSN]_l", ("g_DiffuseTexture", @"N:\x\m40_00_rock_a.tif", 1)));
+        flver.Materials.Add(Material("M[ARSN]_e_grass", ("g_DiffuseTexture", @"N:\x\m40_00_grass_a.tif", 1)));
+
+        // A quad of two triangles per mesh: (0,1,2) and (1,3,2), each vertex with its own alpha.
+        FLVER2.Mesh Quad(int material, float[] alpha, float y)
+        {
+            var mesh = new FLVER2.Mesh { MaterialIndex = material, NodeIndex = 0 };
+            var corners = new[] { new Vector3(0, y, 0), new Vector3(10, y, 0), new Vector3(0, y, 10), new Vector3(10, y, 10) };
+            for (int i = 0; i < 4; i++)
+            {
+                var v = new FLVER.Vertex();
+                v.Positions.Add(corners[i]);
+                v.Normals.Add(Vector3.UnitY);
+                v.NormalWs.Add(127);
+                v.Tangents.Add(new Vector4(1, 0, 0, 1));
+                v.Tangents.Add(new Vector4(0, 0, 1, 1));
+                v.Colors.Add(new FLVER.VertexColor(alpha[i], 1f, 0f, 1f));
+                v.UVs.Add(new Vector3(corners[i].X / 10, corners[i].Z / 10, 0));
+                v.UVs.Add(new Vector3(corners[i].X / 5 + 0.25f, corners[i].Z / 5, 0));
+                mesh.Vertices.Add(v);
+            }
+            mesh.VertexBuffers.Add(new FLVER2.VertexBuffer(0));
+            mesh.FaceSets.Add(new FLVER2.FaceSet(FLVER2.FaceSet.FSFlags.None, false, true, 0, [0, 1, 2, 1, 3, 2]));
+            return mesh;
+        }
+        flver.Meshes.Clear();
+        flver.Meshes.Add(Quad(0, [1f, 0.6f, 0.1f, 0.2f], 0));      // overlay: both triangles have a corner over half
+        flver.Meshes.Add(Quad(0, [0.9f, 0.1f, 0.1f, 0.0f], 1));    // overlay: (0,1,2) has a corner at 0.9, (1,3,2) is cut
+        flver.Meshes.Add(Quad(1, [1f, 1f, 0f, 0f], 2));            // two-layer: (0,1,2) mostly brick, (1,3,2) mostly ash
+        flver.Meshes.Add(Quad(2, [1f, 1f, 1f, 1f], 3));            // solid rock
+        flver.Meshes.Add(Quad(3, [0.3f, 0.3f, 0.3f, 0.3f], 4));    // grass: alpha is sway, untouched
+        return FLVER2.Read(flver.Write());
+    }
+
+    private static void Overlays()
+    {
+        // DS3's side: what each mesh's alpha means.
+        var ds3 = OverlayFlver();
+        Expect(ds3.Meshes[0].Vertices[2].Colors.Single().A is > 0.09f and < 0.11f, "the test model keeps its vertex alpha through a write");
+        Expect(ds3.Materials.Select(MapOverlays.KindOf).SequenceEqual([MapOverlays.Kind.Overlay, MapOverlays.Kind.TwoLayer, MapOverlays.Kind.Overlay, MapOverlays.Kind.None]),
+            $"kinds {string.Join(",", ds3.Materials.Select(MapOverlays.KindOf))}");
+        foreach (var (mtd, kind) in new[] { ("M[ARSN]_m", MapOverlays.Kind.TwoLayer), ("M[ARSN]_l_p_m", MapOverlays.Kind.TwoLayer), ("M[ARSN]_2m_l", MapOverlays.Kind.None),
+                     ("MultiBlend\\M[ARSN]_4m_l", MapOverlays.Kind.None), ("M[ARSN]_l_e", MapOverlays.Kind.Overlay), ("M[ARSN]", MapOverlays.Kind.Overlay),
+                     ("M[ARSN]_l_snow", MapOverlays.Kind.None), ("M[A]_e_grass", MapOverlays.Kind.None), ("M[ARSN]_Water_DL", MapOverlays.Kind.None) })
+        {
+            var m = new FLVER2.Material("m", @"N:\x\" + mtd + ".mtd", 0);
+            m.Textures.Add(new FLVER2.Texture("g_DiffuseTexture2", "x.tif", Vector2.One, 0, 0, 0, 0, 0));
+            Expect(MapOverlays.KindOf(m) == kind, $"{mtd} is {MapOverlays.KindOf(m)}, not {kind}");
+        }
+
+        var (port, hostBnd) = VisualPort();
+        var flver = ConvertOne(port, hostBnd, OverlayFlver());
+        Expect(flver.Meshes.Count == 6, $"the two-layer mesh is split in two: {flver.Meshes.Count} meshes");
+        int Triangles(FLVER2.Mesh m) => m.FaceSets.Where(f => f.Flags == FLVER2.FaceSet.FSFlags.None).Sum(f => f.Triangulate(true).Count / 3);
+        Expect(Triangles(flver.Meshes[0]) == 2, "an overlay triangle with one corner over half stays (DS3 shows part of it)");
+        Expect(Triangles(flver.Meshes[1]) == 1 && flver.Meshes[1].Vertices.Count == 3, $"an overlay triangle under half everywhere is cut, its unused vertex dropped ({Triangles(flver.Meshes[1])}, {flver.Meshes[1].Vertices.Count})");
+        Expect(flver.Meshes[0].Vertices.Select(v => v.Colors.Single()).Select(c => MathF.Round(c.A, 1)).SequenceEqual([1f, 0.6f, 0.1f, 0.2f])
+               && flver.Meshes[0].Vertices.All(v => v.Colors.Single() is { R: 1, G: 0, B: 0 }), "an overlay keeps DS3's alpha, on vanilla's red");
+        Expect(flver.Meshes.Skip(2).All(m => m.Vertices.All(v => v.Colors.Single() is { R: 1, G: 0, B: 0, A: 1 })), "everything else is solid");
+        Expect(Triangles(flver.Meshes[2]) == 1 && Triangles(flver.Meshes[3]) == 1, "each layer of the two-layer mesh gets its triangle");
+        var albedo = flver.Meshes.Take(4).Select(m => port.Materials.Single(x => x.Name == flver.Materials[m.MaterialIndex].Name).Albedo).ToList();
+        Expect(albedo.SequenceEqual(["m40_00_brick_001_a", "m40_00_brick_001_a", "m40_00_brick_001_a", "m40_00_ash_332_a"]), $"albedos {string.Join(", ", albedo)}");
+        var ash = port.Materials.Single(x => x.Albedo == "m40_00_ash_332_a");
+        Expect(ash.Normal == "m40_00_ash_332_n" && ash.Scale == new Vector2(0.5f), $"the second layer brings its normal map and tiling ({ash.Normal}, {ash.Scale})");
+        Expect(flver.Meshes[3].Vertices.Any(v => MathF.Abs(v.UVs[0].X - 0.25f) < 0.01f), "the second layer is drawn with DS3's second UV");
+        Expect(Triangles(flver.Meshes[5]) == 2, "grass keeps every triangle");
+        Expect(MapValidate.CheckFlverDraw(flver, port.TemplateLayouts()).ToList() is { Count: 0 }, "the validator accepts the converted model");
+        Expect(port.Overlays.OverlayMeshes == 2 && port.Overlays.OverlayTrianglesCut == 1 && port.Overlays.TwoLayerMeshes == 1 && port.Overlays.SecondLayerTriangles == 1,
+            $"counted: {port.Overlays.Summary}");
+
+        // Fallback map-overlays B: as up to 1.0.340.
+        Expect(MapPorter.Options.Parse(["--solid-overlays"]).SolidOverlays && !new MapPorter.Options().SolidOverlays, "--solid-overlays is read");
+        var (solid, bnd) = VisualPort();
+        solid.Ds3Alpha = false;
+        var old = ConvertOne(solid, bnd, OverlayFlver());
+        Expect(old.Meshes.Count == 5 && old.Meshes.All(m => Triangles(m) == 2 && m.Vertices.All(v => v.Colors.Single().A == 1)), "--solid-overlays keeps every triangle solid");
     }
 
     private static void HelperPieces()

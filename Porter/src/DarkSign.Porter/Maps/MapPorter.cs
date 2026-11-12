@@ -37,6 +37,9 @@ public static class MapPorter
         /// <summary>--helper-pieces: DS3's reflection proxies, shadow casters and off-layer pieces stay in the map as
         /// ordinary pieces (fallback "map-helper-pieces" B; see <see cref="MsbPort.HelperKind"/>).</summary>
         public bool HelperPieces { get; set; }
+        /// <summary>--solid-overlays: every ported vertex is solid and a two-layer material shows its first layer, as
+        /// up to 1.0.340 (fallback "map-overlays" B; see <see cref="MapOverlays"/>).</summary>
+        public bool SolidOverlays { get; set; }
         /// <summary>--stand-ins: DS3's low-detail stand-ins stay in the map on top of the detailed pieces they stand
         /// for (fallback "map-stand-ins" B; see <see cref="MapStandIns"/>).</summary>
         public bool StandIns { get; set; }
@@ -107,6 +110,7 @@ public static class MapPorter
                     case "--host-sky": o.HostSky = true; break;
                     case "--helper-pieces": o.HelperPieces = true; break;
                     case "--stand-ins": o.StandIns = true; break;
+                    case "--solid-overlays": o.SolidOverlays = true; break;
                     case "--host-atmosphere": o.HostAtmosphere = true; break;
                     case "--half-textures": o.TextureDetail = MapTextures.Detail.Half; break;
                     case "--full-low-textures": o.TextureDetail = MapTextures.Detail.FullLow; break;
@@ -134,6 +138,12 @@ public static class MapPorter
     /// count, size in metres, albedo texture). Sorted so the largest odd pieces (unlit, left out, few vertices)
     /// are easy to find with a filter.
     /// </summary>
+    private static MapModelPort WithAlpha(MapModelPort port, Options options)
+    {
+        port.Ds3Alpha = !options.SolidOverlays;
+        return port;
+    }
+
     public static string PieceReport(MSB3 ds3, MapModelPort models, IReadOnlySet<string> missingModels, bool helperPieces,
         IReadOnlySet<string>? standIns = null)
     {
@@ -575,6 +585,7 @@ public static class MapPorter
         if (test == PieceTest.PortedMaterial)
             models = models.WithTemplateTextures();
         models.UnlitCastShadows = options.HostLighting;
+        models.Ds3Alpha = !options.SolidOverlays;
         if (test != PieceTest.None)
             report.AppendLine(test switch
             {
@@ -681,6 +692,8 @@ public static class MapPorter
             report.AppendLine($"  sunlight: {models.Materials.Count(m => m.Template.Kind == "nolight")} unlit materials (sky domes) cast no shadow");
         if (test != PieceTest.VanillaModel && copied == 0)
             report.AppendLine($"  load: {models.LoadSummary}");
+        if (copied == 0)
+            report.AppendLine("  " + (options.SolidOverlays ? "vertex alpha: every vertex solid, two-layer materials show their first layer (--solid-overlays)" : models.Overlays.Summary));
         if (copied > 0)
             textures.Need(main.Textures, ds3Id);
         else if (!slot.Probe && test == PieceTest.None)
@@ -874,7 +887,7 @@ public static class MapPorter
             try { objectParam = ctx.LoadParams(PorterGame.DarkSouls3).Get("ObjectParam"); }
             catch (Exception ex) when (ex is not OutOfMemoryException) { report.AppendLine($"  note: DS3 ObjectParam unavailable ({ex.Message}); no object gets collision"); }
             var method = objectParam is null && options.Objects == ObjectPort.Method.Full ? ObjectPort.Method.NoCollision : options.Objects;
-            return _objects = new ObjectPort(ctx, ds3, er, models.Fresh(), method, maps, objectParam, MapCollisions.LastTemplate,
+            return _objects = new ObjectPort(ctx, ds3, er, WithAlpha(models.Fresh(), options), method, maps, objectParam, MapCollisions.LastTemplate,
                 !options.BinaryCollision, options.KeepSimdTree);
         }
         catch
