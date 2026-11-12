@@ -222,6 +222,8 @@ public static class Fallbacks
                 { PorterEnv = Env("DARKSIGN_HIDDEN_PARTS", "0") },
             new("E", "Keep DS3's node rotations", "As A, but ported weapon models keep DS3's node transforms (DARKSIGN_BAKE_NODES=0), as in builds up to 1.0.385. With A they are baked into the meshes and dummy polys, so shields and greatshields hold the angle DS3 gives them. Use it if a weapon is held at an odd angle or its hit/effect points moved.")
                 { PorterEnv = Env("DARKSIGN_BAKE_NODES", "0") },
+            new("F", "Shields keep DS3's hold turn", "As A, but ported shields are not turned onto Elden Ring's shield hold point (DARKSIGN_SHIELD_HOLD=0), as up to 1.0.410, when they were held turned about 90° (most visible when guarding). Use it if a shield sits worse than before.")
+                { PorterEnv = Env("DARKSIGN_SHIELD_HOLD", "0") },
         ]),
 
         // ---- Weapon sounds and effects ----
@@ -247,6 +249,8 @@ public static class Fallbacks
                 { PorterEnv = Env("DARKSIGN_SOUND_LOOPS", "0") },
             new("J", "Elden Ring's other swing sounds on every DS3 hitbox", "A, but a DS3 swing with no Elden Ring swing of its own repeats the template's remaining swing sounds even when the move plays DS3's sounds (DARKSIGN_SWING_SOUND_REPEAT=1), as up to 1.0.347, where a swing with several hitboxes (the Dragonslayer Greataxe) played them several times. Use it if some moves lose a sound they had.")
                 { PorterEnv = Env("DARKSIGN_SWING_SOUND_REPEAT", "1") },
+            new("K", "Sound events name their sound twice", "A, but each ported sound event's override sound is the ported sound itself (DARKSIGN_SOUND_OVERRIDE=same), as up to 1.0.410. With A it is cleared, as in Elden Ring's own events; naming it could play each swing sound twice at once (the Dragonslayer Greataxe's \"jet engine\"). Use it if ported swings go silent.")
+                { PorterEnv = Env("DARKSIGN_SOUND_OVERRIDE", "same") },
             new("off", "Off (Elden Ring sounds)", "Ported weapons keep the Elden Ring template's swing sounds (DARKSIGN_DS3_SOUND_EVENTS=0). Not DS3, but never silent.")
                 { PorterEnv = Env("DARKSIGN_DS3_SOUND_EVENTS", "0") },
         ]),
@@ -279,6 +283,8 @@ public static class Fallbacks
                 { PorterEnv = Env("DARKSIGN_ART_POOL", "weapons") },
             new("G", "Drop DS3's [HKS] marker effects", "As A, but a DS3 move's \"[HKS]\" marker SpEffect that Elden Ring doesn't know is left out (DARKSIGN_HKS_MARKERS=drop), as in builds up to 1.0.385. With A it is ported under a new ID, so its fields still work (the Dragonhead Greatshield's breath judge). Use it if a move does something odd (a dodge, a stance) since then.")
                 { PorterEnv = Env("DARKSIGN_HKS_MARKERS", "drop") },
+            new("H", "Own-section arts from the first block", "As A, but a weapon's own DS3 section always gives its art from its first skill move (DARKSIGN_ART_BLOCK_BY_NAME=0), as up to 1.0.410, when the Old King's Great Hammer did a leftover Stomp for Molten Perseverance. With A the art's name picks the block (Perseverance: 37700, with its lava follow-up). Use it if an art changed for the worse.")
+                { PorterEnv = Env("DARKSIGN_ART_BLOCK_BY_NAME", "0") },
             new("off", "Off (Elden Ring Ashes of War)", "Ported weapons keep their template's Elden Ring Ash of War (DARKSIGN_WEAPON_ARTS=0), as in builds up to 1.0.169.")
                 { PorterEnv = Env("DARKSIGN_WEAPON_ARTS", "0") },
         ]),

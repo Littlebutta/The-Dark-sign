@@ -98,7 +98,31 @@ public static partial class MovesetPort
     private static readonly Dictionary<string, int> Kinds = new(StringComparer.OrdinalIgnoreCase)
     {
         ["Stomp"] = 360, ["Stance"] = 362, ["Spin Slash"] = 364, ["Charge"] = 367, ["Warcry"] = 376,
+        // Perseverance: the Large Club (a35), Hammer (a33) and Halberd (a38) classes all keep it at 37700 (porter log
+        // 2026-11-12), and the Old King's Great Hammer's own a174 holds Molten Perseverance there (37700 casts the
+        // Perseverance buff 120750, 37710 throws the lava, bullet 100081900); its 36000 is a Stomp (331 buff 6340
+        // 'Weapon Art - Stomp') left over from development.
+        ["Perseverance"] = 377,
     };
+
+    /// <summary>
+    /// The block a weapon's own section keeps its art in, when the DS3 art's name says which kind it is ("Molten
+    /// Perseverance" is a Perseverance: 377xx) and the section has that block's x00 move; else null and the section's
+    /// first x00 move is the art, as before. 1.0.410 played a174's leftover Stomp (36000) for Molten Perseverance: a
+    /// short pose that ended, with the lava follow-up never ported. DARKSIGN_ART_BLOCK_BY_NAME=0 turns it off.
+    /// </summary>
+    internal static int? NamedBlock(IEnumerable<string?> artNames, IReadOnlyCollection<int> skill)
+    {
+        if (!ArtBlockByName)
+            return null;
+        foreach (var name in artNames.Where(n => !string.IsNullOrWhiteSpace(n)))
+            foreach (var (kind, block) in Kinds)
+                if (System.Text.RegularExpressions.Regex.IsMatch(name!, $@"\b{System.Text.RegularExpressions.Regex.Escape(kind)}\b", System.Text.RegularExpressions.RegexOptions.IgnoreCase) && skill.Contains(block * 100))
+                    return block;
+        return null;
+    }
+
+    private static readonly bool ArtBlockByName = Environment.GetEnvironmentVariable("DARKSIGN_ART_BLOCK_BY_NAME") != "0";
 
     public sealed record ArtResult(int Arts, int Weapons, Dictionary<int, string> Names, List<int> StanceIds);
 
@@ -227,9 +251,14 @@ public static partial class MovesetPort
             .Any(e => e.Type == 1 && e.GetParameterBytes(false) is { Length: >= 12 } b && Ds3ParryJudges.Contains(BitConverter.ToInt32(b, 8))) == true;
         ArtJob MakeJob(int section, int cls, List<int> skill, List<WeaponPlan> weapons, string source)
         {
-            bool stance = skill.Contains(36200);
+            // A weapon's own section can hold several blocks; the art's name picks one where it names a kind (NamedBlock).
+            int? named = source == "own" ? NamedBlock(weapons.Select(p => Kind(p).Name), skill) : null;
+            if (named is { } nb && nb != 362)
+                Console.WriteLine($"arts: {string.Join(", ", weapons.Select(p => p.Name))}: DS3 a{section} art '{Kind(weapons[0]).Name}' is block {nb * 100} by its name " +
+                                  $"(the section's first is {skill.FirstOrDefault(id => id % 100 == 0, skill[0])}) [DARKSIGN_ART_BLOCK_BY_NAME=0 off]");
+            bool stance = named is null ? skill.Contains(36200) : named == 362;
             // One-shot: the block's first move (its x00 animation). Without the hks, a stance plays its light attack.
-            int start = stance && hks is null ? 36230 : stance ? 36200 : skill.FirstOrDefault(id => id % 100 == 0, skill[0]);
+            int start = stance && hks is null ? 36230 : stance ? 36200 : named is { } b ? b * 100 : skill.FirstOrDefault(id => id % 100 == 0, skill[0]);
             if (!stance && weapons.Any(p => (Kind(p).Name ?? "").Trim().Equals("Parry", StringComparison.OrdinalIgnoreCase))
                 && skill.FirstOrDefault(id => HasParryHit(section, id)) is > 0 and var parry)
                 start = parry;
@@ -1248,6 +1277,11 @@ public static class ArtSelfTest
         Check(MovesetPort.OneShotFollowUps([36400, 36401, 36410, 36411, 36420, 36421], 36400).SequenceEqual([36410, 36420]),
             "arts: a one-shot's follow-ups are the block's next x0 moves, never the x1 no-FP copies (Ember: 36410 thrust, 36420 slam)");
         Check(MovesetPort.OneShotFollowUps([36520, 36521], 36520).Count == 0, "arts: a one-shot with only its no-FP copy has no follow-up");
+        Check(MovesetPort.NamedBlock(["Molten Perseverance"], [36000, 36050, 37700, 37701, 37710]) == 377
+              && MovesetPort.OneShotFollowUps([36000, 36050, 37700, 37701, 37710], 37700).SequenceEqual([37710]),
+            "arts: Molten Perseverance is a174's 37700 block (lava follow-up 37710), not its leftover Stomp 36000");
+        Check(MovesetPort.NamedBlock(["Moonlight Vortex"], [36000, 38400]) is null && MovesetPort.NamedBlock(["Kindled Charge"], [36000, 36050]) is null,
+            "arts: a name that names no kind, or a kind whose block the section lacks, keeps the section's first move");
         Check(!MovesetPort.IsGenericArt("Falling Bolt") && !MovesetPort.IsGenericArt("Guiding Light"), "arts: Falling Bolt and Guiding Light are unique arts");
         // Its hks: the three art-318 tests that name the chain state are widened, the FP-charging ones aren't.
         const string chainHks = "function IsStanceArts(arts_id)\n    local aow_list = {\n    }\nend\n" +
