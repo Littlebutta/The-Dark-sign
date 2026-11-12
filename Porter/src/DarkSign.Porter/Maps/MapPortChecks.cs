@@ -42,6 +42,8 @@ public static partial class MapPortChecks
             yield return check;
         foreach (var check in ObjectChecks())
             yield return check;
+        foreach (var check in DoorChecks())
+            yield return check;
         foreach (var check in CoverageChecks())
             yield return check;
         yield return ("validate: layout checks catch a missing start point and parts without models", ValidateLayout);

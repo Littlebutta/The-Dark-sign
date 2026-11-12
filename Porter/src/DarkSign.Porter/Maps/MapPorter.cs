@@ -105,6 +105,8 @@ public static class MapPorter
 
         /// <summary>--objects full|nocollision|none (launcher Fallbacks "map-objects"): DS3's objects as Elden Ring assets (<see cref="ObjectPort"/>).</summary>
         public ObjectPort.Method Objects { get; set; } = ObjectPort.Method.Full;
+        /// <summary>--moving-objects full|nocollision|off (launcher Fallbacks "map-doors"): doors, lifts and levers that move (<see cref="ObjectPort.MovingMethod"/>).</summary>
+        public ObjectPort.MovingMethod MovingObjects { get; set; } = ObjectPort.MovingMethod.Full;
 
         /// <summary>--all-layers (launcher Fallbacks "map-layers" B): every DS3 map state's enemies and objects (m40's Untended Graves too).</summary>
         public bool AllLayers { get; set; }
@@ -160,6 +162,7 @@ public static class MapPorter
                     case "--simd": o.KeepSimdTree = true; break;
                     case "--enemies" when i + 1 < list.Count: o.Enemies = EnemyPort.ParseMethod(list[i + 1]); i++; break;
                     case "--objects" when i + 1 < list.Count: o.Objects = ObjectPort.ParseMethod(list[i + 1]); i++; break;
+                    case "--moving-objects" when i + 1 < list.Count: o.MovingObjects = ObjectPort.ParseMoving(list[i + 1]); i++; break;
                     case "--no-regions": o.NoRegions = true; break;
                     case "--no-people": o.NoPeople = true; break;
                     case "--er-people": o.ErPeople = true; break;
@@ -1172,8 +1175,16 @@ public static class MapPorter
             try { objectParam = ctx.LoadParams(PorterGame.DarkSouls3).Get("ObjectParam"); }
             catch (Exception ex) when (ex is not OutOfMemoryException) { report.AppendLine($"  note: DS3 ObjectParam unavailable ({ex.Message}); no object gets collision"); }
             var method = objectParam is null && options.Objects == ObjectPort.Method.Full ? ObjectPort.Method.NoCollision : options.Objects;
+            PARAM? objActParam = null;
+            if (options.MovingObjects != ObjectPort.MovingMethod.Off)
+                try { objActParam = ctx.LoadParams(PorterGame.DarkSouls3).Get("ObjActParam"); }
+                catch (Exception ex) when (ex is not OutOfMemoryException) { report.AppendLine($"  note: DS3 ObjActParam unavailable ({ex.Message}); doors and levers move only by script"); }
             return _objects = new ObjectPort(ctx, ds3, er, WithAlpha(models.Fresh(), options), method, maps, objectParam, MapCollisions.LastTemplate,
-                !options.BinaryCollision, options.KeepSimdTree);
+                !options.BinaryCollision, options.KeepSimdTree)
+            {
+                Moving = options.MovingObjects,
+                Ds3ObjActParam = objActParam,
+            };
         }
         catch
         {

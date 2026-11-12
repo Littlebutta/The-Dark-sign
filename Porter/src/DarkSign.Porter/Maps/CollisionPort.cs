@@ -25,18 +25,34 @@ namespace DarkSign.Porter.Maps;
 /// </summary>
 public static class CollisionPort
 {
-    public sealed record Result(byte[] Bytes, int Bodies, int Triangles, IReadOnlyList<string> Notes);
+    public sealed record Result(byte[] Bytes, int Bodies, int Triangles, IReadOnlyList<string> Notes)
+    {
+        /// <summary>Bodies with a convex shape (a box or other closed hull: object collision, see <see cref="ConvertConvex"/>).</summary>
+        public int Convex { get; init; }
+    }
 
     /// <summary>Reads a DS3 collision .hkx (no DCX) with HKX2.</summary>
     public static Ds3.hkRootLevelContainer ReadDs3(byte[] hkx) =>
         (Ds3.hkRootLevelContainer)new Ds3.PackFileDeserializer().Deserialize(new BinaryReaderEx(false, hkx));
 
     /// <summary>Converts one DS3 collision file. Throws if any body's geometry doesn't survive the conversion.</summary>
-    public static Result Convert(byte[] ds3Hkx, ErCollisionTemplate? template, bool xml = true, bool keepSimdTree = false)
+    public static Result Convert(byte[] ds3Hkx, ErCollisionTemplate? template, bool xml = true, bool keepSimdTree = false) =>
+        Convert(ds3Hkx, template, xml, keepSimdTree, null);
+
+    /// <param name="adjust">Changes the converted file before it is written (object collision: body names and the
+    /// bodies that move with an animation, see <see cref="ObjectPort"/>).</param>
+    /// <param name="dropBroken">Leave out a body whose compressed mesh can't be decoded instead of failing the file
+    /// (objects: the frame of DS3's gate o400340 and lever o300500 is a placeholder mesh whose primitives point past
+    /// its vertices; the moving bodies beside it are fine).</param>
+    public static Result Convert(byte[] ds3Hkx, ErCollisionTemplate? template, bool xml, bool keepSimdTree, Action<hkRootLevelContainer, List<string>>? adjust,
+        bool dropBroken = false)
     {
         var notes = new List<string>();
         var ds3 = ReadDs3(ds3Hkx);
+        if (dropBroken)
+            DropBroken(ds3, notes);
         var er = Convert(ds3, template ?? ErCollisionTemplate.Default, keepSimdTree, notes);
+        adjust?.Invoke(er, notes);
 
         var before = Decode(ds3);
         var after = Decode(er);
@@ -63,7 +79,10 @@ public static class CollisionPort
                 reread = Read(bytes);
             }
         Compare(before, Decode(reread));
-        return new Result(bytes, after.Count, after.Sum(b => b.Triangles.Count), notes);
+        int convex = Bodies(reread).Count(b => b.m_shape is hknpConvexPolytopeShape);
+        if (convex != Bodies(er).Count(b => b.m_shape is hknpConvexPolytopeShape))
+            throw new InvalidDataException("a convex body did not survive writing the file");
+        return new Result(bytes, Bodies(reread).Count(), after.Sum(b => b.Triangles.Count), notes) { Convex = convex };
     }
 
     /// <summary>
@@ -300,8 +319,35 @@ public static class CollisionPort
         },
     };
 
+    private static void DropBroken(Ds3.hkRootLevelContainer root, List<string> notes)
+    {
+        foreach (var system in (root.m_namedVariants ?? []).Select(v => v.m_variant).OfType<Ds3.hknpPhysicsSceneData>().SelectMany(s => s.m_systemDatas ?? []))
+            system.m_bodyCinfos?.RemoveAll(body =>
+            {
+                if (body.m_shape is not Ds3.hknpCompressedMeshShape { m_data: { } data })
+                    return false;
+                try
+                {
+                    DecodeTree(Mirror(data.m_meshTree));
+                    return false;
+                }
+                catch (Exception ex) when (ex is ArgumentOutOfRangeException or IndexOutOfRangeException)
+                {
+                    notes.Add($"body {body.m_name}: its mesh points past its vertices (a placeholder), left out");
+                    return true;
+                }
+            });
+    }
+
+    /// <summary>Every body of every physics system in a converted file.</summary>
+    public static IEnumerable<hknpPhysicsSystemData.bodyCinfoWithAttachment> Bodies(hkRootLevelContainer root) =>
+        root.m_namedVariants.Select(v => v.m_variant).OfType<hknpPhysicsSceneData>()
+            .SelectMany(s => s.m_systemDatas).SelectMany(s => s?.m_bodyCinfos ?? []).Where(b => b is not null);
+
     private static hknpShape? ConvertShape(Ds3.hknpShape? shape, ErCollisionTemplate template, bool keepSimdTree, List<string> notes)
     {
+        if (shape is Ds3.hknpConvexPolytopeShape convex)
+            return ConvertConvex(convex);
         if (shape is not Ds3.hknpCompressedMeshShape mesh || mesh.m_data is null)
             return null;
 
@@ -328,6 +374,64 @@ public static class CollisionPort
             notes.Add("plain hknpCompressedMeshShape (no hit materials) converted as fsnpCustomParamCompressedMeshShape");
         }
         return er;
+    }
+
+    /// <summary>
+    /// A DS3 convex hull (hknpConvexPolytopeShape: a door leaf, a lever, a crate; 31 of the first build's DS3 objects
+    /// had only these and got no collision, "no mesh shape") as Elden Ring's. Both versions hold the same arrays: the
+    /// hull's vertices (W carries each vertex's number as 0x3F000000 | index in both), one plane per face, the faces
+    /// and their vertex indices. Havok 2014 pads the planes to a multiple of four; Elden Ring's own hulls (the door
+    /// leaf of AEG219_000, an hknpBoxShape) keep one per face, so the padding is dropped. The shape flags are DS3's
+    /// (the same bits mean the same in both: convex, polytope, interior triangles, support plane by normal, small
+    /// face indices) plus IS_SDF_EDGE_COLLISION_ENABLED, which every Elden Ring hull read has. The connectivity table
+    /// (edge links, used for welding) is left out: Havok treats it as optional.
+    /// </summary>
+    public static hknpConvexPolytopeShape ConvertConvex(Ds3.hknpConvexPolytopeShape ds3)
+    {
+        var faces = ds3.m_faces ?? [];
+        var vertices = (ds3.m_vertices ?? []).Select((v, i) =>
+        {
+            // Keep DS3's own W when it already is the index; otherwise write it (support queries return it).
+            var bits = BitConverter.SingleToInt32Bits(v.W);
+            return (bits & ~0xFFFF) == 0x3F000000 ? v : new Vector4(v.X, v.Y, v.Z, BitConverter.Int32BitsToSingle(0x3F000000 | i));
+        }).ToList();
+        var er = new hknpConvexPolytopeShape
+        {
+            m_flags = (hknpShape.FlagsEnum)ds3.m_flags | hknpShape.FlagsEnum.IS_SDF_EDGE_COLLISION_ENABLED,
+            m_type = hknpShapeType.Enum.CONVEX_POLYTOPE,
+            m_numShapeKeyBits = ds3.m_numShapeKeyBits,
+            m_dispatchType = hknpCollisionDispatchType.Enum.CONVEX,
+            m_convexRadius = ds3.m_convexRadius,
+            m_userData = ds3.m_userData,
+            m_maxAllowedPenetration = MaxPenetration(vertices),
+            m_vertices = vertices,
+            m_planes = (ds3.m_planes ?? []).Take(Math.Max(faces.Count, 1)).ToList(),
+            m_indices = [.. ds3.m_indices ?? []],
+        };
+        foreach (var f in faces)
+            er.m_faces.Add(new hknpConvexPolytopeShape.Face { m_firstIndex = f.m_firstIndex, m_numIndices = f.m_numIndices, m_minHalfAngle = f.m_minHalfAngle });
+        if (vertices.Count < 4 || er.m_faces.Count < 4 || er.m_planes.Count < er.m_faces.Count)
+            throw new InvalidDataException($"convex hull with {vertices.Count} vertices, {er.m_faces.Count} faces and {er.m_planes.Count} planes");
+        return er;
+    }
+
+    /// <summary>
+    /// How far another body may sink into the hull before Havok pushes it out. Elden Ring's door leaf (10 cm thick)
+    /// allows 1.3 cm; this gives 40% of the hull's smallest half-size, kept between 5 mm and 10 cm.
+    /// </summary>
+    private static float MaxPenetration(IReadOnlyList<Vector4> vertices)
+    {
+        if (vertices.Count == 0)
+            return 0.05f;
+        var min = new Vector3(float.MaxValue);
+        var max = new Vector3(float.MinValue);
+        foreach (var v in vertices)
+        {
+            min = Vector3.Min(min, new Vector3(v.X, v.Y, v.Z));
+            max = Vector3.Max(max, new Vector3(v.X, v.Y, v.Z));
+        }
+        var half = (max - min) / 2;
+        return Math.Clamp(0.4f * MathF.Min(half.X, MathF.Min(half.Y, half.Z)), 0.005f, 0.1f);
     }
 
     private static hkBitField ConvertBitField(Ds3.hkBitField? bits)
