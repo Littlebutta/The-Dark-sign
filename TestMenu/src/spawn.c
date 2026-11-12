@@ -447,6 +447,14 @@ static int read_player_place(uintptr_t player, float pos[3], float quat[4])
            read_mem(physics + PHYSICS_ORIENTATION, quat, 4 * sizeof(float));
 }
 
+int dks_player_position(float pos[3])
+{
+    dks_spawn_scan();
+    uintptr_t player = main_player(world_chr_man());
+    float quat[4];
+    return player && read_player_place(player, pos, quat);
+}
+
 static void spawn_watch(void);
 
 static void track(uintptr_t chr, uint32_t entity)

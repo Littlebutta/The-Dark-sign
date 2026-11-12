@@ -20,15 +20,22 @@ public static class MsbPort
     public sealed class Options
     {
         /// <summary>
-        /// Draw every part from everywhere (all display and draw groups on). DS3 and Elden Ring both hide parts by
-        /// group masks, but Elden Ring's three mask arrays are not confirmed to mean what DS3's do, and a wrong mask
-        /// hides the map. Off: DS3's masks are copied by position (DrawGroups -> DisplayGroups and so on).
+        /// DS3's culling (default): map pieces, collisions and objects carry DS3's draw and display groups in Elden
+        /// Ring's real group fields (<see cref="MapDrawGroups"/>), so the game draws only what DS3 drew from where the
+        /// player stands. Off (fallback "map-groups" B): every part is drawn from everywhere, as up to 1.0.4xx.
+        /// Enemies and player points are drawn from everywhere either way (no vanilla Elden Ring enemy carries groups).
+        /// </summary>
+        public bool Ds3Culling { get; init; } = true;
+
+        /// <summary>
+        /// Enemies and player points (and, without <see cref="Ds3Culling"/>, collisions) get every group on. Off: they
+        /// get DS3's groups too.
         /// </summary>
         public bool AllVisible { get; init; } = true;
 
         /// <summary>
         /// No group masks at all (every array zero), the way JortPob's parts and the colosseum's own parts have them.
-        /// Wins over <see cref="AllVisible"/>. Fallback "map-groups" C.
+        /// Wins over <see cref="Ds3Culling"/> and <see cref="AllVisible"/>. Fallback "map-groups" C.
         /// </summary>
         public bool NoGroups { get; init; }
 
@@ -116,10 +123,10 @@ public static class MsbPort
         {
             var part = (MSBE.Part.Collision)collisionTemplate.DeepCopy();
             CopyCommon(src, part, ds3Id, erId);
-            ApplyGroups(src, part.Unk1, options);
+            ApplyCollisionGroups(src, part.Unk1, options);
             if (part.Unk2 is { } unk2)
                 for (int i = 0; i < unk2.DispGroups.Length; i++)
-                    unk2.DispGroups[i] = options.NoGroups ? 0 : options.AllVisible ? 0xFFFFFFFF : i < src.DispGroups.Length ? src.DispGroups[i] : 0;
+                    unk2.DispGroups[i] = options.NoGroups ? 0 : Culls(options) || !options.AllVisible ? (i < src.DispGroups.Length ? src.DispGroups[i] : 0) : 0xFFFFFFFF;
             part.HitFilterID = HitFilter(src.HitFilterID, options.Ds3HitFilters);
             if (part.HitFilterID != (MSBE.Part.Collision.HitFilterType)src.HitFilterID)
                 remapped.Add(src.Name);
@@ -148,7 +155,7 @@ public static class MsbPort
             }
             var part = (MSBE.Part.ConnectCollision)connectTemplate.DeepCopy();
             CopyCommon(src, part, ds3Id, erId);
-            ApplyGroups(src, part.Unk1, options);
+            ApplyCollisionGroups(src, part.Unk1, options);
             part.CollisionName = src.CollisionName;
             part.MapID = [(byte)to.Area, (byte)to.Block, (byte)to.Region, (byte)to.Index];
             msb.Parts.ConnectCollisions.Add(part);
@@ -184,6 +191,10 @@ public static class MsbPort
                       + (guarded.Count > 0 ? $"; passed over with an enemy within {StartClearance:F0} m: {string.Join(", ", guarded)}" : "")
                       + (Guarded(ds3, start) ? "; every point has an enemy beside it" : ""));
         }
+
+        if (!Culls(options))
+            notes.Add(options.NoGroups ? "draw groups: none (--no-groups); every piece is drawn from everywhere"
+                : "draw groups: off (--all-visible); every piece is drawn from everywhere, nothing is culled");
 
         // Elden Ring's MSBs have one layer table entry list and reference models by index; SoulsFormats rebuilds
         // indices from names on write.
@@ -317,55 +328,39 @@ public static class MsbPort
         return underscore >= 0 && int.TryParse(name[(underscore + 1)..], out var n) ? n : 0;
     }
 
-    private static void ClearGroups(MSBE.Part.UnkStruct1? unk1)
-    {
-        if (unk1 is null)
-            return;
-        Array.Clear(unk1.DisplayGroups);
-        Array.Clear(unk1.DrawGroups);
-        Array.Clear(unk1.CollisionMask);
-        unk1.Condition1 = 0;
-        unk1.Condition2 = 0;
-    }
+    /// <summary>Whether map pieces, collisions and objects get DS3's groups (<see cref="Options.Ds3Culling"/>).</summary>
+    public static bool Culls(Options options) => options.Ds3Culling && !options.NoGroups;
 
     /// <summary>
-    /// Map pieces carry no group masks unless DS3's are asked for: every part the colosseums draw (483 assets) has
-    /// all three arrays zero with both conditions 0, and so do JortPob's map pieces. All-ones masks, which draw
-    /// enemies, are not a state any vanilla map piece is in.
+    /// Map pieces and objects: DS3's groups when culling (<see cref="MapDrawGroups"/>), else no masks, as every part the
+    /// colosseums draw (483 assets) and JortPob's map pieces have them, which Elden Ring draws from everywhere.
     /// </summary>
     internal static void ApplyPieceGroups(MSB3.Part src, MSBE.Part.UnkStruct1? unk1, Options options)
     {
-        if (options.NoGroups || options.AllVisible)
-            ClearGroups(unk1);
+        if (Culls(options))
+            MapDrawGroups.Set(unk1, src.DispGroups, src.DrawGroups);
+        else
+            MapDrawGroups.Clear(unk1);
+    }
+
+    /// <summary>Collisions: what standing on them shows is DS3's DispGroups when culling; otherwise everything.</summary>
+    internal static void ApplyCollisionGroups(MSB3.Part src, MSBE.Part.UnkStruct1? unk1, Options options)
+    {
+        if (Culls(options))
+            MapDrawGroups.Set(unk1, src.DispGroups, src.DrawGroups);
         else
             ApplyGroups(src, unk1, options);
     }
 
+    /// <summary>Enemies and player points: every group on (drawn from everywhere), DS3's groups when <see cref="Options.AllVisible"/> is off.</summary>
     internal static void ApplyGroups(MSB3.Part src, MSBE.Part.UnkStruct1? unk1, Options options)
     {
-        if (unk1 is null)
-            return;
         if (options.NoGroups)
-        {
-            ClearGroups(unk1);
-            return;
-        }
-        if (options.AllVisible)
-        {
-            Array.Fill(unk1.DisplayGroups, 0xFFFFFFFF);
-            Array.Fill(unk1.DrawGroups, 0xFFFFFFFF);
-            Array.Fill(unk1.CollisionMask, 0xFFFFFFFF);
-            return;
-        }
-        // By position in the part struct: DS3 Draw/Disp/Backread -> Elden Ring Display/Draw/CollisionMask.
-        Array.Clear(unk1.DisplayGroups);
-        Array.Clear(unk1.DrawGroups);
-        Array.Clear(unk1.CollisionMask);
-        src.DrawGroups.AsSpan(0, Math.Min(8, src.DrawGroups.Length)).CopyTo(unk1.DisplayGroups);
-        src.DispGroups.AsSpan(0, Math.Min(8, src.DispGroups.Length)).CopyTo(unk1.DrawGroups);
-        src.BackreadGroups.AsSpan(0, Math.Min(8, src.BackreadGroups.Length)).CopyTo(unk1.CollisionMask);
-        // Vanilla parts with masks have Condition2 = 1 (340 of Stormveil's 343 map pieces); parts without have 0.
-        unk1.Condition2 = (byte)(unk1.DisplayGroups.Concat(unk1.DrawGroups).Any(g => g != 0) ? 1 : 0);
+            MapDrawGroups.Clear(unk1);
+        else if (options.AllVisible)
+            MapDrawGroups.SetAll(unk1);
+        else
+            MapDrawGroups.Set(unk1, src.DispGroups, src.DrawGroups);
     }
 
     internal static void AddModel<T>(List<T> models, string name, T? template, MapId erId) where T : MSBE.Model, new()

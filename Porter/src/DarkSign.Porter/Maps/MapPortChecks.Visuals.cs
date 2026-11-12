@@ -453,7 +453,7 @@ public static partial class MapPortChecks
         Expect(MapValidate.CheckPieceDraw(host.Parts.MapPieces[0]) is not null, "the validator rejects a piece that names no row");
 
         // DS3's masks, when asked for, come with Condition2 as vanilla parts with masks have it.
-        var masked = MsbPort.Convert(SyntheticDs3(), host, Ds3Id, ErId, new MsbPort.Options { AllVisible = false });
+        var masked = MsbPort.Convert(SyntheticDs3(), host, Ds3Id, ErId, new MsbPort.Options());
         foreach (var p in masked.Msb.Parts.MapPieces)
             Expect(MapValidate.CheckPieceDraw(p) is null, "masks never come without Condition2");
 

@@ -82,6 +82,11 @@ public static class CollisionPort
         int convex = Bodies(reread).Count(b => b.m_shape is hknpConvexPolytopeShape);
         if (convex != Bodies(er).Count(b => b.m_shape is hknpConvexPolytopeShape))
             throw new InvalidDataException("a convex body did not survive writing the file");
+        // HKLib's reader resolves hkRelArrays by itself, so the read-back above can't see what the game sees: the game
+        // only resolves the hkRelArray fields the patch list names (1.0.410 crashed on every DS3 map without them).
+        if (!xml && HavokRelArrays.Check(bytes, RelArrayFields(er)) is { Count: > 0 } relProblems)
+            throw new InvalidDataException("convex hulls the game can't load: " + string.Join("; ", relProblems.Take(3))
+                                           + (HavokRelArrays.Installed ? "" : $" (HKLib hook not installed: {HavokRelArrays.Failure})"));
         return new Result(bytes, Bodies(reread).Count(), after.Sum(b => b.Triangles.Count), notes) { Convex = convex };
     }
 
@@ -338,6 +343,12 @@ public static class CollisionPort
                 }
             });
     }
+
+    /// <summary>Non-empty hkRelArrays (hull vertices, planes, faces, indices) of the file's distinct convex shapes.</summary>
+    public static int RelArrayFields(hkRootLevelContainer root) =>
+        Bodies(root).Select(b => b.m_shape).OfType<hknpConvexShape>().Distinct().Sum(s =>
+            (s.m_vertices.Count > 0 ? 1 : 0)
+            + (s is hknpConvexPolytopeShape p ? (p.m_planes.Count > 0 ? 1 : 0) + (p.m_faces.Count > 0 ? 1 : 0) + (p.m_indices.Count > 0 ? 1 : 0) : 0));
 
     /// <summary>Every body of every physics system in a converted file.</summary>
     public static IEnumerable<hknpPhysicsSystemData.bodyCinfoWithAttachment> Bodies(hkRootLevelContainer root) =>

@@ -332,8 +332,9 @@ Not changed, and the next suspects if a map still hitches:
   the game parses). JortPob ships XML and calls binary "worse in engine" without saying how; fallback
   `map-collision` B wrote binary and was untested in game (binary is the default since 1.0.31x, see below).
 - Every map piece draws from everywhere (no draw groups, unlimited draw distance, no detail switch by distance),
-  including DS3's far stand-in pieces. DS3 culls by draw group (`map-groups` B, whose mapping onto Elden Ring's
-  three mask arrays is unconfirmed), and its models carry lower detail triangle lists the row never switches to
+  including DS3's far stand-in pieces. DS3 culls by draw group (`map-groups` B up to 1.0.410 wrote DS3's masks into
+  Elden Ring's alternate group fields and never culled; since this PR DS3's groups are the default, see
+  `Maps/MapDrawGroups.cs`), and its models carry lower detail triangle lists the row never switches to
   (counted on the `load:` line).
 - Enemies that can't find a path (the navmesh's links are a separate problem) ask again every few seconds.
 
@@ -522,6 +523,13 @@ o300500, o300510 and o400340 against Elden Ring's door AEG219_000 in a cloud thr
   `ObjectAnims.MovingBodies`). DS3 convex hulls (door leaves, levers; 31 of the first build's still objects had only
   these and got no collision) now convert (`CollisionPort.ConvertConvex`). A body whose compressed mesh points past
   its vertices (the placeholder frames of o400340 and o300500) is left out instead of failing the file.
+- **Hull arrays in the patch list (1.0.410 crash).** A convex hull keeps its vertices, planes, faces and indices in
+  hkRelArrays. In a binary tagfile each one holds the number of the item with its elements, and the game resolves it
+  into a count and a distance only if the file's patch list (PTCH) names the field; Elden Ring's door aeg219_000_l
+  names all four. HKLib never listed them, so 1.0.410 crashed loading every DS3 map (eldenring.exe+0x188434b, the
+  hull's set-up reading "vertices" on top of the shape). `HavokRelArrays` hooks HKLib's array writer once for the
+  whole porter so every hkRelArray it writes is a patch, and `CollisionPort.Convert` refuses a file whose hull arrays
+  the patch list misses (map-selftest "doors: a written convex hull lists ...").
 - **Rows.** Moving assets get behaviorType 0 (Elden Ring's door and lift have collision and 0) and isMoveObj from
   DS3's ObjectParam (lifts: 304822, 342400, 404822...; Elden Ring's lift 219020 has it). Every DS3 ObjActParam row is
   copied at 70,000,000 + the DS3 ID (Elden Ring shares 49 of DS3's 118 IDs and has nothing in 70-75 million) as a
