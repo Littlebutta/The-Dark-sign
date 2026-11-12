@@ -251,7 +251,7 @@ public sealed class DropPort
         {
             foreach (var (ds3, er) in maps)
                 if (ds3.OwnsDs3Id(flag))
-                    return MapFlags.Common ? flags.LocalFlag(flag) : ds3.MoveEntity((int)flag, er);
+                    return MapFlags.Move(flags, ds3, er, flag);
             return flags.Flag(flag);
         };
     }

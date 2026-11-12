@@ -654,9 +654,11 @@ public static class Fallbacks
         new("map-flags", "DS3 maps", "Where the DS3 maps' own flags are kept", Stage.Build,
             "In a DS3 map, bosses come back, opened doors and shortcuts close again or picked-up items return after a reload, or the pre-flight check says a map flag block is MISSING.",
         [
-            new("A", "The slot map's own flags (default)", "A DS3 map's flags move with it into its Elden Ring slot's map flags (e.g. 4500xxxx for m45_00), the way Elden Ring's legacy dungeons number theirs."),
+            new("A", "The slot map's own flags where the game keeps them (default)", "A DS3 map's flags move with it into its Elden Ring slot's map flags (e.g. 4500xxxx for m45_00), the way Elden Ring's legacy dungeons number theirs, wherever the game keeps that block; flags of blocks it doesn't keep (all of the Painted World's m19_70, each colosseum's 7th block) get numbers in JortPob's saved blocks, as with B."),
             new("B", "JortPob's saved blocks", "The maps' own flags get new numbers in the saved ranges of the bottom-edge sea tiles (1030294000 and up), the blocks JortPob's Morrowind port keeps all its flags in (DARKSIGN_MAP_FLAGS=common). Saves made with A lose their DS3 map progress.")
                 { PorterEnv = Env("DARKSIGN_MAP_FLAGS", "common") },
+            new("C", "Every flag in the slot", "As up to 1.0.422: every DS3 map flag moves into its slot's map flags, including blocks the game doesn't keep (DARKSIGN_MAP_FLAGS=slot), where the Painted World's flags were never set and Friede's fight and cutscene pot broke.")
+                { PorterEnv = Env("DARKSIGN_MAP_FLAGS", "slot") },
         ]),
 
         // ---- Co-op ----
