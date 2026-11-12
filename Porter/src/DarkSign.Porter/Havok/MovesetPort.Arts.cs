@@ -1190,8 +1190,11 @@ public static class ArtSelfTest
         // DS3 hks markers in TAE SpEffect events: kept only when Elden Ring names the ID the same, else dropped; other
         // effects are kept when Elden Ring's hks checks them, else ported.
         Check(MovesetPort.TaeEffectFate(100280, "[HKS] Is Charging Heavy Attack", "[HKS] Is Charging Heavy Attack", true) == MovesetPort.TaeEffect.Keep, "effects: a marker both games name the same is kept");
-        Check(MovesetPort.TaeEffectFate(100500, "[HKS] Non-generator Transition", "[HKS] Sword Arts - Raptor Dodge", true) == MovesetPort.TaeEffect.Drop, "effects: a DS3 marker Elden Ring's hks reads as something else is dropped");
-        Check(MovesetPort.TaeEffectFate(100490, "[HKS] Non-generator Transition - Friede's Great Scythe", null, false) == MovesetPort.TaeEffect.Drop, "effects: a DS3 marker Elden Ring lacks is dropped, not ported");
+        Check(MovesetPort.TaeEffectFate(100500, "[HKS] Non-generator Transition", "[HKS] Sword Arts - Raptor Dodge", true) == MovesetPort.TaeEffect.Port, "effects: a DS3 marker Elden Ring's hks reads as something else is ported under a new ID, never kept");
+        Check(MovesetPort.TaeEffectFate(100420, "[HKS] Dragonhead Greatshield", null, false) == MovesetPort.TaeEffect.Port, "effects: a DS3 marker Elden Ring lacks is ported (its fields, e.g. a behaviour judge offset, still count)");
+        MovesetPort.DropMarkers = true;
+        Check(MovesetPort.TaeEffectFate(100490, "[HKS] Non-generator Transition - Friede's Great Scythe", null, false) == MovesetPort.TaeEffect.Drop, "effects: DARKSIGN_HKS_MARKERS=drop drops them as before");
+        MovesetPort.DropMarkers = Environment.GetEnvironmentVariable("DARKSIGN_HKS_MARKERS") == "drop";
         Check(MovesetPort.TaeEffectFate(31, "Counter damage (puncture)", "Behavior - Counter Frames", false) == MovesetPort.TaeEffect.Port, "effects: a real DS3 effect is ported");
         Check(MovesetPort.TaeEffectFate(6340, "Weapon Art - Stomp", "Toughness Unk - Damage Level Small", true) == MovesetPort.TaeEffect.Keep, "effects: a real effect the hks checks by ID is kept");
         // Node flags (ModelPort.SetNodeFlags): dummy owners, mesh node; a Disabled node is left alone.

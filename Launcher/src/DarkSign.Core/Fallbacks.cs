@@ -114,6 +114,8 @@ public static class Fallbacks
                 { PorterEnv = Env("DARKSIGN_TWOHAND_MAP", "0") },
             new("E", "A without the paired dual-wield set", "A, but a paired weapon's two-handed moves (Elden Ring 032xxx) take DS3's 034xxx two-handed entries, which import the class's one-handed swings, instead of DS3's own dual-wield attacks (033xxx) (DARKSIGN_PAIRED_2H=0). Builds up to 1.0.217 did this: the Ringed Knight pair two-handed like one Ultra Greatsword.")
                 { PorterEnv = Env("DARKSIGN_PAIRED_2H", "0") },
+            new("F", "No DS3 moves through a named file", "As A, but a DS3 move whose entry plays another entry's file (the Moonlight Greatsword's heavies, Smough's third and fourth R1) keeps Elden Ring's animation (DARKSIGN_NAMED_FILES=0), as in builds up to 1.0.385. Use it if such moves play wrong.")
+                { PorterEnv = Env("DARKSIGN_NAMED_FILES", "0") },
         ]),
         new("combo-windows", "Weapon movesets", "When the next attack can start (R1 chains)", Stage.Build,
             "R1 doesn't chain to the second swing, swings are cut short, or you can act too early or too late.",
@@ -218,6 +220,8 @@ public static class Fallbacks
                 { PorterEnv = Env("DARKSIGN_EMISSIVE", "0") },
             new("D", "Show parts DS3 hides by animation", "As A, but parts DS3 hides with the weapon's idle animation are drawn (DARKSIGN_HIDDEN_PARTS=0), as in builds up to 1.0.378: the Black Blade, Chaos Blade, Darkdrift, Frayed Blade and Washing Pole show their scabbard along the blade. Use it if part of a ported weapon has gone missing.")
                 { PorterEnv = Env("DARKSIGN_HIDDEN_PARTS", "0") },
+            new("E", "Keep DS3's node rotations", "As A, but ported weapon models keep DS3's node transforms (DARKSIGN_BAKE_NODES=0), as in builds up to 1.0.385. With A they are baked into the meshes and dummy polys, so shields and greatshields hold the angle DS3 gives them. Use it if a weapon is held at an odd angle or its hit/effect points moved.")
+                { PorterEnv = Env("DARKSIGN_BAKE_NODES", "0") },
         ]),
 
         // ---- Weapon sounds and effects ----
@@ -273,6 +277,8 @@ public static class Fallbacks
                 { PorterEnv = Env("DARKSIGN_ART_POOL", "0") },
             new("F", "DS3 arts, most weapons first", "Same as A, but the art IDs go to the arts serving the most weapons first (DARKSIGN_ART_POOL=weapons): about 25 more weapons do their DS3 art (the Black Blade keeps its Hold), but Demon's Scar, the Frayed Blade and five other one-weapon arts take Elden Ring's Ash of War of the same kind.")
                 { PorterEnv = Env("DARKSIGN_ART_POOL", "weapons") },
+            new("G", "Drop DS3's [HKS] marker effects", "As A, but a DS3 move's \"[HKS]\" marker SpEffect that Elden Ring doesn't know is left out (DARKSIGN_HKS_MARKERS=drop), as in builds up to 1.0.385. With A it is ported under a new ID, so its fields still work (the Dragonhead Greatshield's breath judge). Use it if a move does something odd (a dodge, a stance) since then.")
+                { PorterEnv = Env("DARKSIGN_HKS_MARKERS", "drop") },
             new("off", "Off (Elden Ring Ashes of War)", "Ported weapons keep their template's Elden Ring Ash of War (DARKSIGN_WEAPON_ARTS=0), as in builds up to 1.0.169.")
                 { PorterEnv = Env("DARKSIGN_WEAPON_ARTS", "0") },
         ]),

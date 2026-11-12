@@ -209,6 +209,9 @@ public sealed partial class EffectModelPort
         // FLVER 0x2001A stores a skeleton set and flags each node with its role; DS3's 0x20014 has neither.
         flver.Skeletons = new FLVER2.SkeletonSet { BaseSkeleton = ModelPort.SkeletonFromNodes(flver), AllSkeletons = ModelPort.SkeletonFromNodes(flver) };
         ModelPort.SetNodeFlags(flver);
+        // Culling boxes in Elden Ring's form (centre / half size / rotation), from the vertices: DS3's corners were
+        // carried as they were, with a zero centre.
+        WeaponNodes.SetBounds(flver);
 
         // Elden Ring vertices carry one tangent, and its lit effect materials read one: DS3's unlit models have none.
         foreach (var layout in flver.BufferLayouts)

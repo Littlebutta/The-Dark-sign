@@ -126,6 +126,8 @@ public static partial class MovesetPort
 
     internal enum TaeEffect { Keep, Drop, Port }
 
+    internal static bool DropMarkers = Environment.GetEnvironmentVariable("DARKSIGN_HKS_MARKERS") == "drop";
+
     /// <summary>
     /// What becomes of a SpEffect ID a DS3 move casts (TAE 66/67/331...). Both games' scripts (hks) look for marker
     /// effects named "[HKS] ...", and number them differently: DS3's 100500 "[HKS] Non-generator Transition" (on
@@ -139,8 +141,12 @@ public static partial class MovesetPort
     {
         static string Norm(string? n) => Regex.Replace(n ?? "", @"\s+", " ").Trim().ToLowerInvariant();
         bool marker = Norm(ds3Name).StartsWith("[hks]", StringComparison.Ordinal);
+        // A DS3 marker Elden Ring's hks doesn't know is ported under a new ID (by default): its ID meant something else
+        // there (100500, see above), but its fields still work. DS3's 100420 "[HKS] Dragonhead Greatshield" adds 100
+        // to the behaviour judge (addBehaviorJudgeId_add), which picks Dragon Roar's breath; dropped (up to 1.0.385),
+        // the art played the template's effect. DARKSIGN_HKS_MARKERS=drop drops them again.
         if (marker)
-            return erName is not null && Norm(ds3Name) == Norm(erName) ? TaeEffect.Keep : TaeEffect.Drop;
+            return erName is not null && Norm(ds3Name) == Norm(erName) ? TaeEffect.Keep : DropMarkers ? TaeEffect.Drop : TaeEffect.Port;
         return hksChecksId ? TaeEffect.Keep : TaeEffect.Port;
     }
 
@@ -175,6 +181,7 @@ public static partial class MovesetPort
     /// <summary>An event group of each type from anywhere in Elden Ring's player TAE (see MergeEvents.TryPlayerGroup).</summary>
     private static Dictionary<int, TAE.EventGroup> PlayerEffectGroups = [];
     private static int _effectGroupsAdded;
+    private static readonly bool NamedFiles = Environment.GetEnvironmentVariable("DARKSIGN_NAMED_FILES") != "0";
     private static readonly bool Ds3JumpTables = Environment.GetEnvironmentVariable("DARKSIGN_DS3_JUMPTABLES") == "1";
     // Event types Elden Ring keeps from its own template animation: sounds, effects and other references to IDs that
     // DS3 numbers differently. Every other type comes from DS3 when both games lay it out the same.
@@ -560,7 +567,8 @@ public static partial class MovesetPort
                     .Select(s => (Section: s, Tae: BinderLeaf(ds3Main, $"a{s:D2}.tae") is { } f ? TAE.Read(f.Bytes) : null))
                     .Where(t => t.Tae is not null).ToList();
 
-                int converted = 0, copied = 0, dualMoves = 0;
+                int converted = 0, copied = 0, dualMoves = 0, namedFileMoves = 0;
+                var missingFiles = new List<string>();
                 // A paired weapon's two-handed attacks are DS3's dual-wield set (033xxx), not its 034xxx two-handed
                 // set: see PairedTwoHanded.
                 bool pairedGroup = PairedTwoHanded && group.Any(IsPairedPort);
@@ -591,6 +599,20 @@ public static partial class MovesetPort
                     if (source is not null && unfitArts.Count > 0 && spareJudges.Count + borrowed.Count > 0)
                         source = WithOwnBullets(source, ds3Id);
                     var ds3File = source is { } found ? ds3Hkx.Read(found.HkxName) : null;
+                    // A DS3 entry that plays another entry's file (its header names it: the Moonlight Greatsword's
+                    // a158_030320 plays a025_030320 with the wave added, Smough's a070_030020 plays 030010's motion)
+                    // has no file under its own name. Up to 1.0.385 such a move kept Elden Ring's animation and lost
+                    // its DS3 events (the wave, Smough's third and fourth R1); the weapon arts already looked for the
+                    // named file. DARKSIGN_NAMED_FILES=0 goes back to that.
+                    if (ds3File is null && NamedFiles && source is { FileName: { } named } && !string.Equals(named, source.HkxName, StringComparison.OrdinalIgnoreCase)
+                        && ds3Hkx.Read(named) is { } namedBytes)
+                    {
+                        ds3File = namedBytes;
+                        source = source with { HkxName = named };
+                        namedFileMoves++;
+                    }
+                    else if (source is not null && ds3File is null)
+                        missingFiles.Add(source.HkxName);
                     if (group.Any(p => p.Ds3Id == 10180000) && erToDs3.ContainsKey(erId))
                         Console.WriteLine($"moveset: Friede's {erId} <- DS3 {ds3Id}: " +
                                           (source is null ? "not in its DS3 sections" : ds3File is null ? $"{source.HkxName} NOT FOUND" : $"{source.HkxName}, {source.Events.Count} events"));
@@ -743,7 +765,9 @@ public static partial class MovesetPort
                                   (lean ? $"lean (every other move plays from Elden Ring's {templateSection}), " : $"{copied} kept from Elden Ring ({(CopyErAnims ? "copied" : "imported")}), ") +
                                   (movesShared > 0 ? $"{movesShared} of them play another moveset's file, " : "") +
                                   $"{registered} behaviour clips, {nextInternalId - firstClipId} animation IDs, {erAnims.Files.Count} files in the binder, {(DateTime.UtcNow - started).TotalSeconds:0}s" +
-                                  (pairedGroup ? $"; paired: {dualMoves} two-handed moves from DS3's dual-wield set (033xxx)" : ""));
+                                  (pairedGroup ? $"; paired: {dualMoves} two-handed moves from DS3's dual-wield set (033xxx)" : "") +
+                                  (namedFileMoves > 0 ? $"; {namedFileMoves} moves play the DS3 file their entry names" : "") +
+                                  (missingFiles.Count > 0 ? $"; {missingFiles.Count} DS3 moves have no file (kept Elden Ring's): {string.Join(" ", missingFiles.Distinct().Take(6))}" : ""));
             }
             // Any failure (HKLib, a converter's NullReference or IndexOutOfRange, ...) skips this moveset only: it used
             // to escape for anything but these types, which dropped every weapon's moveset and the effects and sounds.
