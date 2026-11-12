@@ -148,6 +148,7 @@ public static class ModelPort
                     Console.WriteLine($"models: {oldTag} -> {newTag}{(lod ? " LOD" : "")} {ItemText.Leaf(file.Name)}: hid {moved} vertices in meshes " +
                                       $"{string.Join(", ", hiddenMeshes)} on bones DS3's idle animation hides ({string.Join(", ", hiddenBones.Order())})");
                 ConvertFlver(flver, templateFlver, stem, oldTag, newTag, materials, Emissive(er));
+                FlverMaterialNumbers.Apply(flver);
                 files.Add(new BinderFile(file.Flags, file.ID, folder + leaf, flver.Write()));
             }
             else if (TPF.Is(file.Bytes))

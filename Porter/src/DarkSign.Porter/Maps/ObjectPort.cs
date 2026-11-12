@@ -437,6 +437,7 @@ public sealed class ObjectPort
 
         var lower = assetName.ToLowerInvariant();
         var binder = NewBinder(template);
+        FlverMaterialNumbers.Apply(flver);
         binder.Files.Add(new BinderFile(flags, 200, $@"N:\GR\data\INTERROOT_win64\asset\aeg\{lower[..6]}\{lower}\sib\{lower}.flver", flver.Write()));
         return new Converted(binder, flver, textures);
     }

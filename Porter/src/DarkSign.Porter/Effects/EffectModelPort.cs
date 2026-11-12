@@ -233,6 +233,7 @@ public sealed partial class EffectModelPort
                     vertex.Tangents.Add(new System.Numerics.Vector4(1, 0, 0, 1));
             }
         }
+        FlverMaterialNumbers.Apply(flver);
         return flver.Write();
     }
 }

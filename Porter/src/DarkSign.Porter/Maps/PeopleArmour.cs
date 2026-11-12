@@ -168,6 +168,7 @@ public sealed class PeopleArmour
                 // Material names and texture folders: the low-detail copy names its own materials (its textures are the _l ones).
                 materials.AddRange(Enemies.ChrModel.Convert(flver, templateFlver, newTag + (lod ? "_L" : ""), Rename,
                     $@"N:\GR\data\Model\parts\FullBody\{newTag}\tex\", plainMaterials: true, erNodes: true));
+                FlverMaterialNumbers.Apply(flver);
                 files.Add(new BinderFile(templateFlverFile.Flags, 200, folder + leaf, flver.Write()));
             }
             else if (TPF.Is(file.Bytes))

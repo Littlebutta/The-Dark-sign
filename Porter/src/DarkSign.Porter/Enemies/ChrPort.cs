@@ -1401,6 +1401,8 @@ public static partial class ChrPort
                   + (glowing > 0 ? ChrModel.Glowing > 0 ? $", {ChrModel.Glowing} glowing ones on Elden Ring's glowing material" + (glowing > ChrModel.Glowing ? $" ({glowing - ChrModel.Glowing} without their glow)" : "")
                       : $", {glowing} glowing ones drawn without their glow" : "") + ")"
                   + $"; node flags {string.Join(" ", flver.Nodes.GroupBy(node => (int)node.Flags).OrderBy(g => g.Key).Select(g => $"{g.Key}x{g.Count()}"))}");
+        if (FlverMaterialNumbers.Apply(flver) is > 0 and var numbered)
+            notes.Add($"{numbered} materials numbered as Elden Ring numbers them ({flver.Materials.Select(m => m.Index).Distinct().Count()} distinct)");
         templateFlverFile.Bytes = flver.Write();
         var texbnd = binders.Keys.Where(k => k.EndsWith(".texbnd.dcx", StringComparison.OrdinalIgnoreCase))
             .OrderBy(k => k.Contains("_h", StringComparison.OrdinalIgnoreCase) ? 0 : 1).FirstOrDefault();
