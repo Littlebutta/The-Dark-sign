@@ -295,8 +295,6 @@ public static class Fallbacks
                 { PorterEnv = Env("DARKSIGN_EFFECT_VISUALS", "0") },
             new("D", "No effects with 3D models", "As A, but DS3 effects that draw a 3D model (the Moonlight Greatsword's wave, Friede's ice) are left out (DARKSIGN_EFFECT_MODELS=0), as in builds up to 1.0.249. Try this first if the game crashes or shows a broken shape when such an effect plays.")
                 { PorterEnv = Env("DARKSIGN_EFFECT_MODELS", "0") },
-            new("E", "No animated effect models", "As A, but DS3 effects whose 3D model is animated (Demon's Scar's art) are left out (DARKSIGN_FX_ANIMATED_MODELS=0), as in builds up to 1.0.378. Try it if the game crashes or shows a broken shape when such an effect plays.")
-                { PorterEnv = Env("DARKSIGN_FX_ANIMATED_MODELS", "0") },
             new("E", "Every DS3 on-model effect", "As A, and Friede's Great Scythe keeps the frost mist DS3 plays on its main scythe at all times (DARKSIGN_RESIDENT_ALL=1), as in 1.0.249-1.0.255.")
                 { PorterEnv = Env("DARKSIGN_RESIDENT_ALL", "1") },
             new("F", "Projectile events as DS3 writes them", "As A, but the event that fires a projectile is copied from DS3 byte for byte (DARKSIGN_BULLET_EVENTS=ds3) instead of being rewritten in Elden Ring's layout, as in builds up to 1.0.271.")
@@ -305,6 +303,8 @@ public static class Fallbacks
                 { PorterEnv = Env("DARKSIGN_BULLET_BASE_ATK", "0") },
             new("H", "No projectiles for weapons built as their class", "As A, but a weapon whose own DS3 moves found no free motion category, and so is built as its class, loses the projectiles its own moves fire (DARKSIGN_BORROW_BULLETS=0), as in builds up to 1.0.282: the Moonlight Greatsword's charged heavy fired no wave.")
                 { PorterEnv = Env("DARKSIGN_BORROW_BULLETS", "0") },
+            new("I", "No animated effect models", "As A, but DS3 effects whose 3D model is animated (Demon's Scar's art) are left out (DARKSIGN_FX_ANIMATED_MODELS=0), as in builds up to 1.0.378. Try it if the game crashes or shows a broken shape when such an effect plays.")
+                { PorterEnv = Env("DARKSIGN_FX_ANIMATED_MODELS", "0") },
             new("off", "Off", "Neither (DARKSIGN_BULLETS=0 and DARKSIGN_EFFECT_VISUALS=0): only the effects in a move's own effect events show, as in builds up to 1.0.242.")
                 { PorterEnv = Env("DARKSIGN_BULLETS", "0", "DARKSIGN_EFFECT_VISUALS", "0") },
         ]),
