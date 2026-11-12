@@ -76,6 +76,8 @@ public sealed class CutsceneShape
     public Dictionary<int, (int ParentKind, int Hits, int Total)> ParentKind { get; } = new();
     public Dictionary<int, Signature> ResourceParams { get; } = new();
     public Dictionary<int, Signature> TimelineParams { get; } = new();
+    /// <summary>The player's own part timelines (c0000_*): their parameters can differ from other parts' (equipment display).</summary>
+    public Dictionary<int, Signature> PlayerTimelineParams { get; } = new();
     public Dictionary<int, Signature> EventParams { get; } = new();
     /// <summary>For each kind, in how many of Elden Ring's cutscenes it appears.</summary>
     public Dictionary<int, int> KindFiles { get; } = new();
@@ -132,6 +134,7 @@ public sealed class CutsceneShape
         var parents = new Dictionary<int, Dictionary<int, int>>();
         var resSig = new Dictionary<int, SigTally>();
         var tlSig = new Dictionary<int, SigTally>();
+        var playerSig = new Dictionary<int, SigTally>();
         var evSig = new Dictionary<int, SigTally>();
         var unk44 = new Dictionary<int, int>();
         int cuts = 0;
@@ -160,6 +163,8 @@ public sealed class CutsceneShape
                     var u = unk10.TryGetValue(tk, out var y) ? y : unk10[tk] = new();
                     u[tl.Unk10] = u.GetValueOrDefault(tl.Unk10) + 1;
                     Tally(tlSig, tk).Add(tl.Parameters);
+                    if (IsPlayer(mqb, tl))
+                        Tally(playerSig, tk).Add(tl.Parameters);
                     foreach (var ev in tl.Events)
                     {
                         int k = ev.ResourceIndex >= 0 && ev.ResourceIndex < mqb.Resources.Count ? mqb.Resources[ev.ResourceIndex].Unk48 : -1;
@@ -205,6 +210,7 @@ public sealed class CutsceneShape
         }
         foreach (var (k, t) in resSig) if (t.Best() is { } s) shape.ResourceParams[k] = s;
         foreach (var (k, t) in tlSig) if (t.Best() is { } s) shape.TimelineParams[k] = s;
+        foreach (var (k, t) in playerSig) if (t.Best() is { } s) shape.PlayerTimelineParams[k] = s;
         foreach (var (k, t) in evSig) if (t.Best() is { } s) shape.EventParams[k] = s;
         if (unk44.Count > 0)
         {
@@ -213,6 +219,11 @@ public sealed class CutsceneShape
         }
         return shape;
     }
+
+    /// <summary>Whether a timeline animates the player (its first event's resource is c0000_*).</summary>
+    public static bool IsPlayer(MQB mqb, MQB.Timeline tl) =>
+        tl.Events.FirstOrDefault(e => e.ResourceIndex >= 0 && e.ResourceIndex < mqb.Resources.Count) is { } ev
+        && mqb.Resources[ev.ResourceIndex].Name.StartsWith(CutscenePort.PlayerPart[..5], StringComparison.OrdinalIgnoreCase);
 
     private static bool SigHolds(Signature s) => s.Total >= RuleMinimum && (double)s.Hits / s.Total >= 0.9;
 
@@ -229,7 +240,8 @@ public sealed class CutsceneShape
             if (TimelineUnk10.TryGetValue(k, out var u)) sb.Append($" timeline Unk10 {u}{(u.Holds ? "" : "?")};");
             if (ParentKind.TryGetValue(k, out var p)) sb.Append($" parent kind {p.ParentKind} ({p.Hits}/{p.Total});");
             if (ResourceParams.TryGetValue(k, out var rs) && rs.Params.Count > 0) sb.Append($" resource params [{rs.Key}] ({rs.Hits}/{rs.Total});");
-            if (TimelineParams.TryGetValue(k, out var ts) && ts.Params.Count > 0) sb.Append($" timeline params [{ts.Key}] ({ts.Hits}/{ts.Total});");
+            if (TimelineParams.TryGetValue(k, out var ts) && ts.Params.Count > 0) sb.Append($" timeline params [{ts.Key}] ({ts.Hits}/{ts.Total}) typical {string.Join(" ", ts.Params.Select(p => $"{p.Name}={ValueKey(p.Typical)}"))};");
+            if (PlayerTimelineParams.TryGetValue(k, out var ps) && ps.Params.Count > 0) sb.Append($" player timeline params [{ps.Key}] ({ps.Hits}/{ps.Total}) typical {string.Join(" ", ps.Params.Select(p => $"{p.Name}={ValueKey(p.Typical)}"))};");
             if (EventParams.TryGetValue(k, out var es) && es.Params.Count > 0) sb.Append($" event params [{es.Key}] ({es.Hits}/{es.Total})");
             yield return sb.ToString();
         }
@@ -330,7 +342,9 @@ public sealed class CutsceneShape
                 }
                 if (TimelineParams.TryGetValue(tk, out var ts) && SigHolds(ts) && Differs(tl.Parameters, ts))
                 {
-                    tl.Parameters = Fit(tl.Parameters, ts);
+                    // The player's parameters take the values Elden Ring gives the player, where its lists match.
+                    var fit = IsPlayer(mqb, tl) && PlayerTimelineParams.TryGetValue(tk, out var ps) && ps.Key == ts.Key ? ps : ts;
+                    tl.Parameters = Fit(tl.Parameters, fit);
                     changed++;
                 }
                 foreach (var ev in tl.Events)
