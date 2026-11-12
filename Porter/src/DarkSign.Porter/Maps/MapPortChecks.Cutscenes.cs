@@ -11,6 +11,39 @@ public static partial class MapPortChecks
         yield return ("cutscenes: timelines keep Elden Ring's resource kinds and parameters, rename parts and move the map", CutsceneTimeline);
         yield return ("cutscenes: script lines play converted cutscenes in Elden Ring's forms; others are left out or keep their warp", CutsceneScriptLines);
         yield return ("cutscenes: CutsceneMapIdParam rows place each cutscene on its slot", CutsceneRows);
+        yield return ("cutscenes: the F1 Cutscenes tab's events warp to the map, then play the cutscene; its list names the characters", CutsceneMenuEvents);
+    }
+
+    private static void CutsceneMenuEvents()
+    {
+        var slot = MapId.Parse("m19_70_00_00");
+        var infos = new[]
+        {
+            new CutscenePort.Info("s45_00_0010", "s19_70_0010", slot, [], 12.5),
+            new CutscenePort.Info("s45_00_0000", "s19_70_0000", slot, ["c6010", "c6020"], 46),
+            new CutscenePort.Info("s30_00_0000", "s45_01_0000", MapId.Parse("m45_01_00_00"), [], 10), // map not ported: left out
+        };
+        var maps = new Dictionary<MapId, (string Name, uint StartEntity)> { [slot] = ("Painted World of Ariandel", 19700990u) };
+        var entries = CutsceneMenu.Entries(infos, maps, m => m == "c6020" ? "Sister Friede" : null);
+        Expect(entries.Count == 2 && entries[0].ErName == "s19_70_0000" && entries[0].Index == 0 && entries[1].Index == 1, "entries in name order, unported maps left out");
+        Expect(entries[0].Label == "Sister Friede, c6010" && entries[1].Label == "cutscene 0010", entries[0].Label + " / " + entries[1].Label);
+
+        var common = new EMEVD { Format = EMEVD.Game.Sekiro };
+        common.Events.Add(new EMEVD.Event(0, EMEVD.Event.RestBehaviorType.Default));
+        CutsceneMenu.AddEvents(common, entries);
+        CutsceneMenu.AddEvents(common, entries); // again: replaced, not doubled
+        var e = common.Events.Single(x => x.ID == CutsceneMenu.EventId(0));
+        Expect(common.Events.Count(x => CutsceneMenu.IsMenuEvent(x.ID)) == 2, "one event per cutscene");
+        Expect(common.Events[0].Instructions.Count(i => i.Bank == 2000) == 2, "started once each from the constructor");
+        var warp = e.Instructions.Single(i => i.Bank == 2003 && i.ID == 14);
+        Expect(warp.ArgData[0] == 19 && warp.ArgData[1] == 70 && BitConverter.ToUInt32(warp.ArgData, 4) == 19700990, "warps to the map's start point");
+        var play = e.Instructions.Single(i => i.Bank == 2002);
+        Expect(play.ID == 3 && BitConverter.ToInt32(play.ArgData, 0) == 19700000 && BitConverter.ToUInt32(play.ArgData, 8) == 10000, "plays the cutscene to the player");
+        Expect(e.Instructions.IndexOf(warp) < e.Instructions.IndexOf(play), "warp before play");
+        Expect(BitConverter.ToUInt32(e.Instructions[0].ArgData, 4) == CutsceneMenu.RequestFlag(0), "waits for its request flag");
+        var lines = CutsceneMenu.ListLines(entries).ToList();
+        Expect(lines.Count == 3 && lines[1] == $"s45_00_0000\ts19_70_0000\tPainted World of Ariandel\tSister Friede, c6010\t46\t{CutsceneMenu.RequestFlag(0)}", lines[1]);
+        Expect(CutsceneMenu.RequestFlag(0) == 1039292300 && CutsceneMenu.EventId(0) == 1039291300, "flag and event IDs");
     }
 
     private static void CutsceneIds()

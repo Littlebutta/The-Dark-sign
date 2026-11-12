@@ -647,9 +647,23 @@ public static partial class CutscenePort
     /// Converts every cutscene of the ported maps, writes them and their CutsceneMapIdParam rows into the mod, and
     /// returns DS3 cutscene ID -> Elden Ring ID for the event port (only cutscenes that converted and were written).
     /// </summary>
-    public static (Dictionary<int, int> Ported, string Summary) Port(PorterContext ctx, GameArchives ds3, GameArchives er, IReadOnlyList<MapInput> maps)
+    /// <summary>What the F1 menu shows of a converted cutscene: its slot, the DS3 characters in it (models other than
+    /// the player's, e.g. c6020 Friede) and its length.</summary>
+    public sealed record Info(string Ds3Name, string ErName, MapId Slot, IReadOnlyList<string> Characters, double Seconds);
+
+    /// <summary>The characters a DS3 timeline animates (part resources named cNNNN_NNNN), the player left out.</summary>
+    public static List<string> Characters(MQB mqb) =>
+        mqb.Resources.Where(r => r.Unk48 == 1 && r.Name.Length >= 5 && r.Name[0] == 'c' && r.Name[1..5].All(char.IsDigit) && r.Name[1..5] != "0000")
+            .Select(r => r.Name[..5]).Distinct(StringComparer.OrdinalIgnoreCase).Order(StringComparer.Ordinal).ToList();
+
+    public static (Dictionary<int, int> Ported, string Summary) Port(PorterContext ctx, GameArchives ds3, GameArchives er, IReadOnlyList<MapInput> maps) =>
+        Port(ctx, ds3, er, maps, out _);
+
+    public static (Dictionary<int, int> Ported, string Summary) Port(PorterContext ctx, GameArchives ds3, GameArchives er, IReadOnlyList<MapInput> maps,
+        out Dictionary<int, Info> infos)
     {
         var ported = new Dictionary<int, int>();
+        infos = [];
         var lines = new List<string>();
         if (!Enabled)
             return (ported, "cutscenes: off (DARKSIGN_CUTSCENES=0, fallback map-cutscenes B); cutscene lines in the scripts are left out");
@@ -681,6 +695,9 @@ public static partial class CutscenePort
                     File.WriteAllBytes(path, DCX.Compress(bnd.Write(), side.Compression));
                     ported[ds3Id] = erId;
                     rows.Add((erId, map.Slot.Er));
+                    var sourceMqb = MQB.Read(source.Files.First(f => f.Name.EndsWith(".mqb", StringComparison.OrdinalIgnoreCase)).Bytes);
+                    infos[ds3Id] = new Info(name, erName, map.Slot.Er, Characters(sourceMqb),
+                        sourceMqb.Framerate > 0 ? sourceMqb.Cuts.Sum(c => (double)c.Duration) / sourceMqb.Framerate : 0);
                     total.Mqb.Add(stats.Mqb);
                     total.Hkx.Add(stats.Hkx);
                     total.OtherFiles += stats.OtherFiles;
@@ -710,6 +727,7 @@ public static partial class CutscenePort
             {
                 lines.Add($"CutsceneMapIdParam: FAILED ({ex.Message}); the cutscenes are written but the scripts won't play them");
                 ported.Clear();
+                infos.Clear();
             }
         }
         if (total.Mqb.DroppedKinds.Count > 0)

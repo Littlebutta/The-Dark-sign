@@ -182,6 +182,9 @@ public static class EnemyPort
 
         public int Count => _byNpc.Count + _byModel.Count;
 
+        /// <summary>A ported DS3 model's name (c6020 -> Sister Friede), or null.</summary>
+        public string? NameOf(string ds3Model) => _byModel.TryGetValue(ds3Model, out var e) ? e.Name : null;
+
         public static ChrMap Parse(IEnumerable<string> lines)
         {
             var map = new ChrMap();
