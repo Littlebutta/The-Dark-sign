@@ -17,6 +17,7 @@ public static partial class MapPortChecks
         yield return ("layout: the run start is the DS3 arrival point (entity x990-x999) with entity 45000990", LayoutStart);
         yield return ("layout: the run start is never beside an enemy (m30's Dancer point), people and dummies don't count", LayoutStartClear);
         yield return ("layout: DS3 group masks are copied by position when asked", LayoutGroups);
+        yield return ("layout: DS3's filter-24 floor copies become normal floor, --ds3-hit-filters keeps DS3's numbers", LayoutHitFilters);
         yield return ("events: run events have DarkScript3's Elden Ring layouts and survive a write", RunEventLayout);
         yield return ("events: adding the run events twice leaves one copy", RunEventsIdempotent);
         yield return ("events: one warp event per ported map, started from the constructor, replaced on a rerun", PerMapWarps);
@@ -252,6 +253,22 @@ public static partial class MapPortChecks
         Expect((int)collision.HitFilterID == 8 && collision.Rotation == new Vector3(0, 90, 0), "collision fields");
         Expect(msb.Models.MapPieces.Single().SibPath.Contains("m000100") && !msb.Models.MapPieces.Single().SibPath.Contains("m001000"),
             $"sib path {msb.Models.MapPieces.Single().SibPath}");
+    }
+
+    private static void LayoutHitFilters()
+    {
+        var ds3 = SyntheticDs3();
+        ds3.Models.Collisions.Add(new MSB3.Model.Collision { Name = "h000105" });
+        ds3.Models.Collisions.Add(new MSB3.Model.Collision { Name = "h009000" });
+        ds3.Parts.Collisions.Add(new MSB3.Part.Collision { Name = "h000105_0000", ModelName = "h000105", HitFilterID = 24 });
+        ds3.Parts.Collisions.Add(new MSB3.Part.Collision { Name = "h009000_0000", ModelName = "h009000", HitFilterID = 15 });
+        var result = MsbPort.Convert(ds3, SyntheticHost(), Ds3Id, ErId);
+        var filters = MSBE.Read(result.Msb.Write()).Parts.Collisions.ToDictionary(c => c.Name, c => (int)c.HitFilterID);
+        Expect(filters["h000100_0000"] == 8 && filters["h000105_0000"] == 8 && filters["h009000_0000"] == 15, $"filters {string.Join(" ", filters)}");
+        Expect(result.Notes.Any(n => n.StartsWith("hit filters: 1 DS3 filter-24")), "the port log counts the floor copies");
+        Expect(MapPorter.Options.Parse(["--ds3-hit-filters"]).Ds3HitFilters && !new MapPorter.Options().Ds3HitFilters, "--ds3-hit-filters is read");
+        var kept = MsbPort.Convert(ds3, SyntheticHost(), Ds3Id, ErId, new MsbPort.Options { Ds3HitFilters = true });
+        Expect((int)kept.Msb.Parts.Collisions.Single(c => c.Name == "h000105_0000").HitFilterID == 24, "--ds3-hit-filters keeps 24");
     }
 
     private static void LayoutStart()

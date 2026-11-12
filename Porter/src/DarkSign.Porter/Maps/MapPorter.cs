@@ -37,6 +37,9 @@ public static class MapPorter
         /// <summary>--helper-pieces: DS3's reflection proxies, shadow casters and off-layer pieces stay in the map as
         /// ordinary pieces (fallback "map-helper-pieces" B; see <see cref="MsbPort.HelperKind"/>).</summary>
         public bool HelperPieces { get; set; }
+        /// <summary>--ds3-hit-filters: collisions keep DS3's hit filter numbers, filter 24 included, as up to 1.0.353
+        /// (fallback "map-hit-filters" B; see <see cref="MsbPort.HitFilter"/>).</summary>
+        public bool Ds3HitFilters { get; set; }
         /// <summary>--solid-overlays: every ported vertex is solid and a two-layer material shows its first layer, as
         /// up to 1.0.340 (fallback "map-overlays" B; see <see cref="MapOverlays"/>).</summary>
         public bool SolidOverlays { get; set; }
@@ -121,6 +124,7 @@ public static class MapPorter
                     case "--host-lighting": o.HostLighting = true; break;
                     case "--host-sky": o.HostSky = true; break;
                     case "--helper-pieces": o.HelperPieces = true; break;
+                    case "--ds3-hit-filters": o.Ds3HitFilters = true; break;
                     case "--stand-ins": o.StandIns = true; break;
                     case "--solid-overlays": o.SolidOverlays = true; break;
                     case "--tint-materials": o.TintMaterials = true; break;
@@ -545,6 +549,7 @@ public static class MapPorter
         var layout = MsbPort.Convert(ds3Msb, host, ds3Id, erId, new MsbPort.Options
             {
                 AllVisible = !options.Ds3Groups, NoGroups = options.NoGroups, HelperPieces = options.HelperPieces,
+                Ds3HitFilters = options.Ds3HitFilters,
                 DrawParamId = options.VanillaDrawParam ? MapDrawParams.VanillaRow : MapDrawParams.FirstRow,
             },
             slots, ConnectTemplate(er));
