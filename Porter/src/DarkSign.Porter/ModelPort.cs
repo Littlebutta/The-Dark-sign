@@ -171,6 +171,12 @@ public static class ModelPort
         flver.Header.BoundingBoxMin = bboxMin;
         flver.Header.BoundingBoxMax = bboxMax;
 
+        // Node transforms baked into the meshes, unique node names (WeaponNodes).
+        if (WeaponNodes.Bake(flver) is { } baked)
+            Console.WriteLine($"models: {stem}: {baked}");
+        if (WeaponNodes.UniqueNames(flver) is > 0 and var renamed)
+            Console.WriteLine($"models: {stem}: renamed {renamed} nodes whose names repeated ignoring case");
+
         // FLVER 0x20017+ stores a skeleton set, which DS3 models (0x20014) lack. Elden Ring weapons use one bone
         // per node with the node's own hierarchy, in both the base and the full skeleton.
         flver.Skeletons = new FLVER2.SkeletonSet
@@ -264,6 +270,9 @@ public static class ModelPort
                 while (vertex.Colors.Count < colors)
                     vertex.Colors.Add(new FLVER.VertexColor(1f, 1f, 1f, 1f));
         }
+
+        // Culling boxes in Elden Ring's form, from the (baked) vertices.
+        WeaponNodes.SetBounds(flver);
 
         // Elden Ring's weapon shader blends its detail layers (rust, bone, leather...) by vertex colour, and its own
         // weapons all carry one colour (1,0,0,1). DS3's vertex colours mean something else (most are (1,0,0.41,1)),

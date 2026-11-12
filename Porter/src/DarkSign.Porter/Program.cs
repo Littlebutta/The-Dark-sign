@@ -93,7 +93,7 @@ try
     if (argList[0].Equals("sound-selftest", StringComparison.OrdinalIgnoreCase))
         return SoundSelfTest.Run();
     if (argList[0].Equals("texture-selftest", StringComparison.OrdinalIgnoreCase))
-        return WeaponTextures.SelfTest() | WeaponHiddenParts.SelfTest();
+        return WeaponTextures.SelfTest() | WeaponHiddenParts.SelfTest() | WeaponNodes.SelfTest();
     if (argList[0].Equals("timing-selftest", StringComparison.OrdinalIgnoreCase))
         return MoveTiming.SelfTest();
     if (argList[0].Equals("enemy-selftest", StringComparison.OrdinalIgnoreCase))
