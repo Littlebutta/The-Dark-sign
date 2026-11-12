@@ -352,7 +352,7 @@ public sealed class MapModelPort
     /// <summary>Every converted model's meshes by model number ("000052"), left-out meshes included.</summary>
     public Dictionary<string, List<MeshInfo>> ModelMeshes { get; } = new(StringComparer.OrdinalIgnoreCase);
 
-    private static List<MeshInfo> Describe(FLVER2 flver)
+    internal static List<MeshInfo> Describe(FLVER2 flver)
     {
         var list = new List<MeshInfo>();
         foreach (var mesh in flver.Meshes)

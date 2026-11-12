@@ -169,7 +169,7 @@ public static class MapPorter
     }
 
     public static string PieceReport(MSB3 ds3, MapModelPort models, IReadOnlySet<string> missingModels, bool helperPieces,
-        IReadOnlySet<string>? standIns = null)
+        IReadOnlySet<string>? standIns = null, IReadOnlySet<string>? farViews = null)
     {
         var inv = System.Globalization.CultureInfo.InvariantCulture;
         string V(Vector3 v) => string.Create(inv, $"{v.X:F0},{v.Y:F0},{v.Z:F0}");
@@ -182,6 +182,7 @@ public static class MapPorter
             models.ModelMeshes.TryGetValue(number, out var meshes);
             var status = !helperPieces && MsbPort.HelperKind(p, layerOk) is { } helper ? "left out: " + helper
                 : missingModels.Contains(p.ModelName) ? "left out: no mesh the port can draw"
+                : farViews?.Contains(p.Name) == true ? "left out: far view (DS3 draws it only where the detail it covers is hidden)"
                 : standIns?.Contains(p.Name) == true ? "left out: low detail stand-in"
                 : "written";
             var size = meshes is { Count: > 0 } ? meshes.Select(m => m.Size).Aggregate(Vector3.Max) : Vector3.Zero;
@@ -676,8 +677,9 @@ public static class MapPorter
                               + string.Join(", ", models.LeftOut.OrderByDescending(k => k.Value).Select(k => $"{k.Key} x{k.Value}")) + ")");
         // DS3's low-detail stand-ins, judged now that every model's meshes are known. A failure keeps them all.
         var standIns = new HashSet<string>(StringComparer.Ordinal);
+        var farViews = new HashSet<string>(StringComparer.Ordinal);
         if (options.StandIns)
-            report.AppendLine("  low-detail stand-ins: kept (--stand-ins)");
+            report.AppendLine("  low-detail stand-ins and far views: kept (--stand-ins)");
         else if (copied > 0 || test != PieceTest.None)
             report.AppendLine("  low-detail stand-ins: not judged in a copied or test map");
         else
@@ -690,6 +692,7 @@ public static class MapPorter
                     .Select(p => p.Name).ToHashSet(StringComparer.Ordinal);
                 var judged = MapStandIns.Find(ds3Msb, models.ModelMeshes, skip);
                 standIns = judged.LeftOut;
+                farViews = judged.FarViews;
                 report.AppendLine("  " + judged.Summary);
                 foreach (var line in judged.Lines)
                     report.AppendLine("    " + line);
@@ -703,7 +706,7 @@ public static class MapPorter
         {
             var piecesReport = ctx.WorkPath("reports", $"map-pieces-{erId}.tsv");
             Directory.CreateDirectory(Path.GetDirectoryName(piecesReport)!);
-            File.WriteAllText(piecesReport, PieceReport(ds3Msb, models, missingModels, options.HelperPieces, standIns));
+            File.WriteAllText(piecesReport, PieceReport(ds3Msb, models, missingModels, options.HelperPieces, standIns, farViews));
             report.AppendLine($"  piece report: Work\\reports\\{Path.GetFileName(piecesReport)} (every DS3 map piece: where it is, how big, its materials, and why it was left out)");
         }
         catch (Exception ex)
