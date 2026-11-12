@@ -115,17 +115,25 @@ public static class ModelPort
 
         var materials = new List<NewMaterial>();
         var files = new List<BinderFile>();
-        // Parts DS3 hides with the weapon's idle animation (the Black Blade's scabbard), which can't come along: see
+        // Parts DS3 hides with each model's idle animation (the Black Blade's scabbard), which can't come along: see
         // WeaponHiddenParts. A LOD binder has no anibnd of its own; the main binder's says what to hide.
-        var hiddenBones = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        string hiddenNote = "";
-        if (WeaponHiddenParts.Enabled)
+        var hiddenByPart = new Dictionary<int, HashSet<string>>();
+        BND4? mainParts = null;
+        HashSet<string> HiddenBones(int part)
         {
-            hiddenBones = WeaponHiddenParts.IdleHiddenBones(source, out hiddenNote);
-            if (hiddenBones.Count == 0 && lod && ds3.Contains(PartsPath(ds3Model)))
-                hiddenBones = WeaponHiddenParts.IdleHiddenBones(BND4.Read(ds3.Read(PartsPath(ds3Model))), out hiddenNote);
-            if (hiddenNote.Length > 0)
-                Console.WriteLine($"models: {oldTag}{(lod ? " LOD" : "")}: hidden parts not read: {hiddenNote}");
+            if (hiddenByPart.TryGetValue(part, out var known))
+                return known;
+            var bones = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            if (WeaponHiddenParts.Enabled)
+            {
+                IBinder parts = source;
+                if (WeaponHiddenParts.AnibndFor(source, part) is null && lod && ds3.Contains(PartsPath(ds3Model)))
+                    parts = mainParts ??= BND4.Read(ds3.Read(PartsPath(ds3Model)));
+                bones = WeaponHiddenParts.IdleHiddenBones(parts, part, out var note);
+                if (note.Length > 0)
+                    Console.WriteLine($"models: {oldTag}{(lod ? " LOD" : "")} model {part}: hidden parts not read: {note}");
+            }
+            return hiddenByPart[part] = bones;
         }
         foreach (var file in source.Files)
         {
@@ -135,6 +143,7 @@ public static class ModelPort
                 var flver = FLVER2.Read(file.Bytes);
                 var stem = Path.GetFileNameWithoutExtension(leaf);
                 var hiddenMeshes = new List<int>();
+                var hiddenBones = HiddenBones(WeaponHiddenParts.PartOf(file.Name));
                 if (WeaponHiddenParts.Collapse(flver, hiddenBones, hiddenMeshes) is > 0 and var moved)
                     Console.WriteLine($"models: {oldTag} -> {newTag}{(lod ? " LOD" : "")} {ItemText.Leaf(file.Name)}: hid {moved} vertices in meshes " +
                                       $"{string.Join(", ", hiddenMeshes)} on bones DS3's idle animation hides ({string.Join(", ", hiddenBones.Order())})");

@@ -37,6 +37,9 @@ public static partial class MovesetPort
     // DARKSIGN_ART_POOL=0: the art IDs go out as in builds up to 1.0.378 (unique-named arts first, generic-named own-section arts
     // such as Demon's Scar's 'Spin Slash' with the class skills), no hks stance-only IDs, no shared IDs.
     private static readonly bool ArtPool = Environment.GetEnvironmentVariable("DARKSIGN_ART_POOL") != "0";
+    // DARKSIGN_ART_POOL=weapons: as the art pool, but the jobs serving the most weapons go first (own-section arts win
+    // ties), so the most weapons do a DS3 art; some unique one-weapon arts then fall back to an Elden Ring ash.
+    private static readonly bool ArtPoolByWeapons = Environment.GetEnvironmentVariable("DARKSIGN_ART_POOL") == "weapons";
 
     /// <summary>IDs ividyon's hks lists in IsStanceArts as "UNUSED" and names nowhere else (fx16: not in
     /// IsAttackStanceArts, no art row, no section): they play as a plain stance, so only a stance art gets one.</summary>
@@ -330,7 +333,10 @@ public static partial class MovesetPort
         // animations exist nowhere else (Demon's Scar's a257 'Spin Slash' is not the class's Spin Slash), while a class
         // skill has an Elden Ring Ash of War of the same kind to fall back on. Up to 1.0.378 a generic name ranked an own
         // art with the class skills, so 27 of them took an Elden Ring ash (Demon's Scar did Spinning Slash).
-        jobs = ArtPool
+        jobs = ArtPoolByWeapons
+            ? jobs.OrderByDescending(j => j.Weapons.Any(p => p.Ds3Id == 10180000)).ThenByDescending(j => j.Weapons.Count)
+                .ThenBy(j => j.Source == "own" ? 0 : 1).ThenBy(j => IsGenericArt(Kind(j.Weapons[0]).Name) ? 1 : 0).ThenBy(j => j.Ds3Section).ToList()
+            : ArtPool
             ? jobs.OrderByDescending(j => j.Weapons.Any(p => p.Ds3Id == 10180000)).ThenBy(j => j.Source == "own" ? 0 : 1)
                 .ThenBy(j => IsGenericArt(Kind(j.Weapons[0]).Name) ? 1 : 0).ThenByDescending(j => j.Weapons.Count).ThenBy(j => j.Ds3Section).ToList()
             : jobs.OrderByDescending(j => j.Weapons.Any(p => p.Ds3Id == 10180000)).ThenBy(j => IsGenericArt(Kind(j.Weapons[0]).Name) ? 1 : 0)

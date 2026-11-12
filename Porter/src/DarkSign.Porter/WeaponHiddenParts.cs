@@ -20,12 +20,35 @@ public static class WeaponHiddenParts
     /// <summary>A bone counts as hidden when every axis of its idle scale is below this.</summary>
     public const float HiddenScale = 0.01f;
 
-    /// <summary>The names of the bones a DS3 parts binder's idle animation hides, or none.</summary>
-    public static HashSet<string> IdleHiddenBones(IBinder parts, out string note)
+    /// <summary>
+    /// The anibnd that animates model <paramref name="part"/> of a parts binder (0 = the main FLVER, 1 = "_1"): DS3
+    /// gives each model its own (IDs 400 + part, "WP_A_0503_1.anibnd"). Each model hides its own bones: the Black
+    /// Blade's model 0 hides Case, its model 1 (the sheath at the hip) keeps it.
+    /// </summary>
+    public static BinderFile? AnibndFor(IBinder parts, int part)
+    {
+        var anibnds = parts.Files.Where(f => f.Name.EndsWith(".anibnd", StringComparison.OrdinalIgnoreCase)).ToList();
+        string Stem(string name) => Path.GetFileNameWithoutExtension(ItemText.Leaf(name));
+        return anibnds.FirstOrDefault(f => f.ID == 400 + part)
+               ?? anibnds.FirstOrDefault(f => part > 0 ? Stem(f.Name).EndsWith($"_{part}", StringComparison.Ordinal) : !System.Text.RegularExpressions.Regex.IsMatch(Stem(f.Name), @"_\d+$"));
+    }
+
+    /// <summary>Which model of its parts binder a FLVER is: "WP_A_0503_1.flver" (or its LOD "WP_A_0503_1_l") is 1.</summary>
+    public static int PartOf(string flverName)
+    {
+        var stem = Path.GetFileNameWithoutExtension(ItemText.Leaf(flverName));
+        if (stem.EndsWith("_l", StringComparison.OrdinalIgnoreCase))
+            stem = stem[..^2];
+        var m = System.Text.RegularExpressions.Regex.Match(stem, @"_(\d)$");
+        return m.Success ? int.Parse(m.Groups[1].Value) : 0;
+    }
+
+    /// <summary>The names of the bones a DS3 model's idle animation hides, or none.</summary>
+    public static HashSet<string> IdleHiddenBones(IBinder parts, int part, out string note)
     {
         note = "";
         var hidden = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        var anibndFile = parts.Files.FirstOrDefault(f => f.Name.EndsWith(".anibnd", StringComparison.OrdinalIgnoreCase));
+        var anibndFile = AnibndFor(parts, part);
         if (anibndFile is null)
             return hidden;
         try
@@ -173,6 +196,13 @@ public static class WeaponHiddenParts
         Check(blade.Vertices[1].Position == new Vector3(0.02f, 0.9f, 0) && sheath.Vertices[2].Position == new Vector3(0.02f, 0.4f, 0),
             "hidden parts: vertices on visible bones keep their place, even in the scabbard's mesh");
         Check(Collapse(flver, new HashSet<string>(), meshes) == 0, "hidden parts: nothing hidden, nothing moves");
+        Check(PartOf("N:\\x\\WP_A_0503.flver") == 0 && PartOf("WP_A_0503_1.flver") == 1 && PartOf("WP_A_0503_1_l.flver") == 1 && PartOf("WP_A_0503_L.flver") == 0,
+            "hidden parts: model 0, model 1 and their LODs are told apart");
+        var bnd = new BND4();
+        bnd.Files.Add(new BinderFile(Binder.FileFlags.Flag1, 400, "WP_A_0503.anibnd", []));
+        bnd.Files.Add(new BinderFile(Binder.FileFlags.Flag1, 401, "WP_A_0503_1.anibnd", []));
+        Check(AnibndFor(bnd, 0)?.ID == 400 && AnibndFor(bnd, 1)?.ID == 401 && AnibndFor(bnd, 2) is null,
+            "hidden parts: each model reads its own anibnd (the sheath at the hip isn't hidden by model 0's)");
         Console.WriteLine(failures == 0 ? "hidden-parts selftest: all checks passed" : $"hidden-parts selftest: {failures} failed");
         return failures == 0 ? 0 : 1;
     }
