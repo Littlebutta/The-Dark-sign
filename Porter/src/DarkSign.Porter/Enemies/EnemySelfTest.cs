@@ -260,6 +260,17 @@ public static class EnemySelfTest
         Check("TAE merge: DS3's attack replaces the template's, wrong-size events dropped",
             merged.Count(e => e.Type == 1) == 1 && merged.First(e => e.Type == 1).StartTime == 0.7f && merged.All(e => e.Type != 2));
         Check("TAE merge: every event has a group", merged.All(e => e.Group is not null));
+        // A map script's signal (type 231, the Hollow Soldier's burst telling common event 20005415 to swap in the Pus
+        // of Man) comes along though the template's TAE has no event of the type, in a group of its own.
+        var signalAnim = new TAE.Animation(3010, new TAE.Animation.AnimMiniHeader.Standard(), "a000_003010.hkx");
+        var signalBytes = new byte[16];
+        BitConverter.GetBytes(100).CopyTo(signalBytes, 0);
+        var signalKept = new Dictionary<int, int>();
+        var signalMerged = ChrTae.Merge([new TAE.Event(0.8f, 0.9f, 231, 0, signalBytes, false), new TAE.Event(0.1f, 0.2f, 9999, 0, new byte[16], false)],
+            signalAnim, new Dictionary<int, int> { [0] = 16 }, new Dictionary<int, TAE.EventGroup>(), 2f, 2f, kept: signalKept);
+        Check("TAE merge: DS3's map-script signal event is kept in a group of its type, unknown types still dropped",
+            signalMerged.Count == 1 && signalMerged[0] is { Type: 231, Group.GroupType: 231 } sig && BitConverter.ToInt32(sig.GetParameterBytes(false), 0) == 100
+            && signalAnim.EventGroups.Contains(sig.Group!) && signalKept.GetValueOrDefault(231) == 1);
 
         // Every NpcParam row the maps and spawn list name exists, even when its params step failed (a missing row
         // crashed the game when a ported character loaded: 2026-11-07 test).

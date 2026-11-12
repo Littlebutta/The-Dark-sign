@@ -37,6 +37,16 @@ public sealed class AiPort
 {
     public static bool Enabled => Environment.GetEnvironmentVariable("DARKSIGN_ENEMY_AI")?.Trim().ToLowerInvariant() is not ("template" or "0" or "off");
 
+    /// <summary>
+    /// DS3's goal scripts ask which NpcThinkParam row they run under (self:GetNpcThinkParamID() == 110054: the High
+    /// Wall's transforming Hollow Soldiers only walk up to you) and compare it with DS3's row numbers, which a ported
+    /// row doesn't have (it is NewChr*10000 + 9000 + DS3 row % 100). Such a number is renumbered to the ported row in
+    /// the functions that make the call. DARKSIGN_ENEMY_THINK_IDS=ds3 keeps DS3's numbers, as up to 1.0.383.
+    /// </summary>
+    public static bool RenumberThinks => Environment.GetEnvironmentVariable("DARKSIGN_ENEMY_THINK_IDS")?.Trim().ToLowerInvariant() != "ds3";
+
+    public const string ThinkCall = "GetNpcThinkParamID";
+
     public const string ReportFile = "enemy-ai.tsv";
     public const string CommonPath = "/script/aicommon.luabnd.dcx";
     /// <summary>Where goals and logics Elden Ring already uses the DS3 number of are moved to (six digits, as the binder names are).</summary>
@@ -102,7 +112,11 @@ public sealed class AiPort
     private readonly Dictionary<Script, List<(string Name, HksChunk.Function Function)>> _lifted = [];
     private readonly HashSet<string> _liftedNames = new(StringComparer.Ordinal);
     private readonly Dictionary<string, double> _ds3Constants = new(StringComparer.Ordinal), _liftedConstants = new(StringComparer.Ordinal);
-    private readonly List<(string Path, byte[] Bytes)> _outputs = [];
+    /// <summary>The per-goal binders, made in <see cref="Finish"/> once every character's think rows are known.</summary>
+    private readonly List<(string Path, Func<byte[]> Bytes)> _outputs = [];
+    /// <summary>DS3 NpcThinkParam row -> its ported Elden Ring row, for the scripts that check which row they run under.</summary>
+    private readonly Dictionary<int, int> _thinkIds = [];
+    private readonly SortedDictionary<string, int> _thinkRewrites = new(StringComparer.OrdinalIgnoreCase);
     public readonly List<string> Report = [];
     public readonly SortedDictionary<string, SortedSet<string>> Missing = new(StringComparer.Ordinal);
     public readonly SortedDictionary<string, SortedSet<string>> Unknown = new(StringComparer.Ordinal);
@@ -296,6 +310,7 @@ public sealed class AiPort
                 Report.Add(Line(ds3Chr, name, row.ID, -1, "-", "-", "Elden Ring already has NpcThinkParam " + erThink));
                 continue;
             }
+            _thinkIds[row.ID] = erThink;
             int battle = IntCell(row, "battleGoalId"), logic = IntCell(row, "logicId");
             var (erBattle, battleNote) = battle > 0 ? PortBattle(battle) : (battle, "");
             var (erLogic, logicNote) = logic > 0 ? PortLogic(logic) : (logic, "");
@@ -341,7 +356,8 @@ public sealed class AiPort
             return (null, conflict);
         int er = mine.Count > 0 && registered.TryGetValue(mine[0], out var v2) ? v2 : AllocateGoal(ds3Goal);
         Needs(script);
-        _outputs.Add((BattlePath(er), MakeBinder(script, $"{er:D6}_battle", registered.Select(r => ((int)_ds3Goals[r.Key], r.Value)).Append((ds3Goal, er)))));
+        var ids = registered.Select(r => ((int)_ds3Goals[r.Key], r.Value)).Append((ds3Goal, er)).ToList();
+        _outputs.Add((BattlePath(er), () => MakeBinder(script, $"{er:D6}_battle", ids)));
         return (er, er == ds3Goal ? "" : $"goal {ds3Goal} is {er} in Elden Ring");
     }
 
@@ -375,7 +391,7 @@ public sealed class AiPort
         if (name is not null)
             _newLogics[name] = er;
         Needs(script);
-        _outputs.Add((LogicPath(er), MakeBinder(script, $"{er:D6}_logic", [(ds3Logic, er)])));
+        _outputs.Add((LogicPath(er), () => MakeBinder(script, $"{er:D6}_logic", [(ds3Logic, er)])));
         return (er, er == ds3Logic ? "" : $"logic {ds3Logic} is {er} in Elden Ring");
     }
 
@@ -541,7 +557,7 @@ public sealed class AiPort
         var map = ids.GroupBy(i => i.Ds3).ToDictionary(g => g.Key, g => g.First().Er);
         string dir = $@"N:\GR\data\INTERROOT_win64\script\ai\out\each\{stem}\{stem}";
         var bnd = NewBinder();
-        bnd.Files.Add(new BinderFile(SoulsFormats.Binder.FileFlags.Flag1, 1000, dir + ".lua", s.File.Bytes));
+        bnd.Files.Add(new BinderFile(SoulsFormats.Binder.FileFlags.Flag1, 1000, dir + ".lua", ThinksRenumbered(s.File.Bytes, s.Leaf)));
         var gnl = new LUAGNL(false, true);
         gnl.Globals.AddRange(s.AssignOrder);
         bnd.Files.Add(new BinderFile(SoulsFormats.Binder.FileFlags.Flag1, 1000000, dir + ".luagnl", gnl.Write()));
@@ -552,6 +568,36 @@ public sealed class AiPort
             bnd.Files.Add(new BinderFile(SoulsFormats.Binder.FileFlags.Flag1, 1000001, dir + ".luainfo", info.Write()));
         }
         return Compress(bnd.Write());
+    }
+
+    /// <summary>A compiled script with the DS3 think rows it checks for renumbered (see <see cref="RenumberThinks"/>); the same bytes when none.</summary>
+    private byte[] ThinksRenumbered(byte[] bytes, string leaf)
+    {
+        if (!RenumberThinks || _thinkIds.Count == 0 || !HksChunk.Is(bytes))
+            return bytes;
+        var chunk = HksChunk.Read(bytes);
+        int n = RenumberThinkIds(chunk, _thinkIds);
+        if (n == 0)
+            return bytes;
+        _thinkRewrites[leaf] = n;
+        return chunk.Write();
+    }
+
+    /// <summary>
+    /// In every function of the chunk that calls <see cref="ThinkCall"/> (the method name is one of its constants),
+    /// each number constant that is a ported DS3 think row becomes its Elden Ring row. Returns how many changed.
+    /// </summary>
+    public static int RenumberThinkIds(HksChunk chunk, IReadOnlyDictionary<int, int> thinkIds)
+    {
+        int n = 0;
+        foreach (var f in chunk.Main.All().Where(f => f.Constants.Any(c => c.AsString == ThinkCall)))
+            for (int i = 0; i < f.Constants.Count; i++)
+                if (f.Constants[i].AsNumber is { } d && d == Math.Floor(d) && d is > 0 and < int.MaxValue && thinkIds.TryGetValue((int)d, out var er))
+                {
+                    f.Constants[i] = HksChunk.Constant.Number(er);
+                    n++;
+                }
+        return n;
     }
 
     private BND4 NewBinder() => new()
@@ -570,7 +616,7 @@ public sealed class AiPort
     /// </summary>
     public List<(string Path, byte[] Bytes)> Finish()
     {
-        var outputs = new List<(string Path, byte[] Bytes)>(_outputs);
+        var outputs = _outputs.Select(o => (o.Path, o.Bytes())).ToList();
         if (_newGoals.Count == 0 && _newLogics.Count == 0 && _libraries.Count == 0 && _liftedNames.Count == 0)
             return outputs;
         var bnd = _erCommon;
@@ -595,13 +641,13 @@ public sealed class AiPort
         }
         foreach (var lib in _libraries.OrderBy(l => l.File.ID))
         {
-            bnd.Files.Add(new BinderFile(goalFile.Flags, id++, dir + lib.Leaf, lib.File.Bytes));
+            bnd.Files.Add(new BinderFile(goalFile.Flags, id++, dir + lib.Leaf, ThinksRenumbered(lib.File.Bytes, lib.Leaf)));
             added.AddRange(lib.AssignOrder);
         }
         foreach (var (source, functions) in _lifted.OrderBy(l => l.Key.Common ? 0 : 1).ThenBy(l => l.Key.Leaf, StringComparer.OrdinalIgnoreCase))
         {
             var leaf = Path.GetFileNameWithoutExtension(source.Leaf) + "_ds3.lua";
-            bnd.Files.Add(new BinderFile(goalFile.Flags, id++, dir + leaf, HksChunk.Lifted(source.Chunk, functions).Write()));
+            bnd.Files.Add(new BinderFile(goalFile.Flags, id++, dir + leaf, ThinksRenumbered(HksChunk.Lifted(source.Chunk, functions).Write(), leaf)));
             added.AddRange(functions.Select(f => f.Name));
         }
         bnd.Files.Sort((a, b) => a.ID.CompareTo(b.ID));
@@ -635,6 +681,9 @@ public sealed class AiPort
         yield return $"# {_liftedNames.Count} DS3 functions lifted out of files that can't come along: {string.Join(", ", _lifted.SelectMany(l => l.Value.Select(f => $"{f.Name} ({l.Key.Leaf})")).Concat(_liftedConstants.Keys))}";
         yield return $"# {_newGoals.Count} goal numbers added to goal_list: {string.Join(", ", _newGoals.OrderBy(g => g.Value).Select(g => $"{g.Key}={g.Value}"))}";
         yield return $"# {_newLogics.Count} logic numbers added to logic_list: {string.Join(", ", _newLogics.OrderBy(g => g.Value).Select(g => $"{g.Key}={g.Value}"))}";
+        yield return RenumberThinks
+            ? $"# DS3 think rows the scripts check for ({ThinkCall}), renumbered to the ported rows in {_thinkRewrites.Count} scripts: {string.Join(", ", _thinkRewrites.Select(r => $"{r.Key} ({r.Value})"))}"
+            : $"# DS3 think rows the scripts check for ({ThinkCall}) kept as DS3's (DARKSIGN_ENEMY_THINK_IDS=ds3)";
         foreach (var (what, by) in Missing)
             yield return $"missing\t{what}\tneeded by {string.Join(", ", by)}";
         foreach (var (what, by) in Unknown)

@@ -78,6 +78,20 @@ public static class AiSelfTest
         Check("HKS: registrations are a Register call's GOAL_ argument",
             AiPort.Registered(HksChunk.Read(Script(["RegisterTableGoal", "GOAL_A", "GOAL_B"]))).SequenceEqual(["GOAL_A"]));
 
+        // DS3's scripts check which think row they run under: a ported row has another number.
+        var checks = new HksChunk { Header = Header, Main = new HksChunk.Function { Name = "=(none)", Instructions = [HksChunk.Return] } };
+        checks.Main.Functions.Add(new HksChunk.Function
+        {
+            Constants = [HksChunk.Constant.Text(AiPort.ThinkCall), HksChunk.Constant.Number(110054), HksChunk.Constant.Number(3010), HksChunk.Constant.Number(144040)],
+            Instructions = [HksChunk.Return],
+        });
+        checks.Main.Functions.Add(new HksChunk.Function { Constants = [HksChunk.Constant.Number(110054)], Instructions = [HksChunk.Return] });
+        int renumbered = AiPort.RenumberThinkIds(checks, new Dictionary<int, int> { [110054] = 70069054 });
+        var reread = HksChunk.Read(checks.Write());
+        Check("AI: a DS3 think row a script checks for becomes the ported row, only where the script asks for its row",
+            renumbered == 1 && reread.Main.Functions[0].Constants.Select(c => c.AsNumber).SequenceEqual(new double?[] { null, 70069054, 3010, 144040 })
+            && reread.Main.Functions[1].Constants[0].AsNumber == 110054);
+
         // ---- AiPort ----
         // Elden Ring: goal 223000 is its own; logic 10000 is the same as DS3's; Common_Func is Elden Ring's.
         var erCommon = Binder(
@@ -161,6 +175,11 @@ public static class AiSelfTest
         var plan = ChrMoves.Plan([3000, 3010, 3033, 5000], new HashSet<int> { 3000, 3001, 3002 }, new HashSet<int> { 3000, 3001, 3002 }, new HashSet<int> { 3002 });
         Check("extra attacks: only DS3 attacks the template lacks, each with its nearest whole attack",
             plan.SequenceEqual([new ChrMoves.Added(3010, 3001), new ChrMoves.Added(3033, 3001)]));
+        var idlePlan = ChrMoves.Plan([702, 1702, 1760, 20005, 30001, 3010], new HashSet<int> { 700, 701, 1700, 20004, 3001 },
+            new HashSet<int> { 700, 701, 1700, 20004, 3001 }, new HashSet<int>());
+        Check("extra moves: waiting poses, getting-up moves and map-script moves get a donor of their own family (none for a family the template lacks)",
+            idlePlan.SequenceEqual([new ChrMoves.Added(702, 701), new ChrMoves.Added(1702, 1700), new ChrMoves.Added(3010, 3001), new ChrMoves.Added(20005, 20004)])
+            && ChrMoves.Wanted(702, false) && !ChrMoves.Wanted(3010, false) && ChrMoves.Wanted(3010, true) && !ChrMoves.Wanted(5000, true));
         var group = new TAE.EventGroup(0);
         var donorEntry = new TAE.Animation(3001, new TAE.Animation.AnimMiniHeader.Standard(), "a000_003001.hkt");
         donorEntry.EventGroups.Add(group);
@@ -182,6 +201,18 @@ public static class AiSelfTest
             && sm.m_wildcardTransitions!.m_transitions.Where(t => t.m_toStateId == added.m_stateId).Select(t => strings.m_eventNames[t.m_eventId]).Order()
                 .SequenceEqual(["W_Attack3033", "W_Event3033"])
             && all.OfType<hkbBehaviorGraphData>().First().m_eventInfos.Count == strings.m_eventNames.Count);
+
+        var idleGraph = IdleGraph();
+        int idleStates = ChrMoves.AddStates(idleGraph, [new ChrMoves.Added(702, 700)]);
+        var idleAll = HavokGraph.All(idleGraph);
+        var idles = idleAll.OfType<hkbStateMachine>().First(m => m.m_name == "IdleUniques_SM");
+        var idleStrings = idleAll.OfType<hkbBehaviorGraphStringData>().First();
+        var pose = idles.m_states.FirstOrDefault(st => st.m_name == "IdleUnique702");
+        Check("extra moves: a waiting pose gets a state in the idle machine, named as Elden Ring names them, reached by its own wildcard only",
+            idleStates == 1 && pose?.m_generator is CustomManualSelectorGenerator { m_name: "IdleUnique702_CMSG", m_animId: 702 } ps
+            && ps.m_generators.OfType<hkbClipGenerator>().Single().m_animationName == "a000_000702"
+            && idles.m_wildcardTransitions!.m_transitions.Where(t => t.m_toStateId == pose.m_stateId).Select(t => idleStrings.m_eventNames[t.m_eventId]).SequenceEqual(["W_IdleUnique702"])
+            && idleAll.OfType<hkbStateMachine>().First(m => m.m_name == "Attack_SM").m_states.Count == 1);
 
         // ---- TemplateEffects ----
         var npcDef = new PARAMDEF { ParamType = "NPC_PARAM_ST", Fields = [] };
@@ -213,6 +244,44 @@ public static class AiSelfTest
         Check("template effects: the skeleton's revival and its own effects come off, shared ones stay (first slot)",
             dropped.Order().SequenceEqual([5832, 12540]) && TemplateEffects.Effects(ported).SequenceEqual([90030]));
         return before;
+    }
+
+    /// <summary>A master machine over an Attack_SM and an IdleUniques_SM with IdleUnique700 (its wildcard and a named blend into it).</summary>
+    private static hkbBehaviorGraph IdleGraph()
+    {
+        var attack = (hkbStateMachine)Graph().m_rootGenerator!;
+        var strings = new hkbBehaviorGraphStringData
+        {
+            m_eventNames = ["W_Attack3001", "W_Event3001", "W_IdleUnique700", "IdleToIdleUnique1750_to_IdleUnique700"],
+            m_animationNames = [@"..\Model\chr\c7000\hkx\a000_003001.hkx", @"..\Model\chr\c7000\hkx\a001_003001.hkx", @"..\Model\chr\c9997\hkx\a000\a000_000700.hkx"],
+        };
+        var data = new hkbBehaviorGraphData { m_stringData = strings, m_eventInfos = [new hkbEventInfo(), new hkbEventInfo(), new hkbEventInfo(), new hkbEventInfo()] };
+        var idle = new hkbStateMachine
+        {
+            m_name = "IdleUniques_SM",
+            m_states =
+            [
+                new hkbStateMachine.StateInfo
+                {
+                    m_name = "IdleUnique700", m_stateId = 0,
+                    m_generator = new CustomManualSelectorGenerator
+                    {
+                        m_name = "IdleUnique700_CMSG", m_animId = 700,
+                        m_generators = [new hkbClipGenerator { m_animationName = "a000_000700", m_name = "a000_000700_hkx_AutoSet_00", m_animationInternalId = 2 }],
+                    },
+                },
+            ],
+            m_wildcardTransitions = new hkbStateMachine.TransitionInfoArray
+            {
+                m_transitions = [new hkbStateMachine.TransitionInfo { m_eventId = 2, m_toStateId = 0 }, new hkbStateMachine.TransitionInfo { m_eventId = 3, m_toStateId = 0 }],
+            },
+        };
+        var master = new hkbStateMachine
+        {
+            m_name = "Master_SM",
+            m_states = [new hkbStateMachine.StateInfo { m_name = "Attack", m_stateId = 0, m_generator = attack }, new hkbStateMachine.StateInfo { m_name = "IdleUnique", m_stateId = 1, m_generator = idle }],
+        };
+        return new hkbBehaviorGraph { m_rootGenerator = master, m_data = data };
     }
 
     /// <summary>An Attack_SM with Attack3001 (two clips, a000 and a001) and its two wildcard transitions.</summary>

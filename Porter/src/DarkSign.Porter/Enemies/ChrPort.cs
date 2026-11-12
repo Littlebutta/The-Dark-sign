@@ -1544,15 +1544,16 @@ public static partial class ChrPort
         if (stage == Stage.Skeleton)
             return 0;
 
-        // DS3 attacks the template has no slot for (ChrMoves): a file and TAE entry each, filled below like any move,
-        // and a behaviour state once the events are in. Only with DS3's AI, which is what asks for them.
+        // DS3 attacks, waiting poses and map-script moves the template has no slot for (ChrMoves): a file and TAE entry
+        // each, filled below like any move, and a behaviour state once the events are in. Attacks only with DS3's AI,
+        // which is what asks for them; the rest for DS3's map scripts, which force them.
         var extra = new List<ChrMoves.Added>();
-        if (stage == Stage.All && plan is not null && plan.Method == Method.Full && ChrMoves.Enabled && AiPort.Enabled)
+        if (stage == Stage.All && plan is not null && plan.Method == Method.Full && ChrMoves.Enabled)
             try
             {
                 var attackFiles = anibnds.SelectMany(b => b.Value.Bnd.Files.Select(f => (b.Value.Bnd, File: f)))
                     .Select(p => (p.Bnd, p.File, Leaf: ItemText.Leaf(p.File.Name).ToLowerInvariant()))
-                    .Where(p => AnimLeaf().IsMatch(p.Leaf) && LeafKey(p.Leaf) is (0, var id) && ChrMoves.IsAttack(id)).ToList();
+                    .Where(p => AnimLeaf().IsMatch(p.Leaf) && LeafKey(p.Leaf) is (0, var id) && ChrMoves.FamilyOf(id) is not null).ToList();
                 var templateFiles = attackFiles.Select(p => LeafKey(p.Leaf).Item2).ToHashSet();
                 var templateAdditive = attackFiles.Where(p => TemplateAdditive.GetOrAdd((templateChr, p.Leaf, p.File.Bytes.Length), _ =>
                 {
@@ -1562,12 +1563,13 @@ public static partial class ChrPort
                 var templateEntries = anibnds.SelectMany(b => b.Value.Bnd.Files)
                     .Where(f => f.Name.EndsWith(".tae", StringComparison.OrdinalIgnoreCase) && TaeSection(f.Name) == 0)
                     .SelectMany(f => TAE.Read(f.Bytes).Animations.Select(a => (int)a.ID)).ToHashSet();
-                var wanted = ChrMoves.Plan(wholeKeys.Where(k => k.Item1 == 0).Select(k => k.Item2), templateEntries, templateFiles, templateAdditive);
+                var wanted = ChrMoves.Plan(wholeKeys.Where(k => k.Item1 == 0 && ChrMoves.Wanted(k.Item2, AiPort.Enabled)).Select(k => k.Item2),
+                    templateEntries, templateFiles, templateAdditive);
                 extra = ChrMoves.AddAnimations(anibnds.Select(b => b.Value.Bnd), wanted);
             }
             catch (Exception ex) when (ex is not OutOfMemoryException)
             {
-                notes.Add($"extra DS3 attacks: not added ({Describe(ex)})");
+                notes.Add($"extra DS3 moves: not added ({Describe(ex)})");
                 extra.Clear();
             }
 
@@ -1625,6 +1627,8 @@ public static partial class ChrPort
                 notes.Add($"effects: not ported, the template's effects and sounds stay ({Describe(ex)})");
             }
         int merged = 0;
+        var signals = new Dictionary<int, int>();
+        var unlaid = new Dictionary<int, int>();
         foreach (var (_, (bnd, _)) in anibnds)
             foreach (var file in bnd.Files.Where(f => stage > Stage.Moves && f.Name.EndsWith(".tae", StringComparison.OrdinalIgnoreCase)))
             {
@@ -1645,21 +1649,27 @@ public static partial class ChrPort
                         continue;
                     var source = ChooseMove(AnimKey(anim.ID, section), ds3Additive.Contains(moves[content].Hkx) ? additiveKeys : wholeKeys, fill) is { } own
                                  && moves[own].Hkx == moves[content].Hkx ? own : content;
-                    anim.Events = ChrTae.Merge(moves[source].Events, anim, lengths, groups, d.Ds3, d.Er, session, fx?.Groups);
+                    anim.Events = ChrTae.Merge(moves[source].Events, anim, lengths, groups, d.Ds3, d.Er, session, fx?.Groups, signals, unlaid);
                     changed = true;
                     merged++;
                 }
                 if (changed)
                     file.Bytes = tae.Write();
             }
-        notes.Add($"{replaced} DS3 animations ({failed} failed; {filled} are the nearest DS3 move in place of a template move DS3 has no match for, {kept} template animations kept; {additive} additive flinch files matched with DS3 additive clips only), {merged} moves with DS3 events");
+        notes.Add($"{replaced} DS3 animations ({failed} failed; {filled} are the nearest DS3 move in place of a template move DS3 has no match for, {kept} template animations kept; {additive} additive flinch files matched with DS3 additive clips only), {merged} moves with DS3 events"
+                  + (signals.Count > 0 ? $"; map-script signal events kept: {string.Join(" ", signals.OrderBy(p => p.Key).Select(p => $"{p.Key}x{p.Value}"))}" : "")
+                  + (unlaid.Count > 0 ? $"; DS3 event types the template lays out differently or lacks, dropped: {string.Join(" ", unlaid.OrderByDescending(p => p.Value).ThenBy(p => p.Key).Take(8).Select(p => $"{p.Key}x{p.Value}"))}" : ""));
         if (extra.Count > 0)
         {
             int states = 0;
             if (binders.TryGetValue($"/chr/c{n:D4}.behbnd.dcx", out var behbnd))
                 try { states = ChrMoves.AddStates(behbnd.Bnd, extra, notes); }
-                catch (Exception ex) when (ex is not OutOfMemoryException) { notes.Add($"extra DS3 attacks: behaviour states not added ({Describe(ex)})"); }
-            notes.Add($"{extra.Count} DS3 attacks the template has no slot for added ({string.Join(",", extra.Select(e => e.Id))}), {states} behaviour states");
+                catch (Exception ex) when (ex is not OutOfMemoryException) { notes.Add($"extra DS3 moves: behaviour states not added ({Describe(ex)})"); }
+            var attacks = extra.Where(e => ChrMoves.IsAttack(e.Id)).ToList();
+            var others = extra.Where(e => !ChrMoves.IsAttack(e.Id)).ToList();
+            notes.Add((attacks.Count > 0 ? $"{attacks.Count} DS3 attacks the template has no slot for added ({string.Join(",", attacks.Select(e => e.Id))}), " : "")
+                      + (others.Count > 0 ? $"{others.Count} DS3 poses and map-script moves added ({string.Join(",", others.Select(e => e.Id))}), " : "")
+                      + $"{states} behaviour states");
         }
         return replaced;
     }
