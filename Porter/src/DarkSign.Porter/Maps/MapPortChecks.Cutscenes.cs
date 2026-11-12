@@ -13,6 +13,7 @@ public static partial class MapPortChecks
         yield return ("cutscenes: CutsceneMapIdParam rows place each cutscene on its slot", CutsceneRows);
         yield return ("cutscenes: sound events become Elden Ring's kind 135 form with the cutscene's own IDs; armour to seType 15, speech to its voice", CutsceneSoundEvents);
         yield return ("cutscenes: a timeline with no main audio gets DS3's p<ID*10+n> per cut; events of sounds the bank lacks are stripped", CutsceneSoundAutoAndStrip);
+        yield return ("cutscenes: converted timelines take Elden Ring's shape: event fields, timeline Unk10 and full parameter lists", CutsceneShapeConform);
         yield return ("cutscenes: the F1 Cutscenes tab's events warp to the map, then play the cutscene; its list names the characters", CutsceneMenuEvents);
     }
 
@@ -112,6 +113,57 @@ public static partial class MapPortChecks
         Expect(removed == 1 && left.Count == 1 && (int)left[0].Parameters[1].Value == 990_009_000, $"strip removed {removed}, {left.Count} left");
     }
 
+    private static MQB ShapeSample(string name, int cutFrames, bool er)
+    {
+        var mqb = new MQB { Version = MQB.MQBVersion.DarkSouls3, Name = name, Framerate = 30, ResourceDirectory = "", Resources = [], Cuts = [] };
+        mqb.Resources.Add(new MQB.Resource { Name = "offset.sib", ParentIndex = -1, Unk48 = 265 });
+        mqb.Resources.Add(new MQB.Resource { Name = "c1000_0000", ParentIndex = -1, Unk48 = 1 });
+        var cut = new MQB.Cut { Name = "cut0010", Duration = cutFrames, Timelines = [] };
+        var off = new MQB.Timeline();
+        off.Events.Add(new MQB.Event { ResourceIndex = 0, Duration = cutFrames + 1, Unk18 = er ? cutFrames + 1 : 0, Unk1C = er ? cutFrames + 1 : 0, Unk28 = er ? -1 : 0 });
+        var part = new MQB.Timeline
+        {
+            Unk10 = er ? 1 : 0,
+            Parameters = er
+                ? [P("areaNo", MQB.Parameter.DataType.Int, -1), P("blockNo", MQB.Parameter.DataType.Int, -1), P("mapNo", MQB.Parameter.DataType.Int, -1), P("equipDispType", MQB.Parameter.DataType.Int, 0)]
+                : [P("areaNo", MQB.Parameter.DataType.Int, 45), P("blockNo", MQB.Parameter.DataType.Int, 0)],
+        };
+        part.Events.Add(new MQB.Event { ResourceIndex = 1, Duration = cutFrames + 1, Parameters = [P("ZSortOffset", MQB.Parameter.DataType.Float, 0f)] });
+        if (!er)
+        {
+            // DS3 events that run past the cut's end, or start after it, and a cut Unk44 Elden Ring never uses.
+            part.Events.Add(new MQB.Event { ResourceIndex = 1, StartFrame = cutFrames - 5, Duration = 30, Parameters = [P("ZSortOffset", MQB.Parameter.DataType.Float, 0f)] });
+            part.Events.Add(new MQB.Event { ResourceIndex = 1, StartFrame = cutFrames + 4, Duration = 10, Parameters = [P("ZSortOffset", MQB.Parameter.DataType.Float, 0f)] });
+            cut.Unk44 = 2;
+        }
+        cut.Timelines.AddRange([off, part]);
+        mqb.Cuts.Add(cut);
+        return mqb;
+    }
+
+    private static void CutsceneShapeConform()
+    {
+        var shape = CutsceneShape.Learn(Enumerable.Range(0, 8).Select(i => ShapeSample($"s10_00_00{i}0", 100 + i * 7, er: true)));
+        var ds3 = ShapeSample("s45_00_0000", 300, er: false);
+        var before = shape.Check(ds3);
+        Expect(shape.NeverPastCut(1) && shape.CutUnk44 is { Value: 0, Holds: true }, "learned: Elden Ring's kind 1 events never end after their cut; cut Unk44 0");
+        Expect(before.Any(l => l.Contains("ends after its cut")) && before.Any(l => l.Contains("cut Unk44 2")), string.Join(" | ", before));
+        Expect(before.Any(l => l.Contains("kind 265 event Unk18")) && before.Any(l => l.Contains("kind 1 timeline Unk10")) && before.Any(l => l.Contains("kind 1 timeline params")),
+            string.Join(" | ", before));
+        int changed = shape.Conform(ds3);
+        var after = shape.Check(ds3);
+        Expect(after.Count == 0, $"{changed} changes, left: {string.Join(" | ", after)}");
+        var off = ds3.Cuts[0].Timelines[0].Events[0];
+        Expect(off.Unk18 == 301 && off.Unk1C == 301 && off.Unk28 == -1, $"offset event fields follow the cut ({off.Unk18} {off.Unk1C} {off.Unk28})");
+        var tl = ds3.Cuts[0].Timelines[1];
+        Expect(tl.Unk10 == 1 && string.Join(",", tl.Parameters.Select(p => p.Name)) == "areaNo,blockNo,mapNo,equipDispType"
+               && (int)tl.Parameters[0].Value == 45 && (int)tl.Parameters[2].Value == -1 && (int)tl.Parameters[3].Value == 0,
+            "part timeline: DS3's map kept, Elden Ring's other parameters added at its usual values, in its order");
+        Expect(ds3.Cuts[0].Unk44 == 0, "cut Unk44 set to Elden Ring's 0");
+        Expect(tl.Events.Count == 2 && tl.Events[1].StartFrame == 295 && tl.Events[1].Duration == 6,
+            $"an event past the cut is cut short to cut + 1 (301), one starting after it is left out ({string.Join(" ", tl.Events.Select(x => $"{x.StartFrame}+{x.Duration}"))})");
+    }
+
     private static void CutsceneMenuEvents()
     {
         var slot = MapId.Parse("m19_70_00_00");
@@ -136,8 +188,12 @@ public static partial class MapPortChecks
         var warp = e.Instructions.Single(i => i.Bank == 2003 && i.ID == 14);
         Expect(warp.ArgData[0] == 19 && warp.ArgData[1] == 70 && BitConverter.ToUInt32(warp.ArgData, 4) == 19700990, "warps to the map's start point");
         var play = e.Instructions.Single(i => i.Bank == 2002);
-        Expect(play.ID == 3 && BitConverter.ToInt32(play.ArgData, 0) == 19700000 && BitConverter.ToUInt32(play.ArgData, 8) == 10000, "plays the cutscene to the player");
-        Expect(e.Instructions.IndexOf(warp) < e.Instructions.IndexOf(play), "warp before play");
+        Expect(play.ID == 11 && play.ArgData.Length == 28 && BitConverter.ToInt32(play.ArgData, 0) == 19700000 && BitConverter.ToUInt32(play.ArgData, 4) == 0
+               && BitConverter.ToUInt32(play.ArgData, 8) == 19700990 && BitConverter.ToInt32(play.ArgData, 12) == 19700000 && BitConverter.ToUInt32(play.ArgData, 16) == 10000,
+            "plays the cutscene to the player and warps back to the start point (2002[11], Elden Ring's own form)");
+        var loaded = e.Instructions.Single(i => i.Bank == 3 && i.ID == 30);
+        Expect(loaded.ArgData[0] == 0 && loaded.ArgData[1] == 19 && loaded.ArgData[2] == 70, "waits for the map to load");
+        Expect(e.Instructions.IndexOf(warp) < e.Instructions.IndexOf(loaded) && e.Instructions.IndexOf(loaded) < e.Instructions.IndexOf(play), "warp, map loaded, then play");
         Expect(BitConverter.ToUInt32(e.Instructions[0].ArgData, 4) == CutsceneMenu.RequestFlag(0), "waits for its request flag");
         var lines = CutsceneMenu.ListLines(entries).ToList();
         Expect(lines.Count == 3 && lines[1] == $"s45_00_0000\ts19_70_0000\tPainted World of Ariandel\tSister Friede, c6010\t46\t{CutsceneMenu.RequestFlag(0)}", lines[1]);

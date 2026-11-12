@@ -568,6 +568,8 @@ public static class Fallbacks
                 { PorterEnv = Env("DARKSIGN_CUTSCENES", "0") },
             new("C", "Silent cutscenes", "The cutscenes play as in A but without DS3's sound (DARKSIGN_CUTSCENE_SOUND=0): no cutscene sound banks, and the timelines keep their sound events as the first cutscene builds had them.")
                 { PorterEnv = Env("DARKSIGN_CUTSCENE_SOUND", "0") },
+            new("D", "DS3's timelines as converted", "The cutscenes play as in A, but their timelines keep DS3's field values (DARKSIGN_CUTSCENE_CONFORM=0) instead of taking Elden Ring's shape: events may run past the end of a cut, cut flags and parameter lists stay DS3's, as builds up to 1.0.42x had them.")
+                { PorterEnv = Env("DARKSIGN_CUTSCENE_CONFORM", "0") },
         ]),
 
         new("map-layers", "DS3 maps", "Which state of a DS3 map is ported", Stage.Build,

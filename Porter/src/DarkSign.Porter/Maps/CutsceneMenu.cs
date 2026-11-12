@@ -5,8 +5,8 @@ namespace DarkSign.Porter.Maps;
 /// <summary>
 /// The F1 menu's "Cutscenes" tab: one event per converted DS3 cutscene in common.emevd, the way the boss arena warps
 /// work (<see cref="BossArenas.AddWarps"/>). The menu sets the cutscene's request flag; the event clears it, warps the
-/// player to the cutscene's map (its start point), waits until the player stands in that map and plays the cutscene
-/// with Elden Ring's "Play Cutscene to Player" (2002[03]). A cutscene is placed against its map (CutsceneMapIdParam
+/// player to the cutscene's map (its start point), waits until that map is loaded (3[30]) and the player stands in it,
+/// and plays the cutscene with Elden Ring's "Play Cutscene to Player and Warp" (2002[11], back to the start point). A cutscene is placed against its map (CutsceneMapIdParam
 /// PlayMapId), so the warp first means the map, its parts and its sound are loaded when it starts.
 /// <para>Flags 1039292300-2399 and events 1039291300-1399 in the RunEvents block (2000-2999: reset when a map loads,
 /// right for a one-shot request). darksign_cutscenes.tsv lists them for the menu.</para>
@@ -64,12 +64,15 @@ public static class CutsceneMenu
             e.Instructions.Add(SetFlag(RequestFlag(c.Index), Off));
             e.Instructions.Add(SetFlag(RunEvents.Ds3RunActive, On));
             e.Instructions.Add(RunEvents.Make(2003, 14, (byte)m.Area, (byte)m.Block, (byte)m.Region, (byte)m.Index, c.StartEntity, 0));
-            // Once the player stands in the map and its parts are loaded.
+            // Once the map is loaded and the player stands in it.
             e.Instructions.Add(RunEvents.Make(1001, 0, 3f));
+            e.Instructions.Add(RunEvents.Make(3, 30, (sbyte)0, (byte)m.Area, (byte)m.Block, (byte)m.Region, (byte)m.Index));
             e.Instructions.Add(RunEvents.Make(3, 8, (sbyte)0, On, (sbyte)m.Area, (sbyte)m.Block, (sbyte)m.Region, (sbyte)m.Index));
-            e.Instructions.Add(RunEvents.Make(1001, 0, 1f));
-            // Play Cutscene to Player: cutscene ID, playback method 0 (plain), the player.
-            e.Instructions.Add(RunEvents.Make(2002, 3, c.ErId, 0u, Player));
+            e.Instructions.Add(RunEvents.Make(1001, 0, 2f));
+            // Play Cutscene to Player and Warp, the form Elden Ring's own map scripts (and the ported arena scripts, which
+            // did start their cutscenes in the 1.0.417 playtest) use: cutscene ID, playback method 0, the area entity
+            // and map the player stands at afterwards (the start point), the player, 0, false.
+            e.Instructions.Add(RunEvents.Make(2002, 11, c.ErId, 0u, c.StartEntity, CutscenePort.PackedMap(m), Player, 0, (byte)0));
             e.Instructions.Add(RunEvents.Make(1000, 4, (byte)1));
             common.Events.Add(e);
             constructor.Instructions.Add(RunEvents.Make(2000, 0, 0, EventId(c.Index), 0u));
