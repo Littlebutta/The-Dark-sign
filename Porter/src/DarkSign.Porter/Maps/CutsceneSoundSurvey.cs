@@ -96,7 +96,7 @@ public static class CutsceneSoundSurvey
             yield return $"no {path}";
             yield break;
         }
-        var mqb = Mqb(BND4.Read(DCX.Decompress(er.Read(path))));
+        var mqb = Mqb(BND4.Read(er.Read(path)));
         var sounds = new SortedSet<(int Type, int Id)>();
         foreach (var line in SoundEvents(mqb, sounds))
             yield return line;
@@ -265,7 +265,7 @@ public static class CutsceneSoundSurvey
             yield return $"no {path}";
             yield break;
         }
-        var mqb = Mqb(BND4.Read(DCX.Decompress(ds3.Read(path))));
+        var mqb = Mqb(BND4.Read(ds3.Read(path)));
         var sounds = new SortedSet<(int Type, int Id)>();
         foreach (var line in SoundEvents(mqb, sounds))
             yield return line;
