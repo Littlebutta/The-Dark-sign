@@ -183,6 +183,11 @@ public sealed class PeopleArmour
         var folder = templateFlverFile.Name[..leafStart].Replace(templateTag, newTag, StringComparison.OrdinalIgnoreCase);
         var tpfFlags = template.Files.FirstOrDefault(f => TPF.Is(f.Bytes))?.Flags ?? templateFlverFile.Flags;
         var files = new List<BinderFile>();
+        // Every texture the binder ships carries this file's own tag (ChrModel.Owned): the low-detail copy its own
+        // ("BD_M_5000_L_..."), so no two files the game may hold at once share a texture name.
+        var shipped = source.Files.Where(f => TPF.Is(f.Bytes)).SelectMany(f => TPF.Read(f.Bytes).Textures).Select(t => t.Name)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var textureName = Enemies.ChrModel.OwnedNames(Rename, newTag + (lod ? "_L" : ""), shipped);
         foreach (var file in source.Files)
         {
             var leaf = Rename(ItemText.Leaf(file.Name));
@@ -190,13 +195,13 @@ public sealed class PeopleArmour
             {
                 var flver = FLVER2.Read(file.Bytes);
                 // Material names and texture folders: the low-detail copy names its own materials (its textures are the _l ones).
-                materials.AddRange(Enemies.ChrModel.Convert(flver, templateFlver, newTag + (lod ? "_L" : ""), Rename,
+                materials.AddRange(Enemies.ChrModel.Convert(flver, templateFlver, newTag + (lod ? "_L" : ""), textureName,
                     $@"N:\GR\data\Model\parts\FullBody\{newTag}\tex\", plainMaterials: true, erNodes: true));
                 FlverMaterialNumbers.Apply(flver);
                 files.Add(new BinderFile(templateFlverFile.Flags, 200, folder + leaf, flver.Write()));
             }
             else if (TPF.Is(file.Bytes))
-                files.Add(new BinderFile(tpfFlags, 100, folder + leaf, Enemies.ChrModel.ConvertTpf(TPF.Read(file.Bytes), Rename, flatMetallic: true).Write()));
+                files.Add(new BinderFile(tpfFlags, 100, folder + leaf, Enemies.ChrModel.ConvertTpf(TPF.Read(file.Bytes), textureName, flatMetallic: true).Write()));
         }
         if (!files.Any(f => f.ID == 200))
             throw new InvalidDataException("the DS3 binder has no model");

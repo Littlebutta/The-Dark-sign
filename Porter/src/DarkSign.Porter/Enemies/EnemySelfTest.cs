@@ -152,6 +152,19 @@ public static class EnemySelfTest
         Check("Havok names inside a cloned file get the new ID (3 renamed, c43000 and xc4300 kept)",
             renamed == 3 && System.Text.Encoding.ASCII.GetString(hkx) == "Characters\\c7000.hkx\0..\\..\\chr\\C7000\\hkx\\a000_003000.hkx\0c43000\0xc4300\0c7000");
         Check("texture names move to the new ID", ChrModel.TextureName("C1100_body_a", "c1100", "c7000") == "c7000_body_a");
+        // Every shipped texture carries its own model's name (texture-names, 2026-11-12: c1100's textures in six ported
+        // hollows, c3060_* in c7049 like Elden Ring's own c3060, dummy_n in c7094 and a weapon).
+        var shippedNames = new HashSet<string>(["c1105_body_a", "c1100_0203_a", "dummy_n", "SYSTEX_DummyNormal"], StringComparer.OrdinalIgnoreCase);
+        var ownNames = ChrModel.OwnedNames(name => ChrModel.TextureName(name, "c1105", "c7007"), "c7007", shippedNames);
+        Check("shipped textures carry the character's own ID (own, borrowed, generic; engine textures and unshipped names kept)",
+            ownNames("c1105_body_a") == "c7007_body_a" && ownNames("c1100_0203_a") == "c7007_c1100_0203_a" && ownNames("dummy_n") == "c7007_dummy_n"
+            && ownNames("SYSTEX_DummyNormal") == "SYSTEX_DummyNormal" && ownNames("c1100_other_n") == "c1100_other_n"
+            && ChrModel.Owned(ChrModel.Owned("x_a", "BD_M_5000_L"), "BD_M_5000_L") == "BD_M_5000_L_x_a");
+        Check("texture-name check: own tags and model keys of ported files",
+            TextureNames.OwnTag("/chr/c7007_h.texbnd.dcx") == "c7007" && TextureNames.OwnTag("/parts/bd_f_5003_l.partsbnd.dcx") == "BD_F_5003_L"
+            && TextureNames.OwnTag("/parts/bd_m_1290.partsbnd.dcx") is null && TextureNames.OwnTag("/parts/wp_a_9174.partsbnd.dcx") is null
+            && TextureNames.ModelKey("/parts/bd_f_5003_l.partsbnd.dcx") == TextureNames.ModelKey("/parts/bd_m_5003.partsbnd.dcx")
+            && TextureNames.ModelKey("/chr/c7007_h.texbnd.dcx") != TextureNames.ModelKey("/chr/c7008_h.texbnd.dcx"));
         Check("model names give their character ID", ChrPort.ChrId("c4300") == 4300 && ChrPort.ChrId("m10_00") == -1);
 
         // Skin indices: DS3's per-mesh palettes become node indices.

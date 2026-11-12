@@ -129,6 +129,23 @@ public static class MapValidate
             else
                 report.Ok("enemy port: every DS3 enemy model it planned was built");
         }
+
+        // Texture names: the game finds a texture by name alone, so two ported models shipping one name (or a ported
+        // texture named like one of Elden Ring's) can lose it when the other unloads. See TextureNames.CheckMod.
+        try
+        {
+            var problems = DarkSign.Porter.TextureNames.CheckMod(ctx.ModPath(), out var files, out var names);
+            foreach (var line in problems.Take(20))
+                report.Warn($"texture names: {line}");
+            if (problems.Count > 20)
+                report.Warn($"texture names: ... {problems.Count - 20} more (run `DarkSignPorter texture-names` for the full list)");
+            if (problems.Count == 0)
+                report.Ok($"texture names: {names} names in {files} ported character and parts files, each in one model and carrying its own name");
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            report.Warn($"texture name check didn't run: {ex.Message}");
+        }
         return report;
     }
 

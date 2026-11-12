@@ -38,18 +38,18 @@ public static class ChrModel
     [ThreadStatic] public static int SecondLayers;
 
     public static List<ChrMaterial> Convert(FLVER2 flver, FLVER2 template, int ds3Chr, int newChr, Func<string, long>? textureArea = null,
-        ChrGlow.Template? glow = null) =>
-        Convert(flver, template, ds3Chr, newChr, PlainMaterials, ErNodes, textureArea, ErVertexColours, glow);
+        ChrGlow.Template? glow = null, Func<string, string>? rename = null) =>
+        Convert(flver, template, ds3Chr, newChr, PlainMaterials, ErNodes, textureArea, ErVertexColours, glow, rename);
 
     /// <summary>From the last Convert on this thread: DS3 materials drawn on the glowing material.</summary>
     [ThreadStatic] public static int Glowing;
 
     /// <param name="textureArea">Pixels of a texture by its new name (0 when unknown); picks the layer a two-layer material shows.</param>
     public static List<ChrMaterial> Convert(FLVER2 flver, FLVER2 template, int ds3Chr, int newChr, bool plainMaterials, bool erNodes,
-        Func<string, long>? textureArea = null, bool erColours = true, ChrGlow.Template? glow = null)
+        Func<string, long>? textureArea = null, bool erColours = true, ChrGlow.Template? glow = null, Func<string, string>? rename = null)
     {
         string oldTag = $"c{ds3Chr:D4}", newTag = $"c{newChr:D4}";
-        return Convert(flver, template, newTag, n => TextureName(n, oldTag, newTag), $@"N:\GR\data\Model\chr\{newTag}\tex\",
+        return Convert(flver, template, newTag, rename ?? (n => TextureName(n, oldTag, newTag)), $@"N:\GR\data\Model\chr\{newTag}\tex\",
             plainMaterials, erNodes, textureArea, erColours, glow);
     }
 
@@ -313,6 +313,27 @@ public static class ChrModel
             NextSiblingIndex = node.NextSiblingIndex,
             PreviousSiblingIndex = node.PreviousSiblingIndex,
         }).ToList();
+
+    /// <summary>
+    /// A shipped texture's name under its own model's tag: "c1100_0203_a" in the port of c1105 as c7007 becomes
+    /// "c7007_c1100_0203_a", "dummy_n" in c7094 "c7094_dummy_n". Names that already start with the tag (the model's
+    /// own, renamed by <see cref="TextureName"/>) and engine textures (SYSTEX_*) stay.
+    /// <para>The game finds a texture by its name alone, across every texture binder it has loaded. Up to 1.0.410 a
+    /// texture DS3 borrows from another character (c1100's, which six DS3 hollows wear) or names generically kept its
+    /// DS3 name, so several ported characters, and Elden Ring's own c3060 and c3900, held the same name: 70 names
+    /// shared with Elden Ring's files and 304 between ported models (texture-names, 2026-11-12). When one of them
+    /// unloaded, the others could lose that texture.</para>
+    /// </summary>
+    public static string Owned(string name, string tag) =>
+        name.StartsWith(tag, StringComparison.OrdinalIgnoreCase) || name.StartsWith("SYSTEX", StringComparison.OrdinalIgnoreCase)
+            ? name : $"{tag}_{name}";
+
+    /// <summary>
+    /// <paramref name="rename"/>, then <see cref="Owned"/> for the DS3 textures this model ships (<paramref name="shipped"/>,
+    /// DS3 names). A texture the model names but doesn't ship keeps the plain rename (it is found elsewhere, or not at all).
+    /// </summary>
+    public static Func<string, string> OwnedNames(Func<string, string> rename, string tag, IReadOnlySet<string> shipped) =>
+        name => shipped.Contains(name) ? Owned(rename(name), tag) : rename(name);
 
     /// <summary>A DS3 texture name under the new character ID ("c1020_body_a" -> "c7003_body_a").</summary>
     public static string TextureName(string name, string oldTag, string newTag) =>

@@ -1368,8 +1368,7 @@ public static partial class ChrPort
         bool ownFile = ChrModel.OwnTextureFile;
         var ds3Textures = ds3.Entries.Where(e => e.Path is { } p && p.StartsWith($"/chr/c{x:D4}", StringComparison.OrdinalIgnoreCase)
                                                  && p.EndsWith(".texbnd.dcx", StringComparison.OrdinalIgnoreCase)).Select(e => e.Path!).ToList();
-        var tpfs = new List<TPF>();
-        var notDds = new List<string>();
+        var sources = new List<TPF>();
         // Textures the model names under another character's ID (the Undead Dog c2020 wears c2029's, c6080 some of
         // c6089's): that character's binders, only the textures named. Without them the mesh draws nothing.
         foreach (int owner in textureOwners)
@@ -1380,13 +1379,25 @@ public static partial class ChrPort
                     var tpf = TPF.Read(f.Bytes);
                     tpf.Textures.RemoveAll(tx => !textureNames.Contains(tx.Name));
                     if (tpf.Textures.Count > 0)
-                        tpfs.Add(ChrModel.ConvertTpf(tpf, x, n, !ownFile, notDds));
+                        sources.Add(tpf);
                 }
         foreach (var path in ds3Textures)
             foreach (var f in BND4.Read(ds3.Read(path)).Files.Where(f => TPF.Is(f.Bytes)))
-                tpfs.Add(ChrModel.ConvertTpf(TPF.Read(f.Bytes), x, n, !ownFile, notDds));
+                sources.Add(TPF.Read(f.Bytes));
         foreach (var f in ds3Chrbnd.Files.Where(f => TPF.Is(f.Bytes)))
-            tpfs.Add(ChrModel.ConvertTpf(TPF.Read(f.Bytes), x, n, !ownFile, notDds));
+            sources.Add(TPF.Read(f.Bytes));
+        // Every texture this character ships carries its own ID, borrowed and generic ones too (ChrModel.Owned).
+        var shipped = sources.SelectMany(p => p.Textures).Select(tx => tx.Name).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        string oldChrTag = $"c{x:D4}", newChrTag = $"c{n:D4}";
+        var rename = ChrModel.OwnedNames(name => ChrModel.TextureName(name, oldChrTag, newChrTag), newChrTag, shipped);
+        int borrowed = shipped.Count(name => !ChrModel.TextureName(name, oldChrTag, newChrTag).StartsWith(newChrTag, StringComparison.OrdinalIgnoreCase)
+                                             && !name.StartsWith("SYSTEX", StringComparison.OrdinalIgnoreCase));
+        if (borrowed > 0)
+            notes.Add($"{borrowed} borrowed or generic DS3 texture names given this character's ID");
+        var tpfs = new List<TPF>();
+        var notDds = new List<string>();
+        foreach (var tpf in sources)
+            tpfs.Add(ChrModel.ConvertTpf(tpf, rename, !ownFile, notDds));
         if (notDds.Count > 0)
             notes.Add($"FAIL textures: {notDds.Count} DS3 textures are not DDS files and are left out: {string.Join("; ", notDds.Take(6))}{(notDds.Count > 6 ? "; ..." : "")}");
         // Materials whose colour texture the port does not find (another sampler name, or a path left to the DS3
@@ -1398,7 +1409,7 @@ public static partial class ChrPort
         var areas = new Dictionary<string, long>(StringComparer.OrdinalIgnoreCase);
         foreach (var tx in tpfs.SelectMany(p => p.Textures).Where(tx => tx.Bytes.Length >= 20))
             areas.TryAdd(tx.Name, (long)BitConverter.ToInt32(tx.Bytes, 16) * BitConverter.ToInt32(tx.Bytes, 12));
-        var made = ChrModel.Convert(flver, templateFlver, x, n, name => areas.GetValueOrDefault(name), glowing > 0 ? ChrGlow.Find(er) : null);
+        var made = ChrModel.Convert(flver, templateFlver, x, n, name => areas.GetValueOrDefault(name), glowing > 0 ? ChrGlow.Find(er) : null, rename);
         if (ChrModel.VertexColoursSet > 0 || ChrModel.SecondLayers > 0)
             notes.Add($"{ChrModel.VertexColoursSet} vertex colours set to Elden Ring's" + (ChrModel.SecondLayers > 0 ? $", {ChrModel.SecondLayers} two-layer materials show their larger layer" : ""));
         if (blank.Count > 0)
