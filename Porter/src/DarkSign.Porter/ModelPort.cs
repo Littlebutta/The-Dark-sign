@@ -342,7 +342,10 @@ public static class ModelPort
     }
 
     /// <summary>A 4x4 DXT1 texture of one colour, (128, 128, 128): a normal map that bends nothing, mid roughness.</summary>
-    public static byte[] FlatNormalDds()
+    public static byte[] FlatNormalDds() => SolidDxt1(0x8410);
+
+    /// <summary>A 4x4 DXT1 texture of one colour (R5G6B5).</summary>
+    public static byte[] SolidDxt1(ushort rgb565)
     {
         using var ms = new MemoryStream();
         using var w = new BinaryWriter(ms);
@@ -358,7 +361,7 @@ public static class ModelPort
         for (int i = 0; i < 5; i++) w.Write(0);
         w.Write(0x1000);                       // caps: texture
         for (int i = 0; i < 4; i++) w.Write(0);
-        w.Write((ushort)0x8410); w.Write((ushort)0x8410); // both endpoints R5G6B5 (16, 32, 16)
+        w.Write(rgb565); w.Write(rgb565);      // both endpoints the colour (0x8410 = R5G6B5 16, 32, 16)
         w.Write(0);                            // every pixel the first endpoint
         return ms.ToArray();
     }

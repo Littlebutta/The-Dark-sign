@@ -125,6 +125,16 @@ public static partial class MapPortChecks
         solid.Ds3Alpha = false;
         var old = ConvertOne(solid, bnd, OverlayFlver());
         Expect(old.Meshes.Count == 5 && old.Meshes.All(m => Triangles(m) == 2 && m.Vertices.All(v => v.Colors.Single().A == 1)), "--solid-overlays keeps every triangle solid");
+
+        // Diagnostic --tint-materials: each family in its colour, everything else its real texture.
+        Expect(MapPorter.Options.Parse(["--tint-materials"]).TintMaterials, "--tint-materials is read");
+        var (tinted, tbnd) = VisualPort();
+        tinted.TintMaterials = true;
+        var t = ConvertOne(tinted, tbnd, OverlayFlver());
+        var tints = t.Meshes.Select(m => tinted.Materials.Single(x => x.Name == t.Materials[m.MaterialIndex].Name).Albedo).ToList();
+        Expect(tints.SequenceEqual(["DKS_tint_green", "DKS_tint_green", "DKS_tint_red", "DKS_tint_magenta", "m40_00_rock_a", "DKS_tint_yellow"]),
+            $"tints {string.Join(", ", tints)}");
+        Expect(MapModelPort.Tints.All(x => x.Name.StartsWith("DKS_tint_")) && ModelPort.SolidDxt1(0xF800).Length == ModelPort.FlatNormalDds().Length, "tint textures");
     }
 
     private static void HelperPieces()

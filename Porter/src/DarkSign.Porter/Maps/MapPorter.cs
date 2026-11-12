@@ -40,6 +40,9 @@ public static class MapPorter
         /// <summary>--solid-overlays: every ported vertex is solid and a two-layer material shows its first layer, as
         /// up to 1.0.340 (fallback "map-overlays" B; see <see cref="MapOverlays"/>).</summary>
         public bool SolidOverlays { get; set; }
+        /// <summary>--tint-materials (diagnostic, not a fallback): DS3 material families that keep something in vertex
+        /// alpha are drawn in solid colours (see <see cref="MapModelPort.Tints"/>).</summary>
+        public bool TintMaterials { get; set; }
         /// <summary>--stand-ins: DS3's low-detail stand-ins stay in the map on top of the detailed pieces they stand
         /// for (fallback "map-stand-ins" B; see <see cref="MapStandIns"/>).</summary>
         public bool StandIns { get; set; }
@@ -114,6 +117,7 @@ public static class MapPorter
                     case "--helper-pieces": o.HelperPieces = true; break;
                     case "--stand-ins": o.StandIns = true; break;
                     case "--solid-overlays": o.SolidOverlays = true; break;
+                    case "--tint-materials": o.TintMaterials = true; break;
                     case "--host-atmosphere": o.HostAtmosphere = true; break;
                     case "--host-env-light": o.HostEnvLight = true; break;
                     case "--half-textures": o.TextureDetail = MapTextures.Detail.Half; break;
@@ -590,6 +594,7 @@ public static class MapPorter
             models = models.WithTemplateTextures();
         models.UnlitCastShadows = options.HostLighting;
         models.Ds3Alpha = !options.SolidOverlays;
+        models.TintMaterials = options.TintMaterials;
         if (test != PieceTest.None)
             report.AppendLine(test switch
             {
@@ -686,6 +691,14 @@ public static class MapPorter
         catch (Exception ex)
         {
             report.AppendLine($"  piece report: FAILED: {ex.Message}");
+        }
+        if (options.TintMaterials)
+        {
+            foreach (var (name, marks, rgb) in MapModelPort.Tints)
+            {
+                textures.Provide(name, new TPF.Texture(name, 0, 0, ModelPort.SolidDxt1(rgb), TPF.TPFPlatform.PC));
+                report.AppendLine($"  tint (diagnostic): {name[9..]} = {marks}");
+            }
         }
         textures.Need(models.Textures, ds3Id);
         int notesSoFar = models.Notes.Count;
