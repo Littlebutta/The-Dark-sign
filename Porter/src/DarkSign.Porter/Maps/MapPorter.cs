@@ -417,12 +417,14 @@ public static class MapPorter
             Step(report, "people armour", () => PortArmour(ctx, ds3, er, armour, ported.Select(p => p.Slot).ToList()));
         // DS3's cutscenes (boss intros...) converted first, so the events step can play the ones that made it.
         Dictionary<int, int>? cutscenes = null;
+        Dictionary<int, CutscenePort.Info> cutsceneInfo = [];
         if (ported.Count > 0)
             Step(report, "cutscenes", () =>
             {
                 var (done, summary) = CutscenePort.Port(ctx, ds3, er,
-                    ported.Select(p => new CutscenePort.MapInput(p.Slot, _partNames.GetValueOrDefault(p.Slot.Er) ?? new())).ToList());
+                    ported.Select(p => new CutscenePort.MapInput(p.Slot, _partNames.GetValueOrDefault(p.Slot.Er) ?? new())).ToList(), out var infos);
                 cutscenes = done;
+                cutsceneInfo = infos;
                 return summary;
             });
         if (ported.Count > 0)
@@ -445,13 +447,20 @@ public static class MapPorter
         var arenas = _arenas.Where(a => hasRun && ported.Any(p => p.Slot.Er == a.Er)).Take(BossArenas.MaxArenas)
             .Select((a, i) => a with { Index = i }).ToList();
         File.WriteAllLines(ctx.ModPath(BossArenas.ListFile), BossArenas.ListLines(arenas));
+        // The F1 menu's Cutscenes tab: like the arena warps, its events go into common.emevd with the run events.
+        var chrNames = File.Exists(ctx.ModPath(EnemyPort.ChrMap.FileName)) ? EnemyPort.ChrMap.Parse(File.ReadAllLines(ctx.ModPath(EnemyPort.ChrMap.FileName))) : null;
+        var menuCutscenes = hasRun
+            ? CutsceneMenu.Entries(cutsceneInfo.Values, ported.GroupBy(p => p.Slot.Er).ToDictionary(g => g.Key, g => (g.First().Slot.Name, (uint)g.First().StartEntity)),
+                model => chrNames?.NameOf(model))
+            : [];
+        File.WriteAllLines(ctx.ModPath(CutsceneMenu.ListFile), CutsceneMenu.ListLines(menuCutscenes));
         // The vertex layouts the map pieces were written in, for map-validate (a mesh in any other layout isn't drawn).
         if (_layouts.Count > 0)
             File.WriteAllLines(ctx.ModPath(LayoutsFile), _layouts.Order(StringComparer.Ordinal));
         Step(report, "enemy tables", () => WriteEnemyTables(ctx, ported.Select(p => p.Slot.Ds3.ToString()).ToHashSet()));
         var startMap = ported.FirstOrDefault(p => p.Slot.Ds3 == MapId.Parse("m40_00_00_00") && !p.Slot.Probe);
         if (startMap.Slot is not null)
-            Step(report, "run events", () => AddRunEvents(ctx, er, startMap.Slot.Er, (uint)startMap.StartEntity, warps, arenas));
+            Step(report, "run events", () => AddRunEvents(ctx, er, startMap.Slot.Er, (uint)startMap.StartEntity, warps, arenas, menuCutscenes));
         else
             report.AppendLine("run events: not added (Firelink Shrine / Cemetery of Ash was not ported)");
 
@@ -526,6 +535,11 @@ public static class MapPorter
             if (Directory.Exists(cutsceneFolder))
                 foreach (var file in Directory.GetFiles(cutsceneFolder, $"s{id.Area:D2}_{id.Block:D2}_*.cutscenebnd.dcx"))
                     Delete(file);
+            // Their sound banks (CutsceneSound): sd\sAA_BB_NNNN.bnk.
+            var soundFolder = Path.Combine(root, "sd");
+            if (Directory.Exists(soundFolder))
+                foreach (var file in Directory.GetFiles(soundFolder, $"s{id.Area:D2}_{id.Block:D2}_*.bnk"))
+                    Delete(file);
             var folder = Local($"/map/{id.AreaFolder}/{id}/x")[..^2];
             if (Directory.Exists(folder))
                 foreach (var file in Directory.GetFiles(folder))
@@ -547,7 +561,7 @@ public static class MapPorter
         // MapRegistry.ListPath: builds 1.0.234-1.0.238 wrote it for the m50 probe and it crashed the boot; never again.
         foreach (var path in new[] { "/event/common.emevd.dcx", MapEvents.CommonFunc, MaterialBinder, OldMaterialBinder, ActionButtons.ModMenu, FlagAlloc.LegacyList, MapRegistry.ListPath })
             Delete(Local(path));
-        foreach (var file in new[] { MapEvents.FlagFile, "darksign_maps.tsv", BossArenas.ListFile, BossKits.FileName, "darksign_maps_check.txt", FlagAlloc.ProbeFile,
+        foreach (var file in new[] { MapEvents.FlagFile, "darksign_maps.tsv", BossArenas.ListFile, CutsceneMenu.ListFile, BossKits.FileName, "darksign_maps_check.txt", FlagAlloc.ProbeFile,
                      DarkSign.Randomizer.Data.EnemyTables.PlacedFile, DarkSign.Randomizer.Data.EnemyTables.ErFile })
             Delete(Path.Combine(root, file));
     }
@@ -1547,7 +1561,7 @@ public static class MapPorter
     }
 
     private static string AddRunEvents(PorterContext ctx, GameArchives er, MapId host, uint startEntity, IReadOnlyList<RunEvents.Warp> warps,
-        IReadOnlyList<BossArenas.Arena> arenas)
+        IReadOnlyList<BossArenas.Arena> arenas, IReadOnlyList<CutsceneMenu.Entry> cutscenes)
     {
         const string Common = "/event/common.emevd.dcx";
         var modCommon = ctx.ModPath(ModParts(Common));
@@ -1567,10 +1581,12 @@ public static class MapPorter
         var slots = arenas.Select(a => (a.Ds3, a.Er)).Distinct().ToList();
         var flagPort = new EventPort(defs, defs, slots, flags);
         BossArenas.AddWarps(common, arenas, f => flagPort.Move(f, EventPort.Kind.Flag));
+        CutsceneMenu.AddEvents(common, cutscenes);
         flags.Save(ctx.ModPath(MapEvents.FlagFile));
         File.WriteAllBytes(modCommon, DCX.Compress(common.Write(), compression));
         return $"run events: start warps to {host} entity {startEntity}; leave warps to {back.Map} entity {back.EntityId}; "
                + $"{warps.Count} per-map warps ({string.Join(", ", warps.Select(w => $"{w.Map} flag {RunEvents.WarpRequestFlag(w.Index)}"))}); "
-               + $"{arenas.Count} boss arena warps ({string.Join(", ", arenas.Select(a => $"{a.Name} flag {BossArenas.RequestFlag(a.Index)}"))})";
+               + $"{arenas.Count} boss arena warps ({string.Join(", ", arenas.Select(a => $"{a.Name} flag {BossArenas.RequestFlag(a.Index)}"))}); "
+               + $"{cutscenes.Count} F1 cutscene events ({string.Join(", ", cutscenes.Select(c => $"{c.ErName} {c.Label} flag {CutsceneMenu.RequestFlag(c.Index)}"))})";
     }
 }

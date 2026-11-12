@@ -514,11 +514,13 @@ public static class Fallbacks
         ]),
 
         new("map-cutscenes", "DS3 maps", "DS3's cutscenes (boss intros)", Stage.Build,
-            "The game crashes, hangs or shows a black screen when a DS3 cutscene should play (walking up to Ariandel for the Friede fight, a boss fog), or a cutscene looks broken and you'd rather go straight to the fight.",
+            "The game crashes, hangs or shows a black screen when a DS3 cutscene should play (walking up to Ariandel for the Friede fight, a boss fog, or Play in the F1 menu's Cutscenes tab), a cutscene looks broken and you'd rather go straight to the fight, or a cutscene's sound is wrong or breaks the game's sound.",
         [
-            new("A", "DS3's cutscenes (default)", "Every cutscene of the ported DS3 maps is converted from your DS3 files into Elden Ring's format and plays where DS3's scripts play it, with the ported bosses in it. They are silent (DS3's cutscene sound isn't ported yet). Report: the cutscenes section of the port-maps log."),
+            new("A", "DS3's cutscenes with their sound (default)", "Every cutscene of the ported DS3 maps is converted from your DS3 files into Elden Ring's format and plays where DS3's scripts play it (and from the F1 menu's Cutscenes tab), with the ported bosses in it. Its sound comes along: DS3's cutscene audio, effects and spoken lines in a sound bank of its own (sd\\sAA_BB_NNNN.bnk), armour movement as Elden Ring's. Subtitles aren't shown. Report: the cutscenes section of the port-maps log."),
             new("B", "None", "No DS3 cutscenes (DARKSIGN_CUTSCENES=0): the scripts skip them and a cutscene that moves you only moves you, as builds up to 1.0.38x did.")
                 { PorterEnv = Env("DARKSIGN_CUTSCENES", "0") },
+            new("C", "Silent cutscenes", "The cutscenes play as in A but without DS3's sound (DARKSIGN_CUTSCENE_SOUND=0): no cutscene sound banks, and the timelines keep their sound events as the first cutscene builds had them.")
+                { PorterEnv = Env("DARKSIGN_CUTSCENE_SOUND", "0") },
         ]),
 
         new("map-layers", "DS3 maps", "Which state of a DS3 map is ported", Stage.Build,

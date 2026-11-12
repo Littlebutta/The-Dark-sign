@@ -246,6 +246,8 @@ void request_flag(uint32_t flag, const char *done)
     g_open = false; // hand the game its input back for the warp
 }
 
+void draw_pending();
+
 void draw_ds3_run()
 {
     if (!g_maps_loaded)
@@ -302,8 +304,104 @@ void draw_ds3_run()
     ImGui::EndDisabled();
     ImGui::Separator();
     ImGui::TextWrapped("%s", g_run_status.c_str());
+    draw_pending();
+    if (!g_map_check.empty())
+        ImGui::TextDisabled("Porter check of the ported maps: %s", g_map_check.c_str());
+}
 
-    // Diagnostics for the first tests: did the event script pick up the request, and what did the porter's check say?
+// The "Cutscenes" tab: the converted DS3 cutscenes from darksign_cutscenes.tsv (CutsceneMenu in the porter):
+// "DS3 cutscene<TAB>Elden Ring cutscene<TAB>map name<TAB>label<TAB>seconds<TAB>play request flag". The event behind
+// each flag warps to the cutscene's map, waits for it to load and plays the cutscene.
+struct PortedCutscene {
+    std::string ds3, er, map, label;
+    int seconds;
+    uint32_t flag;
+};
+std::vector<PortedCutscene> g_cutscenes;
+bool g_cutscenes_loaded;
+
+void load_cutscenes()
+{
+    g_cutscenes_loaded = true;
+    wchar_t path[MAX_PATH];
+    DWORD n = GetEnvironmentVariableW(L"DKSIGN_ITEMS", path, MAX_PATH);
+    if (!n || n >= MAX_PATH)
+        return;
+    wchar_t *slash = wcsrchr(path, L'\\');
+    if (!slash || (size_t)(slash - path) + 24 >= MAX_PATH)
+        return;
+    wcscpy(slash + 1, L"darksign_cutscenes.tsv");
+    FILE *f = _wfopen(path, L"rb");
+    if (!f) {
+        dks_log("cutscenes: no darksign_cutscenes.tsv");
+        return;
+    }
+    char line[512];
+    while (fgets(line, sizeof line, f)) {
+        line[strcspn(line, "\r\n")] = 0;
+        if (line[0] == '#')
+            continue;
+        char *cols[6] = {line};
+        int c = 1;
+        for (char *p = line; *p && c < 6; ++p)
+            if (*p == '\t') {
+                *p = 0;
+                cols[c++] = p + 1;
+            }
+        if (c < 6)
+            continue;
+        uint32_t flag = (uint32_t)strtoul(cols[5], nullptr, 10);
+        if (flag)
+            g_cutscenes.push_back({cols[0], cols[1], cols[2], cols[3], atoi(cols[4]), flag});
+    }
+    fclose(f);
+    dks_log("cutscenes: %d listed", (int)g_cutscenes.size());
+}
+
+void draw_cutscenes()
+{
+    if (!g_maps_loaded)
+        load_maps();
+    if (!g_cutscenes_loaded)
+        load_cutscenes();
+    if (dks_get_event_flag(DKS_FLAG_DS3_RUN_ACTIVE) < 0) {
+        ImGui::TextDisabled("Load a character first.");
+        return;
+    }
+    if (g_cutscenes.empty()) {
+        ImGui::TextWrapped("No Dark Souls III cutscenes are ported yet. Press Rebuild content in the launcher, then restart the game. "
+                           "(Cutscenes need the Cemetery of Ash map ported, and the map-cutscenes fallback on A.)");
+        return;
+    }
+    ImGui::TextWrapped("Plays a converted Dark Souls III cutscene. You are warped to its map first; it starts a few seconds after the map loads.");
+    ImGui::Separator();
+    ImGui::BeginChild("cutscenelist", ImVec2(0, -80), ImGuiChildFlags_Borders);
+    const std::string *map = nullptr;
+    for (const PortedCutscene &c : g_cutscenes) {
+        if (!map || *map != c.map) {
+            map = &c.map;
+            ImGui::Spacing();
+            ImGui::TextUnformatted(c.map.c_str());
+        }
+        ImGui::PushID((int)c.flag);
+        if (ImGui::SmallButton("Play")) {
+            dks_log("cutscenes: play %s (%s as %s, %s), request flag %u", c.label.c_str(), c.ds3.c_str(), c.er.c_str(), c.map.c_str(), c.flag);
+            request_flag(c.flag, "Warping to the cutscene's map...");
+        }
+        ImGui::PopID();
+        ImGui::SameLine();
+        ImGui::Text("%s", c.label.c_str());
+        ImGui::SameLine();
+        ImGui::TextDisabled("%s as %s, %d s", c.ds3.c_str(), c.er.c_str(), c.seconds);
+    }
+    ImGui::EndChild();
+    ImGui::TextWrapped("%s", g_run_status.c_str());
+    draw_pending();
+}
+
+// Diagnostics for the first tests: did the event script pick up the request?
+void draw_pending()
+{
     if (g_pending_flag) {
         int still = dks_get_event_flag(g_pending_flag);
         ULONGLONG waited = GetTickCount64() - g_pending_since;
@@ -321,8 +419,6 @@ void draw_ds3_run()
             }
         }
     }
-    if (!g_map_check.empty())
-        ImGui::TextDisabled("Porter check of the ported maps: %s", g_map_check.c_str());
 }
 
 // The "Spawn enemies" tab: Dark Souls III (ported) or Elden Ring characters from darksign_spawn_list.tsv (spawn.c).
@@ -519,7 +615,7 @@ void draw_menu()
     ImGui::TextDisabled("Ctrl+Shift+F8");
     ImGui::TextWrapped("%s", dks_perf_status());
 
-    bool changed = false, levels = false, run = false, spawn = false;
+    bool changed = false, levels = false, run = false, spawn = false, cutscenes = false;
     if (ImGui::BeginTabBar("games")) {
         for (int i = 0; i < IM_ARRAYSIZE(GAME_LABELS); i++)
             if (ImGui::BeginTabItem(GAME_LABELS[i])) {
@@ -541,7 +637,16 @@ void draw_menu()
             spawn = true;
             ImGui::EndTabItem();
         }
+        if (ImGui::BeginTabItem("Cutscenes")) {
+            cutscenes = true;
+            ImGui::EndTabItem();
+        }
         ImGui::EndTabBar();
+    }
+    if (cutscenes) {
+        draw_cutscenes();
+        ImGui::End();
+        return;
     }
     if (spawn) {
         draw_spawn();

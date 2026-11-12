@@ -83,6 +83,20 @@ public sealed class SoundIndex
 
     public bool HasBank(uint bankId) => _sections.Any(s => s.Banks.Any(b => b.Id == bankId));
 
+    /// <summary>For surveys: each section's bank count, and the banks holding <paramref name="bankId"/> with their events.</summary>
+    public IEnumerable<string> Describe(uint? bankId = null)
+    {
+        for (int i = 0; i < _sections.Count; i++)
+        {
+            var banks = _sections[i].Banks;
+            if (bankId is null)
+                yield return $"section {i}: {banks.Count} banks, {banks.Sum(b => b.Events.Count)} events";
+            foreach (var b in banks.Where(b => b.Id == bankId))
+                yield return $"section {i} bank {b.Id}: {b.Events.Count} events: " +
+                             string.Join(" ", b.Events.Take(40).Select(e => $"{(uint)e}{((e >> 32) != 0 ? $"+{e >> 32:X}" : "")}"));
+        }
+    }
+
     /// <summary>
     /// Lists these events under the bank (flag 0: one-shot sounds). A bank the index doesn't have yet is added to the
     /// section holding <paramref name="sectionOf"/> (the bank whose Wwise project it shares, e.g. cs_main), else to
