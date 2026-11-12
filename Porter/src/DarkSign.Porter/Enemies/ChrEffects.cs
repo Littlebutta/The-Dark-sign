@@ -88,7 +88,7 @@ public sealed class ChrEffects
         public Dictionary<string, int> Events = [];
         public int NpcEffects, NpcEffectsSkipped;
         /// <summary>DS3 effects its row names that DS3's scripts only take off (left out), and ones they only put on (added).</summary>
-        public List<int> ScriptDropped = [], ScriptAdded = [];
+        public List<int> ScriptDropped = [], ScriptAdded = [], CategoryDropped = [];
         public string Note = "";
     }
 
@@ -532,6 +532,34 @@ public sealed class ChrEffects
     /// A ported character's NpcParam row: DS3's own effects in the slots the template leaves free, and the row
     /// pointed at the character's own effect binder and sound bank (the template's bank stays as the second one).
     /// </summary>
+    public static bool CategoriesEnabled => Environment.GetEnvironmentVariable("DARKSIGN_ENEMY_CATEGORIES")?.Trim() != "0";
+
+    /// <summary>
+    /// DS3's rule that a character shows one effect of a category (spCategory), the one of highest categoryPriority,
+    /// applied when the row is built. The 1.0.340 test spawn of the Jailer (test menu "fx?" watch, the game's live
+    /// SpEffect list) carried all three of its category-100 lights at once, 11900 cyan (priority 1), 11899 orange (4)
+    /// and 11902 blue (2), although the ported rows name their category: Elden Ring doesn't sort out effects an
+    /// NpcParam row starts with by category. So only the winner of each category goes into the ported row; effects
+    /// without a category all stay, and of equal priorities the first named stays. Off with DARKSIGN_ENEMY_CATEGORIES=0
+    /// (fallback enemy-glow D).
+    /// </summary>
+    public static (List<int> Kept, List<int> Dropped) OnePerCategory(IReadOnlyList<int> ids, Func<int, PARAM.Row?> row)
+    {
+        int Category(int id) => row(id) is { } r ? ParamDefaults.Int(r, "spCategory") : 0;
+        var winners = new Dictionary<int, (int Id, int Priority)>();
+        foreach (var id in ids.Distinct())
+        {
+            int category = Category(id);
+            if (category <= 0)
+                continue;
+            int priority = ParamDefaults.Int(row(id)!, "categoryPriority");
+            if (!winners.TryGetValue(category, out var best) || priority > best.Priority)
+                winners[category] = (id, priority);
+        }
+        var dropped = ids.Distinct().Where(id => Category(id) is > 0 and var c && winners[c].Id != id).ToList();
+        return ([.. ids.Distinct().Except(dropped)], dropped);
+    }
+
     public void ApplyNpc(PARAM.Row row, PARAM.Row? ds3Row, ChrPort.Plan plan)
     {
         if (!_built.TryGetValue(plan.NewChr, out var built))
@@ -546,6 +574,11 @@ public sealed class ChrEffects
                 (ds3Effects, var dropped, var added) = _scripts.Apply(ds3Row.ID, own);
                 built.ScriptDropped = [.. built.ScriptDropped.Union(dropped)];
                 built.ScriptAdded = [.. built.ScriptAdded.Union(added)];
+            }
+            if (CategoriesEnabled && _ds3SpEffects is { } ds3Sp)
+            {
+                (ds3Effects, var lost) = OnePerCategory(ds3Effects, id => ds3Sp[id]);
+                built.CategoryDropped = [.. built.CategoryDropped.Union(lost)];
             }
             foreach (var id in ds3Effects)
             {
@@ -607,7 +640,7 @@ public sealed class ChrEffects
         {
             "new chr\tDS3 chr\tname\teffects ported\teffects wanted\teffect binder\tleft out (reason: count)\tSpEffects cast by moves ported\tcast\tNpcParam effects\tNpcParam effects skipped\t" +
             "sounds ported\tsounds wanted\tsound bank\tsounds left out\tevents added\tevents dropped\ttemplate events dropped\tevents by kind\tnote\t" +
-            "NpcParam effects DS3 scripts only take off (left out)\teffects DS3 scripts put on (added)",
+            "NpcParam effects DS3 scripts only take off (left out)\teffects DS3 scripts put on (added)\teffects that lose to another of their category (left out)",
         };
         foreach (var b in _built.Values.OrderBy(b => b.Plan.NewChr))
             lines.Add(string.Join('\t', $"c{b.Plan.NewChr:D4}", $"c{b.Plan.Ds3.Chr:D4}", b.Plan.Ds3.Name.Replace('\t', ' '), b.EffectsPorted, b.EffectsWanted,
@@ -618,7 +651,8 @@ public sealed class ChrEffects
                 b.Sounds is null ? "" : string.Join("; ", b.Sounds.Reasons.OrderByDescending(r => r.Value).Select(r => $"{r.Key}: {r.Value}")),
                 b.EventsAdded, b.EventsDropped, b.TemplateDropped,
                 string.Join("; ", b.Events.OrderBy(e => e.Key).Select(e => $"{e.Key}: {e.Value}")), b.Note,
-                string.Join(" ", b.ScriptDropped.Order()), string.Join(" ", b.ScriptAdded.Order())));
+                string.Join(" ", b.ScriptDropped.Order()), string.Join(" ", b.ScriptAdded.Order()),
+                string.Join(" ", b.CategoryDropped.Order())));
         foreach (var (id, reason) in _converter.Reasons.OrderBy(r => r.Key).Take(400))
             lines.Add($"# f{id}: {reason}");
         _sp?.WriteReport(_ctx, "enemy-speffects.tsv");

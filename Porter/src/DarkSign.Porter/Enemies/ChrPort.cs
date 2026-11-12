@@ -506,6 +506,7 @@ public static partial class ChrPort
         var portedModels = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         // Files are built side by side; the Havok serializer is used one thread at a time (AnimPort.HavokLock).
         var built = new ConcurrentDictionary<int, (ChrFiles? Files, string? Error)>();
+        MaskedErrors.Install();
         Parallel.ForEach(plans.Where(p => p.Method != Method.Stats), Parallelism.Options, plan =>
         {
             try
@@ -1652,6 +1653,9 @@ public static partial class ChrPort
     {
         var frame = ex.StackTrace?.Split('\n').Select(l => l.Trim()).FirstOrDefault(l => l.StartsWith("at ", StringComparison.Ordinal)) ?? "";
         var at = frame.Length > 0 ? " " + (frame.IndexOf(" in ", StringComparison.Ordinal) is > 0 and var i ? frame[..i] : frame) : "";
+        // A write's "Not all reservations filled" hides what stopped it: name that first, the reservations after.
+        if (MaskedErrors.Cause(ex) is { } cause)
+            return $"{Describe(cause)} (then: {ex.GetType().Name}: {(ex.Message.Length > 120 ? ex.Message[..120] + "..." : ex.Message)})";
         return $"{ex.GetType().Name}: {ex.Message}{at}";
     }
 

@@ -260,6 +260,20 @@ public static class EnemySelfTest
         Check($"failures name the exception and where it came from ({described})",
             described.StartsWith("ArgumentOutOfRangeException", StringComparison.Ordinal) && described.Contains(" at ", StringComparison.Ordinal));
 
+        // A binder write that fails partway names its own error, not the reservations it left (1.0.340 c6330 / c6331).
+        MaskedErrors.Install();
+        string writeError;
+        try
+        {
+            var broken = new BND4();
+            broken.Files.Add(new BinderFile(Binder.FileFlags.Flag1, 0, "a.flver", null!));
+            broken.Write();
+            writeError = "";
+        }
+        catch (Exception ex) { writeError = ChrPort.Describe(ex); }
+        Check($"a binder write that fails partway is described by what stopped it ({writeError[..Math.Min(writeError.Length, 160)]})",
+            writeError.StartsWith("NullReferenceException", StringComparison.Ordinal) && writeError.Contains("(then: InvalidOperationException: Not all reservations filled", StringComparison.Ordinal));
+
         // A model with nothing to draw is neither a template nor ported (the 6 "files failed" of 2026-11-07).
         Check("an empty model has no body", !ChrPort.HasBody(new FLVER2()));
 
