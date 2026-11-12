@@ -693,7 +693,7 @@ public static partial class CutscenePort
         }
         else
             lines.Add("sound: off (DARKSIGN_CUTSCENE_SOUND=0, fallback map-cutscenes C)");
-        int soundIndex = 0;
+        var soundNumbers = SoundNumbers(ds3);
         foreach (var map in maps.Where(m => !m.Slot.Probe))
         {
             var rename = Renamer(map.PartNames);
@@ -706,9 +706,12 @@ public static partial class CutscenePort
                 {
                     var source = BND4.Read(ds3.Read(Ds3Path(name)));
                     CutsceneSound.Plan? plan = null;
-                    int thisIndex = soundIndex++;
+                    int thisIndex = soundNumbers[name];
                     Action<MQB>? prepare = sounds is null ? null : m => plan = CutsceneSound.Prepare(m, erName, thisIndex, sounds.Known, sounds.Voice);
                     var (bnd, stats) = ConvertBinder(source, name, erName, rename, map.Slot.Ds3, map.Slot.Er, side, prepare);
+                    // The bank first: the timeline keeps only the sounds it holds.
+                    if (sounds is not null && plan is not null)
+                        lines.Add($"{name} sound: {plan}; {BuildSound(sounds, plan, bnd, null)}");
                     // Checked by reading it back before it is written.
                     foreach (var f in bnd.Files)
                         if (f.Name.EndsWith(".mqb", StringComparison.OrdinalIgnoreCase))
@@ -724,13 +727,6 @@ public static partial class CutscenePort
                     total.Mqb.Add(stats.Mqb);
                     total.Hkx.Add(stats.Hkx);
                     total.OtherFiles += stats.OtherFiles;
-                    if (sounds is not null && plan is not null)
-                    {
-                        string built;
-                        try { built = sounds.Build(plan); }
-                        catch (Exception ex) when (ex is not OutOfMemoryException) { built = $"bank FAILED ({ex.GetType().Name}: {ex.Message})"; }
-                        lines.Add($"{name} sound: {plan}; {built}");
-                    }
                     lines.Add($"{name} -> {erName}: {stats.Hkx.Files} cut files ({stats.Hkx.Animations} animations, {stats.Hkx.Renamed} renamed parts"
                               + $"{(stats.Hkx.Retargeted > 0 ? ", player retargeted" : "")}), timeline {stats.Mqb.Resources - stats.Mqb.ResourcesDropped}/{stats.Mqb.Resources} resources, "
                               + $"{stats.Mqb.Events - stats.Mqb.EventsDropped}/{stats.Mqb.Events} events kept, {stats.Mqb.Renamed} names renamed, {stats.Mqb.MapsMoved} map numbers moved"
@@ -770,6 +766,36 @@ public static partial class CutscenePort
                       + string.Join(", ", total.Mqb.DroppedKinds.Select(k => $"{k.Key}:{k.Value}")));
         lines.AddRange(notes.Take(10).Select(n => "note: " + n));
         return (ported, $"cutscenes: {ported.Count} DS3 cutscenes converted\n  " + string.Join("\n  ", lines));
+    }
+
+    /// <summary>
+    /// Each DS3 cutscene's number for its sound IDs (<see cref="CutsceneSound.NewId"/>): its place among all DS3
+    /// cutscenes by name, so a cutscene's sounds keep their IDs whichever maps are ported, in whatever order.
+    /// </summary>
+    public static Dictionary<string, int> SoundNumbers(GameArchives ds3)
+    {
+        var names = ds3.Entries.Where(e => e.Path is not null && e.Path.StartsWith("/remo/", StringComparison.OrdinalIgnoreCase)
+                                           && e.Path.EndsWith(".remobnd.dcx", StringComparison.OrdinalIgnoreCase))
+            .Select(e => ItemText.Leaf(e.Path!).Split('.')[0].ToLowerInvariant()).Distinct().Order(StringComparer.Ordinal).ToList();
+        var numbers = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        for (int i = 0; i < names.Count; i++)
+            numbers[names[i]] = i;
+        return numbers;
+    }
+
+    /// <summary>Builds a cutscene's bank and strips the converted timeline's events for sounds it couldn't build (all
+    /// of them when the bank failed). Returns the log text.</summary>
+    public static string BuildSound(CutsceneSound sounds, CutsceneSound.Plan plan, BND4 bnd, string? folder)
+    {
+        string built;
+        IReadOnlySet<int> silent;
+        try { (built, silent) = sounds.Build(plan, folder); }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            (built, silent) = ($"bank FAILED ({ex.GetType().Name}: {ex.Message})", plan.Sounds.Values.ToHashSet());
+        }
+        int stripped = CutsceneSound.Strip(bnd, silent);
+        return stripped > 0 ? $"{built}; {stripped} events of sounds not in the bank left out" : built;
     }
 
     /// <summary>Adds (or replaces) a CutsceneMapIdParam row per converted cutscene: the slot's map, no hit parts.</summary>
@@ -824,7 +850,7 @@ public static partial class CutscenePort
         var sounds = CutsceneSound.Enabled ? CutsceneSound.Create(ctx, ds3, er, soundNotes) : null;
         r.AppendLine(sounds is null ? $"  sound: none ({string.Join("; ", soundNotes)})"
             : $"  sound: template bank {sounds.TemplateName}, {sounds.EventCount} DS3 sound events, {sounds.VoiceCount} DS3 talks with a voice{string.Concat(soundNotes.Select(n => "; " + n))}");
-        int soundNumber = 0;
+        var soundNumbers = SoundNumbers(ds3);
         foreach (var name in names)
         {
             var ds3Id = IdOf(name) ?? throw new FormatException($"not a cutscene name: {name}");
@@ -837,13 +863,13 @@ public static partial class CutscenePort
             {
                 var source = BND4.Read(ds3.Read(Ds3Path(name)));
                 CutsceneSound.Plan? plan = null;
-                int thisIndex = soundNumber++;
+                int thisIndex = soundNumbers.TryGetValue(name, out var number) ? number : 0;
                 var (bnd, stats) = ConvertBinder(source, name, erName, _ => null, ds3Map, erMap, side,
                     sounds is null ? null : m => plan = CutsceneSound.Prepare(m, erName, thisIndex, sounds.Known, sounds.Voice));
                 if (sounds is not null && plan is not null)
                 {
                     var soundDir = Path.Combine(outDir, "sd");
-                    r.AppendLine($"  sound: {plan}; {sounds.Build(plan, soundDir)}");
+                    r.AppendLine($"  sound: {plan}; {BuildSound(sounds, plan, bnd, soundDir)}");
                     var mqbFile = bnd.Files.First(f => f.Name.EndsWith(".mqb", StringComparison.OrdinalIgnoreCase));
                     var (soundLines, soundFailures) = CutsceneSoundCheck.Check(MQB.Read(mqbFile.Bytes), Path.Combine(soundDir, erName + ".bnk"));
                     foreach (var l in soundLines)

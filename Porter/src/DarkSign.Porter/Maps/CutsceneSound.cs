@@ -57,7 +57,7 @@ public sealed class CutsceneSound
         public int Index { get; } = index;
         /// <summary>DS3 sound name (p450000002, v004005000) -> new seType 4 ID, in the order first played.</summary>
         public Dictionary<string, int> Sounds { get; } = new(StringComparer.Ordinal);
-        public int Main, Effects, Voices, Armour, Dropped;
+        public int Main, Effects, Voices, Armour, Dropped, Auto;
         public List<string> Missing { get; } = [];
 
         public int Assign(string ds3Name)
@@ -72,7 +72,7 @@ public sealed class CutsceneSound
         }
 
         public override string ToString() =>
-            $"{Sounds.Count} sounds ({Main} main audio events, {Effects} effect events, {Voices} spoken lines, {Armour} armour movements to seType 15" +
+            $"{Sounds.Count} sounds ({Main} main audio events{(Auto > 0 ? $" ({Auto} added: DS3 plays them without an event)" : "")}, {Effects} effect events, {Voices} spoken lines, {Armour} armour movements to seType 15" +
             $"{(Dropped > 0 ? $", {Dropped} events left out: no DS3 sound {string.Join(" ", Missing.Distinct().Take(8))}" : "")})";
     }
 
@@ -166,7 +166,80 @@ public sealed class CutsceneSound
                         plan.Effects++;
                     return false;
                 });
+        if (plan.Main == 0 && CutscenePort.IdOf(mqb.Name) is { } ds3Id)
+            AddMainAudio(mqb, plan, ds3Id, known);
         return plan;
+    }
+
+    /// <summary>
+    /// A DS3 cutscene whose timeline names no main audio (s40_00_0000, s30_00_0000: no sound events at all) still has
+    /// it in DS3's event files as p&lt;cutscene ID * 10 + n&gt;, which DS3 plays by itself. Elden Ring only plays what
+    /// the timeline names, so each such sound (n 0-9, not played by the timeline) gets an event at the start of cut n
+    /// (cut n - 1 when the numbers start at 1; the last cut when there are fewer cuts). Its fields copy the cut's first event.
+    /// </summary>
+    public static void AddMainAudio(MQB mqb, Plan plan, int ds3Id, Func<string, bool> known)
+    {
+        if (mqb.Cuts.Count == 0)
+            return;
+        var numbers = Enumerable.Range(0, 10).Where(n => known($"p{ds3Id * 10L + n:D9}") && !plan.Sounds.ContainsKey($"p{ds3Id * 10L + n:D9}")).ToList();
+        if (numbers.Count == 0)
+            return;
+        int first = numbers[0] == 0 ? 0 : 1;
+        int resource = mqb.Resources.FindIndex(r => r.Unk48 == KindSound && r.Name.Contains("カットシーン", StringComparison.Ordinal));
+        if (resource < 0)
+        {
+            resource = mqb.Resources.Count;
+            mqb.Resources.Add(new MQB.Resource { Name = "SE_main", ParentIndex = -1, Unk48 = KindSound, Path = "", Parameters = [] });
+        }
+        int nextId = mqb.Cuts.SelectMany(c => c.Timelines).SelectMany(t => t.Events).Select(e => e.ID).DefaultIfEmpty(-1).Max() + 1;
+        foreach (var n in numbers)
+        {
+            var id = plan.Assign($"p{ds3Id * 10L + n:D9}");
+            if (id < 0)
+                break;
+            var cut = mqb.Cuts[Math.Clamp(n - first, 0, mqb.Cuts.Count - 1)];
+            var like = cut.Timelines.SelectMany(t => t.Events).FirstOrDefault();
+            var tl = new MQB.Timeline { Unk10 = cut.Timelines.FirstOrDefault()?.Unk10 ?? 0 };
+            tl.Events.Add(new MQB.Event
+            {
+                ID = nextId++, ResourceIndex = resource, StartFrame = 0, Duration = Math.Max(1, cut.Duration),
+                Unk08 = like?.Unk08 ?? 0, Unk14 = like?.Unk14 ?? 0, Unk18 = like?.Unk18 ?? 0, Unk1C = like?.Unk1C ?? 0,
+                Unk20 = like?.Unk20 ?? 0, Unk28 = like?.Unk28 ?? 0, Parameters = SoundParams(SeTypeCutscene, id),
+            });
+            cut.Timelines.Add(tl);
+            plan.Main++;
+            plan.Auto++;
+        }
+    }
+
+    /// <summary>Removes the cutscene sound events (kind 135, seType 4) that play one of <paramref name="ids"/>: sounds
+    /// the bank couldn't build, so the game never looks for them. Returns how many were removed.</summary>
+    public static int Strip(MQB mqb, IReadOnlySet<int> ids)
+    {
+        if (ids.Count == 0)
+            return 0;
+        int removed = 0;
+        foreach (var tl in mqb.Cuts.SelectMany(c => c.Timelines))
+            removed += tl.Events.RemoveAll(ev => ev.ResourceIndex >= 0 && ev.ResourceIndex < mqb.Resources.Count && mqb.Resources[ev.ResourceIndex].Unk48 == KindSound
+                && Number(Param(ev.Parameters, "seType")) == SeTypeCutscene && Number(Param(ev.Parameters, "seId")) is { } id && id <= int.MaxValue && ids.Contains((int)id));
+        return removed;
+    }
+
+    /// <summary><see cref="Strip(MQB, IReadOnlySet{int})"/> on every timeline file of a converted binder.</summary>
+    public static int Strip(BND4 bnd, IReadOnlySet<int> ids)
+    {
+        if (ids.Count == 0)
+            return 0;
+        int removed = 0;
+        foreach (var f in bnd.Files.Where(f => f.Name.EndsWith(".mqb", StringComparison.OrdinalIgnoreCase)))
+        {
+            var mqb = MQB.Read(f.Bytes);
+            int n = Strip(mqb, ids);
+            if (n > 0)
+                f.Bytes = mqb.Write();
+            removed += n;
+        }
+        return removed;
     }
 
     // ---------------------------------------------------------------- the banks
@@ -287,11 +360,19 @@ public sealed class CutsceneSound
     }
 
     /// <summary>
-    /// Builds and writes the cutscene's bank (sd\&lt;name&gt;.bnk) with every sound its plan names. Returns the log line;
-    /// a sound that can't be decoded is left silent (its event plays nothing).
+    /// Builds and writes the cutscene's bank (sd\&lt;name&gt;.bnk) with every sound its plan names. Returns the log line
+    /// and the IDs of the sounds that couldn't be decoded (or all of them, when no bank was written): the caller strips
+    /// their events (<see cref="Strip(BND4, IReadOnlySet{int})"/>) so the timeline plays only what the bank has.
     /// </summary>
     /// <param name="folder">Where the bank goes instead of the mod's sd folder (cutscene-test writes to Work\scratch).</param>
-    public string Build(Plan plan, string? folder = null)
+    public (string Log, HashSet<int> Silent) Build(Plan plan, string? folder = null)
+    {
+        var silentIds = new HashSet<int>();
+        var log = BuildBank(plan, folder, silentIds);
+        return (log, silentIds);
+    }
+
+    private string BuildBank(Plan plan, string? folder, HashSet<int> silentIds)
     {
         var path = folder is null ? BankPath(_ctx, plan.ErName) : Path.Combine(folder, plan.ErName + ".bnk");
         if (File.Exists(path))
@@ -349,6 +430,7 @@ public sealed class CutsceneSound
             if (layers.Count == 0)
             {
                 silent.Add(name);
+                silentIds.Add(id);
                 continue;
             }
             uint play = FxSoundExplore.Fnv1($"Play_p{id:D9}"), stop = FxSoundExplore.Fnv1($"Stop_p{id:D9}");
@@ -357,7 +439,10 @@ public sealed class CutsceneSound
             events.Add(stop);
         }
         if (events.Count == 0)
+        {
+            silentIds.UnionWith(plan.Sounds.Values);
             return $"no sound decoded ({string.Join(" ", silent.Take(8))})";
+        }
         uint bankId = FxSoundExplore.Fnv1(plan.ErName);
         var written = bank.WriteOwnBank(bankId) ?? throw new InvalidDataException($"the template bank {_templateName}'s sounds don't hang under an actor-mixer this port can copy");
         Directory.CreateDirectory(Path.GetDirectoryName(path)!);

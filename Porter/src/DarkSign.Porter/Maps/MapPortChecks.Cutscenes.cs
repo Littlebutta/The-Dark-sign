@@ -12,6 +12,7 @@ public static partial class MapPortChecks
         yield return ("cutscenes: script lines play converted cutscenes in Elden Ring's forms; others are left out or keep their warp", CutsceneScriptLines);
         yield return ("cutscenes: CutsceneMapIdParam rows place each cutscene on its slot", CutsceneRows);
         yield return ("cutscenes: sound events become Elden Ring's kind 135 form with the cutscene's own IDs; armour to seType 15, speech to its voice", CutsceneSoundEvents);
+        yield return ("cutscenes: a timeline with no main audio gets DS3's p<ID*10+n> per cut; events of sounds the bank lacks are stripped", CutsceneSoundAutoAndStrip);
         yield return ("cutscenes: the F1 Cutscenes tab's events warp to the map, then play the cutscene; its list names the characters", CutsceneMenuEvents);
     }
 
@@ -68,6 +69,47 @@ public static partial class MapPortChecks
         catalog.Add(er);
         var stats = CutscenePort.ConvertMqb(mqb, "s45_00_0000", "s19_70_0000", _ => null, MapId.Parse("m45_00_00_00"), MapId.Parse("m19_70_00_00"), catalog);
         Expect(stats.EventsDropped == 0, $"sound events kept by the filter ({stats.EventsDropped} dropped)");
+    }
+
+    private static void CutsceneSoundAutoAndStrip()
+    {
+        // s40_00_0000: no sound events at all; DS3 has p400000001 and p400000002 (numbers from 1: cuts 0 and 1).
+        var mqb = new MQB { Version = MQB.MQBVersion.DarkSouls3, Name = "s40_00_0000", Framerate = 30, ResourceDirectory = "", Resources = [], Cuts = [] };
+        mqb.Resources.Add(new MQB.Resource { Name = "a0000.HKT", ParentIndex = -1, Unk48 = 266 });
+        foreach (var (name, frames) in new[] { ("cut0010", 200), ("cut0020", 150) })
+        {
+            var cut = new MQB.Cut { Name = name, Duration = frames, Timelines = [] };
+            var tl = new MQB.Timeline { Unk10 = 7 };
+            tl.Events.Add(new MQB.Event { ID = 4, ResourceIndex = 0, Duration = frames, Unk20 = 1 });
+            cut.Timelines.Add(tl);
+            mqb.Cuts.Add(cut);
+        }
+        var known = new HashSet<string> { "p400000001", "p400000002", "p400000010" };
+        var plan = CutsceneSound.Prepare(mqb, "s45_01_0000", 9, known.Contains, _ => null);
+        Expect(plan.Main == 2 && plan.Auto == 2 && plan.Sounds.Count == 2 && plan.Sounds["p400000001"] == 990_009_000, plan.ToString());
+        var added = mqb.Cuts.Select(c => c.Timelines.Last().Events.Single()).ToList();
+        Expect(mqb.Resources[^1].Name == "SE_main" && mqb.Resources[^1].Unk48 == 135 && added.All(e => e.ResourceIndex == mqb.Resources.Count - 1),
+            "a new SE_main sound resource");
+        Expect(added[0].StartFrame == 0 && added[0].Duration == 200 && added[1].Duration == 150 && added[0].ID == 5 && added[1].ID == 6 && added[0].Unk20 == 1
+               && mqb.Cuts[0].Timelines.Last().Unk10 == 7, "one event per cut from its start, new IDs, fields like the cut's first event");
+        Expect((int)added[0].Parameters[1].Value == 990_009_000 && (int)added[1].Parameters[1].Value == 990_009_001, "p...1 on cut 0, p...2 on cut 1");
+
+        // A timeline that names its main audio gets nothing added.
+        var named = new MQB { Version = MQB.MQBVersion.DarkSouls3, Name = "s40_00_0000", Framerate = 30, ResourceDirectory = "", Resources = [], Cuts = [] };
+        named.Resources.Add(new MQB.Resource { Name = "カットシーンSE", ParentIndex = -1, Unk48 = 138 });
+        var namedCut = new MQB.Cut { Name = "cut0010", Duration = 100, Timelines = [new MQB.Timeline()] };
+        namedCut.Timelines[0].Events.Add(new MQB.Event { ResourceIndex = 0, Duration = 100, Parameters = [P("seType", MQB.Parameter.DataType.UInt, 4u), P("seId", MQB.Parameter.DataType.Int, 400000001)] });
+        named.Cuts.Add(namedCut);
+        var namedPlan = CutsceneSound.Prepare(named, "s45_01_0000", 9, known.Contains, _ => null);
+        Expect(namedPlan.Auto == 0 && namedPlan.Main == 1 && named.Cuts[0].Timelines.Count == 1, "no main audio added when the timeline has its own");
+
+        // Strip: a sound the bank couldn't build loses its events; the others stay.
+        var bnd = new BND4();
+        bnd.Files.Add(new BinderFile(Binder.FileFlags.Flag1, 0, "s45_01_0000.mqb", mqb.Write()));
+        int removed = CutsceneSound.Strip(bnd, new HashSet<int> { 990_009_001 });
+        var back = MQB.Read(bnd.Files[0].Bytes);
+        var left = back.Cuts.SelectMany(c => c.Timelines).SelectMany(t => t.Events).Where(e => e.Parameters.Any(p => p.Name == "seId")).ToList();
+        Expect(removed == 1 && left.Count == 1 && (int)left[0].Parameters[1].Value == 990_009_000, $"strip removed {removed}, {left.Count} left");
     }
 
     private static void CutsceneMenuEvents()
