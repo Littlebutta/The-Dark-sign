@@ -25,7 +25,7 @@ namespace DarkSign.Porter.Maps;
 /// in all of Stormveil names [Mb2], and it blends by mask), so each triangle takes the layer its corners mostly
 /// show: the mesh is split in two, the second half drawn with the second layer's textures, UVs and tangents.</item>
 /// </list>
-/// Terrain blends (_2m/_3m/_4m, GSBlendMap: alpha 1 everywhere), grass (vertex colour sways it), snow, water and
+/// Terrain blends (_2m/_3m/_4m, GSBlendMap: alpha 1 everywhere) are drawn by layer in <see cref="MapTerrainBlends"/>; grass (vertex colour sways it), snow, water and
 /// scrolling materials keep their alpha meaning to themselves and are not touched.
 /// </para>
 /// </summary>
@@ -160,14 +160,14 @@ public static class MapOverlays
         return copy;
     }
 
-    private static FLVER2.Texture Clone(FLVER2.Texture t, string param) =>
+    internal static FLVER2.Texture Clone(FLVER2.Texture t, string param) =>
         new(param, t.Path, t.TilingScale, t.TilingTypeU, t.TilingTypeV, t.Unk14, t.Unk18, t.Unk1C);
 
     /// <summary>
     /// Keeps only the triangles <paramref name="keep"/> accepts in every face set (as triangle lists) and drops the
     /// vertices no face set uses any more. Returns (triangles left out, triangles before) for the full detail sets.
     /// </summary>
-    private static (int Cut, int Total) Keep(FLVER2.Mesh mesh, Func<int[], bool> keep)
+    internal static (int Cut, int Total) Keep(FLVER2.Mesh mesh, Func<int[], bool> keep)
     {
         int cut = 0, total = 0;
         bool restarts = mesh.Vertices.Count < 0xFFFF;
@@ -217,7 +217,7 @@ public static class MapOverlays
         mesh.Vertices = vertices;
     }
 
-    private static FLVER2.Mesh Copy(FLVER2.Mesh mesh) => new()
+    internal static FLVER2.Mesh Copy(FLVER2.Mesh mesh) => new()
     {
         UseBoneWeights = mesh.UseBoneWeights,
         MaterialIndex = mesh.MaterialIndex,

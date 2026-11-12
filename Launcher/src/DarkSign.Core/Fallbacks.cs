@@ -399,6 +399,13 @@ public static class Fallbacks
             new("B", "Solid", "Every vertex is drawn solid and two-layer ground shows its first layer (port-maps --solid-overlays), as in every build up to 1.0.340: dark brick shards lie across the ash around Firelink Shrine, but nothing is left out.")
                 { MapsArgs = ["--solid-overlays"] },
         ]),
+        new("map-blend-layers", "DS3 maps", "Ground and walls that mix several DS3 textures", Stage.Build,
+            "A DS3 map's ground or walls show the wrong texture in patches, or change texture at hard, jagged edges since this option.",
+        [
+            new("A", "Each triangle shows DS3's layer (default)", "DS3 paints two to four ground textures across one terrain mesh (brick, earth, ash and the like), choosing each by a weight stored on every vertex. Elden Ring has no shader in use that blends DS3's layers, so the port splits each such mesh and draws every triangle with the layer DS3 shows there, with that layer's own texture, normal map and tiling. The port log's \"terrain blends:\" line counts the triangles each layer got."),
+            new("B", "First layer only", "Every terrain mesh shows only its first layer (port-maps --first-blend-layer), as in every build up to 1.0.353: dark brick shards lie across the ash around Firelink Shrine and the walls show one texture, but no part of the ground changes texture at a hard edge.")
+                { MapsArgs = ["--first-blend-layer"] },
+        ]),
         new("map-atmosphere", "DS3 maps", "Colours of light and fog in the DS3 maps", Stage.Build,
             "A DS3 map looks washed out, too foggy, too clear, or wrongly coloured since the maps took DS3's colours.",
         [

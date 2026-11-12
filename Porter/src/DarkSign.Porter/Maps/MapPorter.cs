@@ -43,6 +43,9 @@ public static class MapPorter
         /// <summary>--solid-overlays: every ported vertex is solid and a two-layer material shows its first layer, as
         /// up to 1.0.340 (fallback "map-overlays" B; see <see cref="MapOverlays"/>).</summary>
         public bool SolidOverlays { get; set; }
+        /// <summary>--first-blend-layer: a DS3 terrain blend (2m/3m/4m) shows only its first layer, as up to 1.0.353
+        /// (fallback "map-blend-layers" B; see <see cref="MapTerrainBlends"/>).</summary>
+        public bool FirstBlendLayer { get; set; }
         /// <summary>--tint-materials (diagnostic, not a fallback): DS3 material families that keep something in vertex
         /// alpha are drawn in solid colours (see <see cref="MapModelPort.Tints"/>).</summary>
         public bool TintMaterials { get; set; }
@@ -127,6 +130,7 @@ public static class MapPorter
                     case "--ds3-hit-filters": o.Ds3HitFilters = true; break;
                     case "--stand-ins": o.StandIns = true; break;
                     case "--solid-overlays": o.SolidOverlays = true; break;
+                    case "--first-blend-layer": o.FirstBlendLayer = true; break;
                     case "--tint-materials": o.TintMaterials = true; break;
                     case "--host-atmosphere": o.HostAtmosphere = true; break;
                     case "--host-env-light": o.HostEnvLight = true; break;
@@ -160,6 +164,7 @@ public static class MapPorter
     private static MapModelPort WithAlpha(MapModelPort port, Options options)
     {
         port.Ds3Alpha = !options.SolidOverlays;
+        port.TerrainLayers = !options.FirstBlendLayer;
         return port;
     }
 
@@ -606,6 +611,7 @@ public static class MapPorter
             models = models.WithTemplateTextures();
         models.UnlitCastShadows = options.HostLighting;
         models.Ds3Alpha = !options.SolidOverlays;
+        models.TerrainLayers = !options.FirstBlendLayer;
         models.TintMaterials = options.TintMaterials;
         if (test != PieceTest.None)
             report.AppendLine(test switch
@@ -722,7 +728,10 @@ public static class MapPorter
         if (test != PieceTest.VanillaModel && copied == 0)
             report.AppendLine($"  load: {models.LoadSummary}");
         if (copied == 0)
+        {
             report.AppendLine("  " + (options.SolidOverlays ? "vertex alpha: every vertex solid, two-layer materials show their first layer (--solid-overlays)" : models.Overlays.Summary));
+            report.AppendLine("  " + (options.FirstBlendLayer ? "terrain blends: every mesh shows its first layer (--first-blend-layer)" : models.Blends.Summary));
+        }
         if (copied > 0)
             textures.Need(main.Textures, ds3Id);
         else if (!slot.Probe && test == PieceTest.None)

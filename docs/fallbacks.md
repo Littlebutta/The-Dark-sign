@@ -324,6 +324,13 @@ Try the next option if: Paving, rubble or a layer of ash is missing from a DS3 m
 - **A: As DS3 draws them (default).** DS3 lays paving and rubble over its ground as separate meshes that fade out by vertex transparency, and paints ash over brick with two-layer materials whose layer is chosen per vertex. The port keeps each overlay's fade, leaves out the triangles DS3 shows at less than half strength, and draws each two-layer triangle with the layer it mostly shows. The port log's "vertex alpha:" line counts what was changed.
 - **B: Solid.** Every vertex is drawn solid and two-layer ground shows its first layer (port-maps --solid-overlays), as in every build up to 1.0.340: dark brick shards lie across the ash around Firelink Shrine, but nothing is left out. (`port-maps --solid-overlays`)
 
+### Ground and walls that mix several DS3 textures (`map-blend-layers`, rebuilds the content)
+
+Try the next option if: A DS3 map's ground or walls show the wrong texture in patches, or change texture at hard, jagged edges since this option.
+
+- **A: Each triangle shows DS3's layer (default).** DS3 paints two to four ground textures across one terrain mesh (brick, earth, ash and the like), choosing each by a weight stored on every vertex. Elden Ring has no shader in use that blends DS3's layers, so the port splits each such mesh and draws every triangle with the layer DS3 shows there, with that layer's own texture, normal map and tiling. The port log's "terrain blends:" line counts the triangles each layer got.
+- **B: First layer only.** Every terrain mesh shows only its first layer (port-maps --first-blend-layer), as in every build up to 1.0.353: dark brick shards lie across the ash around Firelink Shrine and the walls show one texture, but no part of the ground changes texture at a hard edge. (`port-maps --first-blend-layer`)
+
 ### Colours of light and fog in the DS3 maps (`map-atmosphere`, rebuilds the content)
 
 Try the next option if: A DS3 map looks washed out, too foggy, too clear, or wrongly coloured since the maps took DS3's colours.

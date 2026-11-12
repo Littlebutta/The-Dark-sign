@@ -181,6 +181,17 @@ one mesh in all of Stormveil names `[Mb2]`). Terrain blends (2m/3m/4m), grass, s
 untouched. The port log's `vertex alpha:` line counts both; fallback `map-overlays` B (`--solid-overlays`) restores
 the old solid drawing.
 
+**Terrain blends: one layer per triangle.** Most of DS3's ground and many walls use `M[ARSN]_2m/_3m/_4m`
+(MultiBlend2/3/4_et1): two to four textures (`GSBlendMap_AlbedoMap_0..3`, each with its own tiling on UV 1) painted
+by per-vertex weights in the third UV member, four normalized bytes. A mesh with N layers uses the first N - 1 bytes
+(m40's 3m wall m900285 keeps the third at 0, every mesh keeps the fourth at 0, and they don't sum to one), and layer k
+is painted over the layers below it with weight k - 1, sharpened by the edge texture. Up to 1.0.353 every such mesh
+showed only layer 0, which around Firelink Shrine is the dark brick under the ash: a `--tint-materials` build coloured
+every shard of map 1 as a terrain blend. `MapTerrainBlends` gives each triangle the highest layer whose weight averages
+0.5 or more over its corners, and splits the mesh into one mesh per layer with that layer's textures and tiling.
+The port log's `terrain blends:` line counts triangles per layer; fallback `map-blend-layers` B
+(`--first-blend-layer`) shows the first layer everywhere again.
+
 **Atmosphere.** A slot used to keep its colosseum's gparam: Caelid's red volumetric fog lit at 1.6 on map 2,
 Leyndell's golden colour grading (LUT 101) and fog out to 2 km on map 1. `MapAtmosphere` writes the slot's
 `/param/drawparam/mAA_BB_0000.gparam.dcx` from the host's: the sun angle and the colours of directional lights 0 and
