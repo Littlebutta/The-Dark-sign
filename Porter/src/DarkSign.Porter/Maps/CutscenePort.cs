@@ -141,13 +141,13 @@ public static partial class CutscenePort
 
     public sealed class MqbStats
     {
-        public int Resources, ResourcesDropped, Events, EventsDropped, ParamsDropped, Renamed, MapsMoved;
+        public int Resources, ResourcesDropped, Events, EventsDropped, ParamsDropped, Renamed, MapsMoved, Conformed;
         public SortedDictionary<int, int> DroppedKinds { get; } = new();
 
         public void Add(MqbStats o)
         {
             Resources += o.Resources; ResourcesDropped += o.ResourcesDropped; Events += o.Events; EventsDropped += o.EventsDropped;
-            ParamsDropped += o.ParamsDropped; Renamed += o.Renamed; MapsMoved += o.MapsMoved;
+            ParamsDropped += o.ParamsDropped; Renamed += o.Renamed; MapsMoved += o.MapsMoved; Conformed += o.Conformed;
             foreach (var (k, v) in o.DroppedKinds)
                 DroppedKinds[k] = DroppedKinds.GetValueOrDefault(k) + v;
         }
@@ -171,7 +171,9 @@ public static partial class CutscenePort
     /// timelines, and resources, events and parameters Elden Ring doesn't have left out.
     /// </summary>
     /// <param name="rename">A DS3 part name's Elden Ring name, or null to keep it.</param>
-    public static MqbStats ConvertMqb(MQB mqb, string ds3Name, string erName, Func<string, string?> rename, MapId ds3Map, MapId erMap, Catalog catalog)
+    /// <param name="shape">Elden Ring's timeline shape to conform the result to (<see cref="CutsceneShape.Conform"/>), or null.</param>
+    public static MqbStats ConvertMqb(MQB mqb, string ds3Name, string erName, Func<string, string?> rename, MapId ds3Map, MapId erMap, Catalog catalog,
+        CutsceneShape? shape = null)
     {
         var s = new MqbStats { Resources = mqb.Resources.Count };
         mqb.Name = erName;
@@ -265,6 +267,8 @@ public static partial class CutscenePort
             cut.Timelines = timelines;
         }
         mqb.Resources = resources;
+        if (shape is not null)
+            s.Conformed = shape.Conform(mqb);
         return s;
     }
 
@@ -509,6 +513,8 @@ public static partial class CutscenePort
         public required DCX.CompressionInfo Compression;
         public required HavokTemplate Havok;
         public required Catalog Catalog;
+        /// <summary>How Elden Ring's own timelines fill what the catalog doesn't cover (<see cref="CutsceneShape"/>).</summary>
+        public CutsceneShape? Shape;
     }
 
     /// <summary>Reads what the conversion needs from Elden Ring's own cutscenes (every one, for the catalog).</summary>
@@ -567,7 +573,7 @@ public static partial class CutscenePort
         });
         foreach (var m in mqbs)
             catalog.Add(m);
-        return new ErSide { Layout = layout, Compression = compression, Havok = havok, Catalog = catalog };
+        return new ErSide { Layout = layout, Compression = compression, Havok = havok, Catalog = catalog, Shape = CutsceneShape.Learn(mqbs) };
     }
 
     public sealed class BinderStats
@@ -597,7 +603,7 @@ public static partial class CutscenePort
             if (MQB.IsRead(data, out MQB? mqb))
             {
                 sound?.Invoke(mqb);
-                stats.Mqb.Add(ConvertMqb(mqb, ds3Name, erName, rename, ds3Map, erMap, side.Catalog));
+                stats.Mqb.Add(ConvertMqb(mqb, ds3Name, erName, rename, ds3Map, erMap, side.Catalog, CutsceneShape.ConformEnabled ? side.Shape : null));
                 converted = mqb.Write();
             }
             else if (f.Name.EndsWith(".hkx", StringComparison.OrdinalIgnoreCase))
@@ -729,7 +735,7 @@ public static partial class CutscenePort
                     total.OtherFiles += stats.OtherFiles;
                     lines.Add($"{name} -> {erName}: {stats.Hkx.Files} cut files ({stats.Hkx.Animations} animations, {stats.Hkx.Renamed} renamed parts"
                               + $"{(stats.Hkx.Retargeted > 0 ? ", player retargeted" : "")}), timeline {stats.Mqb.Resources - stats.Mqb.ResourcesDropped}/{stats.Mqb.Resources} resources, "
-                              + $"{stats.Mqb.Events - stats.Mqb.EventsDropped}/{stats.Mqb.Events} events kept, {stats.Mqb.Renamed} names renamed, {stats.Mqb.MapsMoved} map numbers moved"
+                              + $"{stats.Mqb.Events - stats.Mqb.EventsDropped}/{stats.Mqb.Events} events kept, {stats.Mqb.Renamed} names renamed, {stats.Mqb.MapsMoved} map numbers moved, {stats.Mqb.Conformed} fields set to Elden Ring's shape"
                               + (stats.Hkx.Notes.Count > 0 ? $"; notes: {string.Join("; ", stats.Hkx.Notes.Distinct().Take(3))}" : ""));
                 }
                 catch (Exception ex) when (ex is not OutOfMemoryException)
@@ -877,7 +883,7 @@ public static partial class CutscenePort
                     failures += soundFailures;
                 }
                 r.AppendLine($"  timeline: {stats.Mqb.Resources - stats.Mqb.ResourcesDropped}/{stats.Mqb.Resources} resources, {stats.Mqb.Events - stats.Mqb.EventsDropped}/{stats.Mqb.Events} events, "
-                             + $"{stats.Mqb.ParamsDropped} parameters left out, {stats.Mqb.MapsMoved} map numbers moved; dropped kinds {string.Join(", ", stats.Mqb.DroppedKinds.Select(k => $"{k.Key}:{k.Value}"))}");
+                             + $"{stats.Mqb.ParamsDropped} parameters left out, {stats.Mqb.MapsMoved} map numbers moved, {stats.Mqb.Conformed} fields set to Elden Ring's shape; dropped kinds {string.Join(", ", stats.Mqb.DroppedKinds.Select(k => $"{k.Key}:{k.Value}"))}");
                 r.AppendLine($"  havok: {stats.Hkx.Files} files, {stats.Hkx.Animations} animations ({stats.Hkx.Copied} copied, {stats.Hkx.Retargeted} retargeted); notes: {string.Join("; ", stats.Hkx.Notes.Distinct())}");
                 var bytes = bnd.Write();
                 var back = BND4.Read(bytes);

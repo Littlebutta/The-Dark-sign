@@ -51,6 +51,7 @@ const string Usage = """
       cutscene-survey [names] [er:names]  report DS3 remo and Elden Ring cutscene binders (layout, MQB timeline, Havok)
       cutscene-sound-survey [names] [er:names]  report both games' cutscene sound (timeline sound events, banks, index)
       cutscene-test [names]        convert DS3 cutscenes into Work\\scratch\\cutscenes (not the mod) and check every result
+      cutscene-diag [names]        compare converted DS3 cutscenes with Elden Ring's own timelines (fields, parameters, cut lengths)
       event-coverage <ds3.emedf.json> <er.emedf.json>  which DS3 event instructions convert to Elden Ring, and how
       port-enemies                 port DS3's enemies only (port-maps does this too) and check what the game will load
       drops-plan                   dry run of the DS3 enemy drops on the two regulations: every lot, mapping and unported item
@@ -145,6 +146,7 @@ try
         "cutscene-survey" => DarkSign.Porter.Maps.CutsceneSurvey.Run(ctx, argList[1..]),
         "cutscene-sound-survey" => DarkSign.Porter.Maps.CutsceneSoundSurvey.Run(ctx, argList[1..]),
         "cutscene-test" => DarkSign.Porter.Maps.CutscenePort.Test(ctx, argList[1..]),
+        "cutscene-diag" => DarkSign.Porter.Maps.CutsceneDiag.Run(ctx, argList[1..]),
         "map-validate" => DarkSign.Porter.Maps.MapValidate.Run(ctx),
         "map-diag" => DarkSign.Porter.Maps.MapDiag.Run(ctx, argList[1..]),
         "randomize" => DarkSign.Porter.Rando.RandomizeCommand.Run(ctx, argList[1..]),
