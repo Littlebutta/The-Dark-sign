@@ -210,6 +210,7 @@ Try the next option if: A ported weapon builds up no status (Friede's scythe no 
 
 - **A: Status, equipped effects and art buffs (default).** DS3's status on hit, the effects a DS3 weapon gives while held and the buffs its weapon art casts, ported as new Elden Ring effects (status rows copied from Elden Ring's own bleed, frost and poison rows with DS3's buildup). Report: `TheDarkSign\Work\reports\weapon-effects.tsv`.
 - **B: Status on hit only.** Only the status a weapon builds up on hit (DARKSIGN_WEAPON_EFFECTS=status); equipped effects and art buffs are left out. (`DARKSIGN_WEAPON_EFFECTS=status`)
+- **C: Blank effect rows.** As A, but an effect with no Elden Ring row to start from begins blank, every field 0 (DARKSIGN_SPEFFECT_BLANK=1), as in builds up to 1.0.353, where Friede's weapon art made the enemies it hit take and deal no damage. Only for comparing with A. (`DARKSIGN_SPEFFECT_BLANK=1`)
 - **off: Off.** No DS3 effects (DARKSIGN_WEAPON_EFFECTS=0): ported weapons build up nothing, as in builds before 1.0.17x. (`DARKSIGN_WEAPON_EFFECTS=0`)
 
 ### DS3 weapon glows, buff visuals and projectiles (`weapon-visuals`, rebuilds the content)

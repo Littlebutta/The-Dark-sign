@@ -23,6 +23,8 @@ public sealed class SpEffectPort
 {
     public static readonly string Mode = (Environment.GetEnvironmentVariable("DARKSIGN_WEAPON_EFFECTS") ?? "").ToLowerInvariant();
     public static bool Enabled => Mode != "0";
+    /// <summary>Fallback: weapon effects without an Elden Ring row to start from begin blank (every field 0), as up to 1.0.353.</summary>
+    public static bool BlankRows => Environment.GetEnvironmentVariable("DARKSIGN_SPEFFECT_BLANK") == "1";
     private static bool StatusOnly => Mode == "status";
     /// <summary>Fallback "effect-visuals": DARKSIGN_EFFECT_VISUALS=0 ports effects without what they look like, as before.</summary>
     public static bool VisualsEnabled => Environment.GetEnvironmentVariable("DARKSIGN_EFFECT_VISUALS") != "0";
@@ -319,9 +321,13 @@ public sealed class SpEffectPort
             return based;
         }
         var row = new PARAM.Row(id, ds3.Name ?? "", _er.AppliedParamdef);
-        if (_full)
+        // Every new row starts from the values most of Elden Ring's own rows have. A blank row has every damage,
+        // defence, poise and sight multiplier at 0: 1.0.353, Friede's art (DS3 143021910 -> 690002800) made the
+        // enemies it hit take and deal no damage. Weapon effects did this from #71 until 1.0.353 (only enemy effects
+        // started from the usual values). Fallback weapon-effects C (DARKSIGN_SPEFFECT_BLANK=1) keeps blank rows.
+        if (_full || !BlankRows)
         {
-            _common ??= ParamDefaults.Common(_er);
+            _common ??= ParamDefaults.Common(_er, r => r.ID < FirstNewId);
             for (int i = 0; i < row.Cells.Count; i++)
                 if (_common[i] is { } usual)
                     row.Cells[i].Value = usual;
