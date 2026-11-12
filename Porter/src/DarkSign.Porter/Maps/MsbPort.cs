@@ -45,6 +45,12 @@ public static class MsbPort
         /// </summary>
         public bool AllLayers { get; init; }
 
+        /// <summary>
+        /// Write every collision's hit filter exactly as DS3 numbers it, filter 24 included (see <see cref="HitFilter"/>),
+        /// as every build up to 1.0.353 did. Fallback "map-hit-filters" B.
+        /// </summary>
+        public bool Ds3HitFilters { get; init; }
+
         /// <summary>The PartsDrawParam row every map piece names (see <see cref="MapDrawParams"/>).</summary>
         public short DrawParamId { get; init; } = MapDrawParams.VanillaRow;
     }
@@ -105,6 +111,7 @@ public static class MsbPort
         if (!layerOk)
             notes.Add("most of this map's pieces are off DS3's base layer; layers are not used to leave pieces out");
 
+        var remapped = new List<string>();
         foreach (var src in ds3.Parts.Collisions)
         {
             var part = (MSBE.Part.Collision)collisionTemplate.DeepCopy();
@@ -113,14 +120,19 @@ public static class MsbPort
             if (part.Unk2 is { } unk2)
                 for (int i = 0; i < unk2.DispGroups.Length; i++)
                     unk2.DispGroups[i] = options.NoGroups ? 0 : options.AllVisible ? 0xFFFFFFFF : i < src.DispGroups.Length ? src.DispGroups[i] : 0;
-            // Same numbering in both games (8 = normal floor and walls).
-            part.HitFilterID = (MSBE.Part.Collision.HitFilterType)src.HitFilterID;
+            part.HitFilterID = HitFilter(src.HitFilterID, options.Ds3HitFilters);
+            if (part.HitFilterID != (MSBE.Part.Collision.HitFilterType)src.HitFilterID)
+                remapped.Add(src.Name);
             // Online/region IDs from the colosseum would only confuse the game; Elden Ring treats 0/-1 as unset.
             part.PlayRegionID = -1;
             part.LocationTextID = -1;
             msb.Parts.Collisions.Add(part);
             AddModel(msb.Models.Collisions, src.ModelName, collisionModel, erId);
         }
+
+        if (remapped.Count > 0)
+            notes.Add($"hit filters: {remapped.Count} DS3 filter-{Ds3FloorCopyFilter} collisions written as normal floor ({(int)MSBE.Part.Collision.HitFilterType.Standard}): "
+                      + $"{string.Join(", ", remapped.Take(12))}{(remapped.Count > 12 ? ", ..." : "")}");
 
         // Connect collisions load the neighbouring map when the player stands on them: the DS3 map they name moves to
         // its slot. One that names a map with no slot would load nothing, so it's left out.
@@ -171,6 +183,26 @@ public static class MsbPort
         return new Result(msb, msb.Parts.MapPieces.Count, msb.Parts.Collisions.Count, msb.Parts.Players.Count,
             StartEntityId(erId), notes);
     }
+
+    /// <summary>
+    /// DS3's hit filter 24. Every DS3 map uses it for copies of its floors (m31: the 19 h00XX05 models, m40: the 7
+    /// h00XX09), lying on the ordinary filter-8 floor where measured (same height or a few cm off); DS3 places none of its 175
+    /// m31 / 100 m40 enemies on one. Elden Ring's filter 24 means something else (soulstruct and SoulsFormats call it
+    /// unknown; Bloodborne's list, the nearest documented one, stops at 23). On 1.0.347 debug-spawned enemies fell
+    /// through map 3 wherever such a copy lay level with or above the filter-8 floor (Soul of Cinder at m31
+    /// 198.1,-198.3,-735.3, on h001500 + h001505 at y -198.03), and stood where the filter-8 floor was the top surface
+    /// (the run start, h003400 3 cm above h001505), while the player stood on both. Measured with map-diag collision.
+    /// </summary>
+    public const byte Ds3FloorCopyFilter = 24;
+
+    /// <summary>
+    /// The Elden Ring hit filter for a DS3 collision. Both games share 8 (normal), 9 (camera only), 11 (NPCs only),
+    /// 13 (fall death camera) and 15 (kill plane) by soulstruct's lists (horkrux), so those and the other numbers
+    /// pass through. DS3's floor copies (<see cref="Ds3FloorCopyFilter"/>) become normal floor, so a character that
+    /// finds one under it stands on it. <paramref name="keepDs3"/>: DS3's number unchanged.
+    /// </summary>
+    public static MSBE.Part.Collision.HitFilterType HitFilter(byte ds3, bool keepDs3) =>
+        !keepDs3 && ds3 == Ds3FloorCopyFilter ? MSBE.Part.Collision.HitFilterType.Standard : (MSBE.Part.Collision.HitFilterType)ds3;
 
     public const string ReflectionOnly = "drawn only in water reflections", ShadowOnly = "shadow casters only",
         OffBaseLayer = "not in the map's base state";

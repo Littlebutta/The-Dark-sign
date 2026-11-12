@@ -376,6 +376,13 @@ public static class Fallbacks
             new("B", "Kept as ordinary pieces", "Every DS3 map piece is drawn (port-maps --helper-pieces), as in every build up to 1.0.299: blank slabs and blurry doubles of the ground and rocks stand in the maps, but nothing is missing.")
                 { MapsArgs = ["--helper-pieces"] },
         ]),
+        new("map-hit-filters", "DS3 maps", "Floor copies in DS3 collision", Stage.Build,
+            "Enemies stand in mid-air or on surfaces they shouldn't since 1.0.354, or anything about the ground changed since then.",
+        [
+            new("A", "Written as normal floor (default)", "DS3 lays copies of its floors in collision with hit filter 24, which Elden Ring reads differently: enemies that landed on one fell through the map (1.0.347, map 3). They are written as normal floor (hit filter 8). The port log's layout notes count them."),
+            new("B", "DS3's hit filters", "Every collision keeps DS3's hit filter number (port-maps --ds3-hit-filters), as in every build up to 1.0.353: enemies fall through the floor where a filter-24 copy is the top surface.")
+                { MapsArgs = ["--ds3-hit-filters"] },
+        ]),
         new("map-stand-ins", "DS3 maps", "DS3's low-detail stand-ins", Stage.Build,
             "A far part of a DS3 map is missing (a castle wall, a hall or a tower you could see from a distance), or blocky slabs and steps with stretched textures are back.",
         [
