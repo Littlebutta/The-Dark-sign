@@ -287,12 +287,12 @@ public static partial class CutscenePort
 
     public sealed class HkxStats
     {
-        public int Files, Animations, Copied, Retargeted, Renamed, Failed;
+        public int Files, Animations, Copied, Retargeted, Renamed, Failed, Uncompressed;
         public List<string> Notes { get; } = [];
 
         public void Add(HkxStats o)
         {
-            Files += o.Files; Animations += o.Animations; Copied += o.Copied; Retargeted += o.Retargeted; Renamed += o.Renamed; Failed += o.Failed;
+            Files += o.Files; Animations += o.Animations; Copied += o.Copied; Retargeted += o.Retargeted; Renamed += o.Renamed; Failed += o.Failed; Uncompressed += o.Uncompressed;
             Notes.AddRange(o.Notes.Take(Math.Max(0, 20 - Notes.Count)));
         }
     }
@@ -311,14 +311,21 @@ public static partial class CutscenePort
     /// <summary>One DS3 animated thing in a cut: its skeleton, animation and binding (the file holds them in the same order).</summary>
     public sealed record Track(HKX.HKASkeleton Skeleton, HKX.HKASplineCompressedAnimation Animation, HKX.HKAAnimationBinding? Binding, HKX.HKADefaultAnimatedReferenceFrame? Frame);
 
-    /// <summary>Pairs a DS3 cut file's skeletons, animations and bindings (each list in the container's order).</summary>
-    public static List<Track> Tracks(HKX hkx, List<string> notes)
+    /// <summary>One DS3 animated thing whose animation is stored uncompressed (frame by frame) instead of as a spline.</summary>
+    public sealed record InterleavedTrack(HKX.HKASkeleton Skeleton, HKX.HKAInterleavedUncompressedAnimation Animation, HKX.HKAAnimationBinding? Binding);
+
+    /// <summary>
+    /// Pairs a DS3 cut file's skeletons, animations and bindings (each list in the container's order). Spline
+    /// animations come back as tracks; uncompressed ones go to <paramref name="interleaved"/> when it is given (some
+    /// High Wall cutscenes, s30_00_0020 and s30_00_0040, store every animation of a cut that way).
+    /// </summary>
+    public static List<Track> Tracks(HKX hkx, List<string> notes, List<InterleavedTrack>? interleaved = null)
     {
         var skeletons = hkx.DataSection.Objects.OfType<HKX.HKASkeleton>().ToList();
-        var animations = hkx.DataSection.Objects.OfType<HKX.HKASplineCompressedAnimation>().ToList();
+        var animations = hkx.DataSection.Objects.Where(o => o is HKX.HKASplineCompressedAnimation or HKX.HKAInterleavedUncompressedAnimation).ToList();
         var bindings = hkx.DataSection.Objects.OfType<HKX.HKAAnimationBinding>().ToList();
         var frames = hkx.DataSection.Objects.OfType<HKX.HKADefaultAnimatedReferenceFrame>().ToList();
-        if (hkx.DataSection.Objects.OfType<HKX.HKAInterleavedUncompressedAnimation>().Any())
+        if (interleaved is null && animations.Any(a => a is HKX.HKAInterleavedUncompressedAnimation))
             notes.Add("an uncompressed animation is in the file; only spline-compressed ones are converted");
         if (skeletons.Count != animations.Count || bindings.Count != animations.Count)
             notes.Add($"{skeletons.Count} skeletons, {animations.Count} animations, {bindings.Count} bindings: paired in order");
@@ -329,8 +336,13 @@ public static partial class CutscenePort
             var bones = (int)skeletons[i].Bones.Size;
             if (binding is not null && Enumerable.Range(0, (int)binding.TransformTrackToBoneIndices.Size).Any(t => binding.TransformTrackToBoneIndices[t].data >= bones))
                 notes.Add($"binding {i} names a bone past skeleton {skeletons[i].Name.GetString()}'s {bones}");
+            if (animations[i] is HKX.HKAInterleavedUncompressedAnimation u)
+            {
+                interleaved?.Add(new InterleavedTrack(skeletons[i], u, binding));
+                continue;
+            }
             // Frames (root motion) are rare in cutscenes; one per animation when present at all.
-            result.Add(new Track(skeletons[i], animations[i], binding, frames.Count == animations.Count ? frames[i] : null));
+            result.Add(new Track(skeletons[i], (HKX.HKASplineCompressedAnimation)animations[i], binding, frames.Count == animations.Count ? frames[i] : null));
         }
         return result;
     }
@@ -365,7 +377,8 @@ public static partial class CutscenePort
     {
         var stats = new HkxStats { Files = 1 };
         var hkx = HKX.Read(ds3Bytes, HKX.HKXVariation.HKXDS3, false);
-        var tracks = Tracks(hkx, stats.Notes);
+        var uncompressed = new List<InterleavedTrack>();
+        var tracks = Tracks(hkx, stats.Notes, uncompressed);
         var skeletons = new List<hkaSkeleton?>();
         var animations = new List<hkaAnimation?>();
         var bindings = new List<hkaAnimationBinding?>();
@@ -474,6 +487,70 @@ public static partial class CutscenePort
                 m_animation = animation,
                 m_transformTrackToBoneIndices = boneOf,
                 m_floatTrackToFloatSlotIndices = ds3Name == PlayerPart && stats.Retargeted > 0 ? [] : floatSlots,
+                m_partitionIndices = [],
+                m_blendHint = hkaAnimationBinding.BlendHint.NORMAL,
+            });
+        }
+
+        // Uncompressed animations: copied frame by frame into Havok 2018's own uncompressed form, after the spline ones
+        // (cutscene-test pairs the spline ones by position). The player keeps DS3's skeleton in such a cut: the
+        // retarget works on splines.
+        foreach (var u in uncompressed)
+        {
+            stats.Animations++;
+            stats.Copied++;
+            stats.Uncompressed++;
+            var ds3Name = u.Skeleton.Name.GetString();
+            var name = rename(ds3Name) is { } n && n != ds3Name ? n : ds3Name;
+            if (name != ds3Name)
+                stats.Renamed++;
+            int bones = (int)u.Skeleton.Bones.Size;
+            var skeleton = new hkaSkeleton
+            {
+                m_name = name,
+                m_parentIndices = Enumerable.Range(0, (int)u.Skeleton.ParentIndices.Size).Select(i => u.Skeleton.ParentIndices[i].data).ToList(),
+                m_bones = Enumerable.Range(0, bones).Select(i =>
+                {
+                    var boneName = u.Skeleton.Bones[i].Name.GetString();
+                    return new hkaBone { m_name = boneName == ds3Name ? name : boneName, m_lockTranslation = u.Skeleton.Bones[i].LockTranslation != 0 };
+                }).ToList(),
+                m_referencePose = Enumerable.Range(0, (int)u.Skeleton.Transforms.Size).Select(i => Qs(u.Skeleton.Transforms[i])).ToList(),
+                m_referenceFloats = Enumerable.Range(0, (int)u.Skeleton.ReferenceFloats.Size).Select(i => u.Skeleton.ReferenceFloats[i].data).ToList(),
+            };
+            int floats = u.Animation.FloatTrackCount;
+            int slots = Math.Max(floats, skeleton.m_referenceFloats.Count);
+            if (slots > 0)
+            {
+                skeleton.m_floatSlots = template.Camera is { } cam && cam.m_floatSlots.Count >= slots
+                    ? cam.m_floatSlots.Take(slots).ToList()
+                    : Enumerable.Range(0, slots).Select(i => (string?)$"float{i}").ToList();
+                while (skeleton.m_referenceFloats.Count < slots)
+                    skeleton.m_referenceFloats.Add(0f);
+            }
+            var trackBone = u.Binding is not null && u.Binding.TransformTrackToBoneIndices.Size > 0
+                ? Enumerable.Range(0, (int)u.Binding.TransformTrackToBoneIndices.Size).Select(i => u.Binding.TransformTrackToBoneIndices[i].data).ToList()
+                : Enumerable.Range(0, u.Animation.TransformTrackCount).Select(i => (short)i).ToList();
+            var animation = new hkaInterleavedUncompressedAnimation
+            {
+                m_type = hkaAnimation.AnimationType.HK_INTERLEAVED_ANIMATION,
+                m_duration = u.Animation.Duration,
+                m_numberOfTransformTracks = u.Animation.TransformTrackCount,
+                m_numberOfFloatTracks = u.Animation.FloatTrackCount,
+                m_transforms = Enumerable.Range(0, (int)u.Animation.Transforms.Size).Select(i => Qs(u.Animation.Transforms[i])).ToList(),
+                m_floats = Enumerable.Range(0, (int)u.Animation.Floats.Size).Select(i => u.Animation.Floats[i].data).ToList(),
+                m_annotationTracks = trackBone.Select(b => new hkaAnnotationTrack { m_trackName = b >= 0 && b < skeleton.m_bones.Count ? skeleton.m_bones[b].m_name : "" }).ToList(),
+            };
+            var floatSlots = u.Binding is not null && u.Binding.FloatTrackToFloatSlotIndices.Size > 0
+                ? Enumerable.Range(0, (int)u.Binding.FloatTrackToFloatSlotIndices.Size).Select(i => u.Binding.FloatTrackToFloatSlotIndices[i].data).ToList()
+                : Enumerable.Range(0, floats).Select(i => (short)i).ToList();
+            skeletons.Add(skeleton);
+            animations.Add(animation);
+            bindings.Add(new hkaAnimationBinding
+            {
+                m_originalSkeletonName = name,
+                m_animation = animation,
+                m_transformTrackToBoneIndices = trackBone,
+                m_floatTrackToFloatSlotIndices = floatSlots,
                 m_partitionIndices = [],
                 m_blendHint = hkaAnimationBinding.BlendHint.NORMAL,
             });
@@ -711,6 +788,13 @@ public static partial class CutscenePort
                 try
                 {
                     var source = BND4.Read(ds3.Read(Ds3Path(name)));
+                    // Elden Ring plays a cutscene from its timeline; a binder without one (DS3's s45_00_0090: Havok files
+                    // only) would leave the game nothing to play, so it isn't ported and the scripts leave its lines out.
+                    if (!source.Files.Any(f => f.Name.EndsWith(".mqb", StringComparison.OrdinalIgnoreCase)))
+                    {
+                        lines.Add($"{name}: no timeline (.mqb) in the DS3 binder; left out, its script lines too");
+                        continue;
+                    }
                     CutsceneSound.Plan? plan = null;
                     int thisIndex = soundNumbers[name];
                     Action<MQB>? prepare = sounds is null ? null : m => plan = CutsceneSound.Prepare(m, erName, thisIndex, sounds.Known, sounds.Voice);
@@ -727,9 +811,10 @@ public static partial class CutscenePort
                     File.WriteAllBytes(path, DCX.Compress(bnd.Write(), side.Compression));
                     ported[ds3Id] = erId;
                     rows.Add((erId, map.Slot.Er));
-                    var sourceMqb = MQB.Read(source.Files.First(f => f.Name.EndsWith(".mqb", StringComparison.OrdinalIgnoreCase)).Bytes);
-                    infos[ds3Id] = new Info(name, erName, map.Slot.Er, Characters(sourceMqb),
-                        sourceMqb.Framerate > 0 ? sourceMqb.Cuts.Sum(c => (double)c.Duration) / sourceMqb.Framerate : 0);
+                    // A binder without a timeline (DS3's s45_00_0090) still converts; the menu shows it with no characters.
+                    var sourceMqb = source.Files.FirstOrDefault(f => f.Name.EndsWith(".mqb", StringComparison.OrdinalIgnoreCase)) is { } mqbFile ? MQB.Read(mqbFile.Bytes) : null;
+                    infos[ds3Id] = new Info(name, erName, map.Slot.Er, sourceMqb is null ? [] : Characters(sourceMqb),
+                        sourceMqb is { Framerate: > 0 } ? sourceMqb.Cuts.Sum(c => (double)c.Duration) / sourceMqb.Framerate : 0);
                     total.Mqb.Add(stats.Mqb);
                     total.Hkx.Add(stats.Hkx);
                     total.OtherFiles += stats.OtherFiles;
@@ -884,7 +969,7 @@ public static partial class CutscenePort
                 }
                 r.AppendLine($"  timeline: {stats.Mqb.Resources - stats.Mqb.ResourcesDropped}/{stats.Mqb.Resources} resources, {stats.Mqb.Events - stats.Mqb.EventsDropped}/{stats.Mqb.Events} events, "
                              + $"{stats.Mqb.ParamsDropped} parameters left out, {stats.Mqb.MapsMoved} map numbers moved, {stats.Mqb.Conformed} fields set to Elden Ring's shape; dropped kinds {string.Join(", ", stats.Mqb.DroppedKinds.Select(k => $"{k.Key}:{k.Value}"))}");
-                r.AppendLine($"  havok: {stats.Hkx.Files} files, {stats.Hkx.Animations} animations ({stats.Hkx.Copied} copied, {stats.Hkx.Retargeted} retargeted); notes: {string.Join("; ", stats.Hkx.Notes.Distinct())}");
+                r.AppendLine($"  havok: {stats.Hkx.Files} files, {stats.Hkx.Animations} animations ({stats.Hkx.Copied} copied, {stats.Hkx.Uncompressed} of them uncompressed, {stats.Hkx.Retargeted} retargeted); notes: {string.Join("; ", stats.Hkx.Notes.Distinct())}");
                 var bytes = bnd.Write();
                 var back = BND4.Read(bytes);
                 foreach (var (f, src) in back.Files.Zip(source.Files))
