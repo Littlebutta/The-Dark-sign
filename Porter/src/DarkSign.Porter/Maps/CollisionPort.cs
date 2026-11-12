@@ -141,6 +141,11 @@ public static class CollisionPort
 
     public static hkRootLevelContainer Convert(Ds3.hkRootLevelContainer ds3, ErCollisionTemplate template, bool keepSimdTree, List<string> notes)
     {
+        // Some DS3 collision files are empty placeholders: a 400-byte packfile with no root object at all (28 of the
+        // Painted World's h45_00 files and one l45_00 file, read 2026-11-12; none in m30, m31 or m40). They hold
+        // nothing to collide with, so they are reported as empty, not as a conversion that failed.
+        if (ds3.m_namedVariants is not { Count: > 0 })
+            throw new EmptyCollisionException();
         var root = new hkRootLevelContainer();
         foreach (var variant in ds3.m_namedVariants ?? [])
         {
@@ -625,3 +630,6 @@ public sealed class ErCollisionTemplate
         };
     }
 }
+
+/// <summary>A DS3 collision file with no root object: nothing to convert (see <see cref="CollisionPort.Convert(HKX2.hkRootLevelContainer, ErCollisionTemplate, bool, List{string})"/>).</summary>
+public sealed class EmptyCollisionException() : IOException("the DS3 collision file is empty (no root object)");

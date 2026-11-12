@@ -17,7 +17,9 @@ public static class MapCollisions
     /// <summary>The same for a binary tagfile, which never holds the text: the converted object graph alone (an estimate).</summary>
     private const long BinaryBytesPerDs3Byte = 100;
 
-    public sealed record Result(string Summary, HashSet<string> Ported);
+    /// <param name="Empty">Model numbers whose DS3 file holds no collision at all (<see cref="EmptyCollisionException"/>).</param>
+    /// <param name="Failed">DS3 files that hold collision but didn't convert.</param>
+    public sealed record Result(string Summary, HashSet<string> Ported, HashSet<string>? Empty = null, int Failed = 0);
 
     /// <summary>The Elden Ring collision settings the last map's collision was converted with, for the object port.</summary>
     public static ErCollisionTemplate? LastTemplate { get; private set; }
@@ -75,9 +77,11 @@ public static class MapCollisions
         var ds3Binder = BXF4.Read(ds3.Read(source), ds3.Read(source[..^3] + "bdt"));
         int triangles = 0;
         var failed = new List<string>();
+        var emptyModels = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         // Each collision file converts on its own thread; they're added in DS3's order, so every build is the same.
         var files = ds3Binder.Files.Where(f => f.Name.EndsWith(".hkx.dcx", StringComparison.OrdinalIgnoreCase)).ToList();
         var results = new (byte[]? Bytes, int Triangles, string? Error, long Written)[files.Count];
+        var empty = new bool[files.Count];
         // Serializing is the slow part and HKLib can only do it on every core once its caches are warm (see
         // CollisionPort.WarmUp). Big files go first, so the end of the stage isn't one core finishing a large file
         // alone, and the memory budget keeps the XML of the files in flight (about 800 times the DS3 file's size)
@@ -95,6 +99,11 @@ public static class MapCollisions
                 var result = CollisionPort.Convert(raw, template, !options.BinaryCollision, options.KeepSimdTree);
                 results[i] = (DCX.Compress(result.Bytes, compression), result.Triangles, null, result.Bytes.LongLength);
             }
+            catch (EmptyCollisionException ex)
+            {
+                empty[i] = true;
+                results[i] = (null, 0, ex.Message, 0);
+            }
             catch (Exception ex)
             {
                 results[i] = (null, 0, ex.Message, 0);
@@ -111,7 +120,10 @@ public static class MapCollisions
             var leaf = ItemText.Leaf(files[i].Name);
             if (results[i].Bytes is not { } bytes)
             {
-                failed.Add($"{leaf} ({results[i].Error})");
+                if (empty[i])
+                    emptyModels.Add(ModelNumberOf(leaf));
+                else
+                    failed.Add($"{leaf} ({results[i].Error})");
                 continue;
             }
             var name = leaf.Replace(ds3Id.Digits, erId.Digits, StringComparison.OrdinalIgnoreCase);
@@ -128,9 +140,11 @@ public static class MapCollisions
         var written = results.Where(r => r.Bytes is not null).Select(r => r.Written).ToList();
         if (written.Count > 0)
             summary += $"; {written.Sum() / 1048576.0:F0} MB for the game to read, the largest file {written.Max() / 1048576.0:F0} MB";
+        if (emptyModels.Count > 0)
+            summary += $"; {emptyModels.Count} empty in DS3 (no collision in the file, nothing to convert): {string.Join(", ", emptyModels.Order().Take(8))}{(emptyModels.Count > 8 ? ", ..." : "")}";
         if (failed.Count > 0)
             summary += $"; {failed.Count} failed: {string.Join("; ", failed.Take(5))}{(failed.Count > 5 ? "; ..." : "")}";
-        return new Result(summary, ported);
+        return new Result(summary, ported, emptyModels, failed.Count);
     }
 
     // "h40_00_00_00_000100.hkx.dcx" -> "000100"
