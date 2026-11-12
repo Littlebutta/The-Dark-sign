@@ -893,12 +893,17 @@ public static class MapPorter
         if (_enemies is not null)
             return _enemies;
         var notes = new List<string>();
-        PARAM? erNpc = null, ds3Npc = null;
-        try { erNpc = ctx.LoadParams(PorterGame.EldenRing).Get("NpcParam"); }
+        PARAM? erNpc = null, ds3Npc = null, erCharaInit = null;
+        try
+        {
+            var erParams = ctx.LoadParams(PorterGame.EldenRing);
+            erNpc = erParams.Get("NpcParam");
+            erCharaInit = erParams.Get("CharaInitParam");
+        }
         catch (Exception ex) { notes.Add($"Elden Ring NpcParam names unavailable ({ex.Message}); stand-ins picked by model only"); }
         try { ds3Npc = ctx.LoadParams(PorterGame.DarkSouls3).Get("NpcParam"); }
         catch (Exception ex) { notes.Add($"DS3 NpcParam names unavailable ({ex.Message}); every DS3 enemy gets the most common stand-in"); }
-        var catalog = EnemyPort.BuildCatalog(er, erNpc, notes, out var people);
+        var catalog = EnemyPort.BuildCatalog(er, erNpc, notes, out var people, erCharaInit);
         EnemyPort.ChrMap? ported = null;
         var mapPath = ctx.ModPath(EnemyPort.ChrMap.FileName);
         if (options.Enemies == EnemyPort.Method.Auto && File.Exists(mapPath))

@@ -390,6 +390,14 @@ After the 1.0.326 playtest (no one in Firelink Shrine, Black Knights around it, 
   AssetEnvironmentGeometryParam (ASSET_GEOMETORY_PARAM_ST) has the game's row size, 320, but data version 4, and
   SoulsFormats' careful apply also compares the version. `ParamStore` now applies a def whose type and row size
   match when only the version number differs, and says so in the log.
+- **1.0.340 playtest.** The naked man at Firelink was Boc the Seamster standing in for the Fire Keeper: his
+  CharaInitParam row (23420) has a hood and no body armour. People whose CharaInit row has no body armour (220 of
+  3,273 rows) are now left out of the pools (`EnemyPort.PersonLooksWrong`, logged as `people: left out of the pools`).
+  The "gold figures" were Tanith (orange dress, seated) and Knight Diallos (golden Hoslow armour) under the map's
+  lighting, not a phantom look (no picked NpcParam row has a phantom shader). DS3's summons and invaders ("White
+  Phantom", "Mad Phantom", "Dark Spirit") were placed as hostile Elden Ring invaders; on map 2 three of them became
+  Inquisitor Ghiza, Maureen and Mary, who cast at the player at the start. They are no longer placed
+  (`People.IsPhantom`), since DS3 only brings them in by summon sign or invasion.
 
 ## Open questions (answered by the first `map-survey` and in-game test)
 
