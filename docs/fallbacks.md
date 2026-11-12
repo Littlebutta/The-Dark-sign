@@ -334,8 +334,9 @@ Try the next option if: A far part of a DS3 map is missing (a castle wall, a hal
 
 Try the next option if: Paving, rubble or a layer of ash is missing from a DS3 map since this option, or ground looks patchy where DS3's was smooth.
 
-- **A: As DS3 draws them (default).** DS3 lays paving and rubble over its ground as separate meshes that fade out by vertex transparency, and paints ash over brick with two-layer materials whose layer is chosen per vertex. The port keeps each overlay's fade, leaves out the triangles DS3 shows at less than half strength, and draws each two-layer triangle with the layer it mostly shows. The port log's "vertex alpha:" line counts what was changed.
+- **A: As DS3 draws them (default).** DS3 lays paving and rubble over its ground as separate meshes that fade out by vertex transparency, and paints ash over brick with two-layer materials whose layer is chosen per vertex. The port keeps each overlay's fade, leaves out the triangles DS3 shows at less than half strength where other ground lies right under them, keeps them solid where nothing does (so no holes open to the sky), and draws each two-layer triangle with the layer it mostly shows. The port log's "vertex alpha:" and "overlay backing:" lines count what was changed.
 - **B: Solid.** Every vertex is drawn solid and two-layer ground shows its first layer (port-maps --solid-overlays), as in every build up to 1.0.340: dark brick shards lie across the ash around Firelink Shrine, but nothing is left out. (`port-maps --solid-overlays`)
+- **C: Cut wherever faded.** Every overlay triangle DS3 shows at less than half strength is left out, whether or not anything lies under it (port-maps --cut-faded-overlays), as in builds 1.0.353 to 1.0.37x: holes open to the sky in Firelink Shrine's floor, the cliffs and the tree above Iudex Gundyr, but no solid patch shows where DS3 faded an overlay out. (`port-maps --cut-faded-overlays`)
 
 ### Ground and walls that mix several DS3 textures (`map-blend-layers`, rebuilds the content)
 

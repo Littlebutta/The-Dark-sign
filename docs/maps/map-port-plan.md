@@ -196,6 +196,18 @@ one mesh in all of Stormveil names `[Mb2]`). Terrain blends (2m/3m/4m), grass, s
 untouched. The port log's `vertex alpha:` line counts both; fallback `map-overlays` B (`--solid-overlays`) restores
 the old solid drawing.
 
+**Faded triangles are cut only over ground.** Cutting every faded triangle (1.0.353 to 1.0.37x) opened holes to the
+sky wherever an overlay fades out over nothing: measured on m40 with every map piece placed by its MSB part, Firelink
+Shrine's floor (m004600 ash tiling) has nothing under its centre, the m000053 cliffs nothing under their outer slopes,
+and the m001200 tree trunk above Iudex Gundyr nothing behind its faded bark; 679 m² of holes around the shrine and
+the circle. `MapOverlayBacking` cuts a faded triangle only when an opaque surface that doesn't fade itself lies within
+0.5 m behind it (along its normal, 5 cm in front still counts) at its centre and near each corner, in every placement
+of its model. The port collects faded triangles during its first read of each model, defers the 59 models that have
+any, checks every placed model's surfaces against them in a second read, then converts the deferred models (about one
+extra read of the map: 44 s for m40 on 4 cores). On m40, 158,502 of 431,313 faded triangles are cut and the holes
+around the shrine and circle fall to 11 m² (mostly faded edges of the m001110 walls, not yet looked at).
+The port log's `overlay backing:` line counts them; fallback `map-overlays` C (`--cut-faded-overlays`) cuts them all.
+
 **Terrain blends: one layer per triangle.** Most of DS3's ground and many walls use `M[ARSN]_2m/_3m/_4m`
 (MultiBlend2/3/4_et1): two to four textures (`GSBlendMap_AlbedoMap_0..3`, each with its own tiling on UV 1) painted
 by per-vertex weights in the third UV member, four normalized bytes. A mesh with N layers uses the first N - 1 bytes
