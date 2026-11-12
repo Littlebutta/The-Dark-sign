@@ -388,6 +388,22 @@ public static partial class MovesetPort
         Console.WriteLine($"effects: {wantedEffects.Count} DS3 effects wanted: move events, {weaponRefs.VisualFxr.Count} shown by {weaponRefs.SpEffects.Count} SpEffects" +
                           $"{(spEffects?.Visuals is null ? " (visuals off)" : "")}, {weaponRefs.BulletFxr.Count} by {weaponRefs.Bullets.Count} bullets{(bullets is null ? " (bullets off)" : "")}, " +
                           $"{weaponRefs.ResidentFxr.Count} on weapon models{(SpEffectPort.VisualsEnabled ? "" : " (off)")}");
+        // DS3's map effects (Firelink's candles, fog, light shafts): port-maps places them as SFX regions once they
+        // are converted here, into the same common binder (MapSfx).
+        Maps.MapSfx.ClearTable(ctx);
+        var mapEffects = new SortedSet<int>();
+        if (Maps.MapSfx.Enabled)
+            try
+            {
+                var notes = new List<string>();
+                mapEffects = Maps.MapSfx.Wanted(ds3Archives, Maps.MapSlots.All, notes);
+                notes.ForEach(Console.WriteLine);
+                wantedEffects.UnionWith(mapEffects);
+            }
+            catch (Exception e) when (e is not OutOfMemoryException)
+            {
+                Console.WriteLine($"map effects: DS3 map files not read ({e.GetType().Name}: {e.Message}); the maps get no DS3 effects");
+            }
         FxrPort.Result effects;
         try { effects = FxrPort.Apply(ctx, erArchives, ds3EffectFiles, wantedEffects); }
         catch (Exception e) when (e is not OutOfMemoryException)
@@ -396,6 +412,9 @@ public static partial class MovesetPort
             Console.WriteLine($"effects: failed, moves keep Elden Ring effects ({e.GetType().Name}: {e.Message})");
             effects = new FxrPort.Result();
         }
+        if (mapEffects.Count > 0)
+            try { Console.WriteLine(Maps.MapSfx.WriteTable(ctx, mapEffects, effects)); }
+            catch (Exception e) when (e is not OutOfMemoryException) { Console.WriteLine($"map effects: table not written ({e.Message}); the maps get no DS3 effects"); }
         // The visual rows ported so far (the weapons' worn and on-hit effects) and every one ported from here on get
         // their converted effects.
         spEffects?.BindVisuals(effects);

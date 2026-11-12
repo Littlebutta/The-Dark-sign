@@ -12,7 +12,68 @@ public static partial class MapPortChecks
     private static IEnumerable<(string Name, Action Test)> AtmosphereChecks()
     {
         yield return ("stand-ins: a low-detail piece over detailed pieces it is never drawn with is left out; one with nothing under it stays", StandIns);
+        yield return ("far views: a low-detail copy of an area with ordinary textures, drawn only from a lookout, is left out; the sky dome, a building shell and a piece drawn with most of what it covers stay", FarViews);
         yield return ("atmosphere: the slot's gparam takes DS3's sun and fog colours, Stormveil's fog amounts, no colour grading", Atmosphere);
+    }
+
+    /// <summary>
+    /// Map 3 (m31_00) as DS3 lays it out: the settlement's detailed pieces are drawn from collisions 1 and 2, its far
+    /// views (m903xxx: roofs and rock walls with ordinary textures) only from the lookout collision 3, which draws none of
+    /// the settlement. The 1.0.366 playtest showed those far views as low-resolution polygons floating over the map.
+    /// </summary>
+    private static void FarViews()
+    {
+        var ds3 = new MSB3();
+        for (int i = 0; i < 4; i++)
+        {
+            var c = new MSB3.Part.Collision { Name = $"h00000{i}_0000", ModelName = $"h00000{i}" };
+            Array.Clear(c.DispGroups);
+            c.DispGroups[0] = 1u << i;
+            ds3.Parts.Collisions.Add(c);
+        }
+        var meshes = new Dictionary<string, List<MapModelPort.MeshInfo>>(StringComparer.OrdinalIgnoreCase);
+        void Piece(string name, Vector3 position, float half, float height, string albedo, int vertices, uint groups)
+        {
+            var model = name[..7];
+            var p = new MSB3.Part.MapPiece { Name = name, ModelName = model, Position = position };
+            Array.Clear(p.DrawGroups);
+            p.DrawGroups[0] = groups;
+            ds3.Parts.MapPieces.Add(p);
+            meshes[MapPorter.ModelNumber(model)] = [new MapModelPort.MeshInfo("M[ARSN]_l", "opaque", vertices, new Vector3(2 * half, height, 2 * half), albedo)
+                { Min = new Vector3(-half, 0, -half), Max = new Vector3(half, height, half) }];
+        }
+        // The settlement: 12 detailed pieces of 3,000 vertices, drawn from collisions 1 and 2.
+        for (int i = 0; i < 12; i++)
+            Piece($"m0000{i:D2}_1000", new Vector3(-110 + i * 20, 5, 0), 5, 10, "m31_00_roof_01_a", 3000, 0b0110);
+        // Its far view: 2,000 vertices over the whole settlement, drawn only from the lookout (collision 3).
+        Piece("m903400_9500", Vector3.Zero, 200, 100, "m30_00_m31_00_roof_01_a", 2000, 0b1000);
+        // The sky dome covers everything too, but is drawn from collisions 0 to 2 (with the settlement).
+        Piece("m009000_9000", Vector3.Zero, 9000, 3000, "m31_00_sky_a", 1600, 0b0111);
+        // A building shell far from the settlement, drawn from the lookout, around 12 small inside pieces drawn
+        // from collision 0: the inside has less than ten times its vertices, so it is not a stand-in for it.
+        for (int i = 0; i < 12; i++)
+            Piece($"m0001{i:D2}_1000", new Vector3(2000 + i * 2, 1, 0), 0.5f, 1, "m31_00_floor_a", 400, 0b0001);
+        Piece("m002000_1000", new Vector3(2010, 0, 0), 30, 20, "m31_00_brickwall_11_a", 5000, 0b1000);
+        // A cliff over 12 pieces it is never drawn with (60,000 vertices) and 30 it is drawn with (90,000).
+        for (int i = 0; i < 12; i++)
+            Piece($"m0002{i:D2}_1000", new Vector3(-4000 + i * 10, 5, 0), 2, 4, "m31_00_rock_a", 5000, 0b0010);
+        for (int i = 0; i < 30; i++)
+            Piece($"m0003{i:D2}_1000", new Vector3(-4000 + i * 4, 5, 20), 2, 4, "m31_00_rock_a", 3000, 0b0001);
+        Piece("m009210_9000", new Vector3(-3900, 0, 0), 300, 100, "m31_00_enkei_cliff_00_a", 1000, 0b0001);
+
+        var result = MapStandIns.Find(ds3, meshes, new HashSet<string>());
+        var lines = string.Join(" | ", result.Lines);
+        Expect(result.LeftOut.SetEquals(["m903400_9500"]) && result.FarViews.SetEquals(["m903400_9500"]), "only the far view is left out: " + lines);
+        Expect(result.Verdicts.Single(v => v.Part == "m903400_9500") is { FarView: true, Covered: 12, CoveredVertices: 36000, InsideVertices: 36000 }, lines);
+        Expect(result.Verdicts.All(v => v.Part != "m009000_9000"), "the sky dome, drawn with the settlement, is not even near the test: " + lines);
+        Expect(result.Verdicts.Single(v => v.Part == "m002000_1000") is { LeftOut: false } shell && shell.Reason.Contains("10 times"), "the shell stays: " + lines);
+        Expect(result.Verdicts.Single(v => v.Part == "m009210_9000") is { LeftOut: false, CoveredVertices: 60000, InsideVertices: 150000 } cliff
+               && cliff.Reason.Contains("most of the detail"), "the cliff drawn with most of what it covers stays: " + lines);
+        Expect(result.Summary.EndsWith("far views: 1 left out (m903400_9500)"), result.Summary);
+        Expect(MapStandIns.IsFarView(100, 9, 100000, 100000).FarView == false && MapStandIns.IsFarView(100, 10, 1000, 1000).FarView, "the thresholds");
+
+        var report = MapPorter.PieceReport(ds3, VisualPort().Port, new HashSet<string>(), false, result.LeftOut, result.FarViews);
+        Expect(report.Split('\n').Any(l => l.StartsWith("m903400_9500\tm903400\tleft out: far view")), "the piece report names a far view");
     }
 
     private static void StandIns()

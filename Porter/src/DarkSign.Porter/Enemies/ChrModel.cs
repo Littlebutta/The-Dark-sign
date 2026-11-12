@@ -48,6 +48,19 @@ public static class ChrModel
     public static List<ChrMaterial> Convert(FLVER2 flver, FLVER2 template, int ds3Chr, int newChr, bool plainMaterials, bool erNodes,
         Func<string, long>? textureArea = null, bool erColours = true, ChrGlow.Template? glow = null)
     {
+        string oldTag = $"c{ds3Chr:D4}", newTag = $"c{newChr:D4}";
+        return Convert(flver, template, newTag, n => TextureName(n, oldTag, newTag), $@"N:\GR\data\Model\chr\{newTag}\tex\",
+            plainMaterials, erNodes, textureArea, erColours, glow);
+    }
+
+    /// <summary>
+    /// The same conversion for any skinned model (DS3 armour too): <paramref name="newTag"/> names the materials,
+    /// <paramref name="rename"/> gives a DS3 texture name its new name, and plain materials say their textures are
+    /// in <paramref name="textureFolder"/>.
+    /// </summary>
+    public static List<ChrMaterial> Convert(FLVER2 flver, FLVER2 template, string newTag, Func<string, string> rename, string textureFolder,
+        bool plainMaterials, bool erNodes, Func<string, long>? textureArea = null, bool erColours = true, ChrGlow.Template? glow = null)
+    {
         if (!ChrPort.HasBody(template) || flver.Materials.Count == 0)
             throw new InvalidDataException("the template or the DS3 model has nothing to draw");
         var bboxMin = flver.Header.BoundingBoxMin;
@@ -70,13 +83,12 @@ public static class ChrModel
         int secondLayers = 0;
         var plain = new Dictionary<(string?, string?, string?, bool, string?), string>();
         int glowing = 0, glowGx = -1;
-        string oldTag = $"c{ds3Chr:D4}", newTag = $"c{newChr:D4}";
         for (int i = 0; i < flver.Materials.Count; i++)
         {
             var m = flver.Materials[i];
             string? Ds3Texture(params string[] names) => m.Textures.FirstOrDefault(t => t.Path.Length > 0
                     && names.Any(n => t.ParamName.Equals(n, StringComparison.Ordinal) || t.ParamName.EndsWith(n, StringComparison.Ordinal))) is { } t
-                ? TextureName(Path.GetFileNameWithoutExtension(ItemText.Leaf(t.Path)), oldTag, newTag)
+                ? rename(Path.GetFileNameWithoutExtension(ItemText.Leaf(t.Path)))
                 : null;
             var albedo = Ds3Texture("g_DiffuseTexture", "_AlbedoMap_0");
             var normal = Ds3Texture("g_BumpmapTexture", "_NormalMap_0");
@@ -100,7 +112,7 @@ public static class ChrModel
             // map. The first that is a texture the character has is taken.
             var emissive = m.Textures
                 .Where(t => t.Path.Length > 0 && (t.ParamName.Equals("g_EmissiveTexture", StringComparison.Ordinal) || t.ParamName.Contains("_EmissiveMap_", StringComparison.Ordinal)))
-                .Select(t => TextureName(Path.GetFileNameWithoutExtension(ItemText.Leaf(t.Path)), oldTag, newTag))
+                .Select(t => rename(Path.GetFileNameWithoutExtension(ItemText.Leaf(t.Path))))
                 .FirstOrDefault(e => !e.StartsWith("SYSTEX", StringComparison.OrdinalIgnoreCase) && (textureArea is null || textureArea(e) > 0));
             if (glow is null)
                 emissive = null;
@@ -116,7 +128,7 @@ public static class ChrModel
                 {
                     plain[key] = name = $"C[{newTag}]_ds3_{plain.Count}";
                     materials.Add(new ChrMaterial(emissive is null ? ChrMaterial.PlainSource : glow!.Matbin, name, albedo, normal, metallic)
-                        { Plain = true, AlphaTest = alphaTest, TextureFolder = $@"N:\GR\data\Model\chr\{newTag}\tex\", Emissive = emissive });
+                        { Plain = true, AlphaTest = alphaTest, TextureFolder = textureFolder, Emissive = emissive });
                 }
                 m.MTD = $@"N:\GR\data\Material\mtd\Chr\matxml\{name}.matxml";
                 if (emissive is not null)
@@ -298,6 +310,12 @@ public static class ChrModel
     public static TPF ConvertTpf(TPF tpf, int ds3Chr, int newChr, bool flatMetallic = false, List<string>? leftOut = null)
     {
         string oldTag = $"c{ds3Chr:D4}", newTag = $"c{newChr:D4}";
+        return ConvertTpf(tpf, n => TextureName(n, oldTag, newTag), flatMetallic, leftOut);
+    }
+
+    /// <summary>The same for any texture binder: <paramref name="rename"/> gives each texture its new name.</summary>
+    public static TPF ConvertTpf(TPF tpf, Func<string, string> rename, bool flatMetallic = false, List<string>? leftOut = null)
+    {
         var added = new List<TPF.Texture>();
         // A texture that isn't a DDS file stops the whole binder's write (SoulsFormats reads each PC texture's DDS
         // header): 1.0.347, c6330 Big Locust ("%)!") and c6331 Small Locust ("??|") built on Elden Ring bodies.
@@ -320,7 +338,7 @@ public static class ChrModel
         }
         foreach (var t in tpf.Textures)
         {
-            t.Name = TextureName(t.Name, oldTag, newTag);
+            t.Name = rename(t.Name);
             t.Platform = TPF.TPFPlatform.PC;
             if (flatMetallic && t.Name.EndsWith("_r", StringComparison.OrdinalIgnoreCase))
                 added.Add(new TPF.Texture(t.Name[..^2] + "_m", 103, 0, ModelPort.BlackBc4Dds(), TPF.TPFPlatform.PC));

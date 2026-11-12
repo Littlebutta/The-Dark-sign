@@ -214,8 +214,9 @@ public static class EnemyPort
     public static Result Place(MSB3 ds3, MSBE msb, MapId ds3Id, MapId erId, MsbPort.Options options, Chooser chooser,
         Func<MSB3.Part.Enemy, Ds3Enemy> describe, MSBE.Part.Enemy? fallbackTemplate = null, List<string>? table = null,
         Dictionary<string, string>? partNames = null, People? people = null, IReadOnlyDictionary<string, Seat>? seats = null,
-        bool placePeople = true)
+        bool placePeople = true, PeopleArmour? armour = null, bool erStandIns = true)
     {
+        int dressed = 0;
         int placed = 0, ported = 0, standIns = 0, npcs = 0, skipped = 0, peoplePlaced = 0, seated = 0, sameSeat = 0;
         var takenSeats = new List<Vector3>();
         var peopleUse = new Dictionary<string, int>();
@@ -249,9 +250,10 @@ public static class EnemyPort
                 // A person: the ported DS3 character if it has a body of its own (Fire Keeper, Ludleth...). Elden Ring
                 // people stand in only when asked (--er-people, fallback map-people B): Devin wants DS3's own people
                 // at Firelink or nobody (1.0.353). c1000 is DS3's invisible talk dummy (bonfires, menus): nobody.
+                // A DS3 human (c0000) with a DS3 look (PeopleArmour) is an Elden Ring person wearing DS3's armour.
                 who = !placePeople ? null
-                    : People.IsHuman(what.Model) ? people?.Choose(what, src.TalkID > 0)
-                    : chooser.PortedPerson(what) ?? (People.IsDummy(what.Model) ? null : people?.Choose(what with { Model = People.Human }, talks: true));
+                    : People.IsHuman(what.Model) ? (erStandIns || armour?.LookFor(src.CharaInitID) is not null ? people?.Choose(what, src.TalkID > 0) : null)
+                    : chooser.PortedPerson(what) ?? (People.IsDummy(what.Model) || !erStandIns ? null : people?.Choose(what with { Model = People.Human }, talks: true));
                 if (who is null)
                 {
                     npcs++;
@@ -303,6 +305,13 @@ public static class EnemyPort
             // An Elden Ring person keeps the look of the placement it was copied from; anything else has none.
             if (!(what.Npc && who.Source != "ported DS3 character"))
                 part.CharaInitID = -1;
+            // DS3's look: the stand-in's row, dressed in the DS3 armour, is added after port-weapons (PeopleArmour).
+            if (what.Npc && People.IsHuman(what.Model) && part.CharaInitID > 0 && armour?.LookFor(src.CharaInitID) is int look)
+            {
+                armour.StandIns.TryAdd(look, part.CharaInitID);
+                part.CharaInitID = look;
+                dressed++;
+            }
             part.WalkRouteName = ""; // DS3 patrol routes need the map's regions, which aren't ported yet
             part.BackupEventAnimID = -1;
             part.CollisionPartName = collisions.Contains(src.CollisionName ?? "") ? src.CollisionName : "";
@@ -357,6 +366,8 @@ public static class EnemyPort
                       + (sameSeat > 0 ? $"; {sameSeat} other versions of a seated person left out (DS3 shows one by quest state)" : ""));
         if (peopleUse.Count > 0)
             notes.Add("people: " + string.Join("; ", peopleUse.OrderBy(s => s.Key, StringComparer.Ordinal).Take(30).Select(s => $"{s.Key} x{s.Value}")));
+        if (dressed > 0)
+            notes.Add($"people: {dressed} DS3 people wear their DS3 armour (CharaInit {PeopleArmour.CharaInitBase}+, on an Elden Ring person's face and AI)");
         return new Result(placed, ported, standIns, npcs, skipped, notes, peoplePlaced);
     }
 

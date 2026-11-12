@@ -318,12 +318,12 @@ Try the next option if: Enemies stand in mid-air or on surfaces they shouldn't s
 - **A: Written as normal floor (default).** DS3 lays copies of its floors in collision with hit filter 24, which Elden Ring reads differently: enemies that landed on one fell through the map (1.0.347, map 3). They are written as normal floor (hit filter 8). The port log's layout notes count them.
 - **B: DS3's hit filters.** Every collision keeps DS3's hit filter number (port-maps --ds3-hit-filters), as in every build up to 1.0.353: enemies fall through the floor where a filter-24 copy is the top surface. (`port-maps --ds3-hit-filters`)
 
-### DS3's low-detail stand-ins (`map-stand-ins`, rebuilds the content)
+### DS3's low-detail stand-ins and far views (`map-stand-ins`, rebuilds the content)
 
-Try the next option if: A far part of a DS3 map is missing (a castle wall, a hall or a tower you could see from a distance), or blocky slabs and steps with stretched textures are back.
+Try the next option if: A far part of a DS3 map is missing (a castle wall, a hall, a tower or mountains you could see from a distance), or blocky slabs, steps or low-resolution polygons floating over the map are back.
 
-- **A: Left out where detailed pieces stand (default).** DS3 shows a far area as one blocky piece with a stretched "low" texture, and only from where its detailed pieces are not drawn. The port draws everything at once, so such a stand-in is left out when detailed pieces DS3 never shows together with it stand inside it. One with nothing detailed under it (Lothric Castle seen from the High Wall) stays. The port log lists every stand-in and why it was kept or left out.
-- **B: Kept.** Every stand-in is drawn (port-maps --stand-ins), as in every build before this option: blocky slabs and steps overlap the detailed scenery, but nothing far away is missing. (`port-maps --stand-ins`)
+- **A: Left out where detailed pieces stand (default).** DS3 shows a far area as one blocky piece with a stretched "low" texture, and only from where its detailed pieces are not drawn. The port draws everything at once, so such a stand-in is left out when detailed pieces DS3 never shows together with it stand inside it. One with nothing detailed under it (Lothric Castle seen from the High Wall) stays. Far views go the same way: low-detail copies of a whole area with ordinary textures (map 3's mountains, roofs and rock walls seen from one lookout), left out when they cover at least ten times their own detail that DS3 never draws with them. The port log lists every stand-in and far view and why it was kept or left out.
+- **B: Kept.** Every stand-in and far view is drawn (port-maps --stand-ins), as in every build up to 1.0.366: blocky slabs, steps and low-resolution polygons overlap the detailed scenery, but nothing far away is missing. (`port-maps --stand-ins`)
 
 ### DS3's ground overlays and two-layer ground (`map-overlays`, rebuilds the content)
 
@@ -384,6 +384,13 @@ Try the next option if: A DS3 map crashes or hangs while loading since regions w
 - **A: DS3's regions and map-file events (default).** The areas DS3's events watch (boss rooms, ambush triggers, warp points), enemy patrol routes, platoons and enemy generators are carried into the map with their DS3 entity IDs.
 - **B: None.** The map file has no DS3 regions, patrol routes, platoons or generators (port-maps --no-regions), as every build up to 1.0.299 was: events that wait for the player to enter an area never fire and enemies don't patrol. (`port-maps --no-regions`)
 
+### DS3's map effects (candles, fog, light shafts) (`map-effects`, rebuilds the content)
+
+Try the next option if: A DS3 map crashes, hangs while loading or hitches since its effects were added, or a fog bank, light shaft or flame looks wrong or floats in the air.
+
+- **A: DS3's map effects (default).** The effects DS3 places in its maps (Firelink Shrine's candle flames, fog banks, light shafts, crows, flies and fires) are converted with the weapons' effects and stand where DS3 has them. Report: Work\map-sfx.tsv lists any effect that couldn't be converted.
+- **B: None.** The DS3 maps have none of DS3's map effects (DARKSIGN_MAP_SFX=0), as every build up to 1.0.366 was. (`DARKSIGN_MAP_SFX=0`)
+
 ### Which state of a DS3 map is ported (`map-layers`, rebuilds the content)
 
 Try the next option if: Enemies or objects you expected are missing from a DS3 map since 1.0.327 (for example on the way to Firelink Shrine), or you want to see the Untended Graves' enemies.
@@ -395,9 +402,10 @@ Try the next option if: Enemies or objects you expected are missing from a DS3 m
 
 Try the next option if: A DS3 map crashes or hangs while loading since people were added, a person who should be friendly attacks you (or the other way round), or people stand in the way of something.
 
-- **A: DS3's own people only (default).** DS3 characters with a body of their own (Fire Keeper, Ludleth) stand where DS3's scripts seat them, silent, when the enemy porter ported them. DS3's human NPCs and hostile humans (built from DS3 armour) are left out until they can be ported: no Elden Ring stand-ins.
+- **A: DS3's own people, humans in DS3 armour (default).** DS3 characters with a body of their own (Fire Keeper, Ludleth) stand where DS3's scripts seat them, silent, when the enemy porter ported them. DS3's human NPCs and hostile humans (Hawkwood, Sirris, the Sword Master) wear their DS3 armour, converted, on an Elden Ring person's face, body and AI.
 - **B: Elden Ring people stand in.** As builds 1.0.326-1.0.353: where DS3 has a human or a talker with no ported body, a dressed Elden Ring person stands, silent; DS3's hostile humans get hostile Elden Ring humans (port-maps --er-people). (`port-maps --er-people`)
 - **C: Nobody.** DS3's people are left out of the maps, ported ones too (port-maps --no-people), as every build up to 1.0.299 was. (`port-maps --no-people`)
+- **D: DS3's own bodies only, no DS3 armour.** As builds 1.0.354-1.0.366: only DS3 characters with a body of their own stand; DS3's humans are left out (DARKSIGN_PEOPLE_ARMOUR=0). Try it if a person in DS3 armour crashes the game, is invisible or is a mess of stretched polygons. (`DARKSIGN_PEOPLE_ARMOUR=0`)
 
 ### How DS3's enemies and bosses are ported (`enemy-port`, rebuilds the content)
 

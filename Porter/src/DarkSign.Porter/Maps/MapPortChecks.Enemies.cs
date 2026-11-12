@@ -15,7 +15,8 @@ public static partial class MapPortChecks
         yield return ("people: people without body armour stay out of the pools; DS3 summons and invaders aren't placed", PeopleLooks);
         yield return ("enemies, objects: another state of the map (off DS3's layer bit 0, m40's Untended Graves) is left out, with a switch to keep it", OtherStateLeftOut);
         yield return ("people: those DS3 parks at a holding spot stand where its scripts warp them, parameterised events included", PeopleSeated);
-        yield return ("enemies: placed at DS3's spot with the DS3 entity moved to the slot, on its collision, and read back", EnemyPlacement);
+        yield return ("people: DS3 humans with a DS3 look stand as an Elden Ring person wearing it; the rest stay out without --er-people", PeopleArmourPlacement);
+                yield return ("enemies: placed at DS3's spot with the DS3 entity moved to the slot, on its collision, and read back", EnemyPlacement);
     }
 
     private static void EnemyKinds()
@@ -311,5 +312,39 @@ public static partial class MapPortChecks
         Expect(result.Notes.Any(n => n.Contains("2 moved from DS3's holding spot") && n.Contains("1 other versions")), $"the report counts the seated people: {string.Join(" | ", result.Notes)}");
         Expect(layout.Msb.Parts.Enemies.All(e => e.EntityID != 45000751), "the second version of a seated person is left out");
         Expect(MSBE.Read(layout.Msb.Write()).Parts.Enemies.Count == layout.Msb.Parts.Enemies.Count, "reads back");
+    }
+
+    private static void PeopleArmourPlacement()
+    {
+        var ds3 = SyntheticDs3();
+        ds3.Models.Enemies.Add(new MSB3.Model.Enemy { Name = "c0000" });
+        ds3.Parts.Enemies.Add(new MSB3.Part.Enemy { Name = "c0000_0033", ModelName = "c0000", EntityID = 4000760, NPCParamID = 25100, CharaInitID = 25100, TalkID = 400170, CollisionName = "h000100_0000" });
+        ds3.Parts.Enemies.Add(new MSB3.Part.Enemy { Name = "c0000_0012", ModelName = "c0000", EntityID = 4000500, NPCParamID = 27300, CharaInitID = 27300, CollisionName = "h000100_0000" });
+        var armour = PeopleArmour.WithModels((5800, 5000), (7000, 5001));
+        armour.AddLook(new PeopleArmour.Look(25100, "Hawkwood", 1, [new(70000000, 5, 7000, "Chain Helm"), new(58001000, 2, 5800, "Undead Legion Armor"), null, null]));
+        Expect(armour.LookFor(25100) == PeopleArmour.CharaInitBase + 25100 && armour.LookFor(27300) is null, "only planned rows have a look");
+        Expect(armour.Rename("BD_M_5800_a") == "BD_M_5000_a" && armour.Rename("hd_f_7000_n") == "HD_F_5001_n" && armour.Rename("BD_M_1234_a") == "BD_M_1234_a",
+            "DS3 set names move to their new numbers, others stay");
+        Expect(PeopleArmour.WithModels((5800, 5000), (5000, 5001)).Rename("BD_M_5800_a") == "BD_M_5000_a", "a new number that is another DS3 set's isn't renamed twice");
+        Expect(PeopleArmour.PartsPath("bd", 'm', 5000, true) == "/parts/bd_m_5000_l.partsbnd.dcx", "Elden Ring parts path");
+        Expect(PeopleArmour.PeopleIn([ds3]).Order().SequenceEqual([25100, 27300]), "the c0000 people's CharaInit rows are read from the map");
+
+        var people = new EnemyPort.People([new("c0000", 100, 101, "Merchant", false, "m10_00_00_00", new MSBE.Part.Enemy { ModelName = "c0000", CharaInitID = 23000 })],
+            [new("c0000", 200, 201, "Bandit", false, "m10_00_00_00", new MSBE.Part.Enemy { ModelName = "c0000", CharaInitID = 24000 })]);
+        var layout = MsbPort.Convert(ds3, SyntheticHost(), Ds3Id, ErId);
+        var result = EnemyPort.Place(ds3, layout.Msb, Ds3Id, ErId, new MsbPort.Options(), new EnemyPort.Chooser(SyntheticCatalog(), null, EnemyPort.Method.Auto),
+            e => new(e.ModelName, e.NPCParamID, e.Name, false, true), null, null, null, people, null, armour: armour, erStandIns: false);
+        var hawkwood = layout.Msb.Parts.Enemies.Single(e => e.EntityID == 45000760);
+        Expect(hawkwood.CharaInitID == PeopleArmour.CharaInitBase + 25100 && hawkwood.NPCParamID == 100 && hawkwood.TalkID == 0,
+            $"Hawkwood wears his DS3 look on the Elden Ring person (CharaInit {hawkwood.CharaInitID}, NpcParam {hawkwood.NPCParamID})");
+        Expect(armour.StandIns.GetValueOrDefault(PeopleArmour.CharaInitBase + 25100) == 23000, "the look remembers the stand-in row it copies");
+        Expect(layout.Msb.Parts.Enemies.All(e => e.EntityID != 45000500), "a human with no DS3 look stays out (no Elden Ring stand-in by default)");
+        Expect(result.Notes.Any(n => n.Contains("1 DS3 people wear their DS3 armour")), $"reported: {string.Join(" | ", result.Notes)}");
+
+        // --er-people: the stand-ins' own looks, no DS3 armour.
+        var erLayout = MsbPort.Convert(ds3, SyntheticHost(), Ds3Id, ErId);
+        EnemyPort.Place(ds3, erLayout.Msb, Ds3Id, ErId, new MsbPort.Options(), new EnemyPort.Chooser(SyntheticCatalog(), null, EnemyPort.Method.Auto),
+            e => new(e.ModelName, e.NPCParamID, e.Name, false, true), null, null, null, people, null);
+        Expect(erLayout.Msb.Parts.Enemies.Count(e => e.CharaInitID is 23000 or 24000) == 2, "with Elden Ring stand-ins both people stand in their own looks");
     }
 }

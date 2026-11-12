@@ -104,7 +104,7 @@ public static class MapPorter
 
         /// <summary>
         /// --er-people (launcher Fallbacks "map-people" B): Elden Ring people stand in for DS3 people that have no
-        /// ported body (every c0000 human). Off by default: only DS3's own people (ported bodies) are placed.
+        /// ported body (every c0000 human), in their own Elden Ring looks. Off by default: DS3 bodies, and DS3 humans in their DS3 armour (PeopleArmour).
         /// </summary>
         public bool ErPeople { get; set; }
         /// <summary>--no-regions (launcher Fallbacks "map-regions" B): no DS3 regions, patrol routes or generators (<see cref="RegionPort"/>).</summary>
@@ -169,7 +169,7 @@ public static class MapPorter
     }
 
     public static string PieceReport(MSB3 ds3, MapModelPort models, IReadOnlySet<string> missingModels, bool helperPieces,
-        IReadOnlySet<string>? standIns = null)
+        IReadOnlySet<string>? standIns = null, IReadOnlySet<string>? farViews = null)
     {
         var inv = System.Globalization.CultureInfo.InvariantCulture;
         string V(Vector3 v) => string.Create(inv, $"{v.X:F0},{v.Y:F0},{v.Z:F0}");
@@ -182,6 +182,7 @@ public static class MapPorter
             models.ModelMeshes.TryGetValue(number, out var meshes);
             var status = !helperPieces && MsbPort.HelperKind(p, layerOk) is { } helper ? "left out: " + helper
                 : missingModels.Contains(p.ModelName) ? "left out: no mesh the port can draw"
+                : farViews?.Contains(p.Name) == true ? "left out: far view (DS3 draws it only where the detail it covers is hidden)"
                 : standIns?.Contains(p.Name) == true ? "left out: low detail stand-in"
                 : "written";
             var size = meshes is { Count: > 0 } ? meshes.Select(m => m.Size).Aggregate(Vector3.Max) : Vector3.Zero;
@@ -363,6 +364,9 @@ public static class MapPorter
             }
             Time(report, "object params", objectClock);
         }
+        // DS3's map effects (Firelink's candles, fog, light shafts), converted by port-weapons into the common binder.
+        if (ported.Count > 0)
+            Step(report, "map effects", () => MapSfx.Apply(ctx, ds3, ported.Select(p => p.Slot)));
         if (enemyPort is not null)
         {
             // The SpEffects the maps' scripts use get rows too, so the events step can point the scripts at them.
@@ -377,6 +381,9 @@ public static class MapPorter
                 }
             Step(report, "enemy params", () => ChrPort.ApplyParams(ctx, er, enemyPort));
         }
+        // DS3's humans in their DS3 armour: models, materials and the rows the placed people name.
+        if (_armour is { StandIns.Count: > 0 } armour && ported.Count > 0)
+            Step(report, "people armour", () => PortArmour(ctx, ds3, er, armour, ported.Select(p => p.Slot).ToList()));
         if (ported.Count > 0)
             Step(report, "events", () => MapEvents.Port(ctx, ds3, er, ported.Select(p => p.Slot).ToList()));
 
@@ -479,6 +486,31 @@ public static class MapPorter
         foreach (var file in new[] { MapEvents.FlagFile, "darksign_maps.tsv", BossArenas.ListFile, "darksign_maps_check.txt", FlagAlloc.ProbeFile,
                      DarkSign.Randomizer.Data.EnemyTables.PlacedFile, DarkSign.Randomizer.Data.EnemyTables.ErFile })
             Delete(Path.Combine(root, file));
+    }
+
+    /// <summary>
+    /// Writes the DS3 armour the placed people wear and their rows; if the rows can't be written, the people go back
+    /// to their stand-in's own look so no part names a row that doesn't exist.
+    /// </summary>
+    private static string PortArmour(PorterContext ctx, GameArchives ds3, GameArchives er, PeopleArmour armour, List<MapSlots.Slot> slots)
+    {
+        var lines = new List<string>();
+        try
+        {
+            var materials = new List<DarkSign.Porter.Enemies.ChrMaterial>();
+            lines.Add(armour.WriteModels(ctx, ds3, er, materials));
+            if (materials.Count > 0)
+                DarkSign.Porter.Enemies.ChrMaterial.Write(ctx, er, materials);
+            var regulation = ActionButtons.LoadRegulation(ctx);
+            lines.Add(armour.WriteParams(regulation));
+            regulation.Save(ctx.ModPath("regulation.bin"));
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            lines.Add($"people armour: FAILED ({ex.Message}); {armour.Revert(ctx, slots)} people put back on their Elden Ring stand-in's look");
+        }
+        lines.AddRange(armour.Notes.Select(n => "  people armour: " + n));
+        return string.Join(Environment.NewLine, lines);
     }
 
     /// <summary>Points every map piece of a written layout at another PartsDrawParam row.</summary>
@@ -584,9 +616,9 @@ public static class MapPorter
                 var seats = EnemyPort.Seats(ds3Msb, EnemyPort.EventWarps(scripts));
                 var placed = EnemyPort.Place(ds3Msb, layout.Msb, ds3Id, erId, new MsbPort.Options { AllVisible = !options.Ds3Groups, NoGroups = options.NoGroups, AllLayers = options.AllLayers },
                     enemies.Chooser, e => enemies.Describe(e, bosses), EnemyPort.AnyEnemyPart(enemies.Catalog), _placedEnemies, partNames,
-                    options.ErPeople ? enemies.People : null, seats, placePeople: !options.NoPeople);
+                    enemies.People, seats, placePeople: !options.NoPeople, armour: options.ErPeople ? null : _armour, erStandIns: options.ErPeople);
                 report.AppendLine($"  enemies: {placed.Placed} placed ({placed.Ported} ported DS3 characters, {placed.StandIns} Elden Ring stand-ins, "
-                                  + $"{placed.People} people{(options.NoPeople ? ", people off (--no-people)" : options.ErPeople ? ", Elden Ring people stand in (--er-people)" : ", DS3's own people only")}), {placed.Npcs} people left out, {placed.Skipped} with nothing to stand in; {bosses.Count} DS3 boss entities");
+                                  + $"{placed.People} people{(options.NoPeople ? ", people off (--no-people)" : options.ErPeople ? ", Elden Ring people stand in (--er-people)" : _armour is null ? ", DS3's own people only" : ", DS3's own people and DS3 humans in their DS3 armour")}), {placed.Npcs} people left out, {placed.Skipped} with nothing to stand in; {bosses.Count} DS3 boss entities");
                 foreach (var note in placed.Notes)
                     report.AppendLine($"  enemies: {note}");
             }
@@ -685,8 +717,9 @@ public static class MapPorter
                               + string.Join(", ", models.LeftOut.OrderByDescending(k => k.Value).Select(k => $"{k.Key} x{k.Value}")) + ")");
         // DS3's low-detail stand-ins, judged now that every model's meshes are known. A failure keeps them all.
         var standIns = new HashSet<string>(StringComparer.Ordinal);
+        var farViews = new HashSet<string>(StringComparer.Ordinal);
         if (options.StandIns)
-            report.AppendLine("  low-detail stand-ins: kept (--stand-ins)");
+            report.AppendLine("  low-detail stand-ins and far views: kept (--stand-ins)");
         else if (copied > 0 || test != PieceTest.None)
             report.AppendLine("  low-detail stand-ins: not judged in a copied or test map");
         else
@@ -699,6 +732,7 @@ public static class MapPorter
                     .Select(p => p.Name).ToHashSet(StringComparer.Ordinal);
                 var judged = MapStandIns.Find(ds3Msb, models.ModelMeshes, skip);
                 standIns = judged.LeftOut;
+                farViews = judged.FarViews;
                 report.AppendLine("  " + judged.Summary);
                 foreach (var line in judged.Lines)
                     report.AppendLine("    " + line);
@@ -712,7 +746,7 @@ public static class MapPorter
         {
             var piecesReport = ctx.WorkPath("reports", $"map-pieces-{erId}.tsv");
             Directory.CreateDirectory(Path.GetDirectoryName(piecesReport)!);
-            File.WriteAllText(piecesReport, PieceReport(ds3Msb, models, missingModels, options.HelperPieces, standIns));
+            File.WriteAllText(piecesReport, PieceReport(ds3Msb, models, missingModels, options.HelperPieces, standIns, farViews));
             report.AppendLine($"  piece report: Work\\reports\\{Path.GetFileName(piecesReport)} (every DS3 map piece: where it is, how big, its materials, and why it was left out)");
         }
         catch (Exception ex)
@@ -969,6 +1003,8 @@ public static class MapPorter
     }
 
     private static EnemyContext? _enemies;
+    /// <summary>DS3's humans in their DS3 armour (null: off, or not planned).</summary>
+    private static PeopleArmour? _armour;
     /// <summary>darksign_enemies.tsv rows for this run: every DS3 enemy placed, for the randomizer.</summary>
     private static readonly List<string> _placedEnemies = [];
 
@@ -991,6 +1027,21 @@ public static class MapPorter
         try { ds3Npc = ctx.LoadParams(PorterGame.DarkSouls3).Get("NpcParam"); }
         catch (Exception ex) { notes.Add($"DS3 NpcParam names unavailable ({ex.Message}); every DS3 enemy gets the most common stand-in"); }
         var catalog = EnemyPort.BuildCatalog(er, erNpc, notes, out var people, erCharaInit);
+        _armour = null;
+        if (PeopleArmour.Enabled && !options.NoPeople && !options.ErPeople)
+            try
+            {
+                var ds3Params = ctx.LoadParams(PorterGame.DarkSouls3);
+                var maps = MapSlots.All.Select(s => s.Ds3).Distinct().Where(id => ds3.Contains(MsbPath(id))).Select(id => MSB3.Read(ds3.Read(MsbPath(id))));
+                _armour = PeopleArmour.Plan(ds3Params.Get("CharaInitParam")!, ds3Params.Get("EquipParamProtector")!, PeopleArmour.PeopleIn(maps),
+                    n => PeopleArmour.Slots.Any(slot => er.Contains(PeopleArmour.PartsPath(slot.Prefix, 'm', n, false))));
+                notes.Add($"people armour: {_armour.Looks.Count} DS3 people's looks planned, {_armour.Models.Count} DS3 armour sets to convert");
+                notes.AddRange(_armour.Notes);
+            }
+            catch (Exception ex) when (ex is not OutOfMemoryException)
+            {
+                notes.Add($"people armour: not planned ({ex.Message}); DS3's humans are left out");
+            }
         EnemyPort.ChrMap? ported = null;
         var mapPath = ctx.ModPath(EnemyPort.ChrMap.FileName);
         if (options.Enemies == EnemyPort.Method.Auto && File.Exists(mapPath))

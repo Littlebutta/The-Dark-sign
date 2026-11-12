@@ -13,6 +13,7 @@ public static partial class MapPortChecks
     {
         yield return ("regions: DS3 script regions, spawn points and patrol points are carried with their entity IDs; emitters are left out", Regions);
         yield return ("regions: patrol routes, platoons and generators name the ported enemies and points", MapFileEvents);
+        yield return ("map effects: DS3 SFX regions (Firelink's candles) become Elden Ring SFX regions naming the converted effect", MapEffects);
         yield return ("objects: models are numbered in name order into free asset groups", ObjectNumbers);
         yield return ("objects: a DS3 object model becomes an asset binder with its vertices in model space and its textures", ObjectModel);
         yield return ("objects: every DS3 object part becomes an asset part with its entity ID, and can be taken out again", ObjectParts);
@@ -90,6 +91,31 @@ public static partial class MapPortChecks
             "Strip takes the regions, events and routes out again");
         MSBE.Read(msb.Write());
         Expect(MapPorter.Options.Parse(["--no-regions"]).NoRegions && !new MapPorter.Options().NoRegions, "--no-regions is read");
+    }
+
+    private static void MapEffects()
+    {
+        var ds3 = Ds3WithRegions();
+        ds3.Regions.SFX.Add(new MSB3.Region.SFX { Name = "candle", EffectID = 840060, EntityID = 4003500, Position = new Vector3(273, -49, 615), Rotation = new Vector3(0, 30, 0),
+            Shape = new MSB.Shape.Point(), StartDisabled = true });
+        ds3.Regions.SFX.Add(new MSB3.Region.SFX { Name = "candle", EffectID = 840060, EntityID = -1 });
+        var layout = MsbPort.Convert(ds3, SyntheticHost(), Ds3Id, ErId);
+        var converted = new Dictionary<int, int> { [840060] = FxrPort.IdBase + 840060 };
+        var result = MapSfx.Convert(ds3, layout.Msb, Ds3Id, ErId, converted);
+        Expect(result.Added == 2 && result.Missing == 1 && result.MissingByEffect.GetValueOrDefault(30010) == 1, $"two candles added, the unconverted flame left out ({result})");
+        var msb = MSBE.Read(layout.Msb.Write());
+        var candle = msb.Regions.SFX.Single(r => r.EntityID == 45003500);
+        Expect(candle.EffectID == 900_840_060 && candle.StartDisabled == 1, $"effect {candle.EffectID} and start state kept");
+        Expect(candle.Position == new Vector3(273, -49, 615) && candle.Rotation == new Vector3(0, 30, 0), "spot and rotation kept");
+        Expect(candle.MapID == -1 && candle.UnkE08 == 255 && candle.UnkS0C == -1 && candle.MapStudioLayer == 0xFFFFFFFF, "RegionPort's region settings");
+        Expect(msb.Regions.SFX.Count(r => r.EntityID == 0 && r.StartDisabled == 0) == 1, "an SFX region with no DS3 entity ID gets none");
+        Expect(msb.Regions.SFX.Select(r => r.Name).Distinct().Count() == 2, "duplicate names are made unique");
+        var ids = msb.Regions.GetEntries().Select(r => r.RegionID).ToList();
+        Expect(ids.Distinct().Count() == ids.Count, "every region has its own RegionID");
+        // A rerun replaces the regions it added instead of adding them twice.
+        MapSfx.Convert(ds3, msb, Ds3Id, ErId, converted);
+        Expect(msb.Regions.SFX.Count == 2, $"a rerun keeps two SFX regions ({msb.Regions.SFX.Count})");
+        Expect(MapSfx.Convert(ds3, msb, Ds3Id, ErId, new Dictionary<int, int>()).Added == 0 && msb.Regions.SFX.Count == 0, "with no converted effects none are added");
     }
 
     private static void MapFileEvents()
