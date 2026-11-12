@@ -324,12 +324,14 @@ public static class Commands
             bool done = false;
             try
             {
+                System.Numerics.Matrix4x4? shapeTurn = null; // a shield's shape turn, decided on the main model, reused for its LOD
                 foreach (var lod in new[] { false, true })
                 {
                     var model = ModelPort.Convert(ds3, er, ds3Model, templateModel, plan.NewModelId!.Value, lod,
-                        holdTurns is not null && holdTurns.TryGetValue(plan, out var turn) ? turn : null);
+                        holdTurns is not null && holdTurns.TryGetValue(plan, out var turn) ? turn : null, shapeTurn);
                     if (model is null)
                         continue;
+                    shapeTurn ??= model.ShapeTurn;
                     var path = ctx.ModPath(["parts", ModelPort.PartsPath(plan.NewModelId.Value, lod)[7..]]);
                     File.WriteAllBytes(path, DCX.Compress(model.Binder.Write(), model.Compression));
                     mine.AddRange(model.Materials);
