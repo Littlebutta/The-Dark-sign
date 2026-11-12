@@ -47,6 +47,29 @@ public sealed class AiPort
 
     public const string ThinkCall = "GetNpcThinkParamID";
 
+    /// <summary>
+    /// DS3's goal scripts check the SpEffects that mark an enemy's state (Ariandel's wolf: HasSpecialEffectId(TARGET_SELF,
+    /// 5020) and a dozen more pick which attacks it may use; AddObserveSpecialEffectAttribute(TARGET_SELF, 5025) wakes it
+    /// when one starts), by DS3's numbers. A ported enemy's moves, NpcParam row and map scripts put those effects on at
+    /// <see cref="ChrEffects.SpEffectId"/> (700,000,000 + the DS3 ID), so up to 1.0.410 every such check was false and
+    /// the wolf only circled. The number a script passes for an effect on itself, its event target or a friend is
+    /// renumbered to the ported row (<see cref="RenumberSpEffectIds"/>); effects it checks on the player
+    /// (TARGET_ENE_*) keep their numbers. DARKSIGN_ENEMY_AI_SPEFFECTS=ds3 (fallback enemy-ai G) keeps DS3's numbers, as up to 1.0.410.
+    /// </summary>
+    public static bool RenumberSpEffects => Environment.GetEnvironmentVariable("DARKSIGN_ENEMY_AI_SPEFFECTS")?.Trim().ToLowerInvariant() != "ds3";
+
+    /// <summary>Script calls whose second argument (after the target) is a SpEffect ID.</summary>
+    public static readonly string[] SpEffectCalls = ["HasSpecialEffectId", "AddObserveSpecialEffectAttribute", "DeleteObserveSpecialEffectAttribute"];
+    public const string ObserveCall = "AddObserveSpecialEffectAttribute";
+    /// <summary>Returns the SpEffect ID that woke an observing script; it is compared with the observed IDs.</summary>
+    public const string InterruptCall = "GetSpecialEffectActivateInterruptType";
+
+    /// <summary>
+    /// Whether a DS3 SpEffect gets a ported row a script may be pointed at (in DS3's SpEffectParam, not a "[HKS]"
+    /// marker). Null (the effect port is off): the scripts keep DS3's numbers.
+    /// </summary>
+    public Func<int, bool>? SpEffectPorted { get; set; }
+
     public const string ReportFile = "enemy-ai.tsv";
     public const string CommonPath = "/script/aicommon.luabnd.dcx";
     /// <summary>Where goals and logics Elden Ring already uses the DS3 number of are moved to (six digits, as the binder names are).</summary>
@@ -117,6 +140,12 @@ public sealed class AiPort
     /// <summary>DS3 NpcThinkParam row -> its ported Elden Ring row, for the scripts that check which row they run under.</summary>
     private readonly Dictionary<int, int> _thinkIds = [];
     private readonly SortedDictionary<string, int> _thinkRewrites = new(StringComparer.OrdinalIgnoreCase);
+    private readonly SortedDictionary<string, int> _spEffectRewrites = new(StringComparer.OrdinalIgnoreCase);
+    private readonly SortedSet<int> _spEffectIds = [];
+    private int _spEffectSkipped;
+
+    /// <summary>The DS3 SpEffects the written scripts were pointed at the ported rows of: the params step ports their rows.</summary>
+    public IReadOnlyCollection<int> SpEffectIds => _spEffectIds;
     public readonly List<string> Report = [];
     public readonly SortedDictionary<string, SortedSet<string>> Missing = new(StringComparer.Ordinal);
     public readonly SortedDictionary<string, SortedSet<string>> Unknown = new(StringComparer.Ordinal);
@@ -557,7 +586,7 @@ public sealed class AiPort
         var map = ids.GroupBy(i => i.Ds3).ToDictionary(g => g.Key, g => g.First().Er);
         string dir = $@"N:\GR\data\INTERROOT_win64\script\ai\out\each\{stem}\{stem}";
         var bnd = NewBinder();
-        bnd.Files.Add(new BinderFile(SoulsFormats.Binder.FileFlags.Flag1, 1000, dir + ".lua", ThinksRenumbered(s.File.Bytes, s.Leaf)));
+        bnd.Files.Add(new BinderFile(SoulsFormats.Binder.FileFlags.Flag1, 1000, dir + ".lua", Renumbered(s.File.Bytes, s.Leaf)));
         var gnl = new LUAGNL(false, true);
         gnl.Globals.AddRange(s.AssignOrder);
         bnd.Files.Add(new BinderFile(SoulsFormats.Binder.FileFlags.Flag1, 1000000, dir + ".luagnl", gnl.Write()));
@@ -570,17 +599,241 @@ public sealed class AiPort
         return Compress(bnd.Write());
     }
 
-    /// <summary>A compiled script with the DS3 think rows it checks for renumbered (see <see cref="RenumberThinks"/>); the same bytes when none.</summary>
-    private byte[] ThinksRenumbered(byte[] bytes, string leaf)
+    /// <summary>
+    /// A compiled script with the DS3 think rows (<see cref="RenumberThinks"/>) and SpEffects (<see cref="RenumberSpEffects"/>)
+    /// it checks for renumbered to the ported ones; the same bytes when none.
+    /// </summary>
+    private byte[] Renumbered(byte[] bytes, string leaf)
     {
-        if (!RenumberThinks || _thinkIds.Count == 0 || !HksChunk.Is(bytes))
+        bool thinks = RenumberThinks && _thinkIds.Count > 0, effects = RenumberSpEffects && SpEffectPorted is not null;
+        if (!(thinks || effects) || !HksChunk.Is(bytes))
             return bytes;
         var chunk = HksChunk.Read(bytes);
-        int n = RenumberThinkIds(chunk, _thinkIds);
-        if (n == 0)
-            return bytes;
-        _thinkRewrites[leaf] = n;
-        return chunk.Write();
+        int n = thinks ? RenumberThinkIds(chunk, _thinkIds) : 0;
+        if (n > 0)
+            _thinkRewrites[leaf] = n;
+        int m = 0;
+        if (effects)
+        {
+            var found = new SortedSet<int>();
+            m = RenumberSpEffectIds(chunk, SpEffectPorted!, found, out int skipped);
+            _spEffectSkipped += skipped;
+            if (m > 0)
+            {
+                _spEffectRewrites[leaf] = m;
+                _spEffectIds.UnionWith(found);
+            }
+        }
+        return n + m == 0 ? bytes : chunk.Write();
+    }
+
+    // Lua 5.0 instructions (the AI files' "\x1bLua" 0x50 header): opcode bits 0-5, C bits 6-14, B bits 15-23, A bits
+    // 24-31, Bx = bits 6-23; a B or C of 250 (MAXSTACK) and up names constant (value - 250) instead of a register.
+    private const int MaxStack = 250;
+    private const int OpMove = 0, OpLoadK = 1, OpLoadNil = 3, OpGetGlobal = 5, OpGetTable = 6, OpSetTable = 9, OpSelf = 11,
+        OpEq = 21, OpLe = 23, OpCall = 25, OpTailCall = 26, OpForLoop = 28, OpTForPrep = 30;
+    private static int B(uint i) => (int)((i >> 15) & 0x1FF);
+    private static int C(uint i) => (int)((i >> 6) & 0x1FF);
+
+    /// <summary>Whether a target global names the script's own side: itself, its event target or a friend (not the player).</summary>
+    public static bool OwnSide(string? target) =>
+        target is "TARGET_SELF" or "TARGET_EVENT" || (target?.StartsWith("TARGET_FRI", StringComparison.Ordinal) ?? false);
+
+    private enum Field { Bx, B, C }
+
+    /// <summary>
+    /// Renumbers the DS3 SpEffect IDs the chunk's scripts check on their own side to <see cref="ChrEffects.SpEffectId"/>:
+    /// <list type="bullet">
+    /// <item>the ID argument of <see cref="SpEffectCalls"/> (self:HasSpecialEffectId(TARGET_SELF, 5020)) when the target
+    /// is TARGET_SELF / TARGET_EVENT / TARGET_FRI*, both loaded inside the call (a global and a number constant);</item>
+    /// <item>a number compared with <see cref="InterruptCall"/>'s result (== 13020) when the chunk observes that ID only
+    /// on its own side.</item>
+    /// </list>
+    /// Only the instructions that pass the ID are changed: a number constant the function also uses for something else
+    /// (an animation ID) keeps its value there, the ported number becomes a constant of its own. Returns how many
+    /// instructions changed; <paramref name="found"/> gets the DS3 IDs, <paramref name="skipped"/> counts comparisons
+    /// left alone because the new constant couldn't be named by the instruction.
+    /// </summary>
+    public static int RenumberSpEffectIds(HksChunk chunk, Func<int, bool> ported, ISet<int>? found, out int skipped)
+    {
+        skipped = 0;
+        var functions = chunk.Main.All().Where(f => f.Constants.Any(c => c.AsString is { } s && (SpEffectCalls.Contains(s) || s == InterruptCall))).ToList();
+        var calls = new List<(HksChunk.Function F, int At, Field Field, int Id, bool Own, bool Observe)>();
+        var compares = new List<(HksChunk.Function F, int At, Field Field, int Id)>();
+        foreach (var f in functions)
+            Scan(f, calls, compares);
+        bool Portable(int id) => id is > 0 and < 300_000_000 && ported(id);
+        var observedOwn = calls.Where(c => c.Observe && c.Own).Select(c => c.Id).ToHashSet();
+        var observedOther = calls.Where(c => c.Observe && !c.Own).Select(c => c.Id).ToHashSet();
+        var edits = calls.Where(c => c.Own && Portable(c.Id)).Select(c => (c.F, c.At, c.Field, c.Id))
+            .Concat(compares.Where(c => observedOwn.Contains(c.Id) && !observedOther.Contains(c.Id) && Portable(c.Id)))
+            .Distinct().ToList();
+        int n = 0;
+        foreach (var group in edits.GroupBy(e => e.F))
+        {
+            var f = group.Key;
+            foreach (var byConstant in group.GroupBy(e => KIndex(f.Instructions[e.At], e.Field)))
+            {
+                int k = byConstant.Key, id = byConstant.First().Id, newId = ChrEffects.SpEffectId(id);
+                int uses = Uses(f, k);
+                int target;
+                if (uses == byConstant.Count())
+                {
+                    f.Constants[k] = HksChunk.Constant.Number(newId);
+                    target = k;
+                }
+                else
+                {
+                    target = f.Constants.FindIndex(c => c.AsNumber == newId);
+                    if (target < 0)
+                    {
+                        target = f.Constants.Count;
+                        f.Constants.Add(HksChunk.Constant.Number(newId));
+                    }
+                }
+                foreach (var e in byConstant)
+                {
+                    uint code = f.Instructions[e.At];
+                    if (target != k)
+                    {
+                        if (e.Field == Field.Bx ? target >= 1 << 18 : target + MaxStack > 0x1FF)
+                        {
+                            skipped++;
+                            continue;
+                        }
+                        code = e.Field switch
+                        {
+                            Field.Bx => (code & ~(0x3FFFFu << 6)) | ((uint)target << 6),
+                            Field.B => (code & ~(0x1FFu << 15)) | ((uint)(target + MaxStack) << 15),
+                            _ => (code & ~(0x1FFu << 6)) | ((uint)(target + MaxStack) << 6),
+                        };
+                        f.Instructions[e.At] = code;
+                    }
+                    found?.Add(e.Id);
+                    n++;
+                }
+            }
+        }
+        return n;
+    }
+
+    private static int KIndex(uint code, Field field) => field switch { Field.Bx => HksChunk.Bx(code), Field.B => B(code) - MaxStack, _ => C(code) - MaxStack };
+
+    // How many instructions of the function name constant k: LOADK, and the B / C operands that take a constant.
+    private static int Uses(HksChunk.Function f, int k)
+    {
+        int n = 0;
+        foreach (var code in f.Instructions)
+        {
+            int op = HksChunk.Op(code);
+            if (op == OpLoadK)
+                n += HksChunk.Bx(code) == k ? 1 : 0;
+            else if (op == OpGetTable || op == OpSelf)
+                n += C(code) == k + MaxStack ? 1 : 0;
+            else if (op == OpSetTable || op is >= 12 and <= 16 || op is >= OpEq and <= OpLe)
+                n += (B(code) == k + MaxStack ? 1 : 0) + (C(code) == k + MaxStack ? 1 : 0);
+        }
+        return n;
+    }
+
+    // One pass over the function's instructions, in order, knowing for each register what last wrote it: a global
+    // (GETGLOBAL), a number constant (LOADK), a method looked up by SELF, or InterruptCall's result.
+    private static void Scan(HksChunk.Function f, List<(HksChunk.Function, int, Field, int, bool, bool)> calls, List<(HksChunk.Function, int, Field, int)> compares)
+    {
+        const int Regs = 256;
+        var global = new string?[Regs];
+        var method = new string?[Regs];
+        var loadK = new int[Regs];
+        var written = new int[Regs];
+        var interrupt = new bool[Regs];
+        Array.Fill(loadK, -1);
+        Array.Fill(written, -1);
+        void Clear(int r)
+        {
+            if (r is < 0 or >= Regs)
+                return;
+            global[r] = null;
+            method[r] = null;
+            loadK[r] = -1;
+            interrupt[r] = false;
+        }
+        void ClearFrom(int r)
+        {
+            for (int j = Math.Max(r, 0); j < Regs; j++)
+                Clear(j);
+        }
+        int? Number(int k) => k >= 0 && k < f.Constants.Count && f.Constants[k].AsNumber is { } d && d == Math.Floor(d) && d is > 0 and < int.MaxValue ? (int)d : null;
+        for (int i = 0; i < f.Instructions.Count; i++)
+        {
+            uint code = f.Instructions[i];
+            int op = HksChunk.Op(code), a = HksChunk.A(code), b = B(code), c = C(code);
+            switch (op)
+            {
+                case OpMove:
+                    if (b < Regs)
+                    {
+                        // A copy keeps where the value came from, so an argument copied from a local doesn't count as
+                        // loaded inside the call.
+                        (global[a], method[a], loadK[a], interrupt[a], written[a]) = (global[b], method[b], loadK[b], interrupt[b], written[b]);
+                    }
+                    else
+                        Clear(a);
+                    break;
+                case OpLoadK:
+                    Clear(a);
+                    loadK[a] = i;
+                    written[a] = i;
+                    break;
+                case OpGetGlobal:
+                    Clear(a);
+                    global[a] = HksChunk.Bx(code) < f.Constants.Count ? f.Constants[HksChunk.Bx(code)].AsString : null;
+                    written[a] = i;
+                    break;
+                case OpLoadNil:
+                    for (int r = a; r <= b && r < Regs; r++)
+                        Clear(r);
+                    break;
+                case OpSelf:
+                    Clear(a);
+                    Clear(a + 1);
+                    if (c >= MaxStack && c - MaxStack < f.Constants.Count)
+                        method[a] = f.Constants[c - MaxStack].AsString;
+                    written[a] = i;
+                    break;
+                case OpCall:
+                {
+                    string? name = method[a];
+                    int self = written[a];
+                    if (name is not null && SpEffectCalls.Contains(name) && (b == 0 || b >= 4) && a + 3 < Regs
+                        && loadK[a + 3] is var at and >= 0 && at > self && written[a + 2] > self && Number(HksChunk.Bx(f.Instructions[at])) is { } id)
+                        calls.Add((f, at, Field.Bx, id, OwnSide(global[a + 2]), name == ObserveCall));
+                    ClearFrom(a);
+                    if (name == InterruptCall && c != 1)
+                    {
+                        interrupt[a] = true;
+                        written[a] = i;
+                    }
+                    break;
+                }
+                case OpEq:
+                    if (b < MaxStack && c >= MaxStack && interrupt[b] && Number(c - MaxStack) is { } right)
+                        compares.Add((f, i, Field.C, right));
+                    else if (c < MaxStack && b >= MaxStack && interrupt[c] && Number(b - MaxStack) is { } left)
+                        compares.Add((f, i, Field.B, left));
+                    break;
+                case OpTailCall:
+                case >= OpForLoop and <= OpTForPrep:
+                    ClearFrom(a);
+                    break;
+                // SETGLOBAL, SETUPVAL, SETTABLE, JMP, EQ, LT, LE, RETURN, SETLIST(O), CLOSE write no register.
+                case 7 or 8 or OpSetTable or 20 or 22 or OpLe or 27 or 31 or 32 or 33:
+                    break;
+                default:
+                    Clear(a);
+                    written[a] = i;
+                    break;
+            }
+        }
     }
 
     /// <summary>
@@ -641,13 +894,13 @@ public sealed class AiPort
         }
         foreach (var lib in _libraries.OrderBy(l => l.File.ID))
         {
-            bnd.Files.Add(new BinderFile(goalFile.Flags, id++, dir + lib.Leaf, ThinksRenumbered(lib.File.Bytes, lib.Leaf)));
+            bnd.Files.Add(new BinderFile(goalFile.Flags, id++, dir + lib.Leaf, Renumbered(lib.File.Bytes, lib.Leaf)));
             added.AddRange(lib.AssignOrder);
         }
         foreach (var (source, functions) in _lifted.OrderBy(l => l.Key.Common ? 0 : 1).ThenBy(l => l.Key.Leaf, StringComparer.OrdinalIgnoreCase))
         {
             var leaf = Path.GetFileNameWithoutExtension(source.Leaf) + "_ds3.lua";
-            bnd.Files.Add(new BinderFile(goalFile.Flags, id++, dir + leaf, ThinksRenumbered(HksChunk.Lifted(source.Chunk, functions).Write(), leaf)));
+            bnd.Files.Add(new BinderFile(goalFile.Flags, id++, dir + leaf, Renumbered(HksChunk.Lifted(source.Chunk, functions).Write(), leaf)));
             added.AddRange(functions.Select(f => f.Name));
         }
         bnd.Files.Sort((a, b) => a.ID.CompareTo(b.ID));
@@ -684,6 +937,13 @@ public sealed class AiPort
         yield return RenumberThinks
             ? $"# DS3 think rows the scripts check for ({ThinkCall}), renumbered to the ported rows in {_thinkRewrites.Count} scripts: {string.Join(", ", _thinkRewrites.Select(r => $"{r.Key} ({r.Value})"))}"
             : $"# DS3 think rows the scripts check for ({ThinkCall}) kept as DS3's (DARKSIGN_ENEMY_THINK_IDS=ds3)";
+        yield return !RenumberSpEffects
+            ? "# DS3 SpEffects the scripts check for kept as DS3's (DARKSIGN_ENEMY_AI_SPEFFECTS=ds3)"
+            : SpEffectPorted is null
+                ? "# DS3 SpEffects the scripts check for kept as DS3's: the enemy effect port is off, no ported rows to point at"
+                : $"# {_spEffectIds.Count} DS3 SpEffects the scripts check on themselves / their event target / friends, renumbered to the ported rows (700,000,000 + ID) in {_spEffectRewrites.Count} scripts" +
+                  $"{(_spEffectSkipped > 0 ? $" ({_spEffectSkipped} comparisons left as DS3's: no room for the constant)" : "")}: " +
+                  $"{string.Join(", ", _spEffectRewrites.Select(r => $"{r.Key} ({r.Value})"))}; IDs {string.Join(", ", _spEffectIds)}";
         foreach (var (what, by) in Missing)
             yield return $"missing\t{what}\tneeded by {string.Join(", ", by)}";
         foreach (var (what, by) in Unknown)

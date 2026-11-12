@@ -420,6 +420,26 @@ public static class EnemySelfTest
             ChrPort.CopyDisplayMasks(ds3MaskRow, erMaskRow) == 3
             && Enumerable.Range(0, 3).Select(k => System.Convert.ToInt32(erMaskRow[$"modelDispMask{k}"]!.Value)).SequenceEqual([0, 0, 1]));
 
+        // DS3's body capsule on the template's row (Ariandel's wolf kept the Elden Ring wolf's 1.2 / 0.6 up to 1.0.410).
+        var ds3Size = new PARAMDEF { ParamType = "NPC_PARAM_ST", Fields = [] };
+        var erSize = new PARAMDEF { ParamType = "NPC_PARAM_ST", Fields = [] };
+        foreach (var f in new[] { "hitHeight", "hitRadius" })
+            ds3Size.Fields.Add(new PARAMDEF.Field(ds3Size, PARAMDEF.DefType.f32, f));
+        foreach (var f in new[] { "hitHeight", "hitRadius", "chrHitHeight", "chrHitRadius" })
+            erSize.Fields.Add(new PARAMDEF.Field(erSize, PARAMDEF.DefType.f32, f));
+        var ds3SizeRow = new PARAM.Row(1, "ds3 wolf", ds3Size);
+        ds3SizeRow["hitHeight"]!.Value = 1.7f;
+        ds3SizeRow["hitRadius"]!.Value = 0.55f;
+        var erSizeRow = new PARAM.Row(2, "er wolf", erSize);
+        erSizeRow["hitHeight"]!.Value = 1.2f;
+        erSizeRow["hitRadius"]!.Value = 0.6f;
+        erSizeRow["chrHitHeight"]!.Value = 0.6f;
+        erSizeRow["chrHitRadius"]!.Value = 0f;
+        ChrPort.CopyBodySize(ds3SizeRow, erSizeRow);
+        float Size(string f) => (float)erSizeRow[f]!.Value;
+        Check("DS3's capsule size replaces the template's; the character capsule scales with it, an unset one stays unset",
+            Size("hitHeight") == 1.7f && Size("hitRadius") == 0.55f && Math.Abs(Size("chrHitHeight") - 0.85f) < 1e-5f && Size("chrHitRadius") == 0f);
+
         MATBIN Matbin(string source, params (string Type, string Path)[] samplers)
         {
             var mb = new MATBIN { ShaderPath = @"N:\GR\data\Material\sat\OutputData\SPX\C[AMSN].spx", SourcePath = source, Params = [], Samplers = [] };

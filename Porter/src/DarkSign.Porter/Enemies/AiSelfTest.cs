@@ -92,6 +92,59 @@ public static class AiSelfTest
             renumbered == 1 && reread.Main.Functions[0].Constants.Select(c => c.AsNumber).SequenceEqual(new double?[] { null, 70069054, 3010, 144040 })
             && reread.Main.Functions[1].Constants[0].AsNumber == 110054);
 
+        // DS3's scripts check their own state effects by DS3's numbers; a ported enemy's are 700,000,000 + DS3 ID.
+        // Lua 5.0: op | C << 6 | B << 15 | A << 24, a B / C of 250 + k names constant k.
+        static uint Op(int op, int a, int b = 0, int c = 0) => (uint)op | ((uint)c << 6) | ((uint)b << 15) | ((uint)a << 24);
+        static uint LoadK(int a, int k) => 1u | ((uint)k << 6) | ((uint)a << 24);
+        const int K = 250;
+        // K: 0 "HasSpecialEffectId", 1 "TARGET_SELF", 2 5020, 3 "TARGET_ENE_0", 4 3000 (an animation), 5 "AddObserveSpecialEffectAttribute",
+        // 6 13020, 7 "GetSpecialEffectActivateInterruptType", 8 0, 9 "AddSubGoal", 10 100 (an effect DS3 doesn't have)
+        var spFn = new HksChunk.Function
+        {
+            Constants = [HksChunk.Constant.Text("HasSpecialEffectId"), HksChunk.Constant.Text("TARGET_SELF"), HksChunk.Constant.Number(5020),
+                HksChunk.Constant.Text("TARGET_ENE_0"), HksChunk.Constant.Number(3000), HksChunk.Constant.Text(AiPort.ObserveCall),
+                HksChunk.Constant.Number(13020), HksChunk.Constant.Text(AiPort.InterruptCall), HksChunk.Constant.Number(0),
+                HksChunk.Constant.Text("AddSubGoal"), HksChunk.Constant.Number(100)],
+            Instructions =
+            [
+                // self:HasSpecialEffectId(TARGET_SELF, 5020)            -> 700005020
+                Op(11, 2, 0, K + 0), Get(1, 4), LoadK(5, 2), Op(25, 2, 4, 2),
+                // self:HasSpecialEffectId(TARGET_ENE_0, 3000)           -> kept: the player's effect
+                Op(11, 2, 0, K + 0), Get(3, 4), LoadK(5, 4), Op(25, 2, 4, 2),
+                // goal:AddSubGoal(TARGET_SELF, 3000)                    -> kept: not an effect check
+                Op(11, 2, 1, K + 9), Get(1, 4), LoadK(5, 4), Op(25, 2, 4, 1),
+                // self:HasSpecialEffectId(TARGET_SELF, 3000)            -> 700003000, while the AddSubGoal's 3000 stays
+                Op(11, 2, 0, K + 0), Get(1, 4), LoadK(5, 4), Op(25, 2, 4, 2),
+                // self:HasSpecialEffectId(TARGET_SELF, 100)             -> kept: DS3 has no such effect
+                Op(11, 2, 0, K + 0), Get(1, 4), LoadK(5, 10), Op(25, 2, 4, 2),
+                // self:AddObserveSpecialEffectAttribute(TARGET_SELF, 13020)
+                Op(11, 2, 0, K + 5), Get(1, 4), LoadK(5, 6), Op(25, 2, 4, 1),
+                // local r3 = self:GetSpecialEffectActivateInterruptType(0); if r3 == 13020
+                Op(11, 3, 0, K + 7), LoadK(5, 8), Op(25, 3, 3, 2), Op(21, 0, 3, K + 6),
+                HksChunk.Return,
+            ],
+        };
+        var spConstants = spFn.Constants.ToList();
+        var spChunk = new HksChunk { Header = Header, Main = new HksChunk.Function { Name = "=(none)", Instructions = [HksChunk.Return] } };
+        spChunk.Main.Functions.Add(spFn);
+        var spFound = new SortedSet<int>();
+        int spRenumbered = AiPort.RenumberSpEffectIds(spChunk, id => id != 100, spFound, out int spSkipped);
+        var spRead = HksChunk.Read(spChunk.Write()).Main.Functions[0];
+        double? LoadedAt(int i) => spRead.Constants[HksChunk.Bx(spRead.Instructions[i])].AsNumber;
+        double? ComparedAt(int i) => spRead.Constants[(int)((spRead.Instructions[i] >> 6) & 0x1FF) - K].AsNumber;
+        Check("AI: a DS3 SpEffect a script checks on itself becomes the ported row (700,000,000 + ID); the player's, other numbers and effects DS3 lacks stay",
+            spRenumbered == 4 && spSkipped == 0 && spFound.SequenceEqual([3000, 5020, 13020])
+            && LoadedAt(2) == 700005020 && LoadedAt(6) == 3000 && LoadedAt(10) == 3000 && LoadedAt(14) == 700003000 && LoadedAt(18) == 100
+            && LoadedAt(22) == 700013020 && ComparedAt(27) == 700013020 && spRead.Constants[4].AsNumber == 3000);
+        var keptChunk = new HksChunk { Header = Header, Main = new HksChunk.Function { Name = "=(none)", Instructions = [HksChunk.Return] } };
+        keptChunk.Main.Functions.Add(new HksChunk.Function
+        {
+            Constants = spConstants,
+            Instructions = [Op(11, 2, 0, K + 5), Get(3, 4), LoadK(5, 6), Op(25, 2, 4, 1), Op(11, 3, 0, K + 7), LoadK(5, 8), Op(25, 3, 3, 2), Op(21, 0, 3, K + 6), HksChunk.Return],
+        });
+        Check("AI: an interrupt compared with an effect observed on the player keeps DS3's number",
+            AiPort.RenumberSpEffectIds(keptChunk, _ => true, null, out _) == 0);
+
         // ---- AiPort ----
         // Elden Ring: goal 223000 is its own; logic 10000 is the same as DS3's; Common_Func is Elden Ring's.
         var erCommon = Binder(

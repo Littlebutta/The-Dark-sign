@@ -572,6 +572,8 @@ public static class Fallbacks
                 { PorterEnv = Env("DARKSIGN_ENEMY_COLOURS", "ds3") },
             new("H", "DS3's material numbers", "As A, but every ported model (enemies, weapons, armour, objects, effect models and map pieces) keeps DS3's material numbers, 0 in every material, instead of Elden Ring's numbering (DARKSIGN_MATERIAL_NUMBERS=ds3), as in builds up to 1.0.383, where ported enemies showed their textures and cut-outs only while frostbitten. Use when ported models turn invisible, wear another part's textures or crash the game with A.")
                 { PorterEnv = Env("DARKSIGN_MATERIAL_NUMBERS", "ds3") },
+            new("I", "The template's body size", "As A, but a ported enemy keeps the Elden Ring template's body capsule (DARKSIGN_ENEMY_BODY_SIZE=template) instead of DS3's size, as up to 1.0.410. Use when ported enemies get stuck in doorways, sink into the floor or float above it with A.")
+                { PorterEnv = Env("DARKSIGN_ENEMY_BODY_SIZE", "template") },
         ]),
         new("enemy-drops", "DS3 maps", "What ported DS3 enemies drop", Stage.Build,
             "A ported DS3 enemy drops nothing where DS3 drops something, drops the wrong item or far too often, the game crashes or hangs when a ported enemy dies, or the build's enemy params step says the drops were not ported.",
@@ -605,6 +607,8 @@ public static class Fallbacks
                 { PorterEnv = Env("DARKSIGN_ENEMY_EXTRA_MOVES", "attacks") },
             new("F", "DS3's think row numbers in the AI", "As A, but DS3's AI scripts keep comparing the think row they run under with DS3's row numbers (DARKSIGN_ENEMY_THINK_IDS=ds3), as up to 1.0.383; those checks never match a ported row. Use when a ported enemy behaves worse than with 1.0.383.")
                 { PorterEnv = Env("DARKSIGN_ENEMY_THINK_IDS", "ds3") },
+            new("G", "DS3's effect numbers in the AI", "As A, but DS3's AI scripts keep checking for their own effects by DS3's numbers (DARKSIGN_ENEMY_AI_SPEFFECTS=ds3), as up to 1.0.410, when those checks never matched a ported enemy's effects and Ariandel's wolf only circled. Use when a ported enemy freezes, attacks without pause or the game crashes when it notices you with A.")
+                { PorterEnv = Env("DARKSIGN_ENEMY_AI_SPEFFECTS", "ds3") },
         ]),
         new("enemy-glow", "DS3 maps", "Ported DS3 enemies' glows", Stage.Build,
             "A ported DS3 enemy's glow is the wrong colour or missing (the Jailer's lantern, Pontiff Sulyvahn's swords, the Soul of Cinder), a part of it glows far too brightly or draws black, or the game crashes or hangs loading a ported enemy that glows.",
