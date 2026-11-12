@@ -441,11 +441,12 @@ public sealed class MapModelPort
                 continue;
             }
             // As vanilla map pieces have them: the one node named after the model under its Elden Ring map ID, and
-            // the materials numbered in order.
+            // the materials numbered as Elden Ring numbers them (a repeated material keeps its first number).
             if (flver.Nodes.Count == 1)
                 flver.Nodes[0].Name = leaf[..leaf.IndexOf('.')];
-            for (int i = 0; i < flver.Materials.Count; i++)
-                flver.Materials[i].Index = i;
+            if (FlverMaterialNumbers.Apply(flver) == 0 && !FlverMaterialNumbers.Enabled)
+                for (int i = 0; i < flver.Materials.Count; i++)
+                    flver.Materials[i].Index = i;
             // The template's file ID (200 in every vanilla map piece binder), not a count from 0.
             var written = flver.Write();
             Count(flver, written.Length);

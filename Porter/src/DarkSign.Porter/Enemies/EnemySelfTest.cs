@@ -38,6 +38,19 @@ public static class EnemySelfTest
             && AttackParamPort.ChooseVariation(new HashSet<int> { 71050 }, 7105 * 10) == 71051
             && AttackParamPort.ChooseVariation(new HashSet<int>(), 7105 * 100) == 9000
             && AttackParamPort.RowId(2, 71050, 10) == 271050010 && AttackParamPort.RowId(2, 710500, 10) == -1);
+        // Material numbers as Elden Ring's models carry them (vanilla c4340: 0-12, 2, 14-17). DS3 leaves 0 in every
+        // material, and up to 1.0.383 ported models kept those 0s: enemies drew untextured until frostbite redrew them.
+        var numbered = new FLVER2();
+        foreach (var (name, mtd, tex) in new[] { ("body", "C[a].matxml", ""), ("head", "C[b].matxml", ""), ("wire", "C[c].matxml", ""),
+                     ("wire2", "c[C].MATXML", ""), ("other", "C[c].matxml", "x.tif") })
+        {
+            var m = new FLVER2.Material(name, mtd, 0);
+            m.Textures.Add(new FLVER2.Texture("g_DiffuseTexture", tex, System.Numerics.Vector2.One, 0, 0, 0, 0, 0));
+            numbered.Materials.Add(m);
+        }
+        int renumbered = FlverMaterialNumbers.Apply(numbered);
+        Check("material numbers: each material gets the position of the first one with the same material file, as Elden Ring's own models (0 1 2 2 4)",
+            string.Join(" ", numbered.Materials.Select(m => m.Index)) == "0 1 2 2 4" && renumbered == 4 && FlverMaterialNumbers.Apply(numbered) == 0);
         Check("kept bones: equal skeletons keep all, names are case-insensitive",
             ChrPort.KeptBones(human, Sk(2, ("master", -1), ("PELVIS", 0), ("Spine", 1))) == 3);
         Check("kept bones: a bone under another parent that comes earlier is kept, under a new bone it is not",
