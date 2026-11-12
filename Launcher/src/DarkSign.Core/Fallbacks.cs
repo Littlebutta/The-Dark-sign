@@ -583,7 +583,7 @@ public static class Fallbacks
         new("map-people", "DS3 maps", "DS3's people (NPCs and hostile humans)", Stage.Build,
             "A DS3 map crashes or hangs while loading since people were added, a person who should be friendly attacks you (or the other way round), or people stand in the way of something.",
         [
-            new("A", "DS3's own people, humans in DS3 armour (default)", "DS3 characters with a body of their own (Fire Keeper, Ludleth) stand where DS3's scripts seat them, silent, when the enemy porter ported them. DS3's human NPCs and hostile humans (Hawkwood, Sirris, the Sword Master) wear their DS3 armour, converted, and hold their DS3 weapons (the ported weapon, or Elden Ring's of the same name), on an Elden Ring person's face, body and AI."),
+            new("A", "DS3's own people, humans in DS3 armour (default)", "DS3 characters with a body of their own (Fire Keeper, Ludleth) stand where DS3's scripts seat them, silent, when the enemy porter ported them. DS3's human NPCs and hostile humans (Hawkwood, Sirris, the Sword Master) wear their DS3 armour, converted (each piece hiding the body like the nearest Elden Ring piece), and hold their DS3 weapons (the ported weapon, or Elden Ring's of the same name), on an Elden Ring person's face, body and AI."),
             new("B", "Elden Ring people stand in", "As builds 1.0.326-1.0.353: where DS3 has a human or a talker with no ported body, a dressed Elden Ring person stands, silent; DS3's hostile humans get hostile Elden Ring humans (port-maps --er-people).")
                 { MapsArgs = ["--er-people"] },
             new("C", "Nobody", "DS3's people are left out of the maps, ported ones too (port-maps --no-people), as every build up to 1.0.299 was.")
@@ -592,6 +592,8 @@ public static class Fallbacks
                 { PorterEnv = Env("DARKSIGN_PEOPLE_ARMOUR", "0") },
             new("E", "DS3 armour, the stand-in's weapons", "As A, but DS3's humans hold the weapons of the Elden Ring person who stands in for them (DARKSIGN_PEOPLE_WEAPONS=0), as up to 1.0.403. Try it if a person holding a ported DS3 weapon crashes the game, T-poses or stands still.")
                 { PorterEnv = Env("DARKSIGN_PEOPLE_WEAPONS", "0") },
+            new("F", "DS3 armour hides the body like a closed helm", "As A, but every DS3 armour piece hides the body like the most common Elden Ring piece of its slot (DARKSIGN_PEOPLE_HIDES=common), as up to 1.0.42x, where open helms such as Hawkwood's Chain Helm hid his head. Try it if hair, a face or skin pokes through a person's DS3 armour with A.")
+                { PorterEnv = Env("DARKSIGN_PEOPLE_HIDES", "common") },
         ]),
 
         new("enemy-port", "DS3 maps", "How DS3's enemies and bosses are ported", Stage.Build,
