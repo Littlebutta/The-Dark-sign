@@ -147,6 +147,11 @@ public static class MapCollisionDiag
             else if (l is not null) lOnly++;
             else none++;
             line(FormattableString.Invariant($"  {name} at {at.X:0.0},{at.Y:0.0},{at.Z:0.0}: h {Text(h, at)}; l {Text(l, at)}"));
+            // For the points asked for, every surface in the column, so a missing l floor under an h floor shows.
+            if (extra.Any(e => e.At == at))
+                foreach (var (kind, list) in surfaces)
+                    foreach (var (y, file) in Column(list, at, 60))
+                        line(FormattableString.Invariant($"      {kind} surface at y {y:0.00} ({at.Y - y:0.0} m below) {file}"));
         }
         line($"summary: {points.Count} points: {both} over h and l, {hOnly} over h only, {lOnly} over l only, {none} over neither");
         if (hOnlyNames.Count > 0)
@@ -273,6 +278,21 @@ public static class MapCollisionDiag
                     best = (y, s.File);
         }
         return best;
+    }
+
+    /// <summary>Every surface crossing the vertical line through the point, within the range above and below it.</summary>
+    private static List<(float Y, string File)> Column(List<Surface> surfaces, Vector3 p, float range)
+    {
+        var hits = new List<(float, string)>();
+        foreach (var s in surfaces)
+        {
+            if (p.X < s.Min.X || p.X > s.Max.X || p.Z < s.Min.Z || p.Z > s.Max.Z || p.Y - range > s.Max.Y || p.Y + range < s.Min.Y)
+                continue;
+            foreach (var (a, b, c) in s.Triangles)
+                if (HeightAt(a, b, c, p.X, p.Z) is { } y && MathF.Abs(y - p.Y) <= range)
+                    hits.Add((y, s.File));
+        }
+        return hits.OrderByDescending(h => h.Item1).ToList();
     }
 
     private static float? HeightAt(Vector3 a, Vector3 b, Vector3 c, float x, float z)
