@@ -6,6 +6,9 @@
      Ctrl+Shift+1 ... 9   warp to ported map 1-9 (the order of darksign_maps.tsv, the F1 tab's list)
      Ctrl+Shift+F3        give every ported Dark Souls III weapon (+0, no affinity)
      Ctrl+Shift+F4        clear the enemies spawned from the F1 menu's "Spawn enemies" tab
+     Ctrl+Shift+F5        god mode on/off
+     Ctrl+Shift+F6        fly on/off (Page Up / Page Down up and down, Home / End forward and back)
+     Ctrl+Shift+F7        no-clip on/off (walk through walls; flies too)
    The flags are the ones the F1 menu sets (game.h, RunEvents.cs). */
 #include <windows.h>
 #include <stdio.h>
@@ -93,12 +96,12 @@ static DWORD WINAPI watch(LPVOID unused)
 {
     (void)unused;
     load_warps();
-    dks_log("hotkeys: on (Ctrl+Shift+F1 start DS3 run, F2 leave, 1-%d warp, F3 give DS3 weapons, F4 clear spawned enemies, F5 god mode)", g_warp_count);
-    int was[16] = {0};
+    dks_log("hotkeys: on (Ctrl+Shift+F1 start DS3 run, F2 leave, 1-%d warp, F3 give DS3 weapons, F4 clear spawned enemies, F5 god mode, F6 fly, F7 no-clip)", g_warp_count);
+    int was[24] = {0};
     for (;;) {
         Sleep(50);
         int combo = game_has_focus() && down(VK_CONTROL) && down(VK_SHIFT);
-        int keys[] = {VK_F1, VK_F2, VK_F3, VK_F4, VK_F5, '1', '2', '3', '4', '5', '6', '7', '8', '9'};
+        int keys[] = {VK_F1, VK_F2, VK_F3, VK_F4, VK_F5, VK_F6, VK_F7, '1', '2', '3', '4', '5', '6', '7', '8', '9'};
         for (int k = 0; k < (int)(sizeof keys / sizeof keys[0]); k++) {
             int now = combo && down(keys[k]);
             if (now && !was[k]) {
@@ -116,6 +119,14 @@ static DWORD WINAPI watch(LPVOID unused)
                 }
                 else if (keys[k] == VK_F5) {
                     dks_god_set(!dks_god_on());
+                    report(1);
+                }
+                else if (keys[k] == VK_F6) {
+                    dks_fly_set(!dks_fly_on());
+                    report(1);
+                }
+                else if (keys[k] == VK_F7) {
+                    dks_noclip_set(!dks_noclip_on());
                     report(1);
                 }
                 else if (keys[k] - '1' < g_warp_count && g_warp_flags[keys[k] - '1'])

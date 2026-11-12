@@ -156,9 +156,9 @@ int dks_spawn_has_own_model(const DksSpawnable *s)
     return s->chr >= 7000 && s->chr <= 7999;
 }
 
-void dks_spawn_position(const float player[3], const float q[4], int n, float out[3])
+/* The facing: the quaternion applied to +Z, flattened onto the ground (+Z when it can't be worked out). */
+static void facing(const float q[4], float *x, float *z)
 {
-    /* The facing: the quaternion applied to +Z, flattened onto the ground. */
     float fx = 2.0f * (q[0] * q[2] + q[3] * q[1]);
     float fz = 1.0f - 2.0f * (q[0] * q[0] + q[1] * q[1]);
     float len = sqrtf(fx * fx + fz * fz);
@@ -169,6 +169,26 @@ void dks_spawn_position(const float player[3], const float q[4], int n, float ou
         fx /= len;
         fz /= len;
     }
+    *x = fx;
+    *z = fz;
+}
+
+void dks_fly_step(const float pos[3], const float q[4], int forward, int up, float speed, float dt, float out[3])
+{
+    float fx, fz;
+    facing(q, &fx, &fz);
+    float step = speed * dt;
+    if (!(step > 0.0f) || step != step)
+        step = 0.0f;
+    out[0] = pos[0] + fx * step * (float)forward;
+    out[1] = pos[1] + step * (float)up;
+    out[2] = pos[2] + fz * step * (float)forward;
+}
+
+void dks_spawn_position(const float player[3], const float q[4], int n, float out[3])
+{
+    float fx, fz;
+    facing(q, &fx, &fz);
     if (n < 0)
         n = 0;
     float ahead = 3.0f + (float)(n / 5) * 1.5f;

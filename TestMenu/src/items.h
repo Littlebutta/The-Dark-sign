@@ -86,6 +86,11 @@ int dks_parse_spawn_line(const char *line, DksSpawnable *out);
    rows of five, three metres ahead and 1.5 m apart, a little above the ground. out = x, y, z. */
 void dks_spawn_position(const float player[3], const float quaternion[4], int n, float out[3]);
 
+/* One frame of the F1 menu's fly mode: moves pos along the character's facing (the quaternion applied to +Z,
+   flattened onto the ground) by forward * speed * dt and straight up by up * speed * dt. forward and up are -1, 0
+   or 1 (keys held). out = x, y, z. */
+void dks_fly_step(const float pos[3], const float quaternion[4], int forward, int up, float speed, float dt, float out[3]);
+
 #ifdef __cplusplus
 }
 #endif
