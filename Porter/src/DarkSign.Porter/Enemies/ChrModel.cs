@@ -287,10 +287,31 @@ public static class ChrModel
     public static bool OwnTextureFile => Environment.GetEnvironmentVariable("DARKSIGN_ENEMY_TEXTURES")?.Trim().ToLowerInvariant() != "added";
 
     /// <summary>DS3 textures renamed to the new ID; with <paramref name="flatMetallic"/> plus a flat _m (metallic) map per _r (reflectance) map.</summary>
-    public static TPF ConvertTpf(TPF tpf, int ds3Chr, int newChr, bool flatMetallic = false)
+    public static bool IsDds(byte[]? bytes) => bytes is { Length: >= 128 } && bytes[0] == 'D' && bytes[1] == 'D' && bytes[2] == 'S' && bytes[3] == ' ';
+
+    public static TPF ConvertTpf(TPF tpf, int ds3Chr, int newChr, bool flatMetallic = false, List<string>? leftOut = null)
     {
         string oldTag = $"c{ds3Chr:D4}", newTag = $"c{newChr:D4}";
         var added = new List<TPF.Texture>();
+        // A texture that isn't a DDS file stops the whole binder's write (SoulsFormats reads each PC texture's DDS
+        // header): 1.0.347, c6330 Big Locust ("%)!") and c6331 Small Locust ("??|") built on Elden Ring bodies.
+        // A console texture gets its DDS header back; anything else is left out and named.
+        foreach (var t in tpf.Textures.ToList())
+        {
+            if (IsDds(t.Bytes))
+                continue;
+            byte[]? headed = null;
+            if (t.Platform != TPF.TPFPlatform.PC)
+                try { headed = t.Headerize(); }
+                catch (Exception e) when (e is not OutOfMemoryException) { }
+            if (headed is not null && IsDds(headed))
+            {
+                t.Bytes = headed;
+                continue;
+            }
+            tpf.Textures.Remove(t);
+            leftOut?.Add($"{t.Name} ({tpf.Platform}, format {t.Format}, flags {t.Flags1}, {t.Bytes.Length} bytes, starts {System.Convert.ToHexString(t.Bytes.AsSpan(0, Math.Min(8, t.Bytes.Length)))})");
+        }
         foreach (var t in tpf.Textures)
         {
             t.Name = TextureName(t.Name, oldTag, newTag);

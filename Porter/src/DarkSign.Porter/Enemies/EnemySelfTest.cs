@@ -495,6 +495,19 @@ public static class EnemySelfTest
             ChrModel.ConvertTpf(r1, 1100, 7000).Textures.Select(t => t.Name).SequenceEqual(["c7000_body_r"])
             && ChrModel.ConvertTpf(r2, 1100, 7000, flatMetallic: true).Textures.Select(t => t.Name).SequenceEqual(["c7000_body_r", "c7000_body_m"]));
 
+        // A texture that isn't a DDS file (1.0.347: the locusts' "%)!") is left out and named, so the binder can be written.
+        var odd = new TPF { Platform = TPF.TPFPlatform.PC, Encoding = 1, Flag2 = 3 };
+        odd.Textures.Add(new TPF.Texture("c6330_body_a", 0, 0, dds16, TPF.TPFPlatform.PC));
+        odd.Textures.Add(new TPF.Texture { Name = "c6330_weapon_r", Format = 0, Bytes = [0x25, 0x29, 0x21, 0x00, .. new byte[200]] });
+        var leftOut = new List<string>();
+        var oddConverted = ChrModel.ConvertTpf(odd, 6330, 7000, false, leftOut);
+        bool written;
+        try { _ = oddConverted.Write(); written = true; }
+        catch (Exception) { written = false; }
+        Check($"a texture that isn't a DDS file is left out and named; the rest is written ({string.Join(" ", leftOut)})",
+            oddConverted.Textures.Select(t => t.Name).SequenceEqual(["c7000_body_a"]) && leftOut.Count == 1 && leftOut[0].StartsWith("c6330_weapon_r", StringComparison.Ordinal)
+            && leftOut[0].Contains("25292100", StringComparison.Ordinal) && written);
+
         DropPort.SelfTest(Check);
 
         Console.WriteLine(failures == 0 ? "enemy-selftest: all checks passed" : $"enemy-selftest: {failures} check(s) FAILED");
