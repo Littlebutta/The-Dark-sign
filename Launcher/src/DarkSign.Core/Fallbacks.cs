@@ -328,6 +328,8 @@ public static class Fallbacks
                 { PorterEnv = Env("DARKSIGN_BORROW_BULLETS", "0") },
             new("I", "No animated effect models", "As A, but DS3 effects whose 3D model is animated (Demon's Scar's art) are left out (DARKSIGN_FX_ANIMATED_MODELS=0), as in builds up to 1.0.378. Try it if the game crashes or shows a broken shape when such an effect plays.")
                 { PorterEnv = Env("DARKSIGN_FX_ANIMATED_MODELS", "0") },
+            new("J", "DS3 follow-up projectile conditions", "As A, but a projectile that makes another where it lands keeps DS3's condition for it (255 hit the ground or an enemy, 254 life ran out), which Elden Ring's own projectiles never use (DARKSIGN_BULLET_LAUNCH=ds3), as in builds up to 1.0.420. With A they become Elden Ring's 0 (whenever the projectile ends), so trails of projectiles that each land where the last fell (the Immolation Tinder's fire trail) can go on. Try J if a ported trail or burst now spawns too much.")
+                { PorterEnv = Env("DARKSIGN_BULLET_LAUNCH", "ds3") },
             new("off", "Off", "Neither (DARKSIGN_BULLETS=0 and DARKSIGN_EFFECT_VISUALS=0): only the effects in a move's own effect events show, as in builds up to 1.0.242.")
                 { PorterEnv = Env("DARKSIGN_BULLETS", "0", "DARKSIGN_EFFECT_VISUALS", "0") },
         ]),
