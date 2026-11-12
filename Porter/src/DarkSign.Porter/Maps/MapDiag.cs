@@ -21,9 +21,12 @@ public static class MapDiag
 {
     public static int Run(PorterContext ctx, IReadOnlyList<string> args)
     {
+        if (args.Count > 0 && args[0].Equals("gparam", StringComparison.OrdinalIgnoreCase))
+            return Gparams(ctx, args.Skip(1).ToList());
         if (args.Count == 0 || !args[0].Equals("colours", StringComparison.OrdinalIgnoreCase))
         {
             Console.Error.WriteLine("map-diag colours [DS3 map ID...]   (default: every slot's DS3 map)");
+            Console.Error.WriteLine("map-diag gparam [map ID...]        (default: the slots' hosts, Stormveil and the DS3 maps)");
             return 1;
         }
         var maps = args.Skip(1).Select(MapId.Parse).ToList();
@@ -316,4 +319,93 @@ public static class MapDiag
         foreach (var (shader, a) in colours.Where(kv => kv.Value.N > 0).OrderByDescending(kv => kv.Value.N).Take(15))
             line(FormattableString.Invariant($"    {shader}: {a.N:N0} vertices, {a.R / a.N:0.00} {a.G / a.N:0.00} {a.B / a.N:0.00} {a.A / a.N:0.00}"));
     }
+
+    /// <summary>
+    /// "map-diag gparam": every group and param of the draw params (gparam) of the slots' host colosseums, Stormveil and
+    /// the slots' DS3 maps, with every value ID's first value, to Work\reports\map-diag\gparam-&lt;map&gt;.txt; for the
+    /// Elden Ring maps also the files under the map's folder and its environment map regions (ambient and reflections
+    /// come from those, not from the gparam alone). A ported map's colours are what these leave the host's.
+    /// </summary>
+    private static int Gparams(PorterContext ctx, List<string> args)
+    {
+        var dir = ctx.WorkPath("reports", "map-diag");
+        Directory.CreateDirectory(dir);
+        var erMaps = new List<MapId>();
+        var ds3Maps = new List<MapId>();
+        if (args.Count > 0)
+            foreach (var a in args)
+                (MapId.Parse(a).Area >= 30 && MapId.Parse(a).Area <= 51 && MapId.Parse(a).Area != 45 ? ds3Maps : erMaps).Add(MapId.Parse(a));
+        else
+        {
+            erMaps.AddRange(MapSlots.All.Select(s => s.Host).Distinct());
+            erMaps.Add(MapId.Parse("m10_00_00_00"));
+            ds3Maps.AddRange(MapSlots.All.Select(s => s.Ds3).Distinct());
+        }
+        using var er = ctx.OpenArchives(PorterGame.EldenRing);
+        using var ds3 = ctx.OpenArchives(PorterGame.DarkSouls3);
+        foreach (var (game, archives, maps) in new[] { ("ER", er, erMaps), ("DS3", ds3, ds3Maps) })
+            foreach (var map in maps)
+            {
+                var r = new StringBuilder();
+                var path = game == "ER" ? MapAtmosphere.GparamPath(map) : MapAtmosphere.Ds3GparamPaths(map).FirstOrDefault(archives.Contains);
+                if (path is null || !archives.Contains(path))
+                    r.AppendLine($"{game} {map}: no gparam");
+                else
+                {
+                    var g = GPARAM.Read(archives.Read(path));
+                    r.AppendLine($"{game} {map}: {path} game {g.Game}, {g.Groups.Count} groups");
+                    foreach (var group in g.Groups)
+                    {
+                        r.AppendLine($"[{group.Name2?.Trim()}] {group.Name1}");
+                        foreach (var p in group.Params)
+                        {
+                            var ids = p.ValueIDs.Count == p.Values.Count ? p.ValueIDs : Enumerable.Range(0, p.Values.Count).ToList();
+                            var firsts = ids.Select((id, i) => (id, i)).GroupBy(x => x.id).Take(6)
+                                .Select(x => $"{x.Key}:{Show(p.Values[x.First().i])}");
+                            r.AppendLine($"  {p.Name1} ({p.Values.Count}) {string.Join("  ", firsts)}");
+                        }
+                    }
+                }
+                if (game == "ER")
+                {
+                    r.AppendLine("files under the map folder:");
+                    foreach (var e in archives.Entries.Where(e => e.Path is not null && e.Path.Contains(map.ToString(), StringComparison.OrdinalIgnoreCase)
+                                 && !e.Path.EndsWith(".mapbnd.dcx", StringComparison.OrdinalIgnoreCase)).Select(e => e.Path!).Order().Take(200))
+                        r.AppendLine("  " + e);
+                    try
+                    {
+                        var msb = MSBE.Read(archives.Read(MapPorter.MsbPath(map)));
+                        foreach (var point in msb.Regions.EnvironmentMapPoints)
+                            r.AppendLine(FormattableString.Invariant($"env map point {point.Name} at {point.Position.X:0},{point.Position.Y:0},{point.Position.Z:0} map id {point.MapID}") + $" {Fields(point)}");
+                        foreach (var box in msb.Regions.EnvironmentMapEffectBoxes)
+                            r.AppendLine(FormattableString.Invariant($"env map box {box.Name} at {box.Position.X:0},{box.Position.Y:0},{box.Position.Z:0}") + $" {Fields(box)}");
+                    }
+                    catch (Exception ex) when (ex is not OutOfMemoryException)
+                    {
+                        r.AppendLine($"msb: {ex.Message}");
+                    }
+                }
+                File.WriteAllText(Path.Combine(dir, $"gparam-{map}.txt"), r.ToString());
+                Console.WriteLine($"{game} {map}: {r.ToString().Count(c => c == '\n')} lines");
+            }
+        Console.WriteLine($"reports in {dir}");
+        return 0;
+    }
+
+    private static string Show(object? v) => v switch
+    {
+        null => "null",
+        float f => f.ToString("0.###", CultureInfo.InvariantCulture),
+        System.Numerics.Vector2 a => FormattableString.Invariant($"({a.X:0.###},{a.Y:0.###})"),
+        System.Numerics.Vector3 a => FormattableString.Invariant($"({a.X:0.###},{a.Y:0.###},{a.Z:0.###})"),
+        System.Numerics.Vector4 a => FormattableString.Invariant($"({a.X:0.###},{a.Y:0.###},{a.Z:0.###},{a.W:0.###})"),
+        System.Drawing.Color c => $"#{c.R:X2}{c.G:X2}{c.B:X2}{c.A:X2}",
+        byte[] b => Convert.ToHexString(b),
+        _ => Convert.ToString(v, CultureInfo.InvariantCulture) ?? "",
+    };
+
+    /// <summary>The public fields and properties of a region's type-specific part, "Name=value" (numbers only).</summary>
+    private static string Fields(object region) => string.Join(" ", region.GetType().GetProperties()
+        .Where(p => p.DeclaringType == region.GetType() && p.CanRead && (p.PropertyType.IsPrimitive || p.PropertyType == typeof(float)))
+        .Select(p => $"{p.Name}={Show(p.GetValue(region))}"));
 }
