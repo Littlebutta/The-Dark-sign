@@ -271,8 +271,8 @@ public static class Fallbacks
                 { PorterEnv = Env("DARKSIGN_STANCE_CHAIN", "0") },
             new("E", "DS3 arts, old art ID order", "Same as A, but the art IDs go out as in builds up to 1.0.378 (DARKSIGN_ART_POOL=0): no stance-only IDs, no shared IDs, and unique-named arts first. Try it if a weapon's art plays the wrong move or a stance misbehaves in newer builds.")
                 { PorterEnv = Env("DARKSIGN_ART_POOL", "0") },
-            new("F", "DS3 arts, unique arts first", "Same as A, but every art with its own DS3 moves gets an ID before any class skill (DARKSIGN_ART_POOL=unique): Demon's Scar, the Frayed Blade and others keep their own art, but about 40 weapons whose class skill has an Elden Ring Ash of War of the same kind (the Black Blade's Hold becomes Unsheathe) take that ash instead.")
-                { PorterEnv = Env("DARKSIGN_ART_POOL", "unique") },
+            new("F", "DS3 arts, most weapons first", "Same as A, but the art IDs go to the arts serving the most weapons first (DARKSIGN_ART_POOL=weapons): about 25 more weapons do their DS3 art (the Black Blade keeps its Hold), but Demon's Scar, the Frayed Blade and five other one-weapon arts take Elden Ring's Ash of War of the same kind.")
+                { PorterEnv = Env("DARKSIGN_ART_POOL", "weapons") },
             new("off", "Off (Elden Ring Ashes of War)", "Ported weapons keep their template's Elden Ring Ash of War (DARKSIGN_WEAPON_ARTS=0), as in builds up to 1.0.169.")
                 { PorterEnv = Env("DARKSIGN_WEAPON_ARTS", "0") },
         ]),

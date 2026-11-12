@@ -37,12 +37,11 @@ public static partial class MovesetPort
     // DARKSIGN_ART_POOL=0: the art IDs go out as in builds up to 1.0.378 (unique-named arts first, generic-named own-section arts
     // such as Demon's Scar's 'Spin Slash' with the class skills), no hks stance-only IDs, no shared IDs.
     private static readonly bool ArtPool = Environment.GetEnvironmentVariable("DARKSIGN_ART_POOL") != "0";
-    // Art pool order (default): the jobs serving the most weapons go first (own-section arts win ties), so the most
-    // weapons do a DS3 art (fx18: 201 of the ported weapons, against 192 up to 1.0.378); a few one-weapon arts with
-    // their own DS3 moves (Demon's Scar, Frayed Blade) then fall back to an Elden Ring ash. DARKSIGN_ART_POOL=unique
-    // puts every own-section art first instead (Demon's Scar keeps its own; 176 weapons, the Black Blade's Hold class
-    // skill becomes Elden Ring's Unsheathe).
-    private static readonly bool ArtPoolByWeapons = Environment.GetEnvironmentVariable("DARKSIGN_ART_POOL") != "unique";
+    // Art pool order: by default every art with its own DS3 moves gets an ID before any class skill (Demon's Scar,
+    // the Frayed Blade and the Farron Greatsword keep their own; fx18: 176 weapons do a DS3 art, the Black Blade's Hold
+    // class skill becomes Elden Ring's Unsheathe). DARKSIGN_ART_POOL=weapons puts the jobs serving the most weapons
+    // first instead (own-section arts win ties): 201 weapons, but seven one-weapon arts fall back to an Elden Ring ash.
+    private static readonly bool ArtPoolByWeapons = Environment.GetEnvironmentVariable("DARKSIGN_ART_POOL") == "weapons";
 
     /// <summary>IDs ividyon's hks lists in IsStanceArts as "UNUSED" and names nowhere else (fx16: not in
     /// IsAttackStanceArts, no art row, no section): they play as a plain stance, so only a stance art gets one.</summary>
@@ -332,8 +331,7 @@ public static partial class MovesetPort
         // Order: Friede's, then every unique art (its own skill, not a generic class skill: see GenericArts), then the
         // generic ones by how many weapons they serve. The free IDs run out before the end; what's left takes Elden
         // Ring's own Ash of War of the same kind below.
-        // Art pool: by default the jobs serving the most weapons go first (see ArtPoolByWeapons); with "unique" every
-        // art with its own DS3 section comes before every class skill, whatever its name (its animations exist nowhere
+        // Art pool: by default every art with its own DS3 section comes before every class skill, whatever its name (its animations exist nowhere
         // else; a class skill has an Elden Ring Ash of War of the same kind to fall back on). Up to 1.0.378 a generic
         // name ranked an own art with the class skills, so 27 of them took an Elden Ring ash.
         jobs = ArtPoolByWeapons
