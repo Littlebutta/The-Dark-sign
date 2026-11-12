@@ -20,6 +20,7 @@ public static partial class MapPortChecks
         yield return ("visuals: fallbacks map-groups C and map-materials B", VisualFallbacks);
         yield return ("visuals: DS3's reflection proxies, shadow casters and off-layer pieces are left out and reported", HelperPieces);
         yield return ("visuals: DS3 overlays keep their vertex alpha fade; two-layer materials show the layer each triangle shows", Overlays);
+        yield return ("visuals: DS3 terrain blends (2m/3m/4m) draw each triangle with the layer DS3 shows there", TerrainBlends);
     }
 
     /// <summary>
@@ -135,6 +136,119 @@ public static partial class MapPortChecks
         Expect(tints.SequenceEqual(["DKS_tint_green", "DKS_tint_green", "DKS_tint_red", "DKS_tint_magenta", "m40_00_rock_a", "DKS_tint_yellow"]),
             $"tints {string.Join(", ", tints)}");
         Expect(MapModelPort.Tints.All(x => x.Name.StartsWith("DKS_tint_")) && ModelPort.SolidDxt1(0xF800).Length == ModelPort.FlatNormalDds().Length, "tint textures");
+    }
+
+    /// <summary>
+    /// A DS3 model with terrain blends as m40 has them (m000051, m900285): weights in a third UV member of four
+    /// normalized bytes, every layer on UV 1 with its own tiling.
+    /// </summary>
+    private static FLVER2 BlendFlver()
+    {
+        var flver = SyntheticFlver(0x20014, @"N:\FDP\data\Material\mtd\map\MultiBlend\M[ARSN]_4m_l.mtd");
+        flver.BufferLayouts[0] =
+        [
+            new FLVER.LayoutMember(FLVER.LayoutType.Float3, FLVER.LayoutSemantic.Position),
+            new FLVER.LayoutMember(FLVER.LayoutType.UByte4Norm, FLVER.LayoutSemantic.VertexColor),
+            new FLVER.LayoutMember(FLVER.LayoutType.UByte4Norm, FLVER.LayoutSemantic.Normal),
+            new FLVER.LayoutMember(FLVER.LayoutType.UByte4Norm, FLVER.LayoutSemantic.Tangent),
+            new FLVER.LayoutMember(FLVER.LayoutType.Float2, FLVER.LayoutSemantic.UV),
+            new FLVER.LayoutMember(FLVER.LayoutType.Float2, FLVER.LayoutSemantic.UV, 1),
+            new FLVER.LayoutMember(FLVER.LayoutType.UByte4Norm, FLVER.LayoutSemantic.UV, 2),
+        ];
+        FLVER2.Material Blend(string mtd, string prefix, params (string Texture, float Scale)[] layers)
+        {
+            var m = new FLVER2.Material("ground", @"N:\FDP\data\Material\mtd\map\MultiBlend\" + mtd + ".mtd", 0) { GXIndex = 0 };
+            m.Textures.Add(new FLVER2.Texture("g_DOLTexture1", @"n:\x\40000000_m000051_gi_0000_00_dol_00.tif", Vector2.One, 0, 0, 0, 0, 0));
+            for (int k = 0; k < layers.Length; k++)
+            {
+                var (tex, scale) = layers[k];
+                m.Textures.Add(new FLVER2.Texture($"{prefix}_snp_Texture2D_{k + 1}_GSBlendMap_AlbedoMap_{k}", $@"N:\x\{tex}_a.tif", new Vector2(scale), 0, 0, 0, 0, 0));
+                m.Textures.Add(new FLVER2.Texture($"{prefix}_snp_Texture2D_{k + 13}_GSBlendMap_NormalMap_{k}", $@"N:\x\{tex}_n.tif", new Vector2(scale), 0, 0, 0, 0, 0));
+            }
+            m.Textures.Add(new FLVER2.Texture($"{prefix}_snp_Texture2D_0_GSBlendMap_BlendEdgeTexture", @"N:\x\m40_00_mask_image_000.tif", Vector2.One, 0, 0, 0, 0, 0));
+            return m;
+        }
+        flver.Materials.Clear();
+        flver.Materials.Add(Blend("M[ARSN]_4m_l", "MultiBlend4_et1", ("m40_00_ground_001", 3), ("m40_00_ground_002", 1), ("m40_00_ground_003", 0.5f), ("m40_00_ground_004", 1)));
+        flver.Materials.Add(Blend("M[ARSN]_3m_l", "MultiBlend3_et1", ("m40_00_wall_01", 1), ("m40_00_wall_02", 1), ("m40_00_wall_03", 1)));
+        flver.Materials.Add(Blend("M[ARSN]_2m_et1_l", "MultiBlend2_et1", ("m40_00_wall_011", 1), ("m40_00_wall_013", 1)));
+
+        // Four quads of two triangles: (0,1,2) and (1,3,2); each corner's weights (c0, c1, c2, c3).
+        FLVER2.Mesh Quad(int material, float y, params float[][] weights)
+        {
+            var mesh = new FLVER2.Mesh { MaterialIndex = material, NodeIndex = 0 };
+            var corners = new[] { new Vector3(0, y, 0), new Vector3(10, y, 0), new Vector3(0, y, 10), new Vector3(10, y, 10) };
+            for (int i = 0; i < 4; i++)
+            {
+                var v = new FLVER.Vertex();
+                v.Positions.Add(corners[i]);
+                v.Normals.Add(Vector3.UnitY);
+                v.NormalWs.Add(127);
+                v.Tangents.Add(new Vector4(1, 0, 0, 1));
+                v.Colors.Add(new FLVER.VertexColor(1f, 1f, 1f, 1f));
+                v.UVs.Add(new Vector3(corners[i].X * 200, corners[i].Z * 200, 0));   // DS3's raw short units
+                v.UVs.Add(new Vector3(corners[i].X * 100, corners[i].Z * 100, 0));   // lightmap
+                v.UVs.Add(new Vector3(weights[i][0], weights[i][1], 0));
+                v.UVs.Add(new Vector3(weights[i][2], weights[i][3], 0));
+                mesh.Vertices.Add(v);
+            }
+            mesh.VertexBuffers.Add(new FLVER2.VertexBuffer(0));
+            mesh.FaceSets.Add(new FLVER2.FaceSet(FLVER2.FaceSet.FSFlags.None, false, true, 0, [0, 1, 2, 1, 3, 2]));
+            return mesh;
+        }
+        float[] W(float c0, float c1, float c2) => [c0, c1, c2, 0];
+        flver.Meshes.Clear();
+        // 4m ground as m000051 has it: (0,1,2) is layer 4 (c2 over half), (1,3,2) layer 2 (c0 over half, c2 not).
+        flver.Meshes.Add(Quad(0, 0, W(0, 0, 0.74f), W(0.2f, 0, 0.51f), W(0.6f, 0, 0.9f), W(0.78f, 0.19f, 0)));
+        // 4m ground all on layer 1: weights under half everywhere.
+        flver.Meshes.Add(Quad(0, 1, W(0.1f, 0, 0.2f), W(0.3f, 0, 0), W(0, 0.2f, 0.4f), W(0, 0, 0)));
+        // 3m wall as m900285: (1,1,0,0) corners show layer 3, (1,0,0,0) layer 2; the third byte is not read.
+        flver.Meshes.Add(Quad(1, 2, W(1, 1, 1), W(1, 1, 1), W(1, 0, 1), W(1, 0, 1)));
+        // 2m wall as m004001: only c0 counts, though c1 and c2 hold values.
+        flver.Meshes.Add(Quad(2, 3, W(0.9f, 0, 0.8f), W(0.6f, 0, 0.1f), W(0.3f, 0.1f, 0.2f), W(0, 0.9f, 0.9f)));
+        return FLVER2.Read(flver.Write());
+    }
+
+    private static void TerrainBlends()
+    {
+        var ds3 = BlendFlver();
+        Expect(ds3.Meshes[0].Vertices[0].UVs.Count == 4 && MathF.Abs(ds3.Meshes[0].Vertices[0].UVs[3].X - 0.74f) < 0.01f,
+            "SoulsFormats reads the four weight bytes as two UV entries (c0, c1 and c2, c3)");
+        Expect(MapTerrainBlends.WeightEntry(ds3, ds3.Meshes[0]) == 2, "the weights are UV entry 2");
+        foreach (var (mtd, n) in new[] { ("M[ARSN]_4m_l", 4), ("MultiBlend\\M[ARSN]_2m_et1_l", 2), ("M[ARSN]_3m", 3), ("M[ARSN]_l_m", 0), ("M[ARSN]_l", 0), ("M[ARSN]_m", 0) })
+            Expect(MapTerrainBlends.LayerCount(mtd) == n, $"{mtd} has {MapTerrainBlends.LayerCount(mtd)} layers, not {n}");
+
+        var (port, hostBnd) = VisualPort();
+        var flver = ConvertOne(port, hostBnd, BlendFlver());
+        int Triangles(FLVER2.Mesh m) => m.FaceSets.Where(f => f.Flags == FLVER2.FaceSet.FSFlags.None).Sum(f => f.Triangulate(true).Count / 3);
+        var shown = flver.Meshes.Select(m => (port.Materials.Single(x => x.Name == flver.Materials[m.MaterialIndex].Name), Triangles(m))).ToList();
+        string Text((MapModelPort.NewMaterial M, int T) x) => $"{x.M.Albedo}x{x.T}";
+        Expect(shown.Select(Text).SequenceEqual(["m40_00_ground_002_ax1", "m40_00_ground_004_ax1", "m40_00_ground_001_ax2", "m40_00_wall_02_ax1", "m40_00_wall_03_ax1", "m40_00_wall_011_ax1", "m40_00_wall_013_ax1"]),
+            $"each triangle shows its layer: {string.Join(", ", shown.Select(Text))}");
+        Expect(shown[0].Item1.Normal == "m40_00_ground_002_n" && shown[0].Item1.Scale == Vector2.One && shown[2].Item1.Scale == new Vector2(3),
+            $"a layer brings its own normal map and tiling ({shown[0].Item1.Normal}, {shown[0].Item1.Scale}, {shown[2].Item1.Scale})");
+        Expect(flver.Meshes.All(m => m.Vertices.All(v => v.Colors.Single() is { R: 1, G: 0, B: 0, A: 1 })), "every layer is solid");
+        Expect(flver.Meshes[1].Vertices.Count == 3 && flver.Meshes[0].Vertices.Count == 3, "a split mesh keeps only the vertices its triangles use");
+        Expect(MapValidate.CheckFlverDraw(flver, port.TemplateLayouts()).ToList() is { Count: 0 }, "the validator accepts the converted model");
+        var b = port.Blends;
+        Expect(b.Meshes == 4 && b.Triangles == 8 && b.LayerTriangles.SequenceEqual([3, 3, 1, 1]) && b.NoWeights == 0, $"counted: {b.Summary}");
+
+        // Fallback map-blend-layers B: the first layer everywhere, as up to 1.0.353.
+        Expect(MapPorter.Options.Parse(["--first-blend-layer"]).FirstBlendLayer && !new MapPorter.Options().FirstBlendLayer, "--first-blend-layer is read");
+        var (first, bnd) = VisualPort();
+        first.TerrainLayers = false;
+        var old = ConvertOne(first, bnd, BlendFlver());
+        Expect(old.Meshes.Count == 4 && old.Meshes.All(m => Triangles(m) == 2), "--first-blend-layer keeps every mesh whole");
+        Expect(first.Materials.Select(m => m.Albedo).ToHashSet().SetEquals(["m40_00_ground_001_a", "m40_00_wall_01_a", "m40_00_wall_011_a"]),
+            $"and shows the first layers: {string.Join(", ", first.Materials.Select(m => m.Albedo))}");
+
+        // Diagnostic --tint-materials: a colour per layer.
+        var (tinted, tbnd) = VisualPort();
+        tinted.TintMaterials = true;
+        var t = ConvertOne(tinted, tbnd, BlendFlver());
+        var tints = t.Meshes.Select(m => tinted.Materials.Single(x => x.Name == t.Materials[m.MaterialIndex].Name).Albedo).ToList();
+        Expect(tints.SequenceEqual(["DKS_tint_orange", "DKS_tint_purple", "DKS_tint_blue", "DKS_tint_orange", "DKS_tint_white", "DKS_tint_blue", "DKS_tint_orange"]),
+            $"tints {string.Join(", ", tints)}");
     }
 
     private static void HelperPieces()

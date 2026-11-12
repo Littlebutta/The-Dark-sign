@@ -52,7 +52,7 @@ public sealed class MapModelPort
 
     /// <summary>A new port with the same templates and none of this one's materials (one per map).</summary>
     public MapModelPort Fresh() => new(_templates, _templateFlver)
-        { VanillaMaterials = VanillaMaterials, TemplateTextures = TemplateTextures, Ds3Alpha = Ds3Alpha, TintMaterials = TintMaterials };
+        { VanillaMaterials = VanillaMaterials, TemplateTextures = TemplateTextures, Ds3Alpha = Ds3Alpha, TerrainLayers = TerrainLayers, TintMaterials = TintMaterials };
 
     /// <summary>
     /// Diagnostic "--tint-materials": the albedo of each DS3 material family that keeps something in vertex alpha is a
@@ -67,7 +67,10 @@ public sealed class MapModelPort
         ("DKS_tint_red", "two-layer material (_m), first layer", 0xF800),
         ("DKS_tint_magenta", "two-layer material (_m), second layer", 0xF81F),
         ("DKS_tint_green", "overlay that keeps DS3's vertex alpha fade", 0x07E0),
-        ("DKS_tint_blue", "terrain blend (2m/3m/4m), first layer shown", 0x001F),
+        ("DKS_tint_blue", "terrain blend (2m/3m/4m), first layer", 0x001F),
+        ("DKS_tint_orange", "terrain blend, second layer", 0xFC00),
+        ("DKS_tint_white", "terrain blend, third layer", 0xFFFF),
+        ("DKS_tint_purple", "terrain blend, fourth layer", 0x801F),
         ("DKS_tint_cyan", "snow material", 0x07FF),
         ("DKS_tint_yellow", "one-layer material with vertex alpha the port ignores (grass, water, parallax...)", 0xFFE0),
     ];
@@ -81,7 +84,7 @@ public sealed class MapModelPort
         if (m.Name.EndsWith(FadeSuffix, StringComparison.Ordinal))
             return "DKS_tint_green";
         if (Regex.IsMatch(mtd, @"\dm", RegexOptions.IgnoreCase))
-            return "DKS_tint_blue";
+            return MapTerrainBlends.LayerOf(m) switch { 1 => "DKS_tint_orange", 2 => "DKS_tint_white", 3 => "DKS_tint_purple", _ => "DKS_tint_blue" };
         if (mtd.Contains("snow", StringComparison.OrdinalIgnoreCase))
             return "DKS_tint_cyan";
         if (Regex.IsMatch(mtd, @"grass|water|_p(?![a-z])|_tr(?![a-z])", RegexOptions.IgnoreCase))
@@ -97,6 +100,16 @@ public sealed class MapModelPort
     /// vertex is solid and a two-layer material shows its first layer, as every build up to 1.0.340.
     /// </summary>
     public bool Ds3Alpha { get; set; } = true;
+
+    /// <summary>
+    /// True (the default): each triangle of a DS3 terrain blend (2m/3m/4m) is drawn with the layer DS3 shows there
+    /// (<see cref="MapTerrainBlends"/>). False (fallback "map-blend-layers" B, --first-blend-layer): the whole mesh shows
+    /// its first layer, as every build up to 1.0.353.
+    /// </summary>
+    public bool TerrainLayers { get; set; } = true;
+
+    /// <summary>What <see cref="MapTerrainBlends"/> did to this port's models, for the port log.</summary>
+    public MapTerrainBlends.Stats Blends { get; } = new();
 
     /// <summary>What <see cref="MapOverlays"/> did to this port's models, for the port log.</summary>
     public MapOverlays.Stats Overlays { get; } = new();
@@ -559,6 +572,13 @@ public sealed class MapModelPort
             var stats = new MapOverlays.Stats();
             keepAlpha = MapOverlays.Apply(flver, stats);
             Overlays.Add(stats);
+        }
+        // Terrain blends: one mesh per layer it shows (the weights are still in DS3's vertex layout here).
+        if (TerrainLayers)
+        {
+            var stats = new MapTerrainBlends.Stats();
+            MapTerrainBlends.Apply(flver, stats);
+            Blends.Add(stats);
         }
         if (TintMaterials)
             // A material shared by a faded overlay and a solid mesh: the overlay gets its own copy, so it can be told apart.
