@@ -51,7 +51,18 @@ public sealed class MapModelPort
     }
 
     /// <summary>A new port with the same templates and none of this one's materials (one per map).</summary>
-    public MapModelPort Fresh() => new(_templates, _templateFlver) { VanillaMaterials = VanillaMaterials, TemplateTextures = TemplateTextures };
+    public MapModelPort Fresh() => new(_templates, _templateFlver)
+        { VanillaMaterials = VanillaMaterials, TemplateTextures = TemplateTextures, Ds3Alpha = Ds3Alpha };
+
+    /// <summary>
+    /// True (the default): DS3's vertex alpha keeps its meaning (<see cref="MapOverlays"/>): overlays fade, two-layer
+    /// materials show the layer each triangle mostly shows. False (fallback "map-overlays" B, --solid-overlays): every
+    /// vertex is solid and a two-layer material shows its first layer, as every build up to 1.0.340.
+    /// </summary>
+    public bool Ds3Alpha { get; set; } = true;
+
+    /// <summary>What <see cref="MapOverlays"/> did to this port's models, for the port log.</summary>
+    public MapOverlays.Stats Overlays { get; } = new();
 
     /// <summary>
     /// Piece test "vanilla-material" (see MapPorter.PieceTest): every converted mesh keeps its template's own vanilla
@@ -504,6 +515,14 @@ public sealed class MapModelPort
             Unk74 = h.Unk74, BoundingBoxMin = bboxMin, BoundingBoxMax = bboxMax,
         };
         MakeStatic(flver);
+        // Overlays and two-layer materials, while the DS3 materials and vertex colours are still there.
+        var keepAlpha = new HashSet<FLVER2.Mesh>();
+        if (Ds3Alpha)
+        {
+            var stats = new MapOverlays.Stats();
+            keepAlpha = MapOverlays.Apply(flver, stats);
+            Overlays.Add(stats);
+        }
         var ds3Layouts = flver.BufferLayouts.ToList();
         flver.Skeletons = new FLVER2.SkeletonSet { BaseSkeleton = Bones(flver), AllSkeletons = Bones(flver) };
 
@@ -595,7 +614,7 @@ public sealed class MapModelPort
             var template = meshTemplates[mesh];
             var sourceLayouts = mesh.VertexBuffers.Where(b => b.LayoutIndex >= 0 && b.LayoutIndex < ds3Layouts.Count)
                 .SelectMany(b => ds3Layouts[b.LayoutIndex]).ToList();
-            Conform(mesh, template.Layout, kinds.IndexOf(template.Kind), sourceLayouts);
+            Conform(mesh, template.Layout, kinds.IndexOf(template.Kind), sourceLayouts, keepAlpha.Contains(mesh));
             SetBoundingBox(mesh, flver.Header.Version);
         }
     }
@@ -621,7 +640,9 @@ public sealed class MapModelPort
     /// range a short UV holds. DS3's float UVs on multi-layer ground are in short units (divided by 2048 here); a
     /// channel still out of range is moved by whole tiles, which a tiling texture doesn't show.
     /// </summary>
-    public static void Conform(FLVER2.Mesh mesh, FLVER2.BufferLayout layout, int layoutIndex, IReadOnlyList<FLVER.LayoutMember>? source = null)
+    /// <param name="keepAlpha">Keep the vertex's own colour alpha (a DS3 overlay's fade, see <see cref="MapOverlays"/>).</param>
+    public static void Conform(FLVER2.Mesh mesh, FLVER2.BufferLayout layout, int layoutIndex, IReadOnlyList<FLVER.LayoutMember>? source = null,
+        bool keepAlpha = false)
     {
         int uvs = layout.Where(m => m.Semantic == FLVER.LayoutSemantic.UV).Sum(m => UvCount(m.Type));
         int tangents = layout.Count(m => m.Semantic == FLVER.LayoutSemantic.Tangent);
@@ -654,11 +675,12 @@ public sealed class MapModelPort
                 v.Tangents.Add(v.Tangents[0]);
             if (v.Tangents.Count > tangents)
                 v.Tangents.RemoveRange(tangents, v.Tangents.Count - tangents);
+            float alpha = keepAlpha ? Math.Clamp(MapOverlays.Alpha(v), 0f, 1f) : 1f;
             v.Colors.Clear();
             for (int i = 0; i < colors; i++)
                 // What vanilla map piece vertices hold in this channel: red 1, green and blue 0, alpha 1 (all 67,000
                 // vertices of two Stormveil pieces and the colosseum's; alpha alone varies, fading edges out).
-                v.Colors.Add(new FLVER.VertexColor(1f, 1f, 0f, 0f));
+                v.Colors.Add(new FLVER.VertexColor(alpha, 1f, 0f, 0f));
             if (v.UVs.Count == 0)
                 v.UVs.Add(Vector3.Zero);
             // Only the first channel means the same in both games (DS3's others are lightmap and blend channels).

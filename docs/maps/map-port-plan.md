@@ -168,6 +168,19 @@ layouts: m30_00's m900xxx stand-ins have 400 to 1,700 pieces they are never draw
 (Lothric Castle's outside) and every low piece of m40_00 share a collision with all other pieces, so they stay.
 The port log lists each judged piece; fallback `map-stand-ins` B (`--stand-ins`) keeps them all.
 
+**Vertex alpha: overlays and two-layer ground.** DS3 lays paving and rubble over its ground as separate one-layer
+meshes (M[ARSN]_l) whose vertex colour alpha fades them into what lies under them (m40's m000079 brick: 37% of its
+vertices under 0.1, mean 0.28; solid cliffs and rocks have alpha 1 everywhere). Its two-layer materials (M[ARSN]_m,
+_l_m, _p_m: `GXFlver_ColDifSpcBumpMulMask`) use the same alpha as the first layer's weight over the second
+(`g_DiffuseTexture2` on UV 2): m000080's ash over brick has alpha 0 on every vertex, so DS3 shows only its ash. Up to
+1.0.340 the port wrote every vertex solid and showed the first layer, so dark brick shards lay across the ash around
+Firelink Shrine. `MapOverlays` keeps an overlay's alpha (Elden Ring's map pieces fade edges the same way), leaves out
+its triangles whose three corners are all under 0.5, and splits a two-layer mesh into one mesh per layer, each
+triangle going to the layer its corners mostly show (Elden Ring has no two-layer map shader in use to blend them:
+one mesh in all of Stormveil names `[Mb2]`). Terrain blends (2m/3m/4m), grass, snow and water keep their alpha
+untouched. The port log's `vertex alpha:` line counts both; fallback `map-overlays` B (`--solid-overlays`) restores
+the old solid drawing.
+
 **Atmosphere.** A slot used to keep its colosseum's gparam: Caelid's red volumetric fog lit at 1.6 on map 2,
 Leyndell's golden colour grading (LUT 101) and fog out to 2 km on map 1. `MapAtmosphere` writes the slot's
 `/param/drawparam/mAA_BB_0000.gparam.dcx` from the host's: the sun angle and the colours of directional lights 0 and

@@ -309,6 +309,13 @@ Try the next option if: A far part of a DS3 map is missing (a castle wall, a hal
 - **A: Left out where detailed pieces stand (default).** DS3 shows a far area as one blocky piece with a stretched "low" texture, and only from where its detailed pieces are not drawn. The port draws everything at once, so such a stand-in is left out when detailed pieces DS3 never shows together with it stand inside it. One with nothing detailed under it (Lothric Castle seen from the High Wall) stays. The port log lists every stand-in and why it was kept or left out.
 - **B: Kept.** Every stand-in is drawn (port-maps --stand-ins), as in every build before this option: blocky slabs and steps overlap the detailed scenery, but nothing far away is missing. (`port-maps --stand-ins`)
 
+### DS3's ground overlays and two-layer ground (`map-overlays`, rebuilds the content)
+
+Try the next option if: Paving, rubble or a layer of ash is missing from a DS3 map since this option, or ground looks patchy where DS3's was smooth.
+
+- **A: As DS3 draws them (default).** DS3 lays paving and rubble over its ground as separate meshes that fade out by vertex transparency, and paints ash over brick with two-layer materials whose layer is chosen per vertex. The port keeps each overlay's fade, leaves out the triangles DS3 shows at less than half strength, and draws each two-layer triangle with the layer it mostly shows. The port log's "vertex alpha:" line counts what was changed.
+- **B: Solid.** Every vertex is drawn solid and two-layer ground shows its first layer (port-maps --solid-overlays), as in every build up to 1.0.340: dark brick shards lie across the ash around Firelink Shrine, but nothing is left out. (`port-maps --solid-overlays`)
+
 ### Colours of light and fog in the DS3 maps (`map-atmosphere`, rebuilds the content)
 
 Try the next option if: A DS3 map looks washed out, too foggy, too clear, or wrongly coloured since the maps took DS3's colours.
