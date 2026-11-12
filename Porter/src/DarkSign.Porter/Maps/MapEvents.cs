@@ -25,7 +25,7 @@ public static class MapEvents
     /// <param name="erCommon">Elden Ring's common_func.emevd; ported DS3 common events from an earlier run are replaced.</param>
     public static Result Convert(Emedf ds3Defs, Emedf erDefs, FlagMap flags, IReadOnlyList<MapSlots.Slot> slots,
         IReadOnlyDictionary<MapId, EMEVD> ds3Scripts, EMEVD? ds3Common, Func<MapSlots.Slot, EMEVD> erTemplate, EMEVD erCommon,
-        ActionButtons? buttons = null, Func<long, long?>? spEffects = null)
+        ActionButtons? buttons = null, Func<long, long?>? spEffects = null, Func<long, long?>? cutscenes = null)
     {
         var main = slots.Where(s => !s.Probe).Select(s => (s.Ds3, s.Er)).ToList();
         var summary = new List<string>();
@@ -34,7 +34,7 @@ public static class MapEvents
 
         EventPort NewPort(IReadOnlyList<(MapId, MapId)> maps)
         {
-            var port = new EventPort(ds3Defs, erDefs, maps, flags) { Buttons = buttons, SpEffects = spEffects };
+            var port = new EventPort(ds3Defs, erDefs, maps, flags) { Buttons = buttons, SpEffects = spEffects, Cutscenes = cutscenes };
             if (ds3Common is not null)
                 port.Learn(ds3Common, common: true);
             foreach (var script in ds3Scripts.Values)
@@ -112,8 +112,11 @@ public static class MapEvents
         e.Instructions.Where(i => i.Bank == 2000 && i.ID == 6 && i.ArgData.Length >= 4).Select(i => (long)BitConverter.ToUInt32(i.ArgData, 0));
 
     /// <summary>Reads both games' scripts, converts them and writes the slot scripts, common_func and the flag table.</summary>
-    public static string Port(PorterContext ctx, GameArchives ds3, GameArchives er, IReadOnlyList<MapSlots.Slot> slots)
+    /// <param name="cutscenes">DS3 cutscene ID -> Elden Ring ID of each cutscene the cutscene port converted (<see cref="CutscenePort"/>); null or empty: none.</param>
+    public static string Port(PorterContext ctx, GameArchives ds3, GameArchives er, IReadOnlyList<MapSlots.Slot> slots,
+        IReadOnlyDictionary<int, int>? cutscenes = null)
     {
+        Func<long, long?>? playable = cutscenes is { Count: > 0 } c ? id => c.TryGetValue((int)Math.Min(id, int.MaxValue), out var n) ? n : null : null;
         var ds3Defs = Emedf.Parse(File.ReadAllText(ctx.Data.Emedf("ds3-common")));
         var erDefs = Emedf.Parse(File.ReadAllText(ctx.Data.Emedf("er-common")));
         var flagPath = ctx.ModPath(FlagFile);
@@ -166,7 +169,7 @@ public static class MapEvents
         {
             spNote = $"speffects: script SpEffect IDs kept at their DS3 IDs ({ex.Message})";
         }
-        var result = Convert(ds3Defs, erDefs, flags, slots, ds3Scripts, ds3Common, s => Template(s).Script, erCommon, buttons, spEffects);
+        var result = Convert(ds3Defs, erDefs, flags, slots, ds3Scripts, ds3Common, s => Template(s).Script, erCommon, buttons, spEffects, playable);
         // Boss kits go through the same buttons, so their action button rows are written with the maps'.
         (EMEVD Common, DCX.CompressionInfo Compression, string Note)? kits = null;
         string KitNote(Exception ex) => $"boss kits: not added ({ex.Message}); bosses outside their DS3 map run no map scripts";
@@ -190,7 +193,7 @@ public static class MapEvents
                 // Scripts that point at rows which were never written must not ship: fall back to leaving them out.
                 buttonNote = $"action buttons: FAILED to write rows ({ex.Message}); converting again without them";
                 flags = FlagMap.Load(flagPath);
-                result = Convert(ds3Defs, erDefs, flags, slots, ds3Scripts, ds3Common, s => Template(s).Script, erCommon, null, spEffects);
+                result = Convert(ds3Defs, erDefs, flags, slots, ds3Scripts, ds3Common, s => Template(s).Script, erCommon, null, spEffects, playable);
                 try
                 {
                     kits = PortKits(ctx, ds3, er, ds3Defs, erDefs, flags, null, spEffects);

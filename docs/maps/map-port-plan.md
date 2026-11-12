@@ -363,9 +363,19 @@ Both games run the same event system, and DarkScript3 documents every instructio
   so a save keeps its DS3 progress across rebuilds.
 - Event parameters follow their argument, and values passed to an event move by what the event uses them for.
 - A command with no Elden Ring form becomes a no-op on the same line (so skips and labels stay right). An event whose
-  conditions can't convert is left out, with the lines that start it. A cutscene that warps becomes the warp; one
-  that doesn't is skipped until cutscenes are ported.
+  conditions can't convert is left out, with the lines that start it. A cutscene that warps plays and warps once the
+  cutscene port converted it (see below); otherwise it becomes the warp alone, and one that doesn't warp is skipped.
 - The report (`port-maps` log) counts events kept, instructions converted and the most common misses.
+- Cutscenes (`Maps/CutscenePort.cs`, step "cutscenes" before "events"): every DS3 remo binder of a ported map
+  (`/remo/sAA_BB_NNNN.remobnd.dcx`) becomes `/cutscene/sCC_DD_NNNN.cutscenebnd.dcx` under the slot's area and block
+  (the Painted World's s45_00_0000 becomes s19_70_0000). Both games share the binder layout and MQB version; the
+  Havok cut files go from 2014 packfiles to 2018 tagfiles with the spline data copied byte for byte (cameras' FOV
+  float track included), the player retargeted to Elden Ring's cutscene skeleton, and ported parts renamed. MQB
+  resources and events are kept only in the kinds and parameter shapes Elden Ring's own cutscenes use (lights,
+  DS3 draw settings and some sound events are left out). Each gets a CutsceneMapIdParam row (PlayMapId = the slot).
+  The scripts then play them: DS3's warping forms become "Play Cutscene to Player and Warp" (2002[11]), the others
+  "Play Cutscene to Player"/"To All", playback flags 8 -> 16. A cutscene that didn't convert is left out as before.
+  `cutscene-survey` and `cutscene-test` check the files on a PC; fallback map-cutscenes B turns it off.
 
 - DS3's "IF Action Button in Area" already names an ActionButtonParam row, but a DS3 one (boss fog walls 4001800,
   Gundyr's sword 8900, Ariandel's talk prompt 9373); each gets an Elden Ring copy (74000000+) with DS3's fields where

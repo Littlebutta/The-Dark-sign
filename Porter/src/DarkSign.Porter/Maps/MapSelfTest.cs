@@ -33,7 +33,7 @@ public static class MapSelfTest
         Check("collision: DS3 packfile -> Elden Ring binary tagfile keeps every triangle", () => CollisionRoundTrip(xml: false));
         Check("collision: template settings from an Elden Ring file are applied", CollisionTemplate);
         Check("collision: after WarmUp, converting files on every core adds no HKLib cache entries", CollisionWarmUp);
-        foreach (var (name, test) in MapPortChecks.All().Concat(MapPortChecks.EventChecks()).Concat(MapPortChecks.EnemyChecks()).Concat(MapPortChecks.BossChecks()))
+        foreach (var (name, test) in MapPortChecks.All().Concat(MapPortChecks.EventChecks()).Concat(MapPortChecks.EnemyChecks()).Concat(MapPortChecks.BossChecks()).Concat(MapPortChecks.CutsceneChecks()))
             Check(name, test);
 
         Console.WriteLine(failures == 0 ? "map-selftest: all checks passed" : $"map-selftest: {failures} check(s) failed");
