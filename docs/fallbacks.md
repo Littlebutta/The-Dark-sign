@@ -529,6 +529,7 @@ Try the next option if: A ported DS3 enemy is invisible, black, shiny or wears t
 - **I: The template's body size.** As A, but a ported enemy keeps the Elden Ring template's body capsule (DARKSIGN_ENEMY_BODY_SIZE=template) instead of DS3's size, as up to 1.0.410. Use when ported enemies get stuck in doorways, sink into the floor or float above it with A. (`DARKSIGN_ENEMY_BODY_SIZE=template`)
 - **J: The template's weaknesses.** As A, but a ported enemy takes damage of each kind as the Elden Ring template does (DARKSIGN_ENEMY_DAMAGE_RATES=template), as up to 1.0.422, when the Pus of Man had the Giant Beast Skeleton's weakness to strike and resistance to lightning and no weakness to fire. Use when ported enemies take far too much or too little damage with A. (`DARKSIGN_ENEMY_DAMAGE_RATES=template`)
 - **K: DS3 fur as one solid layer.** As A, but DS3 fur (Ariandel's wolf) shows the larger of its two layers, uncut (DARKSIGN_ENEMY_FUR=0), as up to 1.0.422, when the wolf's fur drew as white shards. Use when a furry ported enemy turns invisible or bald with A. (`DARKSIGN_ENEMY_FUR=0`)
+- **L: One move set per enemy.** As A, but every variant of a ported enemy plays the base move set (DARKSIGN_ENEMY_VARIANTS=0), as up to 1.0.443, when the High Wall's spear Lothric Knights played the sword knights' moves and held their shield sideways. Use when ported enemies freeze, T-pose or crash the game when they spawn or start a move with A. (`DARKSIGN_ENEMY_VARIANTS=0`)
 
 ### What ported DS3 enemies drop (`enemy-drops`, rebuilds the content)
 

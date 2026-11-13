@@ -1592,6 +1592,34 @@ public static partial class ChrPort
                 extra.Clear();
             }
 
+        // DS3's variant move sets (TAE sections 1+: the spear Lothric Knight's a001), next to the template's base moves
+        // (ChrVariants); the loops below fill them like any move.
+        var variants = new List<(int Section, int Id)>();
+        if (stage == Stage.All && plan is not null && plan.Method == Method.Full && ChrVariants.Enabled)
+            try
+            {
+                var leaves = anibnds.SelectMany(b => b.Value.Bnd.Files.Select(f => (b.Value.Bnd, File: f, Leaf: ItemText.Leaf(f.Name).ToLowerInvariant())))
+                    .Where(p => AnimLeaf().IsMatch(p.Leaf)).ToList();
+                var templateEntries = anibnds.SelectMany(b => b.Value.Bnd.Files)
+                    .Where(f => f.Name.EndsWith(".tae", StringComparison.OrdinalIgnoreCase))
+                    .SelectMany(f => TAE.Read(f.Bytes).Animations.Select(a => AnimKey(a.ID, TaeSection(f.Name)))).ToHashSet();
+                var templateHas = leaves.Select(p => LeafKey(p.Leaf)).Concat(templateEntries).ToHashSet();
+                var baseMoves = leaves.Where(p => LeafKey(p.Leaf) is (0, var id) && templateEntries.Contains((0, id))).ToList();
+                var baseAdditive = baseMoves.Where(p => TemplateAdditive.GetOrAdd((templateChr, p.Leaf, p.File.Bytes.Length), _ =>
+                {
+                    try { return AnimPort.IsAdditive(p.File.Bytes, Compendium(p.Bnd) ?? compendium); }
+                    catch (Exception ex) when (ex is not OutOfMemoryException) { return false; }
+                })).Select(p => LeafKey(p.Leaf).Item2).ToHashSet();
+                var wanted = ChrVariants.Plan(baseMoves.Select(p => LeafKey(p.Leaf).Item2), templateHas, moves.ToDictionary(m => m.Key, m => m.Value.Hkx),
+                    baseAdditive.Contains, ds3Additive.Contains);
+                variants = ChrVariants.AddSectionFiles(anibnds.Select(b => b.Value.Bnd), wanted);
+            }
+            catch (Exception ex) when (ex is not OutOfMemoryException)
+            {
+                notes.Add($"DS3 variant moves: not added ({Describe(ex)})");
+                variants.Clear();
+            }
+
         int replaced = 0, failed = 0, filled = 0, kept = 0, additive = 0;
         var durations = new Dictionary<(int, int), (float Ds3, float Er)>();
         var chosen = new Dictionary<(int, int), (int, int)>();
@@ -1690,6 +1718,14 @@ public static partial class ChrPort
                       + (others.Count > 0 ? $"{others.Count} DS3 poses and map-script moves added ({string.Join(",", others.Select(e => e.Id))}), " : "")
                       + $"{states} behaviour states");
         }
+        if (variants.Count > 0)
+        {
+            int clips = 0;
+            if (binders.TryGetValue($"/chr/c{n:D4}.behbnd.dcx", out var behbnd))
+                try { clips = ChrVariants.AddSelectorClips(behbnd.Bnd, variants); }
+                catch (Exception ex) when (ex is not OutOfMemoryException) { notes.Add($"DS3 variant moves: behaviour clips not added ({Describe(ex)})"); }
+            notes.Add($"DS3 variant moves: {variants.Count} in sections {string.Join(",", variants.GroupBy(v => v.Section).OrderBy(g => g.Key).Select(g => $"a{g.Key:D3} x{g.Count()}"))}, {clips} behaviour clips");
+        }
         return replaced;
     }
 
@@ -1763,6 +1799,19 @@ public static partial class ChrPort
             // DS3's model hides and shows its "#NN#" meshes (weapon and armour variants) by DS3's display masks.
             if (newModel && plan.Stage != Stage.Clone && ds3Npc?[ds3Id] is { } maskSource)
                 CopyDisplayMasks(maskSource, row);
+            // DS3's variant (the section of moves its weapon set plays), not the template's (ChrVariants).
+            if (plan.Method == Method.Full && plan.Stage == Stage.All && ChrVariants.Enabled && ds3Npc?[ds3Id] is { } variantSource)
+            {
+                var spEffects = er.Get("SpEffectParam");
+                var taken = spEffects is null ? [] : ChrVariants.StripTemplateOffsets(row, id => spEffects[id]);
+                int ds3Offset = Cell(variantSource, "animIdOffset") is { Value: not byte[] } own ? Convert.ToInt32(own.Value) : 0;
+                foreach (var c in variantSource.Cells.Where(c => c.Def.InternalName.Equals("animIdOffset", StringComparison.OrdinalIgnoreCase) && c.Value is not byte[]))
+                    ds3Offset = Math.Max(ds3Offset, Convert.ToInt32(c.Value));
+                if (Cell(row, "animIdOffset") is { } offsetCell)
+                    Set(offsetCell, Math.Max(0, ds3Offset));
+                if (taken.Count > 0 && notes is not null && !notes.Any(x => x.StartsWith($"c{plan.Ds3.Chr:D4} variant:", StringComparison.Ordinal)))
+                    notes.Add($"c{plan.Ds3.Chr:D4} variant: the template's animation-offset effects {string.Join(",", taken.Distinct())} taken off its rows");
+            }
             // DS3's drops with DS3's chances, on any body; the staged test set keeps the template's.
             if (plan.Stage == Stage.All && ds3Npc?[ds3Id] is { } dropSource)
                 drops?.Apply(dropSource, row);

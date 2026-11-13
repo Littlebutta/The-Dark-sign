@@ -42,6 +42,7 @@ const string Usage = """
       timing-selftest              offline checks that ported moves' combo/cancel windows don't cut DS3 swings short
       enemy-diag survey|unpack <file>...  enemy port diagnostics: every character's skeleton and animation IDs; decompress files
       enemy-diag tae <anibnd> [from-to...]  a decompressed animation binder's TAE entries and events, and each file's length and blend hint
+      enemy-diag bones <DS3 chr> [template] [built] | bones all  how a DS3 model hangs on its skeleton (rigid meshes, model vs skeleton rest, how far clips turn item bones)
       enemy-selftest               offline checks of the enemy porter (templates, IDs, skin indices, chr map, TAE merge, effects, SpEffects, sound events)
       moveset-selftest             offline checks of how behaviour animation IDs are shared out among the ported movesets
       arts-selftest                offline checks of the weapon art port (hks patch, skill names)
@@ -111,6 +112,8 @@ try
     // Reads decompressed files only, so it needs neither game nor root (a cloud thread can run it on staged files).
     if (argList[0].Equals("enemy-diag", StringComparison.OrdinalIgnoreCase) && argList.Count >= 3 && argList[1].Equals("tae", StringComparison.OrdinalIgnoreCase))
         return DarkSign.Porter.Enemies.EnemyDiag.Tae(argList[2], argList.Skip(3).ToList());
+    if (argList[0].Equals("enemy-diag", StringComparison.OrdinalIgnoreCase) && argList.Count >= 4 && argList[1].Equals("bones-files", StringComparison.OrdinalIgnoreCase))
+        return DarkSign.Porter.Enemies.EnemyBonesDiag.RunFiles(argList.Skip(2).ToList());
     if (argList[0].Equals("moveset-selftest", StringComparison.OrdinalIgnoreCase))
         return ClipBudget.SelfTest();
     if (argList[0].Equals("arts-selftest", StringComparison.OrdinalIgnoreCase))

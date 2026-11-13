@@ -641,6 +641,7 @@ public static class EnemySelfTest
 
         DropPort.SelfTest(Check);
         AiSelfTest.Run(Check);
+        ChrVariantsSelfTest.Run(Check);
 
         Console.WriteLine(failures == 0 ? "enemy-selftest: all checks passed" : $"enemy-selftest: {failures} check(s) FAILED");
         return failures == 0 ? 0 : 1;
