@@ -175,8 +175,21 @@ public static partial class MapPortChecks
         Expect(sun.Values.All(v => v is Vector4 c && c == new Vector4(1, 0.945f, 0.869f, 0.5f)), "every sun colour value takes DS3's colour and keeps Elden Ring's strength");
         Expect(light.Params.Single(p => p.Name1 == "Directional Light Angle0").Values.All(v => (Vector2)v == new Vector2(-0.768f, -0.96f)), "the sun comes from DS3's angle");
         Expect((Vector4)light.Params.Single(p => p.Name1 == "Directional Light Hemi Color Up").Values[0] == new Vector4(0.945f, 0.945f, 0.945f, 0.1f), "other light params stay the host's");
-        Expect(MapAtmosphere.Value<Vector4>(fog, "VolumetricFog DirLight DirectColor") == new Vector4(1, 0.932f, 0.814f, MapAtmosphere.FogDirectStrength), "fog glow is DS3's colour at Stormveil's strength, not Caelid's red");
-        Expect(MapAtmosphere.Value<Vector4>(fog, "VolumetricFog SkyLight SkyColor") == new Vector4(0.899f, 0.885f, 1, MapAtmosphere.FogSkyStrength), "fog sky colour is DS3's height colour");
+        // m30_00: a cream at 0.12 (maps 1 and 3: about 0.26) and no height fog (strength 0).
+        static bool Near(Vector4 a, Vector4 b) => Vector4.Distance(a, b) < 0.002f;
+        var m30Fog = new Vector4(1 * 0.12f / MapAtmosphere.Ds3FogStrength, 0.932f * 0.12f / MapAtmosphere.Ds3FogStrength, 0.814f * 0.12f / MapAtmosphere.Ds3FogStrength, 0);
+        Expect(Near(MapAtmosphere.Value<Vector4>(fog, "VolumetricFog DirLight DirectColor") ?? default, m30Fog with { W = MapAtmosphere.FogDirectStrength }),
+            $"fog glow is DS3's colour times its own strength, at Stormveil's strength, not Caelid's red: {MapAtmosphere.Value<Vector4>(fog, "VolumetricFog DirLight DirectColor")}");
+        Expect(Near(MapAtmosphere.Value<Vector4>(fog, "VolumetricFog SkyLight SkyColor") ?? default, m30Fog with { W = MapAtmosphere.FogSkyStrength }),
+            "DS3 draws no height fog on m30 (strength 0): the sky colour takes the distance colour");
+        // m40_00 and m31_00, whose fog looked right: nearly unchanged; colours never above 1; the old way on request.
+        var (m40Direct, m40Rest) = MapAtmosphere.FogColours(new Vector4(0.417f, 0.459f, 0.524f, 0.256f), new Vector4(0.572f, 0.623f, 0.71f, 1));
+        Expect(Near(m40Direct, new Vector4(0.417f, 0.459f, 0.524f, 0.256f) * new Vector4(0.256f / MapAtmosphere.Ds3FogStrength, 0.256f / MapAtmosphere.Ds3FogStrength, 0.256f / MapAtmosphere.Ds3FogStrength, 1))
+            && Near(m40Rest, new Vector4(0.572f, 0.623f, 0.71f, 1)), $"m40's fog keeps its colours: {m40Direct} / {m40Rest}");
+        var (bright, _) = MapAtmosphere.FogColours(new Vector4(1, 0.5f, 0.25f, 1), null);
+        Expect(Near(bright, new Vector4(1, 0.5f, 0.25f, 1)), $"a strong fog colour is capped at 1, keeping its hue: {bright}");
+        var (raw, rawRest) = MapAtmosphere.FogColours(new Vector4(1, 0.932f, 0.814f, 0.12f), new Vector4(0.899f, 0.885f, 1, 0), strengths: false);
+        Expect(raw == new Vector4(1, 0.932f, 0.814f, 0.12f) && rawRest == new Vector4(0.899f, 0.885f, 1, 0), "fallback map-atmosphere C: DS3's colours as they are");
         Expect(MapAtmosphere.Value<float>(fog, "VolumetricFog FarDepth") == MapAtmosphere.FogFarDepth && MapAtmosphere.Value<float>(fog, "VolumetricFog Global HeightFogOffset") == -44f,
             "Stormveil's reach, height fog from the DS3 ground");
         Expect(MapAtmosphere.Value<int>(MapAtmosphere.Group(host, "ColorGrading"), "Yebis-ColorGrading-Enable") == 0, "colour grading off");
