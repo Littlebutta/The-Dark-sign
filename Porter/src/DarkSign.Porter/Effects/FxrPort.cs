@@ -51,6 +51,10 @@ public static partial class FxrPort
 
     private static readonly bool PortFxrSounds = Environment.GetEnvironmentVariable("DARKSIGN_FXR_SOUNDS") != "0";
 
+    /// <summary>Lights DS3's smoke-like billboards (Normal and Unk6 blend) the way Elden Ring lights its own (lighting
+    /// -2): see fxr-port.js. Fallback "map-effects" D: DARKSIGN_FXR_LIT=0 leaves them unlit, as up to 1.0.44x.</summary>
+    internal static readonly bool LitSmoke = Environment.GetEnvironmentVariable("DARKSIGN_FXR_LIT") != "0";
+
     private static IEnumerable<int> FxrSounds(IEnumerable<int> ids) => ids.Where(id => id is > 0 and < 100_000_000).Distinct();
 
     /// <summary>
@@ -198,6 +202,7 @@ public static partial class FxrPort
         var mapJson = JsonSerializer.Serialize(new Dictionary<string, Dictionary<string, int>>
         {
             ["once"] = HeldSoundsOnce ? new() { ["all"] = 1 } : [],
+            ["lit"] = LitSmoke ? new() { ["all"] = 1 } : [],
             ["held"] = stoppable,
             ["sfx"] = effects.Keys.ToDictionary(id => id.ToString(), id => IdBase + id),
             [((int)Kind.Texture).ToString()] = textures.ToDictionary(t => t.Key.ToString(), t => t.Value),
@@ -514,8 +519,12 @@ public static partial class FxrPort
         }
 
         /// <summary>For the self-tests: a small DS3 effect with one texture that plays another effect (child > 0).</summary>
-        public byte[] Sample(int id, int child, int texture, int heldSound = 0) =>
-            (byte[])_engine.Invoke(_engine.Modules.Import("./fxr-port.js").Get("sample"), id, child, texture, heldSound).ToObject()!;
+        public byte[] Sample(int id, int child, int texture, int heldSound = 0, int blendMode = 2) =>
+            (byte[])_engine.Invoke(_engine.Modules.Import("./fxr-port.js").Get("sample"), id, child, texture, heldSound, blendMode).ToObject()!;
+
+        /// <summary>For the self-tests: the lighting mode of each billboard of a converted (Elden Ring) effect.</summary>
+        public int[] LightingOfConverted(byte[] bytes) =>
+            JsonSerializer.Deserialize<int[]>(_engine.Invoke(_engine.Modules.Import("./fxr-port.js").Get("lightingOfConverted"), _engine.Intrinsics.Uint8Array.Construct(bytes)).AsString())!;
 
         /// <summary>For the self-tests: the sounds a converted (Elden Ring) effect plays, and the ones it holds.</summary>
         public (int[] Held, int[] Sounds) SoundsOfConverted(byte[] bytes)

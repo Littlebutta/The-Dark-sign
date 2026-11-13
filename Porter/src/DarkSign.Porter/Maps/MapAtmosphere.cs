@@ -13,7 +13,8 @@ namespace DarkSign.Porter.Maps;
 /// <item>LightSet: the sun's angle and the colour (red, green, blue) of the sun and the second directional light from
 /// DS3's light set 0, the one nearly every DS3 map piece names (m30_00: 2,049 of 2,273; m31_00: 2,808; m40_00:
 /// 3,502). How strong each light is (the fourth value) stays Elden Ring's: DS3's strengths are on another scale.</item>
-/// <item>VolumetricFog: the colours from DS3's fog 0 (Fog-Color for the sunward glow, heightColor for the rest); how
+/// <item>VolumetricFog: the colours from DS3's fog 0 (Fog-Color for the sunward glow, heightColor for the rest), each
+/// scaled by its own DS3 strength (<see cref="FogColours"/>); how
 /// thick the fog is, how far it reaches and how strongly it is lit come from Stormveil Castle (m10_00, an outdoor
 /// castle like DS3's maps, its first time of day), with the height fog starting at the DS3 map's own ground.</item>
 /// <item>ColorGrading off, so no colosseum's tint is laid over DS3's colours.</item>
@@ -26,6 +27,42 @@ public static class MapAtmosphere
     // Stormveil Castle m10_00_0000.gparam, first time of day (read 2026-11-11).
     public const float FogFarDepth = 300, FogEndDepth = 300, FogDistribution = 0.06f, FogDensity = 0.004f;
     public const float FogDirectStrength = 0.3f, FogOppositeStrength = 0.05f, FogSkyStrength = 0.05f;
+
+    /// <summary>
+    /// The strength (fourth value) of DS3's fog 0 colour on the maps whose fog looked right after the port took DS3's
+    /// colours: m40_00 0.256, m31_00 0.268 (read 2026-11-13). DS3 keeps a colour and how strongly it applies apart, as
+    /// Elden Ring does with its light colours. m30_00's fog colour is a bright cream (1, 0.932, 0.814) at 0.12, less
+    /// than half that: written as the colour alone, map 2's haze came out more than twice as bright as maps 1 and 3
+    /// and cream-yellow where DS3 shows a dim neutral one. The colour is scaled by its strength over this.
+    /// </summary>
+    public const float Ds3FogStrength = 0.26f;
+
+    /// <summary>Fallback "map-atmosphere" C: DARKSIGN_FOG_STRENGTH=0 writes DS3's fog colours without their
+    /// strengths, as builds up to 1.0.44x did.</summary>
+    public static bool FogStrengthEnabled => Environment.GetEnvironmentVariable("DARKSIGN_FOG_STRENGTH") != "0";
+
+    /// <summary>
+    /// DS3's fog colours with their own strengths applied: the distance colour times its strength over
+    /// <see cref="Ds3FogStrength"/>, the height colour times its strength (DS3 writes 1 or nearly where it draws height
+    /// fog). A height colour of strength 0 means DS3 draws no height fog there (m30_00), so the rest of the fog takes
+    /// the distance colour. No channel goes above 1.
+    /// </summary>
+    public static (Vector4 Direct, Vector4 Others) FogColours(Vector4 colour, Vector4? height, bool strengths = true)
+    {
+        if (!strengths)
+            return (colour, height ?? colour);
+        static Vector4 Scaled(Vector4 c, float by)
+        {
+            var v = new Vector3(c.X, c.Y, c.Z) * Math.Max(0, by);
+            var max = Math.Max(v.X, Math.Max(v.Y, v.Z));
+            if (max > 1)
+                v /= max;
+            return new Vector4(v, c.W);
+        }
+        var direct = Scaled(colour, colour.W / Ds3FogStrength);
+        var rest = height is { } h && h.W > 0 ? Scaled(h, Math.Min(1, h.W)) : direct;
+        return (direct, rest);
+    }
 
     public static string GparamPath(MapId id) => $"/param/drawparam/m{id.Area:D2}_{id.Block:D2}_0000.gparam.dcx";
 
@@ -98,10 +135,11 @@ public static class MapAtmosphere
 
         var ds3Fog = Group(ds3, "Fog");
         var fogColour = Value<Vector4>(ds3Fog, "Fog-Color");
-        var heightColour = Value<Vector4>(ds3Fog, "Fog-heightColor") ?? fogColour;
+        var heightColour = Value<Vector4>(ds3Fog, "Fog-heightColor");
         var fog = Group(gparam, "VolumetricFog");
-        if (fog is not null && fogColour is { } direct && heightColour is { } rest)
+        if (fog is not null && fogColour is { } ds3Colour)
         {
+            var (direct, rest) = FogColours(ds3Colour, heightColour, FogStrengthEnabled);
             SetAll(fog, "VolumetricFog DirLight DirectColor", _ => new Vector4(direct.X, direct.Y, direct.Z, FogDirectStrength));
             SetAll(fog, "VolumetricFog DirLight OppositeColor", _ => new Vector4(rest.X, rest.Y, rest.Z, FogOppositeStrength));
             SetAll(fog, "VolumetricFog SkyLight SkyColor", _ => new Vector4(rest.X, rest.Y, rest.Z, FogSkyStrength));
@@ -111,7 +149,7 @@ public static class MapAtmosphere
             SetAll(fog, "VolumetricFog Global HeightFogDensity Scale", _ => FogDensity);
             SetAll(fog, "VolumetricFog Global HeightFogOffset", _ => ground);
             SetAll(fog, "VolumetricFog Global HeightFogReferenceOffset", _ => ground);
-            changes.Add(string.Create(inv, $"fog colour {C(direct)} / {C(rest)} from DS3 fog 0, Stormveil's thickness (density {FogDensity}, out to {FogFarDepth} m) from height {ground:F0}"));
+            changes.Add(string.Create(inv, $"fog colour {C(direct)} / {C(rest)} from DS3 fog 0 ({(FogStrengthEnabled ? $"its colours {C(ds3Colour)} at {ds3Colour.W:F2} and {C(heightColour ?? ds3Colour)} at {(heightColour ?? ds3Colour).W:F2}" : "colours without their strengths")}), Stormveil's thickness (density {FogDensity}, out to {FogFarDepth} m) from height {ground:F0}"));
         }
         else
             changes.Add("fog: " + (fog is null ? "no volumetric fog in the host" : "no fog colour in DS3") + "; kept");

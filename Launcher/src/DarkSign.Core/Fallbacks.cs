@@ -471,9 +471,11 @@ public static class Fallbacks
         new("map-atmosphere", "DS3 maps", "Colours of light and fog in the DS3 maps", Stage.Build,
             "A DS3 map looks washed out, too foggy, too clear, or wrongly coloured since the maps took DS3's colours.",
         [
-            new("A", "DS3's colours (default)", "Each map's sun and fog take DS3's colours and sun angle, the fog is as thick as Stormveil Castle's, and the colosseum's colour grading is off. How bright each light is stays Elden Ring's."),
+            new("A", "DS3's colours (default)", "Each map's sun and fog take DS3's colours and sun angle (each fog colour at DS3's own strength for it), the fog is as thick as Stormveil Castle's, and the colosseum's colour grading is off. How bright each light is stays Elden Ring's."),
             new("B", "The colosseum's own", "The map keeps the Elden Ring colosseum's colour, fog and sun settings (port-maps --host-atmosphere), as in every build before this option: a red tint on map 2 and thick golden fog on map 1.")
                 { MapsArgs = ["--host-atmosphere"] },
+            new("C", "DS3's fog colours at full strength", "As A, but each fog colour is used as DS3 writes it, without DS3's own strength for it (DARKSIGN_FOG_STRENGTH=0), as builds up to 1.0.44x had it: map 2's haze is a bright cream.")
+                { PorterEnv = Env("DARKSIGN_FOG_STRENGTH", "0") },
         ]),
         new("map-env-light", "DS3 maps", "Light the DS3 map pieces get from around them", Stage.Build,
             "A DS3 map's walls and ground look flat, too dark or too grey, or shine oddly since the colosseum's colour was taken out of their light.",
@@ -562,11 +564,13 @@ public static class Fallbacks
         new("map-effects", "DS3 maps", "DS3's map effects (candles, fog, light shafts)", Stage.Build,
             "A DS3 map crashes, hangs while loading or hitches since its effects were added, or a fog bank, light shaft or flame looks wrong or floats in the air.",
         [
-            new("A", "DS3's map effects (default)", "The effects DS3 places in its maps (fog banks, light shafts, crows, flies and fires) are converted with the weapons' effects and stand where DS3 has them, and the objects DS3 shows lit (candles, torches, braziers) carry their flames: DS3's object effect rows become Elden Ring asset effect rows. Report: Work\\map-sfx.tsv lists any effect that couldn't be converted, and the object effects line of the port-maps log counts the lit objects."),
+            new("A", "DS3's map effects (default)", "The effects DS3 places in its maps (fog banks, light shafts, crows, flies and fires) are converted with the weapons' effects and stand where DS3 has them (their smoke and fog take the light around them, as Elden Ring's do), and the objects DS3 shows lit (candles, torches, braziers) carry their flames: DS3's object effect rows become Elden Ring asset effect rows. Report: Work\\map-sfx.tsv lists any effect that couldn't be converted, and the object effects line of the port-maps log counts the lit objects."),
             new("B", "None", "The DS3 maps have none of DS3's map effects (DARKSIGN_MAP_SFX=0), as every build up to 1.0.366 was.")
                 { PorterEnv = Env("DARKSIGN_MAP_SFX", "0") },
             new("C", "Region effects only", "DS3's fog, light shafts and other placed effects as in A, but no flames on objects (DARKSIGN_OBJECT_SFX=0): candles and torches stand unlit, as builds up to 1.0.44x had them.")
                 { PorterEnv = Env("DARKSIGN_OBJECT_SFX", "0") },
+            new("D", "Smoke and fog effects unlit", "DS3's effects as in A, but their smoke, fog and dust are drawn unlit, at full colour whatever light they stand in (DARKSIGN_FXR_LIT=0), as builds up to 1.0.44x had them: in dark places they glow white. This goes for weapon and enemy effects too.")
+                { PorterEnv = Env("DARKSIGN_FXR_LIT", "0") },
         ]),
 
         new("map-water", "DS3 maps", "Water in the DS3 maps", Stage.Build,
