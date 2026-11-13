@@ -16,6 +16,9 @@ namespace DarkSign.Porter.Maps;
 /// wall. So the warp turns the defeated flag and the first-encounter flag off before it warps (the map's events start
 /// with the load), and once the player stands in the map it turns the first-encounter flag on, which begins the fight
 /// in the arena without a fog wall, talk or cutscene, and sets the entry flag for fights that have no such flag.
+/// A boss that its own event only shows once the player walks through an intro area (Vordt's gate box,
+/// <see cref="IntroArea"/>) is the exception: the warp lands in that area with the first encounter off and leaves the
+/// rest to DS3's event, which shows the boss (after its intro cutscene) and turns the flag on itself.
 ///
 /// Map events that end are not run again on a later load, so the warp also clears the event flags of the fight's own
 /// events (DS3 numbers a fight's events from its defeated flag: 14500800 Friede, 14505811-14505813 her phases), so a
@@ -44,6 +47,9 @@ public static class BossArenas
 
         /// <summary>The DS3 entity the talk happens at (the action button's), or the boss.</summary>
         public int TalkEntity { get; init; }
+
+        /// <summary>The area the boss's own first-encounter event waits for (<see cref="IntroArea"/>), or 0.</summary>
+        public int IntroArea { get; init; }
     }
 
     /// <summary>A fight placed in an Elden Ring map: its IDs moved to the slot and its arrival point.</summary>
@@ -63,6 +69,12 @@ public static class BossArenas
         /// <summary>The talk-only flags in DS3's numbering (moved when the events are written) and the talk entity, moved.</summary>
         public IReadOnlyList<uint> TalkFlags { get; init; } = [];
         public uint TalkEntity { get; init; }
+
+        /// <summary>
+        /// The warp lands in the boss's intro area (<see cref="IntroArea"/>): the map's own event starts the first
+        /// encounter and turns its flag on, so the warp doesn't.
+        /// </summary>
+        public bool LandsAtIntro { get; init; }
     }
 
     /// <summary>The event that stands in for a fight's unported talk (1500+i in the run's block).</summary>
@@ -103,6 +115,16 @@ public static class BossArenas
                 continue;
             var members = Members(msb, boss);
             var (point, from) = ArrivalPoint(msb, region, warpPoints, members);
+            // A boss that only appears once the player walks through its intro area (Vordt's gate box): land there.
+            var introId = first > 0 ? IntroArea(mapScript, first, area) : 0;
+            var intro = introId > 0 ? msb.Regions.GetEntries().FirstOrDefault(r => r.EntityID == introId) : null;
+            if (intro is not null && !Contains(intro, point))
+            {
+                var (p, why) = ArrivalPoint(msb, intro, warpPoints, members);
+                (point, from) = (p, $"intro {why}");
+            }
+            else if (intro is null)
+                introId = 0;
             // The first main health bar's placement (Friede's first stage), else the first other bar's (the Champion's
             // Gravetender's Greatwolf: the Gravetender's own bar is passed to an event), else the lowest member; named
             // without its stage ("- First Stage").
@@ -118,9 +140,47 @@ public static class BossArenas
             {
                 TalkFlags = talkFlags,
                 TalkEntity = talkEntity > 0 ? talkEntity : boss,
+                IntroArea = introId,
             });
         }
         return fights;
+    }
+
+    /// <summary>
+    /// The area a boss's own appear event waits for the player in before its first encounter, or 0. Vordt's 13005810
+    /// reads the first-encounter flag (13000801) once when the map loads; off, it keeps Vordt hidden at the far end of
+    /// the arena and waits for the player in the gate box 3002815, then warps the player in (the intro cutscene in DS3)
+    /// and shows Vordt, turning the flag on. The warp's arrival point lay past that box (DS3's post-cutscene point
+    /// 3002810), so the box was never entered and Vordt never appeared (1.0.442). Counted: an event that checks the
+    /// flag with a SKIP / END / GOTO IF Event Flag, then waits with IF In/Outside Area for the player (10000) in an
+    /// area other than the fight's own, and turns the flag on.
+    /// </summary>
+    public static int IntroArea(EMEVD mapScript, int firstEncounter, int fightArea)
+    {
+        if (firstEncounter <= 0)
+            return 0;
+        foreach (var e in mapScript.Events)
+        {
+            bool checkedFlag = false;
+            int area = 0;
+            for (int i = 0; i < e.Instructions.Count && area == 0; i++)
+            {
+                var ins = e.Instructions[i];
+                if (e.Parameters.Any(p => p.InstructionIndex == i))
+                    continue;
+                // SKIP IF (1003[01]), END IF (1003[02]) and GOTO IF Event Flag (1003[101]): count/label, state, type, flag.
+                if (ins.Bank == 1003 && ins.ID is 1 or 2 or 101 && ins.ArgData.Length >= 8 && ins.ArgData[2] == 0
+                    && BitConverter.ToInt32(ins.ArgData, 4) == firstEncounter)
+                    checkedFlag = true;
+                // IF In/Outside Area (3[02]): group, inside, target, area, count.
+                else if (checkedFlag && ins.Bank == 3 && ins.ID == 2 && ins.ArgData.Length >= 12 && ins.ArgData[1] == 1
+                         && BitConverter.ToInt32(ins.ArgData, 4) == 10000 && BitConverter.ToInt32(ins.ArgData, 8) is > 0 and var r && r != fightArea)
+                    area = r;
+            }
+            if (area > 0 && FlagsTurnedOn(e.Instructions).Contains(firstEncounter))
+                return area;
+        }
+        return 0;
     }
 
     // DS3 "Set Event Flag" (2003[02]), "Set Network-Connected Event Flag" (2003[62]) and Elden Ring-style 2003[66]:
@@ -335,6 +395,7 @@ public static class BossArenas
                 Ds3Defeated = f.Defeated,
                 Ds3Entry = f.Entry,
                 Ds3FirstEncounter = f.FirstEncounter,
+                LandsAtIntro = f.IntroArea > 0,
             });
             if (f.TalkFlags.Count > 0)
                 notes.Add($"boss arenas: {f.Name}'s first encounter waits for {string.Join(", ", f.TalkFlags)}, which only a talk sets: "
@@ -395,9 +456,14 @@ public static class BossArenas
             e.Instructions.Add(RunEvents.Make(1001, 0, 3f));
             e.Instructions.Add(RunEvents.Make(3, 8, (sbyte)0, On, (sbyte)m.Area, (sbyte)m.Block, (sbyte)m.Region, (sbyte)m.Index));
             e.Instructions.Add(RunEvents.Make(1001, 0, 2f));
-            if (a.FirstEncounter > 0)
-                e.Instructions.Add(SetFlag(a.FirstEncounter, On));
-            e.Instructions.Add(SetFlag(a.Entry, On));
+            // Landing in the boss's intro area, the map's own event shows the boss and turns the first encounter on
+            // (after its intro cutscene); turning it on here would begin the fight before the boss appears.
+            if (!a.LandsAtIntro)
+            {
+                if (a.FirstEncounter > 0)
+                    e.Instructions.Add(SetFlag(a.FirstEncounter, On));
+                e.Instructions.Add(SetFlag(a.Entry, On));
+            }
             e.Instructions.Add(RunEvents.Make(1000, 4, (byte)1));
             common.Events.Add(e);
             constructor.Instructions.Add(RunEvents.Make(2000, 0, 0, EventId(a.Index), 0u));
