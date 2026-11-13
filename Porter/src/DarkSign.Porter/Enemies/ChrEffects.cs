@@ -552,7 +552,9 @@ public sealed class ChrEffects
         || ParamDefaults.Int(ds3Effect, "changeHpPoint") != 0
         || (ParamDefaults.Cell(ds3Effect, "changeHpRate")?.Value is { } rate and not byte[] && Convert.ToDouble(rate) != 0)
         // The damage it takes: DS3 gives phantoms and a few bosses their toughness this way (Gael's phantom 0.57).
-        || ChrPort.DamageRateFields.Any(f => ParamDefaults.Cell(ds3Effect, f)?.Value is float r && r > 0 && r != 1);
+        || ChrPort.DamageRateFields.Any(f => ParamDefaults.Cell(ds3Effect, f)?.Value is float r && r > 0 && r != 1)
+        // The moves it plays: a variant's TAE section (5404 = +1,000,000, the spear Lothric Knight; ChrVariants).
+        || (ChrVariants.Enabled && ParamDefaults.Int(ds3Effect, "animIdOffset") > 0);
 
     /// <summary>
     /// A ported character's NpcParam row: DS3's own effects in the slots the template leaves free, and the row

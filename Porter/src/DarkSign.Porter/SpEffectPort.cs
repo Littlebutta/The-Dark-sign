@@ -1,4 +1,5 @@
 using SoulsFormats;
+using DarkSign.Porter.Enemies;
 
 namespace DarkSign.Porter;
 
@@ -115,6 +116,9 @@ public sealed class SpEffectPort
         "spCategory", "categoryPriority",
         "conditionHp", "lifeReductionRate", "lifeReductionType", "soulStealRate", "noDead", "bCurrHPIndependeMaxHP", "hasTarget",
         "enableLifeTime", "isExtendSpEffectLife", "disablePoison", "disableBlood", "disableCurse",
+        // animIdOffset: plays every animation shifted by a TAE section (DS3's 5404 = +1,000,000, the spear Lothric
+        // Knight's moves); Elden Ring reads it the same way (its 5402 = +2,000,000 on Juvenile Scholars). Enemies/ChrVariants.cs.
+        "animIdOffset",
         .. Enumerable.Range(0, 16).Select(k => $"vowType{k}"),
     ];
 
@@ -395,7 +399,7 @@ public sealed class SpEffectPort
     public bool VisualsBound => Visuals is null || Visuals.IsBound;
 
     private bool HasValues(PARAM.Row ds3) =>
-        HasSharedValues(ds3) || (_full && (FullRenamedFields.Any(f => ParamDefaults.Cell(ds3, f.Ds3)?.Value is { } v and not byte[] && IsSet(f.Ds3, Convert.ToDouble(v)))
+        HasSharedValues(ds3) || (_full && ChrVariants.Enabled && Int(ds3, "animIdOffset") > 0) || (_full && (FullRenamedFields.Any(f => ParamDefaults.Cell(ds3, f.Ds3)?.Value is { } v and not byte[] && IsSet(f.Ds3, Convert.ToDouble(v)))
                                            || (ParamDefaults.Cell(ds3, "lifeReductionRate")?.Value is { } drain && Convert.ToDouble(drain) != 0)));
 
     private static bool HasSharedValues(PARAM.Row ds3)

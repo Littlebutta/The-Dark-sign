@@ -631,6 +631,8 @@ public static class Fallbacks
                 { PorterEnv = Env("DARKSIGN_ENEMY_DAMAGE_RATES", "template") },
             new("K", "DS3 fur as one solid layer", "As A, but DS3 fur (Ariandel's wolf) shows the larger of its two layers, uncut (DARKSIGN_ENEMY_FUR=0), as up to 1.0.422, when the wolf's fur drew as white shards. Use when a furry ported enemy turns invisible or bald with A.")
                 { PorterEnv = Env("DARKSIGN_ENEMY_FUR", "0") },
+            new("L", "One move set per enemy", "As A, but every variant of a ported enemy plays the base move set (DARKSIGN_ENEMY_VARIANTS=0), as up to 1.0.443, when the High Wall's spear Lothric Knights played the sword knights' moves and held their shield sideways. Use when ported enemies freeze, T-pose or crash the game when they spawn or start a move with A.")
+                { PorterEnv = Env("DARKSIGN_ENEMY_VARIANTS", "0") },
         ]),
         new("enemy-drops", "DS3 maps", "What ported DS3 enemies drop", Stage.Build,
             "A ported DS3 enemy drops nothing where DS3 drops something, drops the wrong item or far too often, the game crashes or hangs when a ported enemy dies, or the build's enemy params step says the drops were not ported.",

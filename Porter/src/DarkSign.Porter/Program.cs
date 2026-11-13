@@ -112,6 +112,8 @@ try
     // Reads decompressed files only, so it needs neither game nor root (a cloud thread can run it on staged files).
     if (argList[0].Equals("enemy-diag", StringComparison.OrdinalIgnoreCase) && argList.Count >= 3 && argList[1].Equals("tae", StringComparison.OrdinalIgnoreCase))
         return DarkSign.Porter.Enemies.EnemyDiag.Tae(argList[2], argList.Skip(3).ToList());
+    if (argList[0].Equals("enemy-diag", StringComparison.OrdinalIgnoreCase) && argList.Count >= 4 && argList[1].Equals("bones-files", StringComparison.OrdinalIgnoreCase))
+        return DarkSign.Porter.Enemies.EnemyBonesDiag.RunFiles(argList.Skip(2).ToList());
     if (argList[0].Equals("moveset-selftest", StringComparison.OrdinalIgnoreCase))
         return ClipBudget.SelfTest();
     if (argList[0].Equals("arts-selftest", StringComparison.OrdinalIgnoreCase))

@@ -47,6 +47,28 @@ public static class EnemyBonesDiag
         return 0;
     }
 
+    /// <summary>
+    /// "enemy-diag bones-files &lt;DS3 chrbnd&gt; &lt;DS3 anibnd&gt; [built chrbnd] [built anibnd]": the same report from
+    /// decompressed binders (Work\extract), with no game: a cloud thread runs it on staged files.
+    /// </summary>
+    public static int RunFiles(List<string> paths)
+    {
+        var o = new StringBuilder();
+        try
+        {
+            var flver = FLVER2.Read(BND4.Read(File.ReadAllBytes(paths[0])).Files.First(f => FLVER2.Is(f.Bytes)).Bytes);
+            var files = BND4.Read(File.ReadAllBytes(paths[1])).Files;
+            var sk = files.First(f => ItemText.Leaf(f.Name).Equals("skeleton.hkx", StringComparison.OrdinalIgnoreCase));
+            o.AppendLine($"== DS3 {Path.GetFileName(paths[0])}");
+            var watch = Ds3Part(flver, (AnimPort.ReadDs3Skeleton(sk.Bytes), files), o);
+            if (paths.Count >= 4)
+                BuiltFiles(paths[2], paths[3], flver, watch, o);
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException) { o.AppendLine($"FAILED: {ChrPort.Describe(ex)}"); }
+        Console.Write(o.ToString());
+        return 0;
+    }
+
     private static FLVER2? Ds3Flver(GameArchives ds3, int x)
     {
         var path = $"/chr/c{x:D4}.chrbnd.dcx";
@@ -140,7 +162,28 @@ public static class EnemyBonesDiag
             o.AppendLine("DS3 has no skeleton for it");
             return;
         }
-        var sk = anims.Value.Skeleton;
+        var watch = Ds3Part(flver, anims.Value, o);
+        if (template > 0)
+            Template(er, template, flver, anims.Value.Skeleton, watch, o);
+        if (built > 0)
+        {
+            var chrbnd = ctx.ModPath("chr", $"c{built:D4}.chrbnd.dcx");
+            var anibnd = ctx.ModPath("chr", $"c{built:D4}.anibnd.dcx");
+            if (!File.Exists(chrbnd) || !File.Exists(anibnd))
+                o.AppendLine($"== built c{built:D4}: not in the mod folder ({chrbnd})");
+            else
+                Built(BND4.Read(DCX.Decompress(File.ReadAllBytes(chrbnd))), BND4.Read(DCX.Decompress(File.ReadAllBytes(anibnd))), $"c{built:D4}", flver, watch, o);
+        }
+    }
+
+    private static void BuiltFiles(string chrbnd, string anibnd, FLVER2 ds3Flver, List<int> watch, StringBuilder o) =>
+        Built(BND4.Read(File.ReadAllBytes(chrbnd)), BND4.Read(File.ReadAllBytes(anibnd)), Path.GetFileName(chrbnd), ds3Flver, watch, o);
+
+    /// <summary>The DS3 model's meshes, its mesh nodes against the skeleton, and how DS3's clips turn them; returns the nodes watched.</summary>
+    private static List<int> Ds3Part(FLVER2 flver, (AnimPort.Ds3Skeleton Skeleton, List<BinderFile> Files) anims, StringBuilder o)
+    {
+        Meshes(flver, o, "DS3 model");
+        var sk = anims.Skeleton;
         var skWorld = SkeletonWorld(sk.Parents, sk.ReferencePose.Select(t => (t.Translation, t.Rotation)).ToList());
         var skIndex = sk.Names.Select((n, i) => (n, i)).GroupBy(p => p.n, StringComparer.OrdinalIgnoreCase).ToDictionary(g => g.Key, g => g.First().i, StringComparer.OrdinalIgnoreCase);
         var nodeWorld = NodeWorld(flver);
@@ -168,7 +211,7 @@ public static class EnemyBonesDiag
         var watchBones = watch.Select(i => flver.Nodes[i].Name ?? "").Where(skIndex.ContainsKey).ToList();
         var animated = watchBones.ToDictionary(n => n, _ => (Clips: 0, Max: 0f, Example: ""), StringComparer.OrdinalIgnoreCase);
         int clips = 0;
-        foreach (var file in anims.Value.Files.Where(f => Regex.IsMatch(ItemText.Leaf(f.Name), @"^a\d{3}_\d{6}\.hkx$", RegexOptions.IgnoreCase)))
+        foreach (var file in anims.Files.Where(f => Regex.IsMatch(ItemText.Leaf(f.Name), @"^a\d{3}_\d{6}\.hkx$", RegexOptions.IgnoreCase)))
             try
             {
                 var hkx = HKX.Read(file.Bytes, HKX.HKXVariation.HKXDS3, false);
@@ -203,15 +246,12 @@ public static class EnemyBonesDiag
         o.AppendLine($"DS3 animations ({clips} whole-pose clips): how far they turn those bones from rest:");
         foreach (var (bone, (c, max, example)) in animated)
             o.AppendLine($"  {bone}: tracked in {c} clips, up to {Deg(max)} from rest{(example.Length > 0 ? $" ({example})" : "")}");
-
-        if (template > 0)
-            Template(er, template, flver, sk, skWorld, watch, o);
-        if (built > 0)
-            Built(ctx, built, flver, watch, o);
+        return watch;
     }
 
-    private static void Template(GameArchives er, int t, FLVER2 ds3Flver, AnimPort.Ds3Skeleton ds3, (Quaternion R, Vector3 T)[] ds3World, List<int> watch, StringBuilder o)
+    private static void Template(GameArchives er, int t, FLVER2 ds3Flver, AnimPort.Ds3Skeleton ds3, List<int> watch, StringBuilder o)
     {
+        var ds3World = SkeletonWorld(ds3.Parents, ds3.ReferencePose.Select(p => (p.Translation, p.Rotation)).ToList());
         o.AppendLine($"== Elden Ring template c{t:D4}");
         var chrbnd = $"/chr/c{t:D4}.chrbnd.dcx";
         if (er.Contains(chrbnd))
@@ -252,21 +292,12 @@ public static class EnemyBonesDiag
         }
     }
 
-    private static void Built(PorterContext ctx, int n, FLVER2 ds3Flver, List<int> watch, StringBuilder o)
+    private static void Built(BND4 cbnd, BND4 abnd, string label, FLVER2 ds3Flver, List<int> watch, StringBuilder o)
     {
-        o.AppendLine($"== built c{n:D4} (mod folder)");
-        var chrbnd = ctx.ModPath("chr", $"c{n:D4}.chrbnd.dcx");
-        var anibnd = ctx.ModPath("chr", $"c{n:D4}.anibnd.dcx");
-        if (!File.Exists(chrbnd) || !File.Exists(anibnd))
-        {
-            o.AppendLine($"not built ({chrbnd})");
-            return;
-        }
-        var cbnd = BND4.Read(DCX.Decompress(File.ReadAllBytes(chrbnd)));
+        o.AppendLine($"== built {label}");
         o.AppendLine($"chrbnd files: {string.Join(", ", cbnd.Files.Select(f => $"{ItemText.Leaf(f.Name)} {f.Bytes.Length}"))}");
         var flver = FLVER2.Read(cbnd.Files.First(f => FLVER2.Is(f.Bytes)).Bytes);
         Meshes(flver, o, "built model");
-        var abnd = BND4.Read(DCX.Decompress(File.ReadAllBytes(anibnd)));
         var skFile = abnd.Files.First(f => ItemText.Leaf(f.Name).Equals("skeleton.hkx", StringComparison.OrdinalIgnoreCase));
         AnimPort.ErSkeleton s;
         lock (AnimPort.HavokLock)
