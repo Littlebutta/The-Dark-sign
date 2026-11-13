@@ -287,12 +287,12 @@ public static partial class CutscenePort
 
     public sealed class HkxStats
     {
-        public int Files, Animations, Copied, Retargeted, Renamed, Failed, Uncompressed;
+        public int Files, Animations, Copied, Retargeted, Renamed, Failed, Uncompressed, LeftOut;
         public List<string> Notes { get; } = [];
 
         public void Add(HkxStats o)
         {
-            Files += o.Files; Animations += o.Animations; Copied += o.Copied; Retargeted += o.Retargeted; Renamed += o.Renamed; Failed += o.Failed; Uncompressed += o.Uncompressed;
+            Files += o.Files; Animations += o.Animations; Copied += o.Copied; Retargeted += o.Retargeted; Renamed += o.Renamed; Failed += o.Failed; Uncompressed += o.Uncompressed; LeftOut += o.LeftOut;
             Notes.AddRange(o.Notes.Take(Math.Max(0, 20 - Notes.Count)));
         }
     }
@@ -373,7 +373,9 @@ public static partial class CutscenePort
     /// Converts one DS3 cut file (Havok 2014 packfile) into Elden Ring's form (Havok 2018 tagfile, laid out as
     /// <paramref name="template"/>'s). Names go through <paramref name="rename"/>.
     /// </summary>
-    public static (byte[] Hkx, HkxStats Stats) ConvertHkx(byte[] ds3Bytes, Func<string, string?> rename, HavokTemplate template)
+    /// <param name="keep">Whether a DS3 animated thing (by skeleton name) stays in the cutscene; null keeps all
+    /// (<see cref="CutsceneCast"/> leaves out parts Elden Ring has no model for).</param>
+    public static (byte[] Hkx, HkxStats Stats) ConvertHkx(byte[] ds3Bytes, Func<string, string?> rename, HavokTemplate template, Func<string, bool>? keep = null)
     {
         var stats = new HkxStats { Files = 1 };
         var hkx = HKX.Read(ds3Bytes, HKX.HKXVariation.HKXDS3, false);
@@ -384,6 +386,11 @@ public static partial class CutscenePort
         var bindings = new List<hkaAnimationBinding?>();
         foreach (var t in tracks)
         {
+            if (keep is not null && !keep(t.Skeleton.Name.GetString()))
+            {
+                stats.LeftOut++;
+                continue;
+            }
             stats.Animations++;
             var ds3Name = t.Skeleton.Name.GetString();
             var name = rename(ds3Name) is { } n && n != ds3Name ? n : ds3Name;
@@ -497,6 +504,11 @@ public static partial class CutscenePort
         // retarget works on splines.
         foreach (var u in uncompressed)
         {
+            if (keep is not null && !keep(u.Skeleton.Name.GetString()))
+            {
+                stats.LeftOut++;
+                continue;
+            }
             stats.Animations++;
             stats.Copied++;
             stats.Uncompressed++;
@@ -657,6 +669,7 @@ public static partial class CutscenePort
     {
         public MqbStats Mqb { get; } = new();
         public HkxStats Hkx { get; } = new();
+        public CutsceneCast.CastStats Cast { get; } = new();
         public int OtherFiles;
     }
 
@@ -664,8 +677,11 @@ public static partial class CutscenePort
     /// Converts one DS3 remo binder into an Elden Ring cutscene binder (uncompressed BND4; the caller compresses).
     /// </summary>
     /// <param name="sound">Rewrites the DS3 timeline's sound events first (<see cref="CutsceneSound.Prepare"/>), or null.</param>
+    /// <param name="cast">The map's <see cref="CutsceneCast.Resolver"/> (DS3 part name -> the Elden Ring name, null = no
+    /// Elden Ring model). Given, it renames parts, leaves out what Elden Ring can't load and lays the cut files out as
+    /// Elden Ring's (<see cref="CutsceneCast"/>); null converts as before (fallback map-cutscenes E).</param>
     public static (BND4 Binder, BinderStats Stats) ConvertBinder(BND4 ds3, string ds3Name, string erName, Func<string, string?> rename,
-        MapId ds3Map, MapId erMap, ErSide side, Action<MQB>? sound = null)
+        MapId ds3Map, MapId erMap, ErSide side, Action<MQB>? sound = null, Func<string, string?>? cast = null)
     {
         var stats = new BinderStats();
         var bnd = new BND4
@@ -673,29 +689,56 @@ public static partial class CutscenePort
             Version = side.Layout.Version, Format = side.Layout.Format, Unicode = side.Layout.Unicode, Extended = side.Layout.Extended,
             BigEndian = side.Layout.BigEndian, BitBigEndian = side.Layout.BitBigEndian, Unk04 = side.Layout.Unk04, Unk05 = side.Layout.Unk05,
         };
+        // The timeline first: it says which parts stay and which Havok file each cut plays.
+        Dictionary<string, string>? cutFiles = null;
+        var names = cast is null ? rename : name => cast(name) is { } to && to != name ? to : null;
+        var converted = new Dictionary<BinderFile, byte[]>();
         foreach (var f in ds3.Files)
         {
             var data = DCX.Is(f.Bytes) ? DCX.Decompress(f.Bytes) : f.Bytes;
-            byte[] converted;
-            if (MQB.IsRead(data, out MQB? mqb))
+            if (!MQB.IsRead(data, out MQB? mqb))
+                continue;
+            sound?.Invoke(mqb);
+            if (cast is not null)
             {
-                sound?.Invoke(mqb);
-                stats.Mqb.Add(ConvertMqb(mqb, ds3Name, erName, rename, ds3Map, erMap, side.Catalog, CutsceneShape.ConformEnabled ? side.Shape : null));
-                converted = mqb.Write();
+                cutFiles = CutsceneCast.CutFiles(mqb);
+                CutsceneCast.Remove(mqb, CutsceneCast.Unplayable(mqb, cast, stats.Cast));
             }
-            else if (f.Name.EndsWith(".hkx", StringComparison.OrdinalIgnoreCase))
-            {
-                var (hkx, hs) = ConvertHkx(data, rename, side.Havok);
-                stats.Hkx.Add(hs);
-                converted = hkx;
-            }
-            else
-            {
-                stats.OtherFiles++;
-                converted = data;
-            }
-            bnd.Files.Add(new BinderFile(f.Flags, f.ID, RePath(f.Name, ds3Name, erName), converted));
+            stats.Mqb.Add(ConvertMqb(mqb, ds3Name, erName, names, ds3Map, erMap, side.Catalog, CutsceneShape.ConformEnabled ? side.Shape : null));
+            if (cast is not null)
+                CutsceneCast.RenameHkts(mqb);
+            converted[f] = mqb.Write();
         }
+        Func<string, bool>? keep = cast is null ? null : name => cast(name) is not null;
+        foreach (var f in ds3.Files)
+        {
+            if (!converted.TryGetValue(f, out var bytes))
+            {
+                var data = DCX.Is(f.Bytes) ? DCX.Decompress(f.Bytes) : f.Bytes;
+                if (f.Name.EndsWith(".hkx", StringComparison.OrdinalIgnoreCase))
+                {
+                    // A file no cut plays isn't converted at all when the cut files are laid out as Elden Ring's.
+                    var parts = f.Name.Split('\\');
+                    if (cutFiles is not null && (parts.Length < 2 || !cutFiles.TryGetValue(parts[^2], out var leaf)
+                                                 || !Path.GetFileNameWithoutExtension(parts[^1]).Equals(leaf, StringComparison.OrdinalIgnoreCase)))
+                    {
+                        stats.Cast.FilesLeftOut++;
+                        continue;
+                    }
+                    var (hkx, hs) = ConvertHkx(data, names, side.Havok, keep);
+                    stats.Hkx.Add(hs);
+                    bytes = hkx;
+                }
+                else
+                {
+                    stats.OtherFiles++;
+                    bytes = data;
+                }
+            }
+            bnd.Files.Add(new BinderFile(f.Flags, f.ID, RePath(f.Name, ds3Name, erName), bytes));
+        }
+        if (cutFiles is not null)
+            CutsceneCast.LayOutCutFiles(bnd, cutFiles, stats.Cast);
         return (bnd, stats);
     }
 
@@ -777,9 +820,26 @@ public static partial class CutscenePort
         else
             lines.Add("sound: off (DARKSIGN_CUTSCENE_SOUND=0, fallback map-cutscenes C)");
         var soundNumbers = SoundNumbers(ds3);
+        // What Elden Ring can load for a cutscene's cast (CutsceneCast): models in the mod or the game.
+        EnemyPort.ChrMap? chrMap = null;
+        if (CutsceneCast.Enabled && File.Exists(ctx.ModPath(EnemyPort.ChrMap.FileName)))
+            chrMap = EnemyPort.ChrMap.Parse(File.ReadAllLines(ctx.ModPath(EnemyPort.ChrMap.FileName)));
+        var modelExists = new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase);
+        bool ModelExists(string model)
+        {
+            if (modelExists.TryGetValue(model, out var known))
+                return known;
+            var lower = model.ToLowerInvariant();
+            var archive = lower.StartsWith("aeg") ? ObjectPort.GeomBndPath(model) : $"/chr/{lower}.chrbnd.dcx";
+            return modelExists[model] = er.Contains(archive) || File.Exists(ctx.ModPath(MapPorter.ModParts(archive)));
+        }
+        lines.Add(CutsceneCast.Enabled
+            ? $"cast: parts resolved to Elden Ring models (map part names, {(chrMap is null ? "no enemy model list" : "the enemy port's model list")}); DS3 draw settings and unplayed cut files left out"
+            : "cast: off (DARKSIGN_CUTSCENE_CAST=0, fallback map-cutscenes E); DS3 part names, draw settings and cut files kept");
         foreach (var map in maps.Where(m => !m.Slot.Probe))
         {
             var rename = Renamer(map.PartNames);
+            var cast = CutsceneCast.Enabled ? CutsceneCast.Resolver(map.PartNames, m => chrMap?.ModelOf(m), ModelExists) : null;
             foreach (var name in CutscenesOf(ds3, map.Slot.Ds3))
             {
                 var ds3Id = IdOf(name)!.Value;
@@ -798,7 +858,7 @@ public static partial class CutscenePort
                     CutsceneSound.Plan? plan = null;
                     int thisIndex = soundNumbers[name];
                     Action<MQB>? prepare = sounds is null ? null : m => plan = CutsceneSound.Prepare(m, erName, thisIndex, sounds.Known, sounds.Voice);
-                    var (bnd, stats) = ConvertBinder(source, name, erName, rename, map.Slot.Ds3, map.Slot.Er, side, prepare);
+                    var (bnd, stats) = ConvertBinder(source, name, erName, rename, map.Slot.Ds3, map.Slot.Er, side, prepare, cast);
                     // The bank first: the timeline keeps only the sounds it holds.
                     if (sounds is not null && plan is not null)
                         lines.Add($"{name} sound: {plan}; {BuildSound(sounds, plan, bnd, null)}");
@@ -822,6 +882,8 @@ public static partial class CutscenePort
                               + $"{(stats.Hkx.Retargeted > 0 ? ", player retargeted" : "")}), timeline {stats.Mqb.Resources - stats.Mqb.ResourcesDropped}/{stats.Mqb.Resources} resources, "
                               + $"{stats.Mqb.Events - stats.Mqb.EventsDropped}/{stats.Mqb.Events} events kept, {stats.Mqb.Renamed} names renamed, {stats.Mqb.MapsMoved} map numbers moved, {stats.Mqb.Conformed} fields set to Elden Ring's shape"
                               + (stats.Hkx.Notes.Count > 0 ? $"; notes: {string.Join("; ", stats.Hkx.Notes.Distinct().Take(3))}" : ""));
+                    if (cast is not null)
+                        lines.Add($"{name} -> {erName}: {stats.Cast}; {stats.Hkx.LeftOut} Havok tracks of left-out parts dropped");
                 }
                 catch (Exception ex) when (ex is not OutOfMemoryException)
                 {

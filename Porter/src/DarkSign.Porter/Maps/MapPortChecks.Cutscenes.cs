@@ -14,7 +14,9 @@ public static partial class MapPortChecks
         yield return ("cutscenes: sound events become Elden Ring's kind 135 form with the cutscene's own IDs; armour to seType 15, speech to its voice", CutsceneSoundEvents);
         yield return ("cutscenes: a timeline with no main audio gets DS3's p<ID*10+n> per cut; events of sounds the bank lacks are stripped", CutsceneSoundAutoAndStrip);
         yield return ("cutscenes: converted timelines take Elden Ring's shape: event fields, timeline Unk10 and full parameter lists", CutsceneShapeConform);
-        yield return ("cutscenes: the F1 Cutscenes tab's events warp to the map, then play the cutscene; its list names the characters", CutsceneMenuEvents);
+        yield return ("cutscenes: the F1 Cutscenes tab warps to the map in one event and plays the pending cutscene after the load in another; its list names the characters", CutsceneMenuEvents);
+        yield return ("cutscenes: the cast resolves to Elden Ring models (map names, enemy models, assets); parts with none, and DS3 draw settings, are left out", CutsceneCastResolve);
+        yield return ("cutscenes: each cut's Havok file becomes cutNNNN\\a0000.hkx at ID NNNN*10000; files no cut plays are left out", CutsceneCutFiles);
     }
 
     private static void CutsceneSoundEvents()
@@ -183,18 +185,26 @@ public static partial class MapPortChecks
         CutsceneMenu.AddEvents(common, entries);
         CutsceneMenu.AddEvents(common, entries); // again: replaced, not doubled
         var e = common.Events.Single(x => x.ID == CutsceneMenu.EventId(0));
-        Expect(common.Events.Count(x => CutsceneMenu.IsMenuEvent(x.ID)) == 2, "one event per cutscene");
-        Expect(common.Events[0].Instructions.Count(i => i.Bank == 2000) == 2, "started once each from the constructor");
+        var p = common.Events.Single(x => x.ID == CutsceneMenu.PlayEventId(0));
+        Expect(common.Events.Count(x => CutsceneMenu.IsMenuEvent(x.ID)) == 4, "a request and a play event per cutscene");
+        Expect(common.Events[0].Instructions.Count(i => i.Bank == 2000) == 4, "started once each from the constructor");
         var warp = e.Instructions.Single(i => i.Bank == 2003 && i.ID == 14);
         Expect(warp.ArgData[0] == 19 && warp.ArgData[1] == 70 && BitConverter.ToUInt32(warp.ArgData, 4) == 19700990, "warps to the map's start point");
-        var play = e.Instructions.Single(i => i.Bank == 2002);
+        Expect(e.Instructions.All(i => i.Bank != 2002) && e.Instructions.Any(i => i.Bank == 2003 && i.ID == 66 && BitConverter.ToUInt32(i.ArgData, 4) == CutsceneMenu.PendingFlag(0) && i.ArgData[8] == 1),
+            "the request marks the cutscene pending and plays nothing itself");
+        Expect(e.Instructions.FindIndex(i => i.Bank == 2003 && i.ID == 66 && BitConverter.ToUInt32(i.ArgData, 4) == CutsceneMenu.PendingFlag(0)) < e.Instructions.IndexOf(warp), "pending before the warp");
+        var play = p.Instructions.Single(i => i.Bank == 2002);
         Expect(play.ID == 11 && play.ArgData.Length == 28 && BitConverter.ToInt32(play.ArgData, 0) == 19700000 && BitConverter.ToUInt32(play.ArgData, 4) == 0
                && BitConverter.ToUInt32(play.ArgData, 8) == 19700990 && BitConverter.ToInt32(play.ArgData, 12) == 19700000 && BitConverter.ToUInt32(play.ArgData, 16) == 10000,
             "plays the cutscene to the player and warps back to the start point (2002[11], Elden Ring's own form)");
-        var loaded = e.Instructions.Single(i => i.Bank == 3 && i.ID == 30);
+        var loaded = p.Instructions.Single(i => i.Bank == 3 && i.ID == 30);
         Expect(loaded.ArgData[0] == 0 && loaded.ArgData[1] == 19 && loaded.ArgData[2] == 70, "waits for the map to load");
-        Expect(e.Instructions.IndexOf(warp) < e.Instructions.IndexOf(loaded) && e.Instructions.IndexOf(loaded) < e.Instructions.IndexOf(play), "warp, map loaded, then play");
+        Expect(BitConverter.ToUInt32(p.Instructions[0].ArgData, 4) == CutsceneMenu.PendingFlag(0) && p.Instructions[0].Bank == 1003, "the play event waits for the pending flag");
+        var clear = p.Instructions.FindIndex(i => i.Bank == 2003 && i.ID == 66 && BitConverter.ToUInt32(i.ArgData, 4) == CutsceneMenu.PendingFlag(0) && i.ArgData[8] == 0);
+        Expect(p.Instructions.IndexOf(loaded) < clear && clear < p.Instructions.IndexOf(play), "map loaded, pending cleared, then play");
         Expect(BitConverter.ToUInt32(e.Instructions[0].ArgData, 4) == CutsceneMenu.RequestFlag(0), "waits for its request flag");
+        Expect(CutsceneMenu.PendingFlag(0) == 1039290300 && CutsceneMenu.PlayEventId(0) == 1039291700 && CutsceneMenu.IsMenuEvent(1039291700) && !CutsceneMenu.IsMenuEvent(1039291600),
+            "pending flag in the saved range, play event IDs");
         var lines = CutsceneMenu.ListLines(entries).ToList();
         Expect(lines.Count == 3 && lines[1] == $"s45_00_0000\ts19_70_0000\tPainted World of Ariandel\tSister Friede, c6010\t46\t{CutsceneMenu.RequestFlag(0)}", lines[1]);
         Expect(CutsceneMenu.RequestFlag(0) == 1039292300 && CutsceneMenu.EventId(0) == 1039291300, "flag and event IDs");
@@ -213,6 +223,98 @@ public static partial class MapPortChecks
         var rename = CutscenePort.Renamer(new Dictionary<string, string> { ["c6020_0000"] = "c6020_9000", ["o459020_0000"] = "AEG099_001_9000" });
         Expect(rename("c6020_0000") == "c6020_9000" && rename("cam0010") is null && rename("c0000_0000") is null, "part renames");
         Expect(rename("o459020") == "AEG099", "a renamed part's model");
+        Expect(CutsceneCast.CutFileId("cut0145") == 1_450_000 && CutsceneCast.CutFileId("cut0011") == 110_000 && CutsceneCast.CutFileId("standby") == -1, "Elden Ring cut file IDs");
+    }
+
+    private static void CutsceneCastResolve()
+    {
+        // Friede's intro as DS3 names it (cutscene-survey 2026-11-12): placed parts, an object in another state, a collision.
+        var partNames = new Dictionary<string, string> { ["c6020_0000"] = "c7120_9000", ["o459020_0000"] = "AEG920_001_9000", ["c3000_0001"] = "c7000_9000" };
+        var models = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "c7120", "c7000", "c7010", "AEG920_001", "c4750" };
+        var resolve = CutsceneCast.Resolver(partNames, m => m == "c6010" ? "c7010" : null, models.Contains);
+        Expect(resolve("c6020_0000") == "c7120_9000", "a placed part takes its map name");
+        Expect(resolve("o459020_8000") == "AEG920_001_8000", "an object part the map doesn't place takes its model's asset, its own instance");
+        Expect(resolve("c6010_0001") == "c7010_0001", "a character the map doesn't place takes the enemy port's model");
+        Expect(resolve("c3000_0005") == "c7000_0005", "another instance of a placed character's model");
+        Expect(resolve("h45_00_00_00_008100") is null && resolve("o459200_8000") is null && resolve("c9999_0000") is null, "a collision, an unported object or character: no model");
+        Expect(resolve("c0000_0000") == "c0000_0000" && resolve("cam0010") == "cam0010" && resolve("d0003_0004") == "d0003_0004", "player, camera and dummies keep their names");
+        Expect(resolve("c4750_0000") == "c4750_0000", "an Elden Ring model's name stays");
+        Expect(CutsceneCast.ModelOf("AEG920_001_9000") == "AEG920_001" && CutsceneCast.ModelOf("c7120_9000") == "c7120" && CutsceneCast.ModelOf("o459020_0000") is null, "models of names");
+
+        var mqb = new MQB { Version = MQB.MQBVersion.DarkSouls3, Name = "NEW_SCENE", Framerate = 30, ResourceDirectory = "", Resources = [], Cuts = [] };
+        mqb.Resources.Add(new MQB.Resource { Name = "a0000.HKT", ParentIndex = -1, Unk48 = 266, Path = @"N:\FDP\data\Model\remo\scn\s45_00_0000\cut0010\hkx\a0000.HKT" }); // 0
+        mqb.Resources.Add(new MQB.Resource { Name = "c6020_0000", ParentIndex = 0, Unk48 = 1 });                  // 1 kept, renamed
+        mqb.Resources.Add(new MQB.Resource { Name = "h45_00_00_00_008100", ParentIndex = 0, Unk48 = 1 });         // 2 left out
+        mqb.Resources.Add(new MQB.Resource { Name = "under the collision", ParentIndex = 2, Unk48 = 103 });       // 3 left out with it
+        mqb.Resources.Add(new MQB.Resource { Name = "インゲーム描画", ParentIndex = -1, Unk48 = 239 });             // 4 DS3 draw setting
+        mqb.Resources.Add(new MQB.Resource { Name = "SE", ParentIndex = -1, Unk48 = 135 });                        // 5
+        var cut = new MQB.Cut { Name = "cut0010", Duration = 100, Timelines = [] };
+        MQB.Timeline Tl(params int[] res)
+        {
+            var tl = new MQB.Timeline();
+            foreach (var r in res)
+                tl.Events.Add(new MQB.Event { ResourceIndex = r, Duration = 100 });
+            return tl;
+        }
+        cut.Timelines.AddRange([Tl(0), Tl(1), Tl(2), Tl(3), Tl(4), Tl(5, 5)]);
+        mqb.Cuts.Add(cut);
+        var stats = new CutsceneCast.CastStats();
+        var drop = CutsceneCast.Unplayable(mqb, resolve, stats);
+        Expect(drop.SetEquals([2, 3, 4]), $"left out: the collision, what hangs under it, the draw setting ({string.Join(",", drop)})");
+        Expect(stats.Kept == 1 && stats.Renamed == 1 && stats.LeftOut.Single() == "h45_00_00_00_008100" && stats.DrawLeftOut == 1, stats.ToString());
+        CutsceneCast.Remove(mqb, drop);
+        Expect(mqb.Resources.Count == 3 && mqb.Resources[2].Name == "SE" && mqb.Resources[1].ParentIndex == 0, "resources re-indexed");
+        Expect(cut.Timelines.Count == 3 && cut.Timelines[2].Events.All(e => e.ResourceIndex == 2), "their timelines go, the others point at the moved indices");
+
+        // Through the whole binder conversion with an Elden Ring catalog that knows every kind.
+        var catalog = new CutscenePort.Catalog();
+        foreach (var k in new[] { 1, 103, 135, 239, 266 })
+            catalog.Kinds.Add(k);
+        var ds3 = new MQB { Version = MQB.MQBVersion.DarkSouls3, Name = "NEW_SCENE", Framerate = 30, ResourceDirectory = "", Resources = [], Cuts = [] };
+        ds3.Resources.Add(new MQB.Resource { Name = "a0000.HKT", ParentIndex = -1, Unk48 = 266, Path = @"N:\FDP\data\Model\remo\scn\s45_00_0000\cut0010\hkx\a0000.HKT" });
+        ds3.Resources.Add(new MQB.Resource { Name = "c6020_0000", ParentIndex = 0, Unk48 = 1 });
+        ds3.Resources.Add(new MQB.Resource { Name = "h45_00_00_00_008100", ParentIndex = 0, Unk48 = 1 });
+        var c2 = new MQB.Cut { Name = "cut0010", Duration = 100, Timelines = [Tl(0), Tl(1), Tl(2)] };
+        ds3.Cuts.Add(c2);
+        var bnd = new BND4();
+        bnd.Files.Add(new BinderFile(Binder.FileFlags.Flag1, 100_000_000, @"N:\FDP\data\INTERROOT_win64\remo\s45_00_0000\s45_00_0000.mqb", ds3.Write()));
+        var side = new CutscenePort.ErSide { Layout = new BND4(), Compression = new DCX.DcxDfltCompressionInfo(DCX.DfltCompressionPreset.DCX_DFLT_11000_44_9), Havok = new CutscenePort.HavokTemplate { Hkx = [] }, Catalog = catalog };
+        var (outBnd, outStats) = CutscenePort.ConvertBinder(bnd, "s45_00_0000", "s19_70_0000", _ => null, MapId.Parse("m45_00_00_00"), MapId.Parse("m19_70_00_00"), side, null, resolve);
+        var outMqb = MQB.Read(outBnd.Files.Single().Bytes);
+        Expect(outMqb.Resources.Select(r => r.Name).SequenceEqual(["a0000.HKT", "c7120_9000"]), string.Join(" ", outMqb.Resources.Select(r => r.Name)));
+        Expect(outStats.Cast.LeftOut.Count == 1 && outMqb.Cuts[0].Timelines.Count == 2, outStats.Cast.ToString());
+    }
+
+    private static void CutsceneCutFiles()
+    {
+        // Dancer's layout: cut0011 played from a0001 at ID 110001; Friede's: cut0000 standby files no cut plays.
+        var mqb = new MQB { Version = MQB.MQBVersion.DarkSouls3, Name = "s45_01_0010", Framerate = 30, ResourceDirectory = "", Resources = [], Cuts = [] };
+        mqb.Resources.Add(new MQB.Resource { Name = "a0001.HKT", ParentIndex = -1, Unk48 = 266, Path = @"N:\GR\data\Model\cutscene\scn\s45_01_0010\cut0011\hkx\a0001.HKT" });
+        mqb.Resources.Add(new MQB.Resource { Name = "a0000.HKT", ParentIndex = -1, Unk48 = 266, Path = @"N:\GR\data\Model\cutscene\scn\s45_01_0010\cut0020\hkx\a0000.HKT" });
+        var c1 = new MQB.Cut { Name = "cut0011", Duration = 10, Timelines = [] };
+        var t1 = new MQB.Timeline();
+        t1.Events.Add(new MQB.Event { ResourceIndex = 0, Duration = 10 });
+        c1.Timelines.Add(t1);
+        var c2 = new MQB.Cut { Name = "cut0020", Duration = 10, Timelines = [] };
+        var t2 = new MQB.Timeline();
+        t2.Events.Add(new MQB.Event { ResourceIndex = 1, Duration = 10 });
+        c2.Timelines.Add(t2);
+        mqb.Cuts.AddRange([c1, c2]);
+        var files = CutsceneCast.CutFiles(mqb);
+        Expect(files["cut0011"] == "a0001" && files["cut0020"] == "a0000", string.Join(" ", files));
+        Expect(CutsceneCast.RenameHkts(mqb) == 1 && mqb.Resources[0].Name == "a0000.HKT" && mqb.Resources[0].Path!.EndsWith(@"\cut0011\hkx\a0000.HKT"), mqb.Resources[0].Path ?? "");
+
+        const string dir = @"N:\GR\data\INTERROOT_win64\cutscene\s45_01_0010\";
+        var bnd = new BND4();
+        bnd.Files.Add(new BinderFile(Binder.FileFlags.Flag1, 0, dir + @"cut0000\a0000.hkx", [1]));
+        bnd.Files.Add(new BinderFile(Binder.FileFlags.Flag1, 110_001, dir + @"cut0011\a0001.hkx", [2]));
+        bnd.Files.Add(new BinderFile(Binder.FileFlags.Flag1, 200_000, dir + @"cut0020\a0000.hkx", [3]));
+        bnd.Files.Add(new BinderFile(Binder.FileFlags.Flag1, 100_000_000, dir + "s45_01_0010.mqb", [4]));
+        var stats = new CutsceneCast.CastStats();
+        CutsceneCast.LayOutCutFiles(bnd, files, stats);
+        Expect(bnd.Files.Count == 3 && bnd.Files[0].ID == 110_000 && bnd.Files[0].Name == dir + @"cut0011\a0000.hkx" && bnd.Files[1].ID == 200_000 && bnd.Files[2].ID == 100_000_000,
+            string.Join(" ", bnd.Files.Select(f => $"[{f.ID}]{f.Name}")));
+        Expect(stats.FilesRenamed == 1 && stats.FilesLeftOut == 1 && stats.Notes.Count == 0, stats.ToString());
     }
 
     private static MQB.Parameter P(string name, MQB.Parameter.DataType type, object value) => new() { Name = name, Type = type, Value = value, MemberCount = 1 };

@@ -211,6 +211,9 @@ public static class EnemyPort
         /// <summary>A ported DS3 model's name (c6020 -> Sister Friede), or null.</summary>
         public string? NameOf(string ds3Model) => _byModel.TryGetValue(ds3Model, out var e) ? e.Name : null;
 
+        /// <summary>A ported DS3 model's Elden Ring model (c6020 -> c7xxx), or null.</summary>
+        public string? ModelOf(string ds3Model) => _byModel.TryGetValue(ds3Model, out var e) ? e.Model : null;
+
         public static ChrMap Parse(IEnumerable<string> lines)
         {
             var map = new ChrMap();
