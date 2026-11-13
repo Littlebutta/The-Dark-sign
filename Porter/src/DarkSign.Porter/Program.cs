@@ -42,6 +42,7 @@ const string Usage = """
       timing-selftest              offline checks that ported moves' combo/cancel windows don't cut DS3 swings short
       enemy-diag survey|unpack <file>...  enemy port diagnostics: every character's skeleton and animation IDs; decompress files
       enemy-diag tae <anibnd> [from-to...]  a decompressed animation binder's TAE entries and events, and each file's length and blend hint
+      enemy-diag bones <DS3 chr> [template] [built] | bones all  how a DS3 model hangs on its skeleton (rigid meshes, model vs skeleton rest, how far clips turn item bones)
       enemy-selftest               offline checks of the enemy porter (templates, IDs, skin indices, chr map, TAE merge, effects, SpEffects, sound events)
       moveset-selftest             offline checks of how behaviour animation IDs are shared out among the ported movesets
       arts-selftest                offline checks of the weapon art port (hks patch, skill names)

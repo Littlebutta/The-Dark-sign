@@ -40,7 +40,9 @@ public static partial class EnemyDiag
             return Binder(ctx, args.Skip(1).ToList());
         if (args.Count >= 3 && args[0].Equals("matbin", StringComparison.OrdinalIgnoreCase))
             return Matbin(ctx, args[1], args.Skip(2).ToList());
-        Console.Error.WriteLine("enemy-diag survey | plan [build <DS3 chr>...] | textures <DS3 chr>... | binder <file>... | matbin <binder> <name part>... | unpack <file>...");
+        if (args.Count >= 2 && args[0].Equals("bones", StringComparison.OrdinalIgnoreCase))
+            return EnemyBonesDiag.Run(ctx, args.Skip(1).ToList());
+        Console.Error.WriteLine("enemy-diag survey | plan [build <DS3 chr>...] | textures <DS3 chr>... | binder <file>... | matbin <binder> <name part>... | unpack <file>... | bones <DS3 chr> [template chr] [built chr] | bones all");
         return 1;
     }
 
