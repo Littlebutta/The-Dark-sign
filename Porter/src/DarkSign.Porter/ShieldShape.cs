@@ -14,10 +14,11 @@ namespace DarkSign.Porter;
 /// along the same model axes.
 /// <para>A shield's shape gives three axes from its vertices (principal axes of their spread): the thin one (the face
 /// normal), the long one and the width. The thin axis is signed by where the plate lies from the grip (the model's
-/// origin is the hand, behind the plate), so the face can't end up turned towards the player. Of the proper rotations
-/// that put the ported shield's axes on the template's, the smallest one is taken; a round shield's long and wide axes
-/// may swap. When two choices are equally small (a quarter turn either way about the face), where the plate lies from
-/// the grip along its length decides, and if that can't either the shield is left as it is and the log says so.</para>
+/// origin is the hand, behind the plate). Only the face is laid on the template's, by the shortest turn (a shield
+/// facing the wrong way is turned round about its own length): the spin about the face stays the hold frames', since
+/// a shield's long axis says nothing about which way is up across two designs (2026-11-13: matching it turned the
+/// small shields on the near-round Buckler template onto their side). Shields with several models keep DS3's
+/// positions on a row of their own and are not checked here (see WeaponHold.Plan).</para>
 /// <para>DARKSIGN_SHIELD_SHAPE=0 turns the check off (the 1.0.420 hold: the dummy-frame turn alone).</para>
 /// </summary>
 public static class ShieldShape
@@ -26,9 +27,6 @@ public static class ShieldShape
 
     /// <summary>Turns smaller than this are measurement noise between two different shield designs: left alone.</summary>
     public const float MinDegrees = 15f;
-
-    /// <summary>Two candidate turns within this many degrees of each other are a tie.</summary>
-    public const float TieDegrees = 10f;
 
     /// <summary>Principal axes of a model's vertices: Axes[0] long, [1] wide, [2] thin; Sizes are standard deviations
     /// along them. Signs: thin axis points from the grip to the plate when FrontKnown, long axis towards the side of the
@@ -105,91 +103,47 @@ public static class ShieldShape
     {
         if (!ported.Flat || !template.Flat)
             return new Result(null, 0, $"not a flat shield shape (ported {ported}; template {template}), left as it is");
-        if (!ported.Elongated || !template.Elongated)
-        {
-            // A round shield (either one): its spin about the face means nothing, so only the face is laid on the
-            // template's, by the shortest turn.
-            var target = template.Axes[2];
-            if (!(ported.FrontKnown && template.FrontKnown) && Vector3.Dot(ported.Axes[2], target) < 0)
-                target = -target;
-            var arc = ShortestArc(ported.Axes[2], target);
-            float arcDegrees = WeaponHold.Degrees(arc);
-            return arcDegrees < MinDegrees
-                ? new Result(null, arcDegrees, $"round: its face matches the template's within {arcDegrees:0}°")
-                : new Result(arc, arcDegrees, $"round: face turned {arcDegrees:0}° onto the template's");
-        }
-        var candidates = new List<(Matrix4x4 Turn, float Degrees, bool SwapsLength, bool FlipsFront, bool FlipsLength)>();
-        int[][] perms = [[0, 1]];
-        foreach (var perm in perms)
-            foreach (int s0 in new[] { 1, -1 })
-                foreach (int s2 in new[] { 1, -1 })
-                {
-                    // Ported long/wide go to the template's perm[0]/perm[1] axis, thin to thin.
-                    var to = new Vector3[3];
-                    to[0] = s0 * template.Axes[perm[0]];
-                    to[2] = s2 * template.Axes[2];
-                    to[1] = Vector3.Cross(to[2], to[0]); // keep it a rotation (no mirror)
-                    var turn = Basis(ported.Axes[0], ported.Axes[1], ported.Axes[2], to[0], to[1], to[2]);
-                    candidates.Add((turn, WeaponHold.Degrees(turn), perm[0] != 0, s2 < 0, s0 < 0));
-                }
-        // The face must stay a face: when both shapes say where their plate lies, the thin axes keep their sign.
-        if (ported.FrontKnown && template.FrontKnown)
-            candidates.RemoveAll(c => c.FlipsFront);
-        var ranked = candidates.OrderBy(c => c.Degrees).ToList();
-        var best = ranked[0];
-        string how = "smallest turn";
-        if (ranked.Count > 1 && ranked[1].Degrees - best.Degrees < TieDegrees)
-        {
-            // A quarter turn either way about the face (or a half turn about either in-plane axis): the side of the
-            // grip the plate's centre lies on along its length decides, when both shapes show it.
-            if (ported.LengthKnown && template.LengthKnown && !best.SwapsLength)
-            {
-                var tied = ranked.Where(c => c.Degrees - best.Degrees < TieDegrees && !c.SwapsLength && !c.FlipsLength).ToList();
-                if (tied.Count != 1)
-                    return new Result(null, best.Degrees, $"ambiguous ({ranked[0].Degrees:0}° vs {ranked[1].Degrees:0}°), left as it is");
-                best = tied[0];
-                how = "grip position along the length";
-            }
-            else
-            {
-                // No clue from the grip: a half turn that keeps the length where the hold put it (turning the face
-                // round about the length) beats one that also stands the shield on its head; a quarter turn either way
-                // stays a tie.
-                var tied = ranked.Where(c => c.Degrees - best.Degrees < TieDegrees)
-                    .Select(c => (c, Keep: Vector3.Dot(Vector3.TransformNormal(ported.Axes[0], c.Turn), ported.Axes[0])))
-                    .OrderByDescending(x => x.Keep).ToList();
-                if (tied.Count < 2 || tied[0].Keep - tied[1].Keep < 0.5f)
-                    return new Result(null, best.Degrees, $"ambiguous ({ranked[0].Degrees:0}° vs {ranked[1].Degrees:0}°, grip position along the length unclear), left as it is");
-                best = tied[0].c;
-                how = "keeps the length where the hold put it";
-            }
-        }
-        if (best.Degrees < MinDegrees)
-            return new Result(null, best.Degrees, $"matches the template within {best.Degrees:0}°");
-        return new Result(best.Turn, best.Degrees, $"turned {best.Degrees:0}° onto the template's shape ({how})");
+        // Only the face is laid on the template's, by the shortest turn; the spin about the face stays the hold
+        // frames'. Matching the long axes too (1.0.4xx, #186) turned 7 shields on the near-round Buckler template
+        // (sizes 0.091/0.076, its "long" axis sideways) about 75° onto their side, and would stand a shield that is wider
+        // than tall on its edge: a shield's length says nothing about which way is up across two different designs.
+        var target = template.Axes[2];
+        if (!(ported.FrontKnown && template.FrontKnown) && Vector3.Dot(ported.Axes[2], target) < 0)
+            target = -target;
+        // Facing the wrong way: turned round about its own length, so its top stays up.
+        var arc = ShortestArc(ported.Axes[2], target, ported.Axes[0]);
+        float degrees = WeaponHold.Degrees(arc);
+        return degrees < MinDegrees
+            ? new Result(null, degrees, $"its face matches the template's within {degrees:0}°")
+            : new Result(arc, degrees, $"face turned {degrees:0}° onto the template's");
     }
 
     /// <summary>The smallest rotation taking unit vector a onto unit vector b (row vectors).</summary>
-    private static Matrix4x4 ShortestArc(Vector3 a, Vector3 b)
+    private static Matrix4x4 ShortestArc(Vector3 a, Vector3 b, Vector3 halfTurnAxis)
     {
         float dot = Math.Clamp(Vector3.Dot(a, b), -1f, 1f);
         var axis = Vector3.Cross(a, b);
+        if (dot < -0.98f)
+        {
+            // Nearly opposite: a half turn about the given axis, then the small rest.
+            var half = halfTurnAxis - Vector3.Dot(halfTurnAxis, a) * a;
+            if (half.LengthSquared() > 1e-8f)
+            {
+                var flip = Matrix4x4.CreateFromAxisAngle(Vector3.Normalize(half), MathF.PI);
+                var flipped = Vector3.Normalize(Vector3.TransformNormal(a, flip));
+                return flip * ShortestArc(flipped, b, halfTurnAxis);
+            }
+        }
         if (axis.LengthSquared() < 1e-10f)
         {
             if (dot > 0)
                 return Matrix4x4.Identity;
-            // Opposite: a half turn about any axis across a.
-            axis = Vector3.Cross(a, MathF.Abs(a.X) < 0.9f ? Vector3.UnitX : Vector3.UnitY);
+            // Opposite: a half turn about the given axis (made square to a).
+            axis = halfTurnAxis - Vector3.Dot(halfTurnAxis, a) * a;
+            if (axis.LengthSquared() < 1e-8f)
+                axis = Vector3.Cross(a, MathF.Abs(a.X) < 0.9f ? Vector3.UnitX : Vector3.UnitY);
         }
         return Matrix4x4.CreateFromAxisAngle(Vector3.Normalize(axis), MathF.Acos(dot));
-    }
-
-    /// <summary>The rotation taking orthonormal a0,a1,a2 onto b0,b1,b2 (row vectors: a_i times it = b_i).</summary>
-    private static Matrix4x4 Basis(Vector3 a0, Vector3 a1, Vector3 a2, Vector3 b0, Vector3 b1, Vector3 b2)
-    {
-        var a = new Matrix4x4(a0.X, a0.Y, a0.Z, 0, a1.X, a1.Y, a1.Z, 0, a2.X, a2.Y, a2.Z, 0, 0, 0, 0, 1);
-        var b = new Matrix4x4(b0.X, b0.Y, b0.Z, 0, b1.X, b1.Y, b1.Z, 0, b2.X, b2.Y, b2.Z, 0, 0, 0, 0, 1);
-        return Matrix4x4.Transpose(a) * b; // inverse of an orthonormal basis is its transpose
     }
 
     /// <summary>Jacobi eigen decomposition of a symmetric 3x3 matrix: eigenvalues and eigenvectors (columns).</summary>
@@ -270,60 +224,49 @@ public static class ShieldShape
         Check(template.Flat && template.Elongated && template.FrontKnown, "shape: a greatshield plate is flat, long, and its front is known");
         Check(Near(template.Axes[2], Vector3.UnitZ) && Near(template.Axes[0], Vector3.UnitY), "shape: thin axis points at the plate, long axis at its centre");
 
-        // Same convention: nothing to do.
         var same = Match(Measure(Shield(Vector3.UnitY, Vector3.UnitX, Vector3.UnitZ, 1.10f, 0.70f))!, template);
-        Check(same.Turn is null && same.Degrees < 1, $"match: a shield already on the template's axes is left alone ({same.Note})");
+        Check(same.Turn is null && same.Degrees < 1, $"match: a shield already facing like the template is left alone ({same.Note})");
 
-        // The playtest's case: a quarter turn about the face (long along X).
-        var quarter = Shield(-Vector3.UnitX, Vector3.UnitY, Vector3.UnitZ, 1.25f, 0.76f);
-        var q = Match(Measure(quarter)!, template);
-        Check(q.Turn is not null && MathF.Abs(q.Degrees - 90) < 1, $"match: a shield a quarter turn about its face is turned 90° ({q.Note})");
-        if (q.Turn is { } qt)
-        {
-            var turned = Measure(quarter.Select(p => Vector3.Transform(p, qt)).ToList())!;
-            Check(Near(turned.Axes[0], Vector3.UnitY) && Near(turned.Axes[2], Vector3.UnitZ),
-                "match: once turned its length lies along the template's (top up, not upside down) and its face the same way");
-        }
+        // Spin about the face is the hold frames' business: a shield lying across its face (or a wide one) is left as
+        // it is, and so is a tall shield on the near-round Buckler template whose "long" axis is sideways.
+        var across = Match(Measure(Shield(-Vector3.UnitX, Vector3.UnitY, Vector3.UnitZ, 1.25f, 0.76f))!, template);
+        Check(across.Turn is null, $"match: a spin about the face is not changed ({across.Note})");
+        var buckler = Measure(Shield(Vector3.UnitX, -Vector3.UnitY, Vector3.UnitZ, 0.091f * 3.4f, 0.076f * 3.4f, lift: 0f))!;
+        var tall = Match(Measure(Shield(Vector3.UnitY, Vector3.UnitX, Vector3.UnitZ, 0.45f, 0.35f))!, buckler);
+        Check(tall.Turn is null, $"match: a tall small shield on the Buckler template stays upright ({tall.Note})");
 
-        // Face turned towards the player (thin axis reversed, long kept): a half turn about the length.
+        // Face turned towards the player: a half turn about its length, so its top stays up.
         var backwards = Shield(Vector3.UnitY, -Vector3.UnitX, -Vector3.UnitZ, 1.2f, 0.6f);
         var b = Match(Measure(backwards)!, template);
         Check(b.Turn is { } bt && Near(Measure(backwards.Select(p => Vector3.Transform(p, bt)).ToList())!.Axes[2], Vector3.UnitZ),
             $"match: a shield facing the wrong way is turned to face out ({b.Note})");
-        Check(b.Turn is { } bt2 && Near(Vector3.TransformNormal(Vector3.UnitY, bt2), Vector3.UnitY), "match: ...about its length, so its top stays up");
+        Check(b.Turn is { } bt2 && Vector3.TransformNormal(Vector3.UnitY, bt2).Y > 0.99f, "match: ...about its length, so its top stays up");
 
-        // Shield seen edge-on (face along X): a quarter turn about the length.
+        // Held edge-on (face along X): turned to face out.
         var edge = Shield(Vector3.UnitY, -Vector3.UnitZ, Vector3.UnitX, 1.2f, 0.6f);
         var e = Match(Measure(edge)!, template);
-        Check(e.Turn is { } et && Near(Measure(edge.Select(p => Vector3.Transform(p, et)).ToList())!.Axes[2], Vector3.UnitZ),
-            $"match: a shield held edge-on is turned to face out ({e.Note})");
-
-        // Facing the wrong way with the plate centred on the grip along its length: turned about its length.
-        var backCentred = Shield(Vector3.UnitY, -Vector3.UnitX, -Vector3.UnitZ, 1.2f, 0.6f, lift: 0f);
-        var bc = Match(Measure(backCentred)!, template);
-        Check(bc.Turn is { } bct && Near(Vector3.TransformNormal(-Vector3.UnitZ, bct), Vector3.UnitZ) && Vector3.TransformNormal(Vector3.UnitY, bct).Y > 0.99f,
-            $"match: facing the wrong way with no length clue is turned about its length ({bc.Note})");
+        Check(e.Turn is { } et && Near(Measure(edge.Select(p => Vector3.Transform(p, et)).ToList())!.Axes[2], Vector3.UnitZ)
+              && Vector3.TransformNormal(Vector3.UnitY, et).Y > 0.99f, $"match: a shield held edge-on is turned to face out, top still up ({e.Note})");
 
         // A small tilt (two different designs) is not worth a turn.
         var tilt = Matrix4x4.CreateRotationX(10f * MathF.PI / 180f);
         var t = Match(Measure(Shield(Vector3.UnitY, Vector3.UnitX, Vector3.UnitZ, 1.1f, 0.7f).Select(p => Vector3.Transform(p, tilt)).ToList())!, template);
         Check(t.Turn is null, $"match: a 10° difference is left alone ({t.Note})");
 
-        // Quarter turn with the plate centred on the grip along its length: no way to tell up from down.
-        var centred = Match(Measure(Shield(-Vector3.UnitX, Vector3.UnitY, Vector3.UnitZ, 1.25f, 0.76f, lift: 0f))!, template);
-        Check(centred.Turn is null && centred.Note.Contains("ambiguous"), $"match: a quarter turn with no clue to which end is up is left alone ({centred.Note})");
-
-        // A round shield: in-plane spin is meaningless, the face still has to point out.
+        // A round shield facing sideways.
         var roundTemplate = Measure(Shield(Vector3.UnitY, Vector3.UnitX, Vector3.UnitZ, 0.6f, 0.6f, lift: 0f))!;
         var round = Match(Measure(Shield(Vector3.UnitY, Vector3.UnitZ, -Vector3.UnitX, 0.6f, 0.6f, lift: 0f))!, roundTemplate);
         Check(round.Turn is { } rt && Near(Vector3.TransformNormal(-Vector3.UnitX, rt), Vector3.UnitZ, 0.05f),
             $"match: a round shield facing sideways is turned to face out ({round.Note})");
 
-        // A thick, chunky model is not judged as a shield.
         var cube = new List<Vector3>();
         for (int i = 0; i < 27; i++)
             cube.Add(new Vector3(i % 3, i / 3 % 3, i / 9) * 0.1f);
         Check(Match(Measure(cube)!, template).Turn is null, "match: a model that isn't flat is left alone");
+
+        // Hold per model: a part with no turn of its own takes model 0's.
+        var hold = new WeaponHold.Hold(new Dictionary<int, Matrix4x4> { [0] = tilt, [1] = Matrix4x4.Identity }, false);
+        Check(hold.TurnFor(0) == tilt && hold.TurnFor(1).IsIdentity && hold.TurnFor(2) == tilt, "hold: each model takes its own part's turn, else model 0's");
         Console.WriteLine(failures == 0 ? "shield-shape selftest: all checks passed" : $"shield-shape selftest: {failures} failed");
         return failures == 0 ? 0 : 1;
     }
