@@ -13,7 +13,8 @@ public static partial class MapPortChecks
     {
         yield return ("visuals: a piece copied from a reflection-only host piece draws in the main camera", ReflectionOnlyHost);
         yield return ("visuals: every ported mesh takes its material's vanilla vertex layout and Elden Ring's culling box", MeshLayoutAndBox);
-        yield return ("visuals: DS3 materials sort into kinds; effect, decal, water and shadow meshes are left out", MaterialKinds);
+        yield return ("visuals: DS3 materials sort into kinds; effect, decal and shadow meshes are left out", MaterialKinds);
+        yield return ("visuals: DS3 water is drawn with Elden Ring's own pool water (M_MuddyWater) as it is, and left out when no water template was found", WaterSurface);
         yield return ("visuals: UVs that a short can't hold are rescaled or moved by whole tiles", UvRange);
         yield return ("visuals: pieces name a PartsDrawParam row, carry no masks", DrawSettings);
         yield return ("visuals: pieces whose models carry DS3's lower detail lists switch to them at vanilla's distances", LowerDetail);
@@ -577,7 +578,36 @@ public static partial class MapPortChecks
         Expect(kept.Textures.Count == 0 && kept.Fresh().TemplateTextures, "ported-material: no texture asked for, and a fresh port keeps the mode");
     }
 
-    private static (MapModelPort Port, BND4 HostBnd) VisualPort(bool plain = false)
+    private static void WaterSurface()
+    {
+        var pool = SyntheticFlver(0x20014, @"N:\FDP\data\Material\mtd\map\M[ARSN]_Water_3normaltet.mtd", ("g_DiffuseTexture", @"N:\x\m40_00_water_a.tif"));
+        var wall = SyntheticFlver(0x20014, @"N:\FDP\data\Material\mtd\map\M[ARSN].mtd", ("g_DiffuseTexture", @"N:\x\m40_00_wall_a.tif"));
+        var both = FLVER2.Read(wall.Write());
+        both.Materials.Add(pool.Materials[0]);
+        var poolMesh = FLVER2.Read(pool.Write()).Meshes[0];
+        poolMesh.MaterialIndex = 1;
+        both.Meshes.Add(poolMesh);
+
+        var (dry, dryHost) = VisualPort();
+        Expect(!dry.HasWater, "no water template among Stormveil-like models");
+        var kept = ConvertOne(dry, dryHost, FLVER2.Read(both.Write()));
+        Expect(kept.Meshes.Count == 1 && dry.LeftOut.ContainsKey("M[ARSN]_Water_3normaltet"), "without a water template the pool is left out, the wall stays");
+
+        var (port, hostBnd) = VisualPort(water: true);
+        Expect(port.HasWater && port.TemplateSummary.Contains("water=m22_00_110"), $"Volcano Manor's pool water is the template ({port.TemplateSummary})");
+        var flver = ConvertOne(port, hostBnd, FLVER2.Read(both.Write()));
+        Expect(flver.Meshes.Count == 2, $"wall and pool kept ({flver.Meshes.Count} meshes)");
+        var water = flver.Materials.Single(m => m.MTD.Contains("m22_00_110"));
+        Expect(water.MTD.EndsWith(@"\m22_00_110.matxml", StringComparison.Ordinal) && water.Textures.All(t => t.Path == ""), $"the vanilla material as it is ({water.MTD})");
+        var waterMesh = flver.Meshes.Single(m => flver.Materials[m.MaterialIndex] == water);
+        var kinds = MapModelPort.Kinds.Where(k => port.TemplateSummary.Contains(k + "=")).ToList();
+        // (Identical GX lists are written once, so the GX index read back can be another kind's: the layout tells.)
+        Expect(waterMesh.VertexBuffers[0].LayoutIndex == kinds.IndexOf("water"), $"its own vertex layout ({waterMesh.VertexBuffers[0].LayoutIndex}, kinds {string.Join(",", kinds)})");
+        Expect(!port.Materials.Any(m => m.Template.Kind == "water"), "no MATBIN of the port's own for water");
+        Expect(port.Textures.All(t => !t.Contains("water")), "the DS3 water texture isn't asked for");
+    }
+
+    private static (MapModelPort Port, BND4 HostBnd) VisualPort(bool plain = false, bool water = false)
     {
         var matbins = new Dictionary<string, BinderFile>();
         var flvers = new List<FLVER2>();
@@ -599,6 +629,8 @@ public static partial class MapPortChecks
         Add("m10_00_218", "M[AMSN_V]_Alpha", "M_AMSN_V__Alpha_snp_Texture2D_0_AlbedoMap_0", "M_AMSN_V__Alpha_snp_Texture2D_1_NormalMap_0");
         Add("m10_00_003", "M[A]_NoLight", "M_A__NoLight_snp_Texture2D_0_AlbedoMap_0");
         Add("m10_00_185", "M[AMSN_V]_Grass", "M_AMSN_V__Grass_snp_Texture2D_0_AlbedoMap_0", "M_AMSN_V__Grass_snp_Texture2D_1_NormalMap_0");
+        if (water)
+            Add("m22_00_110", "M_MuddyWater", "M_MuddyWater__snp_Texture2D_0_NormalMap_0", "M_MuddyWater__snp_Texture2D_2_NormalMap_0");
         var hostBnd = new BND4();
         hostBnd.Files.Add(new BinderFile(Binder.FileFlags.Flag1, 200, @"N:\GR\data\Model\map\m45_00_00_00\m45_00_00_00_001000\sib\m45_00_00_00_001000.flver", flvers[0].Write()));
         return (MapModelPort.Create(flvers, matbins, flvers[0], plain), hostBnd);
@@ -701,7 +733,7 @@ public static partial class MapPortChecks
                      ("M[ARSN]", "opaque"), ("M[ARSN]_l", "opaque"), ("M[ARSN]_4m_et1_l", "opaque"), ("M[ARSN]_e", "edge"), ("M[ARSN]_l_e", "edge"),
                      ("M[ARSN]_e_grass", "edge"), ("M[ARSN]_Alp", "edge"), ("M[A]_NoLight", "nolight"), ("M[A]_2m_NoLight_scroll", "nolight"),
                      ("M[A]_al_NoLight", "none"), ("M[A]_al_m_NoLight_Opacity", "none"), ("M[ARSN]_al", "alpha"), ("M[A]_Add_NoLight", "none"),
-                     ("M[ARSN]_Decal", "none"), ("M[Shadow]", "none"), ("M[ARSN]_Water_3normaltet", "none"), ("M[Fog]", "none"),
+                     ("M[ARSN]_Decal", "none"), ("M[Shadow]", "none"), ("M[ARSN]_Water_3normaltet", "water"), ("M[ARSN]_Water_DL", "water"), ("M[A]_Waterfall_add", "none"), ("M[Fog]", "none"),
                  })
             Expect(Kind(mtd) == kind, $"{mtd} is {Kind(mtd)}, expected {kind}");
 

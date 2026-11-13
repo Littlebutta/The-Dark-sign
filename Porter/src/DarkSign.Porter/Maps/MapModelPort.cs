@@ -28,7 +28,30 @@ public sealed class MapModelPort
         FLVER2.BufferLayout Layout, int Rank = 0);
 
     /// <summary>The kinds of template, in the order their GX lists and layouts are written.</summary>
-    public static readonly string[] Kinds = ["opaque", "edge", "alpha", "nolight"];
+    public static readonly string[] Kinds = ["opaque", "edge", "alpha", "nolight", "water"];
+
+    /// <summary>The kinds the template search looks for in the template maps (water comes from <see cref="WaterBinders"/>).</summary>
+    public static readonly string[] SearchedKinds = ["opaque", "edge", "alpha", "nolight"];
+
+    /// <summary>
+    /// Elden Ring map binders holding a plain water surface, tried in order for the "water" template. Elden Ring's
+    /// small still water (M_MuddyWater: m22_00_110 in Volcano Manor's 900004, m35_00_400 in the Shunning-Grounds'
+    /// 000007) takes the same vertex layout as the port's other materials (position, normal, tangent, colour, UV0
+    /// short, UV1) and no textures of its own (JortPob's MaterialInfo.xml); M_Water_Cheap (m12_03's 000004) is the
+    /// fallback. The sea shaders (Field_sea_05, JortPob's choice for Morrowind's ocean) need eight UV channels laid
+    /// out as a shoreline ring, which DS3's pools don't have.
+    /// </summary>
+    public static readonly (MapId Map, string Model)[] WaterBinders =
+        [(new MapId(22, 0, 0, 0), "900004"), (new MapId(35, 0, 0, 0), "000007"), (new MapId(12, 3, 0, 0), "000004")];
+
+    /// <summary>Elden Ring water shaders a DS3 water surface can be drawn with (the MATBIN's shader file name).</summary>
+    private static readonly Regex WaterShader = new(@"^M_(MuddyWater|Water_Cheap)$", RegexOptions.IgnoreCase);
+
+    /// <summary>Fallback "map-water" B: DARKSIGN_MAP_WATER=0 leaves DS3's water out again (builds up to 1.0.42x).</summary>
+    public static bool WaterEnabled => Environment.GetEnvironmentVariable("DARKSIGN_MAP_WATER") != "0";
+
+    /// <summary>True when a water template was found.</summary>
+    public bool HasWater => _templates.ContainsKey("water");
 
     public const string BlackMetallic = "DKS_black_m";
 
@@ -230,7 +253,7 @@ public sealed class MapModelPort
 
     /// <summary>True when every kind has its best template (nothing more to look for in further maps).</summary>
     public bool Complete(bool plain) =>
-        plain ? _templates["opaque"].Rank == PlainRank : Kinds.All(_templates.ContainsKey) && _templates["opaque"].Rank == 0;
+        plain ? _templates["opaque"].Rank == PlainRank : SearchedKinds.All(_templates.ContainsKey) && _templates["opaque"].Rank == 0;
 
     private const int PlainRank = 2;
 
@@ -276,6 +299,9 @@ public sealed class MapModelPort
     /// <summary>The kind and how good a template it is: 0 normal-mapped, 1 with a metallic map too, 2 albedo only.</summary>
     public static (string Kind, int Rank)? ClassifyRanked(MATBIN matbin)
     {
+        // Water: its textures live in the MATBIN, so the material is used as it is (no samplers to fill).
+        if (WaterShader.Match(Path.GetFileNameWithoutExtension(ItemText.Leaf(matbin.ShaderPath ?? ""))) is { Success: true } w)
+            return WaterEnabled ? ("water", w.Groups[1].Value.Equals("MuddyWater", StringComparison.OrdinalIgnoreCase) ? 0 : 1) : null;
         var roles = matbin.Samplers.Select(x => Role(x.Type)).Where(r => r is not null).Select(r => r!.Value).ToList();
         // Terrain blend materials (most of Elden Ring's legacy dungeon pieces) mix layers through a mask: not usable.
         if (roles.Any(r => r.Role == "blend" || r.Layer > 0) || roles.Count(r => r == ("albedo", 0)) != 1
@@ -300,6 +326,10 @@ public sealed class MapModelPort
     {
         var mtd = Path.GetFileNameWithoutExtension(ItemText.Leaf(material.MTD ?? ""));
         bool noLight = mtd.Contains("NoLight", StringComparison.OrdinalIgnoreCase);
+        // A water surface (M[ARSN]_Water_3normaltet in Firelink, M[ARSN]_Water_DL on the High Wall); not waterfalls,
+        // which are flowing cards with their own textures.
+        if (Regex.IsMatch(mtd, @"water(?!fall)", RegexOptions.IgnoreCase) && !Regex.IsMatch(mtd, @"_add|decal|_mul|sfx", RegexOptions.IgnoreCase))
+            return "water";
         if (Regex.IsMatch(mtd, @"_add|decal|fog|shadow|_mul|water|sfx|ghost", RegexOptions.IgnoreCase))
             return "none";
         if (Regex.IsMatch(mtd, @"_al(?![a-z])", RegexOptions.IgnoreCase))
@@ -315,7 +345,7 @@ public sealed class MapModelPort
     private MaterialTemplate? TemplateFor(string kind) =>
         kind == "none" ? null
         : _templates.TryGetValue(kind, out var t) ? t
-        : kind == "alpha" ? null
+        : kind is "alpha" or "water" ? null
         : _templates["opaque"];
 
     /// <summary>
@@ -808,7 +838,8 @@ public sealed class MapModelPort
         {
             var template = TemplateFor(Ds3Kind(m)) ?? _templates["opaque"];
             var kind = template.Kind;
-            if (VanillaMaterials)
+            // Water is Elden Ring's own material as it is: its look (normal maps, colour) lives in its MATBIN.
+            if (VanillaMaterials || kind == "water")
             {
                 var vanilla = template.Material;
                 m.Name = vanilla.Name;

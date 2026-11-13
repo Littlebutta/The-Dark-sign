@@ -14,6 +14,7 @@ public static partial class MapPortChecks
         yield return ("regions: DS3 script regions, spawn points and patrol points are carried with their entity IDs; emitters are left out", Regions);
         yield return ("regions: patrol routes, platoons and generators name the ported enemies and points", MapFileEvents);
         yield return ("map effects: DS3 SFX regions (Firelink's candles) become Elden Ring SFX regions naming the converted effect", MapEffects);
+        yield return ("object effects: a lit DS3 candle (ModelSfxParam row model*1000+rel) becomes an AssetModelSfxParam row and a part naming it; unlit and unconverted stay -1", ObjectEffects);
         yield return ("objects: models are numbered in name order into free asset groups", ObjectNumbers);
         yield return ("objects: a DS3 object model becomes an asset binder with its vertices in model space and its textures", ObjectModel);
         yield return ("objects: every DS3 object part becomes an asset part with its entity ID, and can be taken out again", ObjectParts);
@@ -117,6 +118,92 @@ public static partial class MapPortChecks
         MapSfx.Convert(ds3, msb, Ds3Id, ErId, converted);
         Expect(msb.Regions.SFX.Count == 2, $"a rerun keeps two SFX regions ({msb.Regions.SFX.Count})");
         Expect(MapSfx.Convert(ds3, msb, Ds3Id, ErId, new Dictionary<int, int>()).Added == 0 && msb.Regions.SFX.Count == 0, "with no converted effects none are added");
+    }
+
+    private static void ObjectEffects()
+    {
+        // DS3's rows: o391000's lit candle 391000000 = effect 839010 on dummy 200 (as in DS3's regulation), a second
+        // row whose effect doesn't convert, and o001240's brazier with two slots.
+        var ds3Def = new PARAMDEF { ParamType = "MODEL_SFX_PARAM_ST", DataVersion = 1 };
+        for (int i = 1; i <= ObjectSfx.Ds3Slots; i++)
+        {
+            ds3Def.Fields.Add(new PARAMDEF.Field(ds3Def, PARAMDEF.DefType.s32, $"VfxId{i}"));
+            ds3Def.Fields.Add(new PARAMDEF.Field(ds3Def, PARAMDEF.DefType.s32, $"DummyPolyId{i}"));
+        }
+        PARAM.Row Ds3Row(int id, params (int Fx, int Dummy)[] slots)
+        {
+            var row = new PARAM.Row(id, "", ds3Def);
+            for (int i = 0; i < slots.Length; i++)
+            {
+                row[$"VfxId{i + 1}"].Value = slots[i].Fx;
+                row[$"DummyPolyId{i + 1}"].Value = slots[i].Dummy;
+            }
+            return row;
+        }
+        var ds3Param = new PARAM { ParamType = ds3Def.ParamType, Rows =
+            [Ds3Row(1240000, (839010, 200), (34, 202)), Ds3Row(391000000, (839010, 200)), Ds3Row(391000001, (839012, 200))] };
+        var erDef = new PARAMDEF { ParamType = "ASSET_MODEL_SFX_PARAM_ST", DataVersion = 1 };
+        for (int i = 0; i < ObjectSfx.ErSlots; i++)
+        {
+            erDef.Fields.Add(new PARAMDEF.Field(erDef, PARAMDEF.DefType.s32, $"sfxId_{i}") { Default = -1 });
+            erDef.Fields.Add(new PARAMDEF.Field(erDef, PARAMDEF.DefType.s32, $"dmypolyId_{i}") { Default = -1 });
+        }
+        var vanilla = new PARAM.Row(228039000, "Roundtable candle", erDef);
+        vanilla["sfxId_0"].Value = 800401;
+        vanilla["dmypolyId_0"].Value = 200;
+        var erParam = new PARAM { ParamType = erDef.ParamType, Rows = [vanilla] };
+
+        var ds3 = SyntheticDs3();
+        ds3.Models.Objects.Add(new MSB3.Model.Object { Name = "o391000" });
+        ds3.Models.Objects.Add(new MSB3.Model.Object { Name = "o001240" });
+        MSB3.Part.Object Obj(string name, string model, short rel)
+        {
+            var o = new MSB3.Part.Object { Name = name, ModelName = model };
+            o.ModelSfxParamRelativeIDs[0] = rel;
+            ds3.Parts.Objects.Add(o);
+            return o;
+        }
+        Obj("o391000_1000", "o391000", 0);    // lit
+        Obj("o391000_1001", "o391000", -1);   // unlit
+        Obj("o391000_1002", "o391000", 1);    // its effect isn't converted
+        Obj("o001240_1000", "o001240", 0);    // brazier: one of two effects converts
+        Obj("o001240_1001", "o001240", 5);    // names a row DS3 doesn't have
+        Expect(ObjectSfx.Wanted(ds3, ds3Param).SequenceEqual([34, 839010, 839012]), "port-weapons asks for every effect the parts' rows name");
+        Expect(ObjectSfx.ModelNumber("o391000") == 391000 && ObjectSfx.ModelNumber("m391000") == -1 && ObjectSfx.AssetRow("AEG920_207") == 920207,
+            "model and asset row numbers");
+
+        var msb = new MSBE();
+        msb.Models.Assets.Add(new MSBE.Model.Asset { Name = "AEG920_207" });
+        msb.Models.Assets.Add(new MSBE.Model.Asset { Name = "AEG920_010" });
+        var names = new Dictionary<string, string>();
+        foreach (var (src, asset, i) in new[] { ("o391000_1000", "AEG920_207", 0), ("o391000_1001", "AEG920_207", 1), ("o391000_1002", "AEG920_207", 2),
+                     ("o001240_1000", "AEG920_010", 0), ("o001240_1001", "AEG920_010", 1) })
+        {
+            var part = ObjectPort.NewPart();
+            part.Name = $"{asset}_{9000 + i:D4}";
+            part.ModelName = asset;
+            part.AssetSfxParamRelativeID = 7;   // a stale value from nowhere: every placed part is set
+            msb.Parts.Assets.Add(part);
+            names[src] = part.Name;
+        }
+        var converted = new Dictionary<int, int> { [839010] = FxrPort.IdBase + 839010 };
+        var result = ObjectSfx.Convert(ds3, msb, names, ds3Param, converted, erParam);
+        Expect(result.Parts == 2 && result.Rows == 2 && result.NoRow == 1 && result.NotConverted == 1 && result.MissingByEffect.GetValueOrDefault(839012) == 1,
+            $"two lit parts, two rows; one part with no DS3 row, one with nothing converted ({result.Summary(Ds3Id, ErId)})");
+        int Rel(string asset, int i) => msb.Parts.Assets.Single(a => a.Name == $"{asset}_{9000 + i:D4}").AssetSfxParamRelativeID;
+        Expect(Rel("AEG920_207", 0) == 0 && Rel("AEG920_207", 1) == -1 && Rel("AEG920_207", 2) == -1 && Rel("AEG920_010", 0) == 0 && Rel("AEG920_010", 1) == -1,
+            "lit parts get DS3's relative ID, the rest -1");
+        var candle = erParam[920207000];
+        Expect(candle is not null && (int)candle["sfxId_0"].Value == 900_839_010 && (int)candle["dmypolyId_0"].Value == 200 && (int)candle["sfxId_1"].Value == -1,
+            "the candle's row: asset row * 1000 + rel, converted effect on DS3's dummy poly, other slots empty");
+        var brazier = erParam[920010000];
+        Expect(brazier is not null && (int)brazier["sfxId_0"].Value == 900_839_010 && (int)brazier["dmypolyId_1"].Value == -1, "an unconverted slot is left out, not written as DS3's ID");
+        Expect(erParam[920207001] is null && erParam[228039000] is not null, "no row without a converted effect; vanilla rows kept");
+        Expect(erParam.Rows.Select(r => r.ID).SequenceEqual(erParam.Rows.Select(r => r.ID).Order()), "rows in ID order");
+        MSBE.Read(msb.Write());
+        // A rerun replaces its rows instead of adding them twice.
+        ObjectSfx.Convert(ds3, msb, names, ds3Param, converted, erParam);
+        Expect(erParam.Rows.Count == 3, $"a rerun keeps three rows ({erParam.Rows.Count})");
     }
 
     private static void MapFileEvents()
