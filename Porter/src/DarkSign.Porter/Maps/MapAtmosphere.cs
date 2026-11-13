@@ -12,7 +12,8 @@ namespace DarkSign.Porter.Maps;
 /// <list type="bullet">
 /// <item>LightSet: the sun's angle and the colour (red, green, blue) of the sun and the second directional light from
 /// DS3's light set 0, the one nearly every DS3 map piece names (m30_00: 2,049 of 2,273; m31_00: 2,808; m40_00:
-/// 3,502). How strong each light is (the fourth value) stays Elden Ring's: DS3's strengths are on another scale.</item>
+/// 3,502). How strong each light is (the fourth value) stays Elden Ring's: DS3's strengths are on another scale.
+/// The sun's direction is turned by DS3's map offset (<see cref="SunTurn"/>).</item>
 /// <item>VolumetricFog: the colours from DS3's fog 0 (Fog-Color for the sunward glow, heightColor for the rest); how
 /// thick the fog is, how far it reaches and how strongly it is lit come from Stormveil Castle (m10_00, an outdoor
 /// castle like DS3's maps, its first time of day), with the height fog starting at the DS3 map's own ground.</item>
@@ -37,7 +38,8 @@ public static class MapAtmosphere
     }
 
     /// <summary>port-maps step: writes the slot's gparam. Returns a line for the log.</summary>
-    public static string Write(PorterContext ctx, GameArchives ds3, GameArchives er, MapId ds3Id, MapId erId, MapId hostId, MSB3 ds3Msb, bool hostAtmosphere)
+    public static string Write(PorterContext ctx, GameArchives ds3, GameArchives er, MapId ds3Id, MapId erId, MapId hostId, MSB3 ds3Msb, bool hostAtmosphere,
+        bool unturnedSun = false)
     {
         if (hostAtmosphere)
             return "atmosphere: the host's own colours, fog and colour grading (--host-atmosphere)";
@@ -50,7 +52,9 @@ public static class MapAtmosphere
         var (hostBytes, compression) = er.ReadWithCompression(hostPath);
         var gparam = GPARAM.Read(hostBytes);
         var ds3Draw = GPARAM.Read(ds3.Read(source));
-        var changes = Apply(gparam, ds3Draw, GroundHeight(ds3Msb));
+        var changes = Apply(gparam, ds3Draw, GroundHeight(ds3Msb), unturnedSun ? 0 : MapLighting.OffsetDegrees(ds3Msb));
+        if (unturnedSun && MapLighting.OffsetDegrees(ds3Msb) != 0)
+            changes.Add("sun direction as DS3's file writes it, not turned with the map (--unturned-sun)");
         var target = ctx.ModPath(MapPorter.ModParts(GparamPath(erId)));
         Directory.CreateDirectory(Path.GetDirectoryName(target)!);
         File.WriteAllBytes(target, DCX.Compress(gparam.Write(), compression));
@@ -70,8 +74,29 @@ public static class MapAtmosphere
         return heights.Count == 0 ? 0 : heights[heights.Count / 20];
     }
 
+    /// <summary>
+    /// The sun's angle (elevation, yaw in radians) in the layout's space: DS3's yaw turned by the map offset's
+    /// <paramref name="offsetDegrees"/>. DS3 keeps a map's lighting in the map's own space, like its lamps (.btl) and
+    /// light probes (.btpb), which the map offset moves into place (<see cref="MapLighting.PortLights"/>,
+    /// <see cref="MapBakedLight.ReadProbes"/>); the map pieces themselves are already placed in the layout. Measured on
+    /// Firelink Shrine's probes (map 1, offset 28 degrees), whose first-order terms carry DS3's baked sunlight: in the
+    /// map's own space their sunward pull peaks at a yaw of 90 to 100 degrees, where light set 0 puts the sun (89),
+    /// not at the 61 the unturned angle would mean there (<see cref="MapBakedLight.SunYawFromProbes"/>). Up to this
+    /// change the sun kept DS3's angle as written, so on Undead Settlement (map 3, offset -156 degrees) it shone from
+    /// almost the opposite side to the one DS3's baked shade was made for: the realtime shadows fell where DS3's
+    /// baked light (now the rooms' and streets' light volumes) is brightest, and the shade DS3 baked lay where Elden
+    /// Ring's sun shines, so roofs seemed to cast shade in some places and none in others. Map 2 has no offset.
+    /// </summary>
+    public static Vector2 SunTurn(Vector2 angle, float offsetDegrees)
+    {
+        var yaw = angle.Y + offsetDegrees * MathF.PI / 180f;
+        // Kept within -pi to pi like DS3's and Elden Ring's own values.
+        yaw = MathF.IEEERemainder(yaw, 2 * MathF.PI);
+        return angle with { Y = yaw };
+    }
+
     /// <summary>Changes the host's draw params in place. Returns what changed, for the log.</summary>
-    public static List<string> Apply(GPARAM gparam, GPARAM ds3, float ground)
+    public static List<string> Apply(GPARAM gparam, GPARAM ds3, float ground, float sunTurnDegrees = 0)
     {
         var inv = CultureInfo.InvariantCulture;
         string C(Vector4 v) => string.Create(inv, $"{v.X:F2} {v.Y:F2} {v.Z:F2}");
@@ -87,10 +112,12 @@ public static class MapAtmosphere
             foreach (var name in new[] { "Directional Light DiffColor0", "Directional Light SpecColor0", "Directional Light DiffColor1", "Directional Light SpecColor1" })
                 if (Value<Vector4>(ds3Light, name) is { } colour)
                     set += SetAll(light, name, v => v is Vector4 old ? new Vector4(colour.X, colour.Y, colour.Z, old.W) : v);
-            if (sunAngle is { } angle)
+            var turned = sunAngle is { } a0 ? SunTurn(a0, sunTurnDegrees) : (Vector2?)null;
+            if (turned is { } angle)
                 set += SetAll(light, "Directional Light Angle0", v => v is Vector2 ? angle : v);
-            changes.Add(sunColour is { } sc && sunAngle is { } sa
+            changes.Add(sunColour is { } sc && sunAngle is { } sa && turned is { } ta
                 ? string.Create(inv, $"sun colour {C(sc)} at {sa.X:F2},{sa.Y:F2} from DS3 light set 0 ({set} values)")
+                  + (sunTurnDegrees != 0 ? string.Create(inv, $", turned {sunTurnDegrees:0.#} degrees with the map to {ta.X:F2},{ta.Y:F2} (sun yaw {ta.Y * 180 / MathF.PI:0} degrees, {SunHeight(ta):0} above the horizon)") : "")
                 : $"light set: {set} values from DS3");
         }
         else
@@ -126,6 +153,9 @@ public static class MapAtmosphere
         gparam.Groups.FirstOrDefault(g => (g.Name2 ?? "").Trim().Equals(name, StringComparison.OrdinalIgnoreCase));
 
     /// <summary>The first value (ID 0 where there is one) of a param named by its long name.</summary>
+    /// <summary>Degrees above the horizon of a sun angle (DS3 and Elden Ring write it as a negative pitch).</summary>
+    public static float SunHeight(Vector2 angle) => -angle.X * 180 / MathF.PI;
+
     public static T? Value<T>(GPARAM.Group? group, string name) where T : struct
     {
         var p = group?.Params.FirstOrDefault(x => x.Name1 == name);

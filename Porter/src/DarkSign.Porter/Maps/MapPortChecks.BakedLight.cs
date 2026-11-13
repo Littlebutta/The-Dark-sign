@@ -15,7 +15,7 @@ public static partial class MapPortChecks
         yield return ("baked light: BC7 volume encoding decodes back within a few steps", BakedBc7RoundTrip);
         yield return ("baked light: probes spread to near texels, the rest take the nearest", BakedSpread);
         yield return ("baked light: indoors darker than open sky, open sky as bright as the host, Y about 0.87 of W", BakedEncoding);
-        yield return ("baked light: DS3's up term is found, z mirrored when the layout says so", BakedAxes);
+        yield return ("baked light: DS3's probe terms read in DS3's order (up, z, x), z mirrored when the layout says so", BakedAxes);
         yield return ("baked light: probes move and turn by DS3's map offset", BakedOffset);
         yield return ("baked light: environment point/box over the probes, GIIV0900 textures added to the binder", BakedRegionAndBinder);
         yield return ("baked light: --flat-env-light and --baked-light-flip are read", BakedOptions);
@@ -135,12 +135,28 @@ public static partial class MapPortChecks
 
     private static void BakedAxes()
     {
+        // DS3's fixed order: term 1 up (Condon-Shortley sign or not), term 2 z, term 3 x, whatever is largest.
+        foreach (var sign in new[] { 1f, -1f })
+        {
+            var notes = new List<string>();
+            var probes = MapBakedLight.ReadProbes(SyntheticBtpb(1, sign, 1), null, notes);
+            Expect(probes[0].Sh[6] == 800 && probes[0].Sh[3] == 0 && probes[0].Sh[9] == 0, $"term 1 sign {sign}: up read as Y ({string.Join(",", probes[0].Sh)}); {notes[0]}");
+        }
+        var sunward = MapBakedLight.ReadProbes(SyntheticBtpb(3, 1, 1), null, []);
+        Expect(sunward[0].Sh[3] == 800 && sunward[0].Sh[6] == 0, $"a large term 3 (map 1's low sun) stays x, not up ({string.Join(",", sunward[0].Sh)})");
+        var zward = MapBakedLight.ReadProbes(SyntheticBtpb(2, 1, 1), null, []);
+        Expect(zward[0].Sh[9] == 800 && zward[0].Sh[6] == 0, $"term 2 is z ({string.Join(",", zward[0].Sh)})");
+        // --guess-probe-axes: the old guess, the largest term under open sky is up.
         foreach (var (term, sign) in new[] { (1, 1f), (2, 1f), (1, -1f), (3, 1f) })
         {
             var notes = new List<string>();
-            var probes = MapBakedLight.ReadProbes(SyntheticBtpb(term, sign, 1), null, notes);
-            Expect(probes[0].Sh[6] == 800 && probes[0].Sh[3] == 0 && probes[0].Sh[9] == 0, $"term {term} sign {sign}: up read as Y ({string.Join(",", probes[0].Sh)}); {notes[0]}");
+            var probes = MapBakedLight.ReadProbes(SyntheticBtpb(term, sign, 1), null, notes, guessAxes: true);
+            Expect(probes[0].Sh[6] == 800 && probes[0].Sh[3] == 0 && probes[0].Sh[9] == 0, $"--guess-probe-axes, term {term} sign {sign}: up read as Y ({string.Join(",", probes[0].Sh)}); {notes[0]}");
         }
+        // The sun check: probes leaning towards +x (yaw 90 degrees).
+        var lean = MapBakedLight.ReadProbes(SyntheticBtpb(3, 1, 1), null, []);
+        var sun = MapBakedLight.SunYawFromProbes(lean);
+        Expect(sun is { } s0 && MathF.Abs(s0.Yaw - MathF.PI / 2) < 0.01f && s0.Strength > 0.7f, $"sunlight leaning towards +x reads as yaw 90 degrees ({sun})");
         var msb = new MSB3();
         for (int i = 0; i < 6; i++)
             msb.Parts.Enemies.Add(new MSB3.Part.Enemy { Name = $"c0000_{i:D4}", Position = new Vector3(i * 5, 0, 110 + i) });
@@ -155,10 +171,10 @@ public static partial class MapPortChecks
         // m31's offset: turned -156 degrees and moved 600 m; one probe lit from +x in map space.
         var msb = new MSB3();
         msb.Events.MapOffsets.Add(new MSB3.Event.MapOffset { Name = "map offset", Position = new Vector3(50, -155, -580), Degree = -156 });
-        var btpb = SyntheticBtpb(2, 1, 1);
+        var btpb = SyntheticBtpb(1, 1, 1);
         foreach (var p in btpb.Groups[0].Probes)
             for (int ch = 0; ch < 3; ch++)
-                p.Coefficients[3 + ch] = 300; // term 1 = x (up is term 2)
+                p.Coefficients[9 + ch] = 300; // term 3 = x (up is term 1)
         var raw = btpb.Groups[0].Probes[5].Position;
         var moved = MapBakedLight.ReadProbes(btpb, msb, []);
         var m = Matrix4x4.CreateRotationY(-156 * MathF.PI / 180) * Matrix4x4.CreateTranslation(50, -155, -580);

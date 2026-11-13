@@ -303,6 +303,21 @@ probes in it and a cube as bright as their median against open sky (m40: 0.02 in
 courtyards). The map-wide volume 900 drops to UnkT34 5, under the rooms. Unproven until seen in game: box-local volume
 axes, that the larger UnkT34 wins, world-direction first-order terms. Fallback `map-light-areas` B (`--no-light-areas`).
 
+**Sun direction and probe axes (roof and object shade).** Devin, 2026-11-13: on map 3 some roofs seem to cast shade,
+many don't, and objects don't. Every shadow setting matches vanilla Stormveil: MSB part flags (pieces and assets),
+PartsDrawParam rows (isDirLightShadowSrc 1, shadowDrawDist 9999 like rows 1001/2046), the template MATBINs
+(m10_00_030 / m10_00_397: g_GX_bDisableShadowCasting false, g_GX_ShadowCullingMode 0 like 14,484 vanilla MATBINs),
+FLVER headers and face set culling, and closed geometry (Stormveil pieces have less of their sun-facing area backed
+than DS3's). What was wrong is the direction: DS3 keeps a map's sun angle (gparam LightSet Angle0, radians,
+pitch and yaw) in the map's own space, like its lamps and probes, and the port copied it unturned. On map 1 the
+probes' sunward lean (their first-order terms) peaks at yaw 90 to 100 degrees in the map's space, where light set 0
+puts the sun (89), and at 128 in the layout, where the turned sun is 117 (unturned 89). Map 3 is turned -156 degrees,
+so its sun shone from nearly the other side of the streets DS3 lit, against the shade baked into the volumes; map 3's
+probes are lit mostly by the sky (lean 0.08) and can't confirm its direction. `MapAtmosphere.SunTurn` turns the yaw by
+the offset; the port log's baked light line prints the probes' lean for comparison. DS3's probe terms are also read in
+their fixed order (up, z, x; map 3's open sky gives term 1 at 0.88 of order 0, an even sky's 0.87): the old guess
+took map 1's large sunward x term as up. Fallback `map-sun` B (`--unturned-sun`), C (`--guess-probe-axes`).
+
 ### Sky
 
 Elden Ring keeps a second layout beside every legacy map, index 99 (`m45_02_00_99.msb` for `m45_02_00_00`): the

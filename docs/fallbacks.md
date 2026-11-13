@@ -415,7 +415,15 @@ Try the next option if: Since this option came in, a DS3 map's rooms are lit in 
 Try the next option if: Since this option came in, a DS3 map's lamps glow where nothing is, its rooms are lit from the wrong side, or its shade falls in the wrong places when it didn't before.
 
 - **A: Moved onto the map (default).** DS3 keeps a map's lamps and light probes in the map's own space and moves them into place with the map offset the map file holds (map 1: 28 degrees and 200 m, map 3: 156 degrees and 600 m; map 2 has none). The port does the same, so Firelink's lamps light the shrine and the baked shade falls where DS3's does. Only the map's own light file is ported; the files for its other states (the Untended Graves) no longer stack on top.
-- **B: Left in the map's own space.** Lamps and light probes stay where earlier builds put them (port-maps --no-light-offset): on maps 1 and 3 that is far from where they belong. (`port-maps --no-light-offset`)
+- **B: Left in the map's own space.** Lamps and light probes stay where earlier builds put them (port-maps --no-light-offset): on maps 1 and 3 that is far from where they belong. The sun is then left unturned too. (`port-maps --no-light-offset`)
+
+### Which way the sun and DS3's baked light face in the DS3 maps (`map-sun`, rebuilds the content)
+
+Try the next option if: Since this option came in, a DS3 map's shadows fall the wrong way, sunlit walls look dark and shaded ones bright, floors look lit from the side, or roofs and objects still cast no shade.
+
+- **A: Turned with the map, DS3's order (default).** DS3 keeps a map's sun direction in the map's own space, like its lamps and light probes, so the sun is turned with the map offset (map 1: 28 degrees, map 3: 156 degrees; map 2 has none) and Elden Ring's realtime shadows fall where DS3's baked shade does. DS3's probes are read in their fixed order (up, z, x), so map 1's baked light no longer treats the sunward side as up.
+- **B: Sun as DS3's file writes it.** The sun keeps DS3's angle unturned (port-maps --unturned-sun), as in earlier builds; the baked light keeps the new order. (`port-maps --unturned-sun`)
+- **C: Old guess for the baked light's axes.** The sun is turned, but which probe term is up is guessed from the open sky as in earlier builds (port-maps --guess-probe-axes). (`port-maps --guess-probe-axes`)
 
 ### How enemies find their way in the DS3 maps (`map-navmesh`, rebuilds the content)
 

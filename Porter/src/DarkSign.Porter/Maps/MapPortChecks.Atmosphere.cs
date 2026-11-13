@@ -14,6 +14,41 @@ public static partial class MapPortChecks
         yield return ("stand-ins: a low-detail piece over detailed pieces it is never drawn with is left out; one with nothing under it stays", StandIns);
         yield return ("far views: a low-detail copy of an area with ordinary textures, drawn only from a lookout, is left out; the sky dome, a building shell and a piece drawn with most of what it covers stay", FarViews);
         yield return ("atmosphere: the slot's gparam takes DS3's sun and fog colours, Stormveil's fog amounts, no colour grading", Atmosphere);
+        yield return ("atmosphere: the sun's direction turns with DS3's map offset, like the map's lamps and baked light", SunTurned);
+    }
+
+    /// <summary>
+    /// Undead Settlement (map 3): DS3's light set 0 puts the sun at -0.51, 0.66 in the map's own space; the map offset
+    /// turns the map -156 degrees into the layout, so the sun's yaw becomes 0.66 - 2.72 rad. Firelink Shrine (map 1)
+    /// turns 28 degrees: its sun at yaw 89 degrees, which DS3's probes confirm in the map's space, comes out at 117.
+    /// </summary>
+    private static void SunTurned()
+    {
+        var m31 = MapAtmosphere.SunTurn(new Vector2(-0.51f, 0.66f), -156);
+        Expect(m31.X == -0.51f && MathF.Abs(m31.Y - (0.66f - 156 * MathF.PI / 180)) < 1e-4f, $"map 3's sun yaw turned by the offset ({m31})");
+        var m40 = MapAtmosphere.SunTurn(new Vector2(-0.58f, 1.55f), 28);
+        Expect(MathF.Abs(m40.Y * 180 / MathF.PI - (1.55f * 180 / MathF.PI + 28)) < 0.01f, $"map 1's sun yaw 28 degrees on ({m40.Y * 180 / MathF.PI:0.0})");
+        var wrap = MapAtmosphere.SunTurn(new Vector2(-0.5f, 3f), 90);
+        Expect(wrap.Y >= -MathF.PI && wrap.Y <= MathF.PI && MathF.Abs(wrap.Y - (3f + MathF.PI / 2 - 2 * MathF.PI)) < 1e-4f, $"yaw kept within -pi..pi ({wrap.Y})");
+        Expect(MapAtmosphere.SunTurn(new Vector2(-0.77f, -0.96f), 0) == new Vector2(-0.77f, -0.96f), "map 2 (no offset): DS3's angle as written");
+        Expect(MathF.Abs(MapAtmosphere.SunHeight(new Vector2(-0.51f, 0)) - 29.2f) < 0.1f, "sun height in degrees");
+
+        // Apply with the offset turns every value of the param.
+        var host = new GPARAM();
+        host.Groups.Add(G("LightSet", P("Directional Light Angle0", GPARAM.ParamType.Float2, new Vector2(-0.873f, 0.873f), new Vector2(-0.873f, 0.873f))));
+        var ds3 = new GPARAM { Game = GPARAM.GPGame.DarkSouls3 };
+        ds3.Groups.Add(G("LightSet",
+            P("Directional Light Angle0", GPARAM.ParamType.Float2, new Vector2(-0.51f, 0.66f)),
+            P("Directional Light DiffColor0", GPARAM.ParamType.Float4, new Vector4(0.97f, 0.95f, 0.93f, 1.5f))));
+        var changes = MapAtmosphere.Apply(host, ds3, 0, -156);
+        var angles = MapAtmosphere.Group(host, "LightSet")!.Params.Single(p => p.Name1 == "Directional Light Angle0").Values;
+        Expect(angles.All(v => (Vector2)v == m31), "every sun angle value is the turned one");
+        Expect(changes[0].Contains("turned -156 degrees with the map"), changes[0]);
+
+        var options = MapPorter.Options.Parse(["--unturned-sun"]);
+        Expect(options.UnturnedSun && !new MapPorter.Options().UnturnedSun, "--unturned-sun is read");
+        Expect(MapPorter.Options.Parse(["--no-light-offset"]).UnturnedSun, "--no-light-offset leaves the sun unturned too, like the lamps and probes");
+        Expect(MapPorter.Options.Parse(["--guess-probe-axes"]).BakedLight.GuessAxes, "--guess-probe-axes is read");
     }
 
     /// <summary>
@@ -129,24 +164,26 @@ public static partial class MapPortChecks
         Expect(MapPorter.Options.Parse(["--stand-ins"]).StandIns && !new MapPorter.Options().StandIns, "--stand-ins is read");
     }
 
+    private static GPARAM.Param P(string name, GPARAM.ParamType type, params object[] values)
+    {
+        var p = new GPARAM.Param(name, name, type);
+        for (int i = 0; i < values.Length; i++)
+        {
+            p.Values.Add(values[i]);
+            p.ValueIDs.Add(i * 100);
+        }
+        return p;
+    }
+
+    private static GPARAM.Group G(string name, params GPARAM.Param[] ps)
+    {
+        var g = new GPARAM.Group(name + " ParamEditor", name);
+        g.Params.AddRange(ps);
+        return g;
+    }
+
     private static void Atmosphere()
     {
-        GPARAM.Param P(string name, GPARAM.ParamType type, params object[] values)
-        {
-            var p = new GPARAM.Param(name, name, type);
-            for (int i = 0; i < values.Length; i++)
-            {
-                p.Values.Add(values[i]);
-                p.ValueIDs.Add(i * 100);
-            }
-            return p;
-        }
-        GPARAM.Group G(string name, params GPARAM.Param[] ps)
-        {
-            var g = new GPARAM.Group(name + " ParamEditor", name);
-            g.Params.AddRange(ps);
-            return g;
-        }
         // The Caelid colosseum's values (m45_01_0000) and DS3's m30_00 light set 0 and fog 0.
         var host = new GPARAM();
         host.Groups.Add(G("LightSet",

@@ -84,6 +84,10 @@ public static class MapPorter
         /// <summary>--no-light-offset: DS3's lamps and light probes stay in the map's own space instead of being moved
         /// by DS3's map offset, as in earlier builds (fallback "map-light-place" B; see <see cref="MapLighting.PortLights"/>).</summary>
         public bool NoLightOffset { get; set; }
+        /// <summary>--unturned-sun: the sun keeps the angle DS3's draw params write, in the map's own space, instead of
+        /// being turned with the map offset like the lamps and probes (fallback "map-sun" B; implied by --no-light-offset;
+        /// see <see cref="MapAtmosphere.SunTurn"/>).</summary>
+        public bool UnturnedSun { get; set; }
         /// <summary>
         /// --host-sky: the host's distant view (its sky, the Erdtree) is left in place over the DS3 map, as in every
         /// build up to 1.0.299 (fallback "map-sky" B; see <see cref="MapDistantView"/>).
@@ -170,7 +174,9 @@ public static class MapPorter
                     case "--host-env-light": o.HostEnvLight = true; break;
                     case "--flat-env-light": o.BakedLight = o.BakedLight with { Flat = true }; break;
                     case "--no-light-areas": o.BakedLight = o.BakedLight with { NoAreas = true }; break;
-                    case "--no-light-offset": o.NoLightOffset = true; o.BakedLight = o.BakedLight with { NoOffset = true }; break;
+                    case "--no-light-offset": o.NoLightOffset = true; o.UnturnedSun = true; o.BakedLight = o.BakedLight with { NoOffset = true }; break;
+                    case "--unturned-sun": o.UnturnedSun = true; break;
+                    case "--guess-probe-axes": o.BakedLight = o.BakedLight with { GuessAxes = true }; break;
                     case "--baked-light-flip" when i + 1 < list.Count:
                         var axes = list[++i].ToLowerInvariant();
                         o.BakedLight = o.BakedLight with { FlipX = axes.Contains('x'), FlipY = axes.Contains('y'), FlipZ = axes.Contains('z') };
@@ -1233,7 +1239,7 @@ public static class MapPorter
         // Colours of light and air: DS3's instead of the colosseum's. A failure leaves the host's.
         try
         {
-            report.AppendLine("  " + MapAtmosphere.Write(ctx, ds3, er, ds3Id, erId, hostId, ds3Msb, options.HostAtmosphere));
+            report.AppendLine("  " + MapAtmosphere.Write(ctx, ds3, er, ds3Id, erId, hostId, ds3Msb, options.HostAtmosphere, options.UnturnedSun));
         }
         catch (Exception ex) when (ex is not OutOfMemoryException)
         {

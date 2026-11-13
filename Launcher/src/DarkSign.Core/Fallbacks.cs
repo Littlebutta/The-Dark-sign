@@ -507,6 +507,15 @@ public static class Fallbacks
             new("B", "Left in the map's own space", "Lamps and light probes stay where earlier builds put them (port-maps --no-light-offset): on maps 1 and 3 that is far from where they belong.")
                 { MapsArgs = ["--no-light-offset"] },
         ]),
+        new("map-sun", "DS3 maps", "Which way the sun and DS3's baked light face in the DS3 maps", Stage.Build,
+            "Since this option came in, a DS3 map's shadows fall the wrong way, sunlit walls look dark and shaded ones bright, floors look lit from the side, or roofs and objects still cast no shade.",
+        [
+            new("A", "Turned with the map, DS3's order (default)", "DS3 keeps a map's sun direction in the map's own space, like its lamps and light probes, so the sun is turned with the map offset (map 1: 28 degrees, map 3: 156 degrees; map 2 has none) and Elden Ring's realtime shadows fall where DS3's baked shade does. DS3's probes are read in their fixed order (up, z, x), so map 1's baked light no longer treats the sunward side as up."),
+            new("B", "Sun as DS3's file writes it", "The sun keeps DS3's angle unturned (port-maps --unturned-sun), as in earlier builds; the baked light keeps the new order.")
+                { MapsArgs = ["--unturned-sun"] },
+            new("C", "Old guess for the baked light's axes", "The sun is turned, but which probe term is up is guessed from the open sky as in earlier builds (port-maps --guess-probe-axes).")
+                { MapsArgs = ["--guess-probe-axes"] },
+        ]),
         new("map-navmesh", "DS3 maps", "How enemies find their way in the DS3 maps", Stage.Build,
             "A DS3 map crashes or hangs while loading since launcher 1.0.300, enemies stand still or refuse to cross ground they should walk on, or they walk through closed doors.",
         [
