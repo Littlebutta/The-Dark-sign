@@ -275,6 +275,38 @@ public static class ChrEffectsSelfTest
         pontiffFx2.ApplyNpc(pontiffRow, pontiffNpc, pontiffPlan);
         Check("NpcParam: an effect DS3's script puts on the boss goes in a free slot of its ported row; the report lists it",
             ParamDefaults.Int(pontiffRow, "spEffectID1") == 700_010_640 && pontiffFx2.Characters[7105].ScriptAdded.SequenceEqual([10640, 10641]));
+        // Ariandel's wolf: m45's script puts the pack marker 13032 on its wolves once the leader is gone; DS3's wolf AI
+        // checks it (only circling and guarding in that branch). Its row's own marker 5020 stays; the script's stays off.
+        // (A value that shows nothing, so the effect port has something to carry, as DS3's markers do.)
+        Add(ds3Sp, 13032, "Wolf", ("maxHpRate", 1.5f), ("physDefRate", 1f));
+        Add(ds3Sp, 5020, "General effect for logic judgment 1", ("maxHpRate", 1.5f), ("physDefRate", 1f));
+        var packEvent = new EMEVD.Event(14505200);
+        packEvent.Instructions.Add(new EMEVD.Instruction(ScriptEffects.Bank, ScriptEffects.SetId, Ints(4505201, 13032)));
+        var m45 = new EMEVD();
+        m45.Events.Add(packEvent);
+        var packScripts = ScriptEffects.From([m45], new Dictionary<int, HashSet<int>> { [4505201] = [604010] }, new Dictionary<int, int> { [604010] = 1 });
+        var wolfNpc = Add(ds3Npc, 604010, "Wolf - Ariandel", ("spEffectId0", 5020), ("spEffectId1", -1), ("spEffectId2", -1), ("spEffectId3", -1));
+        var wolfPlan = plan with { Ds3 = new ChrPort.Ds3Chr(6040, "Wolf - Ariandel", false, [604010]), NewChr = 7128 };
+        var wolfFx = ChrEffects.ForTest(ctx, null, ds3Sp, events, new FxrPort.ChrConverter(ds3Fx, () => []), layout, planned, swing, erEvents, packScripts);
+        wolfFx.AiSpEffectIds = new HashSet<int> { 5020, 13032 };
+        wolfFx.Open(wolfPlan, [], [], []);
+        wolfFx.UseForTest(sp);
+        int Slots(PARAM.Row r, int id) => Enumerable.Range(0, 4).Count(k => ParamDefaults.Int(r, $"spEffectID{k}") == id);
+        var wolfRow = Add(erNpc, 71280000, "Wolf", ("spEffectID0", -1), ("spEffectID1", -1), ("spEffectID2", -1), ("spEffectID3", -1),
+            ("SfxResBankId", -1), ("SoundBankId", -1), ("SoundAddBankId", -1));
+        wolfFx.ApplyNpc(wolfRow, wolfNpc, wolfPlan);
+        Check("NpcParam: an AI marker DS3's script puts on the wolf pack (13032) stays off the ported wolf; the marker its row names (5020) is kept",
+            Slots(wolfRow, 700_005_020) == 1 && Slots(wolfRow, 700_013_032) == 0 && wolfFx.Characters[7128].ScriptMarkers.SequenceEqual([13032]));
+        Environment.SetEnvironmentVariable("DARKSIGN_ENEMY_SCRIPT_MARKERS", "keep");
+        try
+        {
+            var keptRow = Add(erNpc, 71280001, "Wolf", ("spEffectID0", -1), ("spEffectID1", -1), ("spEffectID2", -1), ("spEffectID3", -1),
+                ("SfxResBankId", -1), ("SoundBankId", -1), ("SoundAddBankId", -1));
+            wolfFx.ApplyNpc(keptRow, wolfNpc, wolfPlan);
+            Check("NpcParam: enemy-ai I (DARKSIGN_ENEMY_SCRIPT_MARKERS=keep) puts the script's marker back on the row, as in 1.0.442",
+                Slots(keptRow, 700_013_032) == 1);
+        }
+        finally { Environment.SetEnvironmentVariable("DARKSIGN_ENEMY_SCRIPT_MARKERS", null); }
 
         // Glowing materials: DS3's emissive map on Elden Ring's glowing character material, with its colours white.
         var glowMatbin = new MATBIN { ShaderPath = @"N:\GR\data\Material\mtd\Chr\shader\C[AMSN]_Glow.spx", SourcePath = @"N:\GR\data\Material\mtd\Chr\matxml\C[c3570]_Body_Glow.matxml" };
