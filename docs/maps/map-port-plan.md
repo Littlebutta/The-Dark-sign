@@ -292,6 +292,17 @@ scaled to the host volume's open-sky alpha. Unproven until seen in game: column 
 `map-baked-light` C/D mirror them), that the smaller box with the higher UnkT34 wins over the catch-all box, and that
 alpha is linear. Fallback `map-baked-light` B (`--flat-env-light`) leaves the volume out.
 
+**Light areas (DS3's rooms).** One volume was not enough (Devin, 2026-11-13: still flat, lit by "the world base
+lighting"). Elden Ring draws no sunlight indoors: rooms get light only from a baked volume, a reflection cube, SSAO
+and lamps (M. A. Moniem, "Behind the Pretty Frames: Elden Ring"). Stormveil has 129 environment boxes, one per room or
+courtyard, each with its own point, volume and cube; its rooms' cubes are 15 to 150 times darker than outdoors and
+nested rooms carry a larger UnkT34 (0 catch-all, 11 to 34 rooms). DS3's layouts mark out the same rooms (m40 31 boxes,
+m30 38, m31 28; UnkT09 = order, UnkT0A = shared point), in layout space like the parts. `MapLightAreas` turns every DS3
+box into an Elden Ring box of the same number, size and turn, with a volume over the box (its own axes) baked from the
+probes in it and a cube as bright as their median against open sky (m40: 0.02 in the undercroft to 0.9 in the
+courtyards). The map-wide volume 900 drops to UnkT34 5, under the rooms. Unproven until seen in game: box-local volume
+axes, that the larger UnkT34 wins, world-direction first-order terms. Fallback `map-light-areas` B (`--no-light-areas`).
+
 ### Sky
 
 Elden Ring keeps a second layout beside every legacy map, index 99 (`m45_02_00_99.msb` for `m45_02_00_00`): the

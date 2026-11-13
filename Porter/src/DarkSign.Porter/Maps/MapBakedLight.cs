@@ -45,7 +45,9 @@ public static class MapBakedLight
 
     /// <param name="NoOffset">"--no-light-offset" (fallback "map-light-place" B): the probes stay in the map's own
     /// space, as in earlier builds, instead of being moved by DS3's map offset (<see cref="ReadProbes"/>).</param>
-    public sealed record Options(bool Flat, bool FlipX, bool FlipY, bool FlipZ, bool NoOffset = false)
+    /// <param name="NoAreas">"--no-light-areas" (fallback "map-light-areas" B): no light volume and reflection cube
+    /// per DS3 room (<see cref="MapLightAreas"/>), only the map-wide volume, as in builds before it.</param>
+    public sealed record Options(bool Flat, bool FlipX, bool FlipY, bool FlipZ, bool NoOffset = false, bool NoAreas = false)
     {
         public static Options Default { get; } = new(false, false, false, false);
     }
@@ -56,6 +58,9 @@ public static class MapBakedLight
     /// <summary>The baked volume of one map: its box and the three detail levels.</summary>
     public sealed class Volume
     {
+        /// <summary>The environment point and box number the volume belongs to (its textures are GIIV{Number:D4}).</summary>
+        public int Number { get; init; } = PointNumber;
+        public string Tag => $"GIIV{Number:D4}";
         public required Vector3 Min { get; init; }
         public required Vector3 Size { get; init; }
         public required Dictionary<string, Level> Levels { get; init; }
@@ -227,7 +232,7 @@ public static class MapBakedLight
     /// channel's size times <paramref name="scale"/> and colour = 128 + 127 * c / that size. Order 0 never goes below
     /// 3% of open sky, so a room DS3 lit only with lamps isn't pitch black.
     /// </summary>
-    private static Dictionary<char, byte[]> Encode(float[] field, int w, int h, int d, float scale, float hostAlpha, Options options)
+    internal static Dictionary<char, byte[]> Encode(float[] field, int w, int h, int d, float scale, float hostAlpha, Options options)
     {
         var result = new Dictionary<char, byte[]>();
         float floor = MathF.Max(1, hostAlpha * 0.03f);
@@ -300,23 +305,27 @@ public static class MapBakedLight
     /// port-maps step: bakes the DS3 map's probes and adds the volume's environment point and box to the layout.
     /// Returns the volume (null when there is none) and a line for the log. Runs after <see cref="MapLighting.AddAmbient"/>.
     /// </summary>
-    public static (Volume? Volume, string Line) Build(GameArchives ds3, GameArchives er, MapId ds3Id, MapId hostId, MSBE msb, MSB3? ds3Msb, Options options)
+    /// <para>Then every room DS3's layout marks out gets a volume and reflection cube of its own
+    /// (<see cref="MapLightAreas"/>), over the map-wide one. The first volume returned is the map-wide one.</para>
+    public static (List<Volume> Volumes, string Line) Build(GameArchives ds3, GameArchives er, MapId ds3Id, MapId hostId, MSBE msb, MSB3? ds3Msb, Options options)
     {
         if (options.Flat)
-            return (null, "baked light: off (--flat-env-light); the map keeps one even light volume");
+            return ([], "baked light: off (--flat-env-light); the map keeps one even light volume");
         var path = ProbePath(ds3, ds3Id);
         if (path is null)
-            return (null, "baked light: the DS3 map has no light probe file; the map keeps one even light volume");
+            return ([], "baked light: the DS3 map has no light probe file; the map keeps one even light volume");
         var hostPoint = msb.Regions.EnvironmentMapPoints.FirstOrDefault();
         var hostBox = msb.Regions.EnvironmentMapEffectBoxes.FirstOrDefault();
         if (hostPoint is null || hostBox is null)
-            return (null, "baked light: the layout has no environment region to copy (ambient light step failed?); none written");
+            return ([], "baked light: the layout has no environment region to copy (ambient light step failed?); none written");
         var notes = new List<string>();
         var probes = ReadProbes(BTPB.Read(ds3.Read(path)), ds3Msb, notes, options.NoOffset);
         if (probes.Count < 8)
-            return (null, $"baked light: {ItemText.Leaf(path)} has {probes.Count} probes; the map keeps one even light volume");
+            return ([], $"baked light: {ItemText.Leaf(path)} has {probes.Count} probes; the map keeps one even light volume");
         float hostAlpha = HostAlpha(er, hostId);
         var volume = Bake(probes, hostAlpha, options);
+        var templatePoint = (MSBE.Region.EnvironmentMapPoint)hostPoint.DeepCopy();
+        var templateBox = (MSBE.Region.EnvironmentMapEffectBox)hostBox.DeepCopy();
 
         var point = (MSBE.Region.EnvironmentMapPoint)hostPoint.DeepCopy();
         point.Name = PointName;
@@ -329,15 +338,32 @@ public static class MapBakedLight
         box.Position = new Vector3(volume.Min.X + volume.Size.X / 2, volume.Min.Y, volume.Min.Z + volume.Size.Z / 2);
         box.Rotation = Vector3.Zero;
         box.TransitionDist = 5;
-        box.UnkT34 = 30;
+        // Over the catch-all box (0), under DS3's rooms (MapLightAreas.PriorityBase and up): in Stormveil the box
+        // with the larger UnkT34 wins (catch-all 0, areas 11 to 17, rooms 19 to 34). Up to 1.0.4xx this was 30.
+        box.UnkT34 = MapAreaPriority;
         if (box.UnkT0A >= 0)
             box.UnkT0A = PointNumber;
         msb.Regions.EnvironmentMapPoints.RemoveAll(p => p.Name == PointName);
         msb.Regions.EnvironmentMapEffectBoxes.RemoveAll(b => b.Name == BoxName);
         msb.Regions.EnvironmentMapPoints.Add(point);
         msb.Regions.EnvironmentMapEffectBoxes.Add(box);
-        return (volume, $"baked light: {ItemText.Leaf(path)}: {volume.Summary}; {string.Join("; ", notes)}");
+        var volumes = new List<Volume> { volume };
+        var line = $"baked light: {ItemText.Leaf(path)}: {volume.Summary}; {string.Join("; ", notes)}";
+        if (options.NoAreas)
+            line += "\n  light areas: off (--no-light-areas); only the map-wide volume";
+        else if (ds3Msb is null)
+            line += "\n  light areas: no DS3 layout to read rooms from";
+        else
+        {
+            var (areas, areaLine) = MapLightAreas.Build(ds3Msb, probes, msb, templatePoint, templateBox, hostAlpha, OpenSky(probes), options);
+            volumes.AddRange(areas);
+            line += "\n  " + areaLine;
+        }
+        return (volumes, line);
     }
+
+    /// <summary>UnkT34 of the map-wide volume's box: above the catch-all box's 0, below every ported room.</summary>
+    public const short MapAreaPriority = 5;
 
     private static float Median(IEnumerable<float> values)
     {
@@ -374,13 +400,48 @@ public static class MapBakedLight
     /// host's own even): for each host light volume texture W/X/Y/Z a copy named GIIV0900 holding the baked level, and
     /// a copy of the host's reflection cube, made <see cref="Volume.CubeScale"/> as bright. Returns files added.
     /// </summary>
-    public static int AddTo(BND4 bnd, Volume volume, string binderPath, MapId hostId, MapId erId)
+    public static int AddTo(BND4 bnd, Volume volume, string binderPath, MapId hostId, MapId erId) =>
+        AddTo(bnd, [volume], binderPath, hostId, erId);
+
+    /// <summary>
+    /// <see cref="AddTo(BND4, Volume, string, MapId, MapId)"/> for several volumes (the map-wide one and DS3's rooms):
+    /// each gets copies of the host's first point's textures, named after its own number.
+    /// </summary>
+    public static int AddTo(BND4 bnd, IReadOnlyList<Volume> volumes, string binderPath, MapId hostId, MapId erId)
     {
         var level = LevelOf(binderPath);
-        if (level is null || !volume.Levels.TryGetValue(level, out var lv))
+        if (level is null)
             return 0;
-        if (bnd.Files.Any(f => f.Name.Contains(VolumeTag, StringComparison.OrdinalIgnoreCase)))
+        var ours = volumes.Select(v => v.Number.ToString("D4")).ToHashSet();
+        // The host's own point (the first one in the binder that isn't one of ours): its textures are the templates.
+        string? hostTag = null;
+        foreach (var f in bnd.Files)
+        {
+            int i = f.Name.IndexOf("GIIV", StringComparison.OrdinalIgnoreCase);
+            if (i >= 0 && i + 8 <= f.Name.Length && !ours.Contains(f.Name.Substring(i + 4, 4)))
+            {
+                hostTag = f.Name.Substring(i + 4, 4);
+                break;
+            }
+        }
+        if (hostTag is null)
             return 0;
+        var added = new List<BinderFile>();
+        foreach (var volume in volumes)
+            if (volume.Levels.TryGetValue(level, out var lv) && !bnd.Files.Any(f => f.Name.Contains(volume.Tag, StringComparison.OrdinalIgnoreCase)))
+                added.AddRange(Copies(bnd, volume, lv, hostTag));
+        int id = bnd.Files.Count == 0 ? 0 : bnd.Files.Max(f => f.ID) + 1;
+        foreach (var f in added)
+        {
+            f.ID = id++;
+            bnd.Files.Add(f);
+        }
+        return added.Count;
+    }
+
+    /// <summary>One volume's copies of the host point's light volume textures and reflection cube.</summary>
+    private static List<BinderFile> Copies(BND4 bnd, Volume volume, Level lv, string hostTag)
+    {
         var added = new List<BinderFile>();
         foreach (var file in bnd.Files)
         {
@@ -396,9 +457,9 @@ public static class MapBakedLight
             if (at < 0 && cube < 0)
                 continue;
             var tag = t.Name.Substring((at >= 0 ? at : cube) + 1, 8);
-            if (tag.EndsWith(PointNumber.ToString("D4"), StringComparison.Ordinal))
+            if (!tag.EndsWith(hostTag, StringComparison.Ordinal))
                 continue;
-            string Rename(string s) => s.Replace(tag, (at >= 0 ? "GIIV" : "GILM") + PointNumber.ToString("D4"), StringComparison.OrdinalIgnoreCase);
+            string Rename(string s) => s.Replace(tag, (at >= 0 ? "GIIV" : "GILM") + volume.Number.ToString("D4"), StringComparison.OrdinalIgnoreCase);
             if (at >= 0)
             {
                 char letter = char.ToUpperInvariant(t.Name[^1]);
@@ -412,13 +473,7 @@ public static class MapBakedLight
             var written = tpf.Write();
             added.Add(new BinderFile(file.Flags, 0, Rename(file.Name), inner.Item2 is null ? written : DCX.Compress(written, inner.Item2)));
         }
-        int id = bnd.Files.Count == 0 ? 0 : bnd.Files.Max(f => f.ID) + 1;
-        foreach (var f in added)
-        {
-            f.ID = id++;
-            bnd.Files.Add(f);
-        }
-        return added.Count;
+        return added;
     }
 
     /// <summary>Scales an even BC6H reflection cube (as <see cref="MapEnvironment.NeutraliseCube"/> left it).</summary>
@@ -442,8 +497,13 @@ public static class MapBakedLight
     /// baked point (a copy of the host point's; 28 bytes, near zero in every host). Each environment point has one per
     /// time in each level (Stormveil: 128 points, 896 entries). Without a volume, removes an earlier build's copies.
     /// </summary>
-    public static string WriteIvInfo(PorterContext ctx, GameArchives er, MapId hostId, MapId erId, Volume? volume)
+    public static string WriteIvInfo(PorterContext ctx, GameArchives er, MapId hostId, MapId erId, Volume? volume) =>
+        WriteIvInfo(ctx, er, hostId, erId, volume is null ? [] : [volume]);
+
+    /// <summary><see cref="WriteIvInfo(PorterContext, GameArchives, MapId, MapId, Volume?)"/> with entries for every volume's point.</summary>
+    public static string WriteIvInfo(PorterContext ctx, GameArchives er, MapId hostId, MapId erId, IReadOnlyList<Volume> volumes)
     {
+        var volume = volumes.Count == 0 ? null : volumes[0];
         int written = 0, added = 0;
         foreach (var level in new[] { "high", "middle", "low" })
         {
@@ -459,19 +519,22 @@ public static class MapBakedLight
             var (bytes, compression) = er.ReadWithCompression(source);
             var bnd = BND4.Read(bytes);
             var copies = new List<BinderFile>();
+            var ours = volumes.Select(v => v.Number.ToString("D4")).ToHashSet();
             foreach (var f in bnd.Files)
-            {
                 f.Name = NewIdFiles.Renamed(f.Name, hostId, erId);
-                int at = f.Name.IndexOf("GIIV", StringComparison.OrdinalIgnoreCase);
-                if (at < 0 || at + 8 > f.Name.Length || f.Name.Substring(at + 4, 4) == PointNumber.ToString("D4"))
-                    continue;
-                // Only the first point's entries are copied (one set per time of day).
-                var first = bnd.Files[0].Name;
-                int fa = first.IndexOf("GIIV", StringComparison.OrdinalIgnoreCase);
-                if (fa < 0 || first.Substring(fa + 4, 4) != f.Name.Substring(at + 4, 4))
-                    continue;
-                copies.Add(new BinderFile(f.Flags, 0, f.Name[..(at + 4)] + PointNumber.ToString("D4") + f.Name[(at + 8)..], (byte[])f.Bytes.Clone()));
-            }
+            foreach (var v in volumes)
+                foreach (var f in bnd.Files.ToList())
+                {
+                    int at = f.Name.IndexOf("GIIV", StringComparison.OrdinalIgnoreCase);
+                    if (at < 0 || at + 8 > f.Name.Length || ours.Contains(f.Name.Substring(at + 4, 4)))
+                        continue;
+                    // Only the first point's entries are copied (one set per time of day).
+                    var first = bnd.Files[0].Name;
+                    int fa = first.IndexOf("GIIV", StringComparison.OrdinalIgnoreCase);
+                    if (fa < 0 || first.Substring(fa + 4, 4) != f.Name.Substring(at + 4, 4))
+                        continue;
+                    copies.Add(new BinderFile(f.Flags, 0, f.Name[..(at + 4)] + v.Number.ToString("D4") + f.Name[(at + 8)..], (byte[])f.Bytes.Clone()));
+                }
             int id = bnd.Files.Count == 0 ? 0 : bnd.Files.Max(f => f.ID) + 1;
             foreach (var c in copies)
             {
@@ -483,6 +546,7 @@ public static class MapBakedLight
             File.WriteAllBytes(target, DCX.Compress(bnd.Write(), compression));
             written++;
         }
-        return volume is null ? "light volume info: the host's" : $"light volume info: {written} binders written with {added} entries for {VolumeTag}";
+        return volume is null ? "light volume info: the host's"
+            : $"light volume info: {written} binders written with {added} entries for {string.Join(", ", volumes.Take(4).Select(v => v.Tag))}{(volumes.Count > 4 ? $" and {volumes.Count - 4} more" : "")}";
     }
 }

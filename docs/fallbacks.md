@@ -403,6 +403,13 @@ Try the next option if: A DS3 map's rooms, tunnels or courtyards are lit in the 
 - **C: Baked light mirrored east-west.** The same baked light with the volume mirrored along x (port-maps --baked-light-flip x). Try it if dark patches sit across the map from where the rooms are. (`port-maps --baked-light-flip x`)
 - **D: Baked light mirrored north-south.** The same baked light with the volume mirrored along z (port-maps --baked-light-flip z). Try it if C didn't line the dark patches up with the rooms. (`port-maps --baked-light-flip z`)
 
+### Light of their own for DS3's rooms (`map-light-areas`, rebuilds the content)
+
+Try the next option if: Since this option came in, a DS3 map's rooms are lit in patches with hard edges, a room is far too dark or too bright against the rest, a map hangs or crashes while loading, or a room's light seems to belong to the room next door.
+
+- **A: Each room its own light (default).** Elden Ring lights rooms only from a light volume and a reflection cube baked for each room (Stormveil has 129), never from sunlight. Every room DS3's own map file marks out (28 to 38 per map) gets both, baked from DS3's light data, so rooms, tunnels and the shrine's undercroft are as dark as in DS3 and stop shining with outdoor reflections. The map-wide light stays under them for open ground.
+- **B: One light for the whole map.** Only the one map-wide light volume and reflection (port-maps --no-light-areas), as in builds before this option: every room reflects the same outdoor light. (`port-maps --no-light-areas`)
+
 ### Where DS3's lamps and baked light sit in the DS3 maps (`map-light-place`, rebuilds the content)
 
 Try the next option if: Since this option came in, a DS3 map's lamps glow where nothing is, its rooms are lit from the wrong side, or its shade falls in the wrong places when it didn't before.

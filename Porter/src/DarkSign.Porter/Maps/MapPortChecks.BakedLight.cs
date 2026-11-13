@@ -19,6 +19,8 @@ public static partial class MapPortChecks
         yield return ("baked light: probes move and turn by DS3's map offset", BakedOffset);
         yield return ("baked light: environment point/box over the probes, GIIV0900 textures added to the binder", BakedRegionAndBinder);
         yield return ("baked light: --flat-env-light and --baked-light-flip are read", BakedOptions);
+        yield return ("light areas: each DS3 room gets its own volume and darker reflection cube, in box order, shared points kept", LightAreas);
+        yield return ("light areas: every volume's textures go into the binder under its own number", LightAreasBinder);
     }
 
     /// <summary>A 4 x 4 x 1 host-like light volume DDS (BC7, DX10 header, 3D).</summary>
@@ -210,5 +212,106 @@ public static partial class MapPortChecks
         Expect(MapPorter.Options.Parse(["--flat-env-light"]).BakedLight.Flat && !new MapPorter.Options().BakedLight.Flat, "--flat-env-light is read");
         var o = MapPorter.Options.Parse(["--baked-light-flip", "xz"]).BakedLight;
         Expect(o.FlipX && !o.FlipY && o.FlipZ && !o.Flat, "--baked-light-flip xz is read");
+    }
+
+    /// <summary>
+    /// A layout like m40's Firelink: a dark room (box 100, turned 90 degrees, 10 wide and 30 deep) and a nested
+    /// alcove (101, higher order) inside the dark half of <see cref="SyntheticProbes"/>, a courtyard box (200) on the
+    /// open half, a box naming 100's point (102), and a box with no probes (500).
+    /// </summary>
+    private static MSB3 AreaLayout()
+    {
+        var ds3 = new MSB3();
+        void Box(string name, Vector3 pos, float yaw, float w, float h, float d, byte order, short point = -1) =>
+            ds3.Regions.EnvironmentMapEffectBoxes.Add(new MSB3.Region.EnvironmentMapEffectBox
+            {
+                Name = name, Position = pos, Rotation = new Vector3(0, yaw, 0),
+                Shape = new MSB.Shape.Box { Width = w, Height = h, Depth = d }, UnkT09 = order, UnkT0A = point,
+            });
+        // Turned 90 degrees: its depth (14) runs along x, from 25 to 39.
+        Box("Env_Box100", new Vector3(32, 0, 5), 90, 10, 5, 14, 20);
+        Box("Env_Box101", new Vector3(34, 0, 5), 0, 4, 4, 4, 30);
+        Box("Env_Box102", new Vector3(30, 0, 5), 0, 4, 4, 4, 31, 100);
+        Box("Env_Box200", new Vector3(8, 0, 5), 0, 14, 5, 10, 10);
+        Box("Env_Box500", new Vector3(500, 0, 500), 0, 10, 10, 10, 10);
+        ds3.Regions.EnvironmentMapPoints.Add(new MSB3.Region.EnvironmentMapPoint { Name = "Env_Point100", Position = new Vector3(31, 1, 5) });
+        return ds3;
+    }
+
+    private static (List<MapBakedLight.Volume> Volumes, string Line, MSBE Msb) BuildAreas()
+    {
+        var msb = new MSBE();
+        var point = new MSBE.Region.EnvironmentMapPoint { Name = "Env_Point000", UnkT00 = 4 };
+        var box = new MSBE.Region.EnvironmentMapEffectBox { Name = "Env_Box000", Shape = new MSB.Shape.Box { Width = 4500, Depth = 4500, Height = 3500 }, UnkT0A = -1 };
+        msb.Regions.EnvironmentMapPoints.Add(point);
+        msb.Regions.EnvironmentMapEffectBoxes.Add(box);
+        var probes = SyntheticProbes();
+        var (volumes, line) = MapLightAreas.Build(AreaLayout(), probes, msb, point, box, 56, MapBakedLight.OpenSky(probes), MapBakedLight.Options.Default);
+        return (volumes, line, msb);
+    }
+
+    private static void LightAreas()
+    {
+        var (volumes, line, msb) = BuildAreas();
+        Expect(volumes.Select(v => v.Number).Order().SequenceEqual([100, 101, 200]), $"rooms 100, 101 and 200 baked ({string.Join(",", volumes.Select(v => v.Number))}); {line}");
+        Expect(line.Contains("500"), "the box without probes is reported");
+        var room = volumes.Single(v => v.Number == 100);
+        var yard = volumes.Single(v => v.Number == 200);
+        Expect(room.CubeScale < 0.1f && yard.CubeScale > 0.9f, $"the room's reflection is dark ({room.CubeScale:0.000}), the courtyard's as bright as open sky ({yard.CubeScale:0.000})");
+        Expect(room.Size == new Vector3(10, 5, 14) && room.Min == new Vector3(-5, 0, -7), "the volume spans the box in its own axes");
+        var high = room.Levels["high"];
+        Expect(high.W % 4 == 0 && high.H % 4 == 0 && high.W >= 8 && high.D >= 12, $"texels follow the box's width, height and depth ({high.W} x {high.H} x {high.D})");
+        var w = MapLightDiag.DecodeVolume(MapBakedLight.VolumeDds(HostVolumeDds(1, 2, 3, 4), high.W, high.H, high.D, high.Bc7['W']))!.Value;
+        var yh = yard.Levels["high"];
+        var wy = MapLightDiag.DecodeVolume(MapBakedLight.VolumeDds(HostVolumeDds(1, 2, 3, 4), yh.W, yh.H, yh.D, yh.Bc7['W']))!.Value;
+        Expect(w.Px.Max(p => p.a) * 5 < wy.Px.Min(p => p.a), $"the room's volume is darker than the courtyard's ({w.Px.Max(p => p.a)} against {wy.Px.Min(p => p.a)})");
+
+        var boxes = msb.Regions.EnvironmentMapEffectBoxes.ToDictionary(b => b.Name);
+        Expect(boxes.ContainsKey("Env_Box102") && boxes["Env_Box102"].UnkT0A == 100, "the box naming 100's point shares it");
+        Expect(!boxes.ContainsKey("Env_Box500"), "no box for the room without probes");
+        Expect(boxes["Env_Box200"].UnkT34 < boxes["Env_Box100"].UnkT34 && boxes["Env_Box100"].UnkT34 < boxes["Env_Box101"].UnkT34
+               && boxes["Env_Box200"].UnkT34 > MapBakedLight.MapAreaPriority && boxes["Env_Box101"].UnkT34 <= MapLightAreas.MaxPriority,
+            $"DS3's order kept inside Elden Ring's range: {string.Join(", ", boxes.Values.Select(b => $"{b.Name} {b.UnkT34}"))}");
+        Expect(boxes["Env_Box100"].Rotation.Y == 90 && boxes["Env_Box100"].Shape is MSB.Shape.Box { Width: 10, Depth: 14 }, "box size and turn as DS3's");
+        var points = msb.Regions.EnvironmentMapPoints.ToDictionary(p => p.Name);
+        Expect(points.ContainsKey("Env_Point100") && points["Env_Point100"].Position == new Vector3(31, 1, 5), "DS3's point is used where there is one");
+        Expect(points.ContainsKey("Env_Point200") && points["Env_Point200"].Position.Y == 2.5f, "a room without a point gets one in the middle of its box");
+        Expect(!points.ContainsKey("Env_Point102"), "a box sharing a point gets none of its own");
+
+        // Numbers the layout already uses are left alone.
+        var again = MapLightAreas.Build(AreaLayout(), SyntheticProbes(), msb, msb.Regions.EnvironmentMapPoints[0], msb.Regions.EnvironmentMapEffectBoxes[0], 56, 1000, MapBakedLight.Options.Default);
+        Expect(again.Volumes.Count == 0 && again.Line.Contains("already used"), $"a second run adds nothing: {again.Line}");
+        Expect(MapLightAreas.NumberOf("Env_Box104") == 104 && MapLightAreas.NumberOf("Env_Box") == -1, "numbers read from names");
+        Expect(MapPorter.Options.Parse(["--no-light-areas"]).BakedLight.NoAreas && !new MapPorter.Options().BakedLight.NoAreas, "--no-light-areas is read");
+    }
+
+    private static void LightAreasBinder()
+    {
+        var (volumes, _, _) = BuildAreas();
+        var all = new List<MapBakedLight.Volume> { MapBakedLight.Bake(SyntheticProbes(), 56, MapBakedLight.Options.Default) };
+        all.AddRange(volumes);
+        var bnd = new BND4();
+        var host = MapId.Parse("m45_02_00_00");
+        var target = MapId.Parse("m11_70_00_00");
+        TPF Tpf(string name, byte[] dds) => new() { Textures = { new TPF.Texture(name, 102, 0, dds, TPF.TPFPlatform.PC) { Type = TPF.TexType.Volume } } };
+        foreach (var c in "WXYZ")
+            bnd.Files.Add(new BinderFile(Binder.FileFlags.Flag1, bnd.Files.Count, $@"N:\GR\data\INTERROOT_win64\map\m45_02_00_00\tex\Envmap\middle\00\m45_02_00_00_GIIV0010_00_{c}.tpf",
+                Tpf($"m45_02_00_00_GIIV0010_00_{c}", HostVolumeDds(250, 230, 170, 50)).Write()));
+        var cube = MapEnvironment.TestDds(MapEnvironment.DxgiBc6hUf16, MapEnvironment.Bc6hBlock(0.5f));
+        bnd.Files.Add(new BinderFile(Binder.FileFlags.Flag1, 4, @"N:\GR\data\INTERROOT_win64\map\m45_02_00_00\tex\Envmap\middle\00\m45_02_00_00_GILM0010_00_rem.tpf",
+            new TPF { Textures = { new TPF.Texture("m45_02_00_00_GILM0010_00_rem", 115, 0, cube, TPF.TPFPlatform.PC) { Type = TPF.TexType.Cubemap } } }.Write()));
+        int added = MapBakedLight.AddTo(bnd, all, "/map/m45/m45_02_00_00/m45_02_00_00_envmap_00_middle_00.tpfbnd.dcx", host, target);
+        Expect(added == all.Count * 5, $"four volume textures and a cube per volume ({added} for {all.Count})");
+        foreach (var v in all)
+            Expect(bnd.Files.Count(f => f.Name.Contains(v.Tag)) == 4 && bnd.Files.Any(f => f.Name.Contains($"GILM{v.Number:D4}_00_rem")), $"{v.Tag}'s files");
+        Expect(bnd.Files.Select(f => f.ID).Distinct().Count() == bnd.Files.Count, "binder IDs stay unique");
+        var roomCube = TPF.Read(bnd.Files.Single(f => f.Name.Contains("GILM0100")).Bytes).Textures[0];
+        var yardCube = TPF.Read(bnd.Files.Single(f => f.Name.Contains("GILM0200")).Bytes).Textures[0];
+        float rg = MapEnvironment.DecodeGrey(roomCube.Bytes), yg = MapEnvironment.DecodeGrey(yardCube.Bytes);
+        Expect(rg < yg * 0.2f, $"the room's cube is darker than the courtyard's ({rg:0.###} against {yg:0.###})");
+        var room = volumes.Single(v => v.Number == 100).Levels["middle"];
+        var w = MapLightDiag.DecodeVolume(TPF.Read(bnd.Files.Single(f => f.Name.EndsWith("GIIV0100_00_W.tpf")).Bytes).Textures[0].Bytes)!.Value;
+        Expect(w.W == room.W && w.H == room.H && w.D == room.D, "the room's middle level in the middle binder");
+        Expect(MapBakedLight.AddTo(bnd, all, "/map/m45/m45_02_00_00/m45_02_00_00_envmap_00_middle_00.tpfbnd.dcx", host, target) == 0, "adding again adds nothing");
     }
 }

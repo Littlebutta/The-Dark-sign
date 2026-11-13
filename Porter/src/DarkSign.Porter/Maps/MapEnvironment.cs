@@ -37,7 +37,7 @@ public static class MapEnvironment
     }
 
     /// <summary>port-maps step. Returns a line for the log.</summary>
-    public static string Write(PorterContext ctx, GameArchives er, MapId erId, MapId hostId, bool hostEnvLight, MapBakedLight.Volume? baked = null)
+    public static string Write(PorterContext ctx, GameArchives er, MapId erId, MapId hostId, bool hostEnvLight, IReadOnlyList<MapBakedLight.Volume>? baked = null)
     {
         var binders = Binders(er, hostId);
         string Target(string path) => ctx.ModPath(MapPorter.ModParts(path.Replace(hostId.ToString(), erId.ToString(), StringComparison.OrdinalIgnoreCase)));
@@ -101,7 +101,7 @@ public static class MapEnvironment
                 file.Bytes = innerCompression is null ? written : DCX.Compress(written, innerCompression);
                 file.Name = file.Name.Replace(hostId.ToString(), erId.ToString(), StringComparison.OrdinalIgnoreCase);
             }
-            if (baked is not null)
+            if (baked is { Count: > 0 })
                 bakedFiles += MapBakedLight.AddTo(bnd, baked, path, hostId, erId);
             var target = Target(path);
             Directory.CreateDirectory(Path.GetDirectoryName(target)!);
@@ -113,8 +113,8 @@ public static class MapEnvironment
             line += $"; e.g. {volumes[0]}";
         if (cubes.Count > 0)
             line += $"; {cubes[0]}";
-        if (baked is not null)
-            line += $"; {bakedFiles} baked light textures ({MapBakedLight.VolumeTag}) added";
+        if (baked is { Count: > 0 })
+            line += $"; {bakedFiles} baked light textures added for {baked.Count} light volumes ({string.Join(", ", baked.Take(4).Select(v => v.Tag))}{(baked.Count > 4 ? ", ..." : "")})";
         if (skipped.Count > 0)
             line += $"; {skipped.Count} kept as they were ({string.Join(", ", skipped.Take(4))})";
         return line;
