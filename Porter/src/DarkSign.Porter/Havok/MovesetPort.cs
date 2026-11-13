@@ -404,6 +404,19 @@ public static partial class MovesetPort
             {
                 var notes = new List<string>();
                 mapEffects = Maps.MapSfx.Wanted(ds3Archives, Maps.MapSlots.All, notes);
+                // The effects DS3 objects carry on their own dummy polys (Firelink's candle flames: ObjectSfx).
+                if (Maps.ObjectSfx.Enabled)
+                    try
+                    {
+                        if (ds3.Get(Maps.ObjectSfx.Ds3ParamName) is { } modelSfx)
+                            mapEffects.UnionWith(Maps.ObjectSfx.Wanted(ds3Archives, modelSfx, Maps.MapSlots.All, notes));
+                        else
+                            notes.Add($"object effects: DS3 has no {Maps.ObjectSfx.Ds3ParamName}; objects get no DS3 effects");
+                    }
+                    catch (Exception e) when (e is not OutOfMemoryException)
+                    {
+                        notes.Add($"object effects: not read ({e.GetType().Name}: {e.Message}); objects get no DS3 effects");
+                    }
                 notes.ForEach(Console.WriteLine);
                 wantedEffects.UnionWith(mapEffects);
             }

@@ -467,8 +467,16 @@ Try the next option if: A DS3 map crashes or hangs while loading since regions w
 
 Try the next option if: A DS3 map crashes, hangs while loading or hitches since its effects were added, or a fog bank, light shaft or flame looks wrong or floats in the air.
 
-- **A: DS3's map effects (default).** The effects DS3 places in its maps (Firelink Shrine's candle flames, fog banks, light shafts, crows, flies and fires) are converted with the weapons' effects and stand where DS3 has them. Report: Work\map-sfx.tsv lists any effect that couldn't be converted.
+- **A: DS3's map effects (default).** The effects DS3 places in its maps (fog banks, light shafts, crows, flies and fires) are converted with the weapons' effects and stand where DS3 has them, and the objects DS3 shows lit (candles, torches, braziers) carry their flames: DS3's object effect rows become Elden Ring asset effect rows. Report: Work\map-sfx.tsv lists any effect that couldn't be converted, and the object effects line of the port-maps log counts the lit objects.
 - **B: None.** The DS3 maps have none of DS3's map effects (DARKSIGN_MAP_SFX=0), as every build up to 1.0.366 was. (`DARKSIGN_MAP_SFX=0`)
+- **C: Region effects only.** DS3's fog, light shafts and other placed effects as in A, but no flames on objects (DARKSIGN_OBJECT_SFX=0): candles and torches stand unlit, as builds up to 1.0.44x had them. (`DARKSIGN_OBJECT_SFX=0`)
+
+### Water in the DS3 maps (`map-water`, rebuilds the content)
+
+Try the next option if: A DS3 map crashes or hangs while loading since its water was added, or its pools, puddles and rivers look wrong (black, glowing, flickering or floating).
+
+- **A: Elden Ring's water (default).** DS3's water surfaces are drawn with Elden Ring's own water shader (M_MuddyWater, borrowed from a vanilla Elden Ring map, M_Water_Cheap if that isn't found), keeping DS3's shape. Waterfalls and water effects are not part of this.
+- **B: No water surfaces.** DS3's water surfaces are left out (DARKSIGN_MAP_WATER=0), as every build up to 1.0.44x had them. (`DARKSIGN_MAP_WATER=0`)
 
 ### DS3's cutscenes (boss intros) (`map-cutscenes`, rebuilds the content)
 

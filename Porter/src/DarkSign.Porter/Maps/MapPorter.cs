@@ -412,7 +412,13 @@ public static class MapPorter
         }
         // DS3's map effects (Firelink's candles, fog, light shafts), converted by port-weapons into the common binder.
         if (ported.Count > 0)
+        {
             Step(report, "map effects", () => MapSfx.Apply(ctx, ds3, ported.Select(p => p.Slot)));
+            // The effects DS3's objects carry (candle flames), on the asset rows written above.
+            if (_objects is not null)
+                Step(report, "object effects", () => ObjectSfx.Apply(ctx, ds3, ported.Select(p => p.Slot), MapSfx.ReadTable(ctx),
+                    id => _partNames.GetValueOrDefault(id)));
+        }
         if (enemyPort is not null)
         {
             // The SpEffects the maps' scripts use get rows too, so the events step can point the scripts at them.
@@ -1522,6 +1528,30 @@ public static class MapPorter
         }
         if (models is null)
             throw new InvalidDataException($"no plain one-layer material to use as a template in {string.Join(", ", tried)}");
+        // DS3's water surfaces: Elden Ring's own pool water, from a map that has some (MapModelPort.WaterBinders).
+        if (!plain && !models.HasWater && MapModelPort.WaterEnabled)
+            foreach (var (map, number) in MapModelPort.WaterBinders)
+            {
+                var path = ErMapBndPath(map, number);
+                if (!er.Contains(path))
+                    continue;
+                try
+                {
+                    var water = BND4.Read(er.Read(path)).Files.Where(f => FLVER2.Is(f.Bytes)).Select(f => FLVER2.Read(f.Bytes)).ToList();
+                    var withWater = MapModelPort.Create([.. flvers, .. water], matbins, layout.Value.Header, plain);
+                    tried.Add(ItemText.Leaf(path));
+                    if (withWater.HasWater)
+                    {
+                        flvers.AddRange(water);
+                        models = withWater;
+                        break;
+                    }
+                }
+                catch (Exception ex) when (ex is InvalidDataException or IOException or EndOfStreamException)
+                {
+                    tried.Add($"{ItemText.Leaf(path)} (unreadable: {ex.Message})");
+                }
+            }
         _templates[hostId] = (models, layout.Value.Bnd, layout.Value.Compression, layout.Value.Map);
         return (models.Fresh(), layout.Value.Bnd, layout.Value.Compression, layout.Value.Map);
     }
