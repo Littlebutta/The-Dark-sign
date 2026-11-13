@@ -668,6 +668,8 @@ public static class Fallbacks
                 { PorterEnv = Env("DARKSIGN_ENEMY_AI_SPEFFECTS", "ds3") },
             new("H", "Each character's own AI rows only", "As A, but a DS3 enemy that DS3 places with another family's AI (the Cemetery of Ash hollows run the Hollow Soldiers' rows) gets its own character's first AI row instead of that family's (DARKSIGN_ENEMY_SHARED_THINK=0), as up to 1.0.417, when those hollows circled the player without attacking. Use when a ported enemy freezes or the game crashes when it notices you with A.")
                 { PorterEnv = Env("DARKSIGN_ENEMY_SHARED_THINK", "0") },
+            new("I", "Map-script AI markers on the enemy row", "As A, but the markers DS3's map scripts put on an enemy only to steer its AI (Ariandel's wolves get one when their pack leader is gone) are on its enemy row from the start (DARKSIGN_ENEMY_SCRIPT_MARKERS=keep), as in 1.0.442, when Ariandel's wolf only circled and never attacked. Use when a ported enemy behaves worse than in 1.0.442.")
+                { PorterEnv = Env("DARKSIGN_ENEMY_SCRIPT_MARKERS", "keep") },
         ]),
         new("enemy-glow", "DS3 maps", "Ported DS3 enemies' glows", Stage.Build,
             "A ported DS3 enemy's glow is the wrong colour or missing (the Jailer's lantern, Pontiff Sulyvahn's swords, the Soul of Cinder), a part of it glows far too brightly or draws black, or the game crashes or hangs loading a ported enemy that glows.",

@@ -89,6 +89,8 @@ public sealed class ChrEffects
         public int NpcEffects, NpcEffectsSkipped;
         /// <summary>DS3 effects its row names that DS3's scripts only take off (left out), and ones they only put on (added).</summary>
         public List<int> ScriptDropped = [], ScriptAdded = [], CategoryDropped = [];
+        /// <summary>AI state markers DS3's scripts put on, left out of the row (<see cref="ScriptMarkersLeftOut"/>).</summary>
+        public List<int> ScriptMarkers = [];
         public string Note = "";
     }
 
@@ -465,6 +467,16 @@ public sealed class ChrEffects
     /// script reads to choose its attacks).
     /// </summary>
     public IReadOnlySet<int> AiSpEffectIds { get; set; } = new HashSet<int>();
+
+    /// <summary>
+    /// An effect DS3's map scripts put on an enemy that shows nothing and only tells its AI what is going on (a state
+    /// marker) stays off the ported row: the scripts set it when something happens on the map, while on the row it is
+    /// on from the start. Ariandel's wolf pack gets 13032 from m45's event 14505200 once its leader is gone; that
+    /// branch of DS3's wolf AI (604000_battle) only circles, guards and backs off, and with 13032 on its row since
+    /// #183 ported the wolf's markers, the 1.0.442 wolf circled and never attacked. The ported map scripts still set
+    /// the marker on placed enemies. Fallback enemy-ai I (DARKSIGN_ENEMY_SCRIPT_MARKERS=keep) puts them back on the row.
+    /// </summary>
+    public static bool ScriptMarkersLeftOut => Environment.GetEnvironmentVariable("DARKSIGN_ENEMY_SCRIPT_MARKERS")?.Trim().ToLowerInvariant() != "keep";
     private AttackParamPort? _attacks;
 
     /// <summary>
@@ -583,11 +595,13 @@ public sealed class ChrEffects
             var have = Enumerable.Range(0, 32).Select(k => ParamDefaults.Int(row, $"spEffectID{k}")).ToHashSet();
             var own = Enumerable.Range(0, 32).Select(k => ParamDefaults.Int(ds3Row, $"spEffectId{k}")).Where(id => id > 0).ToList();
             var ds3Effects = own;
+            var scriptAdded = new HashSet<int>();
             if (_scripts is not null)
             {
                 (ds3Effects, var dropped, var added) = _scripts.Apply(ds3Row.ID, own);
                 built.ScriptDropped = [.. built.ScriptDropped.Union(dropped)];
                 built.ScriptAdded = [.. built.ScriptAdded.Union(added)];
+                scriptAdded.UnionWith(added);
             }
             if (CategoriesEnabled && _ds3SpEffects is { } ds3Sp)
             {
@@ -598,7 +612,15 @@ public sealed class ChrEffects
             {
                 if (_ds3SpEffects?[id] is not { } effect)
                     continue;
-                if (!(NpcEffectWanted(effect) || AiSpEffectIds.Contains(id)) || _sp.Port(id) is not (> 0 and var newId))
+                bool shows = NpcEffectWanted(effect);
+                if (!shows && scriptAdded.Contains(id) && AiSpEffectIds.Contains(id) && ScriptMarkersLeftOut)
+                {
+                    // A state the map scripts switch on later, not part of how the enemy starts (see ScriptMarkersLeftOut).
+                    if (!built.ScriptMarkers.Contains(id))
+                        built.ScriptMarkers.Add(id);
+                    continue;
+                }
+                if (!(shows || AiSpEffectIds.Contains(id)) || _sp.Port(id) is not (> 0 and var newId))
                 {
                     built.NpcEffectsSkipped++;
                     continue;
@@ -654,7 +676,7 @@ public sealed class ChrEffects
         {
             "new chr\tDS3 chr\tname\teffects ported\teffects wanted\teffect binder\tleft out (reason: count)\tSpEffects cast by moves ported\tcast\tNpcParam effects\tNpcParam effects skipped\t" +
             "sounds ported\tsounds wanted\tsound bank\tsounds left out\tevents added\tevents dropped\ttemplate events dropped\tevents by kind\tnote\t" +
-            "NpcParam effects DS3 scripts only take off (left out)\teffects DS3 scripts put on (added)\teffects that lose to another of their category (left out)",
+            "NpcParam effects DS3 scripts only take off (left out)\teffects DS3 scripts put on (added)\teffects that lose to another of their category (left out)\tAI state markers DS3 scripts put on (left out of the row)",
         };
         foreach (var b in _built.Values.OrderBy(b => b.Plan.NewChr))
             lines.Add(string.Join('\t', $"c{b.Plan.NewChr:D4}", $"c{b.Plan.Ds3.Chr:D4}", b.Plan.Ds3.Name.Replace('\t', ' '), b.EffectsPorted, b.EffectsWanted,
@@ -666,7 +688,7 @@ public sealed class ChrEffects
                 b.EventsAdded, b.EventsDropped, b.TemplateDropped,
                 string.Join("; ", b.Events.OrderBy(e => e.Key).Select(e => $"{e.Key}: {e.Value}")), b.Note,
                 string.Join(" ", b.ScriptDropped.Order()), string.Join(" ", b.ScriptAdded.Order()),
-                string.Join(" ", b.CategoryDropped.Order())));
+                string.Join(" ", b.CategoryDropped.Order()), string.Join(" ", b.ScriptMarkers.Order())));
         foreach (var (id, reason) in _converter.Reasons.OrderBy(r => r.Key).Take(400))
             lines.Add($"# f{id}: {reason}");
         _sp?.WriteReport(_ctx, "enemy-speffects.tsv");
