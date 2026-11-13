@@ -307,7 +307,7 @@ public static class Commands
     }
 
     private static void PortWeaponModels(PorterContext ctx, GameArchives er, GameArchives ds3, List<WeaponPlan> plans,
-        PARAM ds3Weapons, PARAM erWeapons, Dictionary<WeaponPlan, System.Numerics.Matrix4x4>? holdTurns = null)
+        PARAM ds3Weapons, PARAM erWeapons, Dictionary<WeaponPlan, WeaponHold.Hold>? holdTurns = null)
     {
         // Each weapon's model is independent (its own binder in, its own file out), so they convert on every core.
         // Results are kept per weapon and merged in plan order, so the materials list is the same on every run.

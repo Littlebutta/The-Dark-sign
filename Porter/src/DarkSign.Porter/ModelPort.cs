@@ -108,13 +108,14 @@ public static class ModelPort
     public static string PartsPath(int modelId, bool lod = false) =>
         $"/parts/wp_a_{modelId:D4}{(lod ? "_l" : "")}.partsbnd.dcx";
 
-    /// <summary>Converts one DS3 weapon binder onto its Elden Ring template's. A non-null <paramref name="holdTurn"/> marks a
-    /// shield (WeaponHold); its shape is then laid on the template's (ShieldShape), or turned by <paramref name="shapeTurn"/>
-    /// when the main model already decided it (the LOD).</summary>
+    /// <summary>Converts one DS3 weapon binder onto its Elden Ring template's. A non-null <paramref name="hold"/> marks a
+    /// shield (WeaponHold): each model gets its part's hold turn, and when the shield hangs on the template's dummy its
+    /// shape is then laid on the template's (ShieldShape), or turned by <paramref name="shapeTurn"/> when the main model
+    /// already decided it (the LOD).</summary>
     public static ConvertedModel? Convert(GameArchives ds3, GameArchives er, int ds3Model, int templateModel, int newModel, bool lod,
-        System.Numerics.Matrix4x4? holdTurn = null, System.Numerics.Matrix4x4? shapeTurn = null)
+        WeaponHold.Hold? hold = null, System.Numerics.Matrix4x4? shapeTurn = null)
     {
-        var shape = holdTurn is null ? null : new ShapeState { Turn = shapeTurn };
+        var shape = hold is { MatchShape: true } ? new ShapeState { Turn = shapeTurn } : null;
         var ds3Path = PartsPath(ds3Model, lod);
         var erPath = PartsPath(templateModel, lod);
         if (!ds3.Contains(ds3Path) || !er.Contains(erPath))
@@ -162,7 +163,7 @@ public static class ModelPort
                 if (WeaponHiddenParts.Collapse(flver, hiddenBones, hiddenMeshes) is > 0 and var moved)
                     Console.WriteLine($"models: {oldTag} -> {newTag}{(lod ? " LOD" : "")} {ItemText.Leaf(file.Name)}: hid {moved} vertices in meshes " +
                                       $"{string.Join(", ", hiddenMeshes)} on bones DS3's idle animation hides ({string.Join(", ", hiddenBones.Order())})");
-                ConvertFlver(flver, templateFlver, stem, oldTag, newTag, materials, Emissive(er), holdTurn, shape);
+                ConvertFlver(flver, templateFlver, stem, oldTag, newTag, materials, Emissive(er), hold?.TurnFor(WeaponHiddenParts.PartOf(file.Name)), shape);
                 FlverMaterialNumbers.Apply(flver);
                 files.Add(new BinderFile(file.Flags, file.ID, folder + leaf, flver.Write()));
             }

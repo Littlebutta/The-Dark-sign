@@ -202,6 +202,18 @@ public static class AbsorpPort
             Console.WriteLine("  " + note);
     }
 
+    /// <summary>
+    /// Where <see cref="Apply"/> will hang a weapon's models: null when it keeps its template's row (one model, or
+    /// DARKSIGN_ABSORP=0 / er), else the DS3 dummy poly to Elden Ring dummy poly map its new row is written with
+    /// (WeaponHold turns a shield for the dummy it really sits on).
+    /// </summary>
+    public static Dictionary<int, int>? Ds3Placement(GameArchives ds3, GameArchives er, int models)
+    {
+        if (!Enabled || Mode == "er" || models < 2)
+            return null;
+        return Mode == "raw" ? RawMap(ds3) : DummyMap(ds3, er);
+    }
+
     /// <summary>Elden Ring rows that place a model 1 in the left hand when two-handed, by how many weapons use them.</summary>
     private static List<PARAM.Row> ErSplitRows(PARAM absorp, PARAM weapons)
     {

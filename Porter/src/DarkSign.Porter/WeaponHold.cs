@@ -89,9 +89,17 @@ public static class WeaponHold
     /// The turn per ported shield (by plan), from the left-hand slot: DS3's OneHandDamipolyId1 against the template's
     /// absorb row left_0. Only weapons Elden Ring hangs on a shield bone are turned.
     /// </summary>
-    public static Dictionary<WeaponPlan, Matrix4x4> Plan(GameArchives er, GameArchives ds3, ParamStore erParams, ParamStore ds3Params, IReadOnlyList<WeaponPlan> plans)
+    /// <summary>A shield's hold: the turn per model (part 0-3; parts not listed take part 0's), and whether its shape is
+    /// then laid on the template's (only when it hangs on the template's own dummy, where the template is held).</summary>
+    public sealed record Hold(IReadOnlyDictionary<int, Matrix4x4> PartTurns, bool MatchShape)
     {
-        var result = new Dictionary<WeaponPlan, Matrix4x4>();
+        public Matrix4x4 TurnFor(int part) =>
+            PartTurns.TryGetValue(part, out var t) ? t : PartTurns.TryGetValue(0, out var t0) ? t0 : Matrix4x4.Identity;
+    }
+
+    public static Dictionary<WeaponPlan, Hold> Plan(GameArchives er, GameArchives ds3, ParamStore erParams, ParamStore ds3Params, IReadOnlyList<WeaponPlan> plans)
+    {
+        var result = new Dictionary<WeaponPlan, Hold>();
         if (!Enabled)
         {
             Console.WriteLine("models: shield hold turn off (DARKSIGN_SHIELD_HOLD=0)");
@@ -115,8 +123,9 @@ public static class WeaponHold
         }
         var byPair = new Dictionary<(int, int), List<string>>();
         // Every ported weapon Elden Ring hangs on a shield bone is a shield (the entry marks it for ShieldShape, even when
-        // its turn is nothing). Shields DS3 hangs on the body (the Giant Door Shield, dummy 33 on Spine2) start from the
-        // turn of DS3's usual hand-held shield dummy instead, and ShieldShape lays them on their template from there.
+        // its turn is nothing). Single-model shields DS3 hangs on the body start from the turn of DS3's usual hand-held
+        // shield dummy, and ShieldShape lays them on their template from there; shields with several models keep DS3's
+        // positions (below).
         var shields = new List<(WeaponPlan Plan, int Ds3Dummy, int ErDummy, bool Hand)>();
         foreach (var plan in plans.Where(p => p.Status == "port" && p.TemplateId is not null))
         {
@@ -132,19 +141,49 @@ public static class WeaponHold
             shields.Add((plan, ds3Dummy, erDummy, ds3Frames.TryGetValue(ds3Dummy, out var from) && HandBone(from.Bone)));
         }
         int? usualHand = shields.Where(s => s.Hand).GroupBy(s => s.Ds3Dummy).OrderByDescending(g => g.Count()).Select(g => (int?)g.Key).FirstOrDefault();
+        // A shield whose DS3 part holds several models gets a row of its own from AbsorpPort, with each model on the
+        // Elden Ring dummy matched to its DS3 one (the Giant Door Shield: model 0 on dummy 33 on the body), not on the
+        // template's hand dummy. Up to 1.0.4xx (#186) it was turned for the hand dummy anyway and laid on the hand-held
+        // template's shape: turned about 96° on the body, so the door faced backwards and swung to the other side
+        // ("flipped 180 degrees and in the wrong hands", 2026-11-13). Each model is now turned from its DS3 dummy's frame
+        // onto the frame of the dummy it really sits on, and its shape is left alone.
+        var placement = AbsorpPort.Ds3Placement(ds3, er, 2);
         var body = new List<string>();
+        var split = new List<string>();
         foreach (var (plan, ds3Dummy, erDummy, hand) in shields)
         {
-            int from = hand ? ds3Dummy : usualHand ?? ds3Dummy;
-            if (!hand)
-                body.Add($"{plan.Name} (DS3 dummy {ds3Dummy}{(ds3Frames.TryGetValue(ds3Dummy, out var f) ? " on " + f.Bone : "")})");
-            var turn = ds3Frames.TryGetValue(from, out var fromFrame) && Turn(fromFrame, erFrames[erDummy]) is { } t && Degrees(t) >= MinDegrees
-                ? t : Matrix4x4.Identity;
-            result[plan] = turn;
-            if (turn.IsIdentity)
+            int models = placement is null ? 0 : AbsorpPort.ModelCount(ds3, Convert.ToInt32(ds3Weapons[plan.Ds3Id]!["equipModelId"]!.Value));
+            if (placement is not null && models >= 2)
+            {
+                var ds3Row = ds3Absorp[Convert.ToInt32(ds3Weapons[plan.Ds3Id]!["wepAbsorpPosId"]!.Value)]!;
+                var templateRow = erAbsorp[Convert.ToInt32(erWeapons[plan.TemplateId!.Value]!["absorpParamId"]!.Value)]!;
+                var turns = new Dictionary<int, Matrix4x4>();
+                var parts = new List<string>();
+                for (int k = 0; k < Math.Min(models, 4); k++)
+                {
+                    int d = ds3Row[$"OneHandDamipolyId{2 * k + 1}"] is { } c ? Convert.ToInt32(c.Value) : -1;
+                    // AbsorpPort leaves a slot it can't match at the template's value.
+                    int e = d > 0 && placement.TryGetValue(d, out var m) ? m
+                        : templateRow[$"left_{k}"] is { } tc ? Convert.ToInt32(tc.Value) : -1;
+                    var turn = d > 0 && ds3Frames.TryGetValue(d, out var from) && erFrames.TryGetValue(e, out var onto)
+                               && Turn(from, onto) is { } t && Degrees(t) >= MinDegrees ? t : Matrix4x4.Identity;
+                    turns[k] = turn;
+                    parts.Add($"model {k}: DS3 {d}{(ds3Frames.TryGetValue(d, out var f) ? " on " + f.Bone : "")} -> {e}{(erFrames.TryGetValue(e, out var g) ? " on " + g.Bone : "")} {Degrees(turn):0}°");
+                }
+                result[plan] = new Hold(turns, MatchShape: false);
+                split.Add($"{plan.Name} ({string.Join(", ", parts)})");
                 continue;
-            if (!byPair.TryGetValue((from, erDummy), out var names))
-                byPair[(from, erDummy)] = names = [];
+            }
+            int from0 = hand ? ds3Dummy : usualHand ?? ds3Dummy;
+            if (!hand)
+                body.Add($"{plan.Name} (DS3 dummy {ds3Dummy}{(ds3Frames.TryGetValue(ds3Dummy, out var bf) ? " on " + bf.Bone : "")})");
+            var handTurn = ds3Frames.TryGetValue(from0, out var fromFrame) && Turn(fromFrame, erFrames[erDummy]) is { } ht && Degrees(ht) >= MinDegrees
+                ? ht : Matrix4x4.Identity;
+            result[plan] = new Hold(new Dictionary<int, Matrix4x4> { [0] = handTurn }, MatchShape: true);
+            if (handTurn.IsIdentity)
+                continue;
+            if (!byPair.TryGetValue((from0, erDummy), out var names))
+                byPair[(from0, erDummy)] = names = [];
             names.Add(plan.Name);
         }
         foreach (var ((d, e), names) in byPair)
@@ -154,8 +193,10 @@ public static class WeaponHold
                               $"(up {Fmt(erFrames[e].Up)}): turned {Degrees(turn):0}° for {names.Count} weapons ({string.Join(", ", names.Take(6))}{(names.Count > 6 ? ", ..." : "")}) [DARKSIGN_SHIELD_HOLD=0 off]");
         }
         if (body.Count > 0)
-            Console.WriteLine($"models: shield hold: {body.Count} shields DS3 hangs on the body start from DS3's hand-held shield dummy {usualHand?.ToString() ?? "(none)"}: {string.Join(", ", body)}");
-        Console.WriteLine($"models: shield hold: {result.Count} ported shields ({byPair.Values.Sum(n => n.Count)} turned by the hold frames); each is checked against its template's shape (ShieldShape)");
+            Console.WriteLine($"models: shield hold: {body.Count} single-model shields DS3 hangs on the body start from DS3's hand-held shield dummy {usualHand?.ToString() ?? "(none)"}: {string.Join(", ", body)}");
+        if (split.Count > 0)
+            Console.WriteLine($"models: shield hold: {split.Count} shields keep DS3's model positions (several models, own absorb row), turned for the dummy each model sits on, shape not matched: {string.Join("; ", split)}");
+        Console.WriteLine($"models: shield hold: {result.Count} ported shields ({byPair.Values.Sum(n => n.Count)} turned onto the template's hand dummy and checked against its shape)");
         return result;
     }
 
