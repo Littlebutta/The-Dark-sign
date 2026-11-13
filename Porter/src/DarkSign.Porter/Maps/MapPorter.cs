@@ -169,6 +169,7 @@ public static class MapPorter
                     case "--host-atmosphere": o.HostAtmosphere = true; break;
                     case "--host-env-light": o.HostEnvLight = true; break;
                     case "--flat-env-light": o.BakedLight = o.BakedLight with { Flat = true }; break;
+                    case "--no-light-areas": o.BakedLight = o.BakedLight with { NoAreas = true }; break;
                     case "--no-light-offset": o.NoLightOffset = true; o.BakedLight = o.BakedLight with { NoOffset = true }; break;
                     case "--baked-light-flip" when i + 1 < list.Count:
                         var axes = list[++i].ToLowerInvariant();
@@ -1182,11 +1183,11 @@ public static class MapPorter
             enemy.CollisionPartName = "";
         // Light: ambient from the host's environment map, lamps from DS3's light file. A failure leaves the map
         // as dark as it was before, not broken.
-        MapBakedLight.Volume? baked = null;
+        List<MapBakedLight.Volume> baked = [];
         if (options.HostLighting)
         {
             report.AppendLine("  lighting: the host's own (--host-lighting): no ambient light region, no DS3 lamps");
-            MapBakedLight.WriteIvInfo(ctx, er, hostId, erId, null);
+            MapBakedLight.WriteIvInfo(ctx, er, hostId, erId, (MapBakedLight.Volume?)null);
         }
         else
         {
@@ -1195,8 +1196,8 @@ public static class MapPorter
                          ("ambient light", () => MapLighting.AddAmbient(msb, host, ds3Msb)),
                          ("baked light", () =>
                          {
-                             var (volume, line) = MapBakedLight.Build(ds3, er, ds3Id, hostId, msb, ds3Msb, options.HostEnvLight ? MapBakedLight.Options.Default with { Flat = true } : options.BakedLight);
-                             baked = volume;
+                             var (volumes, line) = MapBakedLight.Build(ds3, er, ds3Id, hostId, msb, ds3Msb, options.HostEnvLight ? MapBakedLight.Options.Default with { Flat = true } : options.BakedLight);
+                             baked = volumes;
                              return line;
                          }),
                          ("environment light", () => MapEnvironment.Write(ctx, er, erId, hostId, options.HostEnvLight, baked)),

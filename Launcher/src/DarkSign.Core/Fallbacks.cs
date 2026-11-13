@@ -493,6 +493,13 @@ public static class Fallbacks
             new("D", "Baked light mirrored north-south", "The same baked light with the volume mirrored along z (port-maps --baked-light-flip z). Try it if C didn't line the dark patches up with the rooms.")
                 { MapsArgs = ["--baked-light-flip", "z"] },
         ]),
+        new("map-light-areas", "DS3 maps", "Light of their own for DS3's rooms", Stage.Build,
+            "Since this option came in, a DS3 map's rooms are lit in patches with hard edges, a room is far too dark or too bright against the rest, a map hangs or crashes while loading, or a room's light seems to belong to the room next door.",
+        [
+            new("A", "Each room its own light (default)", "Elden Ring lights rooms only from a light volume and a reflection cube baked for each room (Stormveil has 129), never from sunlight. Every room DS3's own map file marks out (28 to 38 per map) gets both, baked from DS3's light data, so rooms, tunnels and the shrine's undercroft are as dark as in DS3 and stop shining with outdoor reflections. The map-wide light stays under them for open ground."),
+            new("B", "One light for the whole map", "Only the one map-wide light volume and reflection (port-maps --no-light-areas), as in builds before this option: every room reflects the same outdoor light.")
+                { MapsArgs = ["--no-light-areas"] },
+        ]),
         new("map-light-place", "DS3 maps", "Where DS3's lamps and baked light sit in the DS3 maps", Stage.Build,
             "Since this option came in, a DS3 map's lamps glow where nothing is, its rooms are lit from the wrong side, or its shade falls in the wrong places when it didn't before.",
         [
