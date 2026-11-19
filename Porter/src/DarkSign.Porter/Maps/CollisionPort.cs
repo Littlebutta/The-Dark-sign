@@ -42,13 +42,16 @@ public static class CollisionPort
     /// <param name="adjust">Changes the converted file before it is written (object collision: body names and the
     /// bodies that move with an animation, see <see cref="ObjectPort"/>).</param>
     /// <param name="dropBroken">Leave out a body whose compressed mesh can't be decoded instead of failing the file
-    /// (objects: the frame of DS3's gate o400340 and lever o300500 is a placeholder mesh whose primitives point past
-    /// its vertices; the moving bodies beside it are fine).</param>
+    /// (objects; the moving bodies beside it are fine). Until 1.0.47x this left out every body made of solid blocks:
+    /// the frame of DS3's gate o400340, the base of its lever o300500 and the platform of every lift. Those are read
+    /// now (<see cref="CollisionHulls"/>), so this is only for a mesh that is really broken.</param>
     public static Result Convert(byte[] ds3Hkx, ErCollisionTemplate? template, bool xml, bool keepSimdTree, Action<hkRootLevelContainer, List<string>>? adjust,
         bool dropBroken = false)
     {
         var notes = new List<string>();
         var ds3 = ReadDs3(ds3Hkx);
+        // Solid blocks inside a mesh (lift platforms, gate frames) become triangles first: see CollisionHulls.
+        CollisionHulls.Expand(ds3, notes);
         if (dropBroken)
             DropBroken(ds3, notes);
         var er = Convert(ds3, template ?? ErCollisionTemplate.Default, keepSimdTree, notes);
@@ -338,7 +341,7 @@ public static class CollisionPort
                 }
                 catch (Exception ex) when (ex is ArgumentOutOfRangeException or IndexOutOfRangeException)
                 {
-                    notes.Add($"body {body.m_name}: its mesh points past its vertices (a placeholder), left out");
+                    notes.Add($"body {body.m_name}: its mesh points past its vertices (unreadable), left out");
                     return true;
                 }
             });
@@ -615,6 +618,9 @@ public static class CollisionPort
     // A 2018 tree with the 2014 tree's data, so both games decode through one routine.
     private static hknpCompressedMeshShapeTree Mirror(Ds3.hknpCompressedMeshShapeTree src) =>
         ConvertData(new Ds3.hknpCompressedMeshShapeData { m_meshTree = src }, keepSimdTree: false).m_meshTree;
+
+    /// <summary>Every triangle of a DS3 compressed mesh tree; throws when its primitives point past its vertices.</summary>
+    public static List<(Vector3 A, Vector3 B, Vector3 C)> DecodeDs3(Ds3.hknpCompressedMeshShapeTree tree) => DecodeTree(Mirror(tree));
 
     /// <summary>Every triangle of a compressed mesh tree (quads count as two), in the mesh's local space.</summary>
     public static List<(Vector3 A, Vector3 B, Vector3 C)> DecodeTree(hknpCompressedMeshShapeTree tree)
