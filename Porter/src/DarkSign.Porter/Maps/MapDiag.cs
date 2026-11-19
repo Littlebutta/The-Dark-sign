@@ -31,6 +31,8 @@ public static class MapDiag
             return MapCollisionDiag.Run(ctx, args.Skip(1).ToList());
         if (args.Count > 0 && args[0].Equals("stand-ins", StringComparison.OrdinalIgnoreCase))
             return MapStandInsDiag.Run(ctx, args.Skip(1).ToList());
+        if (args.Count > 0 && args[0].Equals("music", StringComparison.OrdinalIgnoreCase))
+            return MapMusicDiag.Run(ctx, args.Skip(1).ToList());
         if (args.Count == 0 || !args[0].Equals("colours", StringComparison.OrdinalIgnoreCase))
         {
             Console.Error.WriteLine("map-diag colours [DS3 map ID...]   (default: every slot's DS3 map)");
@@ -39,6 +41,7 @@ public static class MapDiag
             Console.Error.WriteLine("map-diag lightvol [ER map ID...]   (light volumes, ivinfo, lightmap materials; DS3 light probes and lightmaps)");
             Console.Error.WriteLine("map-diag collision [DS3 map ID...] [--at x,y,z ...]   (h/l body settings, collision parts, ground under points)");
             Console.Error.WriteLine("map-diag stand-ins [DS3 map ID...] (low-detail stand-ins and far views the port leaves out, from DS3's files)");
+            Console.Error.WriteLine("map-diag music [DS3 map ID...]     (DS3's sound regions, the script events that switch music and what starts them)");
             return 1;
         }
         var maps = args.Skip(1).Select(MapId.Parse).ToList();
