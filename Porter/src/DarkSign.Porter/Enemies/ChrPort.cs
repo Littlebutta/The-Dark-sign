@@ -55,8 +55,30 @@ public static partial class ChrPort
     public const string ManifestFile = "darksign_chr_files.txt";
     public const string ReportFile = "enemy-port.tsv";
 
-    /// <summary>Below this share of DS3's bones on the template the DS3 model and animations aren't put on it (C is used).</summary>
+    /// <summary>
+    /// Below this share of DS3's bones a template doesn't "fit": one that does is always preferred. Up to 1.0.479 a
+    /// character no template fitted wasn't ported at all (C: an Elden Ring body with DS3's name and health), which
+    /// left 19 of DS3's characters as Elden Ring enemies: the Dancer of the Boreal Valley a Red Wolf of Radagon,
+    /// Aldrich an Ulcerated Tree Spirit, the High Wall's wyvern a Dragonkin Soldier, Ariandel's Tree Women foot
+    /// soldiers. See <see cref="CarryBoneMatch"/>.
+    /// </summary>
     public const double MinBoneMatch = 0.25;
+
+    /// <summary>
+    /// Below this share of DS3's bones on the best template the DS3 model and animations aren't put on it (C is
+    /// used). 0 by default: every DS3 character is carried by a template, however few bones they share. The merged
+    /// skeleton holds all of DS3's bones next to the template's (<see cref="MergeSkeleton"/>), so the model, the
+    /// moves, their events, the AI, effects and sounds are DS3's as for any other character; what stays the
+    /// template's is what DS3's files have no Elden Ring form of: the behaviour graph and the ragdoll, whose hit
+    /// shapes sit on the template's bones (at rest where DS3 doesn't move them). Such a character's template is the
+    /// best by size, kind and boss-ness that has animations. Fallbacks "enemy-port": DARKSIGN_ENEMY_MIN_BONES=0.25
+    /// brings the Elden Ring bodies back (as up to 1.0.479).
+    /// </summary>
+    public static double CarryBoneMatch => ParseCarry(Environment.GetEnvironmentVariable("DARKSIGN_ENEMY_MIN_BONES"));
+
+    public static double ParseCarry(string? text) =>
+        text?.Trim() == "0.25" ? MinBoneMatch // the Fallbacks window's option
+        : double.TryParse(text?.Trim(), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var v) && v is >= 0 and <= 1 ? v : 0;
 
     /// <summary>A DS3 character as the maps use it: its model, the NpcParam rows placed with it, its name.</summary>
     public sealed record Ds3Chr(int Chr, string Name, bool Boss, SortedSet<int> NpcParams);
@@ -140,8 +162,9 @@ public static partial class ChrPort
     /// in its rest pose (metres; 0 = unknown): Size is the diagonal of the box around the middle 80% of its bones on
     /// each axis (helper bones stand far off: every skeleton has a throw target 3 m up), Head the height of its
     /// "Head" bone when it has one (the Imp 0.96, the Jailer 2.20, Lorian 4.29).
+    /// Moves is how many animations a DS3 character's own binders (and its base's) hold; -1 = not counted.
     /// </summary>
-    public sealed record Shape(IReadOnlyList<string> Names, IReadOnlyList<short> Parents, float Size = 0, float Head = 0);
+    public sealed record Shape(IReadOnlyList<string> Names, IReadOnlyList<short> Parents, float Size = 0, float Head = 0, int Moves = -1);
 
     /// <summary>
     /// How many DS3 bones land on a bone the template has (the same count <see cref="MergeSkeleton"/> reports as
@@ -447,10 +470,21 @@ public static partial class ChrPort
         // DS3's skeletons are in its animation binders (large): read side by side, once.
         var ds3Shapes = new ConcurrentDictionary<int, Shape?>();
         Parallel.ForEach(characters, Parallelism.Options, c => ds3Shapes[c.Chr] = Ds3ShapeOf(ds3Archives, c.Chr));
+        // Characters with no moves of their own play those of the character with their skeleton (PickAnimationDonors).
+        AnimationDonors.Clear();
+        if (SharedMoves)
+            foreach (var (chr, donor) in PickAnimationDonors(ds3Shapes.Where(p => p.Value is not null).ToDictionary(p => p.Key, p => p.Value!)))
+            {
+                AnimationDonors[chr] = donor;
+                var name = characters.FirstOrDefault(c => c.Chr == chr)?.Name ?? "";
+                var donorName = characters.FirstOrDefault(c => c.Chr == donor)?.Name ?? "";
+                notes.Add($"c{chr:D4} {name}: DS3 gives it no animations of its own; it plays c{donor:D4} {donorName}'s (the same skeleton)");
+            }
         var ids = AssignIds(characters.Select(c => c.Chr), n => erArchives.Contains($"/chr/c{n:D4}.chrbnd.dcx"));
 
         var plans = new List<Plan>();
         var fileChrs = new ConcurrentDictionary<int, int>();
+        double carry = CarryBoneMatch;
         foreach (var ds3Chr in characters)
         {
             if (ds3Shapes.GetValueOrDefault(ds3Chr.Chr) is { } known)
@@ -460,7 +494,16 @@ public static partial class ChrPort
                 skipped?.Invoke(ds3Chr);
                 continue;
             }
-            var chosen = pick.Match < MinBoneMatch && method != Method.Stats ? Method.Stats : method;
+            // No template fits (too few of DS3's bones): the character is carried by the best one that has
+            // animations of its own or its base's (Rykard's Corpse, the Ancient Wyvern's best by size, has none).
+            if (pick.Match < MinBoneMatch && pick.Match >= carry && method != Method.Stats)
+                foreach (var r in RankTemplates(ds3Chr, shape, catalog, ErShape))
+                    if (fileChrs.GetOrAdd(ChrId(r.Template.Model), c => FileChr(c, chr => AnimationCount(erArchives, chr))) >= 0)
+                    {
+                        pick = (r.Template, r.Match);
+                        break;
+                    }
+            var chosen = pick.Match < carry && method != Method.Stats ? Method.Stats : method;
             double boneMatch = pick.Match;
             // The template's own body will be what stands there: pick it by kind (PickBody), not by bone names.
             if (chosen == Method.Stats && PickBody(ds3Chr, shape.Names, catalog, ErNames) is { } body)
@@ -621,7 +664,10 @@ public static partial class ChrPort
                 default: result.Stats++; break;
             }
             result.Lines.Add(Line(plan.Ds3, effective, effective.Method.ToString().ToLowerInvariant(),
-                files?.Note ?? (plan.Method == Method.Stats && method != Method.Stats ? $"bone match {plan.BoneMatch:0.00} below {MinBoneMatch}" : "")));
+                (files is not null && effective.Method != Method.Stats && plan.BoneMatch < MinBoneMatch
+                    ? $"carried by its template (bone match {plan.BoneMatch:0.00}): the model, moves, AI, effects and sounds are DS3's, the hit shapes the template's; "
+                    : "")
+                + (files?.Note ?? (plan.Method == Method.Stats && method != Method.Stats ? $"bone match {plan.BoneMatch:0.00} below {CarryBoneMatch.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture)}" : ""))));
         }
 
         // The test set (RULE 4): one character built stage by stage, only in the F1 spawn list, never placed in a map.
@@ -1014,15 +1060,23 @@ public static partial class ChrPort
             return null;
         try
         {
-            foreach (int source in Ds3AnimationSources(chr))
+            Shape? found = null;
+            int moves = 0;
+            foreach (int source in new[] { chr, chr / 10 * 10 }.Distinct())
                 foreach (var entry in ds3.Entries.Where(e => e.Path is { } p && Regex.IsMatch(ItemText.Leaf(p), $@"^c{source:D4}(_.*)?\.anibnd\.dcx$", RegexOptions.IgnoreCase))
                              .OrderBy(e => e.Path, StringComparer.Ordinal))
-                    if (BND4.Read(ds3.Read(entry.Path!)).Files.FirstOrDefault(f => ItemText.Leaf(f.Name).Equals("skeleton.hkx", StringComparison.OrdinalIgnoreCase)) is { } file)
+                {
+                    var files = BND4.Read(ds3.Read(entry.Path!)).Files;
+                    moves += files.Count(f => IsMoveFile(ItemText.Leaf(f.Name)));
+                    if (found is null && files.FirstOrDefault(f => ItemText.Leaf(f.Name).Equals("skeleton.hkx", StringComparison.OrdinalIgnoreCase)) is { } file)
                     {
                         var s = AnimPort.ReadDs3Skeleton(file.Bytes);
                         var (size, head) = RestSize(s.Names, s.Parents, s.ReferencePose.Select(t => (t.Translation, t.Rotation)).ToList());
-                        return new Shape(s.Names, s.Parents, size, head);
+                        found = new Shape(s.Names, s.Parents, size, head);
                     }
+                }
+            if (found is not null)
+                return found with { Moves = moves };
         }
         catch (Exception ex) when (ex is not OutOfMemoryException)
         {
@@ -1268,7 +1322,48 @@ public static partial class ChrPort
     }
 
     /// <summary>The DS3 characters whose animations a DS3 character can play: itself, then its base (c2191 -> c2190).</summary>
-    public static int[] Ds3AnimationSources(int chr) => new[] { chr, chr / 10 * 10 }.Distinct().ToArray();
+    public static int[] Ds3AnimationSources(int chr)
+    {
+        var sources = new List<int> { chr, chr / 10 * 10 };
+        if (AnimationDonors.TryGetValue(chr, out var donor))
+            sources.AddRange([donor, donor / 10 * 10]);
+        return sources.Distinct().ToArray();
+    }
+
+    /// <summary>
+    /// DS3 characters with no animations of their own, and the character whose animations they play
+    /// (<see cref="PickAnimationDonors"/>), set while the plans are made.
+    /// </summary>
+    public static readonly ConcurrentDictionary<int, int> AnimationDonors = new();
+
+    /// <summary>Fallbacks "enemy-port": DARKSIGN_ENEMY_SHARED_MOVES=0 leaves a DS3 character with no animations of its own on its template's (as up to 1.0.479).</summary>
+    public static bool SharedMoves => Environment.GetEnvironmentVariable("DARKSIGN_ENEMY_SHARED_MOVES")?.Trim() != "0";
+
+    /// <summary>An animation file that is a move: "a000_003000.hkx", not the "a999_999999.hkx" placeholder an empty DS3 binder holds.</summary>
+    public static bool IsMoveFile(string leaf) => AnimLeaf().Match(leaf) is { Success: true } m && m.Groups[1].Value != "999";
+
+    /// <summary>
+    /// DS3 gives some characters a model of their own and no moves: their animation binder holds a skeleton and a
+    /// placeholder clip, and they play another character's whole move set, the one with the very same skeleton. The
+    /// Undead Clerics of the Cemetery of Ash (c1430), the Devout of the Deep and Sage's Prentices (c1440-c1446) have
+    /// the Hollow Soldier's 104 bones (c1100: 323 animations), the Irithyll Dog (c2290) the Undead Dog's 54 (c2020).
+    /// Up to 1.0.479 the port looked only in a character's own binders and its base's (c2191 -> c2190), found no DS3
+    /// move for these seven, and left them every animation and move event of their Elden Ring template: the Giant
+    /// Beast Skeleton's and the Large Stray's moves on DS3 bodies, with DS3's AI asking for attacks they didn't have.
+    /// <para>The donor of a character without moves is the character with moves whose skeleton has the same bones
+    /// under the same parents; between several, the one that stands as tall (the Large Hollow Soldier has the Hollow
+    /// Soldier's bones), then the one with the most animations, then the lowest ID. None when no skeleton matches.</para>
+    /// </summary>
+    public static Dictionary<int, int> PickAnimationDonors(IReadOnlyDictionary<int, Shape> shapes)
+    {
+        static string Key(Shape s) => string.Join('|', s.Names.Select((n, i) => $"{n.ToLowerInvariant()}>{(i < s.Parents.Count ? s.Parents[i] : -2)}"));
+        var withMoves = shapes.Where(p => p.Value.Moves > 0 && p.Value.Names.Count > 1).GroupBy(p => Key(p.Value)).ToDictionary(g => g.Key, g => g.ToList());
+        var donors = new Dictionary<int, int>();
+        foreach (var (chr, shape) in shapes.Where(p => p.Value.Moves == 0 && p.Value.Names.Count > 1).OrderBy(p => p.Key))
+            if (withMoves.TryGetValue(Key(shape), out var same))
+                donors[chr] = same.OrderByDescending(d => Math.Round(SizeMatch(d.Value, shape), 2)).ThenByDescending(d => d.Value.Moves).ThenBy(d => d.Key).First().Key;
+        return donors;
+    }
 
     /// <summary>Whether a model draws anything: meshes with faces, materials and a GX list to give them.</summary>
     public static bool HasBody(FLVER2 flver) =>
@@ -1724,6 +1819,10 @@ public static partial class ChrPort
         notes.Add($"{replaced} DS3 animations ({failed} failed; {filled} are the nearest DS3 move in place of a template move DS3 has no match for, {kept} template animations kept; {additive} additive flinch files matched with DS3 additive clips only), {merged} moves with DS3 events"
                   + (signals.Count > 0 ? $"; DS3 events kept that the template has no event of (231 map-script signal, 233 display mask change): {string.Join(" ", signals.OrderBy(p => p.Key).Select(p => $"{p.Key}x{p.Value}"))}" : "")
                   + (unlaid.Count > 0 ? $"; DS3 event types the template lays out differently or lacks, dropped: {string.Join(" ", unlaid.OrderByDescending(p => p.Value).ThenBy(p => p.Key).Take(8).Select(p => $"{p.Key}x{p.Value}"))}" : ""));
+        // RULE 4: DS3's own moves that found no place (no template move of their ID, no family ChrMoves adds states
+        // for): the character can't play them, whatever DS3's AI or map scripts ask for.
+        if (stage == Stage.All && LostMoves(moves, wholeKeys, chosen.Values) is { Count: > 0 } lost)
+            notes.Add($"{lost.Count} DS3 moves with no place in the template (not playable): {LostSummary(lost)}");
         if (extra.Count > 0)
         {
             int states = 0;
@@ -1748,6 +1847,22 @@ public static partial class ChrPort
         }
         return replaced;
     }
+
+    /// <summary>
+    /// DS3's whole (not additive) base-section moves whose animation plays nowhere in the ported character: neither
+    /// under their own ID nor as a stand-in for a template move.
+    /// </summary>
+    public static List<int> LostMoves(IReadOnlyDictionary<(int Section, int Id), Ds3Move> moves, IEnumerable<(int Section, int Id)> whole,
+        IEnumerable<(int Section, int Id)> played)
+    {
+        var used = played.Where(moves.ContainsKey).Select(k => moves[k].Hkx).ToHashSet();
+        return whole.Where(k => k.Section == 0 && moves.ContainsKey(k) && !used.Contains(moves[k].Hkx)).Select(k => k.Id).Distinct().Order().ToList();
+    }
+
+    /// <summary>Lost moves by block of a thousand IDs, largest first, with the first few IDs of each: "3xxx x4 (3020,3021,...)".</summary>
+    public static string LostSummary(IReadOnlyList<int> lost) =>
+        string.Join(" ", lost.GroupBy(id => id / 1000).OrderByDescending(g => g.Count()).ThenBy(g => g.Key).Take(8)
+            .Select(g => $"{g.Key}xxx x{g.Count()} ({string.Join(",", g.Take(6))}{(g.Count() > 6 ? ",..." : "")})"));
 
     /// <summary>Which template animation files are additive, read once per template (many characters share one).</summary>
     private static readonly ConcurrentDictionary<(int Chr, string Leaf, int Length), bool> TemplateAdditive = new();

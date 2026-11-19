@@ -73,6 +73,45 @@ public static class EnemySelfTest
             ranked[0].Template.Model == "c3500" && ranked[0].Match < ChrPort.MinBoneMatch && ranked[1].Match == 1);
         Check("a template with DS3's bones comes before a better-scoring one that cannot carry the DS3 model",
             ChrPort.PickTemplate(new ChrPort.Ds3Chr(1310, "Outrider Knight", false, [131000]), human with { Size = 4 }, [knight, skeletonEnemy], e => e.Model == "c4300" ? human : other with { Size = 4 })?.Template.Model == "c4300");
+        Check("carrying: by default every character is carried (0); DARKSIGN_ENEMY_MIN_BONES=0.25 is read, nonsense is 0",
+            ChrPort.ParseCarry(null) == 0 && ChrPort.ParseCarry("0.25") == 0.25 && ChrPort.ParseCarry("x") == 0 && ChrPort.ParseCarry("7") == 0);
+        var hollow = new ChrPort.Shape(["Master", "RootPos", "Pelvis"], [-1, 0, 1], 2.7f, 1.6f, 323);
+        var donors = ChrPort.PickAnimationDonors(new Dictionary<int, ChrPort.Shape>
+        {
+            [1100] = hollow, [1101] = hollow with { Moves = 323 }, [1105] = hollow with { Size = 3.6f, Head = 2.2f, Moves = 250 },
+            [1430] = hollow with { Moves = 0 }, [1445] = hollow with { Size = 3.6f, Head = 2.2f, Moves = 0 },
+            [2020] = new(["Master", "Root", "Tail"], [-1, 0, 1], 2f, 0, 81), [2290] = new(["master", "root", "tail"], [-1, 0, 1], 2f, 0, 0),
+            [3000] = new(["Master", "Root", "Tail"], [-1, 0, 0], 2f, 0, 0), [1240] = new(["Master"], [-1], 0, 0, 0),
+        });
+        Check($"shared moves: a DS3 character with no animations plays those of the character with its skeleton, the one of its size ({string.Join(",", donors.OrderBy(d => d.Key).Select(d => $"{d.Key}>{d.Value}"))})",
+            donors.Count == 3 && donors[1430] == 1100 && donors[1445] == 1105 && donors[2290] == 2020);
+        ChrPort.AnimationDonors[1430] = 1100;
+        bool sourcesOk = ChrPort.Ds3AnimationSources(1431).SequenceEqual([1431, 1430]) && ChrPort.Ds3AnimationSources(1430).SequenceEqual([1430, 1100]);
+        ChrPort.AnimationDonors.Clear();
+        Check("shared moves: the donor's binders are read after the character's own and its base's; the a999 placeholder is no move",
+            sourcesOk && ChrPort.IsMoveFile("a000_003000.hkx") && !ChrPort.IsMoveFile("a999_999999.hkx") && !ChrPort.IsMoveFile("skeleton.hkx"));
+        var lostMoves = new Dictionary<(int Section, int Id), ChrPort.Ds3Move>
+        {
+            [(0, 0)] = new([], (0, 0)), [(0, 3000)] = new([], (0, 3000)), [(0, 3001)] = new([], (0, 3000)),
+            [(0, 3005)] = new([], (0, 3005)), [(0, 6001)] = new([], (0, 6001)), [(1, 3005)] = new([], (1, 3005)),
+        };
+        var lost = ChrPort.LostMoves(lostMoves, lostMoves.Keys, [(0, 0), (0, 3000)]);
+        Check($"lost moves: a DS3 move whose clip plays nowhere is listed, one that shares a played clip or sits in a variant section is not ({ChrPort.LostSummary(lost)})",
+            lost.SequenceEqual([3005, 6001]) && ChrPort.LostSummary(lost) == "3xxx x1 (3005) 6xxx x1 (6001)");
+        var markerDir = Path.Combine(Path.GetTempPath(), "darksign-selftest-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(markerDir);
+        try
+        {
+            var marker = Path.Combine(markerDir, "ItemlotParam.xml.missing");
+            File.WriteAllText(marker, "https://x/ER/Defs/ItemlotParam.xml");
+            Check("download cache: a not-found marker answers only for its own address (Windows reads ItemLotParam.xml.missing as ItemlotParam.xml.missing)",
+                ExternalData.MarkedMissing(marker, "https://x/ER/Defs/ItemlotParam.xml") && !ExternalData.MarkedMissing(marker, "https://x/ER/Defs/ItemLotParam.xml")
+                && !ExternalData.MarkedMissing(Path.Combine(markerDir, "none.missing"), "https://x/ER/Defs/ItemlotParam.xml"));
+        }
+        finally
+        {
+            Directory.Delete(markerDir, true);
+        }
         Check("size: by head height when both have a head, by the box otherwise",
             ChrPort.SizeMatch(new ChrPort.Shape([], [], 2, 1), new ChrPort.Shape([], [], 2, 2)) == 0.5 && ChrPort.SizeMatch(new ChrPort.Shape([], [], 2, 0), new ChrPort.Shape([], [], 2, 2)) == 1);
         var rest = ChrPort.RestSize(["Master", "Pelvis", "Head", "Throw_Target2"], [-1, 0, 1, 0],
