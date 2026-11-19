@@ -76,7 +76,7 @@ public sealed class MapModelPort
     /// <summary>A new port with the same templates and none of this one's materials (one per map).</summary>
     public MapModelPort Fresh() => new(_templates, _templateFlver)
         { VanillaMaterials = VanillaMaterials, TemplateTextures = TemplateTextures, Ds3Alpha = Ds3Alpha, TerrainLayers = TerrainLayers, TintMaterials = TintMaterials,
-          HalfNormals = HalfNormals, OverlayBacking = OverlayBacking, CutFadedOverlays = CutFadedOverlays, FadeOverlays = FadeOverlays };
+          HalfNormals = HalfNormals, LayerContours = LayerContours, OverlayBacking = OverlayBacking, CutFadedOverlays = CutFadedOverlays, FadeOverlays = FadeOverlays };
 
     /// <summary>
     /// Diagnostic "--tint-materials": the albedo of each DS3 material family that keeps something in vertex alpha is a
@@ -131,6 +131,14 @@ public sealed class MapModelPort
     /// its first layer, as every build up to 1.0.353.
     /// </summary>
     public bool TerrainLayers { get; set; } = true;
+
+    /// <summary>
+    /// True (the default): a terrain blend or two-layer triangle whose corners show different layers is cut along the
+    /// line where DS3 changes layer (<see cref="MapLayerContours"/>). False (fallback "map-blend-layers" C,
+    /// --whole-blend-triangles): it goes whole to one layer, as 1.0.354 to 1.0.46x, and the edges of painted patches
+    /// are jagged.
+    /// </summary>
+    public bool LayerContours { get; set; } = true;
 
     /// <summary>
     /// True (the default): DS3 normals stored as half floats (terrain blends) are read as half floats
@@ -792,14 +800,14 @@ public sealed class MapModelPort
             var behind = CutFadedOverlays ? MapOverlays.CutEverywhere
                 : model is not null && OverlayBacking is { } backing ? backing.For(model)
                 : null;
-            keepAlpha = MapOverlays.Apply(flver, stats, behind, FadeOverlays);
+            keepAlpha = MapOverlays.Apply(flver, stats, behind, FadeOverlays, LayerContours);
             Overlays.Add(stats);
         }
         // Terrain blends: one mesh per layer it shows (the weights are still in DS3's vertex layout here).
         if (TerrainLayers)
         {
             var stats = new MapTerrainBlends.Stats();
-            MapTerrainBlends.Apply(flver, stats);
+            MapTerrainBlends.Apply(flver, stats, LayerContours);
             Blends.Add(stats);
         }
         if (TintMaterials)
