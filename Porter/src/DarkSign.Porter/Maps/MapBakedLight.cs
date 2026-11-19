@@ -47,7 +47,9 @@ public static class MapBakedLight
     /// space, as in earlier builds, instead of being moved by DS3's map offset (<see cref="ReadProbes"/>).</param>
     /// <param name="NoAreas">"--no-light-areas" (fallback "map-light-areas" B): no light volume and reflection cube
     /// per DS3 room (<see cref="MapLightAreas"/>), only the map-wide volume, as in builds before it.</param>
-    public sealed record Options(bool Flat, bool FlipX, bool FlipY, bool FlipZ, bool NoOffset = false, bool NoAreas = false)
+    /// <param name="GuessAxes">"--guess-probe-axes" (fallback "map-sun" C): which first-order term of DS3's probes
+    /// is up is guessed from the open sky, as in builds up to 1.0.44x, instead of DS3's fixed order (<see cref="ReadProbes"/>).</param>
+    public sealed record Options(bool Flat, bool FlipX, bool FlipY, bool FlipZ, bool NoOffset = false, bool NoAreas = false, bool GuessAxes = false)
     {
         public static Options Default { get; } = new(false, false, false, false);
     }
@@ -82,9 +84,14 @@ public static class MapBakedLight
     }
 
     /// <summary>
-    /// DS3's probes with their coefficients put in Elden Ring's order. DS3's file doesn't say which first-order term
-    /// is which axis: the one that is largest under open sky (sun mask 768 or more) is up; of the other two the lower
-    /// index is taken as x unless up came first (then it is the standard y, z, x order).
+    /// DS3's probes with their coefficients put in Elden Ring's order. DS3 writes the first-order terms in the standard
+    /// order of real spherical harmonics, y z x, which with DS3's y up is: up, z, x. Measured on DS3's files: under
+    /// Undead Settlement's open sky (map 3, mostly sky light) term 1 is 0.88 of order 0, the 0.87 an evenly lit sky
+    /// gives the up term; on Firelink Shrine (map 1, strong low sun) terms 1 and 3 are 0.31 and 0.41, and only with
+    /// term 1 as up does the light come from where DS3's light set 0 puts the sun (36 degrees above the horizon against
+    /// its 33; with term 3 as up it would be 52). Builds up to 1.0.44x took whichever term was largest under open sky
+    /// as up, which on map 1 was the sunward x term: its volumes lit walls facing the sun as if they were floors under
+    /// the sky and the floors as walls ("--guess-probe-axes", fallback "map-sun" C, keeps that guess).
     /// <para>
     /// The probe file is in the map's own space, like the map's collisions and light file: DS3's map offset
     /// (<see cref="MapNavmesh.MapOffset"/>) moves it into the layout's (world) space, its first-order terms turned
@@ -97,7 +104,7 @@ public static class MapBakedLight
     /// applied no DS3 map needs it).
     /// </para>
     /// </summary>
-    public static List<Probe> ReadProbes(BTPB btpb, MSB3? ds3Msb, List<string> notes, bool noOffset = false)
+    public static List<Probe> ReadProbes(BTPB btpb, MSB3? ds3Msb, List<string> notes, bool noOffset = false, bool guessAxes = false)
     {
         var raw = btpb.Groups.SelectMany(g => g.Probes).ToList();
         if (raw.Count == 0)
@@ -137,14 +144,16 @@ public static class MapBakedLight
         }
         for (int k = 1; k < 4; k++)
             means[k] /= open.Count;
-        int up = Enumerable.Range(1, 3).OrderByDescending(k => Math.Abs(means[k])).First();
+        int guessed = Enumerable.Range(1, 3).OrderByDescending(k => Math.Abs(means[k])).First();
+        int up = guessAxes ? guessed : 1;
         int ix = up == 1 ? 3 : 1;
         int iz = up == 1 ? 2 : up == 2 ? 3 : 2;
         float upSign = means[up] < 0 ? -1 : 1;
         // A negative up term is the Condon-Shortley sign, which also turns x around (y and x carry it, z doesn't).
         float xSign = up == 1 && upSign < 0 ? -1 : 1;
         float zSign = mirrorZ ? -1 : 1;
-        notes.Add(FormattableString.Invariant($"first-order terms against order 0 under open sky: {means[1]:0.00} {means[2]:0.00} {means[3]:0.00}; up = term {up}{(upSign < 0 ? " (negative)" : "")}, x = term {ix}, z = term {iz}"));
+        notes.Add(FormattableString.Invariant($"first-order terms against order 0 under open sky: {means[1]:0.00} {means[2]:0.00} {means[3]:0.00}; up = term {up}{(upSign < 0 ? " (negative)" : "")}, x = term {ix}, z = term {iz}")
+                  + (guessAxes ? " (guessed from the open sky: --guess-probe-axes)" : guessed != 1 ? $" (DS3's order; the old guess would have taken term {guessed} as up)" : " (DS3's order)"));
 
         var probes = new List<Probe>(raw.Count);
         for (int i = 0; i < raw.Count; i++)
@@ -167,6 +176,30 @@ public static class MapBakedLight
             probes.Add(new Probe(pos, sh, p.LightMask));
         }
         return probes;
+    }
+
+    /// <summary>
+    /// Where DS3's baked sunlight comes from, read off the probes (in whatever space they were read in): the yaw (radians,
+    /// Elden Ring's convention, 0 along +z, pi/2 along +x) whose horizontal direction the probes' first-order terms lean
+    /// towards most, summed over every probe that sees light, and how strongly (that lean against order 0, 0 to about
+    /// 0.5; map 1's is 0.37, map 3's sky-lit probes 0.1). The map's sun should shine from about there: it is a check on
+    /// <see cref="MapAtmosphere.SunTurn"/> for the port log. Null without probes.
+    /// </summary>
+    public static (float Yaw, float Strength)? SunYawFromProbes(IReadOnlyList<Probe> probes)
+    {
+        double x = 0, z = 0, l0 = 0;
+        foreach (var p in probes)
+        {
+            float w = 0.2126f * p.Sh[0] + 0.7152f * p.Sh[1] + 0.0722f * p.Sh[2];
+            if (w < 5)
+                continue;
+            x += 0.2126f * p.Sh[3] + 0.7152f * p.Sh[4] + 0.0722f * p.Sh[5];
+            z += 0.2126f * p.Sh[9] + 0.7152f * p.Sh[10] + 0.0722f * p.Sh[11];
+            l0 += w;
+        }
+        if (l0 <= 0)
+            return null;
+        return ((float)Math.Atan2(x, z), (float)(Math.Sqrt(x * x + z * z) / l0));
     }
 
     /// <summary>The brightness (largest channel of order 0) DS3's open sky has: the 75th percentile under open sky.</summary>
@@ -319,7 +352,9 @@ public static class MapBakedLight
         if (hostPoint is null || hostBox is null)
             return ([], "baked light: the layout has no environment region to copy (ambient light step failed?); none written");
         var notes = new List<string>();
-        var probes = ReadProbes(BTPB.Read(ds3.Read(path)), ds3Msb, notes, options.NoOffset);
+        var probes = ReadProbes(BTPB.Read(ds3.Read(path)), ds3Msb, notes, options.NoOffset, options.GuessAxes);
+        if (SunYawFromProbes(probes) is { } sun)
+            notes.Add(FormattableString.Invariant($"DS3's baked sunlight leans towards yaw {sun.Yaw * 180 / MathF.PI:0} degrees (strength {sun.Strength:0.00}; the sun line of 'atmosphere:' should be near it when the strength is 0.2 or more)"));
         if (probes.Count < 8)
             return ([], $"baked light: {ItemText.Leaf(path)} has {probes.Count} probes; the map keeps one even light volume");
         float hostAlpha = HostAlpha(er, hostId);
