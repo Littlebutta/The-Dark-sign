@@ -541,6 +541,7 @@ Try the next option if: A DS3 map crashes or hangs while loading since people we
 - **E: DS3 armour, the stand-in's weapons.** As A, but DS3's humans hold the weapons of the Elden Ring person who stands in for them (DARKSIGN_PEOPLE_WEAPONS=0), as up to 1.0.403. Try it if a person holding a ported DS3 weapon crashes the game, T-poses or stands still. (`DARKSIGN_PEOPLE_WEAPONS=0`)
 - **F: DS3 armour hides the body like a closed helm.** As A, but every DS3 armour piece hides the body like the most common Elden Ring piece of its slot (DARKSIGN_PEOPLE_HIDES=common), as up to 1.0.42x, where open helms such as Hawkwood's Chain Helm hid his head. Try it if hair, a face or skin pokes through a person's DS3 armour with A. (`DARKSIGN_PEOPLE_HIDES=common`)
 - **G: Silent people.** As A, but DS3's people have no talk script, as up to 1.0.47x: nobody can be talked to and there are no DS3 shops (DARKSIGN_PEOPLE_TALK=0). Try it if a DS3 map crashes or hangs while loading or when you walk up to or talk to a DS3 person, or a talk menu can't be closed. (`DARKSIGN_PEOPLE_TALK=0`)
+- **H: No people with their own bodies.** As A, but DS3's people with a body of their own (Fire Keeper, Andre, the Shrine Handmaid, Ludleth, Yoel, Emma, the Painting Woman, the Corvian settlers) are not ported and are left out of the maps, as up to 1.0.47x (DARKSIGN_PEOPLE_BODIES=0). Try it if one of them crashes the game, attacks you, T-poses or is a mess of stretched polygons. (`DARKSIGN_PEOPLE_BODIES=0`)
 
 ### How DS3's enemies and bosses are ported (`enemy-port`, rebuilds the content)
 

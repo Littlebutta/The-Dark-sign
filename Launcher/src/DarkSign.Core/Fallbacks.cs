@@ -659,6 +659,8 @@ public static class Fallbacks
                 { PorterEnv = Env("DARKSIGN_PEOPLE_HIDES", "common") },
             new("G", "Silent people", "As A, but DS3's people have no talk script, as up to 1.0.47x: nobody can be talked to and there are no DS3 shops (DARKSIGN_PEOPLE_TALK=0). Try it if a DS3 map crashes or hangs while loading or when you walk up to or talk to a DS3 person, or a talk menu can't be closed.")
                 { PorterEnv = Env("DARKSIGN_PEOPLE_TALK", "0") },
+            new("H", "No people with their own bodies", "As A, but DS3's people with a body of their own (Fire Keeper, Andre, the Shrine Handmaid, Ludleth, Yoel, Emma, the Painting Woman, the Corvian settlers) are not ported and are left out of the maps, as up to 1.0.47x (DARKSIGN_PEOPLE_BODIES=0). Try it if one of them crashes the game, attacks you, T-poses or is a mess of stretched polygons.")
+                { PorterEnv = Env("DARKSIGN_PEOPLE_BODIES", "0") },
         ]),
 
         new("enemy-port", "DS3 maps", "How DS3's enemies and bosses are ported", Stage.Build,
