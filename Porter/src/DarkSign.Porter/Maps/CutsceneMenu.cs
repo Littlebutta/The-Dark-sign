@@ -98,10 +98,13 @@ public static class CutsceneMenu
 
     private static EMEVD.Instruction SetFlag(uint flag, byte state) => RunEvents.Make(2003, 66, EventFlagType, flag, state);
 
-    /// <summary>darksign_cutscenes.tsv: one line per cutscene, read by the F1 menu's "Cutscenes" tab.</summary>
-    public static IEnumerable<string> ListLines(IEnumerable<Entry> entries) =>
-        new[] { "# DS3 cutscene\tElden Ring cutscene\tmap name\tlabel\tseconds\tplay request flag (written by DarkSignPorter port-maps)" }
-            .Concat(entries.Select(c => $"{c.Ds3Name}\t{c.ErName}\t{Clean(c.MapName)}\t{Clean(c.Label)}\t{c.Seconds:0}\t{RequestFlag(c.Index)}"));
+    /// <summary>darksign_cutscenes.tsv: one line per cutscene, read by the F1 menu's "Cutscenes" tab. The last column
+    /// lists the flags "Clear played cutscenes" switches off: the menu's own pending flag, and what keeps the map
+    /// scripts from playing the cutscene again (<see cref="CutsceneFlags"/>).</summary>
+    public static IEnumerable<string> ListLines(IEnumerable<Entry> entries, IReadOnlyDictionary<int, SortedSet<uint>>? played = null) =>
+        new[] { "# DS3 cutscene\tElden Ring cutscene\tmap name\tlabel\tseconds\tplay request flag\tflags cleared to play it again (written by DarkSignPorter port-maps)" }
+            .Concat(entries.Select(c => $"{c.Ds3Name}\t{c.ErName}\t{Clean(c.MapName)}\t{Clean(c.Label)}\t{c.Seconds:0}\t{RequestFlag(c.Index)}\t"
+                + string.Join(" ", new[] { PendingFlag(c.Index) }.Concat(played?.GetValueOrDefault(c.ErId) ?? []).Distinct())));
 
     private static string Clean(string s) => s.Replace('\t', ' ').Replace('\r', ' ').Replace('\n', ' ').Trim();
 }

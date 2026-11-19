@@ -448,8 +448,9 @@ public static class MapPorter
                 cutsceneInfo = infos;
                 return summary;
             });
+        Dictionary<int, SortedSet<uint>> playedFlags = [];
         if (ported.Count > 0)
-            Step(report, "events", () => MapEvents.Port(ctx, ds3, er, ported.Select(p => p.Slot).ToList(), cutscenes));
+            Step(report, "events", () => MapEvents.Port(ctx, ds3, er, ported.Select(p => p.Slot).ToList(), cutscenes, f => playedFlags = f));
 
         // A slot under a registered ID that ships no map (map-slots B) gets what the game's own maps have: the
         // template's per-map files under the new ID, and a flag allocation line where the template has one. The map
@@ -474,7 +475,7 @@ public static class MapPorter
             ? CutsceneMenu.Entries(cutsceneInfo.Values, ported.GroupBy(p => p.Slot.Er).ToDictionary(g => g.Key, g => (g.First().Slot.Name, (uint)g.First().StartEntity)),
                 model => chrNames?.NameOf(model))
             : [];
-        File.WriteAllLines(ctx.ModPath(CutsceneMenu.ListFile), CutsceneMenu.ListLines(menuCutscenes));
+        File.WriteAllLines(ctx.ModPath(CutsceneMenu.ListFile), CutsceneMenu.ListLines(menuCutscenes, playedFlags));
         // The vertex layouts the map pieces were written in, for map-validate (a mesh in any other layout isn't drawn).
         if (_layouts.Count > 0)
             File.WriteAllLines(ctx.ModPath(LayoutsFile), _layouts.Order(StringComparer.Ordinal));

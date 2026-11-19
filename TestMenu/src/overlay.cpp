@@ -310,15 +310,48 @@ void draw_ds3_run()
 }
 
 // The "Cutscenes" tab: the converted DS3 cutscenes from darksign_cutscenes.tsv (CutsceneMenu in the porter):
-// "DS3 cutscene<TAB>Elden Ring cutscene<TAB>map name<TAB>label<TAB>seconds<TAB>play request flag". The event behind
-// each flag warps to the cutscene's map, waits for it to load and plays the cutscene.
+// "DS3 cutscene<TAB>Elden Ring cutscene<TAB>map name<TAB>label<TAB>seconds<TAB>play request flag<TAB>flags to clear".
+// The event behind each request flag warps to the cutscene's map, waits for it to load and plays the cutscene. The
+// last column (CutsceneFlags in the porter) lists the flags that keep the map scripts from playing it a second time.
 struct PortedCutscene {
     std::string ds3, er, map, label;
     int seconds;
     uint32_t flag;
+    std::vector<uint32_t> clear;
 };
 std::vector<PortedCutscene> g_cutscenes;
 bool g_cutscenes_loaded;
+std::string g_cutscene_status;
+
+// Switches off every listed "already played" flag, so the map scripts play their cutscenes again on the next load.
+void clear_played_cutscenes()
+{
+    std::vector<uint32_t> flags;
+    for (const PortedCutscene &c : g_cutscenes)
+        for (uint32_t f : c.clear)
+            if (std::find(flags.begin(), flags.end(), f) == flags.end())
+                flags.push_back(f);
+    int cleared = 0, was_on = 0, failed = 0;
+    for (uint32_t f : flags) {
+        int before = dks_get_event_flag(f);
+        DksResult r = dks_set_event_flag(f, 0);
+        if (r == DKS_OK || r == DKS_NOT_KEPT) {
+            ++cleared;
+            if (before == 1)
+                ++was_on;
+        } else {
+            ++failed;
+        }
+    }
+    dks_log("cutscenes: clear played: %d flags switched off (%d were on), %d failed", cleared, was_on, failed);
+    char buf[256];
+    if (failed && !cleared)
+        snprintf(buf, sizeof buf, "Couldn't clear the played cutscenes (the game's flag functions weren't found).");
+    else
+        snprintf(buf, sizeof buf, "Cleared %d played-cutscene flags (%d were set). Cutscenes play again the next time their map loads: "
+                 "warp there, or quit to the title screen and load.", cleared, was_on);
+    g_cutscene_status = buf;
+}
 
 void load_cutscenes()
 {
@@ -336,14 +369,14 @@ void load_cutscenes()
         dks_log("cutscenes: no darksign_cutscenes.tsv");
         return;
     }
-    char line[512];
+    static char line[8192];
     while (fgets(line, sizeof line, f)) {
         line[strcspn(line, "\r\n")] = 0;
         if (line[0] == '#')
             continue;
-        char *cols[6] = {line};
+        char *cols[7] = {line};
         int c = 1;
-        for (char *p = line; *p && c < 6; ++p)
+        for (char *p = line; *p && c < 7; ++p)
             if (*p == '\t') {
                 *p = 0;
                 cols[c++] = p + 1;
@@ -351,8 +384,24 @@ void load_cutscenes()
         if (c < 6)
             continue;
         uint32_t flag = (uint32_t)strtoul(cols[5], nullptr, 10);
-        if (flag)
-            g_cutscenes.push_back({cols[0], cols[1], cols[2], cols[3], atoi(cols[4]), flag});
+        if (!flag)
+            continue;
+        PortedCutscene pc{cols[0], cols[1], cols[2], cols[3], atoi(cols[4]), flag, {}};
+        if (c >= 7) {
+            for (char *p = cols[6]; *p;) {
+                char *end;
+                unsigned long v = strtoul(p, &end, 10);
+                if (end == p)
+                    break;
+                if (v)
+                    pc.clear.push_back((uint32_t)v);
+                p = end;
+            }
+        } else {
+            // A list from before the column existed: the menu's own pending flag (request flag - 2000).
+            pc.clear.push_back(flag - 2000);
+        }
+        g_cutscenes.push_back(pc);
     }
     fclose(f);
     dks_log("cutscenes: %d listed", (int)g_cutscenes.size());
@@ -374,6 +423,12 @@ void draw_cutscenes()
         return;
     }
     ImGui::TextWrapped("Plays a converted Dark Souls III cutscene. You are warped to its map first; it starts a few seconds after the map loads.");
+    if (ImGui::Button("Clear played cutscenes"))
+        clear_played_cutscenes();
+    ImGui::SameLine();
+    ImGui::TextDisabled("(so the maps play their cutscenes again)");
+    if (!g_cutscene_status.empty())
+        ImGui::TextWrapped("%s", g_cutscene_status.c_str());
     ImGui::Separator();
     ImGui::BeginChild("cutscenelist", ImVec2(0, -80), ImGuiChildFlags_Borders);
     const std::string *map = nullptr;
