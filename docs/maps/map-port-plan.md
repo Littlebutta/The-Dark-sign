@@ -533,8 +533,36 @@ Stage 1 (2026-11-11, not yet playtested; written without game files, checked off
 - **If a map breaks:** launcher Fallbacks `map-objects` B (no collision) or off, `map-regions` B.
 
 Still missing after stage 1: object effects (candle and bonfire flames, torches), doors/levers/lifts (ObjAct events,
-ObjActParam, object animations), ladders, bonfires as sites of grace, fog walls, breakable objects, treasure
+ObjActParam, object animations), ladders, fog walls, breakable objects, treasure
 (items lying in the map), what people say and sell (see below), sound regions.
+
+### Bonfires as sites of grace
+
+2026-11-19, not yet playtested; checked offline by `map-selftest` ("bonfires: ...") and run in a cloud thread on the
+real DS3 layouts of m30, m31, m37, m40 and m45 with DS3's and Elden Ring's regulations (30 bonfires found and placed).
+Fallback `map-bonfires` (B `DARKSIGN_BONFIRES=sword`, C `=0`). Code: `Maps/Bonfires.cs`, a port-maps step after the events.
+
+- **Same four things in both games** (read from DS3's m30/m40 and Stormveil's m10_00_00_00): a registered object or
+  asset (map-local entity 1950+n; Elden Ring's is AEG099_060), an invisible talker c1000 (950+n; Elden Ring's all have
+  talk 1000, NpcParam 10000000, ThinkParam 1), a player part to stand at (DS3 970+n, Elden Ring 980+n) and a
+  BonfireWarpParam row (the lit flag and the registered entity; Elden Ring's also the map and the standing point). Up
+  to 1.0.46x only DS3's "Register Bonfire" lines were carried over, so bonfires did nothing.
+- **Which bonfires.** The rows of DS3's BonfireWarpParam that name a bonfire entity of the map and whose talker stands
+  in the map's base state. Leftover rows (m30's 3001958/3001959 and the "Initial Warp" 3001960) and the Untended
+  Graves' two are left out.
+- **What each gets.** Elden Ring's grace asset where the sword stands, holding the bonfire's entity (DS3's own lines,
+  which show a boss's bonfire when the boss is dead, then act on it); the sword stays under a spare entity (9930+).
+  The talker at DS3's talker; the standing point at DS3's point. A row numbered as Elden Ring numbers its own (area *
+  10000 + block * 100 + n), a copy of a Stormveil row, not drawn on the world map, with DS3's bonfire name in PlaceName
+  (item_dlc02). A DS3 player part that had the number 980+n gives it up (m30's 3000980, an unused start point).
+- **Lit.** DS3 lights a bonfire in the engine (no ModelSfxParam row names o000100), so a script event per bonfire waits
+  for the lit flag and puts DS3's firewood fire (effect 800061) on the sword's dummy poly 200, where DS3's script plays
+  the bonfire's appearing effect. port-weapons converts 800061 with the map effects.
+- **Unproven until a playtest:** that the grace's golden light at the sword looks acceptable (B registers the sword
+  itself, with no Elden Ring asset: unproven that Elden Ring accepts another model); that 800061 reads as a bonfire
+  flame; the standing point at a boss bonfire before the boss dies (the sword shows early, the grace does not).
+- **Where to look:** the "bonfires:" lines of the port-maps log (which bonfires, rows, names, registrations, the
+  flame's effect ID).
 
 ### Doors, lifts and levers (objects that move)
 
