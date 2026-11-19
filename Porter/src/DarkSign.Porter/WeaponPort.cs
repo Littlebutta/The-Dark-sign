@@ -125,11 +125,41 @@ public static class WeaponPort
         return plans;
     }
 
+    /// <summary>DARKSIGN_DS3_HOLD=0 (fallback "weapon-hold" B): ported weapons stand and walk in their template's hold.</summary>
+    public static readonly bool Ds3Hold = Environment.GetEnvironmentVariable("DARKSIGN_DS3_HOLD") != "0";
+
+    /// <summary>The two-handed hold that means "two-handing doesn't change the grip" (shields, staffs, seals): Elden
+    /// Ring's scripts read it to tell a weapon's guard from a shield's or a catalyst's, so it is never given or taken.</summary>
+    private const int NoTwoHandGrip = 15;
+
+    /// <summary>
+    /// The hold a ported weapon stands, walks and runs in: wepmotionOneHandId and wepmotionBothHandId ("stay anim
+    /// category", numbered alike in both games: 0 at the side, 2 a big weapon carried low, 3 resting on the shoulder,
+    /// 10-16 the two-handed grips; Elden Ring's c0000.hks GetBaseCategory reads it for the idle and move poses).
+    /// The row is a copy of its Elden Ring template, and a class's hold differs between the games: Elden Ring carries
+    /// every scythe on the shoulder (3), DS3 carries its scythes upright at the side (0) and only its halberds on the
+    /// shoulder. A DS3 scythe was therefore carried in a pose its model and its DS3 moves were never made for (Friede's
+    /// Great Scythe's "funny walk", 2026-11-19; paired weapons got DS3's holds already, AbsorpPort). DS3's value is
+    /// taken when an Elden Ring weapon uses that value too; the two-handed one only between weapon grips.
+    /// Returns the DS3 hold to write for each field, or null to keep the template's.
+    /// </summary>
+    internal static (int? OneHand, int? BothHands) Ds3HoldFor(int ds3One, int ds3Both, int templateOne, int templateBoth, IReadOnlySet<int> erHolds)
+    {
+        int? one = ds3One != templateOne && erHolds.Contains(ds3One) ? ds3One : null;
+        int? both = ds3Both != templateBoth && erHolds.Contains(ds3Both) && ds3Both >= 10 && ds3Both != NoTwoHandGrip && templateBoth != NoTwoHandGrip
+            ? ds3Both : null;
+        return (one, both);
+    }
+
     /// <summary>Adds the planned weapons (and their affinity variants) to Elden Ring's EquipParamWeapon.</summary>
     public static int Apply(IEnumerable<WeaponPlan> plans, PARAM ds3, PARAM er)
     {
         int added = 0;
         var erById = er.Rows.ToDictionary(r => r.ID);
+        // Holds Elden Ring's own weapons use (before the ported rows are added).
+        var erHolds = er.Rows.SelectMany(r => new[] { r["wepmotionOneHandId"], r["wepmotionBothHandId"] })
+            .Where(c => c is not null).Select(c => Convert.ToInt32(c!.Value)).ToHashSet();
+        var holdNotes = new List<string>();
         foreach (var plan in plans.Where(p => p.Status == "port"))
         {
             var source = ds3[plan.Ds3Id]!;
@@ -170,6 +200,19 @@ public static class WeaponPort
                         && Convert.ToInt32(effect.Value) == Convert.ToInt32(templateBase[slot].Value))
                         effect.Value = Convert.ChangeType(-1, effect.Value!.GetType());
 
+                if (Ds3Hold && row["wepmotionOneHandId"] is { } oneHand && row["wepmotionBothHandId"] is { } bothHands
+                    && source["wepmotionOneHandId"] is { } ds3One && source["wepmotionBothHandId"] is { } ds3Both)
+                {
+                    int templateOne = Convert.ToInt32(oneHand.Value), templateBoth = Convert.ToInt32(bothHands.Value);
+                    var (one, both) = Ds3HoldFor(Convert.ToInt32(ds3One.Value), Convert.ToInt32(ds3Both.Value), templateOne, templateBoth, erHolds);
+                    if (one is { } o)
+                        oneHand.Value = Convert.ChangeType(o, oneHand.Value!.GetType());
+                    if (both is { } b)
+                        bothHands.Value = Convert.ChangeType(b, bothHands.Value!.GetType());
+                    if (offset == 0 && (one ?? both) is not null)
+                        holdNotes.Add($"{plan.Name} {templateOne}/{templateBoth} -> {one ?? templateOne}/{both ?? templateBoth}");
+                }
+
                 row["equipModelId"].Value = (ushort)plan.NewModelId!.Value;
                 Set(row, "iconId", NewIconId(plan));
                 row["sortId"].Value = 9_000_000 + plan.NewModelId.Value - FirstNewModelId;
@@ -180,6 +223,9 @@ public static class WeaponPort
             }
         }
         er.Rows.Sort((a, b) => a.ID.CompareTo(b.ID));
+        Console.WriteLine(Ds3Hold
+            ? $"weapons: {holdNotes.Count} weapons stand and walk in DS3's hold instead of their template's (one-handed/two-handed): {string.Join("; ", holdNotes)} [DARKSIGN_DS3_HOLD=0 keeps the template's]"
+            : "weapons: holds are the templates' (DARKSIGN_DS3_HOLD=0)");
         return added;
     }
 

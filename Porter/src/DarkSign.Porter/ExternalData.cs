@@ -42,20 +42,37 @@ public sealed class ExternalData(string cacheDir)
     private string Get(string url, string relative) =>
         TryGet(url, relative) ?? throw new FileNotFoundException($"Could not download {url}");
 
+    /// <summary>Whether a ".missing" marker file records this address (one per line) as not found.</summary>
+    public static bool MarkedMissing(string markerPath, string url)
+    {
+        try
+        {
+            return File.Exists(markerPath) && File.ReadAllLines(markerPath).Any(line => line.Trim().Equals(url, StringComparison.Ordinal));
+        }
+        catch (IOException)
+        {
+            return false;
+        }
+    }
+
     private string? TryGet(string url, string relative)
     {
         var path = Path.Combine(cacheDir, relative.Replace('/', Path.DirectorySeparatorChar));
         var missing = path + ".missing";
         if (File.Exists(path))
             return path;
-        if (File.Exists(missing))
+        // The marker counts only for the very address it was written for. Windows file names ignore letter case, so
+        // "ItemlotParam.xml.missing" (a name Paramdex doesn't have, tried first) also answered for "ItemLotParam.xml"
+        // (which it has): from 1.0.4xx on Elden Ring's ItemLotParam_enemy found no def on a PC whose cache held that
+        // marker, the enemy drops were not ported and every ported enemy dropped its template's Elden Ring items.
+        if (MarkedMissing(missing, url))
             return null;
 
         Directory.CreateDirectory(Path.GetDirectoryName(path)!);
         using var response = Http.GetAsync(url).GetAwaiter().GetResult();
         if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
         {
-            try { File.WriteAllText(missing, url); }
+            try { File.AppendAllText(missing, url + "\n"); }
             catch (IOException) { /* another porter process wrote it */ }
             return null;
         }
