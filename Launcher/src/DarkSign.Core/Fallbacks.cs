@@ -589,6 +589,8 @@ public static class Fallbacks
             new("A", "DS3's regions and map-file events (default)", "The areas DS3's events watch (boss rooms, ambush triggers, warp points), enemy patrol routes, platoons and enemy generators are carried into the map with their DS3 entity IDs."),
             new("B", "None", "The map file has no DS3 regions, patrol routes, platoons or generators (port-maps --no-regions), as every build up to 1.0.299 was: events that wait for the player to enter an area never fire and enemies don't patrol.")
                 { MapsArgs = ["--no-regions"] },
+            new("C", "Route types from the route only", "As A, but a patrol route takes only the kind DS3's route event carries, not the move type DS3 keeps on the enemy, and no enemy wanders around its spot (DARKSIGN_ENEMY_MOVE_TYPES=route), as up to 1.0.470, when enemies DS3 walks there and back walked in a loop and its wandering dogs stood still. Use when a DS3 map crashes or hangs while loading, or enemies walk off and never come back, with A.")
+                { PorterEnv = Env("DARKSIGN_ENEMY_MOVE_TYPES", "route") },
         ]),
 
         new("map-effects", "DS3 maps", "DS3's map effects (candles, fog, light shafts)", Stage.Build,
@@ -743,6 +745,8 @@ public static class Fallbacks
                 { PorterEnv = Env("DARKSIGN_ENEMY_SCRIPT_MARKERS", "keep") },
             new("J", "The template's borrowed clips", "As A, but a DS3 waiting pose, getting-up move, map-script move or attack gets no clip of its own where the Elden Ring template's move of that number plays another move's clip, and is added only next to a template move with a clip of its own (DARKSIGN_ENEMY_OWN_POSES=0), as up to 1.0.460, when the High Wall's kneeling Hollow Soldiers stood up and fought at once instead of waiting until hit. Use when a ported enemy stands in a T-pose, freezes or the game crashes as a map starts with A.")
                 { PorterEnv = Env("DARKSIGN_ENEMY_OWN_POSES", "0") },
+            new("K", "The template's senses", "As A, but a ported enemy keeps the Elden Ring template's hearing, forget times, long-range search sight and in-battle sight (DARKSIGN_ENEMY_SENSES=template), as up to 1.0.470, when enemies built on a far-sighted template (35 m on the Giant Beast Skeleton) came from much further away than DS3's 13 to 15 m. Use when ported enemies ignore you until hit, or forget you at once, with A.")
+                { PorterEnv = Env("DARKSIGN_ENEMY_SENSES", "template") },
         ]),
         new("enemy-glow", "DS3 maps", "Ported DS3 enemies' glows", Stage.Build,
             "A ported DS3 enemy's glow is the wrong colour or missing (the Jailer's lantern, Pontiff Sulyvahn's swords, the Soul of Cinder), a part of it glows far too brightly or draws black, or the game crashes or hangs loading a ported enemy that glows.",

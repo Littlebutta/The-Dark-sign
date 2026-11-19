@@ -136,15 +136,20 @@ public static class RegionPort
 
         void FillEvent(MSB3.Event src, MSBE.Event e)
         {
-            var name = string.IsNullOrEmpty(src.Name) ? e.GetType().Name : src.Name;
+            NewEvent(string.IsNullOrEmpty(src.Name) ? e.GetType().Name : src.Name, e);
+            e.EntityID = src.EntityID > 0 ? (uint)ds3Id.MoveEntity(src.EntityID, erId) : 0;
+            e.PartName = src.PartName is { Length: > 0 } part && partNames.TryGetValue(part, out var ported) ? ported : null;
+            e.RegionName = src.PointName is { Length: > 0 } point && regionNames.TryGetValue(point, out var region) ? region : null;
+        }
+
+        void NewEvent(string name, MSBE.Event e)
+        {
             var unique = name;
             for (int n = 2; !eventNames.Add(unique); n++)
                 unique = $"{name} ({n})";
             e.Name = unique;
             e.EventID = nextEventId++;
-            e.EntityID = src.EntityID > 0 ? (uint)ds3Id.MoveEntity(src.EntityID, erId) : 0;
-            e.PartName = src.PartName is { Length: > 0 } part && partNames.TryGetValue(part, out var ported) ? ported : null;
-            e.RegionName = src.PointName is { Length: > 0 } point && regionNames.TryGetValue(point, out var region) ? region : null;
+            e.EntityID = 0;
             // JortPob's events (MakePart.PatrolRandom): no map ID, UnkE0C 255, UnkS0C -1.
             e.MapID = -1;
             e.Unk14 = 0;
@@ -156,7 +161,10 @@ public static class RegionPort
 
         // Patrol routes. An enemy names its route by the event's name.
         var patrolNames = new Dictionary<string, string>(StringComparer.Ordinal);
-        int patrols = 0, emptyPatrols = 0;
+        int patrols = 0, emptyPatrols = 0, ownTypes = 0;
+        var moveTypes = new SortedDictionary<int, int>();
+        // DS3 keeps a move type on the enemy too (see MoveType); the enemies of a route decide it where the route has none.
+        var walkers = ds3.Parts.Enemies.Where(e => !string.IsNullOrEmpty(e.WalkRouteName)).ToLookup(e => e.WalkRouteName, StringComparer.Ordinal);
         foreach (var src in ds3.Events.PatrolInfo)
         {
             var points = src.WalkPointNames.Where(n => !string.IsNullOrEmpty(n))
@@ -168,9 +176,11 @@ public static class RegionPort
             }
             var patrol = new MSBE.Event.PatrolInfo();
             FillEvent(src, patrol);
-            // DS3's route kind (UnkT00: 0 walk there and back, 1 and 2 loops in the files seen by Smithbox) is the
-            // same byte Elden Ring calls PatrolType.
-            patrol.PatrolType = (byte)Math.Clamp(src.UnkT00, 0, 255);
+            int type = MoveType(src.UnkT00, walkers[src.Name].Select(e => (int)e.PointMoveType));
+            if (type != Math.Clamp(src.UnkT00, 0, 255))
+                ownTypes++;
+            patrol.PatrolType = (byte)type;
+            moveTypes[type] = moveTypes.GetValueOrDefault(type) + 1;
             for (int i = 0; i < points.Count && i < patrol.WalkRegionNames.Length; i++)
                 patrol.WalkRegionNames[i] = points[i];
             msb.Events.PatrolInfo.Add(patrol);
@@ -193,6 +203,27 @@ public static class RegionPort
                 walking++;
             }
         }
+
+        // Enemies DS3 has wander around their spot: no route, the enemy's own move type says so. Elden Ring keeps the
+        // type on the route, so each gets a route of that type without points (as Stormveil's one WalkAround route and
+        // JortPob's MakePart.PatrolRandom() are).
+        int wanderers = 0;
+        if (Ds3MoveTypes)
+            foreach (var src in ds3.Parts.Enemies)
+            {
+                if (src.PointMoveType != WalkAround || !partNames.TryGetValue(src.Name, out var ported) || !byName.TryGetValue(ported, out var enemy)
+                    || !string.IsNullOrEmpty(enemy.WalkRouteName))
+                    continue;
+                var patrol = new MSBE.Event.PatrolInfo { PatrolType = WalkAround };
+                NewEvent($"wander {enemy.Name}", patrol);
+                msb.Events.PatrolInfo.Add(patrol);
+                enemy.WalkRouteName = patrol.Name;
+                wanderers++;
+            }
+        if (patrols > 0 || wanderers > 0)
+            notes.Add("patrol: " + (Ds3MoveTypes ? "" : "DS3's own move types off (DARKSIGN_ENEMY_MOVE_TYPES=route); ")
+                      + $"route types {string.Join(", ", moveTypes.Select(t => $"{TypeName(t.Key)} x{t.Value}"))}"
+                      + $"; {ownTypes} routes take their enemy's own move type, {wanderers} enemies without a route wander around their spot");
 
         // Platoons: enemies that are alerted together.
         int platoons = 0;
@@ -245,6 +276,38 @@ public static class RegionPort
 
         return new Result(regions, withEntity, routePoints, patrols, walking, platoons, generators, leftOut, notes);
     }
+
+    /// <summary>
+    /// Fallback map-regions C: DARKSIGN_ENEMY_MOVE_TYPES=route gives a patrol route only the type DS3's route event
+    /// carries and no enemy wanders, as up to 1.0.470.
+    /// </summary>
+    public static bool Ds3MoveTypes => Environment.GetEnvironmentVariable("DARKSIGN_ENEMY_MOVE_TYPES")?.Trim().ToLowerInvariant() != "route";
+
+    /// <summary>POINT_MOVE_TYPE_WalkAround in Elden Ring's ai_define.lua: wander around the home spot, no points.</summary>
+    public const byte WalkAround = 6;
+
+    /// <summary>
+    /// How an enemy walks its route. Both games' AI scripts name the kinds the same (ai_define.lua POINT_MOVE_TYPE_:
+    /// 0 Patrol = round and round, 1 RoundTrip = there and back, 2 Randum, 5 OneWayPatrol = to the end and stay,
+    /// 6 WalkAround; DS3's script names stop at 4 but its map files use 5 and 6 the same way: the High Wall's type 5
+    /// routes are lines that end 20 to 40 m from where their enemy starts). Elden Ring keeps the kind on the route
+    /// alone (its enemies' byte in that place is 0 in all of Stormveil); DS3 has one on the route event and one on
+    /// the enemy (MSB3 PointMoveType), and on the High Wall 6 of 61 walkers have a plain (0) route and RoundTrip on
+    /// themselves. So: the route's own kind, and where that is plain, the kind its enemies agree on.
+    /// </summary>
+    public static int MoveType(int routeType, IEnumerable<int> enemyTypes)
+    {
+        int type = Math.Clamp(routeType, 0, 255);
+        if (type != 0 || !Ds3MoveTypes)
+            return type;
+        var own = enemyTypes.Distinct().ToList();
+        return own.Count == 1 ? Math.Clamp(own[0], 0, 255) : 0;
+    }
+
+    private static string TypeName(int type) => type switch
+    {
+        0 => "round and round", 1 => "there and back", 2 => "random point", 5 => "one way", 6 => "wander", _ => $"type {type}",
+    };
 
     /// <summary>First map-local number for warp-point player parts whose own number is taken by another player part.</summary>
     public const int WarpPointSpare = 9900;
