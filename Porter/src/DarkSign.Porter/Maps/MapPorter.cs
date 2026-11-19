@@ -456,9 +456,21 @@ public static class MapPorter
                 cutsceneInfo = infos;
                 return summary;
             });
+        // DS3's music (MapMusic): which regions and script lines play each map's tracks, then the events, then the tracks.
+        MapMusic.Plan? music = null;
+        if (ported.Count > 0 && MapMusic.Enabled)
+            Step(report, "music plan", () =>
+            {
+                music = MusicPlan(ctx, ds3, ported.Select(p => p.Slot).ToList());
+                return music.Summary;
+            });
+        else if (!MapMusic.Enabled)
+            report.AppendLine("music: off (DARKSIGN_MAP_MUSIC=0, fallback map-music B)");
         Dictionary<int, SortedSet<uint>> playedFlags = [];
         if (ported.Count > 0)
-            Step(report, "events", () => MapEvents.Port(ctx, ds3, er, ported.Select(p => p.Slot).ToList(), cutscenes, f => playedFlags = f));
+            Step(report, "events", () => MapEvents.Port(ctx, ds3, er, ported.Select(p => p.Slot).ToList(), cutscenes, f => playedFlags = f, music));
+        if (music is not null)
+            Step(report, "music", () => MapMusic.WriteAudio(ctx, ds3, music));
 
         // A slot under a registered ID that ships no map (map-slots B) gets what the game's own maps have: the
         // template's per-map files under the new ID, and a flag allocation line where the template has one. The map
@@ -531,6 +543,17 @@ public static class MapPorter
         return ported.Count > 0 ? 0 : 1;
     }
 
+    /// <summary>The music plan of the ported maps: their DS3 layouts and scripts (DS3's common_func included).</summary>
+    private static MapMusic.Plan MusicPlan(PorterContext ctx, GameArchives ds3, IReadOnlyList<MapSlots.Slot> slots)
+    {
+        var maps = slots.Where(s => !s.Probe && ds3.Contains(MsbPath(s.Ds3))).Select(s => (s, MSB3.Read(ds3.Read(MsbPath(s.Ds3))))).ToList();
+        var (scripts, common) = MapEvents.ReadDs3(ds3, slots);
+        var all = scripts.Select(kv => new MapMusic.Script(kv.Key, kv.Value)).ToList();
+        if (common is not null)
+            all.Add(new MapMusic.Script(null, common));
+        return MapMusic.Build(maps, all, Emedf.Parse(File.ReadAllText(ctx.Data.Emedf("ds3-common"))));
+    }
+
     /// <summary>
     /// Deletes everything port-maps writes (and nothing port-weapons or the enemy porter writes: regulation.bin,
     /// darksign_chr_map.tsv and the DLC02 material and item binders stay), for every slot of both map-slot methods.
@@ -591,7 +614,11 @@ public static class MapPorter
         // MapRegistry.ListPath: builds 1.0.234-1.0.238 wrote it for the m50 probe and it crashed the boot; never again.
         foreach (var path in new[] { "/event/common.emevd.dcx", MapEvents.CommonFunc, MaterialBinder, OldMaterialBinder, ActionButtons.ModMenu, FlagAlloc.LegacyList, MapRegistry.ListPath })
             Delete(Local(path));
-        foreach (var file in new[] { MapEvents.FlagFile, "darksign_maps.tsv", BossArenas.ListFile, CutsceneMenu.ListFile, BossKits.FileName, "darksign_maps_check.txt", FlagAlloc.ProbeFile,
+        var musicFolder = Path.Combine(root, MapMusic.Folder);
+        if (Directory.Exists(musicFolder))
+            foreach (var file in Directory.GetFiles(musicFolder))
+                Delete(file);
+        foreach (var file in new[] { MapEvents.FlagFile, "darksign_maps.tsv", BossArenas.ListFile, CutsceneMenu.ListFile, BossKits.FileName, "darksign_maps_check.txt", FlagAlloc.ProbeFile, MapMusic.ListFile,
                      DarkSign.Randomizer.Data.EnemyTables.PlacedFile, DarkSign.Randomizer.Data.EnemyTables.ErFile })
             Delete(Path.Combine(root, file));
     }

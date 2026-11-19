@@ -113,6 +113,23 @@ public static class RegionPort
             }
         }
 
+        // DS3's music regions (and the child regions that widen them) as script regions the music events check the
+        // player against (MapMusic); their own Sound entries stay out, as every sound emitter does.
+        int musicZones = 0;
+        if (MapMusic.Enabled)
+            foreach (var (src, zone) in MapMusic.ZoneRegions(ds3, ds3Id, erId))
+            {
+                var region = new MSBE.Region.Other();
+                Fill(src, region);
+                region.EntityID = zone.Entity;
+                if (zone.NewEntity)
+                    withEntity++;
+                msb.Regions.Others.Add(region);
+                musicZones++;
+            }
+        if (musicZones > 0)
+            notes.Add($"{musicZones} music regions carried as script regions (where DS3's tracks play)");
+
         // ---- Map-file events ----
         var eventNames = msb.Events.GetEntries().Select(e => e.Name).ToHashSet(StringComparer.Ordinal);
         int nextEventId = msb.Events.GetEntries().Select(e => e.EventID).DefaultIfEmpty(-1).Max() + 1;

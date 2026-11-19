@@ -606,6 +606,16 @@ public static class Fallbacks
                 { PorterEnv = Env("DARKSIGN_CUTSCENE_CAST", "0") },
         ]),
 
+        new("map-music", "DS3 maps", "DS3's music (areas and boss fights)", Stage.Build,
+            "A DS3 map or boss fight plays the wrong music, Elden Ring's music, or none; the music doesn't change with a boss's phase or doesn't stop; or the game stutters or crashes when a track starts.",
+        [
+            new("A", "DS3's music (default)", "Every music region of the ported DS3 maps plays its DS3 track: the area music where DS3 plays it (Firelink Shrine) and each boss fight's tracks, switching with the boss's phases, stopping when the boss dies, you die or leave. The tracks are decoded from your DS3 files to Mods\\ER\\darksign_music and the test menu DLL plays them on its own audio stream (it is loaded for this even with the F1 test menu unticked). Ported enemies no longer start Elden Ring's battle music. Report: the music lines of the port-maps log, \"music:\" lines in dksign_testmenu.log."),
+            new("B", "No DS3 music", "No DS3 music is built or played (DARKSIGN_MAP_MUSIC=0): the DS3 maps are quiet apart from Elden Ring's own music, as up to 1.0.45x.")
+                { PorterEnv = Env("DARKSIGN_MAP_MUSIC", "0"), GameEnv = Env(NoMapMusicVariable, "1") },
+            new("C", "DS3's music, Elden Ring battle music kept", "As A, but ported enemies keep their Elden Ring template's threat level (DARKSIGN_ENEMY_THREAT=template), as up to 1.0.45x: an enemy built on an Elden Ring field boss starts that boss's battle music.")
+                { PorterEnv = Env("DARKSIGN_ENEMY_THREAT", "template") },
+        ]),
+
         new("map-layers", "DS3 maps", "Which state of a DS3 map is ported", Stage.Build,
             "Enemies or objects you expected are missing from a DS3 map since 1.0.327 (for example on the way to Firelink Shrine), or you want to see the Untended Graves' enemies.",
         [
@@ -759,6 +769,19 @@ public static class Fallbacks
 
     /// <summary>Game variable: no hotkeys (the DLL is loaded only for another job and the test menu is off).</summary>
     public const string NoHotkeysVariable = "DKSIGN_NO_HOTKEYS";
+
+    /// <summary>Game variable: the test menu DLL doesn't play DS3's music (map-music B).</summary>
+    public const string NoMapMusicVariable = "DKSIGN_NO_MAP_MUSIC";
+
+    /// <summary>The music list port-maps writes into the mod folder (Porter Maps/MapMusic.cs ListFile).</summary>
+    public const string MusicListFile = "darksign_music.tsv";
+
+    /// <summary>
+    /// True when the test menu DLL must be loaded to play DS3's music: the content has music (port-maps wrote its
+    /// list) and map-music B isn't chosen.
+    /// </summary>
+    public static bool NeedsMusicDll(IReadOnlyDictionary<string, string>? methods, string modDir) =>
+        !GameEnvironment(methods).ContainsKey(NoMapMusicVariable) && File.Exists(Path.Combine(modDir, MusicListFile));
 
     /// <summary>Game variable: the mod folder, for the DLL's files (DLL sounds).</summary>
     public const string ModDirVariable = "DKSIGN_MOD_DIR";
