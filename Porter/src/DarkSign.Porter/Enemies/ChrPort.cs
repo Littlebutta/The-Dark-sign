@@ -996,6 +996,7 @@ public static partial class ChrPort
     public static List<Ds3Chr> Ds3Characters(GameArchives ds3, PARAM? ds3Npc)
     {
         var byChr = new SortedDictionary<int, Ds3Chr>();
+        var hostile = new HashSet<(int Chr, int Npc)>();
         foreach (var (id, _) in MapSlots.Ds3Maps)
         {
             var mapId = MapId.Parse(id);
@@ -1026,8 +1027,11 @@ public static partial class ChrPort
                 if (!byChr.TryGetValue(chr, out var known))
                     byChr[chr] = known = new Ds3Chr(chr, name, false, [], []);
                 known.NpcParams.Add(e.NPCParamID);
-                if (person)
+                // A row DS3 also places as an enemy somewhere stays an enemy's (hostile wins: nothing friendly should hit).
+                if (person && !hostile.Contains((chr, e.NPCParamID)))
                     known.People!.Add(e.NPCParamID);
+                else if (!person && hostile.Add((chr, e.NPCParamID)))
+                    known.People?.Remove(e.NPCParamID);
                 if (bosses.Contains(e.EntityID) && !known.Boss)
                     byChr[chr] = known with { Boss = true };
             }
