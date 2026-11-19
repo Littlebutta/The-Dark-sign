@@ -149,10 +149,17 @@ public sealed class EventPort
     }
 
     /// <summary>
-    /// DS3's Playback Method flags in Elden Ring's: bit 1 (unskippable) is the same; DS3's fade-out (8) is Elden
-    /// Ring's fade-out (16). DarkScript3: DS3 0/2/8/10, Elden Ring 0/2/16/18 (Skippable With Fade-Out Skip).
+    /// DS3's Playback Method flags in Elden Ring's: bit 1 (unskippable) is the same; DS3's fade-out (8) is left out.
+    /// DarkScript3: DS3 0/2/8/10, Elden Ring 0/2/16/18. Up to 1.0.47x DS3's 8 became Elden Ring's 16, and the Dancer's
+    /// intro (the one boss intro DS3 plays with 8 for the host) left the screen black when it ended: DS3 fades back
+    /// in by itself after the cutscene's warp, Elden Ring stays faded out until the script does something about it.
+    /// Elden Ring's own scripts (14 read on 2026-11-19) use 16 only where the script then moves the player far away
+    /// or loads another map, never with a boss intro, which they all play with 0. DARKSIGN_CUTSCENE_FADE=1 (launcher
+    /// fallback map-cutscenes F) writes 16 again.
     /// </summary>
-    public static long PlaybackMethod(long ds3) => (ds3 & 2) | ((ds3 & 8) != 0 ? 16 : 0);
+    public static long PlaybackMethod(long ds3) => (ds3 & 2) | ((ds3 & 8) != 0 && KeepFadeOut ? 16 : 0);
+
+    public static bool KeepFadeOut => Environment.GetEnvironmentVariable("DARKSIGN_CUTSCENE_FADE") == "1";
 
     // DS3 instructions whose Elden Ring counterpart has another name (checked by hand against both definitions).
     private static readonly Dictionary<string, string> Renamed = new(StringComparer.OrdinalIgnoreCase)

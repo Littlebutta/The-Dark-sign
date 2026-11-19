@@ -359,6 +359,41 @@ public sealed class MapModelPort
         return "opaque";
     }
 
+    /// <summary>Meshes under DS3's decal shader that are solid models and were drawn as ordinary surfaces (<see cref="IsSolid"/>).</summary>
+    public int SolidDecals;
+
+    public static bool IsDecalMaterial(FLVER2.Material material) =>
+        Path.GetFileNameWithoutExtension(ItemText.Leaf(material.MTD ?? "")).Contains("decal", StringComparison.OrdinalIgnoreCase)
+        && Ds3Kind(material) == "none";
+
+    /// <summary>
+    /// Whether a mesh is a closed, solid shape and not a surface patch: a decal lies on a surface, so its normals all
+    /// point much the same way (their mean is long); a solid's point every way and cancel out. Counted over at least
+    /// 100 vertices with a normal, and the shape must have some thickness on every axis.
+    /// </summary>
+    public static bool IsSolid(FLVER2.Mesh mesh)
+    {
+        var sum = Vector3.Zero;
+        var min = new Vector3(float.MaxValue);
+        var max = new Vector3(float.MinValue);
+        int n = 0;
+        foreach (var v in mesh.Vertices)
+        {
+            if (v.Positions.Count == 0)
+                continue;
+            min = Vector3.Min(min, v.Position);
+            max = Vector3.Max(max, v.Position);
+            if (v.Normals.Count == 0 || v.Normal.LengthSquared() < 0.25f)
+                continue;
+            sum += Vector3.Normalize(v.Normal);
+            n++;
+        }
+        if (n < 100)
+            return false;
+        var size = max - min;
+        return MathF.Min(size.X, MathF.Min(size.Y, size.Z)) >= 0.1f && sum.Length() / n < 0.35f;
+    }
+
     /// <summary>The template a DS3 kind is drawn with: its own, else opaque; a blended one with no template is left out.</summary>
     private MaterialTemplate? TemplateFor(string kind) =>
         kind == "none" ? null
@@ -841,6 +876,15 @@ public sealed class MapModelPort
             var m = mesh.MaterialIndex >= 0 && mesh.MaterialIndex < flver.Materials.Count ? flver.Materials[mesh.MaterialIndex] : null;
             if (m is not null && TemplateFor(Ds3Kind(m)) is { } t)
                 meshTemplates[mesh] = t;
+            else if (m is not null && IsDecalMaterial(m) && IsSolid(mesh) && Ds3Texture(m, "albedo") is not null)
+            {
+                // A whole solid model under DS3's decal shader (the double door of the Dancer's cathedral, o300370:
+                // 5,459 vertices, half a metre thick, M[ARSN]_Decal): drawn as an ordinary surface. Up to 1.0.47x it
+                // was left out as a decal, the object had nothing to draw and the doorway stood open.
+                meshTemplates[mesh] = _templates["opaque"];
+                lock (_materials)
+                    SolidDecals++;
+            }
             else
             {
                 flver.Meshes.Remove(mesh);

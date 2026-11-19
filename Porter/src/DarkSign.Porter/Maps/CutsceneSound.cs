@@ -336,6 +336,21 @@ public sealed class CutsceneSound
         }
     }
 
+    /// <summary>Above this share of samples at full scale a decode is noise, not sound (Friede's spoken lines, the
+    /// loudest real ones measured, have under 0.03%; the broken 8-channel tracks 0.17% and 2.4%).</summary>
+    public const double MaxClippedShare = 0.001;
+
+    public static double ClippedShare(short[] pcm)
+    {
+        if (pcm.Length == 0)
+            return 0;
+        long clipped = 0;
+        foreach (var v in pcm)
+            if (v >= 32760 || v <= -32760)
+                clipped++;
+        return (double)clipped / pcm.Length;
+    }
+
     // A DS3 sound bank's samples by name (encrypted banks decrypted, loose files first), kept for the next cutscene.
     private Dictionary<string, Fsb5.Sample>? Samples(string fsb)
     {
@@ -405,6 +420,13 @@ public sealed class CutsceneSound
                     try
                     {
                         var pcm = Fsb5.DecodePcm(s);
+                        // DS3's surround cutscene tracks (8 channels: Friede's p450000002/3) come out of the decoder
+                        // as noise pinned at full scale, whatever block sizes are tried (measured 2026-11-19: 0.17% and
+                        // 2.4% of all samples clipped, some channels a third exact zeros). Up to 1.0.47x they went into the bank
+                        // and played as loud crackle over the cutscene. Such a decode is left out: the sound counts as
+                        // not decoded and its events are stripped.
+                        if (ClippedShare(pcm) > MaxClippedShare)
+                            throw new InvalidDataException($"{s.Name}: the decoded sound is noise ({s.Channels} channels)");
                         var wem = WwiseBank.PcmWem(pcm, s.Channels, s.Rate);
                         uint mediaId = SoundPort.UnusedId(bank, $"darksign_{plan.ErName}_media_{s.Name}", taken);
                         uint soundId = SoundPort.UnusedId(bank, $"darksign_{plan.ErName}_sound_{name}_{l}_{media.Count}", taken);

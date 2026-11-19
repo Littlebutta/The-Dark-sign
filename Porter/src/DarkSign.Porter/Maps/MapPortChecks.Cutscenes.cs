@@ -1,3 +1,4 @@
+using System.Numerics;
 using SoulsFormats;
 
 namespace DarkSign.Porter.Maps;
@@ -18,6 +19,7 @@ public static partial class MapPortChecks
         yield return ("cutscenes: the cast resolves to Elden Ring models (map names, enemy models, assets); parts with none, and DS3 draw settings, are left out", CutsceneCastResolve);
         yield return ("cutscenes: each cut's Havok file becomes cutNNNN\\a0000.hkx at ID NNNN*10000; files no cut plays are left out", CutsceneCutFiles);
         yield return ("cutscenes: events keep their own and their parent's timeline numbers when timelines are taken out or added (1.0.460 Friede crash)", CutsceneTimelineRelink);
+        yield return ("cutscenes: bones carry the Elden Ring part's name, effect events play converted DS3 effects, a solid model under the decal shader is drawn", CutsceneBonesAndEffects);
         yield return ("cutscenes: Clear played cutscenes lists each cutscene's seen flags (set and checked by its event, parameters followed) and its event's own flag", CutsceneReplayFlags);
     }
 
@@ -324,6 +326,58 @@ public static partial class MapPortChecks
         Expect(CutsceneShape.IsLink(0) && CutsceneShape.IsLink(5) && !CutsceneShape.IsLink(2), "Unk08/Unk28 are links");
     }
 
+    private static void CutsceneBonesAndEffects()
+    {
+        // Bone names: DS3's boss "c6020_0000_Pelvis", DS3's player "c0000_0000Pelvis" (no underscore), Elden Ring's "c0000_0000_Pelvis".
+        Expect(CutscenePort.BareBone("c6020_0000_Pelvis", "c6020_0000") == "Pelvis" && CutscenePort.BareBone("c0000_0000Pelvis", "c0000_0000") == "Pelvis"
+               && CutscenePort.BareBone("c0000_0000_Pelvis", "c0000_0000") == "Pelvis", "a bone without its part, with or without DS3's underscore");
+        Expect(CutscenePort.BareBone("c6020_0000", "c6020_0000") == "" && CutscenePort.BareBone("Master", "c6020_0000") == "Master", "the root is the part; other names are kept");
+        Expect(CutscenePort.PartBone("Pelvis", "c7126_9000") == "c7126_9000_Pelvis" && CutscenePort.PartBone("", "c7126_9000") == "c7126_9000", "a bone under the Elden Ring part's name");
+
+        // Effect events: a converted effect is played under its new ID; one that didn't convert goes, and its emptied timeline with it.
+        var mqb = new MQB { Version = MQB.MQBVersion.DarkSouls3, Name = "s30_00_0010", Framerate = 30, ResourceDirectory = "", Resources = [], Cuts = [] };
+        foreach (var (name, kind) in new[] { ("offset.sib", 265), ("a0001.HKT", 266), ("d0200_1000", 1), ("Custom96_1", 103), ("Custom96_2", 103) })
+            mqb.Resources.Add(new MQB.Resource { Name = name, ParentIndex = -1, Unk48 = kind });
+        var cut = new MQB.Cut { Name = "cut0011", Duration = 100, Timelines = [] };
+        int[] hangsOn = [-1, 0, 1, 2, 2];
+        for (int i = 0; i < hangsOn.Length; i++)
+        {
+            var tl = new MQB.Timeline();
+            var ev = new MQB.Event { ID = i, ResourceIndex = i, Duration = 100, Unk08 = i, Unk28 = hangsOn[i] };
+            if (i >= 3)
+                ev.Parameters.Add(new MQB.Parameter { Name = CutscenePort.EffectParam, Type = MQB.Parameter.DataType.Int, Value = i == 3 ? 700010 : 700011 });
+            tl.Events.Add(ev);
+            cut.Timelines.Add(tl);
+        }
+        mqb.Cuts.Add(cut);
+        Expect(CutscenePort.EffectIds(mqb).Order().SequenceEqual([700010, 700011]), "the effects a timeline plays");
+        var before = CutsceneTimelineLinks.Take(mqb);
+        var stats = new CutscenePort.BinderStats();
+        CutscenePort.MapEffects(mqb, id => id == 700010 ? 900700010 : null, stats);
+        CutsceneTimelineLinks.Relink(mqb, before);
+        var left = cut.Timelines.SelectMany(t => t.Events).ToList();
+        Expect(left.Count == 4 && (int)left[3].Parameters[0].Value == 900700010 && stats.EffectsMapped == 1 && stats.EffectsLeftOut == 1
+               && stats.EffectsMissing.SequenceEqual([700011]) && !CutsceneTimelineLinks.Problems(mqb).Any(),
+            $"the converted effect is played, the other left out ({left.Count} events, {stats.EffectsMapped} mapped, {stats.EffectsLeftOut} left out)");
+
+        // A closed box of 150 vertices is solid; the same vertices all facing up are a surface patch (a decal).
+        FLVER2.Mesh Mesh(Func<int, Vector3> normal)
+        {
+            var mesh = new FLVER2.Mesh { Vertices = [] };
+            for (int i = 0; i < 150; i++)
+            {
+                var v = new FLVER.Vertex();
+                v.Positions.Add(new Vector3(i % 5, i / 5 % 5, i / 25));
+                v.Normals.Add(normal(i));
+                mesh.Vertices.Add(v);
+            }
+            return mesh;
+        }
+        Vector3[] faces = [Vector3.UnitX, -Vector3.UnitX, Vector3.UnitY, -Vector3.UnitY, Vector3.UnitZ, -Vector3.UnitZ];
+        Expect(MapModelPort.IsSolid(Mesh(i => faces[i % 6])) && !MapModelPort.IsSolid(Mesh(_ => Vector3.UnitY)) && !MapModelPort.IsSolid(Mesh(_ => Vector3.Zero)),
+            "normals pointing every way: a solid; all one way, or none: a surface patch");
+    }
+
     private static void CutsceneCutFiles()
     {
         // Dancer's layout: cut0011 played from a0001 at ID 110001; Friede's: cut0000 standby files no cut plays.
@@ -471,7 +525,7 @@ public static partial class MapPortChecks
         Expect(warp.Bank == 2002 && warp.ID == 11, $"warping line becomes Play Cutscene to Player and Warp ({warp.Bank}[{warp.ID}])");
         long Arg(EMEVD.Instruction ins, string name) => Emedf.Read(ins.ArgData, er.Get(ins.Bank, ins.ID)!.Args.First(a => a.Name == name));
         Expect(Arg(warp, "Cutscene ID") == 19700000, $"cutscene {Arg(warp, "Cutscene ID")}");
-        Expect(Arg(warp, "Playback Method") == 18, $"DS3 unskippable with fade-out (10) is Elden Ring's 18 ({Arg(warp, "Playback Method")})");
+        Expect(Arg(warp, "Playback Method") == 2, $"DS3 unskippable with fade-out (10) is Elden Ring's unskippable, no fade-out ({Arg(warp, "Playback Method")})");
         Expect(Arg(warp, "Area Entity ID") == 19702810, $"point moved to the slot ({Arg(warp, "Area Entity ID")})");
         Expect(Arg(warp, "Map ID") == 19700000, $"map ID is the slot ({Arg(warp, "Map ID")})");
         Expect(Arg(warp, "Player Entity ID") == 10000, "player");
@@ -482,7 +536,7 @@ public static partial class MapPortChecks
         var off = Port(null).Convert(script, EMEVD.Game.Sekiro, ids).Events[0].Instructions;
         Expect(off[0].Bank == 2003 && off[0].ID == 14, $"without converted cutscenes the warping line keeps its warp ({off[0].Bank}[{off[0].ID}])");
         Expect(off[1].Bank == 1001 && off[2].Bank == 1001, "and the others are left out");
-        Expect(EventPort.PlaybackMethod(8) == 16 && EventPort.PlaybackMethod(0) == 0 && EventPort.PlaybackMethod(2) == 2, "playback method flags");
+        Expect(EventPort.PlaybackMethod(8) == 0 && EventPort.PlaybackMethod(10) == 2 && EventPort.PlaybackMethod(0) == 0 && EventPort.PlaybackMethod(2) == 2, "playback method flags: DS3's fade-out is left out");
     }
 
     private static void CutsceneRows()
