@@ -205,6 +205,14 @@ public static class Fallbacks
                 { PorterEnv = Env("DARKSIGN_ABSORP", "0") },
         ]),
 
+        new("weapon-hold", "Two-handed split", "How ported weapons are carried (stand, walk, run)", Stage.Build,
+            "A ported weapon is carried oddly while standing, walking or running (through the shoulder or head, or the walk looks wrong), or its guard changes when two-handed.",
+        [
+            new("A", "DS3's hold (default)", "Each ported weapon is carried in DS3's hold (wepmotionOneHandId / wepmotionBothHandId) where Elden Ring has that hold: DS3 scythes upright at the side, not on the shoulder like Elden Ring's scythes. Shields and catalysts keep Elden Ring's two-handed hold."),
+            new("B", "The template's hold", "Ported weapons are carried like the Elden Ring weapon they are built on (DARKSIGN_DS3_HOLD=0), as in builds up to 1.0.47x, where Friede's Great Scythe was carried on the shoulder.")
+                { PorterEnv = Env("DARKSIGN_DS3_HOLD", "0") },
+        ]),
+
         // ---- Weapon models ----
         new("weapon-textures", "Weapon models", "DS3 weapon colours (metal)", Stage.Build,
             "Ported weapons look dark grey and untextured, or metal parts look painted, too shiny or too bright.",
@@ -327,8 +335,8 @@ public static class Fallbacks
                 { PorterEnv = Env("DARKSIGN_EFFECT_VISUALS", "0") },
             new("D", "No effects with 3D models", "As A, but DS3 effects that draw a 3D model (the Moonlight Greatsword's wave, Friede's ice) are left out (DARKSIGN_EFFECT_MODELS=0), as in builds up to 1.0.249. Try this first if the game crashes or shows a broken shape when such an effect plays.")
                 { PorterEnv = Env("DARKSIGN_EFFECT_MODELS", "0") },
-            new("E", "Every DS3 on-model effect", "As A, and Friede's Great Scythe keeps the frost mist DS3 plays on its main scythe at all times (DARKSIGN_RESIDENT_ALL=1), as in 1.0.249-1.0.255.")
-                { PorterEnv = Env("DARKSIGN_RESIDENT_ALL", "1") },
+            new("E", "No always-on effects on weapon models", "As A, but ported weapons show no DS3 effect that is always on the model (DARKSIGN_RESIDENT=0): Friede's Great Scythe has no frost mist outside its art, as in 1.0.256-1.0.47x. Try it if a weapon carries a glow or mist that looks wrong.")
+                { PorterEnv = Env("DARKSIGN_RESIDENT", "0") },
             new("F", "Projectile events as DS3 writes them", "As A, but the event that fires a projectile is copied from DS3 byte for byte (DARKSIGN_BULLET_EVENTS=ds3) instead of being rewritten in Elden Ring's layout, as in builds up to 1.0.271.")
                 { PorterEnv = Env("DARKSIGN_BULLET_EVENTS", "ds3") },
             new("G", "Projectiles without the weapon's attack power", "As A, but a projectile's hit doesn't count the weapon's own attack power or status build-up (DARKSIGN_BULLET_BASE_ATK=0), as in builds up to 1.0.279, where DS3 projectiles hit for nothing. Try this if a projectile hits far too hard.")

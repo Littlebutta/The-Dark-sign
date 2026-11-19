@@ -174,8 +174,16 @@ public static class EffectSelfTest
               && ParamDefaults.Int(ported, "residentSfx_DmyId_2") == 301, "resident effects: converted effects go on the same dummy polys of the ported weapon");
         Add(ds3Weapons, 10180000, ("weaponVfx0", 303151), ("weaponVfx4", 300));
         var scythe = Add(erWeapons, 81190000, ("residentSfxId_1", -1), ("residentSfxId_2", -1), ("residentSfx_DmyId_1", -1), ("residentSfx_DmyId_2", -1));
-        Check(MovesetPort.ResidentEffects([new WeaponPlan(10180000, "Friede's Great Scythe", 50, 1, "t", 81190000, 9119, "port")], ds3Weapons, erWeapons, converted) == 0
-              && ParamDefaults.Int(scythe, "residentSfxId_1") == -1, "resident effects: Friede's Great Scythe keeps no always-on frost on its main scythe");
+        Check(MovesetPort.ResidentEffects([new WeaponPlan(10180000, "Friede's Great Scythe", 50, 1, "t", 81190000, 9119, "port")], ds3Weapons, erWeapons, converted) == 1
+              && ParamDefaults.Int(scythe, "residentSfxId_1") == FxrPort.IdBase + 303151 && ParamDefaults.Int(scythe, "residentSfx_DmyId_1") == 300,
+            "resident effects: Friede's Great Scythe keeps DS3's always-on frost on its main scythe");
+        // Holds (stand / walk pose): DS3's where Elden Ring uses the value, weapon grips only for the two-handed one.
+        var erHolds = new HashSet<int> { 0, 2, 3, 10, 12, 13, 14, 15, 16 };
+        Check(WeaponPort.Ds3HoldFor(0, 13, 3, 13, erHolds) == (0, null), "holds: a DS3 scythe is carried at the side as in DS3, not on the shoulder like Elden Ring's scythes");
+        Check(WeaponPort.Ds3HoldFor(0, 10, 3, 13, erHolds) == (0, 10), "holds: both holds follow DS3 when they differ");
+        Check(WeaponPort.Ds3HoldFor(0, 10, 0, 15, erHolds) == (null, null), "holds: a catalyst keeps Elden Ring's 'no two-handed grip' hold");
+        Check(WeaponPort.Ds3HoldFor(0, 15, 0, 10, erHolds) == (null, null) && WeaponPort.Ds3HoldFor(0, 0, 0, 10, erHolds) == (null, null), "holds: DS3's 'no two-handed grip' isn't given to a weapon");
+        Check(WeaponPort.Ds3HoldFor(7, 11, 3, 13, erHolds) == (null, null), "holds: a hold Elden Ring never uses stays the template's");
 
         // Effect models.
         var erModel = Model(0x2001A, true, (@"N:\GR\data\Material\mtd\sfx\matxml\S[A]_add_Soft.matxml", [("M_A__snp_Texture2D_0_AlbedoMap_0", @"N:\GR\data\Sfx\Tex\s00001_a.tif")]),

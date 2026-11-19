@@ -153,6 +153,13 @@ Try the next option if: Two-handing a split weapon doesn't split it, or the seco
 - **G: Friede's second scythe in the left hand two-handed.** The previous build's layout (DARKSIGN_FRIEDE_OVERRIDE=both): Elden Ring's paired layout, the second scythe in the left hand when two-handing and in the art (712 ChangeType 2, as Rellana's twin blades). Try it if A's art shows no second scythe. (`DARKSIGN_FRIEDE_OVERRIDE=both`)
 - **off: Off (template positions).** Ported weapons keep their template's WepAbsorpPosParam row (DARKSIGN_ABSORP=0): no split. Tells whether the split is what breaks something. (`DARKSIGN_ABSORP=0`)
 
+### How ported weapons are carried (stand, walk, run) (`weapon-hold`, rebuilds the content)
+
+Try the next option if: A ported weapon is carried oddly while standing, walking or running (through the shoulder or head, or the walk looks wrong), or its guard changes when two-handed.
+
+- **A: DS3's hold (default).** Each ported weapon is carried in DS3's hold (wepmotionOneHandId / wepmotionBothHandId) where Elden Ring has that hold: DS3 scythes upright at the side, not on the shoulder like Elden Ring's scythes. Shields and catalysts keep Elden Ring's two-handed hold.
+- **B: The template's hold.** Ported weapons are carried like the Elden Ring weapon they are built on (DARKSIGN_DS3_HOLD=0), as in builds up to 1.0.47x, where Friede's Great Scythe was carried on the shoulder. (`DARKSIGN_DS3_HOLD=0`)
+
 
 ## Weapon models
 
@@ -247,7 +254,7 @@ Try the next option if: A ported weapon shows no glow, buff effect or projectile
 - **B: Effect visuals, no projectiles.** Glows and buff visuals as in A; moves that fire a projectile use the template weapon's bullet or none (DARKSIGN_BULLETS=0), as in builds up to 1.0.242. (`DARKSIGN_BULLETS=0`)
 - **C: Projectiles, no effect visuals.** Projectiles as in A; ported effects have no visuals of their own (DARKSIGN_EFFECT_VISUALS=0), as in builds up to 1.0.242. (`DARKSIGN_EFFECT_VISUALS=0`)
 - **D: No effects with 3D models.** As A, but DS3 effects that draw a 3D model (the Moonlight Greatsword's wave, Friede's ice) are left out (DARKSIGN_EFFECT_MODELS=0), as in builds up to 1.0.249. Try this first if the game crashes or shows a broken shape when such an effect plays. (`DARKSIGN_EFFECT_MODELS=0`)
-- **E: Every DS3 on-model effect.** As A, and Friede's Great Scythe keeps the frost mist DS3 plays on its main scythe at all times (DARKSIGN_RESIDENT_ALL=1), as in 1.0.249-1.0.255. (`DARKSIGN_RESIDENT_ALL=1`)
+- **E: No always-on effects on weapon models.** As A, but ported weapons show no DS3 effect that is always on the model (DARKSIGN_RESIDENT=0): Friede's Great Scythe has no frost mist outside its art, as in 1.0.256-1.0.47x. Try it if a weapon carries a glow or mist that looks wrong. (`DARKSIGN_RESIDENT=0`)
 - **F: Projectile events as DS3 writes them.** As A, but the event that fires a projectile is copied from DS3 byte for byte (DARKSIGN_BULLET_EVENTS=ds3) instead of being rewritten in Elden Ring's layout, as in builds up to 1.0.271. (`DARKSIGN_BULLET_EVENTS=ds3`)
 - **G: Projectiles without the weapon's attack power.** As A, but a projectile's hit doesn't count the weapon's own attack power or status build-up (DARKSIGN_BULLET_BASE_ATK=0), as in builds up to 1.0.279, where DS3 projectiles hit for nothing. Try this if a projectile hits far too hard. (`DARKSIGN_BULLET_BASE_ATK=0`)
 - **H: No projectiles for weapons built as their class.** As A, but a weapon whose own DS3 moves found no free motion category, and so is built as its class, loses the projectiles its own moves fire (DARKSIGN_BORROW_BULLETS=0), as in builds up to 1.0.282: the Moonlight Greatsword's charged heavy fired no wave. (`DARKSIGN_BORROW_BULLETS=0`)
