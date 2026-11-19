@@ -25,6 +25,7 @@ public static partial class MapPortChecks
         yield return ("visuals: a FLVER holding only a shadow caster is left out of its binder, the drawable FLVER beside it kept", ShadowOnlyFlver);
         yield return ("visuals: a faded overlay triangle is left out only where a surface lies right behind it (map-overlays D cuts them all)", OverlayBacking);
         yield return ("visuals: DS3 terrain blends (2m/3m/4m) draw each triangle with the layer DS3 shows there", TerrainBlends);
+        yield return ("visuals: a triangle between two DS3 layers is cut along the layer's edge, not given whole to one (map 3's jagged floor patches)", LayerContours);
         yield return ("visuals: DS3's half-float normals (terrain blends) face their surface (map-materials C keeps them as read)", HalfFloatNormals);
     }
 
@@ -108,6 +109,7 @@ public static partial class MapPortChecks
         // The default: one-layer meshes are solid whatever their alpha (DS3 draws Firelink's tunnel walls at alpha 0);
         // two-layer meshes are still split by layer.
         var (plain, plainBnd) = VisualPort();
+        plain.LayerContours = false;   // whole triangles here; the cut along the layers' edge is checked in LayerContours
         var drawn = ConvertOne(plain, plainBnd, OverlayFlver());
         int Tris(FLVER2.Mesh m) => m.FaceSets.Where(f => f.Flags == FLVER2.FaceSet.FSFlags.None).Sum(f => f.Triangulate(true).Count / 3);
         Expect(drawn.Meshes.Count == 6 && Tris(drawn.Meshes[0]) == 2 && Tris(drawn.Meshes[1]) == 2,
@@ -127,6 +129,7 @@ public static partial class MapPortChecks
         Expect(MapPorter.Options.Parse(["--fade-overlays"]).FadeOverlays && !new MapPorter.Options().FadeOverlays, "--fade-overlays is read");
         var (port, hostBnd) = VisualPort();
         port.FadeOverlays = true;
+        port.LayerContours = false;
         var flver = ConvertOne(port, hostBnd, OverlayFlver());
         Expect(flver.Meshes.Count == 6, $"the two-layer mesh is split in two: {flver.Meshes.Count} meshes");
         int Triangles(FLVER2.Mesh m) => m.FaceSets.Where(f => f.Flags == FLVER2.FaceSet.FSFlags.None).Sum(f => f.Triangulate(true).Count / 3);
@@ -320,6 +323,7 @@ public static partial class MapPortChecks
             Expect(MapTerrainBlends.LayerCount(mtd) == n, $"{mtd} has {MapTerrainBlends.LayerCount(mtd)} layers, not {n}");
 
         var (port, hostBnd) = VisualPort();
+        port.LayerContours = false;   // whole triangles here; the cut along the layers' edge is checked in LayerContours
         var flver = ConvertOne(port, hostBnd, BlendFlver());
         int Triangles(FLVER2.Mesh m) => m.FaceSets.Where(f => f.Flags == FLVER2.FaceSet.FSFlags.None).Sum(f => f.Triangulate(true).Count / 3);
         var shown = flver.Meshes.Select(m => (port.Materials.Single(x => x.Name == flver.Materials[m.MaterialIndex].Name), Triangles(m))).ToList();
@@ -356,10 +360,91 @@ public static partial class MapPortChecks
         var (tinted, tbnd) = VisualPort();
         tinted.TintMaterials = true;
         tinted.FadeOverlays = true;
+        tinted.LayerContours = false;
         var t = ConvertOne(tinted, tbnd, BlendFlver());
         var tints = t.Meshes.Select(m => tinted.Materials.Single(x => x.Name == t.Materials[m.MaterialIndex].Name).Albedo).ToList();
         Expect(tints.SequenceEqual(["DKS_tint_orange", "DKS_tint_purple", "DKS_tint_blue", "DKS_tint_orange", "DKS_tint_white", "DKS_tint_blue", "DKS_tint_orange"]),
             $"tints {string.Join(", ", tints)}");
+    }
+
+    private static void LayerContours()
+    {
+        static float Area(FLVER2.Mesh m, IEnumerable<int> tris)
+        {
+            var t = tris.ToList();
+            float area = 0;
+            for (int i = 0; i + 2 < t.Count; i += 3)
+                area += Vector3.Cross(m.Vertices[t[i + 1]].Position - m.Vertices[t[i]].Position, m.Vertices[t[i + 2]].Position - m.Vertices[t[i]].Position).Length() / 2;
+            return area;
+        }
+        static bool Near(float a, float b) => MathF.Abs(a - b) < 0.01f;
+
+        // A 10 m quad of 2m wall: the second layer at full weight along z = 0, none along z = 10. DS3 changes layer along
+        // z = 5; whole triangles (1.0.354 to 1.0.46x) put the edge on the quad's diagonal instead.
+        var ds3 = BlendFlver();
+        var mesh = ds3.Meshes[3];
+        float[] c0 = [1, 1, 0, 0];
+        for (int i = 0; i < 4; i++)
+            mesh.Vertices[i].UVs[2] = new Vector3(c0[i], 0, 0);
+        int entry = MapTerrainBlends.WeightEntry(ds3, mesh);
+        var whole = MapLayerContours.Split(mesh, 2, (v, k) => MapTerrainBlends.Weight(v, entry, k - 1), _ => true, 0.5f, false, out int wholeCut);
+        Expect(wholeCut == 0 && mesh.Vertices.Count == 4 && whole[1][0].SequenceEqual([0, 1, 2]) && whole[0][0].SequenceEqual([1, 3, 2]),
+            "without contours each triangle goes whole to the layer its corners average to");
+        var split = MapLayerContours.Split(mesh, 2, (v, k) => MapTerrainBlends.Weight(v, entry, k - 1), _ => true, 0.5f, true, out int cut);
+        Expect(cut == 2 && mesh.Vertices.Count == 7, $"both triangles are cut, at three shared points on their edges ({cut} cut, {mesh.Vertices.Count} vertices)");
+        Expect(split[1][0].All(i => mesh.Vertices[i].Position.Z <= 5.001f) && split[0][0].All(i => mesh.Vertices[i].Position.Z >= 4.999f),
+            "the second layer lies on its side of z = 5, the first on the other");
+        Expect(Near(Area(mesh, split[1][0]), 50) && Near(Area(mesh, split[0][0]), 50), $"each layer covers half the quad ({Area(mesh, split[1][0])}, {Area(mesh, split[0][0])})");
+        var added = mesh.Vertices.Skip(4).ToList();
+        Expect(added.All(v => Near(v.Position.Z, 5) && Near(MapTerrainBlends.Weight(v, entry, 0), 0.5f) && Near(v.Normal.Length(), 1) && Near(v.UVs[0].Y, 1000)),
+            "a cut point lies on the boundary and takes every value from between its edge's two ends");
+
+        // No gaps: every edge inside the quad is shared by exactly two triangles, in opposite directions, whatever
+        // layers they went to (4m ground, three weights in play).
+        var ground = BlendFlver().Meshes[0];
+        var parts = MapLayerContours.Split(ground, 4, (v, k) => MapTerrainBlends.Weight(v, entry, k - 1), _ => true, 0.5f, true, out _);
+        var all = parts.SelectMany(part => part[0]).ToList();
+        Expect(Near(Area(ground, all), 100), $"the layers together cover the quad once ({Area(ground, all)} of 100 m2)");
+        Expect(parts.Count(part => part[0].Count > 0) == 3, $"the quad shows three layers ({string.Join(", ", parts.Select(part => part[0].Count / 3))} triangles)");
+        var edges = new Dictionary<(int, int), int>();
+        for (int i = 0; i + 2 < all.Count; i += 3)
+            for (int j = 0; j < 3; j++)
+            {
+                var e = (all[i + j], all[i + (j + 1) % 3]);
+                edges[e] = edges.GetValueOrDefault(e) + 1;
+            }
+        bool Border((int A, int B) e)
+        {
+            Vector3 a = ground.Vertices[e.A].Position, b = ground.Vertices[e.B].Position;
+            return (a.X == b.X && a.X is 0 or 10) || (a.Z == b.Z && a.Z is 0 or 10);
+        }
+        Expect(edges.All(e => e.Value == 1 && (Border(e.Key) || edges.ContainsKey((e.Key.Item2, e.Key.Item1)))),
+            "every inner edge has a triangle on each side: no gap and no vertex in the middle of a neighbour's side");
+        Expect(all.Chunk(3).All(t => Vector3.Cross(ground.Vertices[t[1]].Position - ground.Vertices[t[0]].Position, ground.Vertices[t[2]].Position - ground.Vertices[t[0]].Position).Y
+                                     * Vector3.Cross(ground.Vertices[1].Position - ground.Vertices[0].Position, ground.Vertices[2].Position - ground.Vertices[0].Position).Y > 0),
+            "every cut triangle faces the way DS3's did");
+
+        // Through the whole conversion: the cut model is one Elden Ring can draw, and each layer has its own material.
+        var (port, hostBnd) = VisualPort();
+        var flver = ConvertOne(port, hostBnd, BlendFlver());
+        Expect(MapValidate.CheckFlverDraw(flver, port.TemplateLayouts()).ToList() is { Count: 0 }, "the validator accepts the cut model");
+        Expect(port.Blends.Cut == 5 && port.Blends.Summary.Contains("5 DS3 triangles cut along a layer's edge"), $"counted: {port.Blends.Summary}");
+        Expect(flver.Meshes.All(m => m.Vertices.All(v => v.Colors.Single() is { R: 1, G: 0, B: 0, A: 1 })), "every layer is solid");
+
+        // Two-layer materials are cut the same way, by vertex alpha.
+        var (two, twoBnd) = VisualPort();
+        ConvertOne(two, twoBnd, OverlayFlver());
+        var (twoWhole, twoWholeBnd) = VisualPort();
+        twoWhole.LayerContours = false;
+        ConvertOne(twoWhole, twoWholeBnd, OverlayFlver());
+        Expect(two.Overlays.TwoLayerTriangles > twoWhole.Overlays.TwoLayerTriangles, $"a two-layer triangle between the layers is cut ({two.Overlays.Summary})");
+
+        // Fallback map-blend-layers C: whole triangles, as 1.0.354 to 1.0.46x.
+        Expect(MapPorter.Options.Parse(["--whole-blend-triangles"]).WholeBlendTriangles && !new MapPorter.Options().WholeBlendTriangles, "--whole-blend-triangles is read");
+        var (old, oldBnd) = VisualPort();
+        old.LayerContours = false;
+        ConvertOne(old, oldBnd, BlendFlver());
+        Expect(old.Blends.Cut == 0 && old.Blends.Triangles == 8 && old.Fresh().LayerContours == false, $"--whole-blend-triangles cuts nothing: {old.Blends.Summary}");
     }
 
     private static void HelperPieces()
