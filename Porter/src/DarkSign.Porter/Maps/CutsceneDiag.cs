@@ -80,7 +80,12 @@ public static class CutsceneDiag
                 foreach (var line in after)
                     r.AppendLine("    " + line);
                 // The converted binder, for the cut length check.
-                var (bnd, _) = CutscenePort.ConvertBinder(BND4.Read(ds3.Read(CutscenePort.Ds3Path(name))), name, erName, _ => null, ds3Map, erMap, side);
+                var (bnd, binderStats) = CutscenePort.ConvertBinder(BND4.Read(ds3.Read(CutscenePort.Ds3Path(name))), name, erName, _ => null, ds3Map, erMap, side);
+                if (bnd.Files.FirstOrDefault(f => f.Name.EndsWith(".mqb", StringComparison.OrdinalIgnoreCase)) is { } outMqb)
+                {
+                    var problems = CutsceneTimelineLinks.Problems(MQB.Read(outMqb.Bytes)).ToList();
+                    r.AppendLine($"  {binderStats.Links}; links {(problems.Count == 0 ? "all inside their cuts" : $"WRONG: {string.Join("; ", problems.Take(5))}")}");
+                }
                 foreach (var line in Cuts(bnd))
                     r.AppendLine("  " + line);
             }

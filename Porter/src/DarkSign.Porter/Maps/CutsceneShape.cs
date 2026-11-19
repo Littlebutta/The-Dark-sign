@@ -24,6 +24,10 @@ public sealed class CutsceneShape
 
     public static readonly string[] Fields = ["Unk08", "Unk14", "Unk18", "Unk1C", "Unk20", "Unk28"];
 
+    /// <summary>Unk08 (the event's own timeline) and Unk28 (the timeline it hangs on) are timeline numbers, not
+    /// per-kind values: <see cref="CutsceneTimelineLinks"/> sets them, never a learned rule.</summary>
+    public static bool IsLink(int f) => f is 0 or 5;
+
     private static int Get(MQB.Event e, int f) => f switch
     {
         0 => e.Unk08, 1 => e.Unk14, 2 => e.Unk18, 3 => e.Unk1C, 4 => e.Unk20, _ => e.Unk28,
@@ -301,7 +305,7 @@ public sealed class CutsceneShape
                     }
                     if (EventRules.TryGetValue(k, out var rules))
                         for (int f = 0; f < Fields.Length; f++)
-                            if (rules[f].Holds && Get(ev, f) != rules[f].Want(ev, cut))
+                            if (!IsLink(f) && rules[f].Holds && Get(ev, f) != rules[f].Want(ev, cut))
                                 Note($"kind {k} event {Fields[f]} {(rules[f].Relation == "const" ? "" : $"!= {rules[f].Relation} ")}(Elden Ring {rules[f]})",
                                     $"{cut.Name} start {ev.StartFrame} dur {ev.Duration}: {Get(ev, f)}, want {rules[f].Want(ev, cut)}");
                     if (EventParams.TryGetValue(k, out var es) && SigHolds(es) && string.Join(",", ev.Parameters.Select(x => x.Name)) != es.Key)
@@ -379,7 +383,7 @@ public sealed class CutsceneShape
                     int k = ev.ResourceIndex >= 0 && ev.ResourceIndex < mqb.Resources.Count ? mqb.Resources[ev.ResourceIndex].Unk48 : -1;
                     if (EventRules.TryGetValue(k, out var rules))
                         for (int f = 0; f < Fields.Length; f++)
-                            if (rules[f].Holds && Get(ev, f) != rules[f].Want(ev, cut))
+                            if (!IsLink(f) && rules[f].Holds && Get(ev, f) != rules[f].Want(ev, cut))
                             {
                                 Set(ev, f, rules[f].Want(ev, cut));
                                 changed++;

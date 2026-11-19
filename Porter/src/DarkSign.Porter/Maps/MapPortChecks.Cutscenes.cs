@@ -17,6 +17,7 @@ public static partial class MapPortChecks
         yield return ("cutscenes: the F1 Cutscenes tab warps to the map in one event and plays the pending cutscene after the load in another; its list names the characters", CutsceneMenuEvents);
         yield return ("cutscenes: the cast resolves to Elden Ring models (map names, enemy models, assets); parts with none, and DS3 draw settings, are left out", CutsceneCastResolve);
         yield return ("cutscenes: each cut's Havok file becomes cutNNNN\\a0000.hkx at ID NNNN*10000; files no cut plays are left out", CutsceneCutFiles);
+        yield return ("cutscenes: events keep their own and their parent's timeline numbers when timelines are taken out or added (1.0.460 Friede crash)", CutsceneTimelineRelink);
         yield return ("cutscenes: Clear played cutscenes lists each cutscene's seen flags (set and checked by its event, parameters followed) and its event's own flag", CutsceneReplayFlags);
     }
 
@@ -157,7 +158,8 @@ public static partial class MapPortChecks
         var after = shape.Check(ds3);
         Expect(after.Count == 0, $"{changed} changes, left: {string.Join(" | ", after)}");
         var off = ds3.Cuts[0].Timelines[0].Events[0];
-        Expect(off.Unk18 == 301 && off.Unk1C == 301 && off.Unk28 == -1, $"offset event fields follow the cut ({off.Unk18} {off.Unk1C} {off.Unk28})");
+        Expect(off.Unk18 == 301 && off.Unk1C == 301, $"offset event fields follow the cut ({off.Unk18} {off.Unk1C})");
+        Expect(off.Unk28 == 0, $"Unk28 is a timeline link, left to CutsceneTimelineLinks ({off.Unk28})");
         var tl = ds3.Cuts[0].Timelines[1];
         Expect(tl.Unk10 == 1 && string.Join(",", tl.Parameters.Select(p => p.Name)) == "areaNo,blockNo,mapNo,equipDispType"
                && (int)tl.Parameters[0].Value == 45 && (int)tl.Parameters[2].Value == -1 && (int)tl.Parameters[3].Value == 0,
@@ -286,6 +288,40 @@ public static partial class MapPortChecks
         var outMqb = MQB.Read(outBnd.Files.Single().Bytes);
         Expect(outMqb.Resources.Select(r => r.Name).SequenceEqual(["a0000.HKT", "c7120_9000"]), string.Join(" ", outMqb.Resources.Select(r => r.Name)));
         Expect(outStats.Cast.LeftOut.Count == 1 && outMqb.Cuts[0].Timelines.Count == 2, outStats.Cast.ToString());
+        Expect(!CutsceneTimelineLinks.Problems(outMqb).Any(), "every event's timeline numbers inside its cut after the binder conversion: "
+            + string.Join("; ", CutsceneTimelineLinks.Problems(outMqb)));
+    }
+
+    private static void CutsceneTimelineRelink()
+    {
+        // offset.sib, the cut's Havok timeline on it, part A and part B on that, an effect on B, an effect on A.
+        var mqb = new MQB { Version = MQB.MQBVersion.DarkSouls3, Name = "s45_00_0000", Framerate = 30, ResourceDirectory = "", Resources = [], Cuts = [] };
+        foreach (var (name, kind) in new[] { ("offset.sib", 265), ("a0000.HKT", 266), ("c6020_0000", 1), ("h45_00_00_00_008100", 1), ("sfx_b", 103), ("sfx_a", 103) })
+            mqb.Resources.Add(new MQB.Resource { Name = name, ParentIndex = -1, Unk48 = kind });
+        var cut = new MQB.Cut { Name = "cut0010", Duration = 100, Timelines = [] };
+        int[] hangsOn = [-1, 0, 1, 1, 3, 2];
+        for (int i = 0; i < hangsOn.Length; i++)
+        {
+            var tl = new MQB.Timeline();
+            tl.Events.Add(new MQB.Event { ID = i, ResourceIndex = i, Duration = 100, Unk08 = i, Unk28 = hangsOn[i] });
+            cut.Timelines.Add(tl);
+        }
+        mqb.Cuts.Add(cut);
+        var before = CutsceneTimelineLinks.Take(mqb);
+        // Cutscene sound adds a timeline as CutsceneSound does (fields copied from the cut's first events).
+        var sound = new MQB.Timeline();
+        sound.Events.Add(new MQB.Event { ID = 9, ResourceIndex = 5, Duration = 100, Unk08 = 0, Unk28 = 1 });
+        cut.Timelines.Add(sound);
+        CutsceneCast.Remove(mqb, new HashSet<int> { 3 });
+        Expect(cut.Timelines.Count == 6 && CutsceneTimelineLinks.Problems(mqb).Any(), "taking B out leaves numbers pointing past their timelines (1.0.460's crash)");
+        var result = CutsceneTimelineLinks.Relink(mqb, before);
+        var events = cut.Timelines.Select(t => t.Events.Single()).ToList();
+        Expect(events.Select(e => e.ID).SequenceEqual([0, 1, 2, 5, 9]), $"B's effect goes with B ({string.Join(",", events.Select(e => e.ID))}, {result})");
+        Expect(events.Select(e => e.Unk08).SequenceEqual([0, 1, 2, 3, 4]), "Unk08: the event's own timeline");
+        Expect(events.Select(e => e.Unk28).SequenceEqual([-1, 0, 1, 2, 1]), $"Unk28: the same timeline as before ({string.Join(",", events.Select(e => e.Unk28))})");
+        Expect(result.EventsDropped == 1 && result.TimelinesDropped == 1 && !CutsceneTimelineLinks.Problems(mqb).Any(), result.ToString());
+        // The shape rules never touch the link fields.
+        Expect(CutsceneShape.IsLink(0) && CutsceneShape.IsLink(5) && !CutsceneShape.IsLink(2), "Unk08/Unk28 are links");
     }
 
     private static void CutsceneCutFiles()
