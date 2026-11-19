@@ -56,9 +56,10 @@ Try the next option if: The Pus of Man spawned from the F1 menu never turns up, 
 
 Try the next option if: The content build fails or gives different results from one run to the next.
 
-- **A: Every core (default).** port-weapons and port-maps run side by side, each on every core.
+- **A: Every core (default).** port-weapons and port-maps run side by side, each on every core, and port-maps ports several DS3 maps side by side.
 - **B: One core.** Everything one step at a time (DARKSIGN_THREADS=1), as builds were before 1.0.12x. Slower, but rules out a threading bug. (`DARKSIGN_THREADS=1`)
 - **C: Collision one file at a time.** Every core, but map collision files are serialized one at a time under a lock (DARKSIGN_COLLISION_LOCK=1), as builds before 1.0.23x did. Minutes slower per map; rules the lock-free Havok serialization out if a map's collision misbehaves. (`DARKSIGN_COLLISION_LOCK=1`)
+- **D: One map at a time.** Every core, but port-maps ports the DS3 maps one after another (DARKSIGN_MAPS_AT_ONCE=1), as builds up to 1.0.50x did, instead of several side by side. A few minutes slower; rules porting maps side by side out if a map looks different from one build to the next. (`DARKSIGN_MAPS_AT_ONCE=1`)
 
 
 ## Weapon movesets
