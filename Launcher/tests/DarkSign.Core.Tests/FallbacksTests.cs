@@ -23,6 +23,27 @@ public sealed class FallbacksTests
     }
 
     [Fact]
+    public void Music_loads_the_dll_only_when_built_and_not_turned_off()
+    {
+        var dir = Path.Combine(Path.GetTempPath(), "dks-music-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(dir);
+        try
+        {
+            var none = new Dictionary<string, string>();
+            Assert.False(Fallbacks.NeedsMusicDll(none, dir));
+            File.WriteAllText(Path.Combine(dir, Fallbacks.MusicListFile), "1039292000\tm000400000.wav\t0\t100\t2000\tm45_00_00_00\tgundyr\n");
+            Assert.True(Fallbacks.NeedsMusicDll(none, dir));
+            Assert.False(Fallbacks.NeedsMusicDll(new Dictionary<string, string> { ["map-music"] = "B" }, dir));
+            Assert.True(Fallbacks.NeedsMusicDll(new Dictionary<string, string> { ["map-music"] = "C" }, dir));
+            Assert.False(Fallbacks.NeedsTestMenuDll(none));
+        }
+        finally
+        {
+            Directory.Delete(dir, true);
+        }
+    }
+
+    [Fact]
     public void Defaults_change_nothing_and_keep_the_old_build_stamp()
     {
         var none = new Dictionary<string, string>();

@@ -490,6 +490,14 @@ Try the next option if: The game crashes, hangs or shows a black screen when a D
 - **D: DS3's timelines as converted.** The cutscenes play as in A, but their timelines keep DS3's field values (DARKSIGN_CUTSCENE_CONFORM=0) instead of taking Elden Ring's shape: events may run past the end of a cut, cut flags and parameter lists stay DS3's, as builds up to 1.0.42x had them. (`DARKSIGN_CUTSCENE_CONFORM=0`)
 - **E: DS3's cast and files as converted.** The cutscenes play as in A, but keep every part DS3 names even when Elden Ring has no model for it, DS3's draw settings, and DS3's cut file names (DARKSIGN_CUTSCENE_CAST=0), as builds up to 1.0.44x had them: a cutscene naming something Elden Ring can't load stays on a black screen. (`DARKSIGN_CUTSCENE_CAST=0`)
 
+### DS3's music (areas and boss fights) (`map-music`, rebuilds the content)
+
+Try the next option if: A DS3 map or boss fight plays the wrong music, Elden Ring's music, or none; the music doesn't change with a boss's phase or doesn't stop; or the game stutters or crashes when a track starts.
+
+- **A: DS3's music (default).** Every music region of the ported DS3 maps plays its DS3 track: the area music where DS3 plays it (Firelink Shrine) and each boss fight's tracks, switching with the boss's phases, stopping when the boss dies, you die or leave. The tracks are decoded from your DS3 files to Mods\ER\darksign_music and the test menu DLL plays them on its own audio stream (it is loaded for this even with the F1 test menu unticked). Ported enemies no longer start Elden Ring's battle music. Report: the music lines of the port-maps log, "music:" lines in dksign_testmenu.log.
+- **B: No DS3 music.** No DS3 music is built or played (DARKSIGN_MAP_MUSIC=0): the DS3 maps are quiet apart from Elden Ring's own music, as up to 1.0.45x. (`DARKSIGN_MAP_MUSIC=0`, game `DKSIGN_NO_MAP_MUSIC=1`)
+- **C: DS3's music, Elden Ring battle music kept.** As A, but ported enemies keep their Elden Ring template's threat level (DARKSIGN_ENEMY_THREAT=template), as up to 1.0.45x: an enemy built on an Elden Ring field boss starts that boss's battle music. (`DARKSIGN_ENEMY_THREAT=template`)
+
 ### Which state of a DS3 map is ported (`map-layers`, rebuilds the content)
 
 Try the next option if: Enemies or objects you expected are missing from a DS3 map since 1.0.327 (for example on the way to Firelink Shrine), or you want to see the Untended Graves' enemies.

@@ -20,6 +20,7 @@
 #include "motion.h"
 #include "hotkeys.h"
 #include "flagcheck.h"
+#include "music.h"
 #include "sound.h"
 #include "spawn.h"
 #include "perf.h"
@@ -1167,6 +1168,7 @@ DWORD WINAPI start(LPVOID)
         dks_log("game window not seen after 120 s; hooking anyway");
     dks_motion_init();
     dks_sound_init();
+    dks_music_init();
     dks_flagcheck_start();
     // Fallback "F1 test menu" B: no overlay (if hooking DirectX 12 breaks the game); the hotkeys still work.
     wchar_t no_overlay[8];

@@ -58,6 +58,15 @@ public sealed class EventPort
     /// </summary>
     public Func<long, long?>? Cutscenes { get; init; }
 
+    /// <summary>
+    /// DS3's music lines (<see cref="MapMusic"/>): a line that switches a music region sets its flag. Null: they stay
+    /// no-ops (Elden Ring has none of DS3's music instructions).
+    /// </summary>
+    public MapMusic.Plan? Music { get; init; }
+
+    /// <summary>The DS3 map whose script is being converted (null: common_func), for the music lines that name a track by ID.</summary>
+    public MapId? MusicMap { get; set; }
+
     /// <summary>Where DS3 action button prompts get their ActionButtonParam rows; without it they don't convert.</summary>
     public ActionButtons? Buttons { get; init; }
 
@@ -647,6 +656,8 @@ public sealed class EventPort
             }
             return (new EMEVD.Instruction(2000, ins.ID, data), null);
         }
+        if (ins.Bank == 2010 && Music?.Convert(ins, _ds3, paramBytes, MusicMap) is { } music)
+            return (music, null);
         if (ins.Bank == 3 && ActionButtonIds.Contains(ins.ID))
             return ActionButton(ins);
         if (ins.Bank == 1003 && ClientChecks.ContainsKey(ins.ID))
