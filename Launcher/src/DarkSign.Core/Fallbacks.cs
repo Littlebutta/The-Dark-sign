@@ -485,9 +485,11 @@ public static class Fallbacks
         new("map-blend-layers", "DS3 maps", "Ground and walls that mix several DS3 textures", Stage.Build,
             "A DS3 map's ground or walls show the wrong texture in patches, or change texture at hard, jagged edges since this option.",
         [
-            new("A", "Each triangle shows DS3's layer (default)", "DS3 paints two to four ground textures across one terrain mesh (brick, earth, ash and the like), choosing each by a weight stored on every vertex. Elden Ring has no shader in use that blends DS3's layers, so the port splits each such mesh and draws every triangle with the layer DS3 shows there, with that layer's own texture, normal map and tiling. The port log's \"terrain blends:\" line counts the triangles each layer got."),
+            new("A", "Cut along DS3's layer edges (default)", "DS3 paints two to four ground textures across one terrain mesh (brick, earth, sand, ash and the like), choosing each by a weight stored on every vertex. Elden Ring has no shader in use that blends DS3's layers, so the port splits each such mesh into one mesh per layer, with that layer's own texture, normal map and tiling. A triangle whose corners show different layers is cut along the line where DS3 changes layer, so a painted patch keeps its outline (the same goes for two-layer materials). The port log's \"terrain blends:\" line counts the triangles each layer got and how many were cut."),
             new("B", "First layer only", "Every terrain mesh shows only its first layer (port-maps --first-blend-layer), as in every build up to 1.0.353: dark brick shards lie across the ash around Firelink Shrine and the walls show one texture, but no part of the ground changes texture at a hard edge.")
                 { MapsArgs = ["--first-blend-layer"] },
+            new("C", "Whole triangles", "Each triangle goes whole to the layer its three corners show on average (port-maps --whole-blend-triangles), as in builds 1.0.354 to 1.0.46x: no triangle is cut, but the edge of every painted patch follows the triangles, which drew pale, jagged, flat shards on the Undead Settlement's ground.")
+                { MapsArgs = ["--whole-blend-triangles"] },
         ]),
         new("map-atmosphere", "DS3 maps", "Colours of light and fog in the DS3 maps", Stage.Build,
             "A DS3 map looks washed out, too foggy, too clear, or wrongly coloured since the maps took DS3's colours.",
