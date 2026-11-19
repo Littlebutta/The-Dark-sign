@@ -224,6 +224,7 @@ public static partial class ObjectAnims
     public static int MovingBodies(hkRootLevelContainer root, IReadOnlySet<string> movingBones, IReadOnlyDictionary<string, string> rename, Template? t, List<string> notes)
     {
         int moving = 0;
+        var still = new List<string>();
         foreach (var system in root.m_namedVariants.Select(v => v.m_variant).OfType<hknpPhysicsSceneData>().SelectMany(s => s.m_systemDatas))
         {
             if (system is null)
@@ -235,7 +236,20 @@ public static partial class ObjectAnims
                     continue;
                 body.m_name = rename.GetValueOrDefault(body.m_name, body.m_name);
                 if (!movingBones.Contains(body.m_name))
-                    continue;
+                {
+                    // A body named like one bone only ("model_EV1" for the bone "EV1", or the other way round) follows
+                    // that bone: Elden Ring finds a body's bone by name, so the body takes the bone's.
+                    var alike = movingBones.Where(b => b.Length >= 2 && (body.m_name.EndsWith(b, StringComparison.OrdinalIgnoreCase) || b.EndsWith(body.m_name, StringComparison.OrdinalIgnoreCase))).ToList();
+                    if (body.m_name.Length < 2 || alike.Count != 1)
+                    {
+                        // The body named after the root (the frame) is meant to stay; any other is worth a note.
+                        if (!rename.Values.Contains(body.m_name, StringComparer.OrdinalIgnoreCase))
+                            still.Add(body.m_name);
+                        continue;
+                    }
+                    notes.Add($"body {body.m_name} follows the bone {alike[0]} (named alike)");
+                    body.m_name = alike[0];
+                }
                 if (motionId < 0)
                 {
                     if (t?.MovingMotion is { } motion)
@@ -265,6 +279,8 @@ public static partial class ObjectAnims
         }
         if (moving == 0 && movingBones.Count > 0)
             notes.Add("no collision body is named after a moving bone: the collision stays where the object was placed");
+        else if (still.Count > 0)
+            notes.Add($"bodies that stay put: {string.Join(" ", still.Take(6))}");
         return moving;
     }
 }

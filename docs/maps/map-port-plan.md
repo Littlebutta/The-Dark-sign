@@ -259,8 +259,13 @@ by per-vertex weights in the third UV member, four normalized bytes. A mesh with
 (m40's 3m wall m900285 keeps the third at 0, every mesh keeps the fourth at 0, and they don't sum to one), and layer k
 is painted over the layers below it with weight k - 1, sharpened by the edge texture. Up to 1.0.353 every such mesh
 showed only layer 0, which around Firelink Shrine is the dark brick under the ash: a `--tint-materials` build coloured
-every shard of map 1 as a terrain blend. `MapTerrainBlends` gives each triangle the highest layer whose weight averages
-0.5 or more over its corners, and splits the mesh into one mesh per layer with that layer's textures and tiling.
+every shard of map 1 as a terrain blend. `MapTerrainBlends` shows, at each spot, the highest layer whose weight is
+0.5 or more, and splits the mesh into one mesh per layer with that layer's textures and tiling. From 1.0.354 to 1.0.46x
+a whole triangle went to the layer its corners averaged to; DS3's ground triangles are one to two metres wide, so the
+edges of painted patches (the Undead Settlement's sand paths) were pale jagged shards. `MapLayerContours` now cuts a
+triangle whose corners disagree along the line where the interpolated weight is 0.5, with cut points shared by the
+triangles on both sides of an edge (no gaps); two-layer materials (`MapOverlays`) are cut the same way by vertex
+alpha. Fallback `map-blend-layers` C (`--whole-blend-triangles`) brings whole triangles back.
 The port log's `terrain blends:` line counts triangles per layer; fallback `map-blend-layers` B
 (`--first-blend-layer`) shows the first layer everywhere again. Unlit or scrolling "2m" materials are not ground:
 DS3's sky domes (`m009000` of m31 and m40, `M[A]_2m_NoLight_scroll`) cross-fade two cloud layers with the same bytes,
@@ -554,7 +559,16 @@ o300500, o300510 and o400340 against Elden Ring's door AEG219_000 in a cloud thr
   named after a non-root bone take the leaf's settings (motion type 1, its motion properties, no motion ID:
   `ObjectAnims.MovingBodies`). DS3 convex hulls (door leaves, levers; 31 of the first build's still objects had only
   these and got no collision) now convert (`CollisionPort.ConvertConvex`). A body whose compressed mesh points past
-  its vertices (the placeholder frames of o400340 and o300500) is left out instead of failing the file.
+  its vertices is left out instead of failing the file.
+- **Solid blocks inside a mesh (lift platforms; Devin fell through a lift, 2026-11-19).** A Havok 2014 mesh can hold
+  whole convex hulls beside its triangles: a primitive (a, b, b, b) whose record (vertex count, first vertex, radius)
+  sits at index a of the section's shared-vertex index list, with 32-bit packed vertices measured inside the hull's
+  own leaf box. DS3 builds the platform of every lift, the frame of a gate and the base of a lever from them. Read
+  as triangles they "pointed past the vertices", so those bodies were left out as placeholders and all four lifts
+  (o009009, o311500, o404822, o459100) had no floor. `CollisionHulls` now reads them and rebuilds the body as a mesh
+  of triangles and quads (each hull's faces), laid out like DS3's own triangle meshes. A body named like exactly one
+  bone ("model_EV1" for "EV1") follows that bone. `object-diag collision <objbnd>` shows what a DS3 object's
+  collision holds and what it converts to, without a game folder.
 - **Hull arrays in the patch list (1.0.410 crash).** A convex hull keeps its vertices, planes, faces and indices in
   hkRelArrays. In a binary tagfile each one holds the number of the item with its elements, and the game resolves it
   into a count and a distance only if the file's patch list (PTCH) names the field; Elden Ring's door aeg219_000_l

@@ -635,13 +635,13 @@ public sealed class ObjectPort
                 var converted = CollisionPort.Convert(hkx, _collisionTemplate, _xmlCollision, _keepSimd, adjust, dropBroken: true);
                 if (converted.Triangles == 0 && converted.Convex == 0)
                 {
-                    errors.Add($"{ItemText.Leaf(file.Name)}: no mesh or convex shape");
+                    errors.Add($"{ItemText.Leaf(file.Name)}: no mesh or convex shape" + (converted.Notes.Count > 0 ? $" ({string.Join("; ", converted.Notes.Distinct().Take(3))})" : ""));
                     continue;
                 }
                 Write(GeomHkxBndPath(asset.Name), DCX.Compress(CollisionBinder(asset.Name, converted.Bytes, _binderTemplate, _fileFlags).Write(), _compression));
                 asset.Collision = true;
                 asset.CollisionNote = $"{converted.Triangles} triangles, {converted.Convex} convex bodies from {ItemText.Leaf(file.Name)}"
-                                      + (converted.Notes.Count > 0 ? $" ({string.Join("; ", converted.Notes.Distinct().Take(2))})" : "");
+                                      + (converted.Notes.Count > 0 ? $" ({string.Join("; ", converted.Notes.Distinct().Take(5))})" : "");
                 break;
             }
             catch (Exception ex) when (ex is not OutOfMemoryException)

@@ -368,7 +368,11 @@ public static class EnemyPort
                 part.CharaInitID = look;
                 dressed++;
             }
-            part.WalkRouteName = ""; // DS3 patrol routes need the map's regions, which aren't ported yet
+            part.WalkRouteName = ""; // DS3's route is given by RegionPort, once the map's regions are in
+            // A ported DS3 character is placed on a copy of some Elden Ring enemy's placement: the effects that
+            // placement adds (an ambusher's waiting pose, a sleeper) are that enemy's, not this one's.
+            if (who.Source == "ported DS3 character")
+                Array.Clear(part.SpEffectSetParamID);
             part.BackupEventAnimID = -1;
             part.CollisionPartName = collisions.Contains(src.CollisionName ?? "") ? src.CollisionName : "";
             if (seat is not null)
