@@ -525,6 +525,14 @@ Try the next option if: Resting at a DS3 bonfire does nothing or breaks (no prom
 - **B: DS3's sword is the grace.** As A, but with no Elden Ring grace asset (DARKSIGN_BONFIRES=sword): DS3's own sword in the ash is registered as the site of grace, so there is no golden light, only the DS3 fire once it is lit. Unproven: Elden Ring may expect its own grace model here. (`DARKSIGN_BONFIRES=sword`)
 - **C: Scenery.** DS3's bonfires can't be used (DARKSIGN_BONFIRES=0), as every build up to 1.0.46x had them: you respawn at your last Elden Ring grace. (`DARKSIGN_BONFIRES=0`)
 
+### DS3's event messages and area names (`map-text`, rebuilds the content)
+
+Try the next option if: A message in a DS3 map shows no words, a placeholder or the wrong words (a locked door, a lever that won't move, a map event), an area's name shows wrongly or keeps popping up, or a DS3 map crashes or hangs since its text was added.
+
+- **A: DS3's own words (default).** Every message a DS3 script, door or lever shows ("Locked by some contraption", "Does not open from this side", "Used Tower Key") is DS3's own text, copied into Elden Ring's event text at 1,000,000,000 + the DS3 number, and each DS3 area shows its name when you enter it ("High Wall of Lothric"). Report: the map text lines of the port-maps log.
+- **B: No area names.** Messages as in A, but no area name shows on entering a DS3 area (DARKSIGN_MAP_TEXT=noplaces), as every build up to 1.0.50x had it. (`DARKSIGN_MAP_TEXT=noplaces`)
+- **C: DS3's text numbers, as up to 1.0.50x.** Scripts, doors and levers keep DS3's text numbers (DARKSIGN_MAP_TEXT=0), which Elden Ring looks up in its own text: messages show no words or the wrong ones, and no area name shows. (`DARKSIGN_MAP_TEXT=0`)
+
 ### Water in the DS3 maps (`map-water`, rebuilds the content)
 
 Try the next option if: A DS3 map crashes or hangs while loading since its water was added, or its pools, puddles and rivers look wrong (black, glowing, flickering or floating).

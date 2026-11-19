@@ -248,21 +248,22 @@ public sealed class ActionButtons
         File.WriteAllBytes(modMenuPath, DCX.Compress(menu.Write(), compression));
         regulation.Save(ctx.ModPath("regulation.bin"));
         return $"action buttons: {rows} ActionButtonParam rows ({_ds3Rows.Count} copies of DS3 rows"
-               + (_ds3Rows.Count > 0 && ds3Param is null ? ", DS3's regulation unreadable: shapes from the template" : "") + "); prompt text {reused} reused from Elden Ring, {added} added from DS3, {missing} not found";
+               + (_ds3Rows.Count > 0 && ds3Param is null ? ", DS3's regulation unreadable: shapes from the template" : "") + $"); prompt text {reused} reused from Elden Ring, {added} added from DS3, {missing} not found";
     }
 
+    /// <summary>
+    /// DS3's prompt words by number. They are DS3's event text (イベントテキスト: 10010400 "Open", 10010403 "Traverse
+    /// the fog"), so those files answer first; any other menu text file only for a number they don't have. Up to
+    /// 1.0.50x the event text files were looked for under an English name DS3 doesn't use, so every file answered
+    /// in binder order, the conversation lines first: 46 event text numbers are also a dialogue line's number
+    /// (12000000 "Select quantity to offer:" / "Ahh, you're no jailer, are you?") and would have shown the line.
+    /// </summary>
     private static Dictionary<int, string> LoadDs3Help(GameArchives ds3)
     {
-        // The help messages live in DS3's menu text; take the event and action button files first.
-        var all = new Dictionary<int, string>();
-        foreach (var path in new[] { Ds3Menu, Ds3MenuBase }.Where(ds3.Contains))
-        {
-            var bnd = BND4.Read(ds3.Read(path));
-            foreach (var (id, text) in ReadFmgs(bnd, "Event").Concat(ReadFmgs(bnd, "ActionButton")).Concat(ReadFmgs(bnd, "")))
-                if (!string.IsNullOrWhiteSpace(text))
-                    all.TryAdd(id, text);
-        }
-        return all;
+        var (own, other, _) = MapText.LoadDs3(ds3, [Ds3Menu, Ds3MenuBase], ["イベントテキスト", "EventText", "ActionButton"]);
+        foreach (var (id, text) in other)
+            own.TryAdd(id, text);
+        return own;
     }
 
     private static IEnumerable<(int Id, string Text)> ReadFmgs(BND4 bnd, string namePart)

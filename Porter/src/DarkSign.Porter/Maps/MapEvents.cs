@@ -25,7 +25,8 @@ public static class MapEvents
     /// <param name="erCommon">Elden Ring's common_func.emevd; ported DS3 common events from an earlier run are replaced.</param>
     public static Result Convert(Emedf ds3Defs, Emedf erDefs, FlagMap flags, IReadOnlyList<MapSlots.Slot> slots,
         IReadOnlyDictionary<MapId, EMEVD> ds3Scripts, EMEVD? ds3Common, Func<MapSlots.Slot, EMEVD> erTemplate, EMEVD erCommon,
-        ActionButtons? buttons = null, Func<long, long?>? spEffects = null, Func<long, long?>? cutscenes = null, MapMusic.Plan? music = null)
+        ActionButtons? buttons = null, Func<long, long?>? spEffects = null, Func<long, long?>? cutscenes = null, MapMusic.Plan? music = null,
+        MapText.Used? texts = null)
     {
         var main = slots.Where(s => !s.Probe).Select(s => (s.Ds3, s.Er)).ToList();
         var summary = new List<string>();
@@ -34,7 +35,7 @@ public static class MapEvents
 
         EventPort NewPort(IReadOnlyList<(MapId, MapId)> maps)
         {
-            var port = new EventPort(ds3Defs, erDefs, maps, flags) { Buttons = buttons, SpEffects = spEffects, Cutscenes = cutscenes, Music = music };
+            var port = new EventPort(ds3Defs, erDefs, maps, flags) { Buttons = buttons, SpEffects = spEffects, Cutscenes = cutscenes, Music = music, Texts = texts };
             if (ds3Common is not null)
                 port.Learn(ds3Common, common: true);
             foreach (var script in ds3Scripts.Values)
@@ -174,7 +175,9 @@ public static class MapEvents
         {
             spNote = $"speffects: script SpEffect IDs kept at their DS3 IDs ({ex.Message})";
         }
-        var result = Convert(ds3Defs, erDefs, flags, slots, ds3Scripts, ds3Common, s => Template(s).Script, erCommon, buttons, spEffects, playable, music);
+        // The DS3 text the scripts name by number (MapText), written once the scripts are.
+        var texts = new MapText.Used();
+        var result = Convert(ds3Defs, erDefs, flags, slots, ds3Scripts, ds3Common, s => Template(s).Script, erCommon, buttons, spEffects, playable, music, texts);
         // Boss kits go through the same buttons, so their action button rows are written with the maps'.
         (EMEVD Common, DCX.CompressionInfo Compression, string Note)? kits = null;
         string KitNote(Exception ex) => $"boss kits: not added ({ex.Message}); bosses outside their DS3 map run no map scripts";
@@ -198,7 +201,7 @@ public static class MapEvents
                 // Scripts that point at rows which were never written must not ship: fall back to leaving them out.
                 buttonNote = $"action buttons: FAILED to write rows ({ex.Message}); converting again without them";
                 flags = FlagMap.Load(flagPath);
-                result = Convert(ds3Defs, erDefs, flags, slots, ds3Scripts, ds3Common, s => Template(s).Script, erCommon, null, spEffects, playable, music);
+                result = Convert(ds3Defs, erDefs, flags, slots, ds3Scripts, ds3Common, s => Template(s).Script, erCommon, null, spEffects, playable, music, texts);
                 try
                 {
                     kits = PortKits(ctx, ds3, er, ds3Defs, erDefs, flags, null, spEffects);
@@ -225,10 +228,25 @@ public static class MapEvents
         var playedNote = played.Count == 0 ? "" : $"replay flags (F1 Clear played cutscenes): {played.Count} cutscenes, "
             + string.Join(", ", played.OrderBy(p => p.Key).Select(p => $"{p.Key}: {string.Join(" ", p.Value)}"));
         var objActNote = RemapObjActFlags(ctx, ds3Defs, erDefs, flags, slots);
+        // The ported doors' and levers' "can't do that" messages are DS3 text too (ObjectPort.AddObjActRows).
+        try
+        {
+            if ((regulation ?? ActionButtons.LoadRegulation(ctx)).Get("ObjActParam") is { } objActs)
+                foreach (var row in objActs.Rows.Where(r => ObjectPort.ObjActRow(r.ID - ObjectPort.ObjActBase) == r.ID))
+                    if (row.Cells.FirstOrDefault(c => c.Def.InternalName == "actionFailedMsgId")?.Value is { } v
+                        && System.Convert.ToInt64(v) is > MapText.Base and var id)
+                        texts.Messages.Add((int)(id - MapText.Base));
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            // their text is written all the same when it is in DS3's event text files
+        }
+        var textNote = MapText.Write(ctx, ds3, er, texts);
         flags.Save(flagPath);
         return "events:\n  " + result.Summary + (buttonNote.Length > 0 ? "\n  " + buttonNote : "") + (spNote.Length > 0 ? "\n  " + spNote : "")
                + (kitNote.Length > 0 ? "\n  " + kitNote : "")
                + (objActNote.Length > 0 ? "\n  " + objActNote : "")
+               + "\n  " + textNote.Replace("\n", "\n  ")
                + (playedNote.Length > 0 ? "\n  " + playedNote : "");
     }
 

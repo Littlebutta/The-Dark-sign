@@ -28,7 +28,7 @@ public sealed class EventPort
     /// <remarks>MusicRegion: a value an event uses only as the region of DS3's music lines (the shared boss events'
     /// track regions). The lines that start the event pass the region's switch flag there instead
     /// (<see cref="MapMusic.Plan.SwitchFor"/>), and the event's music lines set that flag.</remarks>
-    public enum Kind { Other, Entity, Flag, FlagRangeStart, FlagRangeEnd, Event, Area, Block, PackedMap, Cutscene, SpEffect, WarpPoint, ActionButton, ObjAct, MusicRegion }
+    public enum Kind { Other, Entity, Flag, FlagRangeStart, FlagRangeEnd, Event, Area, Block, PackedMap, Cutscene, SpEffect, WarpPoint, ActionButton, ObjAct, MusicRegion, Message, PlaceName }
 
     private readonly Emedf _ds3, _er;
     private readonly IReadOnlyList<(MapId Ds3, MapId Er)> _maps;
@@ -73,6 +73,15 @@ public sealed class EventPort
     /// <summary>Where DS3 action button prompts get their ActionButtonParam rows; without it they don't convert.</summary>
     public ActionButtons? Buttons { get; init; }
 
+    /// <summary>
+    /// Collects the DS3 text numbers the scripts name (<see cref="MapText"/>). The numbers move with or without it:
+    /// a text's Elden Ring number follows from its DS3 number alone.
+    /// </summary>
+    public MapText.Used? Texts { get; init; }
+
+    /// <summary>How text numbers move (DARKSIGN_MAP_TEXT, read once per port).</summary>
+    public MapText.Method TextMode { get; init; } = MapText.Mode;
+
     // DS3's "IF Action Button" family (all start Result Condition Group, Target Entity Type, Target Entity ID, ...).
     private static readonly HashSet<int> ActionButtonIds = [5, 13, 18, 19];
 
@@ -83,6 +92,8 @@ public sealed class EventPort
         public int SpEffectsMoved, SpEffectsKept;
         /// <summary>DS3 ActionButtonParam IDs pointed at their Elden Ring copies.</summary>
         public int ActionButtonsMoved;
+        /// <summary>Event message and area name numbers pointed at DS3's own text (<see cref="MapText"/>).</summary>
+        public int TextsMoved;
         /// <summary>Cutscene lines that play a converted cutscene, and ones left out (or kept as their warp).</summary>
         public int CutscenesPlayed, CutscenesLeftOut;
         public SortedSet<long> CutscenesLeftOutIds { get; } = [];
@@ -95,6 +106,7 @@ public sealed class EventPort
         public override string ToString() =>
             $"{Events - EventsDropped}/{Events} events, {Converted}/{Instructions} instructions converted, {NoOps} no-ops"
             + (ActionButtonsMoved == 0 ? "" : $", {ActionButtonsMoved} DS3 action button rows pointed at their copies")
+            + (TextsMoved == 0 ? "" : $", {TextsMoved} messages and area names pointed at DS3's text")
             + (SpEffectsMoved + SpEffectsKept == 0 ? "" : $", SpEffects: {SpEffectsMoved} to ported rows, {SpEffectsKept} kept"
                 + (SpEffectsKeptIds.Count == 0 ? "" : $" ({string.Join(" ", SpEffectsKeptIds.Take(12))})"))
             + (CutscenesPlayed + CutscenesLeftOut == 0 ? "" : $", cutscenes: {CutscenesPlayed} lines play a ported cutscene, {CutscenesLeftOut} left out"
@@ -221,6 +233,13 @@ public sealed class EventPort
             return Kind.Cutscene;
         if (n.Contains("action button param"))
             return Kind.ActionButton;
+        // Text by number (MapText): the "Message ID" of the dialog, status and message lines is event text; DS3's
+        // "Area Name Message ID" (Display Area Welcome Message) is a place name. Not "Help Message ID" (an action
+        // button's prompt: ActionButtons) or "Event Message ID" (a message a character carries, not text).
+        if (n == "message id")
+            return Kind.Message;
+        if (n == "area name message id")
+            return Kind.PlaceName;
         // Where the player lands: Warp Player's "Initial Area (Entity) ID", the respawn point, and the point a
         // cutscene warps the player to (DS3's "Play Cutscene and Warp Player").
         if (n.Contains("initial area") || n.Contains("respawn point") || n.Contains("respawn area") || n == "point entity id")
@@ -355,7 +374,8 @@ public sealed class EventPort
         for (int i = 0; i < to.Args.Count; i++)
         {
             kinds[i] = KindOf(to.Args[i].Name);
-            if (source[i] >= 0 && kinds[i] == Kind.Other)
+            // Elden Ring calls an area name a "Message ID" too: what DS3 says the value is decides.
+            if (source[i] >= 0 && (kinds[i] == Kind.Other || KindOf(from.Args[source[i]].Name) == Kind.PlaceName))
                 kinds[i] = KindOf(from.Args[source[i]].Name);
         }
         return new Mapping(from, to, source, kinds, warpOnly);
@@ -463,6 +483,17 @@ public sealed class EventPort
                 return value;
             case Kind.ObjAct:
                 return ObjectPort.ObjActRow(value);
+            case Kind.Message:
+            case Kind.PlaceName:
+                // DS3's text numbers name nothing (or other words) in Elden Ring: each names a copy of DS3's text.
+                var text = kind == Kind.Message ? MapText.Message(value, TextMode) : MapText.Place(value, TextMode);
+                if (text != value)
+                {
+                    Stats.TextsMoved++;
+                    if (value < int.MaxValue)
+                        (kind == Kind.Message ? Texts?.Messages : Texts?.Places)?.Add((int)value);
+                }
+                return text;
             default:
                 return value;
         }
