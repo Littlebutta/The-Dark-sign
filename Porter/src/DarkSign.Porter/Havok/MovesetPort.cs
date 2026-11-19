@@ -509,6 +509,39 @@ public static partial class MovesetPort
         var convertedAnyTemplate = new Dictionary<string, (string Name, int AnimId, float ErDuration)>(StringComparer.OrdinalIgnoreCase);
         int sharedMovesets = 0, sharedMoves = 0;
 
+        // A weapon whose moveset is skipped (no free motion category, or no room left in the animation binder) keeps its
+        // template's motion category, but its DS3 weapon art is still ported from its own DS3 section, and that art's
+        // moves ask for DS3's behaviour judges. Up to 1.0.44x such a weapon also kept its template's behaviour
+        // variation, so the art's hits found Elden Ring's rows for those judges and its projectiles found none: the
+        // Ringed Knight Paired Greatswords' Ember slam lost its explosion (judges 702/703 fire bullets in DS3) once the
+        // binder filled up and 20 movesets were skipped (Crow Quills, Dancer's Enchanted Swords, Valorheart ...). The
+        // weapon now gets its DS3 variation all the same (DS3's rows over the template's, as every built moveset's
+        // Elden Ring moves already have). DARKSIGN_SKIPPED_ATTACKS=0 keeps the template's variation.
+        var attacksOnly = new List<string>();
+        void KeepDs3Attacks(IEnumerable<WeaponPlan> skipped)
+        {
+            if (!SkippedAttacks)
+                return;
+            foreach (var plan in skipped)
+            {
+                if (plan.NewId is not { } newId || ds3Weapons[plan.Ds3Id] is not { } ds3Row || erWeapons[newId] is not { } erRow)
+                    continue;
+                int ds3Variation = Convert.ToInt32(ds3Row["behaviorVariationId"].Value);
+                int templateVariation = Convert.ToInt32(erRow["behaviorVariationId"].Value);
+                if (ds3Variation <= 0)
+                    continue;
+                pointWeapons.Add(() =>
+                {
+                    int variation = attackPort.PortVariation(ds3Variation, templateVariation);
+                    if (variation <= 0)
+                        return;
+                    foreach (var row in erWeapons.Rows.Where(r => r.ID >= newId && r.ID < newId + 10000))
+                        row["behaviorVariationId"].Value = Convert.ChangeType(variation, row["behaviorVariationId"].Value!.GetType());
+                    attacksOnly.Add(plan.Name);
+                });
+            }
+        }
+
         foreach (var group in groups)
         {
             var (ds3Section, ds3ArtSection, templateSection) = group.Key;
@@ -554,6 +587,7 @@ public static partial class MovesetPort
             {
                 Console.WriteLine($"moveset: skipped {groupName}: no free motion category left");
                 skippedGroups++;
+                KeepDs3Attacks(group);
                 continue;
             }
             // Taken even if the port fails below: its files may then hold part of the category.
@@ -789,6 +823,7 @@ public static partial class MovesetPort
                 // No weapon points at the partly built category.
                 Console.WriteLine($"moveset: skipped {groupName}: {e.GetType().Name}: {e.Message}");
                 skippedGroups++;
+                KeepDs3Attacks(group);
                 continue;
             }
             portedGroups++;
@@ -813,6 +848,9 @@ public static partial class MovesetPort
             }
         }
 
+        if (attacksOnly.Count > 0)
+            pointWeapons.Add(() => Console.WriteLine($"moveset: {attacksOnly.Count} weapons whose moveset was skipped keep Elden Ring's moves but their DS3 attacks " +
+                                                     $"(their DS3 art's hits and projectiles): {string.Join(", ", attacksOnly)} [DARKSIGN_SKIPPED_ATTACKS=0 off]"));
         // Params first: a failure there must not leave behaviour and animation files for weapons that don't use them.
         foreach (var point in pointWeapons)
             point();
@@ -1450,6 +1488,10 @@ public static partial class MovesetPort
     /// <summary>Fallback "weapon-visuals" H: DARKSIGN_BORROW_BULLETS=0 leaves a weapon built as its class without the
     /// projectiles of its own section, as in builds up to 1.0.282.</summary>
     private static readonly bool BorrowBullets = Environment.GetEnvironmentVariable("DARKSIGN_BORROW_BULLETS") != "0";
+
+    /// <summary>Fallback weapon-arts I: DARKSIGN_SKIPPED_ATTACKS=0 leaves a weapon whose moveset was skipped on its
+    /// template's behaviour variation, as up to 1.0.44x (its DS3 art's projectiles found no row).</summary>
+    private static readonly bool SkippedAttacks = Environment.GetEnvironmentVariable("DARKSIGN_SKIPPED_ATTACKS") != "0";
 
     /// <summary>A DS3 move: its animation file, events, and the file its TAE entry names (when that differs).</summary>
     private sealed record Ds3Move(string HkxName, List<TAE.Event> Events, string? FileName = null);

@@ -301,6 +301,8 @@ public static class Fallbacks
                 { PorterEnv = Env("DARKSIGN_HKS_MARKERS", "drop") },
             new("H", "Own-section arts from the first block", "As A, but a weapon's own DS3 section always gives its art from its first skill move (DARKSIGN_ART_BLOCK_BY_NAME=0), as up to 1.0.410, when the Old King's Great Hammer did a leftover Stomp for Molten Perseverance. With A the art's name picks the block (Perseverance: 37700, with its lava follow-up). Use it if an art changed for the worse.")
                 { PorterEnv = Env("DARKSIGN_ART_BLOCK_BY_NAME", "0") },
+            new("I", "Skipped movesets keep their template's attacks", "As A, but a weapon whose own moveset was skipped (no room left in the animation binder) keeps its template's behaviour rows (DARKSIGN_SKIPPED_ATTACKS=0), as up to 1.0.44x, when the Ringed Knight Paired Greatswords' weapon art slam lost its explosion. With A such a weapon keeps Elden Ring's moves but gets its DS3 attack rows, so its DS3 art's hits and projectiles are found. Use it if one of those weapons' ordinary attacks changed for the worse.")
+                { PorterEnv = Env("DARKSIGN_SKIPPED_ATTACKS", "0") },
             new("off", "Off (Elden Ring Ashes of War)", "Ported weapons keep their template's Elden Ring Ash of War (DARKSIGN_WEAPON_ARTS=0), as in builds up to 1.0.169.")
                 { PorterEnv = Env("DARKSIGN_WEAPON_ARTS", "0") },
         ]),
