@@ -14,6 +14,8 @@ public static partial class MapPortChecks
         yield return ("doors: a moving object keeps its meshes on their nodes (each part follows its bone) and names a node after the asset", MovingModel);
         yield return ("doors: a DS3 convex hull (door leaf, lever) becomes an Elden Ring convex polytope with one plane per face", ConvexHull);
         yield return ("doors: a written convex hull lists its vertices, planes, faces and indices in the patch list (the game resolves only those; 1.0.410 crashed without)", ConvexHullPatches);
+        yield return ("lifts: solid blocks inside a DS3 mesh (a lift's platform, a gate's frame) are read and rebuilt as faces, not left out as a placeholder", MeshHulls);
+        yield return ("lifts: a hull's faces point outwards, flat points give none, and a large mesh is split into sections whose boxes hold their faces", HullFacesAndSections);
         yield return ("doors: bodies named after a moving bone get the door leaf's motion settings; the frame stays put", MovingBodies);
         yield return ("doors: DS3 ObjActParam rows are copied at 70,000,000 + the DS3 ID, keys dropped, prompts Elden Ring lacks replaced", ObjActRows);
         yield return ("doors: DS3 ObjAct events are placed for moving objects only, and get their flags when the scripts are converted", ObjActEvents);
@@ -117,6 +119,156 @@ public static partial class MapPortChecks
         Expect(Havok.HavokRelArrays.Check(bytes, 5).Count > 0, "a missing hkRelArray patch is reported");
     }
 
+    /// <summary>
+    /// The frame of DS3's gate o400340 as its collision file holds it (read 2026-11-19): one section, no packed
+    /// vertices, three hull primitives whose records sit in the shared-vertex index list. A lift's platform is stored
+    /// the same way.
+    /// </summary>
+    private static Ds3.hknpCompressedMeshShape Ds3HullMesh()
+    {
+        var domain = new Ds3.hkAabb { m_min = new Vector4(-1.04f, 0, -0.1f, 1), m_max = new Vector4(1.04f, 2.94f, 0.1f, 1) };
+        Ds3.hkcdStaticTreeCodec3Axis4 Node(byte x, byte y, byte z, byte data) => new() { m_xyz_0 = x, m_xyz_1 = y, m_xyz_2 = z, m_data = data };
+        Ds3.hkcdStaticMeshTreeBasePrimitive Hull(byte a, byte b) => new() { m_indices_0 = a, m_indices_1 = b, m_indices_2 = b, m_indices_3 = b };
+        var section = new Ds3.hkcdStaticMeshTreeBaseSection
+        {
+            m_codecParms_0 = float.MaxValue, m_codecParms_1 = float.MaxValue, m_codecParms_2 = float.MaxValue,
+            m_codecParms_3 = float.NegativeInfinity, m_codecParms_4 = float.NegativeInfinity, m_codecParms_5 = float.NegativeInfinity,
+            m_firstPackedVertex = 0,
+            m_sharedVertices = new Ds3.hkcdStaticMeshTreeBaseSectionSharedVertices { m_data = 0 },
+            m_primitives = new Ds3.hkcdStaticMeshTreeBaseSectionPrimitives { m_data = 3 },
+            m_dataRuns = new Ds3.hkcdStaticMeshTreeBaseSectionDataRuns { m_data = 1 },
+            m_numPackedVertices = 0, m_numSharedIndices = 9, m_flags = 1,
+            m_domain = domain,
+            m_nodes = [Node(0x00, 0x00, 0x00, 3), Node(0x0D, 0x07, 0x00, 4), Node(0x00, 0x00, 0x00, 3), Node(0x00, 0xD0, 0x00, 2), Node(0xD0, 0x07, 0x00, 0)],
+        };
+        var tree = new Ds3.hknpCompressedMeshShapeTree
+        {
+            m_domain = domain,
+            m_nodes = [new Ds3.hkcdStaticTreeCodec3Axis5()],
+            m_numPrimitiveKeys = 3, m_bitsPerKey = 3, m_maxKeyValue = 4,
+            m_sections = [section],
+            m_primitives = [Hull(6, 4), Hull(3, 3), Hull(0, 1)],
+            m_sharedVerticesIndex = [2130, 0, 15396, 2130, 4, 15396, 2130, 8, 15396],
+            m_packedVertices = [],
+            m_sharedVertices =
+            [
+                0xF33DE62AF3004E2A, 0x0CFDE62AF33DE027, 0x0CC04E2A0CFDE027, 0xF30048270CC04827,
+                0xF33F1FF5F30447F5, 0x0CFF1FF5F33F180A, 0x0CC447F50CFF180A, 0xF304400A0CC4400A,
+                0xF33DE7D8F3004FD8, 0x0CFDE7D8F33DE16A, 0x0CC04FD80CFDE16A, 0xF300496A0CC0496A,
+            ],
+            m_primitiveDataRuns = [new Ds3.hknpCompressedMeshShapeTreeDataRun { m_value = new Ds3.hknpCompressedMeshShapeTreeDataRunData { m_data = 0xFFFF }, m_index = 0, m_count = 3 }],
+        };
+        return new Ds3.hknpCompressedMeshShape
+        {
+            m_flags = 516, m_numShapeKeyBits = 3, m_dispatchType = Ds3.Enum.COMPOSITE, m_shapeTagCodecInfo = 0xFFFFFFFF,
+            m_data = new Ds3.hknpCompressedMeshShapeData { m_meshTree = tree, m_simdTree = new Ds3.hkcdSimdTree { m_nodes = [new Ds3.hkcdSimdTreeNode(), new Ds3.hkcdSimdTreeNode()] } },
+        };
+    }
+
+    private static void MeshHulls()
+    {
+        var mesh = Ds3HullMesh();
+        Expect(CollisionHulls.HasHulls(mesh.m_data.m_meshTree), "primitives whose last three indices are equal are hulls");
+        bool threw = false;
+        try { CollisionPort.DecodeDs3(mesh.m_data.m_meshTree); }
+        catch (ArgumentOutOfRangeException) { threw = true; }
+        Expect(threw, "read as triangles they point past the section's vertices (why the body was left out through 1.0.47x)");
+
+        var ds3 = new Ds3.hkRootLevelContainer
+        {
+            m_namedVariants =
+            [
+                new Ds3.hkRootLevelContainerNamedVariant
+                {
+                    m_name = "Physics Scene Data", m_className = "hknpPhysicsSceneData",
+                    m_variant = new Ds3.hknpPhysicsSceneData
+                    {
+                        m_systemDatas =
+                        [
+                            new Ds3.hknpPhysicsSystemData
+                            {
+                                m_name = "Default Physics System Data", m_materials = [], m_motionProperties = [],
+                                m_bodyCinfos = [new Ds3.hknpBodyCinfo { m_shape = mesh, m_name = "ev", m_motionId = 0x7FFFFFFF, m_qualityId = 255, m_flags = 1, m_orientation = Quaternion.Identity }],
+                            },
+                        ],
+                    },
+                },
+            ],
+        };
+        var notes = new List<string>();
+        Expect(CollisionHulls.Expand(ds3, notes) == 3 && notes.Single().Contains("3 solid blocks") && notes[0].Contains("18 faces"), string.Join("; ", notes));
+        var tree = mesh.m_data.m_meshTree;
+        Expect(!CollisionHulls.HasHulls(tree) && tree.m_primitives.Count == 18 && tree.m_primitives.All(p => p.m_indices_2 != p.m_indices_3), "three boxes: 18 quads, no hull left");
+        Expect(tree.m_numPrimitiveKeys == 36 && tree.m_maxKeyValue == 35 && tree.m_bitsPerKey == 6 && mesh.m_numShapeKeyBits == 6, $"shape keys as DS3's own quad meshes count them ({tree.m_numPrimitiveKeys} keys, max {tree.m_maxKeyValue}, {tree.m_bitsPerKey} bits)");
+        Expect(mesh.m_flags == 4 && mesh.m_data.m_simdTree.m_nodes.Count == 0 && mesh.m_quadIsFlat.m_storage.m_numBits == 18 && mesh.m_triangleIsInterior.m_storage.m_numBits == 36,
+            "the shape's flags and bit fields are a triangle mesh's; the old tree's SIMD nodes are gone");
+        Expect(CollisionHulls.Check(tree) is null, CollisionHulls.Check(tree) ?? "");
+        var section = tree.m_sections.Single();
+        Expect(section.m_numPackedVertices == 24 && (section.m_sharedVertices.m_data & 0xFF) == 24 && section.m_nodes.Count == 35 && tree.m_nodes.Count == 1 && section.m_leafIndex == 0,
+            "one section: 24 packed vertices, a leaf per quad");
+
+        var triangles = CollisionPort.DecodeDs3(tree);
+        Expect(triangles.Count == 36, $"36 triangles ({triangles.Count})");
+        // The gate's two posts and its lintel: 1.03 m either side of the middle, the door (0.62 m either side) between.
+        int Count(Func<Vector3, bool> inside) => triangles.Count(t => inside(t.A) && inside(t.B) && inside(t.C));
+        int left = Count(v => v.X is > -1.04f and < -0.62f && v.Y < 2.25f), right = Count(v => v.X is > 0.59f and < 1.04f && v.Y < 2.25f), lintel = Count(v => v.Y is > 2.24f and < 2.94f);
+        Expect(left == 12 && right == 12 && lintel == 12, $"two posts and a lintel, 12 triangles each ({left}, {right}, {lintel})");
+        Expect(triangles.All(t => MathF.Abs(t.A.Z) is > 0.085f and < 0.1f), "9 cm either side of the gate's plane");
+
+        // As Elden Ring's: the same triangles, on a body that moves with the bone it is named after.
+        var er = CollisionPort.Convert(ds3, ErCollisionTemplate.Default, keepSimdTree: false, notes);
+        var after = CollisionPort.Decode(er).Single();
+        Expect(after.Name == "ev" && after.Triangles.Count == 36 && after.Triangles.Zip(triangles).All(p => Vector3.Distance(p.First.A, p.Second.A) < 1e-4f && Vector3.Distance(p.First.C, p.Second.C) < 1e-4f),
+            "the converted body holds the same triangles");
+        int moving = ObjectAnims.MovingBodies(er, new HashSet<string>(["ev"], StringComparer.OrdinalIgnoreCase), new Dictionary<string, string>(), null, notes);
+        var body = CollisionPort.Bodies(er).Single();
+        Expect(moving == 1 && body.m_motionType == 1 && body.m_shape is HKLib.hk2018.hknpCompressedMeshShape, "the platform follows its bone");
+
+        // A hull record that points past the lists leaves the body as it was, with a note (DropBroken then decides).
+        var broken = Ds3HullMesh();
+        broken.m_data.m_meshTree.m_sharedVerticesIndex[1] = 11;
+        ((Ds3.hknpPhysicsSceneData)ds3.m_namedVariants[0].m_variant).m_systemDatas[0].m_bodyCinfos[0].m_shape = broken;
+        notes.Clear();
+        Expect(CollisionHulls.Expand(ds3, notes) == 0 && notes.Single().Contains("can't be read") && CollisionHulls.HasHulls(broken.m_data.m_meshTree), string.Join("; ", notes));
+    }
+
+    private static void HullFacesAndSections()
+    {
+        static bool Outwards(CollisionHulls.Primitive p, Vector3 middle) =>
+            Vector3.Dot(Vector3.Cross(p.Corners[1] - p.Corners[0], p.Corners[2] - p.Corners[0]), p.Corners[0] - middle) > 0;
+        var tetra = CollisionHulls.HullFaces([new(0, 0, 0), new(1, 0, 0), new(0, 1, 0), new(0, 0, 1)]);
+        Expect(tetra.Count == 4 && tetra.All(p => p.Corners.Length == 3 && Outwards(p, new Vector3(0.25f))), "a tetrahedron: four triangles facing out");
+        // A box with a point inside, one on an edge and one repeated: still six quads.
+        var corners = Enumerable.Range(0, 8).Select(i => new Vector3((i & 1) * 2, ((i >> 1) & 1) * 3, (i >> 2) & 1)).ToList();
+        var box = CollisionHulls.HullFaces([.. corners, new(1, 1, 0.5f), new(1, 0, 0), corners[3]]);
+        Expect(box.Count == 6 && box.All(p => p.Corners.Length == 4 && Outwards(p, new Vector3(1, 1.5f, 0.5f))), $"a box: six quads facing out ({box.Count})");
+        Expect(CollisionHulls.HullFaces([new(0, 0, 0), new(1, 0, 0), new(1, 1, 0), new(0, 1, 0), new(0.5f, 0.5f, 0)]).Count == 0, "points in one plane have no volume: no faces");
+        // A prism over a pentagon: two pentagons (a quad and a triangle each) and five quads.
+        var pentagon = Enumerable.Range(0, 5).Select(i => new Vector3(MathF.Cos(i * 1.2566f), 0, MathF.Sin(i * 1.2566f))).ToList();
+        var prism = CollisionHulls.HullFaces([.. pentagon, .. pentagon.Select(v => v + Vector3.UnitY)]);
+        Expect(prism.Count == 9 && prism.Count(p => p.Corners.Length == 3) == 2 && prism.All(p => Outwards(p, new Vector3(0, 0.5f, 0))), $"a pentagon prism: 7 quads and 2 triangles ({prism.Count})");
+
+        // A floor of 400 quads and 100 triangles, 40 m across: several sections, every box holding its faces.
+        var faces = new List<CollisionHulls.Primitive>();
+        for (int x = 0; x < 20; x++)
+            for (int z = 0; z < 20; z++)
+                faces.Add(new CollisionHulls.Primitive([new(x * 2, 0, z * 2), new(x * 2, 0.1f * x, z * 2 + 2), new(x * 2 + 2, 0.1f * x, z * 2 + 2), new(x * 2 + 2, 0, z * 2)]));
+        for (int i = 0; i < 100; i++)
+            faces.Add(new CollisionHulls.Primitive([new(i * 0.4f, 5, 0), new(i * 0.4f, 6, 1), new(i * 0.4f + 0.3f, 5, 2)]));
+        var tree = CollisionHulls.Build(faces);
+        Expect(tree.m_sections.Count > 8 && tree.m_sections.All(s => (s.m_primitives.m_data & 0xFF) <= CollisionHulls.SectionPrimitives && s.m_numPackedVertices > 0),
+            $"sections of at most {CollisionHulls.SectionPrimitives} primitives ({tree.m_sections.Count})");
+        Expect(CollisionHulls.Check(tree) is null, CollisionHulls.Check(tree) ?? "");
+        Expect(tree.m_nodes.Count == tree.m_sections.Count * 2 - 1 && tree.m_primitives.Count == 500 && tree.m_numPrimitiveKeys == 900 && tree.m_primitiveDataRuns.Count == tree.m_sections.Count,
+            "a leaf per section, a data run per section, two keys per quad and one per triangle");
+        Expect(tree.m_bitsPerKey == 8 + (32 - BitOperations.LeadingZeroCount((uint)tree.m_sections.Count - 1)), $"keys name the section above 8 bits of primitive ({tree.m_bitsPerKey} bits)");
+        var decoded = CollisionPort.DecodeDs3(tree);
+        Expect(decoded.Count == 900, $"900 triangles decode ({decoded.Count})");
+        // Packing moves a vertex by at most half a step of its section (a section here is under 30 m: 7 mm).
+        var corners2 = faces.SelectMany(f => f.Corners).ToList();
+        Expect(decoded.All(t => new[] { t.A, t.B, t.C }.All(v => corners2.Any(c => Vector3.Distance(c, v) < 0.02f))), "every decoded corner is one of the faces' corners");
+    }
+
     private static void MovingBodies()
     {
         hknpPhysicsSystemData.bodyCinfoWithAttachment Body(string name) => new() { m_name = name, m_motionPropertiesId = 0xFFFF, m_motionId = 0x7FFFFFFF, m_flags = 1 };
@@ -144,6 +296,15 @@ public static partial class MapPortChecks
         Expect(leaf.m_motionType == 1 && leaf.m_motionPropertiesId == 0 && system.m_motionProperties.Single() == motion && leaf.m_motionId == 0x7FFFFFFF && leaf.m_flags == 0,
             "the leaf takes the door leaf's settings and its motion properties");
         Expect(notes.Count == 0, string.Join("; ", notes));
+        // A lift's platform named like one bone only follows it, under the bone's name; the frame is said to stay.
+        system.m_bodyCinfos.Add(Body("model_EV1"));
+        system.m_bodyCinfos.Add(Body("Frame"));
+        Expect(ObjectAnims.MovingBodies(root, new HashSet<string>(["EV1", "chain", "o300310_01"], StringComparer.OrdinalIgnoreCase), rename, template, notes) == 2
+               && system.m_bodyCinfos[2].m_name == "EV1" && system.m_bodyCinfos[2].m_motionType == 1 && system.m_bodyCinfos[3].m_motionType == 0,
+            "a body named like one bone takes that bone's name and moves");
+        Expect(notes.Any(n => n.Contains("model_EV1 follows the bone EV1")) && notes.Any(n => n == "bodies that stay put: Frame"), string.Join("; ", notes));
+        notes.Clear();
+        system.m_bodyCinfos.RemoveRange(2, 2);
         Expect(ObjectAnims.MovingBodies(root, new HashSet<string>(["nothing"]), rename, null, notes) == 0 && notes.Any(n => n.Contains("no collision body")),
             "the report says when no body follows a bone");
     }
