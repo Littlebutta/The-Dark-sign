@@ -17,9 +17,32 @@ public static class MapCollisions
     /// <summary>The same for a binary tagfile, which never holds the text: the converted object graph alone (an estimate).</summary>
     private const long BinaryBytesPerDs3Byte = 100;
 
-    /// <param name="Empty">Model numbers whose DS3 file holds no collision at all (<see cref="EmptyCollisionException"/>).</param>
+    /// <param name="Empty">Model numbers whose DS3 file holds no collision at all (<see cref="EmptyCollisionException"/>)
+    /// and that got nothing in its place.</param>
     /// <param name="Failed">DS3 files that hold collision but didn't convert.</param>
-    public sealed record Result(string Summary, HashSet<string> Ported, HashSet<string>? Empty = null, int Failed = 0);
+    /// <param name="Borrowed">Model numbers whose DS3 file here is empty and that were given the other binder's collision
+    /// for the same model (<see cref="EmptySideMethod"/>); they are in <paramref name="Ported"/> too.</param>
+    public sealed record Result(string Summary, HashSet<string> Ported, HashSet<string>? Empty = null, int Failed = 0,
+        HashSet<string>? Borrowed = null);
+
+    /// <summary>
+    /// What a collision part gets when DS3's file for its model is an empty placeholder in one binder (h or l) and holds
+    /// real collision in the other (fallback "map-empty-collision"). The Painted World has 28 such models: their h files
+    /// are 400-byte placeholders and their l files hold the collision (h45_00 502300, 502701, ... 509900; read
+    /// 2026-11-12). Up to 1.0.460 every one of those parts was left out of the map with its l collision, so whatever
+    /// stood on that ground in DS3 had nothing under it in Elden Ring: the Painted World's enemies died as the map
+    /// loaded (Devin, 2026-11-19). No other ported map has one (m30, m31 and m40: none).
+    /// </summary>
+    public enum EmptySideMethod
+    {
+        /// <summary>A (default): the part stays and the empty side gets the other binder's collision, converted with this
+        /// binder's settings: the same collision in h and l, as JortPob writes every collision it makes.</summary>
+        Copy,
+        /// <summary>B (--empty-collision-alone): the part stays with the collision DS3 has; the empty side gets no file.</summary>
+        Alone,
+        /// <summary>C (--drop-empty-collisions): the part is left out of the map, l collision and all, as up to 1.0.460.</summary>
+        Drop,
+    }
 
     /// <summary>The Elden Ring collision settings the last map's collision was converted with, for the object port.</summary>
     public static ErCollisionTemplate? LastTemplate { get; private set; }
@@ -75,6 +98,8 @@ public static class MapCollisions
         var nextId = output.Files.Count == 0 ? 0 : output.Files.Max(f => f.ID) + 1;
 
         var ds3Binder = BXF4.Read(ds3.Read(source), ds3.Read(source[..^3] + "bdt"));
+        // The other binder (l for h, h for l), read only if a file here is an empty placeholder (EmptySideMethod.Copy).
+        var otherSource = Ds3BinderPath(ds3Id, kind == "h" ? "l" : "h");
         int triangles = 0;
         var failed = new List<string>();
         var emptyModels = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -109,6 +134,37 @@ public static class MapCollisions
                 results[i] = (null, 0, ex.Message, 0);
             }
         });
+        // DS3 files that are empty placeholders here take the same model's collision from the other binder, so the part
+        // keeps the ground DS3 gives it there (EmptySideMethod). Few files (28 on the Painted World), on every core.
+        var borrowed = new bool[files.Count];
+        var emptyIndices = Enumerable.Range(0, files.Count).Where(i => empty[i]).ToList();
+        if (emptyIndices.Count > 0 && options.EmptyCollision == EmptySideMethod.Copy && ds3.Contains(otherSource))
+        {
+            var other = BXF4.Read(ds3.Read(otherSource), ds3.Read(otherSource[..^3] + "bdt"));
+            var byModel = new Dictionary<string, BinderFile>(StringComparer.OrdinalIgnoreCase);
+            foreach (var f in other.Files.Where(f => f.Name.EndsWith(".hkx.dcx", StringComparison.OrdinalIgnoreCase)))
+                byModel.TryAdd(ModelNumberOf(ItemText.Leaf(f.Name)), f);
+            Parallel.ForEach(emptyIndices, Parallelism.Options, i =>
+            {
+                if (!byModel.TryGetValue(ModelNumberOf(ItemText.Leaf(files[i].Name)), out var otherFile))
+                    return;
+                try
+                {
+                    var raw = DCX.Decompress(otherFile.Bytes);
+                    using var _ = budget.Take(raw.LongLength * (options.BinaryCollision ? BinaryBytesPerDs3Byte : BytesPerDs3Byte));
+                    var result = CollisionPort.Convert(raw, template, !options.BinaryCollision, options.KeepSimdTree);
+                    results[i] = (DCX.Compress(result.Bytes, compression), result.Triangles, null, result.Bytes.LongLength);
+                    borrowed[i] = true;
+                    empty[i] = false;
+                }
+                catch (Exception)
+                {
+                    // Empty in both binders (or the other one didn't convert either): nothing to give it.
+                }
+            });
+        }
+        var borrowedModels = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
         // A cache that grew while files serialized on every core means a type the warm-up missed: the files still
         // read back and compared, but the race is possible, so say so.
         var cachesAfter = HavokCaches.Count;
@@ -129,6 +185,8 @@ public static class MapCollisions
             var name = leaf.Replace(ds3Id.Digits, erId.Digits, StringComparison.OrdinalIgnoreCase);
             output.Files.Add(new BinderFile(templateFile.Flags, nextId++, folder + name, bytes));
             ported.Add(ModelNumberOf(leaf));
+            if (borrowed[i])
+                borrowedModels.Add(ModelNumberOf(leaf));
             triangles += results[i].Triangles;
         }
 
@@ -140,11 +198,14 @@ public static class MapCollisions
         var written = results.Where(r => r.Bytes is not null).Select(r => r.Written).ToList();
         if (written.Count > 0)
             summary += $"; {written.Sum() / 1048576.0:F0} MB for the game to read, the largest file {written.Max() / 1048576.0:F0} MB";
+        if (borrowedModels.Count > 0)
+            summary += $"; {borrowedModels.Count} empty in DS3's {kind} binder given the same model's collision from DS3's {(kind == "h" ? "l" : "h")} binder"
+                       + $" (the part keeps its ground): {string.Join(", ", borrowedModels.Order().Take(8))}{(borrowedModels.Count > 8 ? ", ..." : "")}";
         if (emptyModels.Count > 0)
             summary += $"; {emptyModels.Count} empty in DS3 (no collision in the file, nothing to convert): {string.Join(", ", emptyModels.Order().Take(8))}{(emptyModels.Count > 8 ? ", ..." : "")}";
         if (failed.Count > 0)
             summary += $"; {failed.Count} failed: {string.Join("; ", failed.Take(5))}{(failed.Count > 5 ? "; ..." : "")}";
-        return new Result(summary, ported, emptyModels, failed.Count);
+        return new Result(summary, ported, emptyModels, failed.Count, borrowedModels);
     }
 
     // "h40_00_00_00_000100.hkx.dcx" -> "000100"

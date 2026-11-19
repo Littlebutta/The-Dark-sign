@@ -17,6 +17,7 @@ public static partial class MapPortChecks
         yield return ("cutscenes: the F1 Cutscenes tab warps to the map in one event and plays the pending cutscene after the load in another; its list names the characters", CutsceneMenuEvents);
         yield return ("cutscenes: the cast resolves to Elden Ring models (map names, enemy models, assets); parts with none, and DS3 draw settings, are left out", CutsceneCastResolve);
         yield return ("cutscenes: each cut's Havok file becomes cutNNNN\\a0000.hkx at ID NNNN*10000; files no cut plays are left out", CutsceneCutFiles);
+        yield return ("cutscenes: Clear played cutscenes lists each cutscene's seen flags (set and checked by its event, parameters followed) and its event's own flag", CutsceneReplayFlags);
     }
 
     private static void CutsceneSoundEvents()
@@ -206,7 +207,9 @@ public static partial class MapPortChecks
         Expect(CutsceneMenu.PendingFlag(0) == 1039290300 && CutsceneMenu.PlayEventId(0) == 1039291700 && CutsceneMenu.IsMenuEvent(1039291700) && !CutsceneMenu.IsMenuEvent(1039291600),
             "pending flag in the saved range, play event IDs");
         var lines = CutsceneMenu.ListLines(entries).ToList();
-        Expect(lines.Count == 3 && lines[1] == $"s45_00_0000\ts19_70_0000\tPainted World of Ariandel\tSister Friede, c6010\t46\t{CutsceneMenu.RequestFlag(0)}", lines[1]);
+        Expect(lines.Count == 3 && lines[1] == $"s45_00_0000\ts19_70_0000\tPainted World of Ariandel\tSister Friede, c6010\t46\t{CutsceneMenu.RequestFlag(0)}\t{CutsceneMenu.PendingFlag(0)}", lines[1]);
+        var withFlags = CutsceneMenu.ListLines(entries, new Dictionary<int, SortedSet<uint>> { [19700000] = [19700801, 19705810] }).ToList();
+        Expect(withFlags[1].EndsWith($"\t{CutsceneMenu.PendingFlag(0)} 19700801 19705810") && withFlags[2].EndsWith($"\t{CutsceneMenu.PendingFlag(1)}"), withFlags[1] + " / " + withFlags[2]);
         Expect(CutsceneMenu.RequestFlag(0) == 1039292300 && CutsceneMenu.EventId(0) == 1039291300, "flag and event IDs");
     }
 
@@ -463,5 +466,71 @@ public static partial class MapPortChecks
         Expect(r is not null && (uint)r["PlayMapId"].Value == 19700000u && (int)r["RefCamPosHitPartsID"].Value == -1, "row placed on m19_70 with no hit parts");
         Expect(param[45000010] is { } r2 && (uint)r2["PlayMapId"].Value == 45000000u, "second slot");
         Expect(param.Rows.Select(x => x.ID).SequenceEqual(param.Rows.Select(x => x.ID).Order()), "rows sorted");
+    }
+
+    private const string ErFlagDefs = """
+    { "main_classes": [
+      { "index": 3, "instrs": [
+        { "name": "IF Event Flag", "index": 0, "args": [
+          { "name": "Result Condition Group", "type": 3 }, { "name": "Desired Flag State", "type": 0 }, { "name": "Target Event Flag Type", "type": 0 },
+          { "name": "Target Event Flag ID", "type": 2 } ] },
+      ] },
+      { "index": 1003, "instrs": [
+        { "name": "END IF Event Flag", "index": 2, "args": [
+          { "name": "Execution End Type", "type": 0 }, { "name": "Desired Flag State", "type": 0 }, { "name": "Target Event Flag Type", "type": 0 },
+          { "name": "Target Event Flag ID", "type": 2 } ] },
+      ] },
+    ] }
+    """;
+
+    private static void CutsceneReplayFlags()
+    {
+        var defs = Emedf.Parse(ErFlagDefs);
+        Expect(defs.Get(1003, 2)!.Args[3].Offset == 4, "flag argument at byte 4");
+        EMEVD.Instruction EndIfOn(uint flag) => RunEvents.Make(1003, 2, (byte)0, (byte)1, (byte)0, flag);
+        EMEVD.Instruction Set(uint flag, byte on) => RunEvents.Make(2003, 66, (byte)0, flag, on);
+        EMEVD.Instruction Play(int id) => RunEvents.Make(2002, 3, id, 0u, 10000u);
+        var map = new EMEVD(EMEVD.Game.Sekiro);
+        var ctor = new EMEVD.Event(0, EMEVD.Event.RestBehaviorType.Default);
+        map.Events.Add(ctor);
+        // An intro: skips once its seen flag is on, plays, sets it. 19705555 is only set, 19700800 only checked.
+        var intro = new EMEVD.Event(19705810, EMEVD.Event.RestBehaviorType.Default);
+        intro.Instructions.Add(EndIfOn(19700801));
+        intro.Instructions.Add(RunEvents.Make(3, 0, (sbyte)0, (byte)1, (byte)0, 19700800u));
+        intro.Instructions.Add(Play(19700000));
+        intro.Instructions.Add(Set(19700801, 1));
+        intro.Instructions.Add(Set(19705555, 1));
+        intro.Instructions.Add(Set(19700802, 0));
+        map.Events.Add(intro);
+        ctor.Instructions.Add(RunEvents.Make(2000, 0, 0, 19705810u, 0u));
+        // One event started twice with (cutscene, seen flag) as parameters.
+        var shared = new EMEVD.Event(19705820, EMEVD.Event.RestBehaviorType.Default);
+        shared.Instructions.Add(EndIfOn(0));
+        shared.Instructions.Add(Play(0));
+        shared.Instructions.Add(Set(0, 1));
+        shared.Parameters.Add(new EMEVD.Parameter(0, 4, 4, 4));
+        shared.Parameters.Add(new EMEVD.Parameter(1, 0, 0, 4));
+        shared.Parameters.Add(new EMEVD.Parameter(2, 4, 4, 4));
+        map.Events.Add(shared);
+        ctor.Instructions.Add(RunEvents.Make(2000, 0, 0, 19705820u, 19700010, 19700811u));
+        ctor.Instructions.Add(RunEvents.Make(2000, 0, 1, 19705820u, 19700030, 19700831u));
+        // A common event (its ID is shared by every start) and the F1 menu's own play event.
+        var common = new EMEVD(EMEVD.Game.Sekiro);
+        var ce = new EMEVD.Event(90005999, EMEVD.Event.RestBehaviorType.Default);
+        ce.Instructions.Add(EndIfOn(19700851));
+        ce.Instructions.Add(Play(19700031));
+        ce.Instructions.Add(Set(19700851, 1));
+        common.Events.Add(ce);
+        ctor.Instructions.Add(RunEvents.Make(2000, 6, 0, 90005999u, 0u));
+        var menu = new EMEVD.Event(CutsceneMenu.PlayEventId(0), EMEVD.Event.RestBehaviorType.Default);
+        menu.Instructions.Add(Play(19700040));
+        common.Events.Add(menu);
+
+        var played = CutsceneFlags.Played(defs, [map, common], CutsceneMenu.IsMenuEvent);
+        string Show(int id) => played.TryGetValue(id, out var f) ? string.Join(" ", f) : "-";
+        Expect(Show(19700000) == "19700801 19705810", $"intro: seen flag and own event flag ({Show(19700000)})");
+        Expect(Show(19700010) == "19700811 19705820" && Show(19700030) == "19700831 19705821", $"parameters per start ({Show(19700010)} / {Show(19700030)})");
+        Expect(Show(19700031) == "19700851", $"common event: no own flag ({Show(19700031)})");
+        Expect(!played.ContainsKey(19700040), "the menu's own events are left out");
     }
 }

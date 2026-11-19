@@ -118,7 +118,8 @@ public static class MapEvents
     /// <summary>Reads both games' scripts, converts them and writes the slot scripts, common_func and the flag table.</summary>
     /// <param name="cutscenes">DS3 cutscene ID -> Elden Ring ID of each cutscene the cutscene port converted (<see cref="CutscenePort"/>); null or empty: none.</param>
     public static string Port(PorterContext ctx, GameArchives ds3, GameArchives er, IReadOnlyList<MapSlots.Slot> slots,
-        IReadOnlyDictionary<int, int>? cutscenes = null, MapMusic.Plan? music = null)
+        IReadOnlyDictionary<int, int>? cutscenes = null, Action<Dictionary<int, SortedSet<uint>>>? playedFlags = null,
+        MapMusic.Plan? music = null)
     {
         Func<long, long?>? playable = cutscenes is { Count: > 0 } c ? id => c.TryGetValue((int)Math.Min(id, int.MaxValue), out var n) ? n : null : null;
         var ds3Defs = Emedf.Parse(File.ReadAllText(ctx.Data.Emedf("ds3-common")));
@@ -218,11 +219,17 @@ public static class MapEvents
             if (result.Scripts.TryGetValue(slot.Er, out var script))
                 File.WriteAllBytes(ctx.ModPath(MapPorter.ModParts(ScriptPath(slot.Er))), DCX.Compress(script.Write(), Template(slot).Compression));
         File.WriteAllBytes(modCommon, DCX.Compress(result.CommonFunc.Write(), commonCompression));
+        // What keeps each cutscene from playing again, for the F1 menu's "Clear played cutscenes".
+        var played = CutsceneFlags.Played(erDefs, result.Scripts.Values.Append(result.CommonFunc), CutsceneMenu.IsMenuEvent);
+        playedFlags?.Invoke(played);
+        var playedNote = played.Count == 0 ? "" : $"replay flags (F1 Clear played cutscenes): {played.Count} cutscenes, "
+            + string.Join(", ", played.OrderBy(p => p.Key).Select(p => $"{p.Key}: {string.Join(" ", p.Value)}"));
         var objActNote = RemapObjActFlags(ctx, ds3Defs, erDefs, flags, slots);
         flags.Save(flagPath);
         return "events:\n  " + result.Summary + (buttonNote.Length > 0 ? "\n  " + buttonNote : "") + (spNote.Length > 0 ? "\n  " + spNote : "")
                + (kitNote.Length > 0 ? "\n  " + kitNote : "")
-               + (objActNote.Length > 0 ? "\n  " + objActNote : "");
+               + (objActNote.Length > 0 ? "\n  " + objActNote : "")
+               + (playedNote.Length > 0 ? "\n  " + playedNote : "");
     }
 
     /// <summary>
