@@ -670,6 +670,8 @@ public static partial class CutscenePort
         public MqbStats Mqb { get; } = new();
         public HkxStats Hkx { get; } = new();
         public CutsceneCast.CastStats Cast { get; } = new();
+        /// <summary>Events' timeline numbers after the port took timelines out and added some.</summary>
+        public CutsceneTimelineLinks.Result? Links;
         public int OtherFiles;
     }
 
@@ -698,6 +700,7 @@ public static partial class CutscenePort
             var data = DCX.Is(f.Bytes) ? DCX.Decompress(f.Bytes) : f.Bytes;
             if (!MQB.IsRead(data, out MQB? mqb))
                 continue;
+            var links = CutsceneTimelineLinks.Take(mqb);
             sound?.Invoke(mqb);
             if (cast is not null)
             {
@@ -707,6 +710,8 @@ public static partial class CutscenePort
             stats.Mqb.Add(ConvertMqb(mqb, ds3Name, erName, names, ds3Map, erMap, side.Catalog, CutsceneShape.ConformEnabled ? side.Shape : null));
             if (cast is not null)
                 CutsceneCast.RenameHkts(mqb);
+            // Last: every event's own timeline and the one it hangs on, under their numbers after the edits above.
+            stats.Links = CutsceneTimelineLinks.Relink(mqb, links);
             converted[f] = mqb.Write();
         }
         Func<string, bool>? keep = cast is null ? null : name => cast(name) is not null;
@@ -881,6 +886,7 @@ public static partial class CutscenePort
                     lines.Add($"{name} -> {erName}: {stats.Hkx.Files} cut files ({stats.Hkx.Animations} animations, {stats.Hkx.Renamed} renamed parts"
                               + $"{(stats.Hkx.Retargeted > 0 ? ", player retargeted" : "")}), timeline {stats.Mqb.Resources - stats.Mqb.ResourcesDropped}/{stats.Mqb.Resources} resources, "
                               + $"{stats.Mqb.Events - stats.Mqb.EventsDropped}/{stats.Mqb.Events} events kept, {stats.Mqb.Renamed} names renamed, {stats.Mqb.MapsMoved} map numbers moved, {stats.Mqb.Conformed} fields set to Elden Ring's shape"
+                              + (stats.Links is { } l ? $"; {l}" : "")
                               + (stats.Hkx.Notes.Count > 0 ? $"; notes: {string.Join("; ", stats.Hkx.Notes.Distinct().Take(3))}" : ""));
                     if (cast is not null)
                         lines.Add($"{name} -> {erName}: {stats.Cast}; {stats.Hkx.LeftOut} Havok tracks of left-out parts dropped");
