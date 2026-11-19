@@ -1584,7 +1584,9 @@ public static partial class ChrPort
                     .SelectMany(f => TAE.Read(f.Bytes).Animations.Select(a => (int)a.ID)).ToHashSet();
                 var wanted = ChrMoves.Plan(wholeKeys.Where(k => k.Item1 == 0 && ChrMoves.Wanted(k.Item2, AiPort.Enabled)).Select(k => k.Item2),
                     templateEntries, templateFiles, templateAdditive);
-                extra = ChrMoves.AddAnimations(anibnds.Select(b => b.Value.Bnd), wanted);
+                // A new file copies one of the template's own whole clips of these families (the animation port
+                // then fills it with DS3's move), so a family whose entries all borrow another clip still gets files.
+                extra = ChrMoves.AddAnimations(anibnds.Select(b => b.Value.Bnd), wanted, templateFiles.Except(templateAdditive).ToHashSet());
             }
             catch (Exception ex) when (ex is not OutOfMemoryException)
             {
@@ -1712,10 +1714,12 @@ public static partial class ChrPort
             if (binders.TryGetValue($"/chr/c{n:D4}.behbnd.dcx", out var behbnd))
                 try { states = ChrMoves.AddStates(behbnd.Bnd, extra, notes); }
                 catch (Exception ex) when (ex is not OutOfMemoryException) { notes.Add($"extra DS3 moves: behaviour states not added ({Describe(ex)})"); }
-            var attacks = extra.Where(e => ChrMoves.IsAttack(e.Id)).ToList();
-            var others = extra.Where(e => !ChrMoves.IsAttack(e.Id)).ToList();
+            var attacks = extra.Where(e => ChrMoves.IsAttack(e.Id) && !e.FileOnly).ToList();
+            var others = extra.Where(e => !ChrMoves.IsAttack(e.Id) && !e.FileOnly).ToList();
+            var ownFiles = extra.Where(e => e.FileOnly).ToList();
             notes.Add((attacks.Count > 0 ? $"{attacks.Count} DS3 attacks the template has no slot for added ({string.Join(",", attacks.Select(e => e.Id))}), " : "")
                       + (others.Count > 0 ? $"{others.Count} DS3 poses and map-script moves added ({string.Join(",", others.Select(e => e.Id))}), " : "")
+                      + (ownFiles.Count > 0 ? $"{ownFiles.Count} template moves that borrowed another clip given DS3's own ({string.Join(",", ownFiles.Select(e => e.Id))}), " : "")
                       + $"{states} behaviour states");
         }
         if (variants.Count > 0)

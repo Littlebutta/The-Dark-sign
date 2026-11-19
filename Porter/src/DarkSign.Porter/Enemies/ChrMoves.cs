@@ -66,35 +66,67 @@ public static partial class ChrMoves
     [GeneratedRegex(@"^a(\d{3})_(\d{6})\.hkx$", RegexOptions.IgnoreCase)]
     private static partial Regex HkxLeaf();
 
-    /// <summary>A new attack and the template attack it was cloned from.</summary>
-    public readonly record struct Added(int Id, int Donor);
+    /// <summary>
+    /// A DS3 move given a place in the template: a new ID cloned from the template's <paramref name="Donor"/> (its TAE
+    /// entry and, by <see cref="AddStates"/>, its behaviour state), or, with <paramref name="FileOnly"/>, an ID the
+    /// template already has an entry and a state for but no animation file of its own (Donor = Id).
+    /// </summary>
+    public readonly record struct Added(int Id, int Donor, bool FileOnly = false);
 
     /// <summary>
-    /// The DS3 animations of a <see cref="Families">family</see> (section 0) the template has neither a TAE entry nor an
-    /// animation file for, each with the template's nearest ID of the same family that has both (and isn't additive).
-    /// Nothing for a family the template has none of.
+    /// The DS3 animations of a <see cref="Families">family</see> (section 0) the template has no animation file of its
+    /// own for. An ID the template has no TAE entry for either gets the template's nearest entry of the same family
+    /// as its donor (the state's place in the graph, its blends and listeners); one the template has an entry for gets
+    /// a file only. Nothing for a family the template has no entry of.
+    /// <para>
+    /// An entry with no file of its own borrows another move's clip ("ImportsHKX"): Elden Ring's Giant Beast Skeleton
+    /// (c3061, the template of the High Wall's Hollow Soldiers) plays 30016 for its waiting pose 700 and 10001 for 701,
+    /// and has no file in the 700s at all. Up to 1.0.460 a donor had to have a file of its own, so no waiting pose of
+    /// DS3's came along: the 33 High Wall hollows DS3's map script kneels in 700-706 until they are hit (common event
+    /// 20005290) were forced into the template's borrowed clip or into a pose with no state, and fought at once.
+    /// </para>
     /// </summary>
+    /// <param name="templateEntries">The template's section 0 TAE entries.</param>
+    /// <param name="templateFiles">The template's section 0 animation files of these families (its own clips).</param>
+    /// <param name="additive">Which of those files are additive (flinches laid over a pose): never a donor.</param>
     public static List<Added> Plan(IEnumerable<int> ds3Attacks, IReadOnlySet<int> templateEntries, IReadOnlySet<int> templateFiles, IReadOnlySet<int> additive)
     {
         var plan = new List<Added>();
-        var ds3 = ds3Attacks.Where(id => !templateEntries.Contains(id) && !templateFiles.Contains(id)).Distinct().Order().ToList();
+        var ds3 = ds3Attacks.Where(id => !templateFiles.Contains(id)).Distinct().Order().ToList();
         foreach (var family in Families)
         {
-            // The donor is the template's nearest ID of the same family: its state's place in the graph, its blends
-            // and its listeners are what the new ID's state gets.
-            var donors = templateEntries.Where(id => family.Contains(id) && templateFiles.Contains(id) && !additive.Contains(id)).Order().ToList();
+            // The donor is the template's nearest ID of the same family, a whole move with a file of its own when
+            // there is one, else any entry of the family (its state is what the new ID's state is cloned from).
+            var entries = templateEntries.Where(family.Contains).ToList();
+            var whole = entries.Where(id => templateFiles.Contains(id) && !additive.Contains(id)).Order().ToList();
+            var donors = whole.Count > 0 ? whole : BorrowedClips ? entries.Where(id => !additive.Contains(id)).Order().ToList() : [];
             if (donors.Count == 0)
                 continue;
-            plan.AddRange(ds3.Where(family.Contains).Select(id => new Added(id, donors.MinBy(d => (Math.Abs(d - id), d)))));
+            foreach (var id in ds3.Where(family.Contains))
+            {
+                if (!templateEntries.Contains(id))
+                    plan.Add(new Added(id, donors.MinBy(d => (Math.Abs(d - id), d))));
+                else if (BorrowedClips)
+                    plan.Add(new Added(id, id, FileOnly: true));
+            }
         }
         return plan.OrderBy(a => a.Id).ToList();
     }
 
     /// <summary>
-    /// Step 1, the animations: for each planned attack a copy of its donor's file (same binder, ID and path for the new
-    /// number) and a TAE entry cloned from the donor's in the section 0 TAE. Returns the attacks added.
+    /// Fallback enemy-ai J: DARKSIGN_ENEMY_OWN_POSES=0 gives no DS3 move a file where the template's entry borrows
+    /// another move's clip, and takes donors with a file of their own only (as up to 1.0.460).
     /// </summary>
-    public static List<Added> AddAnimations(IEnumerable<BND4> anibnds, IReadOnlyList<Added> plan)
+    public static bool BorrowedClips => Environment.GetEnvironmentVariable("DARKSIGN_ENEMY_OWN_POSES") != "0";
+
+    /// <summary>
+    /// Step 1, the animations: for each planned move a file (a copy of a template clip, which the animation port then
+    /// fills with DS3's move: the donor's own when it has one, else the template's nearest whole clip of these
+    /// families) under the new number, in the same binder, and a TAE entry cloned from the donor's in the section 0
+    /// TAE that plays that file. A file-only move's entry is pointed at its new file. Returns the moves added.
+    /// </summary>
+    /// <param name="carriers">Template clips (section 0 IDs) a new file may be copied from; null: the donor's own file only.</param>
+    public static List<Added> AddAnimations(IEnumerable<BND4> anibnds, IReadOnlyList<Added> plan, IReadOnlySet<int>? carriers = null)
     {
         var added = new List<Added>();
         if (plan.Count == 0)
@@ -105,21 +137,32 @@ public static partial class ChrMoves
         if (tae is null)
             return added;
         var taeFile = TAE.Read(tae.Bytes);
+        var clips = binders.SelectMany(b => b.Files.Select(f => (Bnd: b, File: f)))
+            .Select(p => (p.Bnd, p.File, Match: HkxLeaf().Match(ItemText.Leaf(p.File.Name))))
+            .Where(p => p.Match.Success && int.Parse(p.Match.Groups[1].Value) == 0)
+            .Select(p => (p.Bnd, p.File, Id: int.Parse(p.Match.Groups[2].Value))).ToList();
         foreach (var a in plan)
         {
             var donorEntry = taeFile.Animations.FirstOrDefault(x => x.ID == a.Donor);
-            var (bnd, donorFile) = binders.SelectMany(b => b.Files.Select(f => (b, f)))
-                .FirstOrDefault(p => HkxLeaf().Match(ItemText.Leaf(p.f.Name)) is { Success: true } m && int.Parse(m.Groups[1].Value) == 0 && int.Parse(m.Groups[2].Value) == a.Donor);
-            if (donorEntry is null || donorFile is null || taeFile.Animations.Any(x => x.ID == a.Id))
+            var carrier = clips.Where(c => c.Id == a.Donor && (carriers is null || carriers.Contains(c.Id)))
+                .Concat(clips.Where(c => carriers is not null && carriers.Contains(c.Id)).OrderBy(c => Math.Abs(c.Id - a.Id)).ThenBy(c => c.Id))
+                .FirstOrDefault();
+            if (donorEntry is null || carrier.File is null || clips.Any(c => c.Id == a.Id) || (!a.FileOnly && taeFile.Animations.Any(x => x.ID == a.Id)))
                 continue;
-            long id = donorFile.ID - a.Donor + a.Id;
+            var (bnd, carrierFile) = (carrier.Bnd, carrier.File);
+            long id = carrierFile.ID - carrier.Id + a.Id;
             if (bnd.Files.Any(f => f.ID == id))
                 continue;
-            var leaf = ItemText.Leaf(donorFile.Name);
-            var name = donorFile.Name[..^leaf.Length] + $"a000_{a.Id:D6}.hkx";
-            bnd.Files.Add(new BinderFile(donorFile.Flags, (int)id, name, (byte[])donorFile.Bytes.Clone()));
+            var leaf = ItemText.Leaf(carrierFile.Name);
+            var name = carrierFile.Name[..^leaf.Length] + $"a000_{a.Id:D6}.hkx";
+            var file = new BinderFile(carrierFile.Flags, (int)id, name, (byte[])carrierFile.Bytes.Clone());
+            bnd.Files.Add(file);
             bnd.Files.Sort((x, y) => x.ID.CompareTo(y.ID));
-            taeFile.Animations.Add(CloneEntry(donorEntry, a.Id));
+            clips.Add((bnd, file, a.Id));
+            if (a.FileOnly)
+                OwnFile(donorEntry);
+            else
+                taeFile.Animations.Add(CloneEntry(donorEntry, a.Id));
             added.Add(a);
         }
         taeFile.Animations.Sort((x, y) => x.ID.CompareTo(y.ID));
@@ -127,11 +170,26 @@ public static partial class ChrMoves
         return added;
     }
 
+    /// <summary>Points a TAE entry at its own file (a000_&lt;id&gt;.hkx) instead of another move's clip.</summary>
+    public static void OwnFile(TAE.Animation entry)
+    {
+        if (entry.MiniHeader is TAE.Animation.AnimMiniHeader.Standard { ImportsHKX: true } s)
+        {
+            s.ImportsHKX = false;
+            s.ImportHKXSourceAnimID = -1;
+        }
+        else if (entry.MiniHeader is not TAE.Animation.AnimMiniHeader.Standard)
+            entry.MiniHeader = new TAE.Animation.AnimMiniHeader.Standard();
+        entry.AnimFileName = $"a000_{entry.ID:D6}.hkt";
+    }
+
     /// <summary>A TAE entry under a new ID: the donor's header and events (with its event groups cloned), the new file name.</summary>
     public static TAE.Animation CloneEntry(TAE.Animation donor, int id)
     {
         var header = donor.MiniHeader?.GetClone() ?? new TAE.Animation.AnimMiniHeader.Standard();
         var entry = new TAE.Animation(id, header, $"a000_{id:D6}.hkt");
+        // The new ID has a file of its own even when the donor borrows another move's clip.
+        OwnFile(entry);
         var groups = new Dictionary<TAE.EventGroup, TAE.EventGroup>(ReferenceEqualityComparer.Instance);
         foreach (var g in donor.EventGroups ?? [])
             entry.EventGroups.Add(groups[g] = g.GetClone());

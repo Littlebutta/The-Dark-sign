@@ -25,6 +25,7 @@ public static partial class MapPortChecks
         yield return ("visuals: a FLVER holding only a shadow caster is left out of its binder, the drawable FLVER beside it kept", ShadowOnlyFlver);
         yield return ("visuals: a faded overlay triangle is left out only where a surface lies right behind it (map-overlays D cuts them all)", OverlayBacking);
         yield return ("visuals: DS3 terrain blends (2m/3m/4m) draw each triangle with the layer DS3 shows there", TerrainBlends);
+        yield return ("visuals: DS3's half-float normals (terrain blends) face their surface (map-materials C keeps them as read)", HalfFloatNormals);
     }
 
     /// <summary>
@@ -660,6 +661,52 @@ public static partial class MapPortChecks
         try { port.ConvertBinder(only, hostBnd, Ds3Id, ErId, "002051"); }
         catch (InvalidDataException) { threw = true; }
         Expect(threw, "a binder with nothing drawable is still left out");
+    }
+
+    /// <summary>
+    /// DS3 terrain blends store normals as four half floats (layout type Half4), which SoulsFormats reads as unsigned
+    /// shorts: ground facing up came out facing down and drew far too dark (High Wall, 2026-11-19).
+    /// </summary>
+    private static void HalfFloatNormals()
+    {
+        // A DS3 file: the layout DS3's MultiBlend meshes use (m40 m000051/m000080), each corner's normal as DS3 stores it.
+        FLVER2 Ds3(Vector3 normal)
+        {
+            var flver = BlendFlver();
+            var layout = flver.BufferLayouts[0];
+            int at = layout.FindIndex(m => m.Semantic == FLVER.LayoutSemantic.Normal);
+            layout[at] = new FLVER.LayoutMember(FLVER.LayoutType.Half4, FLVER.LayoutSemantic.Normal);
+            var stored = new Vector3(Ds3HalfNormals.AsUShortNorm(normal.X), Ds3HalfNormals.AsUShortNorm(normal.Y), Ds3HalfNormals.AsUShortNorm(normal.Z));
+            foreach (var v in flver.Meshes.SelectMany(m => m.Vertices))
+                v.Normals[0] = stored;
+            return FLVER2.Read(flver.Write());
+        }
+        var up = Vector3.Normalize(new Vector3(0.3f, 0.9f, -0.2f));
+        var read = Ds3(up);
+        var asRead = read.Meshes[0].Vertices[0].Normal;
+        Expect(Ds3HalfNormals.HasHalfNormals(read, read.Meshes[0]) && asRead.Y < 0,
+            $"SoulsFormats reads a half-float normal facing up as one facing down ({asRead})");
+        Expect(MathF.Abs(Ds3HalfNormals.AsHalf(Ds3HalfNormals.AsUShortNorm(0.4375f)) - 0.4375f) < 1e-6f, "a half float survives the trip through SoulsFormats' reading");
+
+        var (port, hostBnd) = VisualPort();
+        var flver = ConvertOne(port, hostBnd, Ds3(up));
+        var normals = flver.Meshes.SelectMany(m => m.Vertices).Select(v => v.Normal).ToList();
+        Expect(normals.Count > 0 && normals.All(n => Vector3.Distance(n, up) < 0.03f), $"every converted normal faces the surface ({normals[0]}, wanted {up})");
+        var s = port.HalfNormalStats;
+        Expect(s.Meshes == 4 && s.Vertices == 16 && s.Unreadable == 0, $"counted: {s.Summary}");
+
+        // A one-byte normal (every other DS3 map mesh) is left as it was.
+        var (plainPort, plainBnd) = VisualPort();
+        var plain = ConvertOne(plainPort, plainBnd, BlendFlver());
+        Expect(plain.Meshes.SelectMany(m => m.Vertices).All(v => Vector3.Distance(v.Normal, Vector3.UnitY) < 0.03f) && plainPort.HalfNormalStats.Meshes == 0,
+            "a one-byte normal is untouched");
+
+        // Fallback map-materials C: the normals as SoulsFormats reads them, as before this fix.
+        Expect(MapPorter.Options.Parse(["--raw-half-normals"]).RawHalfNormals && !new MapPorter.Options().RawHalfNormals, "--raw-half-normals is read");
+        var (raw, rawBnd) = VisualPort();
+        raw.HalfNormals = false;
+        var old = ConvertOne(raw, rawBnd, Ds3(up));
+        Expect(old.Meshes[0].Vertices[0].Normal.Y < 0 && raw.HalfNormalStats.Meshes == 0, "--raw-half-normals keeps the normals as read");
     }
 
     private static FLVER2 ConvertOne(MapModelPort port, BND4 hostBnd, FLVER2 ds3)

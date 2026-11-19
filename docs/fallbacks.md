@@ -321,6 +321,7 @@ Try the next option if: DS3 map geometry is invisible, black, far too dark or sh
 
 - **A: Elden Ring's map shaders by kind (default).** Each DS3 material is drawn with a copy of an Elden Ring map material of its kind: normal-mapped opaque, alpha-tested (foliage, grates), blended, and unlit (sky domes), each mesh rebuilt in that material's vertex layout.
 - **B: Albedo only.** Every DS3 material uses the albedo-only material JortPob builds its maps on (port-maps --plain-materials): no normal maps, cut-outs or unlit sky, but the simplest shader there is. (`port-maps --plain-materials`)
+- **C: Ground normals as read up to 1.0.460.** Elden Ring's map shaders as in A, but DS3's multi-texture ground and walls keep the normals the file reader gave them (port-maps --raw-half-normals), as every build before this option: DS3 stores those normals as half floats, which were read upside down, so that ground drew several times darker than the stones on it (the High Wall's floor, Iudex Gundyr's circle). (`port-maps --raw-half-normals`)
 
 ### Texture detail of the DS3 maps (`map-texture-detail`, rebuilds the content)
 
@@ -580,6 +581,7 @@ Try the next option if: Ported DS3 enemies stand still, never attack, repeat one
 - **G: DS3's effect numbers in the AI.** As A, but DS3's AI scripts keep checking for their own effects by DS3's numbers (DARKSIGN_ENEMY_AI_SPEFFECTS=ds3), as up to 1.0.410, when those checks never matched a ported enemy's effects and Ariandel's wolf only circled. Use when a ported enemy freezes, attacks without pause or the game crashes when it notices you with A. (`DARKSIGN_ENEMY_AI_SPEFFECTS=ds3`)
 - **H: Each character's own AI rows only.** As A, but a DS3 enemy that DS3 places with another family's AI (the Cemetery of Ash hollows run the Hollow Soldiers' rows) gets its own character's first AI row instead of that family's (DARKSIGN_ENEMY_SHARED_THINK=0), as up to 1.0.417, when those hollows circled the player without attacking. Use when a ported enemy freezes or the game crashes when it notices you with A. (`DARKSIGN_ENEMY_SHARED_THINK=0`)
 - **I: Map-script AI markers on the enemy row.** As A, but the markers DS3's map scripts put on an enemy only to steer its AI (Ariandel's wolves get one when their pack leader is gone) are on its enemy row from the start (DARKSIGN_ENEMY_SCRIPT_MARKERS=keep), as in 1.0.442, when Ariandel's wolf only circled and never attacked. Use when a ported enemy behaves worse than in 1.0.442. (`DARKSIGN_ENEMY_SCRIPT_MARKERS=keep`)
+- **J: The template's borrowed clips.** As A, but a DS3 waiting pose, getting-up move, map-script move or attack gets no clip of its own where the Elden Ring template's move of that number plays another move's clip, and is added only next to a template move with a clip of its own (DARKSIGN_ENEMY_OWN_POSES=0), as up to 1.0.460, when the High Wall's kneeling Hollow Soldiers stood up and fought at once instead of waiting until hit. Use when a ported enemy stands in a T-pose, freezes or the game crashes as a map starts with A. (`DARKSIGN_ENEMY_OWN_POSES=0`)
 
 ### Ported DS3 enemies' glows (`enemy-glow`, rebuilds the content)
 
