@@ -592,6 +592,43 @@ public static class EnemySelfTest
             ChrPort.MergeSkeleton(merged2, ds3Sk, addBones: false) == new ChrPort.SkeletonMerge(5, 0, 0) && merged2.m_bones.Count == 6
             && merged2.m_referencePose[3].m_translation.X == 4);
 
+        // Limb IK (ChrIk): Placidusax pins four limbs to target bones; Ariandel has the foot targets, not the hand ones.
+        {
+            HKLib.hk2018.hkbVariableBindingSet Bind(params (string Path, int Variable)[] to) => new()
+            {
+                m_bindings = to.Select(b => new HKLib.hk2018.hkbVariableBindingSet.Binding
+                    { m_memberPath = b.Path, m_variableIndex = b.Variable, m_bindingType = HKLib.hk2018.hkbVariableBindingSet.Binding.BindingType.BINDING_TYPE_VARIABLE }).ToList(),
+            };
+            HKLib.hk2018.hkbHandIkControlsModifier.Hand Hand(bool on = true) => new()
+                { m_enable = on, m_controlData = new HKLib.hk2018.hkbHandIkControlData { m_transformOnFraction = 1, m_normalOnFraction = 1 } };
+            var controls = new HKLib.hk2018.hkbHandIkControlsModifier
+            {
+                m_name = "HandIKControlsModifier", m_hands = [Hand(), Hand(), Hand(), Hand(on: false), Hand()],
+                m_variableBindingSet = Bind(("hands:0/controlData/targetHandle", 0), ("hands:1/controlData/targetHandle", 1), ("hands:2/controlData/targetHandle", 2),
+                    ("hands:3/controlData/targetHandle", 2)),
+            };
+            var ikGraph = new HKLib.hk2018.hkbModifierList
+            {
+                m_modifiers =
+                [
+                    new HKLib.hk2018.hkbGetHandleOnBoneModifier { m_name = "L_Foot_Target", m_animationBoneIndex = 1, m_variableBindingSet = Bind(("handleOut", 0)) },
+                    new HKLib.hk2018.hkbGetHandleOnBoneModifier { m_name = "L_Hand_Target", m_animationBoneIndex = 3, m_variableBindingSet = Bind(("handleOut", 1)) },
+                    new HKLib.hk2018.hkbGetHandleOnBoneModifier { m_name = "Head", m_animationBoneIndex = 2, m_variableBindingSet = Bind(("handleOut", 2)) },
+                    controls,
+                ],
+            };
+            // The built skeleton: the template's Head was set aside (renamed), DS3's is a new bone at the end.
+            string[] built = ["Master", "L_Foot_Target", "Head_er", "L_Hand_Target", "Head"];
+            var ikResult = ChrIk.Fit(ikGraph, built, new HashSet<string>(["master", "l_foot_target", "head"], StringComparer.OrdinalIgnoreCase));
+            Check($"limb IK: a limb pinned to a bone DS3 doesn't animate is let go, one on a DS3 bone stays ({ikResult.Limbs} limbs, off: {string.Join(",", ikResult.Off)})",
+                ikResult.Limbs == 4 && ikResult.Off.SequenceEqual(["L_Hand_Target", "Head_er"])
+                && controls.m_hands.Select(h => h.m_enable).SequenceEqual([true, false, false, false, true])
+                && controls.m_hands[1].m_controlData.m_transformOnFraction == 0 && controls.m_hands[1].m_controlData.m_normalOnFraction == 0
+                && controls.m_hands[0].m_controlData.m_transformOnFraction == 1 && controls.m_hands[4].m_controlData.m_transformOnFraction == 1);
+            var again = ChrIk.Fit(ikGraph, built, new HashSet<string>(["master", "l_foot_target", "head"], StringComparer.OrdinalIgnoreCase));
+            Check("limb IK: a second pass changes nothing", again.Limbs == 2 && again.Off.Count == 0);
+        }
+
         // Textures under another character's ID.
         var dogModel = new FLVER2();
         dogModel.Materials.Add(new FLVER2.Material { Name = "body", MTD = "C[ARSN].mtd", Textures =

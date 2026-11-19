@@ -1563,6 +1563,22 @@ public static partial class ChrPort
         if (stage == Stage.Skeleton)
             return 0;
 
+        // The template's limb IK whose target bone DS3 never moves comes off (ChrIk): from here on every animation
+        // is DS3's, and Father Ariandel's arms were pulled to where Placidusax's front feet rest.
+        if (ChrIk.Enabled && binders.TryGetValue($"/chr/c{n:D4}.behbnd.dcx", out var ikBehbnd))
+            try
+            {
+                var ik = ChrIk.Fit(ikBehbnd.Bnd, erSkeleton.Names, ds3Skeleton.Names.ToHashSet(StringComparer.OrdinalIgnoreCase));
+                if (ik.Limbs > 0)
+                    notes.Add(ik.Off.Count > 0
+                        ? $"limb IK: {ik.Off.Count} of the template's {ik.Limbs} pinned limbs let go (target bones DS3 doesn't animate: {string.Join(", ", ik.Off)})"
+                        : $"limb IK: the template's {ik.Limbs} pinned limbs kept (their target bones are DS3's)");
+            }
+            catch (Exception ex) when (ex is not OutOfMemoryException)
+            {
+                notes.Add($"limb IK: the template's kept ({Describe(ex)})");
+            }
+
         // DS3 attacks, waiting poses and map-script moves the template has no slot for (ChrMoves): a file and TAE entry
         // each, filled below like any move, and a behaviour state once the events are in. Attacks only with DS3's AI,
         // which is what asks for them; the rest for DS3's map scripts, which force them.
