@@ -319,12 +319,15 @@ public static partial class CutscenePort
         public int Files, Animations, Copied, Retargeted, Renamed, Failed, Uncompressed, LeftOut;
         /// <summary>Character animations laid out on their Elden Ring model's skeleton, and DS3 tracks of bones that model lacks.</summary>
         public int OnModel, TracksWithoutBone;
+        /// <summary>Elden Ring models that aren't the DS3 character's own (too few bones in common): placed, not animated.</summary>
+        public SortedSet<string> StandIns { get; } = new(StringComparer.OrdinalIgnoreCase);
         public List<string> Notes { get; } = [];
 
         public void Add(HkxStats o)
         {
             Files += o.Files; Animations += o.Animations; Copied += o.Copied; Retargeted += o.Retargeted; Renamed += o.Renamed; Failed += o.Failed; Uncompressed += o.Uncompressed; LeftOut += o.LeftOut;
             OnModel += o.OnModel; TracksWithoutBone += o.TracksWithoutBone;
+            StandIns.UnionWith(o.StandIns);
             Notes.AddRange(o.Notes.Take(Math.Max(0, 20 - Notes.Count)));
         }
     }
@@ -489,6 +492,7 @@ public static partial class CutscenePort
                 for (int b = 1; b < model.Names.Count; b++)
                     erBone.TryAdd(model.Names[b], b);
                 var trackOf = Enumerable.Repeat(-1, model.Names.Count).ToArray();
+                int unmatched = 0;
                 for (int tr = 0; tr < trackBone.Count; tr++)
                 {
                     if (trackBone[tr] < 0 || trackBone[tr] >= bones)
@@ -499,7 +503,19 @@ public static partial class CutscenePort
                     if (b >= 0 && trackOf[b] < 0)
                         trackOf[b] = tr;
                     else
+                    {
                         stats.TracksWithoutBone++;
+                        unmatched++;
+                    }
+                }
+                // A model that isn't DS3's (the enemy port put the Dancer's stats on an Elden Ring body: bone match
+                // 0.02) shares a handful of bone names at most; DS3's motion on those few would only twist it. It is
+                // placed by its root alone and keeps its rest pose.
+                if (unmatched > trackBone.Count / 2)
+                {
+                    for (int b = 1; b < trackOf.Length; b++)
+                        trackOf[b] = -1;
+                    stats.StandIns.Add(name[..5]);
                 }
                 var bound = Enumerable.Range(0, model.Names.Count).Where(b => trackOf[b] >= 0).ToList();
                 var spline = SplineTranscode.Build(t.Animation, bound.Select(b => trackOf[b]).ToArray(), new Vector3[bound.Count],
@@ -1075,6 +1091,7 @@ public static partial class CutscenePort
                         lines.Add($"{name} -> {erName}: {stats.Cast}; {stats.Hkx.LeftOut} Havok tracks of left-out parts dropped");
                     lines.Add($"{name} -> {erName}: {stats.Hkx.OnModel} character animations on their Elden Ring model's skeleton"
                               + (stats.Hkx.TracksWithoutBone > 0 ? $" ({stats.Hkx.TracksWithoutBone} DS3 bone tracks the model has no bone for)" : "")
+                              + (stats.Hkx.StandIns.Count > 0 ? $"; WARN not DS3's own model, placed but not animated: {string.Join(" ", stats.Hkx.StandIns)}" : "")
                               + $"; effects: {stats.EffectsMapped} events play a converted DS3 effect, {stats.EffectsLeftOut} left out"
                               + (stats.EffectsMissing.Count > 0 ? $" (not converted: {string.Join(" ", stats.EffectsMissing.Take(12))})" : ""));
                 }
