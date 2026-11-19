@@ -15,6 +15,7 @@ public static partial class MapPortChecks
         yield return ("far views: a low-detail copy of an area with ordinary textures, drawn only from a lookout, is left out; the sky dome, a building shell and a piece drawn with most of what it covers stay", FarViews);
         yield return ("atmosphere: the slot's gparam takes DS3's sun and fog colours, Stormveil's fog amounts, no colour grading", Atmosphere);
         yield return ("atmosphere: the sun's direction turns with DS3's map offset, like the map's lamps and baked light", SunTurned);
+        yield return ("atmosphere: the lights without shadows (second directional light, local lights) take DS3's share of the sun, not the colosseum's", FillLights);
     }
 
     /// <summary>
@@ -180,6 +181,66 @@ public static partial class MapPortChecks
         var g = new GPARAM.Group(name + " ParamEditor", name);
         g.Params.AddRange(ps);
         return g;
+    }
+
+    private static void FillLights()
+    {
+        // The Royal colosseum's light set (m45_02_0000, map 3's host): a second light as strong as the sun. DS3's
+        // m31_00 light set 0: 0.2 beside a sun of 1.5, local lights dark.
+        GPARAM Host()
+        {
+            var g = new GPARAM();
+            g.Groups.Add(G("LightSet",
+                P("Directional Light DiffColor0", GPARAM.ParamType.Float4, new Vector4(0.98f, 1, 0.992f, 0.4f), new Vector4(0.98f, 1, 0.992f, 0.4f)),
+                P("Directional Light SsaoWeight0", GPARAM.ParamType.Float, 0.5f, 0.5f),
+                P("Directional Light DiffColor1", GPARAM.ParamType.Float4, new Vector4(0.675f, 0.784f, 1, 0.4f), new Vector4(1, 1, 1, 0.05f)),
+                P("Directional Light SpecColor1", GPARAM.ParamType.Float4, new Vector4(0.667f, 0.741f, 0.843f, 0.3f), new Vector4(1, 1, 1, 0.05f)),
+                P("Directional Light SsaoWeight1", GPARAM.ParamType.Float, 0f, 1f),
+                P("Directional Light LocalLight DiffColor1", GPARAM.ParamType.Float4, new Vector4(0.761f, 0.816f, 1, 0.1f), new Vector4(0.761f, 0.816f, 1, 0.1f)),
+                P("Directional Light SsaoWeight2", GPARAM.ParamType.Float, 0.65f, 0.65f),
+                P("Directional Light SsaoWeight3", GPARAM.ParamType.Float, 0f, 1f),
+                P("Directional Light Hemi Color Up", GPARAM.ParamType.Float4, new Vector4(0.885f, 0.918f, 0.912f, 0.1f)),
+                P("Directional Enable LocalLight1", GPARAM.ParamType.BoolA, true, true),
+                P("Directional Enable LocalLight2", GPARAM.ParamType.BoolA, true, true)));
+            return g;
+        }
+        var ds3 = new GPARAM { Game = GPARAM.GPGame.DarkSouls3 };
+        ds3.Groups.Add(G("LightSet",
+            P("Directional Light Angle0", GPARAM.ParamType.Float2, new Vector2(-0.51f, 0.66f)),
+            P("Directional Light DiffColor0", GPARAM.ParamType.Float4, new Vector4(0.968f, 0.953f, 0.933f, 1.5f)),
+            P("Directional Light DiffColor1", GPARAM.ParamType.Float4, new Vector4(0.603f, 0.706f, 1, 0.2f), new Vector4(0.875f, 0.942f, 1, 0)),
+            P("Directional Light SpecColor1", GPARAM.ParamType.Float4, new Vector4(0.603f, 0.706f, 1, 0.2f)),
+            P("Directional Light LocalLight DiffColor1", GPARAM.ParamType.Float4, new Vector4(0, 0, 0, 1)),
+            P("Directional Enable LocalLight1", GPARAM.ParamType.BoolA, true),
+            P("Directional Enable LocalLight2", GPARAM.ParamType.BoolA, false)));
+
+        var host = Host();
+        var changes = MapAtmosphere.Apply(host, ds3, -209);
+        var light = MapAtmosphere.Group(host, "LightSet")!;
+        GPARAM.Param Param(string name) => light.Params.Single(p => p.Name1 == name);
+        static bool Near(Vector4 a, Vector4 b) => Vector4.Distance(a, b) < 1e-4f;
+        float scale = 0.4f / 1.5f;
+        Expect(Param("Directional Light DiffColor0").Values.All(v => ((Vector4)v).W == 0.4f), "the sun keeps the host's strength");
+        Expect(Param("Directional Light DiffColor1").Values.All(v => Near((Vector4)v, new Vector4(0.603f, 0.706f, 1, 0.2f * scale))),
+            $"the second light: DS3's colour at DS3's share of the sun, 0.4 -> {0.2f * scale:0.###} ({Param("Directional Light DiffColor1").Values[0]})");
+        Expect(Param("Directional Light SpecColor1").Values.All(v => Near((Vector4)v, new Vector4(0.603f, 0.706f, 1, 0.2f * scale))), "its reflections too");
+        Expect(Param("Directional Light LocalLight DiffColor1").Values.All(v => Near((Vector4)v, new Vector4(0, 0, 0, scale))), "a local light DS3 has dark is dark");
+        Expect(Param("Directional Enable LocalLight1").Values.All(v => (bool)v) && Param("Directional Enable LocalLight2").Values.All(v => !(bool)v), "local lights are on where DS3 has them on");
+        Expect(Param("Directional Light SsaoWeight0").Values.All(v => (float)v == 1) && Param("Directional Light SsaoWeight1").Values.All(v => (float)v == 1)
+               && Param("Directional Light SsaoWeight3").Values.All(v => (float)v == 1) && Param("Directional Light SsaoWeight2").Values.All(v => (float)v == 0.65f),
+            "corner shade dims the sun and the second light as on Stormveil; the third weight stays the host's");
+        Expect((Vector4)Param("Directional Light Hemi Color Up").Values[0] == new Vector4(0.885f, 0.918f, 0.912f, 0.1f), "the hemisphere light stays the host's");
+        Expect(changes.Any(c => c.Contains("second light 0.4 -> 0.053") && c.Contains("local light 1 0.1 -> 0 (DS3 has it dark)")), string.Join(" | ", changes));
+
+        // The fallback keeps the colosseum's strengths; the second light still takes DS3's colour, as before.
+        var kept = Host();
+        var keptChanges = MapAtmosphere.Apply(kept, ds3, -209, hostFillLights: true);
+        var keptLight = MapAtmosphere.Group(kept, "LightSet")!;
+        Expect(Near((Vector4)keptLight.Params.Single(p => p.Name1 == "Directional Light DiffColor1").Values[0], new Vector4(0.603f, 0.706f, 1, 0.4f))
+               && (float)keptLight.Params.Single(p => p.Name1 == "Directional Light SsaoWeight0").Values[0] == 0.5f
+               && Near((Vector4)keptLight.Params.Single(p => p.Name1 == "Directional Light LocalLight DiffColor1").Values[0], new Vector4(0.761f, 0.816f, 1, 0.1f))
+               && keptChanges.Any(c => c.Contains("--host-fill-lights")), "--host-fill-lights keeps the host's strengths and weights");
+        Expect(MapPorter.Options.Parse(["--host-fill-lights"]).HostFillLights && !MapPorter.Options.Parse([]).HostFillLights, "--host-fill-lights (fallback map-fill-light B) is read");
     }
 
     private static void Atmosphere()

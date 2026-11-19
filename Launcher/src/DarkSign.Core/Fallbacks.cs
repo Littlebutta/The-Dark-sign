@@ -209,7 +209,7 @@ public static class Fallbacks
             "A ported weapon is carried oddly while standing, walking or running (through the shoulder or head, or the walk looks wrong), or its guard changes when two-handed.",
         [
             new("A", "DS3's hold (default)", "Each ported weapon is carried in DS3's hold (wepmotionOneHandId / wepmotionBothHandId) where Elden Ring has that hold: DS3 scythes upright at the side, not on the shoulder like Elden Ring's scythes. Shields and catalysts keep Elden Ring's two-handed hold."),
-            new("B", "The template's hold", "Ported weapons are carried like the Elden Ring weapon they are built on (DARKSIGN_DS3_HOLD=0), as in builds up to 1.0.47x, where Friede's Great Scythe was carried on the shoulder.")
+            new("B", "The template's hold", "Ported weapons are carried like the Elden Ring weapon they are built on (DARKSIGN_DS3_HOLD=0), as in builds up to 1.0.491, where Friede's Great Scythe was carried on the shoulder.")
                 { PorterEnv = Env("DARKSIGN_DS3_HOLD", "0") },
         ]),
 
@@ -494,11 +494,18 @@ public static class Fallbacks
         new("map-atmosphere", "DS3 maps", "Colours of light and fog in the DS3 maps", Stage.Build,
             "A DS3 map looks washed out, too foggy, too clear, or wrongly coloured since the maps took DS3's colours.",
         [
-            new("A", "DS3's colours (default)", "Each map's sun and fog take DS3's colours and sun angle (each fog colour at DS3's own strength for it), the fog is as thick as Stormveil Castle's, and the colosseum's colour grading is off. How bright each light is stays Elden Ring's."),
+            new("A", "DS3's colours (default)", "Each map's sun and fog take DS3's colours and sun angle (each fog colour at DS3's own strength for it), the fog is as thick as Stormveil Castle's, and the colosseum's colour grading is off. How bright the sun is stays Elden Ring's."),
             new("B", "The colosseum's own", "The map keeps the Elden Ring colosseum's colour, fog and sun settings (port-maps --host-atmosphere), as in every build before this option: a red tint on map 2 and thick golden fog on map 1.")
                 { MapsArgs = ["--host-atmosphere"] },
             new("C", "DS3's fog colours at full strength", "As A, but each fog colour is used as DS3 writes it, without DS3's own strength for it (DARKSIGN_FOG_STRENGTH=0), as builds up to 1.0.44x had it: map 2's haze is a bright cream.")
                 { PorterEnv = Env("DARKSIGN_FOG_STRENGTH", "0") },
+        ]),
+        new("map-fill-light", "DS3 maps", "How strong the lights without shadows are in the DS3 maps", Stage.Build,
+            "Since this option came in, a DS3 map's shade is too dark to see in, the maps look too dark overall, or corners and the ground under things are darker than they should be.",
+        [
+            new("A", "DS3's share of the sun (default)", "The second directional light (a blue light straight down from the sky, which casts no shadow) and the two local directional lights take DS3's strength in DS3's proportion to its sun: 8 to 13% of the sun, where the colosseums the maps stand on have 17% (map 1), 50% (map 2) and 100% (map 3), which filled every shadow back in and lit rooms through their roofs. The shade in corners (SSAO) dims the sun and that light as on Stormveil Castle."),
+            new("B", "The colosseum's fill lights", "These lights keep the host colosseum's strengths and occlusion weights (port-maps --host-fill-lights), as up to 1.0.491.")
+                { MapsArgs = ["--host-fill-lights"] },
         ]),
         new("map-env-light", "DS3 maps", "Light the DS3 map pieces get from around them", Stage.Build,
             "A DS3 map's walls and ground look flat, too dark or too grey, or shine oddly since the colosseum's colour was taken out of their light.",
@@ -531,6 +538,19 @@ public static class Fallbacks
             new("A", "Moved onto the map (default)", "DS3 keeps a map's lamps and light probes in the map's own space and moves them into place with the map offset the map file holds (map 1: 28 degrees and 200 m, map 3: 156 degrees and 600 m; map 2 has none). The port does the same, so Firelink's lamps light the shrine and the baked shade falls where DS3's does. Only the map's own light file is ported; the files for its other states (the Untended Graves) no longer stack on top."),
             new("B", "Left in the map's own space", "Lamps and light probes stay where earlier builds put them (port-maps --no-light-offset): on maps 1 and 3 that is far from where they belong.")
                 { MapsArgs = ["--no-light-offset"] },
+        ]),
+        new("map-lamps", "DS3 maps", "How strong DS3's lamps are, and whether flames light their surroundings", Stage.Build,
+            "Since this option came in, a DS3 map's rooms and streets are too dark where DS3 has lamps, a lamp you remember from DS3 is missing, candles and torches light too much or too little around them, or map 3 fails to load.",
+        [
+            new("A", "Elden Ring's scale, lamps at the flames (default)", "DS3's lamps are scaled by the host map's sun strength over DS3's (the ported map takes Elden Ring's sun: map 1 x0.75, map 2 x0.41, map 3 x0.27) and no lamp stays stronger than Elden Ring's own strongest: the High Wall's spots on the plaza statues and on Vordt's door were 6 to 12 times that and lit the stone and the fog around them white. Map 3, whose host has no light file, gets DS3's lamps in a new one. A warm lamp like Stormveil's torch lamps stands at every candle, torch and brazier that burns; DS3 baked that light into its walls."),
+            new("B", "DS3's lamp strengths", "DS3's lamps keep the strengths DS3's light file writes (port-maps --ds3-lamp-strength), as up to 1.0.491. The lamps at the flames stay.")
+                { MapsArgs = ["--ds3-lamp-strength"] },
+            new("C", "No lamps at the flames", "Candles, torches and braziers burn without lighting anything around them (port-maps --no-flame-lights), as up to 1.0.491. DS3's own lamps keep Elden Ring's scale.")
+                { MapsArgs = ["--no-flame-lights"] },
+            new("D", "Both as before", "DS3's lamp strengths and no lamps at the flames (port-maps --ds3-lamp-strength --no-flame-lights).")
+                { MapsArgs = ["--ds3-lamp-strength", "--no-flame-lights"] },
+            new("E", "No light file where the host has none", "As A, but a map whose host colosseum ships no light file gets none (port-maps --no-new-light-file), as up to 1.0.491: map 3 has no lamps at all. Use it if map 3 fails to load or its lamps misbehave with A.")
+                { MapsArgs = ["--no-new-light-file"] },
         ]),
         new("map-sun", "DS3 maps", "Which way the sun and DS3's baked light face in the DS3 maps", Stage.Build,
             "Since this option came in, a DS3 map's shadows fall the wrong way, sunlit walls look dark and shaded ones bright, floors look lit from the side, or roofs and objects still cast no shade.",
@@ -652,10 +672,10 @@ public static class Fallbacks
         ]),
 
         new("map-layers", "DS3 maps", "Which state of a DS3 map is ported", Stage.Build,
-            "Enemies or objects you expected are missing from a DS3 map since 1.0.327 (for example on the way to Firelink Shrine), or you want to see the Untended Graves' enemies.",
+            "Enemies, objects or fog you expected are missing from a DS3 map since 1.0.327 (for example on the way to Firelink Shrine), or you want to see the Untended Graves' enemies.",
         [
-            new("A", "The state the game starts in (default)", "Enemies and objects that DS3 keeps for another state of the same map are left out, as its map pieces already were: m40 holds the Untended Graves (Black Knights, Champion Gundyr, the dark shrine) at the same place as the Cemetery of Ash and Firelink Shrine."),
-            new("B", "Every state", "Enemies and objects of every state stand in the map together (port-maps --all-layers), as every build up to 1.0.326 had them: the Untended Graves' Black Knights stand around Firelink Shrine.")
+            new("A", "The state the game starts in (default)", "Enemies, objects and map effects that DS3 keeps for another state of the same map are left out, as its map pieces already were: m40 holds the Untended Graves (Black Knights, Champion Gundyr, the dark shrine) at the same place as the Cemetery of Ash and Firelink Shrine, and the High Wall holds a second set of its fog for the eclipse sky (left out after 1.0.491: both sets stood in each other, twice as thick)."),
+            new("B", "Every state", "Enemies, objects and map effects of every state stand in the map together (port-maps --all-layers), as every build up to 1.0.326 had them: the Untended Graves' Black Knights stand around Firelink Shrine, and the High Wall's fog stands twice.")
                 { MapsArgs = ["--all-layers"] },
         ]),
 

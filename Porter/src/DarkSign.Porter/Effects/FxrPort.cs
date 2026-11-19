@@ -36,8 +36,53 @@ public static partial class FxrPort
         /// them when it ends): they must not loop, nothing would stop them.</summary>
         public HashSet<int> UnheldSounds { get; } = [];
 
+        /// <summary>What each ported DS3 effect does to the light around it, the effects it plays included
+        /// (<see cref="Look"/>): for the lamps the map port places at DS3's flames (Maps.FlameLights).</summary>
+        public Dictionary<int, Look> Looks { get; } = [];
+
         /// <summary>The Elden Ring ID for a DS3 effect, or null when it wasn't ported.</summary>
         public int? Map(int ds3Id) => Effects.TryGetValue(ds3Id, out var id) ? id : null;
+    }
+
+    /// <summary>
+    /// What an effect does to the light around it (fxr-port.js look()): the point and spot lights it carries itself,
+    /// the things it draws that add light to the picture (additive blend: flames, embers, glows; smoke and fog blend
+    /// normally) and the mean colour those are drawn in (red, green, blue; null when none could be read).
+    /// </summary>
+    public sealed record Look(int Lights, int Glow, float[]? GlowColour)
+    {
+        /// <summary>Glows without a light of its own, in a colour that isn't cold (blue or green above red): a flame,
+        /// embers, a lantern's glow. Elden Ring lights the room around these with a lamp in the map's light file; DS3
+        /// baked their light into the walls.</summary>
+        public bool IsFlame => Lights == 0 && Glow > 0 && GlowColour is { Length: >= 3 } c && c[0] > 0.05f && c[0] >= c[1] - 0.02f && c[0] >= c[2] - 0.02f;
+
+        public string Why => Lights > 0 ? "carries its own light" : Glow == 0 ? "draws nothing that glows" : GlowColour is null ? "glow colour not read" : IsFlame ? "flame" : "cold glow";
+    }
+
+    /// <summary>The look of an effect together with the effects it plays (each counted once).</summary>
+    internal static Look LookOf(int id, IReadOnlyDictionary<int, (byte[] Bytes, FxrScript.Info Info)> effects)
+    {
+        var seen = new HashSet<int>();
+        var stack = new Stack<int>([id]);
+        int lights = 0, glow = 0, n = 0;
+        double r = 0, g = 0, b = 0;
+        while (stack.TryPop(out var e))
+        {
+            if (!seen.Add(e) || !effects.TryGetValue(e, out var x))
+                continue;
+            lights += x.Info.Lights;
+            glow += x.Info.Glow;
+            if (x.Info.Glow > 0 && x.Info.GlowColour is { Length: >= 3 } c)
+            {
+                r += c[0] * x.Info.Glow;
+                g += c[1] * x.Info.Glow;
+                b += c[2] * x.Info.Glow;
+                n += x.Info.Glow;
+            }
+            foreach (var child in x.Info.Sfx.Where(c => c > 0))
+                stack.Push(child);
+        }
+        return new Look(lights, glow, n > 0 ? [(float)(r / n), (float)(g / n), (float)(b / n)] : null);
     }
 
     /// <summary>The reason recorded for an effect DS3's params or moves name but DS3 ships no FXR for.</summary>
@@ -270,6 +315,7 @@ public static partial class FxrPort
         foreach (var id in effects.Keys.Order())
         {
             result.Effects[id] = IdBase + id;
+            result.Looks[id] = LookOf(id, effects);
             if (PortFxrSounds)
             {
                 result.Sounds.UnionWith(FxrSounds(effects[id].Info.Sounds));
@@ -498,7 +544,8 @@ public static partial class FxrPort
     /// <summary>The fxr library, loaded once into a Jint engine.</summary>
     internal sealed class FxrScript
     {
-        public sealed record Info(int[] Sfx, int[] Textures, int[] Models, int[] Anibnds, int[] Sounds, int[]? HeldSounds = null, int[]? UnheldSounds = null);
+        public sealed record Info(int[] Sfx, int[] Textures, int[] Models, int[] Anibnds, int[] Sounds, int[]? HeldSounds = null, int[]? UnheldSounds = null,
+            int Lights = 0, int Glow = 0, float[]? GlowColour = null);
 
         private readonly Engine _engine;
         private readonly JsValue _inspect, _convert;
@@ -521,6 +568,11 @@ public static partial class FxrPort
         /// <summary>For the self-tests: a small DS3 effect with one texture that plays another effect (child > 0).</summary>
         public byte[] Sample(int id, int child, int texture, int heldSound = 0, int blendMode = 2) =>
             (byte[])_engine.Invoke(_engine.Modules.Import("./fxr-port.js").Get("sample"), id, child, texture, heldSound, blendMode).ToObject()!;
+
+        /// <summary>For the self-tests: a small DS3 effect that draws one additive billboard in a colour and, with
+        /// <paramref name="light"/>, carries a point light.</summary>
+        public byte[] FlameSample(int id, int texture, float r, float g, float b, bool light) =>
+            (byte[])_engine.Invoke(_engine.Modules.Import("./fxr-port.js").Get("flameSample"), id, texture, r, g, b, light).ToObject()!;
 
         /// <summary>For the self-tests: the lighting mode of each billboard of a converted (Elden Ring) effect.</summary>
         public int[] LightingOfConverted(byte[] bytes) =>

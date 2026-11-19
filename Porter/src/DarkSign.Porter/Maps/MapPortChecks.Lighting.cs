@@ -16,6 +16,8 @@ public static partial class MapPortChecks
         yield return ("lighting: the host's environment map box is carried over, grown to hold the whole DS3 map", AmbientBox);
         yield return ("lighting: DS3 lamps are written in the host's light file version, the DS3 sun is left out", Lamps);
         yield return ("lighting: DS3 lamps move by the map offset onto the layout (Firelink's lights into the shrine)", LampsOffset);
+        yield return ("lamps: DS3 strengths take the host's sun scale and stay inside what Elden Ring's own lamps do (the High Wall's statue and door spots)", LampStrengths);
+        yield return ("flame lights: a lamp like Stormveil's torch lamps stands at each DS3 flame; near flames share one, a warm DS3 lamp nearby means none", FlameLamps);
     }
 
     private static void UnlitCastsNoShadow()
@@ -123,6 +125,151 @@ public static partial class MapPortChecks
         Expect(source[0].Unk54 == 2 && source[0].Name == "candle", "the DS3 lights read are not changed");
         Expect(MapLighting.ErLightPath(ErId) == "/map/m45/m45_00_00_00/m45_00_00_00_0000.btl.dcx"
                && MapLighting.Ds3LightPath(Ds3Id, 1) == "/map/m40_00_00_00/m40_00_00_00_0001.btl.dcx", "light file paths");
+    }
+
+    private static void LampStrengths()
+    {
+        // The High Wall's lamps as DS3's light file holds them: a plaza statue spot, the spot aimed at Vordt's door
+        // from 154 m away, the steep-falloff statue spot, and an ordinary lamp.
+        BTL.Light Lamp(string name, BTL.LightType type, float power, float reach, float sharpness) =>
+            new() { Name = name, Type = type, DiffusePower = power, SpecularPower = power, Radius = reach, Sharpness = sharpness };
+        var statue = Lamp("statue spot 001", BTL.LightType.Spot, 20, 23, 20);
+        var door = Lamp("door spot", BTL.LightType.Spot, 4, 240, 20);
+        var steep = Lamp("statue spot", BTL.LightType.Spot, 40, 23, 0.3f);
+        var plain = Lamp("corridor", BTL.LightType.Point, 1.2f, 7, 0.5f);
+        var specOnly = new BTL.Light { Name = "spec", Type = BTL.LightType.Point, DiffusePower = 0, SpecularPower = 30, Radius = 10, Sharpness = 20 };
+        Expect(MathF.Abs(MapLampStrength.Air(statue) - 438.1f) < 0.5f && MathF.Abs(MapLampStrength.Surface(statue) - 19.32f) < 0.05f
+               && MathF.Abs(MapLampStrength.Air(door) - 914.3f) < 0.5f,
+            $"DS3's spots as measured: statue air {MapLampStrength.Air(statue)}, surface {MapLampStrength.Surface(statue)}, door air {MapLampStrength.Air(door)}");
+        // Stormveil's strongest (spot_食堂の窓A001: 6, reach 20 m, sharpness 1.5) is the limit itself.
+        var stormveil = Lamp("spot_食堂の窓A001", BTL.LightType.Spot, 6, 20, 1.5f);
+        Expect(MapLampStrength.Fit(stormveil, 1) is null && stormveil.DiffusePower == 6, "Elden Ring's own strongest lamp passes unchanged");
+
+        const float sun = 0.5f / 1.23f;   // the colosseum's sun over the High Wall's
+        var changes = new[] { statue, door, steep, plain, specOnly }.Select(l => MapLampStrength.Fit(l, sun)).ToList();
+        Expect(changes[3] is null && MathF.Abs(plain.DiffusePower - 1.2f * sun) < 1e-4f, $"an ordinary lamp only takes the sun scale ({plain.DiffusePower})");
+        Expect(changes[0] is { Why: "light along its reach", Before: 20 } && MathF.Abs(MapLampStrength.Air(statue) - MapLampStrength.ErMaxAir) < 0.01f
+               && MapLampStrength.Surface(statue) <= MapLampStrength.ErMaxSurface && statue.DiffusePower is > 3 and < 3.5f && statue.SpecularPower == statue.DiffusePower,
+            $"the statue spot comes down to Elden Ring's limit ({statue.DiffusePower})");
+        Expect(changes[1] is not null && door.DiffusePower < 0.35f && MathF.Abs(MapLampStrength.Air(door) - MapLampStrength.ErMaxAir) < 0.01f,
+            $"the 240 m door spot comes down the most ({door.DiffusePower})");
+        Expect(changes[2] is not null && MapLampStrength.Air(steep) <= MapLampStrength.ErMaxAir + 0.01f && MapLampStrength.Surface(steep) <= MapLampStrength.ErMaxSurface,
+            "a strong lamp with a steep falloff is measured with its falloff");
+        Expect(changes[4] is { Why: "light on surfaces" } && specOnly.DiffusePower == 0 && MathF.Abs(MapLampStrength.Surface(specOnly) - MapLampStrength.ErMaxSurface) < 0.01f,
+            "a lamp that only lights reflections is measured by that strength");
+        Expect(statue.Radius == 23 && statue.Sharpness == 20, "reach and falloff stay DS3's");
+
+        GPARAM Sun(float strength, bool ds3)
+        {
+            var g = ds3 ? new GPARAM { Game = GPARAM.GPGame.DarkSouls3 } : new GPARAM();
+            g.Groups.Add(G("LightSet", P("Directional Light DiffColor0", GPARAM.ParamType.Float4, new Vector4(1, 0.95f, 0.87f, strength))));
+            return g;
+        }
+        Expect(MathF.Abs(MapLampStrength.SunScale(Sun(0.5f, false), Sun(1.23f, true)) - sun) < 1e-4f, "sun scale: the host's sun strength over DS3's");
+        Expect(MapLampStrength.SunScale(null, Sun(1.23f, true)) == 1 && MapLampStrength.SunScale(Sun(0.5f, false), new GPARAM()) == 1, "sun scale: 1 when either file has no sun");
+        Expect(MapLampStrength.SunScale(Sun(0.5f, false), Sun(50, true)) == MapLampStrength.MinSunScale
+               && MapLampStrength.SunScale(Sun(5, false), Sun(0.5f, true)) == MapLampStrength.MaxSunScale, "sun scale: kept inside its range");
+        Expect(MapLampStrength.Describe(sun, changes.OfType<MapLampStrength.Change>().ToList(), 5).Contains("4 of 5 turned down")
+               && MapLampStrength.Describe(1, [], 3).Contains("every lamp is inside"), "the log line names what was turned down");
+        Expect(MapPorter.Options.Parse(["--ds3-lamp-strength"]).Ds3LampStrength && !MapPorter.Options.Parse([]).Ds3LampStrength,
+            "--ds3-lamp-strength (fallback map-lamps B) is read");
+    }
+
+    private static void FlameLamps()
+    {
+        // DS3's rows: the lit candle (effect 839010 on dummy 200), a lantern with a light of its own, a blue crystal,
+        // smoke, and a candle whose effect didn't convert.
+        var def = new PARAMDEF { ParamType = "MODEL_SFX_PARAM_ST", DataVersion = 1 };
+        for (int i = 1; i <= ObjectSfx.Ds3Slots; i++)
+        {
+            def.Fields.Add(new PARAMDEF.Field(def, PARAMDEF.DefType.s32, $"VfxId{i}"));
+            def.Fields.Add(new PARAMDEF.Field(def, PARAMDEF.DefType.s32, $"DummyPolyId{i}"));
+        }
+        PARAM.Row Row(int id, int effect, int dummy)
+        {
+            var row = new PARAM.Row(id, "", def);
+            row["VfxId1"].Value = effect;
+            row["DummyPolyId1"].Value = dummy;
+            return row;
+        }
+        var ds3Param = new PARAM { ParamType = def.ParamType, Rows =
+            [Row(391000000, 839010, 200), Row(391000001, 839012, 200), Row(392000000, 840060, 200), Row(393000000, 831000, 200), Row(394000000, 830050, 200)] };
+        var converted = new[] { 839010, 840060, 831000, 830050 }.ToDictionary(id => id, id => FxrPort.IdBase + id);
+        var looks = new Dictionary<int, FxrPort.Look>
+        {
+            [839010] = new(0, 2, [1, 0.8f, 0.5f]),      // a flame
+            [839012] = new(0, 2, [1, 0.8f, 0.5f]),      // a flame that didn't convert: nothing burns there
+            [840060] = new(1, 1, [1, 0.8f, 0.5f]),      // carries its own light
+            [831000] = new(0, 1, [0.3f, 0.6f, 1]),      // cold
+            [830050] = new(0, 0, null),                 // smoke
+        };
+        Expect(looks[839010].IsFlame && !looks[840060].IsFlame && !looks[831000].IsFlame && !looks[830050].IsFlame && new FxrPort.Look(0, 1, [1, 1, 1]).IsFlame
+               && !new FxrPort.Look(0, 1, null).IsFlame, "a flame glows warm or white without a light of its own");
+
+        var ds3 = SyntheticDs3();
+        var names = new Dictionary<string, string>();
+        void Obj(string name, string model, short rel, Vector3 at, float yaw = 0, bool placed = true)
+        {
+            var o = new MSB3.Part.Object { Name = name, ModelName = model, Position = at, Rotation = new Vector3(0, yaw, 0) };
+            o.ModelSfxParamRelativeIDs[0] = rel;
+            ds3.Parts.Objects.Add(o);
+            if (placed)
+                names[name] = "AEG920_000_" + names.Count;
+        }
+        Obj("o391000_1000", "o391000", 0, new Vector3(10, 0, 10));             // a table of three candles
+        Obj("o391000_1001", "o391000", 0, new Vector3(11, 0, 10));
+        Obj("o391000_1002", "o391000", 0, new Vector3(10, 0, 11), yaw: 90);
+        Obj("o391000_1003", "o391000", 0, new Vector3(40, 0, 10));             // one alone
+        Obj("o391000_1004", "o391000", 0, new Vector3(80, 0, 10));             // one beside a warm DS3 lamp
+        Obj("o391000_1005", "o391000", -1, new Vector3(120, 0, 10));           // unlit
+        Obj("o391000_1006", "o391000", 1, new Vector3(140, 0, 10));            // effect not converted
+        Obj("o391000_1007", "o391000", 0, new Vector3(160, 0, 10), placed: false);   // not placed (another map state)
+        Obj("o392000_1000", "o392000", 0, new Vector3(180, 0, 10));            // lantern with its own light
+        Obj("o393000_1000", "o393000", 0, new Vector3(200, 0, 10));            // blue crystal
+        Obj("o394000_1000", "o394000", 0, new Vector3(220, 0, 10));            // smoke
+        // The candle's flame is 0.4 m up and 0.2 m along the model's X.
+        var points = new Dictionary<int, Vector3> { [200] = new(0.2f, 0.4f, 0) };
+        var tally = new Dictionary<int, (int Parts, string Why)>();
+        var flames = FlameLights.Flames(ds3, names, ds3Param, converted, looks, m => m == "o391000" ? points : null, tally);
+        Expect(flames.Count == 5 && flames.All(f => f.Effect == 839010), $"five lit, placed, converted candles burn ({flames.Count})");
+        Expect(Vector3.Distance(flames[0].Position, new Vector3(10.2f, 0.4f, 10)) < 1e-3f, $"a flame stands at its dummy point ({flames[0].Position})");
+        Expect(MathF.Abs(flames[2].Position.Y - 0.4f) < 1e-3f && MathF.Abs(MathF.Abs(flames[2].Position.Z - 11) - 0.2f) < 1e-3f && MathF.Abs(flames[2].Position.X - 10) < 1e-3f,
+            $"the dummy point turns with the part ({flames[2].Position})");
+        Expect(tally[840060] == (1, "carries its own light") && tally[831000].Why == "cold glow" && tally[830050].Why == "draws nothing that glows" && tally[839010].Parts == 5,
+            "the log says why each object effect did or didn't get lamps");
+
+        // The slot's light file: a blue DS3 fill beside the table, a warm DS3 lamp beside the candle at x 80.
+        var btl = new BTL { Version = MapLighting.ErLightVersion, LongOffsets = true };
+        btl.Lights.Add(new BTL.Light { Name = "fill", Position = new Vector3(10, 1, 10), DiffusePower = 1.4f, DiffuseColor = System.Drawing.Color.FromArgb(255, 150, 195, 255) });
+        btl.Lights.Add(new BTL.Light { Name = "warm", Position = new Vector3(80.5f, 0.5f, 10), DiffusePower = 1, DiffuseColor = System.Drawing.Color.FromArgb(255, 255, 200, 120) });
+        var result = FlameLights.Build(btl, [.. flames.Select(f => f.Position)], "m45_00_00_00");
+        var lamps = btl.Lights.Where(l => l.Name.StartsWith(FlameLights.NamePrefix)).ToList();
+        Expect(result is { Lamps: 2, Flames: 5, NearDs3Lamp: 1 } && lamps.Count == 2 && btl.Lights.Count == 4, $"two lamps for five flames, one by a warm DS3 lamp ({result})");
+        var table = lamps.Single(l => l.Position.X < 20);
+        var alone = lamps.Single(l => l.Position.X > 20);
+        Expect(Vector3.Distance(table.Position, (flames[0].Position + flames[1].Position + flames[2].Position) / 3) < 1e-3f, "near flames share a lamp in their middle");
+        Expect(alone.DiffusePower == FlameLights.Strength && alone.Radius == FlameLights.Reach && table.DiffusePower > alone.DiffusePower && table.Radius > alone.Radius
+               && table.DiffusePower <= FlameLights.MaxStrength, "a shared lamp is a little stronger and reaches farther");
+        // Every field of Stormveil's touch_室内R_009 but place, strength and reach.
+        Expect(alone is { Type: BTL.LightType.Point, CastShadows: false, Unk1C: true, Unk50: 4, Unk5C: -1, Unk80: -1, Unk98: 1, NearClip: 1, UnkAC: 1, UnkC4: 20, UnkC8: 1, UnkCC: 1,
+                   UnkD8: 0.2f, UnkE4: 1, FlickerBrightnessMult: 1 } && alone.SpecularPower == alone.DiffusePower && alone.DiffuseColor.R == 240 && alone.DiffuseColor.G == 180
+               && alone.DiffuseColor.B == 120 && alone.UnkA0.SequenceEqual(new byte[] { 0, 0, 2, 0 }) && alone.UnkC0.SequenceEqual(new byte[] { 1, 1, 0, 1 }),
+            "the lamp has the settings of Elden Ring's torch lamps");
+        Expect(MapLampStrength.Fit(FlameLights.NewLamp("x", "y"), 1) is null, "a flame lamp is inside Elden Ring's limits");
+        Expect(!alone.Unk00.SequenceEqual(table.Unk00) && alone.Unk00.Any(b => b != 0), "each lamp carries its own ID bytes");
+        var read = BTL.Read(btl.Write());
+        Expect(read.Lights.Count == 4 && read.Lights[3].Name == alone.Name && read.Lights[3].Unk00.SequenceEqual(alone.Unk00) && read.Lights[3].Radius == alone.Radius,
+            "the light file reads back with its flame lamps");
+        // A rerun replaces the lamps it added; no flames, no lamps.
+        FlameLights.Build(btl, [.. flames.Select(f => f.Position)], "m45_00_00_00");
+        Expect(btl.Lights.Count == 4, $"a rerun keeps two flame lamps ({btl.Lights.Count})");
+        Expect(FlameLights.Build(btl, [], "m45_00_00_00").Lamps == 0 && btl.Lights.Count == 2, "with no flames the lamps are taken out again");
+        // A map with more flames than lamps allowed merges them over a wider distance.
+        var many = Enumerable.Range(0, 900).Select(i => new Vector3(i % 30 * 5, 0, i / 30 * 5)).ToList();
+        var wide = FlameLights.Build(new BTL { Version = 18, LongOffsets = true }, many, "m45_02_00_00");
+        Expect(wide.Lamps <= FlameLights.MaxLamps && wide.Lamps > 20 && wide.MergedWithin > FlameLights.MergeDistance, $"900 spread flames stay under the cap ({wide})");
+        Expect(MapPorter.Options.Parse(["--no-flame-lights"]).NoFlameLights && !MapPorter.Options.Parse([]).NoFlameLights, "--no-flame-lights (fallback map-lamps C) is read");
+        Expect(MapPorter.Options.Parse(["--no-new-light-file"]).NoNewLightFile && !MapPorter.Options.Parse([]).NoNewLightFile, "--no-new-light-file (fallback map-lamps E) is read");
     }
 
     private static void LampsOffset()

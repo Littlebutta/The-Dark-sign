@@ -91,6 +91,19 @@ public static class MapPorter
         /// <summary>--no-light-offset: DS3's lamps and light probes stay in the map's own space instead of being moved
         /// by DS3's map offset, as in earlier builds (fallback "map-light-place" B; see <see cref="MapLighting.PortLights"/>).</summary>
         public bool NoLightOffset { get; set; }
+        /// <summary>--host-fill-lights: the lights without shadows (second directional light, local lights, occlusion
+        /// weights) keep the host colosseum's strengths, as up to 1.0.491 (fallback "map-fill-light" B; see
+        /// <see cref="MapAtmosphere.FillLights"/>).</summary>
+        public bool HostFillLights { get; set; }
+        /// <summary>--ds3-lamp-strength: DS3's lamps keep the strengths DS3's light file writes instead of being brought
+        /// to Elden Ring's scale, as up to 1.0.491 (fallback "map-lamps" B; see <see cref="MapLampStrength"/>).</summary>
+        public bool Ds3LampStrength { get; set; }
+        /// <summary>--no-new-light-file: a slot whose host has no light file gets none, as up to 1.0.491 (map 3 without
+        /// lamps; fallback "map-lamps" E; see <see cref="MapLighting.PortLights"/>).</summary>
+        public bool NoNewLightFile { get; set; }
+        /// <summary>--no-flame-lights: no lamps are added at DS3's candles, torches and braziers, as up to 1.0.491
+        /// (fallback "map-lamps" C; see <see cref="FlameLights"/>).</summary>
+        public bool NoFlameLights { get; set; }
         /// <summary>--unturned-sun: the sun keeps the angle DS3's draw params write, in the map's own space, instead of
         /// being turned with the map offset like the lamps and probes (fallback "map-sun" B; implied by --no-light-offset;
         /// see <see cref="MapAtmosphere.SunTurn"/>).</summary>
@@ -191,6 +204,10 @@ public static class MapPorter
                     case "--no-light-areas": o.BakedLight = o.BakedLight with { NoAreas = true }; break;
                     case "--no-light-offset": o.NoLightOffset = true; o.UnturnedSun = true; o.BakedLight = o.BakedLight with { NoOffset = true }; break;
                     case "--unturned-sun": o.UnturnedSun = true; break;
+                    case "--host-fill-lights": o.HostFillLights = true; break;
+                    case "--ds3-lamp-strength": o.Ds3LampStrength = true; break;
+                    case "--no-flame-lights": o.NoFlameLights = true; break;
+                    case "--no-new-light-file": o.NoNewLightFile = true; break;
                     case "--guess-probe-axes": o.BakedLight = o.BakedLight with { GuessAxes = true }; break;
                     case "--baked-light-flip" when i + 1 < list.Count:
                         var axes = list[++i].ToLowerInvariant();
@@ -438,11 +455,15 @@ public static class MapPorter
         // DS3's map effects (Firelink's candles, fog, light shafts), converted by port-weapons into the common binder.
         if (ported.Count > 0)
         {
-            Step(report, "map effects", () => MapSfx.Apply(ctx, ds3, ported.Select(p => p.Slot)));
+            Step(report, "map effects", () => MapSfx.Apply(ctx, ds3, ported.Select(p => p.Slot), options.AllLayers));
             // The effects DS3's objects carry (candle flames), on the asset rows written above.
             if (_objects is not null)
                 Step(report, "object effects", () => ObjectSfx.Apply(ctx, ds3, ported.Select(p => p.Slot), MapSfx.ReadTable(ctx),
                     id => _partNames.GetValueOrDefault(id)));
+            // Lamps at the flames those objects burn with: DS3 baked their light, Elden Ring lights them with lamps.
+            if (_objects is not null)
+                Step(report, "flame lights", () => FlameLights.Apply(ctx, ds3, ported.Select(p => p.Slot),
+                    id => _partNames.GetValueOrDefault(id), options.NoFlameLights, options.NoNewLightFile));
         }
         if (enemyPort is not null)
         {
@@ -1341,7 +1362,7 @@ public static class MapPorter
                          }),
                          ("environment light", () => MapEnvironment.Write(ctx, er, erId, hostId, options.HostEnvLight, baked)),
                          ("light volume info", () => MapBakedLight.WriteIvInfo(ctx, er, hostId, erId, baked)),
-                         ("lamps", () => MapLighting.PortLights(ctx, ds3, er, ds3Id, erId, hostId, ds3Msb, options.NoLightOffset)),
+                         ("lamps", () => MapLighting.PortLights(ctx, ds3, er, ds3Id, erId, hostId, ds3Msb, options.NoLightOffset, options.Ds3LampStrength, options.NoNewLightFile)),
                      })
             {
                 try
@@ -1366,7 +1387,7 @@ public static class MapPorter
         // Colours of light and air: DS3's instead of the colosseum's. A failure leaves the host's.
         try
         {
-            report.AppendLine("  " + MapAtmosphere.Write(ctx, ds3, er, ds3Id, erId, hostId, ds3Msb, options.HostAtmosphere, options.UnturnedSun));
+            report.AppendLine("  " + MapAtmosphere.Write(ctx, ds3, er, ds3Id, erId, hostId, ds3Msb, options.HostAtmosphere, options.UnturnedSun, options.HostFillLights));
         }
         catch (Exception ex) when (ex is not OutOfMemoryException)
         {

@@ -328,6 +328,46 @@ the offset; the port log's baked light line prints the probes' lean for comparis
 their fixed order (up, z, x; map 3's open sky gives term 1 at 0.88 of order 0, an even sky's 0.87): the old guess
 took map 1's large sunward x term as up. Fallback `map-sun` B (`--unturned-sun`), C (`--guess-probe-axes`).
 
+### Lights without shadows (2026-11-19 playtest: "lighting across all the maps could use baked lighting")
+
+The port kept the host's strength for every light in the light set, and the colosseums fill their open arenas with
+light that casts no shadow. The second directional light (a blue light straight down, Angle1 -1.571 in the hosts and
+in DS3) is 0.10 beside a sun of 0.6 on m45_00, 0.25 beside 0.5 on m45_01 and 0.40 beside 0.4 on m45_02; Stormveil
+has it at 0, and DS3 at 0.1 beside 0.8 (m40), 0.1 beside 1.23 (m30), 0.2 beside 1.5 (m31): 8 to 13% of the sun,
+where the port had 17%, 50% and 100%. Only the sun casts shadows, so on map 3 every shadow was filled back in with
+light as strong as the sun's (the roofs and objects that "cast no shade", 2026-11-13), and rooms were lit from above
+through their roofs. m45_00 also has a local directional light on at 0.10; DS3's light set 0 has both local lights
+dark on all three maps. `MapAtmosphere.FillLights` gives these lights DS3's colour and DS3's strength times the host's
+sun over DS3's (the lamps' scale), switches the local lights as DS3 has them, and sets the SSAO weights of the sun and
+second light to Stormveil's 1 (m45_00 had 0.5 and 0, m45_01 1 and 0). The atmosphere line of the port log prints the
+change. Not done: DS3's other light sets (m40's pieces inside Firelink name sets 30 to 32, with no sun and a strong
+local light; every ported piece uses set 0). Fallback `map-fill-light` B (`--host-fill-lights`).
+
+### Lamps and flames (2026-11-19 playtest: large white lights on map 2, candles that light nothing)
+
+DS3's lamps kept DS3's strengths while the sun took Elden Ring's (host 0.6 / 0.5 / 0.4 against DS3's 0.8 / 1.23 /
+1.5), so against the sun they shone 1.3 to 3.8 times too strong, and DS3 lights statues and doors from far away with
+spots Elden Ring has nothing like: the High Wall's plaza statue spots (strength 20 to 40) and the spot aimed at
+Vordt's door from 154 m (strength 4, no falloff over 240 m) put 5 times the light on a surface and 6 to 12 times the
+light along their reach of Stormveil's strongest lamp. The stone and the fog in those beams (lit like Elden Ring's
+own since #201, and placed twice: the High Wall's 95 fog regions for the eclipse sky sit on layer bit 10 at the same
+spots as the 103 on every other layer) were the large white lights outside the Dancer's chapel and Vordt's gate.
+`MapLampStrength` scales every lamp by the host's sun over DS3's and turns down what is still past Elden Ring's own
+limits (11 of 184 lamps on the High Wall, 7 of 44 at Firelink, 2 of 160 in the Undead Settlement; the port log's
+lamps line lists them). `MapSfx.Convert` leaves out SFX regions of another map state by the parts' rule (layer bit
+0). Map 3's host (m45_02) has no light file, so map 3 had no lamps at all; it now gets DS3's in a new file (version
+18; that the game loads it is unproven). Fallback `map-lamps` B (`--ds3-lamp-strength`), `map-layers` B
+(`--all-layers`).
+
+DS3 bakes a flame's light into its lightmaps, so its light file has no lamp at a candle; Elden Ring lights flames
+with lamps in the light file (Stormveil: 54 `touch_室内R` and 13 `touch_松明`, colour 240 180 120, strength 0.5 to
+1.5, reach 4 to 6.5 m, no shadows; its candle effect carries no light). `FlameLights` adds such a lamp at every placed
+object whose ModelSfxParam effect converted and is a flame: it glows (additive blend) without a light of its own in a
+colour that isn't cold, read from the DS3 effect by port-weapons into `Work\map-sfx.tsv`. Flames within 3 m share a
+lamp; at most 200 lamps a map. The port log's flame lights line names every object effect and why it did or didn't
+get lamps. Unproven until tested: how DS3's candle effect (839010) reads (the DS3 effect files weren't at hand), so
+check that line first if candles still light nothing. Fallback `map-lamps` C (`--no-flame-lights`).
+
 ### Sky
 
 Elden Ring keeps a second layout beside every legacy map, index 99 (`m45_02_00_99.msb` for `m45_02_00_00`): the

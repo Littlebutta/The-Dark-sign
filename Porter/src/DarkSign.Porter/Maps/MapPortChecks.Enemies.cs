@@ -13,7 +13,7 @@ public static partial class MapPortChecks
         yield return ("enemies: boss entities come from boss health bars, given directly or passed to the event", EnemyBosses);
         yield return ("people: DS3 talkers get silent Elden Ring people, DS3 hostile humans get hostile ones, the same person every time", PeoplePlacement);
         yield return ("people: people without body armour stay out of the pools; DS3 summons and invaders aren't placed", PeopleLooks);
-        yield return ("enemies, objects: another state of the map (off DS3's layer bit 0, m40's Untended Graves) is left out, with a switch to keep it", OtherStateLeftOut);
+        yield return ("enemies, objects, map effects: another state of the map (off DS3's layer bit 0, m40's Untended Graves, the High Wall's eclipse fog) is left out, with a switch to keep it", OtherStateLeftOut);
         yield return ("people: those DS3 parks at a holding spot stand where its scripts warp them, parameterised events included", PeopleSeated);
         yield return ("people: DS3 humans with a DS3 look stand as an Elden Ring person wearing it; the rest stay out without --er-people", PeopleArmourPlacement);
                 yield return ("enemies: placed at DS3's spot with the DS3 entity moved to the slot, on its collision, and read back", EnemyPlacement);
@@ -263,8 +263,18 @@ public static partial class MapPortChecks
         Expect(enemies.Notes.Any(n => n.Contains("another state") && n.Contains("Black Knight x1")), "the report names what was left out");
         Expect(objects.Placed == 1 && layout.Msb.Parts.Assets.Single().EntityID == 45001500 && objects.Notes.Any(n => n.Contains("another state")), $"objects: {objects.Summary}");
 
+        // Map effects follow the same rule: the High Wall's fog (every layer but bit 10) and its copy for the eclipse
+        // sky (bit 10 only) at the same spot.
+        ds3.Regions.SFX.Add(new MSB3.Region.SFX { Name = "fog 5x5 1062", EffectID = 830050, MapStudioLayer = 0xFFFFFBFF, Shape = new MSB.Shape.Point() });
+        ds3.Regions.SFX.Add(new MSB3.Region.SFX { Name = "fog 5x5 eclipse 51", EffectID = 830202, MapStudioLayer = 0x400, Shape = new MSB.Shape.Point() });
+        var fog = new Dictionary<int, int> { [830050] = FxrPort.IdBase + 830050, [830202] = FxrPort.IdBase + 830202 };
+        var effects = MapSfx.Convert(ds3, layout.Msb, Ds3Id, ErId, fog);
+        Expect(effects is { Added: 1, OtherState: 1, Missing: 0 } && layout.Msb.Regions.SFX.Single().EffectID == FxrPort.IdBase + 830050,
+            $"map effects: the eclipse sky's copy of the fog is left out ({effects})");
+
         var all = MsbPort.Convert(ds3, SyntheticHost(), Ds3Id, ErId);
         var keepAll = new MsbPort.Options { AllLayers = true };
+        Expect(MapSfx.Convert(ds3, all.Msb, Ds3Id, ErId, fog, allLayers: true) is { Added: 2, OtherState: 0 }, "--all-layers keeps both sets of map effects");
         Expect(EnemyPort.Place(ds3, all.Msb, Ds3Id, ErId, keepAll, new EnemyPort.Chooser(SyntheticCatalog(), null, EnemyPort.Method.Auto), Describe).Placed == 2
                && ObjectPort.PlaceParts(ds3, all.Msb, Ds3Id, ErId, keepAll, m => assets.GetValueOrDefault(m)).Placed == 2, "--all-layers keeps both states");
 
@@ -274,6 +284,7 @@ public static partial class MapPortChecks
         var other = MsbPort.Convert(ds3, SyntheticHost(), Ds3Id, ErId);
         Expect(EnemyPort.Place(ds3, other.Msb, Ds3Id, ErId, new MsbPort.Options(), new EnemyPort.Chooser(SyntheticCatalog(), null, EnemyPort.Method.Auto), Describe).Placed == 2,
             "layers are only read where bit 0 marks the base state");
+        Expect(MapSfx.Convert(ds3, other.Msb, Ds3Id, ErId, fog) is { Added: 2, OtherState: 0 }, "map effects too: layers are only read where bit 0 marks the base state");
     }
 
     private static void PeopleSeated()
