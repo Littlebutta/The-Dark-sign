@@ -189,15 +189,22 @@ public static class AiSelfTest
 
         // Think rows: DS3's senses (same name and kind), the ported goal; a decimal field doesn't take a whole number.
         var erDef = new PARAMDEF { ParamType = "NPC_THINK_PARAM_ST", Fields = [] };
-        foreach (var (name, type) in new[] { ("battleGoalID", PARAMDEF.DefType.s32), ("logicId", PARAMDEF.DefType.s32), ("eye_dist", PARAMDEF.DefType.u16), ("ear_dist", PARAMDEF.DefType.f32) })
+        foreach (var (name, type) in new[] { ("battleGoalID", PARAMDEF.DefType.s32), ("logicId", PARAMDEF.DefType.s32), ("eye_dist", PARAMDEF.DefType.u16), ("ear_dist", PARAMDEF.DefType.f32),
+                     ("SightTargetForgetTime", PARAMDEF.DefType.f32), ("SoundTargetForgetTime", PARAMDEF.DefType.f32), ("MemoryTargetForgetTime", PARAMDEF.DefType.f32),
+                     ("searchEye_dist", PARAMDEF.DefType.u16), ("searchEye_angY", PARAMDEF.DefType.u8), ("isUpdateBattleSight", PARAMDEF.DefType.u8), ("disableDark", PARAMDEF.DefType.u8) })
             erDef.Fields.Add(new PARAMDEF.Field(erDef, type, name));
         var ds3Def = new PARAMDEF { ParamType = "NPC_THINK_PARAM_ST", Fields = [] };
-        foreach (var (name, type) in new[] { ("battleGoalId", PARAMDEF.DefType.s32), ("logicId", PARAMDEF.DefType.s32), ("eye_dist", PARAMDEF.DefType.s16), ("ear_dist", PARAMDEF.DefType.s16) })
+        foreach (var (name, type) in new[] { ("battleGoalId", PARAMDEF.DefType.s32), ("logicId", PARAMDEF.DefType.s32), ("eye_dist", PARAMDEF.DefType.s16), ("ear_dist", PARAMDEF.DefType.s16),
+                     // Paramdex's DS3 names for Elden Ring's SightTargetForgetTime, ear_dist, the two halves of SoundTargetForgetTime and MemoryTargetForgetTime.
+                     ("goalID_ToCaution", PARAMDEF.DefType.f32), ("goalID_toFind", PARAMDEF.DefType.f32), ("SightTargetForgetTime", PARAMDEF.DefType.s16),
+                     ("SoundTargetForgetTime", PARAMDEF.DefType.s16), ("Unk7", PARAMDEF.DefType.f32) })
             ds3Def.Fields.Add(new PARAMDEF.Field(ds3Def, type, name));
         var erThink = new PARAM { Rows = [] };
         erThink.ApplyParamdef(erDef);
         var template = new PARAM.Row(39010000, "template", erDef);
         template["battleGoalID"]!.Value = 390000; template["logicId"]!.Value = 10000; template["eye_dist"]!.Value = (ushort)30; template["ear_dist"]!.Value = 0.5f;
+        template["SightTargetForgetTime"]!.Value = 20f; template["SoundTargetForgetTime"]!.Value = 5f; template["MemoryTargetForgetTime"]!.Value = 7f;
+        template["searchEye_dist"]!.Value = (ushort)35; template["searchEye_angY"]!.Value = (byte)20; template["isUpdateBattleSight"]!.Value = (byte)1;
         erThink.Rows.Add(template);
         var ds3Think = new PARAM { Rows = [] };
         ds3Think.ApplyParamdef(ds3Def);
@@ -205,6 +212,7 @@ public static class AiSelfTest
         {
             var r = new PARAM.Row(id, "Jailer", ds3Def);
             r["battleGoalId"]!.Value = goal; r["logicId"]!.Value = 10000; r["eye_dist"]!.Value = (short)18; r["ear_dist"]!.Value = (short)7;
+            r["goalID_ToCaution"]!.Value = 8f; r["goalID_toFind"]!.Value = 0.1f; r["SightTargetForgetTime"]!.Value = (short)0; r["SoundTargetForgetTime"]!.Value = (short)16448; r["Unk7"]!.Value = 2f;
             ds3Think.Rows.Add(r);
         }
         var chrAi = ai.Port(2230, 7071, "Jailer", ds3Think, erThink.Rows.Select(r => r.ID).ToHashSet().Contains);
@@ -214,8 +222,13 @@ public static class AiSelfTest
         var row = erThink[70719000];
         Check("AI: the think row is the template's with DS3's senses and the ported goal and logic",
             rows == 2 && row is not null && Convert.ToInt32(row["battleGoalID"]!.Value) == AiPort.FirstRemapped && Convert.ToInt32(row["logicId"]!.Value) == 10000
-            && Convert.ToInt32(row["eye_dist"]!.Value) == 18 && (float)row["ear_dist"]!.Value == 0.5f
+            && Convert.ToInt32(row["eye_dist"]!.Value) == 18
             && erThink[70719005] is { } kept && Convert.ToInt32(kept["battleGoalID"]!.Value) == 390000);
+
+        Check("AI: DS3's hearing and forget times come from the fields Paramdex's DS3 def mislabels; no Elden Ring search sight, battle sight or darkness",
+            row is not null && (float)row["ear_dist"]!.Value == 0.1f && (float)row["SightTargetForgetTime"]!.Value == 8f && (float)row["SoundTargetForgetTime"]!.Value == 3f
+            && (float)row["MemoryTargetForgetTime"]!.Value == 2f && Convert.ToInt32(row["searchEye_dist"]!.Value) == 0 && Convert.ToInt32(row["searchEye_angY"]!.Value) == 0
+            && Convert.ToInt32(row["isUpdateBattleSight"]!.Value) == 0 && Convert.ToInt32(row["disableDark"]!.Value) == 1);
 
         // The chr map carries the think rows, by DS3 row and model; the map port gives a placement its own.
         var map = EnemyPort.ChrMap.Parse(["chr\tc2230\tc7071\t70710000\t70719000\tJailer", "think\t223005\tc7071\t70719005\tJailer"]);

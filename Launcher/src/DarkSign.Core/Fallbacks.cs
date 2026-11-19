@@ -611,6 +611,8 @@ public static class Fallbacks
             new("A", "DS3's regions and map-file events (default)", "The areas DS3's events watch (boss rooms, ambush triggers, warp points), enemy patrol routes, platoons and enemy generators are carried into the map with their DS3 entity IDs."),
             new("B", "None", "The map file has no DS3 regions, patrol routes, platoons or generators (port-maps --no-regions), as every build up to 1.0.299 was: events that wait for the player to enter an area never fire and enemies don't patrol.")
                 { MapsArgs = ["--no-regions"] },
+            new("C", "Route types from the route only", "As A, but a patrol route takes only the kind DS3's route event carries, not the move type DS3 keeps on the enemy, and no enemy wanders around its spot (DARKSIGN_ENEMY_MOVE_TYPES=route), as up to 1.0.470, when enemies DS3 walks there and back walked in a loop and its wandering dogs stood still. Use when a DS3 map crashes or hangs while loading, or enemies walk off and never come back, with A.")
+                { PorterEnv = Env("DARKSIGN_ENEMY_MOVE_TYPES", "route") },
         ]),
 
         new("map-effects", "DS3 maps", "DS3's map effects (candles, fog, light shafts)", Stage.Build,
@@ -623,6 +625,16 @@ public static class Fallbacks
                 { PorterEnv = Env("DARKSIGN_OBJECT_SFX", "0") },
             new("D", "Smoke and fog effects unlit", "DS3's effects as in A, but their smoke, fog and dust are drawn unlit, at full colour whatever light they stand in (DARKSIGN_FXR_LIT=0), as builds up to 1.0.44x had them: in dark places they glow white. This goes for weapon and enemy effects too.")
                 { PorterEnv = Env("DARKSIGN_FXR_LIT", "0") },
+        ]),
+
+        new("map-bonfires", "DS3 maps", "DS3's bonfires as sites of grace", Stage.Build,
+            "Resting at a DS3 bonfire does nothing or breaks (no prompt, no menu, a crash or a hang at the bonfire or on respawn), you respawn in the wrong place, or you want DS3's bonfire without Elden Ring's golden grace light on it.",
+        [
+            new("A", "Sites of grace at DS3's bonfires (default)", "Every DS3 bonfire gets an Elden Ring site of grace where its sword stands: touch it to light it, rest to level up and refill flasks, and you respawn there. It is built exactly as Elden Ring builds its own (the grace asset, the invisible talker with the grace menu, the standing point, a BonfireWarpParam row with DS3's bonfire name), and a DS3 fire burns on the sword once it is lit. The grace's golden light shows at the sword. Report: the bonfires lines of the port-maps log."),
+            new("B", "DS3's sword is the grace", "As A, but with no Elden Ring grace asset (DARKSIGN_BONFIRES=sword): DS3's own sword in the ash is registered as the site of grace, so there is no golden light, only the DS3 fire once it is lit. Unproven: Elden Ring may expect its own grace model here.")
+                { PorterEnv = Env("DARKSIGN_BONFIRES", "sword") },
+            new("C", "Scenery", "DS3's bonfires can't be used (DARKSIGN_BONFIRES=0), as every build up to 1.0.46x had them: you respawn at your last Elden Ring grace.")
+                { PorterEnv = Env("DARKSIGN_BONFIRES", "0") },
         ]),
 
         new("map-water", "DS3 maps", "Water in the DS3 maps", Stage.Build,
@@ -679,6 +691,10 @@ public static class Fallbacks
                 { PorterEnv = Env("DARKSIGN_PEOPLE_WEAPONS", "0") },
             new("F", "DS3 armour hides the body like a closed helm", "As A, but every DS3 armour piece hides the body like the most common Elden Ring piece of its slot (DARKSIGN_PEOPLE_HIDES=common), as up to 1.0.42x, where open helms such as Hawkwood's Chain Helm hid his head. Try it if hair, a face or skin pokes through a person's DS3 armour with A.")
                 { PorterEnv = Env("DARKSIGN_PEOPLE_HIDES", "common") },
+            new("G", "Silent people", "As A, but DS3's people have no talk script, as up to 1.0.47x: nobody can be talked to and there are no DS3 shops (DARKSIGN_PEOPLE_TALK=0). Try it if a DS3 map crashes or hangs while loading or when you walk up to or talk to a DS3 person, or a talk menu can't be closed.")
+                { PorterEnv = Env("DARKSIGN_PEOPLE_TALK", "0") },
+            new("H", "No people with their own bodies", "As A, but DS3's people with a body of their own (Fire Keeper, Andre, the Shrine Handmaid, Ludleth, Yoel, Emma, the Painting Woman, the Corvian settlers) are not ported and are left out of the maps, as up to 1.0.47x (DARKSIGN_PEOPLE_BODIES=0). Try it if one of them crashes the game, attacks you, T-poses or is a mess of stretched polygons.")
+                { PorterEnv = Env("DARKSIGN_PEOPLE_BODIES", "0") },
         ]),
 
         new("enemy-port", "DS3 maps", "How DS3's enemies and bosses are ported", Stage.Build,
@@ -765,6 +781,8 @@ public static class Fallbacks
                 { PorterEnv = Env("DARKSIGN_ENEMY_SCRIPT_MARKERS", "keep") },
             new("J", "The template's borrowed clips", "As A, but a DS3 waiting pose, getting-up move, map-script move or attack gets no clip of its own where the Elden Ring template's move of that number plays another move's clip, and is added only next to a template move with a clip of its own (DARKSIGN_ENEMY_OWN_POSES=0), as up to 1.0.460, when the High Wall's kneeling Hollow Soldiers stood up and fought at once instead of waiting until hit. Use when a ported enemy stands in a T-pose, freezes or the game crashes as a map starts with A.")
                 { PorterEnv = Env("DARKSIGN_ENEMY_OWN_POSES", "0") },
+            new("K", "The template's senses", "As A, but a ported enemy keeps the Elden Ring template's hearing, forget times, long-range search sight and in-battle sight (DARKSIGN_ENEMY_SENSES=template), as up to 1.0.470, when enemies built on a far-sighted template (35 m on the Giant Beast Skeleton) came from much further away than DS3's 13 to 15 m. Use when ported enemies ignore you until hit, or forget you at once, with A.")
+                { PorterEnv = Env("DARKSIGN_ENEMY_SENSES", "template") },
         ]),
         new("enemy-glow", "DS3 maps", "Ported DS3 enemies' glows", Stage.Build,
             "A ported DS3 enemy's glow is the wrong colour or missing (the Jailer's lantern, Pontiff Sulyvahn's swords, the Soul of Cinder), a part of it glows far too brightly or draws black, or the game crashes or hangs loading a ported enemy that glows.",

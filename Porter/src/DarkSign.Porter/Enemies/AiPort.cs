@@ -992,6 +992,8 @@ public sealed class AiPort
                     catch (Exception e) when (e is InvalidCastException or OverflowException or FormatException) { }
                 }
             }
+            if (Ds3Senses && ds3Think?[t.Ds3Think] is { } senses)
+                ApplySenses(row, senses);
             if (t.Battle is { } battle)
                 SetInt(row, "battleGoalID", battle);
             if (t.Logic is { } logic)
@@ -1001,6 +1003,54 @@ public sealed class AiPort
         }
         erThink.Rows.Sort((a, b) => a.ID.CompareTo(b.ID));
         return added;
+    }
+
+    /// <summary>
+    /// Fallback enemy-ai K: DARKSIGN_ENEMY_SENSES=template keeps the template's hearing, forget times and Elden Ring's
+    /// search sight on ported think rows, as up to 1.0.470.
+    /// </summary>
+    public static bool Ds3Senses => Environment.GetEnvironmentVariable("DARKSIGN_ENEMY_SENSES")?.Trim().ToLowerInvariant() != "template";
+
+    /// <summary>
+    /// The senses the copy by name misses ("aggro can be pulled from a long ways away", 1.0.470). Read from both
+    /// games' real rows (749 DS3, 2,215 Elden Ring):
+    /// <list type="bullet">
+    /// <item>Paramdex's DS3 def mislabels four fields. Its f32 "goalID_ToCaution" holds 8 / 9999 / 5 / 7 where Elden
+    /// Ring's SightTargetForgetTime (same place in the row, after BackHomeLife_OnHitEneWal) holds 8 / 9999 / 15 / 20;
+    /// its f32 "goalID_toFind" holds 0.1 in 698 rows where Elden Ring's ear_dist holds 0.1 in 2,154; its two s16
+    /// "SightTargetForgetTime" + "SoundTargetForgetTime" are one f32 (0 + 16448 = 3.0, 15360 + 17948 = 9999.0), Elden
+    /// Ring's SoundTargetForgetTime; and its last f32 "Unk7" holds 2 / 5 / 9999 as Elden Ring's
+    /// MemoryTargetForgetTime does. None of them reached the ported row, which kept its template's.</item>
+    /// <item>Elden Ring has a second, "search" sight DS3 has not (searchEye_dist, up to 35 m on the Giant Beast
+    /// Skeleton that 29 ported rows are built on): an enemy that sees the player inside it walks over to look. A
+    /// ported row has none (500 Elden Ring rows have 0 too), nor Elden Ring's wider sight once in battle
+    /// (isUpdateBattleSight), and its sight is not cut by darkness (DS3's eyeDist_ForDark is 0 in every row).</item>
+    /// </list>
+    /// </summary>
+    public static void ApplySenses(PARAM.Row row, PARAM.Row ds3)
+    {
+        float? Ds3Float(string name) => Cell(ds3, name)?.Value is float f && float.IsFinite(f) ? f : null;
+        if (Ds3Float("goalID_ToCaution") is { } sight and >= 0)
+            SetCell(row, "SightTargetForgetTime", sight);
+        if (Ds3Float("goalID_toFind") is { } ear and >= 0)
+            SetCell(row, "ear_dist", ear);
+        if (Cell(ds3, "SightTargetForgetTime")?.Value is short low && Cell(ds3, "SoundTargetForgetTime")?.Value is short high
+            && BitConverter.Int32BitsToSingle((ushort)low | (high << 16)) is var sound && float.IsFinite(sound) && sound >= 0)
+            SetCell(row, "SoundTargetForgetTime", sound);
+        if (Ds3Float("Unk7") is { } memory and >= 0)
+            SetCell(row, "MemoryTargetForgetTime", memory);
+        foreach (var name in new[] { "searchEye_dist", "searchEye_angX", "searchEye_angY", "isUpdateBattleSight", "battleEye_updateDist", "battleEye_updateAngX", "battleEye_updateAngY" })
+            SetCell(row, name, 0);
+        SetCell(row, "disableDark", 1);
+    }
+
+    private static PARAM.Cell? Cell(PARAM.Row row, string name) =>
+        row.Cells.FirstOrDefault(c => c.Def.InternalName.Equals(name, StringComparison.OrdinalIgnoreCase));
+
+    private static void SetCell(PARAM.Row row, string name, double value)
+    {
+        if (Cell(row, name) is { Value: not byte[] } cell)
+            cell.Value = System.Convert.ChangeType(value, cell.Value.GetType(), System.Globalization.CultureInfo.InvariantCulture);
     }
 
     private static bool IsDecimal(object? v) => v is float or double;

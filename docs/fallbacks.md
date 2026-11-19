@@ -506,6 +506,7 @@ Try the next option if: A DS3 map crashes or hangs while loading since regions w
 
 - **A: DS3's regions and map-file events (default).** The areas DS3's events watch (boss rooms, ambush triggers, warp points), enemy patrol routes, platoons and enemy generators are carried into the map with their DS3 entity IDs.
 - **B: None.** The map file has no DS3 regions, patrol routes, platoons or generators (port-maps --no-regions), as every build up to 1.0.299 was: events that wait for the player to enter an area never fire and enemies don't patrol. (`port-maps --no-regions`)
+- **C: Route types from the route only.** As A, but a patrol route takes only the kind DS3's route event carries, not the move type DS3 keeps on the enemy, and no enemy wanders around its spot (DARKSIGN_ENEMY_MOVE_TYPES=route), as up to 1.0.470, when enemies DS3 walks there and back walked in a loop and its wandering dogs stood still. Use when a DS3 map crashes or hangs while loading, or enemies walk off and never come back, with A. (`DARKSIGN_ENEMY_MOVE_TYPES=route`)
 
 ### DS3's map effects (candles, fog, light shafts) (`map-effects`, rebuilds the content)
 
@@ -515,6 +516,14 @@ Try the next option if: A DS3 map crashes, hangs while loading or hitches since 
 - **B: None.** The DS3 maps have none of DS3's map effects (DARKSIGN_MAP_SFX=0), as every build up to 1.0.366 was. (`DARKSIGN_MAP_SFX=0`)
 - **C: Region effects only.** DS3's fog, light shafts and other placed effects as in A, but no flames on objects (DARKSIGN_OBJECT_SFX=0): candles and torches stand unlit, as builds up to 1.0.44x had them. (`DARKSIGN_OBJECT_SFX=0`)
 - **D: Smoke and fog effects unlit.** DS3's effects as in A, but their smoke, fog and dust are drawn unlit, at full colour whatever light they stand in (DARKSIGN_FXR_LIT=0), as builds up to 1.0.44x had them: in dark places they glow white. This goes for weapon and enemy effects too. (`DARKSIGN_FXR_LIT=0`)
+
+### DS3's bonfires as sites of grace (`map-bonfires`, rebuilds the content)
+
+Try the next option if: Resting at a DS3 bonfire does nothing or breaks (no prompt, no menu, a crash or a hang at the bonfire or on respawn), you respawn in the wrong place, or you want DS3's bonfire without Elden Ring's golden grace light on it.
+
+- **A: Sites of grace at DS3's bonfires (default).** Every DS3 bonfire gets an Elden Ring site of grace where its sword stands: touch it to light it, rest to level up and refill flasks, and you respawn there. It is built exactly as Elden Ring builds its own (the grace asset, the invisible talker with the grace menu, the standing point, a BonfireWarpParam row with DS3's bonfire name), and a DS3 fire burns on the sword once it is lit. The grace's golden light shows at the sword. Report: the bonfires lines of the port-maps log.
+- **B: DS3's sword is the grace.** As A, but with no Elden Ring grace asset (DARKSIGN_BONFIRES=sword): DS3's own sword in the ash is registered as the site of grace, so there is no golden light, only the DS3 fire once it is lit. Unproven: Elden Ring may expect its own grace model here. (`DARKSIGN_BONFIRES=sword`)
+- **C: Scenery.** DS3's bonfires can't be used (DARKSIGN_BONFIRES=0), as every build up to 1.0.46x had them: you respawn at your last Elden Ring grace. (`DARKSIGN_BONFIRES=0`)
 
 ### Water in the DS3 maps (`map-water`, rebuilds the content)
 
@@ -558,6 +567,8 @@ Try the next option if: A DS3 map crashes or hangs while loading since people we
 - **D: DS3's own bodies only, no DS3 armour.** As builds 1.0.354-1.0.366: only DS3 characters with a body of their own stand; DS3's humans are left out (DARKSIGN_PEOPLE_ARMOUR=0). Try it if a person in DS3 armour crashes the game, is invisible or is a mess of stretched polygons. (`DARKSIGN_PEOPLE_ARMOUR=0`)
 - **E: DS3 armour, the stand-in's weapons.** As A, but DS3's humans hold the weapons of the Elden Ring person who stands in for them (DARKSIGN_PEOPLE_WEAPONS=0), as up to 1.0.403. Try it if a person holding a ported DS3 weapon crashes the game, T-poses or stands still. (`DARKSIGN_PEOPLE_WEAPONS=0`)
 - **F: DS3 armour hides the body like a closed helm.** As A, but every DS3 armour piece hides the body like the most common Elden Ring piece of its slot (DARKSIGN_PEOPLE_HIDES=common), as up to 1.0.42x, where open helms such as Hawkwood's Chain Helm hid his head. Try it if hair, a face or skin pokes through a person's DS3 armour with A. (`DARKSIGN_PEOPLE_HIDES=common`)
+- **G: Silent people.** As A, but DS3's people have no talk script, as up to 1.0.47x: nobody can be talked to and there are no DS3 shops (DARKSIGN_PEOPLE_TALK=0). Try it if a DS3 map crashes or hangs while loading or when you walk up to or talk to a DS3 person, or a talk menu can't be closed. (`DARKSIGN_PEOPLE_TALK=0`)
+- **H: No people with their own bodies.** As A, but DS3's people with a body of their own (Fire Keeper, Andre, the Shrine Handmaid, Ludleth, Yoel, Emma, the Painting Woman, the Corvian settlers) are not ported and are left out of the maps, as up to 1.0.47x (DARKSIGN_PEOPLE_BODIES=0). Try it if one of them crashes the game, attacks you, T-poses or is a mess of stretched polygons. (`DARKSIGN_PEOPLE_BODIES=0`)
 
 ### How DS3's enemies and bosses are ported (`enemy-port`, rebuilds the content)
 
@@ -618,6 +629,7 @@ Try the next option if: Ported DS3 enemies stand still, never attack, repeat one
 - **H: Each character's own AI rows only.** As A, but a DS3 enemy that DS3 places with another family's AI (the Cemetery of Ash hollows run the Hollow Soldiers' rows) gets its own character's first AI row instead of that family's (DARKSIGN_ENEMY_SHARED_THINK=0), as up to 1.0.417, when those hollows circled the player without attacking. Use when a ported enemy freezes or the game crashes when it notices you with A. (`DARKSIGN_ENEMY_SHARED_THINK=0`)
 - **I: Map-script AI markers on the enemy row.** As A, but the markers DS3's map scripts put on an enemy only to steer its AI (Ariandel's wolves get one when their pack leader is gone) are on its enemy row from the start (DARKSIGN_ENEMY_SCRIPT_MARKERS=keep), as in 1.0.442, when Ariandel's wolf only circled and never attacked. Use when a ported enemy behaves worse than in 1.0.442. (`DARKSIGN_ENEMY_SCRIPT_MARKERS=keep`)
 - **J: The template's borrowed clips.** As A, but a DS3 waiting pose, getting-up move, map-script move or attack gets no clip of its own where the Elden Ring template's move of that number plays another move's clip, and is added only next to a template move with a clip of its own (DARKSIGN_ENEMY_OWN_POSES=0), as up to 1.0.460, when the High Wall's kneeling Hollow Soldiers stood up and fought at once instead of waiting until hit. Use when a ported enemy stands in a T-pose, freezes or the game crashes as a map starts with A. (`DARKSIGN_ENEMY_OWN_POSES=0`)
+- **K: The template's senses.** As A, but a ported enemy keeps the Elden Ring template's hearing, forget times, long-range search sight and in-battle sight (DARKSIGN_ENEMY_SENSES=template), as up to 1.0.470, when enemies built on a far-sighted template (35 m on the Giant Beast Skeleton) came from much further away than DS3's 13 to 15 m. Use when ported enemies ignore you until hit, or forget you at once, with A. (`DARKSIGN_ENEMY_SENSES=template`)
 
 ### Ported DS3 enemies' glows (`enemy-glow`, rebuilds the content)
 

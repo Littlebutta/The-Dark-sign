@@ -266,8 +266,9 @@ public static class EnemyPort
     public static Result Place(MSB3 ds3, MSBE msb, MapId ds3Id, MapId erId, MsbPort.Options options, Chooser chooser,
         Func<MSB3.Part.Enemy, Ds3Enemy> describe, MSBE.Part.Enemy? fallbackTemplate = null, List<string>? table = null,
         Dictionary<string, string>? partNames = null, People? people = null, IReadOnlyDictionary<string, Seat>? seats = null,
-        bool placePeople = true, PeopleArmour? armour = null, bool erStandIns = true)
+        bool placePeople = true, PeopleArmour? armour = null, bool erStandIns = true, TalkPort? talk = null)
     {
+        int talking = 0;
         int dressed = 0, borrowedBefore = chooser.BorrowedThinks;
         int placed = 0, ported = 0, standIns = 0, npcs = 0, skipped = 0, peoplePlaced = 0, seated = 0, sameSeat = 0;
         var takenSeats = new List<Vector3>();
@@ -352,7 +353,10 @@ public static class EnemyPort
             part.ModelName = who.Model;
             part.NPCParamID = who.NpcParam;
             part.ThinkParamID = chooser.ThinkFor(who, src.ThinkParamID);
-            part.TalkID = 0;
+            // DS3's own talk script, converted (TalkPort); a person whose script can't be converted stays silent.
+            part.TalkID = what.Npc && talk is not null ? talk.For(ds3Id, src.TalkID) : 0;
+            if (part.TalkID > 0)
+                talking++;
             part.PlatoonID = src.PlatoonID;
             // An Elden Ring person keeps the look of the placement it was copied from; anything else has none.
             if (!(what.Npc && who.Source != "ported DS3 character"))
@@ -364,7 +368,11 @@ public static class EnemyPort
                 part.CharaInitID = look;
                 dressed++;
             }
-            part.WalkRouteName = ""; // DS3 patrol routes need the map's regions, which aren't ported yet
+            part.WalkRouteName = ""; // DS3's route is given by RegionPort, once the map's regions are in
+            // A ported DS3 character is placed on a copy of some Elden Ring enemy's placement: the effects that
+            // placement adds (an ambusher's waiting pose, a sleeper) are that enemy's, not this one's.
+            if (who.Source == "ported DS3 character")
+                Array.Clear(part.SpEffectSetParamID);
             part.BackupEventAnimID = -1;
             part.CollisionPartName = collisions.Contains(src.CollisionName ?? "") ? src.CollisionName : "";
             if (seat is not null)
@@ -390,7 +398,7 @@ public static class EnemyPort
             if (what.Npc)
             {
                 peoplePlaced++;
-                var key = $"{what.Name} -> {who.Name}{(src.TalkID > 0 ? " (silent)" : " (hostile)")}";
+                var key = $"{what.Name} -> {who.Name}{(part.TalkID > 0 ? $" (talks, t{src.TalkID})" : src.TalkID > 0 ? " (silent)" : " (hostile)")}";
                 peopleUse[key] = peopleUse.GetValueOrDefault(key) + 1;
             }
             else if (who.Source == "ported DS3 character")
@@ -420,6 +428,8 @@ public static class EnemyPort
             notes.Add("people: " + string.Join("; ", peopleUse.OrderBy(s => s.Key, StringComparer.Ordinal).Take(30).Select(s => $"{s.Key} x{s.Value}")));
         if (dressed > 0)
             notes.Add($"people: {dressed} DS3 people wear their DS3 armour (CharaInit {PeopleArmour.CharaInitBase}+, on an Elden Ring person's face and AI)");
+        if (talking > 0)
+            notes.Add($"people: {talking} DS3 people have their DS3 talk script (TalkID {TalkPort.TalkIdBase}+)");
         if (chooser.BorrowedThinks > borrowedBefore)
             notes.Add($"AI: {chooser.BorrowedThinks - borrowedBefore} placements run a DS3 think row ported with another character (DS3 places them with that family's AI)");
         return new Result(placed, ported, standIns, npcs, skipped, notes, peoplePlaced);

@@ -409,6 +409,9 @@ public static partial class MovesetPort
                     {
                         notes.Add($"object effects: not read ({e.GetType().Name}: {e.Message}); objects get no DS3 effects");
                     }
+                // The flame of a lit bonfire (Bonfires): DS3 lights them in the engine, so no row asks for it.
+                if (Maps.Bonfires.Mode != Maps.Bonfires.Method.Off)
+                    mapEffects.Add(Maps.Bonfires.FlameEffect);
                 notes.ForEach(Console.WriteLine);
                 wantedEffects.UnionWith(mapEffects);
             }
