@@ -488,6 +488,10 @@ public static class MapPorter
             Step(report, "events", () => MapEvents.Port(ctx, ds3, er, ported.Select(p => p.Slot).ToList(), cutscenes, f => playedFlags = f, music));
         if (music is not null)
             Step(report, "music", () => MapMusic.WriteAudio(ctx, ds3, music));
+        // DS3's bonfires as sites of grace (Bonfires): after the events, whose scripts register them.
+        if (ported.Count > 0)
+            Step(report, "bonfires", () => Bonfires.Apply(ctx, ds3, er, ported.Select(p => p.Slot).ToList(),
+                id => _partNames.GetValueOrDefault(id), options.AllLayers));
 
         // A slot under a registered ID that ships no map (map-slots B) gets what the game's own maps have: the
         // template's per-map files under the new ID, and a flag allocation line where the template has one. The map

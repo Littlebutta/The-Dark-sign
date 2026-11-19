@@ -299,14 +299,16 @@ public partial class MainWindow : Window
     /// <summary>
     /// A save left inside a ported DS3 map crashes on every load (the game loads the map before any event runs). This
     /// starts the game once with the ported maps hidden (SaveRescue), so the save lands in the game's own colosseum
-    /// arena under the same map ID; from there Ctrl+Shift+F2 (or dying) gets the player back to Elden Ring.
+    /// arena under the same map ID; from there Ctrl+Shift+F2 gets the player back to Elden Ring (dying does too, unless the
+    /// character last rested at a DS3 bonfire, which is a site of grace now: Porter Maps/Bonfires).
     /// </summary>
     private async void OnRescueSave(object sender, RoutedEventArgs e)
     {
         var answer = MessageBox.Show(this,
             "Use this when a character crashes the game every time it loads, because it was saved inside a Dark Souls III map.\n\n" +
             "Elden Ring starts once with the DS3 maps hidden, so the save loads the game's own arena under that map ID instead. " +
-            "Load the character, then press Ctrl+Shift+F2 (Leave DS3 run) to warp to Roundtable Hold, or let the character fall and respawn at its last grace. " +
+            "Load the character, then press Ctrl+Shift+F2 (Leave DS3 run) to warp to Roundtable Hold. " +
+            "(Dying only gets it back to Elden Ring if it last rested at an Elden Ring grace: a character that rested at a DS3 bonfire respawns there.) " +
             "Quit the game, then press PLAY as usual: the maps are put back before every normal launch.\n\n" +
             "A character saved in a spare-map-ID slot (the Painted World in m19_70, or map-slots method B) should land in the small map the game ships under that ID.\n\n" +
             "Start Elden Ring in rescue mode now?",
@@ -436,7 +438,7 @@ public partial class MainWindow : Window
             var methods = Fallbacks.Summary(_settings.Methods);
             SetStatus(rescue
                 ? "Launched Elden Ring in rescue mode: the DS3 maps are hidden for this launch. Load the stuck character, press Ctrl+Shift+F2 " +
-                  "(Leave DS3 run) or let it respawn at a grace, quit, then press PLAY as usual to put the maps back."
+                  "(Leave DS3 run), quit, then press PLAY as usual to put the maps back."
                 : $"Launched Elden Ring{(tweaks.ModEngine2 ? " (ModEngine2)" : "")}. Saves: {plan.SaveDirectory}" +
                 (methods.Length > 0 ? $". Fallback methods: {methods}" : "") +
                 (seamless is not null ? $". Seamless Co-op is on (mod code {CoopCheckCode(setup) ?? "?"})" : "") +

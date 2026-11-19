@@ -5,8 +5,8 @@ namespace DarkSign.Core;
 /// and loads it before any event script runs, so a save left in a ported map (the colosseum slots m45_00-02, or the
 /// spare-ID slots of map-slots B) crashes on every load until that map loads again. "Rescue save" starts the game once with
 /// the ported maps hidden (moved out of the mod folder): the save then loads the game's own colosseum arena under
-/// the same map ID, the player falls or rests back to an Elden Ring grace, and Ctrl+Shift+F2 (Leave DS3 run) warps
-/// them to Roundtable Hold. The next normal PLAY or rebuild puts the files back first (<see cref="Restore"/>).
+/// the same map ID, and Ctrl+Shift+F2 (Leave DS3 run) warps the player to Roundtable Hold (falling to their death gets
+/// them to an Elden Ring grace only if they last rested at one: DS3 bonfires are sites of grace now). The next normal PLAY or rebuild puts the files back first (<see cref="Restore"/>).
 ///
 /// Only the slot layouts (msb) and the map folders (models, textures, collision, navmesh) are moved. The slots' event
 /// scripts stay: port-maps writes an empty script for each slot so the game's own colosseum events never run, and
