@@ -667,6 +667,10 @@ public static class Fallbacks
                 { PorterEnv = Env("DARKSIGN_ENEMY_PORT", "model") },
             new("C", "Elden Ring bodies with DS3 stats", "No new models: each DS3 character is the closest Elden Ring enemy with DS3's name, HP and souls (DARKSIGN_ENEMY_PORT=stats). Use when ported models crash or don't show.")
                 { PorterEnv = Env("DARKSIGN_ENEMY_PORT", "stats") },
+            new("D", "Elden Ring bodies where no enemy fits", "As A, but a DS3 character whose skeleton shares under a quarter of its bones with every Elden Ring enemy is not ported: it is the closest Elden Ring enemy with DS3's name, HP and souls (DARKSIGN_ENEMY_MIN_BONES=0.25), as up to 1.0.479, where the Dancer of the Boreal Valley was a Red Wolf of Radagon and Aldrich an Ulcerated Tree Spirit. Try it if the Dancer, Aldrich, the Curse-rotted Greatwood, a Crystal Sage, an Ancient Wyvern, a Giant Slave or a Tree Woman crashes the game, can't be hit or doesn't move.")
+                { PorterEnv = Env("DARKSIGN_ENEMY_MIN_BONES", "0.25") },
+            new("E", "Enemies without moves of their own keep the template's", "As A, but a DS3 character whose animation file holds no moves of its own (Undead Clerics, the Devout of the Deep, Sage's Prentices, the Irithyll Dog) keeps every animation of its Elden Ring template (DARKSIGN_ENEMY_SHARED_MOVES=0), as up to 1.0.479, instead of the moves of the DS3 character with the same skeleton (Hollow Soldier, Undead Dog). Try it if those enemies crash the game, T-pose or stretch.")
+                { PorterEnv = Env("DARKSIGN_ENEMY_SHARED_MOVES", "0") },
             new("off", "Off (plain stand-ins)", "No enemy port: the DS3 maps use Elden Ring enemies of the same kind as stand-ins (DARKSIGN_ENEMY_PORT=0).")
                 { PorterEnv = Env("DARKSIGN_ENEMY_PORT", "0") },
         ]),
