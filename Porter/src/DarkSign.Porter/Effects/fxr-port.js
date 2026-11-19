@@ -1,5 +1,5 @@
 // DarkSign porter adapter for @cccode/fxr: reads a DS3 effect, renumbers it and its resources, writes it for Elden Ring.
-import { FXR, Game, ProxyNode, GenericNode, NodeType, Action, SFXReference, BasicNode, BillboardEx, NodeSound } from './fxr.js';
+import { FXR, Game, ProxyNode, GenericNode, NodeType, Action, SFXReference, BasicNode, BillboardEx, NodeSound, BlendMode, LightingMode } from './fxr.js';
 
 export function inspect(bytes) {
   const fxr = FXR.read(bytes, Game.DarkSouls3);
@@ -38,6 +38,15 @@ export function convert(bytes, newId, mapJson) {
     for (const node of fxr.root.walk())
       for (const audio of audios(node))
         if (audio.unk_ds3_f1_2 === true && !held[audio.sound]) audio.unk_ds3_f1_2 = false;
+  // DS3's billboards have no lighting field; Elden Ring's do, and an effect that doesn't set it is drawn unlit: at
+  // its full colour whatever light it stands in. DS3's smoke and fog cards then glowed white in dark places (the
+  // white blob in map 2's courtyards: m30's fog cards f830050/f830202, 5 m wide, drawn at 0.88 white). Elden Ring
+  // lights most of its own billboards that blend like smoke (Normal and Unk6: 3,754 of 4,881 in its common effects,
+  // 3,431 of them with lighting -2) and leaves the additive ones (glows, sparks, fire) unlit (3,835 of 4,090). With
+  // map.lit, DS3's Normal and Unk6 billboards get -2 the same way; additive ones stay unlit.
+  if (map.lit?.all)
+    for (const action of fxr.root.walkActions())
+      if (action instanceof BillboardEx && smokeBlend(action.blendMode)) action.lighting = LightingMode.UnkMinus2;
   fxr.root.remapResources((type, resource) => map[type]?.[resource] ?? resource);
   const sfx = map.sfx ?? {};
   for (const node of fxr.root.walk()) {
@@ -52,11 +61,17 @@ export function convert(bytes, newId, mapJson) {
   return new Uint8Array(fxr.toArrayBuffer(Game.EldenRing));
 }
 
+// A billboard blend mode that layers like smoke (Normal, or Unk6, which looks the same) rather than adding light.
+function smokeBlend(blendMode) {
+  const mode = typeof blendMode === 'number' ? blendMode : blendMode?.value;
+  return mode === BlendMode.Normal || mode === BlendMode.Unk6;
+}
+
 // For the self-tests: a small DS3 effect that draws one billboard with a texture and, with child > 0, plays another
 // effect. With sound > 0 the billboard's node holds that sound (action 75 with its flag set).
-export function sample(id, child, texture, sound = 0) {
+export function sample(id, child, texture, sound = 0, blendMode = BlendMode.Normal) {
   const fxr = new FXR(id);
-  const actions = [new BillboardEx({ texture })];
+  const actions = [new BillboardEx({ texture, blendMode })];
   if (sound > 0) actions.push(new NodeSound({ sound, unk_ds3_f1_2: true }));
   fxr.root.nodes.push(new BasicNode(actions));
   if (child > 0) fxr.root.nodes.push(new ProxyNode(child));
@@ -67,4 +82,9 @@ export function sample(id, child, texture, sound = 0) {
 export function soundsOfConverted(bytes) {
   const all = [...FXR.read(bytes, Game.EldenRing).root.walk()].flatMap(audios).filter(a => a.sound > 0);
   return JSON.stringify({ held: all.filter(a => a.unk_ds3_f1_2 === true).map(a => a.sound), sounds: all.map(a => a.sound) });
+}
+
+// For the self-tests: the lighting mode of each billboard of a converted (Elden Ring) effect.
+export function lightingOfConverted(bytes) {
+  return JSON.stringify([...FXR.read(bytes, Game.EldenRing).root.walkActions()].filter(a => a instanceof BillboardEx).map(a => a.lighting));
 }

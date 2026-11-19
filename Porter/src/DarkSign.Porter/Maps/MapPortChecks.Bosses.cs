@@ -12,6 +12,7 @@ public static partial class MapPortChecks
         yield return ("boss arenas: found from DS3's boss fight calls, named, landing in the arena, with the fight's own events", BossArenaFind);
         yield return ("boss arenas: placed only where the boss was placed, with a fresh arrival point, IDs moved to the slot", BossArenaPlace);
         yield return ("boss arenas: the warp event resets the fight, warps, waits for the map and begins the fight", BossArenaEvents);
+        yield return ("boss arenas: a boss shown only once the player walks through its intro area (Vordt) is warped to in that area", BossArenaIntro);
         foreach (var check in KitChecks())
             yield return check;
     }
@@ -171,5 +172,44 @@ public static partial class MapPortChecks
         var plain = common.Events.Single(e => e.ID == BossArenas.EventId(3)).Instructions;
         Expect(plain.Count(i => i.Bank == 2003 && i.ID == 66 && BitConverter.ToUInt32(i.ArgData, 4) == 0) == 0, "no flag 0 for a fight without a first encounter");
         Expect(plain.Any(i => i.Bank == 2003 && i.ID == 66 && BitConverter.ToUInt32(i.ArgData, 4) == 45005835 && i.ArgData[8] == 1), "still sets the entry flag");
+    }
+
+    // Vordt's 13005810 in miniature: reads the first-encounter flag once, waits for the player in the gate box, then
+    // turns the flag on (DS3 shows Vordt there, after the intro cutscene).
+    private static EMEVD VordtLikeScript(bool turnsOn = true, int area = 4002815)
+    {
+        var script = FriedeLikeScript();
+        var appear = new EMEVD.Event(14005810, EMEVD.Event.RestBehaviorType.Restart);
+        appear.Instructions.Add(RunEvents.Make(1003, 101, (byte)1, (byte)1, (byte)0, 14000801));
+        appear.Instructions.Add(RunEvents.Make(3, 2, (sbyte)1, (byte)1, 10000, area, 1));
+        appear.Instructions.Add(RunEvents.Make(0, 0, (sbyte)0, (byte)1, (sbyte)1));
+        if (turnsOn)
+            appear.Instructions.Add(RunEvents.Make(2003, 62, 14000801, (byte)1));
+        script.Events.Add(appear);
+        return script;
+    }
+
+    private static void BossArenaIntro()
+    {
+        var ds3 = FriedeLike();
+        ds3.Regions.Add(new MSB3.Region.Event { Name = "gate box", EntityID = 4002815, Position = new Vector3(-200, 20, -250), Shape = new MSB.Shape.Box(6, 6, 24) });
+        var f = BossArenas.Find(ds3, VordtLikeScript(), Ds3Id)[0];
+        Expect(f.IntroArea == 4002815, $"the gate box is the intro area: {f.IntroArea}");
+        Expect(f.Point == new Vector3(-200, 21.5f, -250) && f.PointFrom.StartsWith("intro "), $"lands in the gate box: {f.Point} ({f.PointFrom})");
+        Expect(BossArenas.IntroArea(VordtLikeScript(), 14000801, 4002800) == 4002815, "found directly");
+        Expect(BossArenas.Find(ds3, VordtLikeScript(turnsOn: false), Ds3Id)[0] is { IntroArea: 0 } plain && plain.Point == new Vector3(-200, 27.5f, -230),
+            "an event that doesn't turn the first encounter on is not an intro");
+        Expect(BossArenas.IntroArea(VordtLikeScript(area: 4002800), 14000801, 4002800) == 0, "waiting in the fight's own area is not an intro");
+        Expect(BossArenas.IntroArea(VordtLikeScript(), 0, 4002800) == 0, "no first-encounter flag, no intro");
+
+        // The warp then clears the first encounter before it lands and leaves it, and the entry flag, to the map's event.
+        var common = SyntheticCommon();
+        var arena = new BossArenas.Arena(Ds3Id, ErId, "Test map", "Vordt", 45000800, 45005805, 45000801, [], 45009970) { Index = 1, LandsAtIntro = true };
+        BossArenas.AddWarps(common, [arena]);
+        var ins = EMEVD.Read(common.Write()).Events.Single(e => e.ID == BossArenas.EventId(1)).Instructions;
+        int Flag(uint flag, byte state) => ins.FindIndex(i => i.Bank == 2003 && i.ID == 66 && BitConverter.ToUInt32(i.ArgData, 4) == flag && i.ArgData[8] == state);
+        int warp = ins.FindIndex(i => i.Bank == 2003 && i.ID == 14);
+        Expect(Flag(45000801, 0) is >= 0 and var off && off < warp, "the first encounter is cleared before the warp");
+        Expect(Flag(45000801, 1) < 0 && Flag(45005805, 1) < 0, "neither the first encounter nor the entry flag is set by the warp");
     }
 }

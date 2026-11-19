@@ -46,6 +46,8 @@ public static partial class MapPortChecks
             yield return check;
         foreach (var check in CoverageChecks())
             yield return check;
+        foreach (var check in MusicChecks())
+            yield return check;
         yield return ("validate: layout checks catch a missing start point and parts without models", ValidateLayout);
         yield return ("validate: run event checks pass on ported events and catch a missing one", ValidateEvents);
         yield return ("rebuild: a full run deletes port-maps' own old outputs (both slot methods) and keeps the other steps' files", CleanStale);
@@ -418,6 +420,15 @@ public static partial class MapPortChecks
         Expect(MapCollisions.ModelNumberOf("h40_00_00_00_000100.hkx.dcx") == "000100", "collision model number");
         Expect(MapPorter.ModelNumber("h000100") == "000100" && MapPorter.ModelNumber("m000100") == "000100", "msb model number");
         Expect(MapTextures.TextureNameOf(@"N:\x\m40_00_wall_a.tpf.dcx") == "m40_00_wall_a", "texture name");
+        // Textures borrowed from a character or an object: looked up in that character's or object's binders.
+        var files = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+            { "/chr/c1399.chrbnd.dcx", "/chr/c1399.texbnd.dcx", "/chr/c1399_l.texbnd.dcx", "/obj/o459050.objbnd.dcx", "/obj/o002410.objbnd.dcx", "/obj/o309100.objbnd.dcx" };
+        string Sources(string name) => string.Join(" ", MapTextures.BorrowSources(name, files.Contains, files));
+        Expect(Sources("c1399_a") == "/chr/c1399.texbnd.dcx /chr/c1399.chrbnd.dcx", $"a character's texture: {Sources("c1399_a")}");
+        Expect(Sources("c1390_knife_a") == "", "a character with no binders gives nothing");
+        Expect(Sources("o459050_bowl_a") == "/obj/o459050.objbnd.dcx" && Sources("o2410_a") == "/obj/o002410.objbnd.dcx", "an object's texture, short numbers padded");
+        Expect(Sources("m30_00_o309100_roof_section_01_a") == "/obj/o309100.objbnd.dcx", "an area-prefixed object texture");
+        Expect(Sources("m45_00_wall_a") == "" && Sources("SYSTEX_DummyNormal") == "", "map and system textures borrow nothing");
         Expect(MapPorter.ModParts("/map/m45/x.tpfbhd").SequenceEqual(["map", "m45", "x.tpfbhd"]), "mod parts");
     }
 

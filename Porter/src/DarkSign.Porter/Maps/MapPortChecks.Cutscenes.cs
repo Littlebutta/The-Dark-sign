@@ -14,7 +14,11 @@ public static partial class MapPortChecks
         yield return ("cutscenes: sound events become Elden Ring's kind 135 form with the cutscene's own IDs; armour to seType 15, speech to its voice", CutsceneSoundEvents);
         yield return ("cutscenes: a timeline with no main audio gets DS3's p<ID*10+n> per cut; events of sounds the bank lacks are stripped", CutsceneSoundAutoAndStrip);
         yield return ("cutscenes: converted timelines take Elden Ring's shape: event fields, timeline Unk10 and full parameter lists", CutsceneShapeConform);
-        yield return ("cutscenes: the F1 Cutscenes tab's events warp to the map, then play the cutscene; its list names the characters", CutsceneMenuEvents);
+        yield return ("cutscenes: the F1 Cutscenes tab warps to the map in one event and plays the pending cutscene after the load in another; its list names the characters", CutsceneMenuEvents);
+        yield return ("cutscenes: the cast resolves to Elden Ring models (map names, enemy models, assets); parts with none, and DS3 draw settings, are left out", CutsceneCastResolve);
+        yield return ("cutscenes: each cut's Havok file becomes cutNNNN\\a0000.hkx at ID NNNN*10000; files no cut plays are left out", CutsceneCutFiles);
+        yield return ("cutscenes: events keep their own and their parent's timeline numbers when timelines are taken out or added (1.0.460 Friede crash)", CutsceneTimelineRelink);
+        yield return ("cutscenes: Clear played cutscenes lists each cutscene's seen flags (set and checked by its event, parameters followed) and its event's own flag", CutsceneReplayFlags);
     }
 
     private static void CutsceneSoundEvents()
@@ -154,7 +158,8 @@ public static partial class MapPortChecks
         var after = shape.Check(ds3);
         Expect(after.Count == 0, $"{changed} changes, left: {string.Join(" | ", after)}");
         var off = ds3.Cuts[0].Timelines[0].Events[0];
-        Expect(off.Unk18 == 301 && off.Unk1C == 301 && off.Unk28 == -1, $"offset event fields follow the cut ({off.Unk18} {off.Unk1C} {off.Unk28})");
+        Expect(off.Unk18 == 301 && off.Unk1C == 301, $"offset event fields follow the cut ({off.Unk18} {off.Unk1C})");
+        Expect(off.Unk28 == 0, $"Unk28 is a timeline link, left to CutsceneTimelineLinks ({off.Unk28})");
         var tl = ds3.Cuts[0].Timelines[1];
         Expect(tl.Unk10 == 1 && string.Join(",", tl.Parameters.Select(p => p.Name)) == "areaNo,blockNo,mapNo,equipDispType"
                && (int)tl.Parameters[0].Value == 45 && (int)tl.Parameters[2].Value == -1 && (int)tl.Parameters[3].Value == 0,
@@ -183,20 +188,30 @@ public static partial class MapPortChecks
         CutsceneMenu.AddEvents(common, entries);
         CutsceneMenu.AddEvents(common, entries); // again: replaced, not doubled
         var e = common.Events.Single(x => x.ID == CutsceneMenu.EventId(0));
-        Expect(common.Events.Count(x => CutsceneMenu.IsMenuEvent(x.ID)) == 2, "one event per cutscene");
-        Expect(common.Events[0].Instructions.Count(i => i.Bank == 2000) == 2, "started once each from the constructor");
+        var p = common.Events.Single(x => x.ID == CutsceneMenu.PlayEventId(0));
+        Expect(common.Events.Count(x => CutsceneMenu.IsMenuEvent(x.ID)) == 4, "a request and a play event per cutscene");
+        Expect(common.Events[0].Instructions.Count(i => i.Bank == 2000) == 4, "started once each from the constructor");
         var warp = e.Instructions.Single(i => i.Bank == 2003 && i.ID == 14);
         Expect(warp.ArgData[0] == 19 && warp.ArgData[1] == 70 && BitConverter.ToUInt32(warp.ArgData, 4) == 19700990, "warps to the map's start point");
-        var play = e.Instructions.Single(i => i.Bank == 2002);
+        Expect(e.Instructions.All(i => i.Bank != 2002) && e.Instructions.Any(i => i.Bank == 2003 && i.ID == 66 && BitConverter.ToUInt32(i.ArgData, 4) == CutsceneMenu.PendingFlag(0) && i.ArgData[8] == 1),
+            "the request marks the cutscene pending and plays nothing itself");
+        Expect(e.Instructions.FindIndex(i => i.Bank == 2003 && i.ID == 66 && BitConverter.ToUInt32(i.ArgData, 4) == CutsceneMenu.PendingFlag(0)) < e.Instructions.IndexOf(warp), "pending before the warp");
+        var play = p.Instructions.Single(i => i.Bank == 2002);
         Expect(play.ID == 11 && play.ArgData.Length == 28 && BitConverter.ToInt32(play.ArgData, 0) == 19700000 && BitConverter.ToUInt32(play.ArgData, 4) == 0
                && BitConverter.ToUInt32(play.ArgData, 8) == 19700990 && BitConverter.ToInt32(play.ArgData, 12) == 19700000 && BitConverter.ToUInt32(play.ArgData, 16) == 10000,
             "plays the cutscene to the player and warps back to the start point (2002[11], Elden Ring's own form)");
-        var loaded = e.Instructions.Single(i => i.Bank == 3 && i.ID == 30);
+        var loaded = p.Instructions.Single(i => i.Bank == 3 && i.ID == 30);
         Expect(loaded.ArgData[0] == 0 && loaded.ArgData[1] == 19 && loaded.ArgData[2] == 70, "waits for the map to load");
-        Expect(e.Instructions.IndexOf(warp) < e.Instructions.IndexOf(loaded) && e.Instructions.IndexOf(loaded) < e.Instructions.IndexOf(play), "warp, map loaded, then play");
+        Expect(BitConverter.ToUInt32(p.Instructions[0].ArgData, 4) == CutsceneMenu.PendingFlag(0) && p.Instructions[0].Bank == 1003, "the play event waits for the pending flag");
+        var clear = p.Instructions.FindIndex(i => i.Bank == 2003 && i.ID == 66 && BitConverter.ToUInt32(i.ArgData, 4) == CutsceneMenu.PendingFlag(0) && i.ArgData[8] == 0);
+        Expect(p.Instructions.IndexOf(loaded) < clear && clear < p.Instructions.IndexOf(play), "map loaded, pending cleared, then play");
         Expect(BitConverter.ToUInt32(e.Instructions[0].ArgData, 4) == CutsceneMenu.RequestFlag(0), "waits for its request flag");
+        Expect(CutsceneMenu.PendingFlag(0) == 1039290300 && CutsceneMenu.PlayEventId(0) == 1039291700 && CutsceneMenu.IsMenuEvent(1039291700) && !CutsceneMenu.IsMenuEvent(1039291600),
+            "pending flag in the saved range, play event IDs");
         var lines = CutsceneMenu.ListLines(entries).ToList();
-        Expect(lines.Count == 3 && lines[1] == $"s45_00_0000\ts19_70_0000\tPainted World of Ariandel\tSister Friede, c6010\t46\t{CutsceneMenu.RequestFlag(0)}", lines[1]);
+        Expect(lines.Count == 3 && lines[1] == $"s45_00_0000\ts19_70_0000\tPainted World of Ariandel\tSister Friede, c6010\t46\t{CutsceneMenu.RequestFlag(0)}\t{CutsceneMenu.PendingFlag(0)}", lines[1]);
+        var withFlags = CutsceneMenu.ListLines(entries, new Dictionary<int, SortedSet<uint>> { [19700000] = [19700801, 19705810] }).ToList();
+        Expect(withFlags[1].EndsWith($"\t{CutsceneMenu.PendingFlag(0)} 19700801 19705810") && withFlags[2].EndsWith($"\t{CutsceneMenu.PendingFlag(1)}"), withFlags[1] + " / " + withFlags[2]);
         Expect(CutsceneMenu.RequestFlag(0) == 1039292300 && CutsceneMenu.EventId(0) == 1039291300, "flag and event IDs");
     }
 
@@ -213,6 +228,132 @@ public static partial class MapPortChecks
         var rename = CutscenePort.Renamer(new Dictionary<string, string> { ["c6020_0000"] = "c6020_9000", ["o459020_0000"] = "AEG099_001_9000" });
         Expect(rename("c6020_0000") == "c6020_9000" && rename("cam0010") is null && rename("c0000_0000") is null, "part renames");
         Expect(rename("o459020") == "AEG099", "a renamed part's model");
+        Expect(CutsceneCast.CutFileId("cut0145") == 1_450_000 && CutsceneCast.CutFileId("cut0011") == 110_000 && CutsceneCast.CutFileId("standby") == -1, "Elden Ring cut file IDs");
+    }
+
+    private static void CutsceneCastResolve()
+    {
+        // Friede's intro as DS3 names it (cutscene-survey 2026-11-12): placed parts, an object in another state, a collision.
+        var partNames = new Dictionary<string, string> { ["c6020_0000"] = "c7120_9000", ["o459020_0000"] = "AEG920_001_9000", ["c3000_0001"] = "c7000_9000" };
+        var models = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "c7120", "c7000", "c7010", "AEG920_001", "c4750" };
+        var resolve = CutsceneCast.Resolver(partNames, m => m == "c6010" ? "c7010" : null, models.Contains);
+        Expect(resolve("c6020_0000") == "c7120_9000", "a placed part takes its map name");
+        Expect(resolve("o459020_8000") == "AEG920_001_8000", "an object part the map doesn't place takes its model's asset, its own instance");
+        Expect(resolve("c6010_0001") == "c7010_0001", "a character the map doesn't place takes the enemy port's model");
+        Expect(resolve("c3000_0005") == "c7000_0005", "another instance of a placed character's model");
+        Expect(resolve("h45_00_00_00_008100") is null && resolve("o459200_8000") is null && resolve("c9999_0000") is null, "a collision, an unported object or character: no model");
+        Expect(resolve("c0000_0000") == "c0000_0000" && resolve("cam0010") == "cam0010" && resolve("d0003_0004") == "d0003_0004", "player, camera and dummies keep their names");
+        Expect(resolve("c4750_0000") == "c4750_0000", "an Elden Ring model's name stays");
+        Expect(CutsceneCast.ModelOf("AEG920_001_9000") == "AEG920_001" && CutsceneCast.ModelOf("c7120_9000") == "c7120" && CutsceneCast.ModelOf("o459020_0000") is null, "models of names");
+
+        var mqb = new MQB { Version = MQB.MQBVersion.DarkSouls3, Name = "NEW_SCENE", Framerate = 30, ResourceDirectory = "", Resources = [], Cuts = [] };
+        mqb.Resources.Add(new MQB.Resource { Name = "a0000.HKT", ParentIndex = -1, Unk48 = 266, Path = @"N:\FDP\data\Model\remo\scn\s45_00_0000\cut0010\hkx\a0000.HKT" }); // 0
+        mqb.Resources.Add(new MQB.Resource { Name = "c6020_0000", ParentIndex = 0, Unk48 = 1 });                  // 1 kept, renamed
+        mqb.Resources.Add(new MQB.Resource { Name = "h45_00_00_00_008100", ParentIndex = 0, Unk48 = 1 });         // 2 left out
+        mqb.Resources.Add(new MQB.Resource { Name = "under the collision", ParentIndex = 2, Unk48 = 103 });       // 3 left out with it
+        mqb.Resources.Add(new MQB.Resource { Name = "インゲーム描画", ParentIndex = -1, Unk48 = 239 });             // 4 DS3 draw setting
+        mqb.Resources.Add(new MQB.Resource { Name = "SE", ParentIndex = -1, Unk48 = 135 });                        // 5
+        var cut = new MQB.Cut { Name = "cut0010", Duration = 100, Timelines = [] };
+        MQB.Timeline Tl(params int[] res)
+        {
+            var tl = new MQB.Timeline();
+            foreach (var r in res)
+                tl.Events.Add(new MQB.Event { ResourceIndex = r, Duration = 100 });
+            return tl;
+        }
+        cut.Timelines.AddRange([Tl(0), Tl(1), Tl(2), Tl(3), Tl(4), Tl(5, 5)]);
+        mqb.Cuts.Add(cut);
+        var stats = new CutsceneCast.CastStats();
+        var drop = CutsceneCast.Unplayable(mqb, resolve, stats);
+        Expect(drop.SetEquals([2, 3, 4]), $"left out: the collision, what hangs under it, the draw setting ({string.Join(",", drop)})");
+        Expect(stats.Kept == 1 && stats.Renamed == 1 && stats.LeftOut.Single() == "h45_00_00_00_008100" && stats.DrawLeftOut == 1, stats.ToString());
+        CutsceneCast.Remove(mqb, drop);
+        Expect(mqb.Resources.Count == 3 && mqb.Resources[2].Name == "SE" && mqb.Resources[1].ParentIndex == 0, "resources re-indexed");
+        Expect(cut.Timelines.Count == 3 && cut.Timelines[2].Events.All(e => e.ResourceIndex == 2), "their timelines go, the others point at the moved indices");
+
+        // Through the whole binder conversion with an Elden Ring catalog that knows every kind.
+        var catalog = new CutscenePort.Catalog();
+        foreach (var k in new[] { 1, 103, 135, 239, 266 })
+            catalog.Kinds.Add(k);
+        var ds3 = new MQB { Version = MQB.MQBVersion.DarkSouls3, Name = "NEW_SCENE", Framerate = 30, ResourceDirectory = "", Resources = [], Cuts = [] };
+        ds3.Resources.Add(new MQB.Resource { Name = "a0000.HKT", ParentIndex = -1, Unk48 = 266, Path = @"N:\FDP\data\Model\remo\scn\s45_00_0000\cut0010\hkx\a0000.HKT" });
+        ds3.Resources.Add(new MQB.Resource { Name = "c6020_0000", ParentIndex = 0, Unk48 = 1 });
+        ds3.Resources.Add(new MQB.Resource { Name = "h45_00_00_00_008100", ParentIndex = 0, Unk48 = 1 });
+        var c2 = new MQB.Cut { Name = "cut0010", Duration = 100, Timelines = [Tl(0), Tl(1), Tl(2)] };
+        ds3.Cuts.Add(c2);
+        var bnd = new BND4();
+        bnd.Files.Add(new BinderFile(Binder.FileFlags.Flag1, 100_000_000, @"N:\FDP\data\INTERROOT_win64\remo\s45_00_0000\s45_00_0000.mqb", ds3.Write()));
+        var side = new CutscenePort.ErSide { Layout = new BND4(), Compression = new DCX.DcxDfltCompressionInfo(DCX.DfltCompressionPreset.DCX_DFLT_11000_44_9), Havok = new CutscenePort.HavokTemplate { Hkx = [] }, Catalog = catalog };
+        var (outBnd, outStats) = CutscenePort.ConvertBinder(bnd, "s45_00_0000", "s19_70_0000", _ => null, MapId.Parse("m45_00_00_00"), MapId.Parse("m19_70_00_00"), side, null, resolve);
+        var outMqb = MQB.Read(outBnd.Files.Single().Bytes);
+        Expect(outMqb.Resources.Select(r => r.Name).SequenceEqual(["a0000.HKT", "c7120_9000"]), string.Join(" ", outMqb.Resources.Select(r => r.Name)));
+        Expect(outStats.Cast.LeftOut.Count == 1 && outMqb.Cuts[0].Timelines.Count == 2, outStats.Cast.ToString());
+        Expect(!CutsceneTimelineLinks.Problems(outMqb).Any(), "every event's timeline numbers inside its cut after the binder conversion: "
+            + string.Join("; ", CutsceneTimelineLinks.Problems(outMqb)));
+    }
+
+    private static void CutsceneTimelineRelink()
+    {
+        // offset.sib, the cut's Havok timeline on it, part A and part B on that, an effect on B, an effect on A.
+        var mqb = new MQB { Version = MQB.MQBVersion.DarkSouls3, Name = "s45_00_0000", Framerate = 30, ResourceDirectory = "", Resources = [], Cuts = [] };
+        foreach (var (name, kind) in new[] { ("offset.sib", 265), ("a0000.HKT", 266), ("c6020_0000", 1), ("h45_00_00_00_008100", 1), ("sfx_b", 103), ("sfx_a", 103) })
+            mqb.Resources.Add(new MQB.Resource { Name = name, ParentIndex = -1, Unk48 = kind });
+        var cut = new MQB.Cut { Name = "cut0010", Duration = 100, Timelines = [] };
+        int[] hangsOn = [-1, 0, 1, 1, 3, 2];
+        for (int i = 0; i < hangsOn.Length; i++)
+        {
+            var tl = new MQB.Timeline();
+            tl.Events.Add(new MQB.Event { ID = i, ResourceIndex = i, Duration = 100, Unk08 = i, Unk28 = hangsOn[i] });
+            cut.Timelines.Add(tl);
+        }
+        mqb.Cuts.Add(cut);
+        var before = CutsceneTimelineLinks.Take(mqb);
+        // Cutscene sound adds a timeline as CutsceneSound does (fields copied from the cut's first events).
+        var sound = new MQB.Timeline();
+        sound.Events.Add(new MQB.Event { ID = 9, ResourceIndex = 5, Duration = 100, Unk08 = 0, Unk28 = 1 });
+        cut.Timelines.Add(sound);
+        CutsceneCast.Remove(mqb, new HashSet<int> { 3 });
+        Expect(cut.Timelines.Count == 6 && CutsceneTimelineLinks.Problems(mqb).Any(), "taking B out leaves numbers pointing past their timelines (1.0.460's crash)");
+        var result = CutsceneTimelineLinks.Relink(mqb, before);
+        var events = cut.Timelines.Select(t => t.Events.Single()).ToList();
+        Expect(events.Select(e => e.ID).SequenceEqual([0, 1, 2, 5, 9]), $"B's effect goes with B ({string.Join(",", events.Select(e => e.ID))}, {result})");
+        Expect(events.Select(e => e.Unk08).SequenceEqual([0, 1, 2, 3, 4]), "Unk08: the event's own timeline");
+        Expect(events.Select(e => e.Unk28).SequenceEqual([-1, 0, 1, 2, 1]), $"Unk28: the same timeline as before ({string.Join(",", events.Select(e => e.Unk28))})");
+        Expect(result.EventsDropped == 1 && result.TimelinesDropped == 1 && !CutsceneTimelineLinks.Problems(mqb).Any(), result.ToString());
+        // The shape rules never touch the link fields.
+        Expect(CutsceneShape.IsLink(0) && CutsceneShape.IsLink(5) && !CutsceneShape.IsLink(2), "Unk08/Unk28 are links");
+    }
+
+    private static void CutsceneCutFiles()
+    {
+        // Dancer's layout: cut0011 played from a0001 at ID 110001; Friede's: cut0000 standby files no cut plays.
+        var mqb = new MQB { Version = MQB.MQBVersion.DarkSouls3, Name = "s45_01_0010", Framerate = 30, ResourceDirectory = "", Resources = [], Cuts = [] };
+        mqb.Resources.Add(new MQB.Resource { Name = "a0001.HKT", ParentIndex = -1, Unk48 = 266, Path = @"N:\GR\data\Model\cutscene\scn\s45_01_0010\cut0011\hkx\a0001.HKT" });
+        mqb.Resources.Add(new MQB.Resource { Name = "a0000.HKT", ParentIndex = -1, Unk48 = 266, Path = @"N:\GR\data\Model\cutscene\scn\s45_01_0010\cut0020\hkx\a0000.HKT" });
+        var c1 = new MQB.Cut { Name = "cut0011", Duration = 10, Timelines = [] };
+        var t1 = new MQB.Timeline();
+        t1.Events.Add(new MQB.Event { ResourceIndex = 0, Duration = 10 });
+        c1.Timelines.Add(t1);
+        var c2 = new MQB.Cut { Name = "cut0020", Duration = 10, Timelines = [] };
+        var t2 = new MQB.Timeline();
+        t2.Events.Add(new MQB.Event { ResourceIndex = 1, Duration = 10 });
+        c2.Timelines.Add(t2);
+        mqb.Cuts.AddRange([c1, c2]);
+        var files = CutsceneCast.CutFiles(mqb);
+        Expect(files["cut0011"] == "a0001" && files["cut0020"] == "a0000", string.Join(" ", files));
+        Expect(CutsceneCast.RenameHkts(mqb) == 1 && mqb.Resources[0].Name == "a0000.HKT" && mqb.Resources[0].Path!.EndsWith(@"\cut0011\hkx\a0000.HKT"), mqb.Resources[0].Path ?? "");
+
+        const string dir = @"N:\GR\data\INTERROOT_win64\cutscene\s45_01_0010\";
+        var bnd = new BND4();
+        bnd.Files.Add(new BinderFile(Binder.FileFlags.Flag1, 0, dir + @"cut0000\a0000.hkx", [1]));
+        bnd.Files.Add(new BinderFile(Binder.FileFlags.Flag1, 110_001, dir + @"cut0011\a0001.hkx", [2]));
+        bnd.Files.Add(new BinderFile(Binder.FileFlags.Flag1, 200_000, dir + @"cut0020\a0000.hkx", [3]));
+        bnd.Files.Add(new BinderFile(Binder.FileFlags.Flag1, 100_000_000, dir + "s45_01_0010.mqb", [4]));
+        var stats = new CutsceneCast.CastStats();
+        CutsceneCast.LayOutCutFiles(bnd, files, stats);
+        Expect(bnd.Files.Count == 3 && bnd.Files[0].ID == 110_000 && bnd.Files[0].Name == dir + @"cut0011\a0000.hkx" && bnd.Files[1].ID == 200_000 && bnd.Files[2].ID == 100_000_000,
+            string.Join(" ", bnd.Files.Select(f => $"[{f.ID}]{f.Name}")));
+        Expect(stats.FilesRenamed == 1 && stats.FilesLeftOut == 1 && stats.Notes.Count == 0, stats.ToString());
     }
 
     private static MQB.Parameter P(string name, MQB.Parameter.DataType type, object value) => new() { Name = name, Type = type, Value = value, MemberCount = 1 };
@@ -361,5 +502,71 @@ public static partial class MapPortChecks
         Expect(r is not null && (uint)r["PlayMapId"].Value == 19700000u && (int)r["RefCamPosHitPartsID"].Value == -1, "row placed on m19_70 with no hit parts");
         Expect(param[45000010] is { } r2 && (uint)r2["PlayMapId"].Value == 45000000u, "second slot");
         Expect(param.Rows.Select(x => x.ID).SequenceEqual(param.Rows.Select(x => x.ID).Order()), "rows sorted");
+    }
+
+    private const string ErFlagDefs = """
+    { "main_classes": [
+      { "index": 3, "instrs": [
+        { "name": "IF Event Flag", "index": 0, "args": [
+          { "name": "Result Condition Group", "type": 3 }, { "name": "Desired Flag State", "type": 0 }, { "name": "Target Event Flag Type", "type": 0 },
+          { "name": "Target Event Flag ID", "type": 2 } ] },
+      ] },
+      { "index": 1003, "instrs": [
+        { "name": "END IF Event Flag", "index": 2, "args": [
+          { "name": "Execution End Type", "type": 0 }, { "name": "Desired Flag State", "type": 0 }, { "name": "Target Event Flag Type", "type": 0 },
+          { "name": "Target Event Flag ID", "type": 2 } ] },
+      ] },
+    ] }
+    """;
+
+    private static void CutsceneReplayFlags()
+    {
+        var defs = Emedf.Parse(ErFlagDefs);
+        Expect(defs.Get(1003, 2)!.Args[3].Offset == 4, "flag argument at byte 4");
+        EMEVD.Instruction EndIfOn(uint flag) => RunEvents.Make(1003, 2, (byte)0, (byte)1, (byte)0, flag);
+        EMEVD.Instruction Set(uint flag, byte on) => RunEvents.Make(2003, 66, (byte)0, flag, on);
+        EMEVD.Instruction Play(int id) => RunEvents.Make(2002, 3, id, 0u, 10000u);
+        var map = new EMEVD(EMEVD.Game.Sekiro);
+        var ctor = new EMEVD.Event(0, EMEVD.Event.RestBehaviorType.Default);
+        map.Events.Add(ctor);
+        // An intro: skips once its seen flag is on, plays, sets it. 19705555 is only set, 19700800 only checked.
+        var intro = new EMEVD.Event(19705810, EMEVD.Event.RestBehaviorType.Default);
+        intro.Instructions.Add(EndIfOn(19700801));
+        intro.Instructions.Add(RunEvents.Make(3, 0, (sbyte)0, (byte)1, (byte)0, 19700800u));
+        intro.Instructions.Add(Play(19700000));
+        intro.Instructions.Add(Set(19700801, 1));
+        intro.Instructions.Add(Set(19705555, 1));
+        intro.Instructions.Add(Set(19700802, 0));
+        map.Events.Add(intro);
+        ctor.Instructions.Add(RunEvents.Make(2000, 0, 0, 19705810u, 0u));
+        // One event started twice with (cutscene, seen flag) as parameters.
+        var shared = new EMEVD.Event(19705820, EMEVD.Event.RestBehaviorType.Default);
+        shared.Instructions.Add(EndIfOn(0));
+        shared.Instructions.Add(Play(0));
+        shared.Instructions.Add(Set(0, 1));
+        shared.Parameters.Add(new EMEVD.Parameter(0, 4, 4, 4));
+        shared.Parameters.Add(new EMEVD.Parameter(1, 0, 0, 4));
+        shared.Parameters.Add(new EMEVD.Parameter(2, 4, 4, 4));
+        map.Events.Add(shared);
+        ctor.Instructions.Add(RunEvents.Make(2000, 0, 0, 19705820u, 19700010, 19700811u));
+        ctor.Instructions.Add(RunEvents.Make(2000, 0, 1, 19705820u, 19700030, 19700831u));
+        // A common event (its ID is shared by every start) and the F1 menu's own play event.
+        var common = new EMEVD(EMEVD.Game.Sekiro);
+        var ce = new EMEVD.Event(90005999, EMEVD.Event.RestBehaviorType.Default);
+        ce.Instructions.Add(EndIfOn(19700851));
+        ce.Instructions.Add(Play(19700031));
+        ce.Instructions.Add(Set(19700851, 1));
+        common.Events.Add(ce);
+        ctor.Instructions.Add(RunEvents.Make(2000, 6, 0, 90005999u, 0u));
+        var menu = new EMEVD.Event(CutsceneMenu.PlayEventId(0), EMEVD.Event.RestBehaviorType.Default);
+        menu.Instructions.Add(Play(19700040));
+        common.Events.Add(menu);
+
+        var played = CutsceneFlags.Played(defs, [map, common], CutsceneMenu.IsMenuEvent);
+        string Show(int id) => played.TryGetValue(id, out var f) ? string.Join(" ", f) : "-";
+        Expect(Show(19700000) == "19700801 19705810", $"intro: seen flag and own event flag ({Show(19700000)})");
+        Expect(Show(19700010) == "19700811 19705820" && Show(19700030) == "19700831 19705821", $"parameters per start ({Show(19700010)} / {Show(19700030)})");
+        Expect(Show(19700031) == "19700851", $"common event: no own flag ({Show(19700031)})");
+        Expect(!played.ContainsKey(19700040), "the menu's own events are left out");
     }
 }

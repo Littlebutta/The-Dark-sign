@@ -98,6 +98,9 @@ public sealed class MapTextures
         foreach (var name in _needed.Keys.Where(n => !sources.ContainsKey(n)).ToList())
             if (name.Length > 3 && name[0] is 'm' or 'M' && char.IsDigit(name[1]) && char.IsDigit(name[2]))
                 ReadArea("m" + name[1..3]);
+        // Textures a map piece or object borrows from a character or an object (Father Ariandel's bowl o459050 has no
+        // textures of its own in its objbnd; the Painted World's corpses wear c1399's): looked up in that binder.
+        var borrowed = Borrowed(ds3, _needed.Keys.Where(n => !sources.ContainsKey(n) && !_provided.ContainsKey(n)).ToList());
 
         var area = _er.AreaFolder;
         var target = CommonBinder(area);
@@ -132,7 +135,7 @@ public sealed class MapTextures
         foreach (var name in _needed.Keys)
         {
             TPF.Texture? texture = null;
-            if (_provided.TryGetValue(name, out var given))
+            if (_provided.TryGetValue(name, out var given) || borrowed.TryGetValue(name, out given))
                 texture = new TPF.Texture(name, given.Format, given.Flags1, given.Bytes, TPF.TPFPlatform.PC) { Type = given.Type, Mipmaps = given.Mipmaps };
             else if (sources.TryGetValue(name, out var source))
             {
@@ -165,8 +168,10 @@ public sealed class MapTextures
         Directory.CreateDirectory(Path.GetDirectoryName(bhdPath)!);
         bxf.Write(bhdPath, bdtPath);
         var summary = $"textures {area}: {added} DS3 textures, {textures.Count} in all, in {target.TrimStart('/')}";
+        if (borrowed.Count > 0)
+            summary += $"; {borrowed.Count} borrowed from DS3 character or object binders";
         if (missing.Count > 0)
-            summary += $"; {missing.Count} not found in DS3 and given a grey stand-in ({string.Join(", ", missing.Take(10))}{(missing.Count > 10 ? ", ..." : "")})";
+            summary += $"; {missing.Count} not found in DS3 and given a grey stand-in ({string.Join(", ", missing.Take(60))}{(missing.Count > 60 ? ", ..." : "")})";
         // What the textures take in graphics memory, per DS3 map: the low detail copy of every texture the map's
         // pieces name is held the whole time, the full copy only near the player. A map whose two numbers together
         // pass the graphics card's memory hitches as the card swaps textures in and out.
@@ -178,6 +183,70 @@ public sealed class MapTextures
                        + $" ({large} are 4096 pixels or wider{(unread > 0 ? $"; {unread} in a format the porter can't size, kept whole in both copies" : "")})";
         }
         return summary;
+    }
+
+    /// <summary>
+    /// The DS3 binders a texture name points at outside the map area binders: a character's (c1399_a: chr/c1399's
+    /// texture and character binders) and an object's (o459050_..., m30_00_o309100_...: obj/o459050.objbnd).
+    /// </summary>
+    public static IEnumerable<string> BorrowSources(string name, Func<string, bool> exists, IEnumerable<string> paths)
+    {
+        var m = System.Text.RegularExpressions.Regex.Match(name, @"^(?:m\d\d_\d\d_)?([co])(\d+)", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        if (!m.Success)
+            yield break;
+        var digits = m.Groups[2].Value;
+        if (char.ToLowerInvariant(m.Groups[1].Value[0]) == 'c' && digits.Length >= 4)
+        {
+            var chr = $"/chr/c{digits[..4]}";
+            foreach (var p in paths.Where(p => p.StartsWith(chr, StringComparison.OrdinalIgnoreCase)
+                                               && p.EndsWith(".texbnd.dcx", StringComparison.OrdinalIgnoreCase)
+                                               && !p.EndsWith("_l.texbnd.dcx", StringComparison.OrdinalIgnoreCase)).Order())
+                yield return p;
+            if (exists(chr + ".chrbnd.dcx"))
+                yield return chr + ".chrbnd.dcx";
+        }
+        else if (digits.Length is >= 4 and <= 6)
+        {
+            var obj = ObjectPort.ObjBndPath("o" + digits.PadLeft(6, '0'));
+            if (exists(obj))
+                yield return obj;
+        }
+    }
+
+    // Reads each borrowed-from binder once and keeps only the textures asked for.
+    private static Dictionary<string, TPF.Texture> Borrowed(GameArchives ds3, IReadOnlyCollection<string> names)
+    {
+        var found = new Dictionary<string, TPF.Texture>(StringComparer.OrdinalIgnoreCase);
+        if (names.Count == 0)
+            return found;
+        var wanted = new HashSet<string>(names, StringComparer.OrdinalIgnoreCase);
+        var paths = ds3.Entries.Select(e => e.Path).OfType<string>().ToList();
+        var read = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var name in names)
+            foreach (var path in BorrowSources(name, ds3.Contains, paths))
+            {
+                if (found.ContainsKey(name))
+                    break;
+                if (!read.Add(path))
+                    continue;
+                try
+                {
+                    foreach (var f in BND4.Read(ds3.Read(path)).Files)
+                    {
+                        var bytes = DCX.Is(f.Bytes) ? DCX.Decompress(f.Bytes) : f.Bytes;
+                        if (!TPF.Is(bytes))
+                            continue;
+                        foreach (var t in TPF.Read(bytes).Textures)
+                            if (wanted.Contains(t.Name))
+                                found.TryAdd(t.Name, t);
+                    }
+                }
+                catch (Exception ex) when (ex is not OutOfMemoryException)
+                {
+                    // An unreadable binder leaves its textures to the grey stand-in.
+                }
+            }
+        return found;
     }
 
     private static string Mb(long bytes) => (bytes / 1048576.0).ToString("F0", System.Globalization.CultureInfo.InvariantCulture);

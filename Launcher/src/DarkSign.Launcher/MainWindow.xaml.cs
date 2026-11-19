@@ -395,14 +395,14 @@ public partial class MainWindow : Window
             var dlls = new List<string> { setup.WriteDll(SaveIsolation.RedirectDllName, RedirectDll.Bytes) };
             var env = Fallbacks.GameEnvironment(_settings.Methods);
             env[Fallbacks.ModDirVariable] = setup.ModDir;
-            var testMenuNeeded = Fallbacks.NeedsTestMenuDll(_settings.Methods);
+            var testMenuNeeded = Fallbacks.NeedsTestMenuDll(_settings.Methods) || Fallbacks.NeedsMusicDll(_settings.Methods, setup.ModDir);
             if ((_settings.TestMenu || testMenuNeeded) && TestMenuDll.Bytes is not null)
             {
                 dlls.Add(setup.WriteDll(EldenRingSetup.TestMenuDllName, TestMenuDll.Bytes));
                 env[EldenRingSetup.ItemsVariable] = setup.ItemsFile;
                 if (!_settings.TestMenu)
                 {
-                    // Loaded only for a fallback method (DLL sounds): no menu, no hotkeys.
+                    // Loaded only for a fallback method (DLL sounds) or DS3's music: no menu, no hotkeys.
                     env[Fallbacks.NoOverlayVariable] = "1";
                     env[Fallbacks.NoHotkeysVariable] = "1";
                 }

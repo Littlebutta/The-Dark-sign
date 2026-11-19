@@ -301,6 +301,8 @@ public static class Fallbacks
                 { PorterEnv = Env("DARKSIGN_HKS_MARKERS", "drop") },
             new("H", "Own-section arts from the first block", "As A, but a weapon's own DS3 section always gives its art from its first skill move (DARKSIGN_ART_BLOCK_BY_NAME=0), as up to 1.0.410, when the Old King's Great Hammer did a leftover Stomp for Molten Perseverance. With A the art's name picks the block (Perseverance: 37700, with its lava follow-up). Use it if an art changed for the worse.")
                 { PorterEnv = Env("DARKSIGN_ART_BLOCK_BY_NAME", "0") },
+            new("I", "Skipped movesets keep their template's attacks", "As A, but a weapon whose own moveset was skipped (no room left in the animation binder) keeps its template's behaviour rows (DARKSIGN_SKIPPED_ATTACKS=0), as up to 1.0.44x, when the Ringed Knight Paired Greatswords' weapon art slam lost its explosion. With A such a weapon keeps Elden Ring's moves but gets its DS3 attack rows, so its DS3 art's hits and projectiles are found. Use it if one of those weapons' ordinary attacks changed for the worse.")
+                { PorterEnv = Env("DARKSIGN_SKIPPED_ATTACKS", "0") },
             new("off", "Off (Elden Ring Ashes of War)", "Ported weapons keep their template's Elden Ring Ash of War (DARKSIGN_WEAPON_ARTS=0), as in builds up to 1.0.169.")
                 { PorterEnv = Env("DARKSIGN_WEAPON_ARTS", "0") },
         ]),
@@ -405,6 +407,8 @@ public static class Fallbacks
             new("A", "Elden Ring's map shaders by kind (default)", "Each DS3 material is drawn with a copy of an Elden Ring map material of its kind: normal-mapped opaque, alpha-tested (foliage, grates), blended, and unlit (sky domes), each mesh rebuilt in that material's vertex layout."),
             new("B", "Albedo only", "Every DS3 material uses the albedo-only material JortPob builds its maps on (port-maps --plain-materials): no normal maps, cut-outs or unlit sky, but the simplest shader there is.")
                 { MapsArgs = ["--plain-materials"] },
+            new("C", "Ground normals as read up to 1.0.460", "Elden Ring's map shaders as in A, but DS3's multi-texture ground and walls keep the normals the file reader gave them (port-maps --raw-half-normals), as every build before this option: DS3 stores those normals as half floats, which were read upside down, so that ground drew several times darker than the stones on it (the High Wall's floor, Iudex Gundyr's circle).")
+                { MapsArgs = ["--raw-half-normals"] },
         ]),
         new("map-texture-detail", "DS3 maps", "Texture detail of the DS3 maps", Stage.Build,
             "A DS3 map hitches or stutters as you move through it, or its textures look blurrier up close than they did in 1.0.299.",
@@ -443,6 +447,15 @@ public static class Fallbacks
             new("B", "DS3's hit filters", "Every collision keeps DS3's hit filter number (port-maps --ds3-hit-filters), as in every build up to 1.0.353: enemies fall through the floor where a filter-24 copy is the top surface.")
                 { MapsArgs = ["--ds3-hit-filters"] },
         ]),
+        new("map-empty-collision", "DS3 maps", "Collision DS3 keeps on one side only", Stage.Build,
+            "Enemies on a DS3 map (the Painted World above all) die as soon as the map loads, or since this option you bump into something invisible or the game stops while the Painted World loads.",
+        [
+            new("A", "The same collision on both sides (default)", "Some DS3 collision is an empty placeholder in its high-detail (h) file and real in its low-detail (l) file: 28 parts of the Painted World. They were left out of the map with their l collision, so enemies standing on that ground fell and died as the map loaded. They stay, and the empty side gets the same collision as the other, the way JortPob writes every collision into both. The port log's \"collision with an empty DS3 file on one side\" line counts them and the DS3 enemies that stand on them."),
+            new("B", "Only the side DS3 has", "The parts stay with DS3's collision on the side it has; the empty side gets no file (port-maps --empty-collision-alone).")
+                { MapsArgs = ["--empty-collision-alone"] },
+            new("C", "Left out", "Every part whose high-detail file is empty in DS3 is left out of the map, low-detail collision and all (port-maps --drop-empty-collisions), as in every build up to this option: the Painted World's enemies on that ground die as the map loads.")
+                { MapsArgs = ["--drop-empty-collisions"] },
+        ]),
         new("map-stand-ins", "DS3 maps", "DS3's low-detail stand-ins and far views", Stage.Build,
             "A far part of a DS3 map is missing (a castle wall, a hall, a tower or mountains you could see from a distance), or blocky slabs, steps or low-resolution polygons floating over the map are back.",
         [
@@ -471,9 +484,11 @@ public static class Fallbacks
         new("map-atmosphere", "DS3 maps", "Colours of light and fog in the DS3 maps", Stage.Build,
             "A DS3 map looks washed out, too foggy, too clear, or wrongly coloured since the maps took DS3's colours.",
         [
-            new("A", "DS3's colours (default)", "Each map's sun and fog take DS3's colours and sun angle, the fog is as thick as Stormveil Castle's, and the colosseum's colour grading is off. How bright each light is stays Elden Ring's."),
+            new("A", "DS3's colours (default)", "Each map's sun and fog take DS3's colours and sun angle (each fog colour at DS3's own strength for it), the fog is as thick as Stormveil Castle's, and the colosseum's colour grading is off. How bright each light is stays Elden Ring's."),
             new("B", "The colosseum's own", "The map keeps the Elden Ring colosseum's colour, fog and sun settings (port-maps --host-atmosphere), as in every build before this option: a red tint on map 2 and thick golden fog on map 1.")
                 { MapsArgs = ["--host-atmosphere"] },
+            new("C", "DS3's fog colours at full strength", "As A, but each fog colour is used as DS3 writes it, without DS3's own strength for it (DARKSIGN_FOG_STRENGTH=0), as builds up to 1.0.44x had it: map 2's haze is a bright cream.")
+                { PorterEnv = Env("DARKSIGN_FOG_STRENGTH", "0") },
         ]),
         new("map-env-light", "DS3 maps", "Light the DS3 map pieces get from around them", Stage.Build,
             "A DS3 map's walls and ground look flat, too dark or too grey, or shine oddly since the colosseum's colour was taken out of their light.",
@@ -571,11 +586,13 @@ public static class Fallbacks
         new("map-effects", "DS3 maps", "DS3's map effects (candles, fog, light shafts)", Stage.Build,
             "A DS3 map crashes, hangs while loading or hitches since its effects were added, or a fog bank, light shaft or flame looks wrong or floats in the air.",
         [
-            new("A", "DS3's map effects (default)", "The effects DS3 places in its maps (fog banks, light shafts, crows, flies and fires) are converted with the weapons' effects and stand where DS3 has them, and the objects DS3 shows lit (candles, torches, braziers) carry their flames: DS3's object effect rows become Elden Ring asset effect rows. Report: Work\\map-sfx.tsv lists any effect that couldn't be converted, and the object effects line of the port-maps log counts the lit objects."),
+            new("A", "DS3's map effects (default)", "The effects DS3 places in its maps (fog banks, light shafts, crows, flies and fires) are converted with the weapons' effects and stand where DS3 has them (their smoke and fog take the light around them, as Elden Ring's do), and the objects DS3 shows lit (candles, torches, braziers) carry their flames: DS3's object effect rows become Elden Ring asset effect rows. Report: Work\\map-sfx.tsv lists any effect that couldn't be converted, and the object effects line of the port-maps log counts the lit objects."),
             new("B", "None", "The DS3 maps have none of DS3's map effects (DARKSIGN_MAP_SFX=0), as every build up to 1.0.366 was.")
                 { PorterEnv = Env("DARKSIGN_MAP_SFX", "0") },
             new("C", "Region effects only", "DS3's fog, light shafts and other placed effects as in A, but no flames on objects (DARKSIGN_OBJECT_SFX=0): candles and torches stand unlit, as builds up to 1.0.44x had them.")
                 { PorterEnv = Env("DARKSIGN_OBJECT_SFX", "0") },
+            new("D", "Smoke and fog effects unlit", "DS3's effects as in A, but their smoke, fog and dust are drawn unlit, at full colour whatever light they stand in (DARKSIGN_FXR_LIT=0), as builds up to 1.0.44x had them: in dark places they glow white. This goes for weapon and enemy effects too.")
+                { PorterEnv = Env("DARKSIGN_FXR_LIT", "0") },
         ]),
 
         new("map-water", "DS3 maps", "Water in the DS3 maps", Stage.Build,
@@ -596,6 +613,18 @@ public static class Fallbacks
                 { PorterEnv = Env("DARKSIGN_CUTSCENE_SOUND", "0") },
             new("D", "DS3's timelines as converted", "The cutscenes play as in A, but their timelines keep DS3's field values (DARKSIGN_CUTSCENE_CONFORM=0) instead of taking Elden Ring's shape: events may run past the end of a cut, cut flags and parameter lists stay DS3's, as builds up to 1.0.42x had them.")
                 { PorterEnv = Env("DARKSIGN_CUTSCENE_CONFORM", "0") },
+            new("E", "DS3's cast and files as converted", "The cutscenes play as in A, but keep every part DS3 names even when Elden Ring has no model for it, DS3's draw settings, and DS3's cut file names (DARKSIGN_CUTSCENE_CAST=0), as builds up to 1.0.44x had them: a cutscene naming something Elden Ring can't load stays on a black screen.")
+                { PorterEnv = Env("DARKSIGN_CUTSCENE_CAST", "0") },
+        ]),
+
+        new("map-music", "DS3 maps", "DS3's music (areas and boss fights)", Stage.Build,
+            "A DS3 map or boss fight plays the wrong music, Elden Ring's music, or none; the music doesn't change with a boss's phase or doesn't stop; or the game stutters or crashes when a track starts.",
+        [
+            new("A", "DS3's music (default)", "Every music region of the ported DS3 maps plays its DS3 track: the area music where DS3 plays it (Firelink Shrine) and each boss fight's tracks, switching with the boss's phases, stopping when the boss dies, you die or leave. The tracks are decoded from your DS3 files to Mods\\ER\\darksign_music and the test menu DLL plays them on its own audio stream (it is loaded for this even with the F1 test menu unticked). Ported enemies no longer start Elden Ring's battle music. Report: the music lines of the port-maps log, \"music:\" lines in dksign_testmenu.log."),
+            new("B", "No DS3 music", "No DS3 music is built or played (DARKSIGN_MAP_MUSIC=0): the DS3 maps are quiet apart from Elden Ring's own music, as up to 1.0.45x.")
+                { PorterEnv = Env("DARKSIGN_MAP_MUSIC", "0"), GameEnv = Env(NoMapMusicVariable, "1") },
+            new("C", "DS3's music, Elden Ring battle music kept", "As A, but ported enemies keep their Elden Ring template's threat level (DARKSIGN_ENEMY_THREAT=template), as up to 1.0.45x: an enemy built on an Elden Ring field boss starts that boss's battle music.")
+                { PorterEnv = Env("DARKSIGN_ENEMY_THREAT", "template") },
         ]),
 
         new("map-layers", "DS3 maps", "Which state of a DS3 map is ported", Stage.Build,
@@ -659,6 +688,8 @@ public static class Fallbacks
                 { PorterEnv = Env("DARKSIGN_ENEMY_FUR", "0") },
             new("L", "One move set per enemy", "As A, but every variant of a ported enemy plays the base move set (DARKSIGN_ENEMY_VARIANTS=0), as up to 1.0.443, when the High Wall's spear Lothric Knights played the sword knights' moves and held their shield sideways. Use when ported enemies freeze, T-pose or crash the game when they spawn or start a move with A.")
                 { PorterEnv = Env("DARKSIGN_ENEMY_VARIANTS", "0") },
+            new("M", "The template's limb IK", "As A, but a ported enemy keeps the limb IK of the Elden Ring enemy it is built on (DARKSIGN_ENEMY_IK=template), as up to 1.0.460, when Father Ariandel's arms were stretched towards where Dragonlord Placidusax's front feet rest. Use when a ported enemy's hands or feet slide, sink into the floor or float with A.")
+                { PorterEnv = Env("DARKSIGN_ENEMY_IK", "template") },
         ]),
         new("enemy-drops", "DS3 maps", "What ported DS3 enemies drop", Stage.Build,
             "A ported DS3 enemy drops nothing where DS3 drops something, drops the wrong item or far too often, the game crashes or hangs when a ported enemy dies, or the build's enemy params step says the drops were not ported.",
@@ -698,6 +729,8 @@ public static class Fallbacks
                 { PorterEnv = Env("DARKSIGN_ENEMY_SHARED_THINK", "0") },
             new("I", "Map-script AI markers on the enemy row", "As A, but the markers DS3's map scripts put on an enemy only to steer its AI (Ariandel's wolves get one when their pack leader is gone) are on its enemy row from the start (DARKSIGN_ENEMY_SCRIPT_MARKERS=keep), as in 1.0.442, when Ariandel's wolf only circled and never attacked. Use when a ported enemy behaves worse than in 1.0.442.")
                 { PorterEnv = Env("DARKSIGN_ENEMY_SCRIPT_MARKERS", "keep") },
+            new("J", "The template's borrowed clips", "As A, but a DS3 waiting pose, getting-up move, map-script move or attack gets no clip of its own where the Elden Ring template's move of that number plays another move's clip, and is added only next to a template move with a clip of its own (DARKSIGN_ENEMY_OWN_POSES=0), as up to 1.0.460, when the High Wall's kneeling Hollow Soldiers stood up and fought at once instead of waiting until hit. Use when a ported enemy stands in a T-pose, freezes or the game crashes as a map starts with A.")
+                { PorterEnv = Env("DARKSIGN_ENEMY_OWN_POSES", "0") },
         ]),
         new("enemy-glow", "DS3 maps", "Ported DS3 enemies' glows", Stage.Build,
             "A ported DS3 enemy's glow is the wrong colour or missing (the Jailer's lantern, Pontiff Sulyvahn's swords, the Soul of Cinder), a part of it glows far too brightly or draws black, or the game crashes or hangs loading a ported enemy that glows.",
@@ -751,6 +784,19 @@ public static class Fallbacks
 
     /// <summary>Game variable: no hotkeys (the DLL is loaded only for another job and the test menu is off).</summary>
     public const string NoHotkeysVariable = "DKSIGN_NO_HOTKEYS";
+
+    /// <summary>Game variable: the test menu DLL doesn't play DS3's music (map-music B).</summary>
+    public const string NoMapMusicVariable = "DKSIGN_NO_MAP_MUSIC";
+
+    /// <summary>The music list port-maps writes into the mod folder (Porter Maps/MapMusic.cs ListFile).</summary>
+    public const string MusicListFile = "darksign_music.tsv";
+
+    /// <summary>
+    /// True when the test menu DLL must be loaded to play DS3's music: the content has music (port-maps wrote its
+    /// list) and map-music B isn't chosen.
+    /// </summary>
+    public static bool NeedsMusicDll(IReadOnlyDictionary<string, string>? methods, string modDir) =>
+        !GameEnvironment(methods).ContainsKey(NoMapMusicVariable) && File.Exists(Path.Combine(modDir, MusicListFile));
 
     /// <summary>Game variable: the mod folder, for the DLL's files (DLL sounds).</summary>
     public const string ModDirVariable = "DKSIGN_MOD_DIR";

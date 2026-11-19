@@ -3,13 +3,18 @@ using SoulsFormats;
 namespace DarkSign.Porter.Maps;
 
 /// <summary>
-/// The F1 menu's "Cutscenes" tab: one event per converted DS3 cutscene in common.emevd, the way the boss arena warps
-/// work (<see cref="BossArenas.AddWarps"/>). The menu sets the cutscene's request flag; the event clears it, warps the
-/// player to the cutscene's map (its start point), waits until that map is loaded (3[30]) and the player stands in it,
-/// and plays the cutscene with Elden Ring's "Play Cutscene to Player and Warp" (2002[11], back to the start point). A cutscene is placed against its map (CutsceneMapIdParam
-/// PlayMapId), so the warp first means the map, its parts and its sound are loaded when it starts.
-/// <para>Flags 1039292300-2399 and events 1039291300-1399 in the RunEvents block (2000-2999: reset when a map loads,
-/// right for a one-shot request). darksign_cutscenes.tsv lists them for the menu.</para>
+/// The F1 menu's "Cutscenes" tab: two events per converted DS3 cutscene in common.emevd. The menu sets the cutscene's
+/// request flag; the request event clears it, marks the cutscene as pending (a saved flag) and warps the player to
+/// the cutscene's map (its start point). The play event, started from the constructor on every load, waits for the
+/// pending flag, for that map to be loaded (3[30]) and the player to stand in it (3[08]), clears the flag and plays
+/// the cutscene with Elden Ring's "Play Cutscene to Player and Warp" (2002[11], back to the start point).
+/// <para>Two events because one event that warped and then waited never played anything (1.0.442: "it just teleports
+/// me"): whether an event of common.emevd keeps running across the warp's map load or starts over, the play event
+/// sees the saved pending flag after the load and plays. A cutscene is placed against its map (CutsceneMapIdParam
+/// PlayMapId), so the map, its parts and its sound are loaded when it starts.</para>
+/// <para>Flags: requests 1039292300-2399 and events 1039291300-1399 in the RunEvents block (2000-2999: reset when a
+/// map loads, right for a one-shot request); pending 1039290300-0399 (0-999: saved); play events 1039291700-1799.
+/// darksign_cutscenes.tsv lists them for the menu.</para>
 /// </summary>
 public static class CutsceneMenu
 {
@@ -17,7 +22,11 @@ public static class CutsceneMenu
     public const int MaxCutscenes = 100;
     public static uint RequestFlag(int index) => RunEvents.FlagBlock + 2300 + (uint)index;
     public static uint EventId(int index) => RunEvents.FlagBlock + 1300 + (uint)index;
-    public static bool IsMenuEvent(long id) => id >= RunEvents.FlagBlock + 1300 && id < RunEvents.FlagBlock + 1300 + MaxCutscenes;
+    /// <summary>On from the request until the play event starts the cutscene (saved, so it outlives the warp's load).</summary>
+    public static uint PendingFlag(int index) => RunEvents.FlagBlock + 300 + (uint)index;
+    public static uint PlayEventId(int index) => RunEvents.FlagBlock + 1700 + (uint)index;
+    public static bool IsMenuEvent(long id) => id >= RunEvents.FlagBlock + 1300 && id < RunEvents.FlagBlock + 1300 + MaxCutscenes
+                                               || id >= RunEvents.FlagBlock + 1700 && id < RunEvents.FlagBlock + 1700 + MaxCutscenes;
 
     private const byte On = 1, Off = 0, EventFlagType = 0;
     private const uint Player = 10000;
@@ -59,32 +68,43 @@ public static class CutsceneMenu
             if (c.Index < 0 || c.Index >= MaxCutscenes)
                 throw new ArgumentOutOfRangeException(nameof(entries), $"cutscene index {c.Index}");
             var m = c.Map;
-            var e = new EMEVD.Event(EventId(c.Index), EMEVD.Event.RestBehaviorType.Default);
-            e.Instructions.Add(RunEvents.Make(1003, 0, On, EventFlagType, RequestFlag(c.Index)));
-            e.Instructions.Add(SetFlag(RequestFlag(c.Index), Off));
-            e.Instructions.Add(SetFlag(RunEvents.Ds3RunActive, On));
-            e.Instructions.Add(RunEvents.Make(2003, 14, (byte)m.Area, (byte)m.Block, (byte)m.Region, (byte)m.Index, c.StartEntity, 0));
-            // Once the map is loaded and the player stands in it.
-            e.Instructions.Add(RunEvents.Make(1001, 0, 3f));
-            e.Instructions.Add(RunEvents.Make(3, 30, (sbyte)0, (byte)m.Area, (byte)m.Block, (byte)m.Region, (byte)m.Index));
-            e.Instructions.Add(RunEvents.Make(3, 8, (sbyte)0, On, (sbyte)m.Area, (sbyte)m.Block, (sbyte)m.Region, (sbyte)m.Index));
-            e.Instructions.Add(RunEvents.Make(1001, 0, 2f));
+            // The request: mark the cutscene pending and warp to its map.
+            var request = new EMEVD.Event(EventId(c.Index), EMEVD.Event.RestBehaviorType.Default);
+            request.Instructions.Add(RunEvents.Make(1003, 0, On, EventFlagType, RequestFlag(c.Index)));
+            request.Instructions.Add(SetFlag(RequestFlag(c.Index), Off));
+            request.Instructions.Add(SetFlag(RunEvents.Ds3RunActive, On));
+            request.Instructions.Add(SetFlag(PendingFlag(c.Index), On));
+            request.Instructions.Add(RunEvents.Make(2003, 14, (byte)m.Area, (byte)m.Block, (byte)m.Region, (byte)m.Index, c.StartEntity, 0));
+            request.Instructions.Add(RunEvents.Make(1000, 4, (byte)1));
+            common.Events.Add(request);
+            constructor.Instructions.Add(RunEvents.Make(2000, 0, 0, EventId(c.Index), 0u));
+
+            // The play: once the pending cutscene's map is loaded and the player stands in it.
+            var play = new EMEVD.Event(PlayEventId(c.Index), EMEVD.Event.RestBehaviorType.Default);
+            play.Instructions.Add(RunEvents.Make(1003, 0, On, EventFlagType, PendingFlag(c.Index)));
+            play.Instructions.Add(RunEvents.Make(3, 30, (sbyte)0, (byte)m.Area, (byte)m.Block, (byte)m.Region, (byte)m.Index));
+            play.Instructions.Add(RunEvents.Make(3, 8, (sbyte)0, On, (sbyte)m.Area, (sbyte)m.Block, (sbyte)m.Region, (sbyte)m.Index));
+            play.Instructions.Add(RunEvents.Make(1001, 0, 2f));
+            play.Instructions.Add(SetFlag(PendingFlag(c.Index), Off));
             // Play Cutscene to Player and Warp, the form Elden Ring's own map scripts (and the ported arena scripts, which
             // did start their cutscenes in the 1.0.417 playtest) use: cutscene ID, playback method 0, the area entity
             // and map the player stands at afterwards (the start point), the player, 0, false.
-            e.Instructions.Add(RunEvents.Make(2002, 11, c.ErId, 0u, c.StartEntity, CutscenePort.PackedMap(m), Player, 0, (byte)0));
-            e.Instructions.Add(RunEvents.Make(1000, 4, (byte)1));
-            common.Events.Add(e);
-            constructor.Instructions.Add(RunEvents.Make(2000, 0, 0, EventId(c.Index), 0u));
+            play.Instructions.Add(RunEvents.Make(2002, 11, c.ErId, 0u, c.StartEntity, CutscenePort.PackedMap(m), Player, 0, (byte)0));
+            play.Instructions.Add(RunEvents.Make(1000, 4, (byte)1));
+            common.Events.Add(play);
+            constructor.Instructions.Add(RunEvents.Make(2000, 0, 0, PlayEventId(c.Index), 0u));
         }
     }
 
     private static EMEVD.Instruction SetFlag(uint flag, byte state) => RunEvents.Make(2003, 66, EventFlagType, flag, state);
 
-    /// <summary>darksign_cutscenes.tsv: one line per cutscene, read by the F1 menu's "Cutscenes" tab.</summary>
-    public static IEnumerable<string> ListLines(IEnumerable<Entry> entries) =>
-        new[] { "# DS3 cutscene\tElden Ring cutscene\tmap name\tlabel\tseconds\tplay request flag (written by DarkSignPorter port-maps)" }
-            .Concat(entries.Select(c => $"{c.Ds3Name}\t{c.ErName}\t{Clean(c.MapName)}\t{Clean(c.Label)}\t{c.Seconds:0}\t{RequestFlag(c.Index)}"));
+    /// <summary>darksign_cutscenes.tsv: one line per cutscene, read by the F1 menu's "Cutscenes" tab. The last column
+    /// lists the flags "Clear played cutscenes" switches off: the menu's own pending flag, and what keeps the map
+    /// scripts from playing the cutscene again (<see cref="CutsceneFlags"/>).</summary>
+    public static IEnumerable<string> ListLines(IEnumerable<Entry> entries, IReadOnlyDictionary<int, SortedSet<uint>>? played = null) =>
+        new[] { "# DS3 cutscene\tElden Ring cutscene\tmap name\tlabel\tseconds\tplay request flag\tflags cleared to play it again (written by DarkSignPorter port-maps)" }
+            .Concat(entries.Select(c => $"{c.Ds3Name}\t{c.ErName}\t{Clean(c.MapName)}\t{Clean(c.Label)}\t{c.Seconds:0}\t{RequestFlag(c.Index)}\t"
+                + string.Join(" ", new[] { PendingFlag(c.Index) }.Concat(played?.GetValueOrDefault(c.ErId) ?? []).Distinct())));
 
     private static string Clean(string s) => s.Replace('\t', ' ').Replace('\r', ' ').Replace('\n', ' ').Trim();
 }

@@ -66,6 +66,9 @@ public static class MapPorter
         /// <summary>--first-blend-layer: a DS3 terrain blend (2m/3m/4m) shows only its first layer, as up to 1.0.353
         /// (fallback "map-blend-layers" B; see <see cref="MapTerrainBlends"/>).</summary>
         public bool FirstBlendLayer { get; set; }
+        /// <summary>--raw-half-normals: DS3 normals stored as half floats keep what SoulsFormats reads, as every build
+        /// before 2026-11-19 (fallback "map-materials" C; see <see cref="Ds3HalfNormals"/>).</summary>
+        public bool RawHalfNormals { get; set; }
         /// <summary>--tint-materials (diagnostic, not a fallback): DS3 material families that keep something in vertex
         /// alpha are drawn in solid colours (see <see cref="MapModelPort.Tints"/>).</summary>
         public bool TintMaterials { get; set; }
@@ -114,6 +117,12 @@ public static class MapPorter
         /// </summary>
         public bool BinaryCollision { get; set; } = true;
         public bool KeepSimdTree { get; set; }
+        /// <summary>
+        /// A collision part whose DS3 file is an empty placeholder in one binder and real in the other: the empty side gets
+        /// the other's collision (default), stays empty (--empty-collision-alone, fallback "map-empty-collision" B) or the
+        /// part is left out (--drop-empty-collisions, C, as up to 1.0.460). See <see cref="MapCollisions.EmptySideMethod"/>.
+        /// </summary>
+        public MapCollisions.EmptySideMethod EmptyCollision { get; set; } = MapCollisions.EmptySideMethod.Copy;
 
         /// <summary>
         /// --after-pid: the port-weapons process started alongside this one. The events step edits the regulation.bin
@@ -167,6 +176,7 @@ public static class MapPorter
                     case "--stand-ins": o.StandIns = true; break;
                     case "--solid-overlays": o.SolidOverlays = true; break;
                     case "--first-blend-layer": o.FirstBlendLayer = true; break;
+                    case "--raw-half-normals": o.RawHalfNormals = true; break;
                     case "--cut-faded-overlays": o.CutFadedOverlays = true; o.FadeOverlays = true; break;
                     case "--fade-overlays": o.FadeOverlays = true; break;
                     case "--tint-materials": o.TintMaterials = true; break;
@@ -189,6 +199,8 @@ public static class MapPorter
                     case "--binary-collision": o.BinaryCollision = true; break;
                     case "--xml-collision": o.BinaryCollision = false; break;
                     case "--simd": o.KeepSimdTree = true; break;
+                    case "--empty-collision-alone": o.EmptyCollision = MapCollisions.EmptySideMethod.Alone; break;
+                    case "--drop-empty-collisions": o.EmptyCollision = MapCollisions.EmptySideMethod.Drop; break;
                     case "--enemies" when i + 1 < list.Count: o.Enemies = EnemyPort.ParseMethod(list[i + 1]); i++; break;
                     case "--objects" when i + 1 < list.Count: o.Objects = ObjectPort.ParseMethod(list[i + 1]); i++; break;
                     case "--moving-objects" when i + 1 < list.Count: o.MovingObjects = ObjectPort.ParseMoving(list[i + 1]); i++; break;
@@ -213,6 +225,7 @@ public static class MapPorter
     {
         port.Ds3Alpha = !options.SolidOverlays;
         port.TerrainLayers = !options.FirstBlendLayer;
+        port.HalfNormals = !options.RawHalfNormals;
         port.CutFadedOverlays = options.CutFadedOverlays;
         port.FadeOverlays = options.FadeOverlays;
         return port;
@@ -454,8 +467,21 @@ public static class MapPorter
                 cutsceneInfo = infos;
                 return summary;
             });
+        // DS3's music (MapMusic): which regions and script lines play each map's tracks, then the events, then the tracks.
+        MapMusic.Plan? music = null;
+        if (ported.Count > 0 && MapMusic.Enabled)
+            Step(report, "music plan", () =>
+            {
+                music = MusicPlan(ctx, ds3, ported.Select(p => p.Slot).ToList());
+                return music.Summary;
+            });
+        else if (!MapMusic.Enabled)
+            report.AppendLine("music: off (DARKSIGN_MAP_MUSIC=0, fallback map-music B)");
+        Dictionary<int, SortedSet<uint>> playedFlags = [];
         if (ported.Count > 0)
-            Step(report, "events", () => MapEvents.Port(ctx, ds3, er, ported.Select(p => p.Slot).ToList(), cutscenes));
+            Step(report, "events", () => MapEvents.Port(ctx, ds3, er, ported.Select(p => p.Slot).ToList(), cutscenes, f => playedFlags = f, music));
+        if (music is not null)
+            Step(report, "music", () => MapMusic.WriteAudio(ctx, ds3, music));
 
         // A slot under a registered ID that ships no map (map-slots B) gets what the game's own maps have: the
         // template's per-map files under the new ID, and a flag allocation line where the template has one. The map
@@ -480,7 +506,7 @@ public static class MapPorter
             ? CutsceneMenu.Entries(cutsceneInfo.Values, ported.GroupBy(p => p.Slot.Er).ToDictionary(g => g.Key, g => (g.First().Slot.Name, (uint)g.First().StartEntity)),
                 model => chrNames?.NameOf(model))
             : [];
-        File.WriteAllLines(ctx.ModPath(CutsceneMenu.ListFile), CutsceneMenu.ListLines(menuCutscenes));
+        File.WriteAllLines(ctx.ModPath(CutsceneMenu.ListFile), CutsceneMenu.ListLines(menuCutscenes, playedFlags));
         // The vertex layouts the map pieces were written in, for map-validate (a mesh in any other layout isn't drawn).
         if (_layouts.Count > 0)
             File.WriteAllLines(ctx.ModPath(LayoutsFile), _layouts.Order(StringComparer.Ordinal));
@@ -526,6 +552,17 @@ public static class MapPorter
         Console.WriteLine(report.ToString());
         Console.WriteLine($"port-maps: {ported.Count} map(s) ported in {(DateTime.Now - started).TotalSeconds:F0} s; report {log}");
         return ported.Count > 0 ? 0 : 1;
+    }
+
+    /// <summary>The music plan of the ported maps: their DS3 layouts and scripts (DS3's common_func included).</summary>
+    private static MapMusic.Plan MusicPlan(PorterContext ctx, GameArchives ds3, IReadOnlyList<MapSlots.Slot> slots)
+    {
+        var maps = slots.Where(s => !s.Probe && ds3.Contains(MsbPath(s.Ds3))).Select(s => (s, MSB3.Read(ds3.Read(MsbPath(s.Ds3))))).ToList();
+        var (scripts, common) = MapEvents.ReadDs3(ds3, slots);
+        var all = scripts.Select(kv => new MapMusic.Script(kv.Key, kv.Value)).ToList();
+        if (common is not null)
+            all.Add(new MapMusic.Script(null, common));
+        return MapMusic.Build(maps, all, Emedf.Parse(File.ReadAllText(ctx.Data.Emedf("ds3-common"))));
     }
 
     /// <summary>
@@ -588,7 +625,11 @@ public static class MapPorter
         // MapRegistry.ListPath: builds 1.0.234-1.0.238 wrote it for the m50 probe and it crashed the boot; never again.
         foreach (var path in new[] { "/event/common.emevd.dcx", MapEvents.CommonFunc, MaterialBinder, OldMaterialBinder, ActionButtons.ModMenu, FlagAlloc.LegacyList, MapRegistry.ListPath })
             Delete(Local(path));
-        foreach (var file in new[] { MapEvents.FlagFile, "darksign_maps.tsv", BossArenas.ListFile, CutsceneMenu.ListFile, BossKits.FileName, "darksign_maps_check.txt", FlagAlloc.ProbeFile,
+        var musicFolder = Path.Combine(root, MapMusic.Folder);
+        if (Directory.Exists(musicFolder))
+            foreach (var file in Directory.GetFiles(musicFolder))
+                Delete(file);
+        foreach (var file in new[] { MapEvents.FlagFile, "darksign_maps.tsv", BossArenas.ListFile, CutsceneMenu.ListFile, BossKits.FileName, "darksign_maps_check.txt", FlagAlloc.ProbeFile, MapMusic.ListFile,
                      DarkSign.Randomizer.Data.EnemyTables.PlacedFile, DarkSign.Randomizer.Data.EnemyTables.ErFile })
             Delete(Path.Combine(root, file));
     }
@@ -789,6 +830,7 @@ public static class MapPorter
         models.UnlitCastShadows = options.HostLighting;
         models.Ds3Alpha = !options.SolidOverlays;
         models.TerrainLayers = !options.FirstBlendLayer;
+        models.HalfNormals = !options.RawHalfNormals;
         models.TintMaterials = options.TintMaterials;
         models.CutFadedOverlays = options.CutFadedOverlays;
         models.FadeOverlays = options.FadeOverlays;
@@ -1034,6 +1076,7 @@ public static class MapPorter
         {
             report.AppendLine("  " + (options.SolidOverlays ? "vertex alpha: every vertex solid, two-layer materials show their first layer (--solid-overlays)" : models.Overlays.Summary));
             report.AppendLine("  " + (options.FirstBlendLayer ? "terrain blends: every mesh shows its first layer (--first-blend-layer)" : models.Blends.Summary));
+            report.AppendLine("  " + (options.RawHalfNormals ? "half-float normals: kept as SoulsFormats reads them (--raw-half-normals)" : models.HalfNormalStats.Summary));
         }
         if (copied > 0)
             textures.Need(main.Textures, ds3Id);
@@ -1047,22 +1090,25 @@ public static class MapPorter
         var emptyCollisions = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var collisionModels = layout.Msb.Models.Collisions.Select(m => m.Name).ToHashSet(StringComparer.OrdinalIgnoreCase);
         clock.Restart();
+        var collisionResults = new Dictionary<string, MapCollisions.Result>();
         foreach (var kind in new[] { "h", "l" })
         {
             var result = MapCollisions.Port(ctx, ds3, er, ds3Id, erId, kind, options, hostId);
+            collisionResults[kind] = result;
             report.AppendLine($"  collision {kind}: {result.Summary}");
             collisionFilesEmpty += result.Empty?.Count ?? 0;
             collisionFilesFailed += result.Failed;
-            if (kind == "h")
-                foreach (var name in collisionModels.Where(n => !result.Ported.Contains(ModelNumber(n))))
-                {
-                    missingCollisions.Add(name);
-                    if (result.Empty?.Contains(ModelNumber(name)) == true)
-                        emptyCollisions.Add(name);
-                }
+        }
+        foreach (var (name, isEmpty) in CollisionModelsLeftOut(collisionModels, collisionResults, options.EmptyCollision))
+        {
+            missingCollisions.Add(name);
+            if (isEmpty)
+                emptyCollisions.Add(name);
         }
         foreach (var name in missingCollisions)
             report.AppendLine($"  collision {name}: left out ({(emptyCollisions.Contains(name) ? "its DS3 file is empty: no collision to convert" : "no converted file")})");
+        foreach (var line in EmptySideNotes(ds3Msb, collisionResults, options.EmptyCollision))
+            report.AppendLine("  " + line);
         report.AppendLine($"  time: collision {clock.Elapsed.TotalSeconds:F0} s");
         clock.Restart();
 
@@ -1580,6 +1626,57 @@ public static class MapPorter
     public static string ErMapBndPath(MapId id, string number) => $"/map/{id.AreaFolder}/{id}/{id}_{number}.mapbnd.dcx";
 
     // "m000100" -> "000100"; "h000100" -> "000100"
+    /// <summary>
+    /// The collision models (and so the parts) left out of a ported map, and whether DS3's h file for each was empty. A
+    /// model stays when either binder got its collision: DS3's l collision alone is ground too (the Painted World's 28
+    /// parts with an empty h file, whose enemies died on load while those parts were left out). Under
+    /// --drop-empty-collisions only the h binder counts, as up to 1.0.460.
+    /// </summary>
+    public static IEnumerable<(string Model, bool Empty)> CollisionModelsLeftOut(IEnumerable<string> models,
+        IReadOnlyDictionary<string, MapCollisions.Result> results, MapCollisions.EmptySideMethod method)
+    {
+        bool Converted(string kind, string model) => results.TryGetValue(kind, out var r) && r.Ported.Contains(model);
+        foreach (var name in models)
+        {
+            var model = ModelNumber(name);
+            if (Converted("h", model) || (method != MapCollisions.EmptySideMethod.Drop && Converted("l", model)))
+                continue;
+            yield return (name, results.TryGetValue("h", out var h) && h.Empty?.Contains(model) == true);
+        }
+    }
+
+    /// <summary>
+    /// Port log lines for collision models whose DS3 file is an empty placeholder in one binder and real in the other
+    /// (<see cref="MapCollisions.EmptySideMethod"/>): how many DS3 collision parts use them and how many DS3 enemies name
+    /// one as the floor they stand on, so a log shows whether enemies stood on ground the port used to leave out.
+    /// </summary>
+    public static IEnumerable<string> EmptySideNotes(MSB3 ds3Msb, IReadOnlyDictionary<string, MapCollisions.Result> results,
+        MapCollisions.EmptySideMethod method)
+    {
+        HashSet<string> Of(string kind, Func<MapCollisions.Result, HashSet<string>?> pick) =>
+            results.TryGetValue(kind, out var r) ? pick(r) ?? [] : [];
+        var oneSided = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        oneSided.UnionWith(Of("h", r => r.Borrowed));
+        oneSided.UnionWith(Of("l", r => r.Borrowed));
+        var h = Of("h", r => r.Ported);
+        var l = Of("l", r => r.Ported);
+        oneSided.UnionWith(h.Except(l, StringComparer.OrdinalIgnoreCase).Where(m => Of("l", r => r.Empty).Contains(m)));
+        oneSided.UnionWith(l.Except(h, StringComparer.OrdinalIgnoreCase).Where(m => Of("h", r => r.Empty).Contains(m)));
+        if (oneSided.Count == 0)
+            yield break;
+        var parts = ds3Msb.Parts.Collisions.Where(c => oneSided.Contains(ModelNumber(c.ModelName ?? ""))).Select(c => c.Name).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var standing = ds3Msb.Parts.Enemies.Where(e => parts.Contains(e.CollisionName ?? "")).ToList();
+        var what = method switch
+        {
+            MapCollisions.EmptySideMethod.Copy => "kept, the same collision in h and l",
+            MapCollisions.EmptySideMethod.Alone => "kept with only the side DS3 has (--empty-collision-alone)",
+            _ => "left out (--drop-empty-collisions)",
+        };
+        yield return $"collision with an empty DS3 file on one side: {oneSided.Count} models, {parts.Count} collision parts {what}; "
+                     + $"{standing.Count} DS3 enemies name one as their floor"
+                     + (standing.Count == 0 ? "" : $" ({string.Join(", ", standing.Take(12).Select(e => $"{e.Name} {e.EntityID} on {e.CollisionName}"))}{(standing.Count > 12 ? ", ..." : "")})");
+    }
+
     public static string ModelNumber(string model) => model.Length > 1 && char.IsLetter(model[0]) ? model[1..] : model;
 
     // "/map/m45/x.dcx" -> ["map", "m45", "x.dcx"]

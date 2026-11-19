@@ -1563,6 +1563,22 @@ public static partial class ChrPort
         if (stage == Stage.Skeleton)
             return 0;
 
+        // The template's limb IK whose target bone DS3 never moves comes off (ChrIk): from here on every animation
+        // is DS3's, and Father Ariandel's arms were pulled to where Placidusax's front feet rest.
+        if (ChrIk.Enabled && binders.TryGetValue($"/chr/c{n:D4}.behbnd.dcx", out var ikBehbnd))
+            try
+            {
+                var ik = ChrIk.Fit(ikBehbnd.Bnd, erSkeleton.Names, ds3Skeleton.Names.ToHashSet(StringComparer.OrdinalIgnoreCase));
+                if (ik.Limbs > 0)
+                    notes.Add(ik.Off.Count > 0
+                        ? $"limb IK: {ik.Off.Count} of the template's {ik.Limbs} pinned limbs let go (target bones DS3 doesn't animate: {string.Join(", ", ik.Off)})"
+                        : $"limb IK: the template's {ik.Limbs} pinned limbs kept (their target bones are DS3's)");
+            }
+            catch (Exception ex) when (ex is not OutOfMemoryException)
+            {
+                notes.Add($"limb IK: the template's kept ({Describe(ex)})");
+            }
+
         // DS3 attacks, waiting poses and map-script moves the template has no slot for (ChrMoves): a file and TAE entry
         // each, filled below like any move, and a behaviour state once the events are in. Attacks only with DS3's AI,
         // which is what asks for them; the rest for DS3's map scripts, which force them.
@@ -1584,7 +1600,9 @@ public static partial class ChrPort
                     .SelectMany(f => TAE.Read(f.Bytes).Animations.Select(a => (int)a.ID)).ToHashSet();
                 var wanted = ChrMoves.Plan(wholeKeys.Where(k => k.Item1 == 0 && ChrMoves.Wanted(k.Item2, AiPort.Enabled)).Select(k => k.Item2),
                     templateEntries, templateFiles, templateAdditive);
-                extra = ChrMoves.AddAnimations(anibnds.Select(b => b.Value.Bnd), wanted);
+                // A new file copies one of the template's own whole clips of these families (the animation port
+                // then fills it with DS3's move), so a family whose entries all borrow another clip still gets files.
+                extra = ChrMoves.AddAnimations(anibnds.Select(b => b.Value.Bnd), wanted, templateFiles.Except(templateAdditive).ToHashSet());
             }
             catch (Exception ex) when (ex is not OutOfMemoryException)
             {
@@ -1712,10 +1730,12 @@ public static partial class ChrPort
             if (binders.TryGetValue($"/chr/c{n:D4}.behbnd.dcx", out var behbnd))
                 try { states = ChrMoves.AddStates(behbnd.Bnd, extra, notes); }
                 catch (Exception ex) when (ex is not OutOfMemoryException) { notes.Add($"extra DS3 moves: behaviour states not added ({Describe(ex)})"); }
-            var attacks = extra.Where(e => ChrMoves.IsAttack(e.Id)).ToList();
-            var others = extra.Where(e => !ChrMoves.IsAttack(e.Id)).ToList();
+            var attacks = extra.Where(e => ChrMoves.IsAttack(e.Id) && !e.FileOnly).ToList();
+            var others = extra.Where(e => !ChrMoves.IsAttack(e.Id) && !e.FileOnly).ToList();
+            var ownFiles = extra.Where(e => e.FileOnly).ToList();
             notes.Add((attacks.Count > 0 ? $"{attacks.Count} DS3 attacks the template has no slot for added ({string.Join(",", attacks.Select(e => e.Id))}), " : "")
                       + (others.Count > 0 ? $"{others.Count} DS3 poses and map-script moves added ({string.Join(",", others.Select(e => e.Id))}), " : "")
+                      + (ownFiles.Count > 0 ? $"{ownFiles.Count} template moves that borrowed another clip given DS3's own ({string.Join(",", ownFiles.Select(e => e.Id))}), " : "")
                       + $"{states} behaviour states");
         }
         if (variants.Count > 0)
@@ -1777,11 +1797,16 @@ public static partial class ChrPort
                     notes.Add($"ChrModelParam: left out ({Describe(ex)}); the new models load with the defaults");
             }
         int added = 0;
+        long? quietThreat = KeepTemplateThreat ? null : MusicThreatLevel(npc);
         foreach (var (ds3Id, id) in npcRows.OrderBy(r => r.Key))
         {
             if (npc[id] is not null)
                 continue;
             var row = CopyRow(npc, template, id);
+            // No Elden Ring battle music: the template's threat level (a field boss's starts its music) gives way to
+            // the one ordinary Elden Ring enemies have. DS3's own music comes from DS3's map scripts (MapMusic).
+            if (quietThreat is { } threat && Cell(row, "threatLv") is { } threatCell)
+                Set(threatCell, threat);
             row.Name = $"[DS3] {ds3Npc?[ds3Id]?.Name ?? plan.Ds3.Name}" + (plan.Stage == Stage.All ? "" : $" (test {(int)plan.Stage})");
             // The test set stays on the template's row with health to spare, so it can be hit again and again.
             if (plan.Stage != Stage.All && Cell(row, "hp") is { } testHp)
@@ -1845,6 +1870,32 @@ public static partial class ChrPort
         }
         npc.Rows.Sort((a, b) => a.ID.CompareTo(b.ID));
         return added;
+    }
+
+    /// <summary>
+    /// DARKSIGN_ENEMY_THREAT=template (launcher fallback "map-music" C): ported enemies keep their Elden Ring template's
+    /// threat level, as up to 1.0.450, and the ones built on a field boss start Elden Ring's battle music.
+    /// </summary>
+    public static readonly bool KeepTemplateThreat =
+        string.Equals(Environment.GetEnvironmentVariable("DARKSIGN_ENEMY_THREAT"), "template", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// The threat level that starts no music: the one most of Elden Ring's NpcParam rows have (its ordinary enemies;
+    /// Paramdex's default for threatLv is 1). Elden Ring starts its field battle music from a character's threatLv
+    /// (the "NPC Threat Level" of its event instructions "IF Field Battle BGM Active" and "Set Field Battle BGM Heat
+    /// Up"), and every ported row is a copy of its template's, so an enemy built on a field boss played that boss's
+    /// music in the DS3 maps (Devin's 2026-11-19 report). Null when the param has no such field.
+    /// </summary>
+    public static long? MusicThreatLevel(PARAM npc)
+    {
+        var counts = new Dictionary<long, int>();
+        foreach (var row in npc.Rows)
+            if (Cell(row, "threatLv") is { Value: not null and not byte[] } cell)
+            {
+                long v = Convert.ToInt64(cell.Value);
+                counts[v] = counts.GetValueOrDefault(v) + 1;
+            }
+        return counts.Count == 0 ? null : counts.OrderByDescending(c => c.Value).ThenBy(c => c.Key).First().Key;
     }
 
     /// <summary>The NpcParam fields Elden Ring multiplies the damage of each kind a character takes by.</summary>

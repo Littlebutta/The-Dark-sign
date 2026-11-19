@@ -233,6 +233,32 @@ public static class AiSelfTest
         Check("extra moves: waiting poses, getting-up moves and map-script moves get a donor of their own family (none for a family the template lacks)",
             idlePlan.SequenceEqual([new ChrMoves.Added(702, 701), new ChrMoves.Added(1702, 1700), new ChrMoves.Added(3010, 3001), new ChrMoves.Added(20005, 20004)])
             && ChrMoves.Wanted(702, false) && !ChrMoves.Wanted(3010, false) && ChrMoves.Wanted(3010, true) && !ChrMoves.Wanted(5000, true));
+        // Elden Ring's c3061 plays other moves' clips for its waiting poses (700 imports 30016): DS3's 700 gets a file
+        // of its own, its other poses take a 700s entry as donor, and a family with no entry at all stays out.
+        var borrowedPlan = ChrMoves.Plan([700, 702, 1702, 3010], new HashSet<int> { 700, 701, 1700, 1701, 3000 },
+            new HashSet<int> { 3000 }, new HashSet<int>());
+        Check("extra moves: a template pose that borrows another clip gets DS3's own file, other DS3 poses a donor of the family without a file",
+            borrowedPlan.SequenceEqual([new ChrMoves.Added(700, 700, true), new ChrMoves.Added(702, 701), new ChrMoves.Added(1702, 1701), new ChrMoves.Added(3010, 3000)]));
+        var borrowTae = new TAE { Format = TAE.TAEFormat.SDT, Animations = [], Flags = new byte[8], SkeletonName = "skeleton.hkt", SibName = "c7000.sib", ID = 200007000 };
+        borrowTae.Animations.Add(new TAE.Animation(700, new TAE.Animation.AnimMiniHeader.Standard { ImportsHKX = true, ImportHKXSourceAnimID = 30016 }, "a000_030016.hkt"));
+        borrowTae.Animations.Add(new TAE.Animation(701, new TAE.Animation.AnimMiniHeader.Standard { ImportsHKX = true, ImportHKXSourceAnimID = 10001 }, "a000_010001.hkt"));
+        borrowTae.Animations.Add(new TAE.Animation(1700, new TAE.Animation.AnimMiniHeader.Standard { ImportsHKX = true, ImportHKXSourceAnimID = 20003 }, "a000_020003.hkt"));
+        borrowTae.Animations.Add(new TAE.Animation(1701, new TAE.Animation.AnimMiniHeader.Standard { ImportsHKX = true, ImportHKXSourceAnimID = 20000 }, "a000_020000.hkt"));
+        borrowTae.Animations.Add(new TAE.Animation(3000, new TAE.Animation.AnimMiniHeader.Standard(), "a000_003000.hkt"));
+        const string folder = @"N:\GR\data\INTERROOT_win64\chr\c7000\hkx_div00_compendium\";
+        var borrowMain = new BND4();
+        borrowMain.Files.Add(new BinderFile(SoulsFormats.Binder.FileFlags.Flag1, 5000000, @"N:\GR\data\INTERROOT_win64\chr\c7000\tae\c7000.tae", borrowTae.Write()));
+        var borrowBnd = new BND4();
+        borrowBnd.Files.Add(new BinderFile(SoulsFormats.Binder.FileFlags.Flag1, 1000003000, folder + "a000_003000.hkx", [1, 2, 3]));
+        var borrowAdded = ChrMoves.AddAnimations([borrowMain, borrowBnd], borrowedPlan, new HashSet<int> { 3000 });
+        var borrowBack = TAE.Read(borrowMain.Files[0].Bytes);
+        Check("extra moves: the borrowed pose and the new ones get files copied from a whole template clip, and their entries play them",
+            borrowAdded.Count == 4 && borrowBnd.Files.Any(f => f.ID == 1000000700 && f.Name == folder + "a000_000700.hkx" && f.Bytes.SequenceEqual(new byte[] { 1, 2, 3 }))
+            && borrowBnd.Files.Any(f => f.ID == 1000000702) && borrowBnd.Files.Any(f => f.ID == 1000001702)
+            && borrowBack.Animations.First(a => a.ID == 700) is { AnimFileName: "a000_000700.hkt", MiniHeader: TAE.Animation.AnimMiniHeader.Standard { ImportsHKX: false } }
+            && borrowBack.Animations.First(a => a.ID == 702) is { AnimFileName: "a000_000702.hkt", MiniHeader: TAE.Animation.AnimMiniHeader.Standard { ImportsHKX: false } }
+            && borrowBack.Animations.First(a => a.ID == 701).MiniHeader is TAE.Animation.AnimMiniHeader.Standard { ImportsHKX: true, ImportHKXSourceAnimID: 10001 });
+
         var group = new TAE.EventGroup(0);
         var donorEntry = new TAE.Animation(3001, new TAE.Animation.AnimMiniHeader.Standard(), "a000_003001.hkt");
         donorEntry.EventGroups.Add(group);

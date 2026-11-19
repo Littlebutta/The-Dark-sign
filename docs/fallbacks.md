@@ -227,6 +227,7 @@ Try the next option if: L2 on a ported weapon does an Elden Ring Ash of War, not
 - **F: DS3 arts, most weapons first.** Same as A, but the arts serving the most weapons go first, arts with their own DS3 section winning ties (DARKSIGN_ART_POOL=weapons): 201 weapons do a DS3 art (the Black Blade keeps its Hold), but seven one-weapon arts (Demon's Scar, the Frayed Blade, Irithyll Straight Sword, Executioner's Greatsword, Dragonslayer Greatshield, Millwood Battle Axe, Sage's Crystal Staff) fall back to an Elden Ring ash. (`DARKSIGN_ART_POOL=weapons`)
 - **G: Drop DS3's [HKS] marker effects.** As A, but a DS3 move's "[HKS]" marker SpEffect that Elden Ring's hks doesn't name the same is left out (DARKSIGN_HKS_MARKERS=drop), as in builds up to 1.0.385. With A it is ported under a new ID (never kept: DS3's 100500 is Elden Ring's Raptor Dodge marker), so its fields still work: DS3's 100420 "[HKS] Dragonhead Greatshield" adds 100 to the behaviour judge, which picks Dragon Roar's breath. Use G if a move does something odd since then. (`DARKSIGN_HKS_MARKERS=drop`)
 - **H: Own-section arts from the first block.** As A, but a weapon's own DS3 section always gives its art from its first skill move (DARKSIGN_ART_BLOCK_BY_NAME=0), as up to 1.0.410. With A, when the DS3 art's name names a kind (Stomp, Stance, Spin Slash, Charge, Warcry, Perseverance) and the section has that block, the art comes from that block: the Old King's Great Hammer's a174 keeps Molten Perseverance at 37700 (Perseverance buff, then the lava throw 37710 as the R2 follow-up), and its 36000 is a Stomp left over from development, which is what 1.0.410 played. Use H if an art changed for the worse. (`DARKSIGN_ART_BLOCK_BY_NAME=0`)
+- **I: Skipped movesets keep their template's attacks.** As A, but a weapon whose own moveset was skipped (no free motion category, or no room left in the player's animation binder: the build log's `moveset: skipped ...` lines) keeps its template's behaviour variation (DARKSIGN_SKIPPED_ATTACKS=0), as up to 1.0.44x. Its DS3 weapon art is still ported from its own DS3 section, and the art's moves ask for DS3's behaviour judges: on the template's variation the hits found Elden Ring's rows and the projectiles none, so the Ringed Knight Paired Greatswords' Ember slam lost its explosion (and Crow Quills' Quill Dart its quills) once 20 movesets no longer fit. With A such a weapon keeps Elden Ring's moves but gets its DS3 variation (DS3's rows over the template's, as every built moveset's Elden Ring moves already have); the log line `moveset: N weapons whose moveset was skipped keep Elden Ring's moves but their DS3 attacks` names them. Use I if one of those weapons' ordinary attacks changed for the worse. (`DARKSIGN_SKIPPED_ATTACKS=0`)
 - **off: Off (Elden Ring Ashes of War).** Ported weapons keep their template's Elden Ring Ash of War (DARKSIGN_WEAPON_ARTS=0), as in builds up to 1.0.169. (`DARKSIGN_WEAPON_ARTS=0`)
 
 ### DS3 weapon status and buffs (frostbite, bleed, poison) (`weapon-effects`, rebuilds the content)
@@ -320,6 +321,7 @@ Try the next option if: DS3 map geometry is invisible, black, far too dark or sh
 
 - **A: Elden Ring's map shaders by kind (default).** Each DS3 material is drawn with a copy of an Elden Ring map material of its kind: normal-mapped opaque, alpha-tested (foliage, grates), blended, and unlit (sky domes), each mesh rebuilt in that material's vertex layout.
 - **B: Albedo only.** Every DS3 material uses the albedo-only material JortPob builds its maps on (port-maps --plain-materials): no normal maps, cut-outs or unlit sky, but the simplest shader there is. (`port-maps --plain-materials`)
+- **C: Ground normals as read up to 1.0.460.** Elden Ring's map shaders as in A, but DS3's multi-texture ground and walls keep the normals the file reader gave them (port-maps --raw-half-normals), as every build before this option: DS3 stores those normals as half floats, which were read upside down, so that ground drew several times darker than the stones on it (the High Wall's floor, Iudex Gundyr's circle). (`port-maps --raw-half-normals`)
 
 ### Texture detail of the DS3 maps (`map-texture-detail`, rebuilds the content)
 
@@ -357,6 +359,14 @@ Try the next option if: Enemies stand in mid-air or on surfaces they shouldn't s
 - **A: Written as normal floor (default).** DS3 lays copies of its floors in collision with hit filter 24, which Elden Ring reads differently: enemies that landed on one fell through the map (1.0.347, map 3). They are written as normal floor (hit filter 8). The port log's layout notes count them.
 - **B: DS3's hit filters.** Every collision keeps DS3's hit filter number (port-maps --ds3-hit-filters), as in every build up to 1.0.353: enemies fall through the floor where a filter-24 copy is the top surface. (`port-maps --ds3-hit-filters`)
 
+### Collision DS3 keeps on one side only (`map-empty-collision`, rebuilds the content)
+
+Try the next option if: Enemies on a DS3 map (the Painted World above all) die as soon as the map loads, or since this option you bump into something invisible or the game stops while the Painted World loads.
+
+- **A: The same collision on both sides (default).** Some DS3 collision is an empty placeholder in its high-detail (h) file and real in its low-detail (l) file: 28 parts of the Painted World. They were left out of the map with their l collision, so enemies standing on that ground fell and died as the map loaded. They stay, and the empty side gets the same collision as the other, the way JortPob writes every collision into both. The port log's "collision with an empty DS3 file on one side" line counts them and the DS3 enemies that stand on them.
+- **B: Only the side DS3 has.** The parts stay with DS3's collision on the side it has; the empty side gets no file (port-maps --empty-collision-alone). (`port-maps --empty-collision-alone`)
+- **C: Left out.** Every part whose high-detail file is empty in DS3 is left out of the map, low-detail collision and all (port-maps --drop-empty-collisions), as in every build up to this option: the Painted World's enemies on that ground die as the map loads. (`port-maps --drop-empty-collisions`)
+
 ### DS3's low-detail stand-ins and far views (`map-stand-ins`, rebuilds the content)
 
 Try the next option if: A far part of a DS3 map is missing (a castle wall, a hall, a tower or mountains you could see from a distance), or blocky slabs, steps or low-resolution polygons floating over the map are back.
@@ -384,8 +394,9 @@ Try the next option if: A DS3 map's ground or walls show the wrong texture in pa
 
 Try the next option if: A DS3 map looks washed out, too foggy, too clear, or wrongly coloured since the maps took DS3's colours.
 
-- **A: DS3's colours (default).** Each map's sun and fog take DS3's colours and sun angle, the fog is as thick as Stormveil Castle's, and the colosseum's colour grading is off. How bright each light is stays Elden Ring's.
+- **A: DS3's colours (default).** Each map's sun and fog take DS3's colours and sun angle (each fog colour at DS3's own strength for it), the fog is as thick as Stormveil Castle's, and the colosseum's colour grading is off. How bright each light is stays Elden Ring's.
 - **B: The colosseum's own.** The map keeps the Elden Ring colosseum's colour, fog and sun settings (port-maps --host-atmosphere), as in every build before this option: a red tint on map 2 and thick golden fog on map 1. (`port-maps --host-atmosphere`)
+- **C: DS3's fog colours at full strength.** As A, but each fog colour is used as DS3 writes it, without DS3's own strength for it (DARKSIGN_FOG_STRENGTH=0), as builds up to 1.0.44x had it: map 2's haze is a bright cream. (`DARKSIGN_FOG_STRENGTH=0`)
 
 ### Light the DS3 map pieces get from around them (`map-env-light`, rebuilds the content)
 
@@ -475,9 +486,10 @@ Try the next option if: A DS3 map crashes or hangs while loading since regions w
 
 Try the next option if: A DS3 map crashes, hangs while loading or hitches since its effects were added, or a fog bank, light shaft or flame looks wrong or floats in the air.
 
-- **A: DS3's map effects (default).** The effects DS3 places in its maps (fog banks, light shafts, crows, flies and fires) are converted with the weapons' effects and stand where DS3 has them, and the objects DS3 shows lit (candles, torches, braziers) carry their flames: DS3's object effect rows become Elden Ring asset effect rows. Report: Work\map-sfx.tsv lists any effect that couldn't be converted, and the object effects line of the port-maps log counts the lit objects.
+- **A: DS3's map effects (default).** The effects DS3 places in its maps (fog banks, light shafts, crows, flies and fires) are converted with the weapons' effects and stand where DS3 has them (their smoke and fog take the light around them, as Elden Ring's do), and the objects DS3 shows lit (candles, torches, braziers) carry their flames: DS3's object effect rows become Elden Ring asset effect rows. Report: Work\map-sfx.tsv lists any effect that couldn't be converted, and the object effects line of the port-maps log counts the lit objects.
 - **B: None.** The DS3 maps have none of DS3's map effects (DARKSIGN_MAP_SFX=0), as every build up to 1.0.366 was. (`DARKSIGN_MAP_SFX=0`)
 - **C: Region effects only.** DS3's fog, light shafts and other placed effects as in A, but no flames on objects (DARKSIGN_OBJECT_SFX=0): candles and torches stand unlit, as builds up to 1.0.44x had them. (`DARKSIGN_OBJECT_SFX=0`)
+- **D: Smoke and fog effects unlit.** DS3's effects as in A, but their smoke, fog and dust are drawn unlit, at full colour whatever light they stand in (DARKSIGN_FXR_LIT=0), as builds up to 1.0.44x had them: in dark places they glow white. This goes for weapon and enemy effects too. (`DARKSIGN_FXR_LIT=0`)
 
 ### Water in the DS3 maps (`map-water`, rebuilds the content)
 
@@ -494,6 +506,15 @@ Try the next option if: The game crashes, hangs or shows a black screen when a D
 - **B: None.** No DS3 cutscenes (DARKSIGN_CUTSCENES=0): the scripts skip them and a cutscene that moves you only moves you, as builds up to 1.0.38x did. (`DARKSIGN_CUTSCENES=0`)
 - **C: Silent cutscenes.** The cutscenes play as in A but without DS3's sound (DARKSIGN_CUTSCENE_SOUND=0): no cutscene sound banks, and the timelines keep their sound events as the first cutscene builds had them. (`DARKSIGN_CUTSCENE_SOUND=0`)
 - **D: DS3's timelines as converted.** The cutscenes play as in A, but their timelines keep DS3's field values (DARKSIGN_CUTSCENE_CONFORM=0) instead of taking Elden Ring's shape: events may run past the end of a cut, cut flags and parameter lists stay DS3's, as builds up to 1.0.42x had them. (`DARKSIGN_CUTSCENE_CONFORM=0`)
+- **E: DS3's cast and files as converted.** The cutscenes play as in A, but keep every part DS3 names even when Elden Ring has no model for it, DS3's draw settings, and DS3's cut file names (DARKSIGN_CUTSCENE_CAST=0), as builds up to 1.0.44x had them: a cutscene naming something Elden Ring can't load stays on a black screen. (`DARKSIGN_CUTSCENE_CAST=0`)
+
+### DS3's music (areas and boss fights) (`map-music`, rebuilds the content)
+
+Try the next option if: A DS3 map or boss fight plays the wrong music, Elden Ring's music, or none; the music doesn't change with a boss's phase or doesn't stop; or the game stutters or crashes when a track starts.
+
+- **A: DS3's music (default).** Every music region of the ported DS3 maps plays its DS3 track: the area music where DS3 plays it (Firelink Shrine) and each boss fight's tracks, switching with the boss's phases, stopping when the boss dies, you die or leave. The tracks are decoded from your DS3 files to Mods\ER\darksign_music and the test menu DLL plays them on its own audio stream (it is loaded for this even with the F1 test menu unticked). Ported enemies no longer start Elden Ring's battle music. Report: the music lines of the port-maps log, "music:" lines in dksign_testmenu.log.
+- **B: No DS3 music.** No DS3 music is built or played (DARKSIGN_MAP_MUSIC=0): the DS3 maps are quiet apart from Elden Ring's own music, as up to 1.0.45x. (`DARKSIGN_MAP_MUSIC=0`, game `DKSIGN_NO_MAP_MUSIC=1`)
+- **C: DS3's music, Elden Ring battle music kept.** As A, but ported enemies keep their Elden Ring template's threat level (DARKSIGN_ENEMY_THREAT=template), as up to 1.0.45x: an enemy built on an Elden Ring field boss starts that boss's battle music. (`DARKSIGN_ENEMY_THREAT=template`)
 
 ### Which state of a DS3 map is ported (`map-layers`, rebuilds the content)
 
@@ -538,6 +559,7 @@ Try the next option if: A ported DS3 enemy is invisible, black, shiny or wears t
 - **J: The template's weaknesses.** As A, but a ported enemy takes damage of each kind as the Elden Ring template does (DARKSIGN_ENEMY_DAMAGE_RATES=template), as up to 1.0.422, when the Pus of Man had the Giant Beast Skeleton's weakness to strike and resistance to lightning and no weakness to fire. Use when ported enemies take far too much or too little damage with A. (`DARKSIGN_ENEMY_DAMAGE_RATES=template`)
 - **K: DS3 fur as one solid layer.** As A, but DS3 fur (Ariandel's wolf) shows the larger of its two layers, uncut (DARKSIGN_ENEMY_FUR=0), as up to 1.0.422, when the wolf's fur drew as white shards. Use when a furry ported enemy turns invisible or bald with A. (`DARKSIGN_ENEMY_FUR=0`)
 - **L: One move set per enemy.** As A, but every variant of a ported enemy plays the base move set (DARKSIGN_ENEMY_VARIANTS=0), as up to 1.0.443, when the High Wall's spear Lothric Knights played the sword knights' moves and held their shield sideways. Use when ported enemies freeze, T-pose or crash the game when they spawn or start a move with A. (`DARKSIGN_ENEMY_VARIANTS=0`)
+- **M: The template's limb IK.** As A, but a ported enemy keeps the limb IK of the Elden Ring enemy it is built on (DARKSIGN_ENEMY_IK=template), as up to 1.0.460, when Father Ariandel's arms were stretched towards where Dragonlord Placidusax's front feet rest. Use when a ported enemy's hands or feet slide, sink into the floor or float with A. (`DARKSIGN_ENEMY_IK=template`)
 
 ### What ported DS3 enemies drop (`enemy-drops`, rebuilds the content)
 
@@ -568,6 +590,7 @@ Try the next option if: Ported DS3 enemies stand still, never attack, repeat one
 - **G: DS3's effect numbers in the AI.** As A, but DS3's AI scripts keep checking for their own effects by DS3's numbers (DARKSIGN_ENEMY_AI_SPEFFECTS=ds3), as up to 1.0.410, when those checks never matched a ported enemy's effects and Ariandel's wolf only circled. Use when a ported enemy freezes, attacks without pause or the game crashes when it notices you with A. (`DARKSIGN_ENEMY_AI_SPEFFECTS=ds3`)
 - **H: Each character's own AI rows only.** As A, but a DS3 enemy that DS3 places with another family's AI (the Cemetery of Ash hollows run the Hollow Soldiers' rows) gets its own character's first AI row instead of that family's (DARKSIGN_ENEMY_SHARED_THINK=0), as up to 1.0.417, when those hollows circled the player without attacking. Use when a ported enemy freezes or the game crashes when it notices you with A. (`DARKSIGN_ENEMY_SHARED_THINK=0`)
 - **I: Map-script AI markers on the enemy row.** As A, but the markers DS3's map scripts put on an enemy only to steer its AI (Ariandel's wolves get one when their pack leader is gone) are on its enemy row from the start (DARKSIGN_ENEMY_SCRIPT_MARKERS=keep), as in 1.0.442, when Ariandel's wolf only circled and never attacked. Use when a ported enemy behaves worse than in 1.0.442. (`DARKSIGN_ENEMY_SCRIPT_MARKERS=keep`)
+- **J: The template's borrowed clips.** As A, but a DS3 waiting pose, getting-up move, map-script move or attack gets no clip of its own where the Elden Ring template's move of that number plays another move's clip, and is added only next to a template move with a clip of its own (DARKSIGN_ENEMY_OWN_POSES=0), as up to 1.0.460, when the High Wall's kneeling Hollow Soldiers stood up and fought at once instead of waiting until hit. Use when a ported enemy stands in a T-pose, freezes or the game crashes as a map starts with A. (`DARKSIGN_ENEMY_OWN_POSES=0`)
 
 ### Ported DS3 enemies' glows (`enemy-glow`, rebuilds the content)
 

@@ -60,7 +60,12 @@ x990-x999, which gets entity 45000990.
   arena (entity x9970+; a DS3 player point inside the arena area if there is one, else a DS3 warp point inside it,
   else the area's centre 0.5 m above the boss's floor, else 1.5 m above the area's bottom: DS3's areas start below
   the floor, which put the player inside Oceiros' floor in 1.0.383), waits until the player is in the map and then turns the first-encounter flag and the entry flag on,
-  which begins the fight without the fog wall, talk or cutscene. Fights whose boss isn't in the layout (the Champion
+  which begins the fight without the fog wall, talk or cutscene. A boss whose own event only shows it once the player
+  walks through an intro area is warped to inside that area instead, with its first encounter left off, and DS3's event
+  does the rest (intro, boss shown, flag on). Vordt is the case: 13005810 reads 13000801 once at load and, off, keeps
+  him hidden until the player is in the gate box 3002815 (a box reaching only 3 m above the floor, so flying in over
+  it never starts him either); the old landing point 3002810 lay past the box, so he never appeared (1.0.442). The
+  Champion Gundyr state's 4002831 is the other one. Fights whose boss isn't in the layout (the Champion
   Gundyr state of m40) get no button. The port-maps log lists each arena's landing point and flags.
   A first encounter that waits on a flag only an NPC's dialogue sets (Friede: 74500300, set by Father Ariandel's
   talk) is opened by a common.emevd event when the player comes within 8 m of the talk prompt's character

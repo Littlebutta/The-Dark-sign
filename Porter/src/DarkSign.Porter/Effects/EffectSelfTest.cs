@@ -216,6 +216,17 @@ public static class EffectSelfTest
         var all = js.SoundsOfConverted(js.Convert(holding, 900440501, $"{{\"once\":{{}},{renumber}}}"));
         Check(all.Held is [900660200], "held sounds: kept as they are when nothing asks to play them once");
 
+        // Lighting: DS3 billboards have none, Elden Ring draws an unset one unlit. Smoke-like ones (Normal, Unk6) are
+        // lit as Elden Ring lights its own (-2); additive ones (glows) stay unlit; without map.lit nothing changes.
+        var smoke = js.Sample(830050, 0, 5);
+        var glow = js.Sample(830051, 0, 5, blendMode: 4);
+        var unk6 = js.Sample(830052, 0, 5, blendMode: 6);
+        const string noSounds = "\"once\":{},\"held\":{}";
+        Check(js.LightingOfConverted(js.Convert(smoke, 900830050, $"{{{noSounds},\"lit\":{{\"all\":1}}}}")) is [-2], "lighting: a DS3 smoke billboard (Normal blend) is lit as Elden Ring's are (-2)");
+        Check(js.LightingOfConverted(js.Convert(unk6, 900830052, $"{{{noSounds},\"lit\":{{\"all\":1}}}}")) is [-2], "lighting: a DS3 Unk6 billboard (blends like Normal) is lit too");
+        Check(js.LightingOfConverted(js.Convert(glow, 900830051, $"{{{noSounds},\"lit\":{{\"all\":1}}}}")) is [-1], "lighting: an additive DS3 billboard (a glow) stays unlit");
+        Check(js.LightingOfConverted(js.Convert(smoke, 900830050, $"{{{noSounds},\"lit\":{{}}}}")) is [-1], "lighting: fallback DARKSIGN_FXR_LIT=0 leaves every billboard unlit");
+
         Console.WriteLine(failures == 0 ? "effects-selftest: all checks passed" : $"effects-selftest: {failures} FAILED");
         return failures == 0 ? 0 : 1;
     }
