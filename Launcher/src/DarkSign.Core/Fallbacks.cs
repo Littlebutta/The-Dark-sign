@@ -620,11 +620,13 @@ public static class Fallbacks
         new("map-music", "DS3 maps", "DS3's music (areas and boss fights)", Stage.Build,
             "A DS3 map or boss fight plays the wrong music, Elden Ring's music, or none; the music doesn't change with a boss's phase or doesn't stop; or the game stutters or crashes when a track starts.",
         [
-            new("A", "DS3's music (default)", "Every music region of the ported DS3 maps plays its DS3 track: the area music where DS3 plays it (Firelink Shrine) and each boss fight's tracks, switching with the boss's phases, stopping when the boss dies, you die or leave. The tracks are decoded from your DS3 files to Mods\\ER\\darksign_music and the test menu DLL plays them on its own audio stream (it is loaded for this even with the F1 test menu unticked). Ported enemies no longer start Elden Ring's battle music. Report: the music lines of the port-maps log, \"music:\" lines in dksign_testmenu.log."),
+            new("A", "DS3's music (default)", "Every music region of the ported DS3 maps plays its DS3 track when DS3's own scripts turn it on: Firelink Shrine's music while you stand in the shrine, a boss's track when its fight starts (not when you walk into the arena), the next track when the boss changes phase, and silence when the boss dies, you die or leave. The tracks are decoded from your DS3 files to Mods\\ER\\darksign_music and the test menu DLL plays them on its own audio stream (it is loaded for this even with the F1 test menu unticked). Ported enemies no longer start Elden Ring's battle music. Report: the music lines of the port-maps log, \"music:\" lines in dksign_testmenu.log."),
             new("B", "No DS3 music", "No DS3 music is built or played (DARKSIGN_MAP_MUSIC=0): the DS3 maps are quiet apart from Elden Ring's own music, as up to 1.0.45x.")
                 { PorterEnv = Env("DARKSIGN_MAP_MUSIC", "0"), GameEnv = Env(NoMapMusicVariable, "1") },
             new("C", "DS3's music, Elden Ring battle music kept", "As A, but ported enemies keep their Elden Ring template's threat level (DARKSIGN_ENEMY_THREAT=template), as up to 1.0.45x: an enemy built on an Elden Ring field boss starts that boss's battle music.")
                 { PorterEnv = Env("DARKSIGN_ENEMY_THREAT", "template") },
+            new("D", "DS3's music, a boss's music from the arena's door", "As A, but a boss's tracks are not switched by its fight (DARKSIGN_MAP_MUSIC=arena): they play whenever you stand in the boss's arena, the last phase's track over the others, as in 1.0.479. For when a boss fight stays silent with A.")
+                { PorterEnv = Env("DARKSIGN_MAP_MUSIC", "arena") },
         ]),
 
         new("map-layers", "DS3 maps", "Which state of a DS3 map is ported", Stage.Build,

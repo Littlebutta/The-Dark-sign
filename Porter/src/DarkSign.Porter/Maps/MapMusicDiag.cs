@@ -113,6 +113,50 @@ public static class MapMusicDiag
         foreach (var n in plan.Notes)
             Line($"  note: {n}");
 
+        // The same events as the port writes them, so the flags each line sets can be read off.
+        Line("");
+        Line("=== converted (Elden Ring's form; a start line's values after the event ID; @byte=Xn: filled from the event's value n)");
+        var erDefs = Emedf.Parse(File.ReadAllText(ctx.Data.Emedf("er-common")));
+        var ported = slots.Select(s => (s.Ds3, s.Er)).ToList();
+        foreach (var (name, map, script) in all)
+        {
+            var port = new EventPort(defs, erDefs, ported, new FlagMap()) { Music = plan, MusicMap = map };
+            if (common is not null)
+                port.Learn(common, common: true);
+            foreach (var other in scripts.Values)
+                port.Learn(other);
+            var starters = script.Events.Where(e => e.Instructions.Any(i => i.Bank == 2000 && i.ID is 0 or 6
+                && i.ArgData.Length >= (i.ID == 0 ? 8 : 4) && musicEvents.Contains(BitConverter.ToUInt32(i.ArgData, i.ID == 0 ? 4 : 0)))).Select(e => e.ID).ToHashSet();
+            var source = new EMEVD(script.Format);
+            source.Events.AddRange(script.Events.Where(e => musicEvents.Contains(e.ID) || starters.Contains(e.ID) && e.ID is not (0 or 50)));
+            EMEVD converted;
+            try { converted = port.Convert(source, EMEVD.Game.Sekiro, id => id); }
+            catch (Exception ex) when (ex is not OutOfMemoryException) { Line($"--- {name}: {ex.GetType().Name}: {ex.Message}"); continue; }
+            foreach (var e in converted.Events)
+            {
+                Line($"--- {name} event {e.ID}");
+                for (int i = 0; i < e.Instructions.Count; i++)
+                {
+                    var ins = e.Instructions[i];
+                    bool music = ins.Bank == 2003 && ins.ID is 66 or 22;
+                    bool start = ins.Bank == 2000 && ins.ID is 0 or 6;
+                    if (!music && !start)
+                        continue;
+                    var filled = string.Join(" ", e.Parameters.Where(p => p.InstructionIndex == i).Select(p => $"@{p.TargetStartByte}=X{p.SourceStartByte}/{p.ByteCount}"));
+                    var values = new List<string>();
+                    for (int o = start ? 4 : 0; o + 4 <= ins.ArgData.Length; o += 4)
+                        values.Add(BitConverter.ToUInt32(ins.ArgData, o).ToString(CultureInfo.InvariantCulture));
+                    Line($"  {i,3}: {(music ? (ins.ID == 66 ? "Set Event Flag" : "Batch Set Event Flags") : "start")} {ins.Bank}[{ins.ID:D2}] ({string.Join(", ", values)}) {filled}");
+                }
+            }
+            foreach (var note in port.Stats.Notes)
+                Line($"  note: {note}");
+        }
+        Line("");
+        Line("=== lines each slot's event 0 begins with");
+        foreach (var slot in slots)
+            Line($"  {slot.Er}: {string.Join("; ", plan.LoadLines(slot.Er).Select(i => $"flag {BitConverter.ToUInt32(i.ArgData, 4)} {(i.ArgData[8] != 0 ? "on" : "off")}"))}");
+
         var file = Path.Combine(dir, "music.txt");
         File.WriteAllText(file, report.ToString());
         Console.WriteLine(report.ToString());

@@ -14,10 +14,20 @@ namespace DarkSign.Porter.Maps;
 /// them no-ops and the region port left the music regions out, and DS3 had no music at all. What Devin heard was Elden
 /// Ring's own: its battle music, which a character's NpcParam threatLv starts, and the ported enemies' rows are copies
 /// of their Elden Ring templates' rows (fixed in the enemy port: <c>ChrPort.MusicThreatLevel</c>).</para>
+/// <para>When DS3 switches them (Devin's 1.0.479 test, "map-diag music" on DS3's files): every map's event 50 turns
+/// its music regions off at load. A boss's tracks are turned on by DS3's shared boss events (common_func 20005830-33
+/// and 20001835-38), which get the regions as values from the map script: off at the start, the first region on when
+/// the fight starts (the player is in the arena and the fight's flag is on), the second on when the phase flag turns
+/// on, and "Enable Boss Map Sound" for entity -1, off, when the boss dies: the boss music stops, whichever it is.
+/// Firelink Shrine's event turns its track on while the player stands on the shrine's floor. The first port left
+/// every line with a passed-in region out and took a region no line turned on for one that plays from the start, so
+/// every boss track played on entering its arena, the phase-two track first.</para>
 /// <para>What this port does, for every ported map: each music region (a <see cref="Source"/>) gets a "playing" flag,
 /// and an event in its map's script turns that flag on while the region is switched on and the player stands in it
 /// (the region and its children, carried into the map file as script regions by <see cref="RegionPort"/>), and off
-/// again. The DS3 script lines that switch a region set its switch flag instead. The test menu DLL watches the playing
+/// again. The DS3 script lines that switch a region set its switch flag instead (on: the region is on); where the
+/// region is passed in, the line takes the flag from the same value, and the lines that start the event pass the
+/// region's switch flag (<see cref="EventPort.Kind.MusicRegion"/>). The test menu DLL watches the playing
 /// flags and plays the DS3 track of the last one turned on, decoded from DS3's sound banks to a WAV file
 /// (Mods\ER\darksign_music), looping where DS3's sample loops, fading out when the flag goes off. It plays the music
 /// itself (an XAudio2 stream, as the DLL sounds of fallback "sounds" D) instead of through Elden Ring's Wwise banks,
@@ -31,6 +41,13 @@ public static class MapMusic
 {
     public static readonly bool Enabled = Environment.GetEnvironmentVariable("DARKSIGN_MAP_MUSIC") != "0";
 
+    /// <summary>
+    /// DARKSIGN_MAP_MUSIC=arena (launcher fallback "map-music" D): a boss's tracks get no switch flag, so they play
+    /// wherever the player stands in their region, as 1.0.479 did, for when a fight's own lines leave it silent.
+    /// </summary>
+    public static bool BossTracksUnswitched { get; set; } =
+        string.Equals(Environment.GetEnvironmentVariable("DARKSIGN_MAP_MUSIC"), "arena", StringComparison.OrdinalIgnoreCase);
+
     /// <summary>The list the DLL reads (Mods\ER): playing flag, track file, loop points, fade-out, map, region.</summary>
     public const string ListFile = "darksign_music.tsv";
     /// <summary>Where the tracks go (Mods\ER\darksign_music\m&lt;ID&gt;.wav); must match TestMenu/src/music.cpp.</summary>
@@ -38,6 +55,8 @@ public static class MapMusic
 
     public const uint FirstFlag = RunEvents.FlagBlock + 2000;
     public const int MaxFlags = 100;
+    /// <summary>The numbered flags stop before the spare flag (<see cref="Plan.SpareFlag"/>).</summary>
+    private const uint SpareFlagLimit = FirstFlag + MaxFlags - 1;
     public const uint FirstEvent = RunEvents.FlagBlock + 1000;
     public const int MaxEvents = 100;
 
@@ -120,19 +139,22 @@ public static class MapMusic
         public int OnLines { get; set; }
         public int OffLines { get; set; }
         public bool Scripted => OnLines + OffLines > 0;
-        /// <summary>On until a script turns it off: a region no script turns on (Firelink Shrine's). A boss region's
-        /// fight turns it on, so it starts off.</summary>
-        public bool DefaultOn => OnLines == 0;
-        /// <summary>The flag the scripts set (its meaning flips with <see cref="DefaultOn"/>: "switched off" for a region
-        /// that starts on, "switched on" for one that starts off, so a reset on load is the DS3 start state); 0: none.</summary>
+        /// <summary>A boss fight's track: a line names it with "Enable Boss Map Sound" (the fight starts, a phase changes).</summary>
+        public bool Boss { get; set; }
+        /// <summary>On until a script turns it off: a region no script line turns on (the lines of DS3's shared boss
+        /// events counted for each region they are started with). A region some line turns on starts off: DS3's
+        /// scripts turn those off at load (event 50 of every map).</summary>
+        public bool StartsOn => OnLines == 0;
+        /// <summary>The flag the scripts set: on while the region is switched on (set at load to <see cref="StartsOn"/>); 0: none.</summary>
         public uint SwitchFlag { get; set; }
         /// <summary>On while the track should play: what the DLL watches.</summary>
         public uint PlayFlag { get; set; }
         public uint EventId { get; set; }
         public override string ToString() =>
             $"{Ds3} {Name}: {Sound}" + (Ds3Entity > 0 ? $" (entity {Ds3Entity})" : "") +
-            $", {(Zones.Count == 0 ? "anywhere" : $"{Zones.Count} zones")}, {(DefaultOn ? "on" : "off")} at load" +
-            (Scripted ? $", {OnLines} lines turn it on, {OffLines} off" : "") + $"; flags switch {SwitchFlag} play {PlayFlag}, event {EventId}";
+            $", {(Zones.Count == 0 ? "anywhere" : $"{Zones.Count} zones")}, {(StartsOn ? "on" : "off")} at load" +
+            (Scripted ? $", {OnLines} lines turn it on, {OffLines} off" : "") + (Boss ? ", a boss track" : "") +
+            $"; flags switch {SwitchFlag} play {PlayFlag}, event {EventId}";
     }
 
     public sealed class Plan
@@ -142,8 +164,19 @@ public static class MapMusic
         /// <summary>Play BGM tracks by (DS3 map, sound ID).</summary>
         public Dictionary<(MapId, int), Source> Direct { get; } = [];
         public List<string> Notes { get; } = [];
-        /// <summary>Lines that switch a region passed in by the caller, which can't be told apart here (no-ops).</summary>
+        /// <summary>Lines that switch a region passed in by the caller: they set the switch flag the caller passes.</summary>
         public int PassedIn { get; set; }
+        /// <summary>"Enable Boss Map Sound" for entity -1, off: the boss music stops, whichever it is.</summary>
+        public int BossStops { get; set; }
+        /// <summary>The switch flags of the boss tracks, first to last (0: none): one line turns them all off.</summary>
+        public uint FirstBossSwitch { get; set; }
+        public uint LastBossSwitch { get; set; }
+        /// <summary>The flag a passed-in region that isn't a music track sets (a wind or voice region): nothing reads it.</summary>
+        public const uint SpareFlag = FirstFlag + MaxFlags - 1;
+
+        /// <summary>The switch flag a line that starts an event passes for a DS3 region it passed (see <see cref="EventPort.Kind.MusicRegion"/>).</summary>
+        public uint SwitchFor(long ds3Entity) =>
+            ds3Entity is > 0 and <= int.MaxValue && ByEntity.TryGetValue((int)ds3Entity, out var s) && s.SwitchFlag != 0 ? s.SwitchFlag : SpareFlag;
         /// <summary>Lines converted: switch flags set, Elden Ring music plays left out.</summary>
         public int Converted { get; set; }
         public int MusicPlaysLeftOut { get; set; }
@@ -159,29 +192,44 @@ public static class MapMusic
         /// A DS3 music line in Elden Ring's form, or null when it isn't one this port handles (the event port then
         /// treats it as before: no Elden Ring form, a no-op). <paramref name="map"/> is the DS3 map whose script it is
         /// in (null in common_func: only region entity IDs, which name their map, are handled there).
+        /// <para>A line that switches a region becomes Set Event Flag on the region's switch flag, with the same state.
+        /// Where the region (or the state) is passed in, the new line takes it from the same value
+        /// (<paramref name="passedRegionIsMusic"/>: the event's value is known to hold a music region, so the lines
+        /// that start the event pass a switch flag there; otherwise the line stays a no-op).</para>
         /// </summary>
-        public EMEVD.Instruction? Convert(EMEVD.Instruction ins, Emedf ds3, IReadOnlySet<long> paramBytes, MapId? map)
+        public EMEVD.Instruction? Convert(EMEVD.Instruction ins, Emedf ds3, IReadOnlySet<long> paramBytes, MapId? map, bool passedRegionIsMusic = false)
         {
             if (ins.Bank != 2010 || ds3.Get(ins.Bank, ins.ID) is not { } def)
                 return null;
             long Arg(string name) => def.Args.FirstOrDefault(a => a.Name.Equals(name, StringComparison.OrdinalIgnoreCase)) is { } a ? Emedf.Read(ins.ArgData, a) : -1;
             bool Passed(string name) => def.Args.FirstOrDefault(a => a.Name.Equals(name, StringComparison.OrdinalIgnoreCase)) is { } a && paramBytes.Contains(a.Offset);
-            // A line with any value passed in stays as it was: the caller's value would land in the new line's bytes.
             bool anyPassed = paramBytes.Count > 0;
             switch (ins.ID)
             {
                 case SetMapSoundState or EnableBossMapSound or EnableMapSoundWithFade:
                 {
-                    if (anyPassed)
+                    // The state byte is written as it is: a passed-in state lands on it.
+                    bool on = Arg("Enable/Disable") != 0;
+                    if (Passed("Entity ID"))
                     {
+                        if (!passedRegionIsMusic)
+                            return null;
                         PassedIn++;
-                        return null;
+                        return SetFlag(SpareFlag, on);
                     }
-                    if (!ByEntity.TryGetValue((int)Arg("Entity ID"), out var source) || source.SwitchFlag == 0)
+                    long entity = Arg("Entity ID");
+                    // "Enable Boss Map Sound", entity -1, off: the boss music stops, whichever track it is.
+                    if (entity <= 0 && ins.ID == EnableBossMapSound && !Passed("Enable/Disable") && !on)
+                    {
+                        if (FirstBossSwitch == 0)
+                            return null;
+                        BossStops++;
+                        return RunEvents.Make(2003, 22, FirstBossSwitch, LastBossSwitch, (byte)0);
+                    }
+                    if (entity <= 0 || !ByEntity.TryGetValue((int)entity, out var source) || source.SwitchFlag == 0)
                         return null;
                     Converted++;
-                    bool on = Arg("Enable/Disable") != 0;
-                    return SetFlag(source.SwitchFlag, source.DefaultOn ? !on : on);
+                    return SetFlag(source.SwitchFlag, on);
                 }
                 case PlayBgm:
                 {
@@ -224,9 +272,11 @@ public static class MapMusic
                 }
                 else
                 {
+                    // Off until its conditions hold (after a load too, whatever the flag was).
+                    e.Instructions.Add(SetFlag(s.PlayFlag, false));
                     // Start: switched on AND in a zone.
                     if (switched)
-                        e.Instructions.Add(IfFlag(1, !s.DefaultOn, s.SwitchFlag));
+                        e.Instructions.Add(IfFlag(1, true, s.SwitchFlag));
                     if (zoned)
                     {
                         foreach (var z in s.Zones)
@@ -237,7 +287,7 @@ public static class MapMusic
                     e.Instructions.Add(SetFlag(s.PlayFlag, true));
                     // Stop: switched off OR out of every zone.
                     if (switched)
-                        e.Instructions.Add(IfFlag(-2, s.DefaultOn, s.SwitchFlag));
+                        e.Instructions.Add(IfFlag(-2, false, s.SwitchFlag));
                     if (zoned)
                     {
                         foreach (var z in s.Zones)
@@ -254,7 +304,17 @@ public static class MapMusic
             return (events, starts);
         }
 
-        /// <summary>Adds the slot's zone events to its converted script and starts them from event 0. Returns how many.</summary>
+        /// <summary>
+        /// The lines that put a slot's switch flags in their DS3 start state when the map loads: on for a region
+        /// nothing turns on, off for the others (so the state never depends on what the flags were before the load).
+        /// </summary>
+        public List<EMEVD.Instruction> LoadLines(MapId er) =>
+            For(er).Where(s => s.SwitchFlag != 0).Select(s => SetFlag(s.SwitchFlag, s.StartsOn)).ToList();
+
+        /// <summary>
+        /// Adds the slot's zone events to its converted script and starts them from event 0, whose first lines put the
+        /// switch flags in their start state (before the map's own events run). Returns how many events.
+        /// </summary>
         public int AddTo(EMEVD script, MapId er)
         {
             var (events, starts) = Events(er);
@@ -265,6 +325,10 @@ public static class MapMusic
             var constructor = script.Events.FirstOrDefault(e => e.ID == 0);
             if (constructor is null)
                 script.Events.Insert(0, constructor = new EMEVD.Event(0, EMEVD.Event.RestBehaviorType.Default));
+            var load = LoadLines(er);
+            constructor.Instructions.InsertRange(0, load);
+            foreach (var p in constructor.Parameters)
+                p.InstructionIndex += load.Count;
             constructor.Instructions.AddRange(starts);
             script.Events.AddRange(events);
             return events.Count;
@@ -325,43 +389,90 @@ public static class MapMusic
                         plan.Sources.Add(source);
                     }
         }
-        // Which lines switch each source.
-        foreach (var script in lines)
-            foreach (var (ins, paramBytes) in Instructions(script.Emevd))
-            {
-                if (ins.Bank != 2010 || ds3.Get(2010, ins.ID) is not { } def)
-                    continue;
-                Source? source = null;
-                long state = -1;
-                if (ins.ID is SetMapSoundState or EnableBossMapSound or EnableMapSoundWithFade)
-                {
-                    var entity = Value(ins, def, "Entity ID", paramBytes);
-                    state = Value(ins, def, "Enable/Disable", paramBytes);
-                    if (entity > 0)
-                        plan.ByEntity.TryGetValue((int)entity, out source);
-                }
-                else if (ins.ID == PlayBgm && script.Map is { } m && Value(ins, def, "Sound Type", paramBytes) == BgmSoundType)
-                {
-                    plan.Direct.TryGetValue((m, (int)Math.Clamp(Value(ins, def, "Sound ID", paramBytes), 0, int.MaxValue)), out source);
-                    state = Value(ins, def, "Should Play", paramBytes);
-                }
-                if (source is null)
-                    continue;
-                if (state == 0) source.OffLines++;
-                else source.OnLines++; // a passed-in state counts as on: the region then starts off, as a boss's does
-            }
-        // Numbers: a switch flag for every source a script switches, a playing flag and an event for every source.
-        uint flag = FirstFlag, eventId = FirstEvent;
-        foreach (var s in plan.Sources)
+        // Which lines switch each source: the lines that name its region, and the lines of an event that gets the
+        // region passed in, once for every line that starts the event with it (DS3's shared boss events).
+        void Count(Source source, int instruction, long state)
         {
-            int flagsNeeded = s.Scripted ? 2 : 1;
-            if (flag + flagsNeeded > FirstFlag + MaxFlags || eventId >= FirstEvent + MaxEvents)
-            {
-                plan.Notes.Add($"no flag or event number left for {s.Ds3} {s.Name} ({s.Sound}): it stays silent");
-                continue;
-            }
-            if (s.Scripted)
-                s.SwitchFlag = flag++;
+            if (state == 0) source.OffLines++;
+            else source.OnLines++;
+            if (instruction == EnableBossMapSound)
+                source.Boss = true;
+        }
+        // Event -> its lines that switch a passed-in region: (instruction, the value's byte, state or -1, the state's byte or -1).
+        var passed = new Dictionary<long, List<(int Instruction, long RegionByte, long State, long StateByte)>>();
+        foreach (var script in lines)
+            foreach (var e in script.Emevd.Events)
+                for (int i = 0; i < e.Instructions.Count; i++)
+                {
+                    var ins = e.Instructions[i];
+                    if (ins.Bank != 2010 || ds3.Get(2010, ins.ID) is not { } def)
+                        continue;
+                    var paramBytes = e.Parameters.Where(p => p.InstructionIndex == i).ToDictionary(p => p.TargetStartByte, p => p.SourceStartByte);
+                    IReadOnlySet<long> targets = paramBytes.Keys.ToHashSet();
+                    if (ins.ID is SetMapSoundState or EnableBossMapSound or EnableMapSoundWithFade)
+                    {
+                        var entityArg = def.Args.FirstOrDefault(a => a.Name.Equals("Entity ID", StringComparison.OrdinalIgnoreCase));
+                        var stateArg = def.Args.FirstOrDefault(a => a.Name.Equals("Enable/Disable", StringComparison.OrdinalIgnoreCase));
+                        var state = Value(ins, def, "Enable/Disable", targets);
+                        if (entityArg is not null && paramBytes.TryGetValue(entityArg.Offset, out var regionByte))
+                        {
+                            if (!passed.TryGetValue(e.ID, out var list))
+                                passed[e.ID] = list = [];
+                            list.Add(((int)ins.ID, regionByte, state, stateArg is not null && paramBytes.TryGetValue(stateArg.Offset, out var sb) ? sb : -1));
+                            continue;
+                        }
+                        var entity = Value(ins, def, "Entity ID", targets);
+                        if (entity > 0 && plan.ByEntity.TryGetValue((int)entity, out var source))
+                            Count(source, ins.ID, state);
+                    }
+                    else if (ins.ID == PlayBgm && script.Map is { } m && Value(ins, def, "Sound Type", targets) == BgmSoundType
+                             && plan.Direct.TryGetValue((m, (int)Math.Clamp(Value(ins, def, "Sound ID", targets), 0, int.MaxValue)), out var direct))
+                        Count(direct, ins.ID, Value(ins, def, "Should Play", targets));
+                }
+        foreach (var script in lines)
+            foreach (var e in script.Emevd.Events)
+                for (int i = 0; i < e.Instructions.Count; i++)
+                {
+                    var ins = e.Instructions[i];
+                    if (ins.Bank != 2000 || ins.ID is not (0 or 6))
+                        continue;
+                    int head = ins.ID == 0 ? 8 : 4; // DS3's InitializeCommonEvent has no slot
+                    if (ins.ArgData.Length < head || !passed.TryGetValue(BitConverter.ToUInt32(ins.ArgData, head - 4), out var switches))
+                        continue;
+                    var passedOn = e.Parameters.Where(p => p.InstructionIndex == i).Select(p => p.TargetStartByte).ToHashSet();
+                    foreach (var (instruction, regionByte, state, stateByte) in switches)
+                    {
+                        long at = head + regionByte;
+                        if (at + 4 > ins.ArgData.Length || passedOn.Contains(at))
+                            continue; // passed on from the starting event's own values: not known here
+                        if (!plan.ByEntity.TryGetValue(BitConverter.ToInt32(ins.ArgData, (int)at), out var source))
+                            continue;
+                        long value = stateByte < 0 ? state
+                            : head + stateByte < ins.ArgData.Length && !passedOn.Contains(head + stateByte) ? ins.ArgData[head + stateByte] : 1;
+                        Count(source, instruction, value);
+                    }
+                }
+        // Numbers: a switch flag for every source a script switches (the boss tracks' first, in one run, so one line
+        // turns them all off), then a playing flag and an event for every source.
+        uint flag = FirstFlag, eventId = FirstEvent;
+        var numbered = plan.Sources.ToList();
+        while (numbered.Count > 0 && (FirstFlag + numbered.Count + numbered.Count(s => s.Scripted) > SpareFlagLimit || numbered.Count > MaxEvents))
+        {
+            var last = numbered[^1];
+            numbered.RemoveAt(numbered.Count - 1);
+            plan.Notes.Add($"no flag or event number left for {last.Ds3} {last.Name} ({last.Sound}): it stays silent");
+        }
+        foreach (var s in numbered.Where(s => s.Scripted && s.Boss && !BossTracksUnswitched))
+        {
+            s.SwitchFlag = flag++;
+            if (plan.FirstBossSwitch == 0)
+                plan.FirstBossSwitch = s.SwitchFlag;
+            plan.LastBossSwitch = s.SwitchFlag;
+        }
+        foreach (var s in numbered.Where(s => s.Scripted && !s.Boss))
+            s.SwitchFlag = flag++;
+        foreach (var s in numbered)
+        {
             s.PlayFlag = flag++;
             s.EventId = eventId++;
         }
@@ -430,9 +541,14 @@ public static class MapMusic
             File.Delete(listPath);
         var lines = new List<string> { plan.Summary };
         lines.AddRange(plan.Notes.Select(n => "music: " + n));
-        if (plan.MusicPlaysLeftOut > 0 || plan.PassedIn > 0)
-            lines.Add($"music: {plan.Converted} script lines switch a track, {plan.MusicPlaysLeftOut} Elden Ring music plays left out" +
-                      (plan.PassedIn > 0 ? $", {plan.PassedIn} lines switch a region passed in by the caller (no-ops)" : ""));
+        lines.Add($"music: {plan.Converted} script lines switch a track by name, {plan.PassedIn} switch the track their event is started with " +
+                  $"(DS3's shared boss events), {plan.BossStops} stop the boss music, {plan.MusicPlaysLeftOut} Elden Ring music plays left out; " +
+                  $"boss switch flags {plan.FirstBossSwitch}-{plan.LastBossSwitch}");
+        // What went wrong in 1.0.479: a track no line turns on plays wherever the player stands in its region.
+        if (BossTracksUnswitched)
+            lines.Add("music: boss tracks play wherever the player stands in their arena (DARKSIGN_MAP_MUSIC=arena, fallback map-music D)");
+        foreach (var s in plan.Sources.Where(s => s.Scripted && s.StartsOn))
+            lines.Add($"music: WARN no script line turns on {s.Ds3} {s.Name} ({s.Sound}): it plays from the load until a line turns it off");
         var sounds = plan.Sources.Where(s => s.PlayFlag != 0).Select(s => s.Sound).Distinct().Order(StringComparer.Ordinal).ToList();
         if (sounds.Count == 0)
         {
