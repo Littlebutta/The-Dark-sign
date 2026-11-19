@@ -301,6 +301,8 @@ public static class Fallbacks
                 { PorterEnv = Env("DARKSIGN_HKS_MARKERS", "drop") },
             new("H", "Own-section arts from the first block", "As A, but a weapon's own DS3 section always gives its art from its first skill move (DARKSIGN_ART_BLOCK_BY_NAME=0), as up to 1.0.410, when the Old King's Great Hammer did a leftover Stomp for Molten Perseverance. With A the art's name picks the block (Perseverance: 37700, with its lava follow-up). Use it if an art changed for the worse.")
                 { PorterEnv = Env("DARKSIGN_ART_BLOCK_BY_NAME", "0") },
+            new("I", "Skipped movesets keep their template's attacks", "As A, but a weapon whose own moveset was skipped (no room left in the animation binder) keeps its template's behaviour rows (DARKSIGN_SKIPPED_ATTACKS=0), as up to 1.0.44x, when the Ringed Knight Paired Greatswords' weapon art slam lost its explosion. With A such a weapon keeps Elden Ring's moves but gets its DS3 attack rows, so its DS3 art's hits and projectiles are found. Use it if one of those weapons' ordinary attacks changed for the worse.")
+                { PorterEnv = Env("DARKSIGN_SKIPPED_ATTACKS", "0") },
             new("off", "Off (Elden Ring Ashes of War)", "Ported weapons keep their template's Elden Ring Ash of War (DARKSIGN_WEAPON_ARTS=0), as in builds up to 1.0.169.")
                 { PorterEnv = Env("DARKSIGN_WEAPON_ARTS", "0") },
         ]),
@@ -442,6 +444,15 @@ public static class Fallbacks
             new("A", "Written as normal floor (default)", "DS3 lays copies of its floors in collision with hit filter 24, which Elden Ring reads differently: enemies that landed on one fell through the map (1.0.347, map 3). They are written as normal floor (hit filter 8). The port log's layout notes count them."),
             new("B", "DS3's hit filters", "Every collision keeps DS3's hit filter number (port-maps --ds3-hit-filters), as in every build up to 1.0.353: enemies fall through the floor where a filter-24 copy is the top surface.")
                 { MapsArgs = ["--ds3-hit-filters"] },
+        ]),
+        new("map-empty-collision", "DS3 maps", "Collision DS3 keeps on one side only", Stage.Build,
+            "Enemies on a DS3 map (the Painted World above all) die as soon as the map loads, or since this option you bump into something invisible or the game stops while the Painted World loads.",
+        [
+            new("A", "The same collision on both sides (default)", "Some DS3 collision is an empty placeholder in its high-detail (h) file and real in its low-detail (l) file: 28 parts of the Painted World. They were left out of the map with their l collision, so enemies standing on that ground fell and died as the map loaded. They stay, and the empty side gets the same collision as the other, the way JortPob writes every collision into both. The port log's \"collision with an empty DS3 file on one side\" line counts them and the DS3 enemies that stand on them."),
+            new("B", "Only the side DS3 has", "The parts stay with DS3's collision on the side it has; the empty side gets no file (port-maps --empty-collision-alone).")
+                { MapsArgs = ["--empty-collision-alone"] },
+            new("C", "Left out", "Every part whose high-detail file is empty in DS3 is left out of the map, low-detail collision and all (port-maps --drop-empty-collisions), as in every build up to this option: the Painted World's enemies on that ground die as the map loads.")
+                { MapsArgs = ["--drop-empty-collisions"] },
         ]),
         new("map-stand-ins", "DS3 maps", "DS3's low-detail stand-ins and far views", Stage.Build,
             "A far part of a DS3 map is missing (a castle wall, a hall, a tower or mountains you could see from a distance), or blocky slabs, steps or low-resolution polygons floating over the map are back.",
@@ -593,6 +604,16 @@ public static class Fallbacks
                 { PorterEnv = Env("DARKSIGN_CUTSCENE_CONFORM", "0") },
             new("E", "DS3's cast and files as converted", "The cutscenes play as in A, but keep every part DS3 names even when Elden Ring has no model for it, DS3's draw settings, and DS3's cut file names (DARKSIGN_CUTSCENE_CAST=0), as builds up to 1.0.44x had them: a cutscene naming something Elden Ring can't load stays on a black screen.")
                 { PorterEnv = Env("DARKSIGN_CUTSCENE_CAST", "0") },
+        ]),
+
+        new("map-music", "DS3 maps", "DS3's music (areas and boss fights)", Stage.Build,
+            "A DS3 map or boss fight plays the wrong music, Elden Ring's music, or none; the music doesn't change with a boss's phase or doesn't stop; or the game stutters or crashes when a track starts.",
+        [
+            new("A", "DS3's music (default)", "Every music region of the ported DS3 maps plays its DS3 track: the area music where DS3 plays it (Firelink Shrine) and each boss fight's tracks, switching with the boss's phases, stopping when the boss dies, you die or leave. The tracks are decoded from your DS3 files to Mods\\ER\\darksign_music and the test menu DLL plays them on its own audio stream (it is loaded for this even with the F1 test menu unticked). Ported enemies no longer start Elden Ring's battle music. Report: the music lines of the port-maps log, \"music:\" lines in dksign_testmenu.log."),
+            new("B", "No DS3 music", "No DS3 music is built or played (DARKSIGN_MAP_MUSIC=0): the DS3 maps are quiet apart from Elden Ring's own music, as up to 1.0.45x.")
+                { PorterEnv = Env("DARKSIGN_MAP_MUSIC", "0"), GameEnv = Env(NoMapMusicVariable, "1") },
+            new("C", "DS3's music, Elden Ring battle music kept", "As A, but ported enemies keep their Elden Ring template's threat level (DARKSIGN_ENEMY_THREAT=template), as up to 1.0.45x: an enemy built on an Elden Ring field boss starts that boss's battle music.")
+                { PorterEnv = Env("DARKSIGN_ENEMY_THREAT", "template") },
         ]),
 
         new("map-layers", "DS3 maps", "Which state of a DS3 map is ported", Stage.Build,
@@ -750,6 +771,19 @@ public static class Fallbacks
 
     /// <summary>Game variable: no hotkeys (the DLL is loaded only for another job and the test menu is off).</summary>
     public const string NoHotkeysVariable = "DKSIGN_NO_HOTKEYS";
+
+    /// <summary>Game variable: the test menu DLL doesn't play DS3's music (map-music B).</summary>
+    public const string NoMapMusicVariable = "DKSIGN_NO_MAP_MUSIC";
+
+    /// <summary>The music list port-maps writes into the mod folder (Porter Maps/MapMusic.cs ListFile).</summary>
+    public const string MusicListFile = "darksign_music.tsv";
+
+    /// <summary>
+    /// True when the test menu DLL must be loaded to play DS3's music: the content has music (port-maps wrote its
+    /// list) and map-music B isn't chosen.
+    /// </summary>
+    public static bool NeedsMusicDll(IReadOnlyDictionary<string, string>? methods, string modDir) =>
+        !GameEnvironment(methods).ContainsKey(NoMapMusicVariable) && File.Exists(Path.Combine(modDir, MusicListFile));
 
     /// <summary>Game variable: the mod folder, for the DLL's files (DLL sounds).</summary>
     public const string ModDirVariable = "DKSIGN_MOD_DIR";

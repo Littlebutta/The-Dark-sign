@@ -1781,11 +1781,16 @@ public static partial class ChrPort
                     notes.Add($"ChrModelParam: left out ({Describe(ex)}); the new models load with the defaults");
             }
         int added = 0;
+        long? quietThreat = KeepTemplateThreat ? null : MusicThreatLevel(npc);
         foreach (var (ds3Id, id) in npcRows.OrderBy(r => r.Key))
         {
             if (npc[id] is not null)
                 continue;
             var row = CopyRow(npc, template, id);
+            // No Elden Ring battle music: the template's threat level (a field boss's starts its music) gives way to
+            // the one ordinary Elden Ring enemies have. DS3's own music comes from DS3's map scripts (MapMusic).
+            if (quietThreat is { } threat && Cell(row, "threatLv") is { } threatCell)
+                Set(threatCell, threat);
             row.Name = $"[DS3] {ds3Npc?[ds3Id]?.Name ?? plan.Ds3.Name}" + (plan.Stage == Stage.All ? "" : $" (test {(int)plan.Stage})");
             // The test set stays on the template's row with health to spare, so it can be hit again and again.
             if (plan.Stage != Stage.All && Cell(row, "hp") is { } testHp)
@@ -1849,6 +1854,32 @@ public static partial class ChrPort
         }
         npc.Rows.Sort((a, b) => a.ID.CompareTo(b.ID));
         return added;
+    }
+
+    /// <summary>
+    /// DARKSIGN_ENEMY_THREAT=template (launcher fallback "map-music" C): ported enemies keep their Elden Ring template's
+    /// threat level, as up to 1.0.450, and the ones built on a field boss start Elden Ring's battle music.
+    /// </summary>
+    public static readonly bool KeepTemplateThreat =
+        string.Equals(Environment.GetEnvironmentVariable("DARKSIGN_ENEMY_THREAT"), "template", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// The threat level that starts no music: the one most of Elden Ring's NpcParam rows have (its ordinary enemies;
+    /// Paramdex's default for threatLv is 1). Elden Ring starts its field battle music from a character's threatLv
+    /// (the "NPC Threat Level" of its event instructions "IF Field Battle BGM Active" and "Set Field Battle BGM Heat
+    /// Up"), and every ported row is a copy of its template's, so an enemy built on a field boss played that boss's
+    /// music in the DS3 maps (Devin's 2026-11-19 report). Null when the param has no such field.
+    /// </summary>
+    public static long? MusicThreatLevel(PARAM npc)
+    {
+        var counts = new Dictionary<long, int>();
+        foreach (var row in npc.Rows)
+            if (Cell(row, "threatLv") is { Value: not null and not byte[] } cell)
+            {
+                long v = Convert.ToInt64(cell.Value);
+                counts[v] = counts.GetValueOrDefault(v) + 1;
+            }
+        return counts.Count == 0 ? null : counts.OrderByDescending(c => c.Value).ThenBy(c => c.Key).First().Key;
     }
 
     /// <summary>The NpcParam fields Elden Ring multiplies the damage of each kind a character takes by.</summary>

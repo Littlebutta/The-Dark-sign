@@ -17,6 +17,8 @@ public static partial class MapPortChecks
         yield return ("cutscenes: the F1 Cutscenes tab warps to the map in one event and plays the pending cutscene after the load in another; its list names the characters", CutsceneMenuEvents);
         yield return ("cutscenes: the cast resolves to Elden Ring models (map names, enemy models, assets); parts with none, and DS3 draw settings, are left out", CutsceneCastResolve);
         yield return ("cutscenes: each cut's Havok file becomes cutNNNN\\a0000.hkx at ID NNNN*10000; files no cut plays are left out", CutsceneCutFiles);
+        yield return ("cutscenes: events keep their own and their parent's timeline numbers when timelines are taken out or added (1.0.460 Friede crash)", CutsceneTimelineRelink);
+        yield return ("cutscenes: Clear played cutscenes lists each cutscene's seen flags (set and checked by its event, parameters followed) and its event's own flag", CutsceneReplayFlags);
     }
 
     private static void CutsceneSoundEvents()
@@ -156,7 +158,8 @@ public static partial class MapPortChecks
         var after = shape.Check(ds3);
         Expect(after.Count == 0, $"{changed} changes, left: {string.Join(" | ", after)}");
         var off = ds3.Cuts[0].Timelines[0].Events[0];
-        Expect(off.Unk18 == 301 && off.Unk1C == 301 && off.Unk28 == -1, $"offset event fields follow the cut ({off.Unk18} {off.Unk1C} {off.Unk28})");
+        Expect(off.Unk18 == 301 && off.Unk1C == 301, $"offset event fields follow the cut ({off.Unk18} {off.Unk1C})");
+        Expect(off.Unk28 == 0, $"Unk28 is a timeline link, left to CutsceneTimelineLinks ({off.Unk28})");
         var tl = ds3.Cuts[0].Timelines[1];
         Expect(tl.Unk10 == 1 && string.Join(",", tl.Parameters.Select(p => p.Name)) == "areaNo,blockNo,mapNo,equipDispType"
                && (int)tl.Parameters[0].Value == 45 && (int)tl.Parameters[2].Value == -1 && (int)tl.Parameters[3].Value == 0,
@@ -206,7 +209,9 @@ public static partial class MapPortChecks
         Expect(CutsceneMenu.PendingFlag(0) == 1039290300 && CutsceneMenu.PlayEventId(0) == 1039291700 && CutsceneMenu.IsMenuEvent(1039291700) && !CutsceneMenu.IsMenuEvent(1039291600),
             "pending flag in the saved range, play event IDs");
         var lines = CutsceneMenu.ListLines(entries).ToList();
-        Expect(lines.Count == 3 && lines[1] == $"s45_00_0000\ts19_70_0000\tPainted World of Ariandel\tSister Friede, c6010\t46\t{CutsceneMenu.RequestFlag(0)}", lines[1]);
+        Expect(lines.Count == 3 && lines[1] == $"s45_00_0000\ts19_70_0000\tPainted World of Ariandel\tSister Friede, c6010\t46\t{CutsceneMenu.RequestFlag(0)}\t{CutsceneMenu.PendingFlag(0)}", lines[1]);
+        var withFlags = CutsceneMenu.ListLines(entries, new Dictionary<int, SortedSet<uint>> { [19700000] = [19700801, 19705810] }).ToList();
+        Expect(withFlags[1].EndsWith($"\t{CutsceneMenu.PendingFlag(0)} 19700801 19705810") && withFlags[2].EndsWith($"\t{CutsceneMenu.PendingFlag(1)}"), withFlags[1] + " / " + withFlags[2]);
         Expect(CutsceneMenu.RequestFlag(0) == 1039292300 && CutsceneMenu.EventId(0) == 1039291300, "flag and event IDs");
     }
 
@@ -283,6 +288,40 @@ public static partial class MapPortChecks
         var outMqb = MQB.Read(outBnd.Files.Single().Bytes);
         Expect(outMqb.Resources.Select(r => r.Name).SequenceEqual(["a0000.HKT", "c7120_9000"]), string.Join(" ", outMqb.Resources.Select(r => r.Name)));
         Expect(outStats.Cast.LeftOut.Count == 1 && outMqb.Cuts[0].Timelines.Count == 2, outStats.Cast.ToString());
+        Expect(!CutsceneTimelineLinks.Problems(outMqb).Any(), "every event's timeline numbers inside its cut after the binder conversion: "
+            + string.Join("; ", CutsceneTimelineLinks.Problems(outMqb)));
+    }
+
+    private static void CutsceneTimelineRelink()
+    {
+        // offset.sib, the cut's Havok timeline on it, part A and part B on that, an effect on B, an effect on A.
+        var mqb = new MQB { Version = MQB.MQBVersion.DarkSouls3, Name = "s45_00_0000", Framerate = 30, ResourceDirectory = "", Resources = [], Cuts = [] };
+        foreach (var (name, kind) in new[] { ("offset.sib", 265), ("a0000.HKT", 266), ("c6020_0000", 1), ("h45_00_00_00_008100", 1), ("sfx_b", 103), ("sfx_a", 103) })
+            mqb.Resources.Add(new MQB.Resource { Name = name, ParentIndex = -1, Unk48 = kind });
+        var cut = new MQB.Cut { Name = "cut0010", Duration = 100, Timelines = [] };
+        int[] hangsOn = [-1, 0, 1, 1, 3, 2];
+        for (int i = 0; i < hangsOn.Length; i++)
+        {
+            var tl = new MQB.Timeline();
+            tl.Events.Add(new MQB.Event { ID = i, ResourceIndex = i, Duration = 100, Unk08 = i, Unk28 = hangsOn[i] });
+            cut.Timelines.Add(tl);
+        }
+        mqb.Cuts.Add(cut);
+        var before = CutsceneTimelineLinks.Take(mqb);
+        // Cutscene sound adds a timeline as CutsceneSound does (fields copied from the cut's first events).
+        var sound = new MQB.Timeline();
+        sound.Events.Add(new MQB.Event { ID = 9, ResourceIndex = 5, Duration = 100, Unk08 = 0, Unk28 = 1 });
+        cut.Timelines.Add(sound);
+        CutsceneCast.Remove(mqb, new HashSet<int> { 3 });
+        Expect(cut.Timelines.Count == 6 && CutsceneTimelineLinks.Problems(mqb).Any(), "taking B out leaves numbers pointing past their timelines (1.0.460's crash)");
+        var result = CutsceneTimelineLinks.Relink(mqb, before);
+        var events = cut.Timelines.Select(t => t.Events.Single()).ToList();
+        Expect(events.Select(e => e.ID).SequenceEqual([0, 1, 2, 5, 9]), $"B's effect goes with B ({string.Join(",", events.Select(e => e.ID))}, {result})");
+        Expect(events.Select(e => e.Unk08).SequenceEqual([0, 1, 2, 3, 4]), "Unk08: the event's own timeline");
+        Expect(events.Select(e => e.Unk28).SequenceEqual([-1, 0, 1, 2, 1]), $"Unk28: the same timeline as before ({string.Join(",", events.Select(e => e.Unk28))})");
+        Expect(result.EventsDropped == 1 && result.TimelinesDropped == 1 && !CutsceneTimelineLinks.Problems(mqb).Any(), result.ToString());
+        // The shape rules never touch the link fields.
+        Expect(CutsceneShape.IsLink(0) && CutsceneShape.IsLink(5) && !CutsceneShape.IsLink(2), "Unk08/Unk28 are links");
     }
 
     private static void CutsceneCutFiles()
@@ -463,5 +502,71 @@ public static partial class MapPortChecks
         Expect(r is not null && (uint)r["PlayMapId"].Value == 19700000u && (int)r["RefCamPosHitPartsID"].Value == -1, "row placed on m19_70 with no hit parts");
         Expect(param[45000010] is { } r2 && (uint)r2["PlayMapId"].Value == 45000000u, "second slot");
         Expect(param.Rows.Select(x => x.ID).SequenceEqual(param.Rows.Select(x => x.ID).Order()), "rows sorted");
+    }
+
+    private const string ErFlagDefs = """
+    { "main_classes": [
+      { "index": 3, "instrs": [
+        { "name": "IF Event Flag", "index": 0, "args": [
+          { "name": "Result Condition Group", "type": 3 }, { "name": "Desired Flag State", "type": 0 }, { "name": "Target Event Flag Type", "type": 0 },
+          { "name": "Target Event Flag ID", "type": 2 } ] },
+      ] },
+      { "index": 1003, "instrs": [
+        { "name": "END IF Event Flag", "index": 2, "args": [
+          { "name": "Execution End Type", "type": 0 }, { "name": "Desired Flag State", "type": 0 }, { "name": "Target Event Flag Type", "type": 0 },
+          { "name": "Target Event Flag ID", "type": 2 } ] },
+      ] },
+    ] }
+    """;
+
+    private static void CutsceneReplayFlags()
+    {
+        var defs = Emedf.Parse(ErFlagDefs);
+        Expect(defs.Get(1003, 2)!.Args[3].Offset == 4, "flag argument at byte 4");
+        EMEVD.Instruction EndIfOn(uint flag) => RunEvents.Make(1003, 2, (byte)0, (byte)1, (byte)0, flag);
+        EMEVD.Instruction Set(uint flag, byte on) => RunEvents.Make(2003, 66, (byte)0, flag, on);
+        EMEVD.Instruction Play(int id) => RunEvents.Make(2002, 3, id, 0u, 10000u);
+        var map = new EMEVD(EMEVD.Game.Sekiro);
+        var ctor = new EMEVD.Event(0, EMEVD.Event.RestBehaviorType.Default);
+        map.Events.Add(ctor);
+        // An intro: skips once its seen flag is on, plays, sets it. 19705555 is only set, 19700800 only checked.
+        var intro = new EMEVD.Event(19705810, EMEVD.Event.RestBehaviorType.Default);
+        intro.Instructions.Add(EndIfOn(19700801));
+        intro.Instructions.Add(RunEvents.Make(3, 0, (sbyte)0, (byte)1, (byte)0, 19700800u));
+        intro.Instructions.Add(Play(19700000));
+        intro.Instructions.Add(Set(19700801, 1));
+        intro.Instructions.Add(Set(19705555, 1));
+        intro.Instructions.Add(Set(19700802, 0));
+        map.Events.Add(intro);
+        ctor.Instructions.Add(RunEvents.Make(2000, 0, 0, 19705810u, 0u));
+        // One event started twice with (cutscene, seen flag) as parameters.
+        var shared = new EMEVD.Event(19705820, EMEVD.Event.RestBehaviorType.Default);
+        shared.Instructions.Add(EndIfOn(0));
+        shared.Instructions.Add(Play(0));
+        shared.Instructions.Add(Set(0, 1));
+        shared.Parameters.Add(new EMEVD.Parameter(0, 4, 4, 4));
+        shared.Parameters.Add(new EMEVD.Parameter(1, 0, 0, 4));
+        shared.Parameters.Add(new EMEVD.Parameter(2, 4, 4, 4));
+        map.Events.Add(shared);
+        ctor.Instructions.Add(RunEvents.Make(2000, 0, 0, 19705820u, 19700010, 19700811u));
+        ctor.Instructions.Add(RunEvents.Make(2000, 0, 1, 19705820u, 19700030, 19700831u));
+        // A common event (its ID is shared by every start) and the F1 menu's own play event.
+        var common = new EMEVD(EMEVD.Game.Sekiro);
+        var ce = new EMEVD.Event(90005999, EMEVD.Event.RestBehaviorType.Default);
+        ce.Instructions.Add(EndIfOn(19700851));
+        ce.Instructions.Add(Play(19700031));
+        ce.Instructions.Add(Set(19700851, 1));
+        common.Events.Add(ce);
+        ctor.Instructions.Add(RunEvents.Make(2000, 6, 0, 90005999u, 0u));
+        var menu = new EMEVD.Event(CutsceneMenu.PlayEventId(0), EMEVD.Event.RestBehaviorType.Default);
+        menu.Instructions.Add(Play(19700040));
+        common.Events.Add(menu);
+
+        var played = CutsceneFlags.Played(defs, [map, common], CutsceneMenu.IsMenuEvent);
+        string Show(int id) => played.TryGetValue(id, out var f) ? string.Join(" ", f) : "-";
+        Expect(Show(19700000) == "19700801 19705810", $"intro: seen flag and own event flag ({Show(19700000)})");
+        Expect(Show(19700010) == "19700811 19705820" && Show(19700030) == "19700831 19705821", $"parameters per start ({Show(19700010)} / {Show(19700030)})");
+        Expect(Show(19700031) == "19700851", $"common event: no own flag ({Show(19700031)})");
+        Expect(!played.ContainsKey(19700040), "the menu's own events are left out");
     }
 }
