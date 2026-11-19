@@ -103,9 +103,15 @@ public static class MapLighting
     public static string Ds3LightPath(MapId id, int n) => $"/map/{id}/{id}_{n:D4}.btl.dcx";
     public static string ErLightPath(MapId id, int n = 0) => $"/map/{id.AreaFolder}/{id}/{id}_{n:D4}.btl.dcx";
 
+    /// <summary>The light file format Elden Ring's maps use (every vanilla file read so far: version 18, long offsets),
+    /// for a slot whose host has no light file to take it from.</summary>
+    public const int ErLightVersion = 18;
+
     /// <summary>
     /// Writes the DS3 map's lamps as the slot's light file, in the host file's version. Returns a line for the log.
-    /// A map with no DS3 light file, or a host with none to take the format from, keeps the host's lights.
+    /// A map with no DS3 light file keeps the host's lights. A host with no light file of its own (m45_02, the
+    /// colosseum map 3 stands on: up to 1.0.491 map 3 got no lamps at all) gets one in Elden Ring's format
+    /// (<see cref="ErLightVersion"/>); that the game loads a light file for a map that ships none is unproven.
     /// <para>
     /// Only the map's own light file is ported: the first one, normally _0000. A DS3 map's further light files are
     /// the same lamps for another state of the map (m40's _0001 is the Untended Graves: 38 of its 41 lights sit on
@@ -119,34 +125,68 @@ public static class MapLighting
     /// north-west of the shrine), m31's 184 m and 2.6 m; m30 has no offset. <paramref name="noOffset"/>
     /// ("--no-light-offset", fallback "map-light-place" B) leaves them where they were.
     /// </para>
+    /// <para>
+    /// Their strengths are brought to Elden Ring's scale (<see cref="MapLampStrength"/>: the host's sun strength over
+    /// DS3's, then no stronger than Elden Ring's own lamps); <paramref name="ds3Strength"/> ("--ds3-lamp-strength",
+    /// fallback "map-lamps" B) keeps DS3's as written. <paramref name="noNewFile"/> ("--no-new-light-file", fallback
+    /// "map-lamps" E) writes nothing for a host with no light file, as before.
+    /// </para>
     /// </summary>
     public static string PortLights(PorterContext ctx, GameArchives ds3, GameArchives er, MapId ds3Id, MapId erId, MapId hostId,
-        MSB3? ds3Msb = null, bool noOffset = false)
+        MSB3? ds3Msb = null, bool noOffset = false, bool ds3Strength = false, bool noNewFile = false)
     {
-        var hostPath = ErLightPath(hostId);
-        if (!er.Contains(hostPath))
-            return $"lamps: the host map has no light file ({hostPath.TrimStart('/')}); none written";
         var sources = Enumerable.Range(0, 10).Select(n => Ds3LightPath(ds3Id, n)).Where(ds3.Contains).ToList();
         if (sources.Count == 0)
             return "lamps: the DS3 map has no light file; the host's lights stay";
 
-        var (hostBytes, compression) = er.ReadWithCompression(hostPath);
-        var hostLights = BTL.Read(hostBytes);
+        var hostPath = ErLightPath(hostId);
+        if (noNewFile && !er.Contains(hostPath))
+            return $"lamps: the host map has no light file ({hostPath.TrimStart('/')}); none written (--no-new-light-file)";
+        BTL? hostLights = null;
+        DCX.CompressionInfo compression = MapTextures.EntryCompression;
+        if (er.Contains(hostPath))
+        {
+            (var hostBytes, compression) = er.ReadWithCompression(hostPath);
+            hostLights = BTL.Read(hostBytes);
+        }
         var source = sources[0];
         var ds3Lights = BTL.Read(ds3.Read(source)).Lights;
         var offset = noOffset ? null : MapNavmesh.MapOffset(ds3Msb);
-        var ported = Convert(ds3Lights, hostLights.Version, hostLights.LongOffsets, out var skipped, offset, OffsetDegrees(ds3Msb));
+        var ported = Convert(ds3Lights, hostLights?.Version ?? ErLightVersion, hostLights?.LongOffsets ?? true, out var skipped, offset, OffsetDegrees(ds3Msb));
+        string strengths;
+        if (ds3Strength)
+            strengths = "DS3's strengths as written (--ds3-lamp-strength)";
+        else
+        {
+            float sunScale = MapLampStrength.SunScale(ReadDrawParams(er, MapAtmosphere.GparamPath(hostId)),
+                ReadDrawParams(ds3, MapAtmosphere.Ds3GparamPaths(ds3Id).FirstOrDefault(ds3.Contains)));
+            var changes = ported.Lights.Select(l => MapLampStrength.Fit(l, sunScale)).OfType<MapLampStrength.Change>().ToList();
+            strengths = MapLampStrength.Describe(sunScale, changes, ported.Lights.Count);
+        }
         var target = ctx.ModPath(MapPorter.ModParts(ErLightPath(erId)));
         Directory.CreateDirectory(Path.GetDirectoryName(target)!);
         File.WriteAllBytes(target, DCX.Compress(ported.Write(), compression));
         var inv = System.Globalization.CultureInfo.InvariantCulture;
         return $"lamps: {ported.Lights.Count} DS3 lights ({ported.Lights.Count(l => l.Type == BTL.LightType.Point)} point, " +
-               $"{ported.Lights.Count(l => l.Type == BTL.LightType.Spot)} spot) from {ItemText.Leaf(source)} replace the host's {hostLights.Lights.Count}" +
+               $"{ported.Lights.Count(l => l.Type == BTL.LightType.Spot)} spot) from {ItemText.Leaf(source)} " +
+               (hostLights is null
+                   ? $"written as a new light file (the host has none: {hostPath.TrimStart('/')})"
+                   : $"replace the host's {hostLights.Lights.Count}") +
                (skipped > 0 ? $"; {skipped} directional left out (the sun is the host's)" : "") +
                (sources.Count > 1 ? $"; {sources.Count - 1} light files of other map states left out ({string.Join(", ", sources.Skip(1).Select(ItemText.Leaf))})" : "") +
                (offset is null
                    ? (noOffset ? "; DS3's map offset not applied (--no-light-offset)" : "; the map has no map offset")
-                   : string.Create(inv, $"; moved by DS3's map offset ({offset.Value.M41:0.#}, {offset.Value.M42:0.#}, {offset.Value.M43:0.#}, turned {OffsetDegrees(ds3Msb):0.#} degrees)"));
+                   : string.Create(inv, $"; moved by DS3's map offset ({offset.Value.M41:0.#}, {offset.Value.M42:0.#}, {offset.Value.M43:0.#}, turned {OffsetDegrees(ds3Msb):0.#} degrees)")) +
+               "; " + strengths;
+    }
+
+    /// <summary>A game's draw param file, or null when it isn't there or can't be read.</summary>
+    private static GPARAM? ReadDrawParams(GameArchives archives, string? path)
+    {
+        if (path is null || !archives.Contains(path))
+            return null;
+        try { return GPARAM.Read(archives.Read(path)); }
+        catch (Exception e) when (e is not OutOfMemoryException) { return null; }
     }
 
     /// <summary>The turn of DS3's map offset in degrees, 0 without one.</summary>

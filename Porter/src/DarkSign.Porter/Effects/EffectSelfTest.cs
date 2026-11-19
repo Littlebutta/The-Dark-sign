@@ -235,6 +235,23 @@ public static class EffectSelfTest
         Check(js.LightingOfConverted(js.Convert(glow, 900830051, $"{{{noSounds},\"lit\":{{\"all\":1}}}}")) is [-1], "lighting: an additive DS3 billboard (a glow) stays unlit");
         Check(js.LightingOfConverted(js.Convert(smoke, 900830050, $"{{{noSounds},\"lit\":{{}}}}")) is [-1], "lighting: fallback DARKSIGN_FXR_LIT=0 leaves every billboard unlit");
 
+        // What an effect does to the light around it, for the lamps the map port places at DS3's flames: a flame
+        // glows (additive) warm without a light of its own; smoke doesn't glow; an effect it plays counts with it.
+        var flame = js.Inspect(js.FlameSample(839010, 5, 1, 0.6f, 0.3f, false));
+        Check(flame is { Lights: 0, Glow: 1 } && flame.GlowColour is [1, > 0.59f and < 0.61f, > 0.29f and < 0.31f], $"looks: a DS3 flame glows warm with no light of its own ({flame.Lights}, {flame.Glow})");
+        var lantern = js.Inspect(js.FlameSample(840060, 5, 1, 0.6f, 0.3f, true));
+        Check(lantern is { Lights: 1, Glow: 1 }, "looks: a light the effect carries itself is counted");
+        Check(js.Inspect(smoke) is { Lights: 0, Glow: 0, GlowColour: null } && js.Inspect(glow).Glow == 1 && js.Inspect(unk6).Glow == 0,
+            "looks: smoke (Normal, Unk6 blend) doesn't glow, an additive billboard does");
+        var family = new Dictionary<int, (byte[] Bytes, FxrPort.FxrScript.Info Info)>
+        {
+            [1] = ([], js.Inspect(js.Sample(1, 2, 5))),
+            [2] = ([], flame),
+            [3] = ([], lantern),
+        };
+        Check(FxrPort.LookOf(1, family) is { Lights: 0, Glow: 1, IsFlame: true, Why: "flame" } && FxrPort.LookOf(3, family) is { IsFlame: false, Why: "carries its own light" },
+            "looks: an effect takes the look of the effects it plays; one with its own light is not a flame");
+
         Console.WriteLine(failures == 0 ? "effects-selftest: all checks passed" : $"effects-selftest: {failures} FAILED");
         return failures == 0 ? 0 : 1;
     }

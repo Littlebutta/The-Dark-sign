@@ -12,8 +12,12 @@ namespace DarkSign.Porter.Maps;
 /// <list type="bullet">
 /// <item>LightSet: the sun's angle and the colour (red, green, blue) of the sun and the second directional light from
 /// DS3's light set 0, the one nearly every DS3 map piece names (m30_00: 2,049 of 2,273; m31_00: 2,808; m40_00:
-/// 3,502). How strong each light is (the fourth value) stays Elden Ring's: DS3's strengths are on another scale.
+/// 3,502). How strong the sun is (the fourth value) stays Elden Ring's: DS3's strengths are on another scale.
 /// The sun's direction is turned by DS3's map offset (<see cref="SunTurn"/>).</item>
+/// <item>LightSet, the lights without shadows (<see cref="FillLights"/>): the second directional light and the two
+/// "local" directional lights take DS3's strength in DS3's proportion to its sun, and the sun and second light are
+/// dimmed by screen-space occlusion as on Stormveil. The colosseums light their open arenas with these far more than
+/// DS3 or a legacy dungeon does.</item>
 /// <item>VolumetricFog: the colours from DS3's fog 0 (Fog-Color for the sunward glow, heightColor for the rest), each
 /// scaled by its own DS3 strength (<see cref="FogColours"/>); how
 /// thick the fog is, how far it reaches and how strongly it is lit come from Stormveil Castle (m10_00, an outdoor
@@ -76,7 +80,7 @@ public static class MapAtmosphere
 
     /// <summary>port-maps step: writes the slot's gparam. Returns a line for the log.</summary>
     public static string Write(PorterContext ctx, GameArchives ds3, GameArchives er, MapId ds3Id, MapId erId, MapId hostId, MSB3 ds3Msb, bool hostAtmosphere,
-        bool unturnedSun = false)
+        bool unturnedSun = false, bool hostFillLights = false)
     {
         if (hostAtmosphere)
             return "atmosphere: the host's own colours, fog and colour grading (--host-atmosphere)";
@@ -89,7 +93,7 @@ public static class MapAtmosphere
         var (hostBytes, compression) = er.ReadWithCompression(hostPath);
         var gparam = GPARAM.Read(hostBytes);
         var ds3Draw = GPARAM.Read(ds3.Read(source));
-        var changes = Apply(gparam, ds3Draw, GroundHeight(ds3Msb), unturnedSun ? 0 : MapLighting.OffsetDegrees(ds3Msb));
+        var changes = Apply(gparam, ds3Draw, GroundHeight(ds3Msb), unturnedSun ? 0 : MapLighting.OffsetDegrees(ds3Msb), hostFillLights);
         if (unturnedSun && MapLighting.OffsetDegrees(ds3Msb) != 0)
             changes.Add("sun direction as DS3's file writes it, not turned with the map (--unturned-sun)");
         var target = ctx.ModPath(MapPorter.ModParts(GparamPath(erId)));
@@ -132,8 +136,68 @@ public static class MapAtmosphere
         return angle with { Y = yaw };
     }
 
+    /// <summary>Stormveil Castle's screen-space occlusion weights for the sun, the second directional light and the
+    /// fourth weight (m10_00_0000.gparam: 1, 1, 0, 1; the third stays the host's).</summary>
+    public const float SsaoWeight = 1;
+
+    /// <summary>
+    /// The lights of a light set that cast no shadow, brought to DS3's proportion (2026-11-19 playtest: "lighting
+    /// across all the maps looks like it could use baked lighting"; 2026-11-13: map 3's roofs and objects cast little
+    /// shade). The port kept the host's strength for every light, and the colosseums fill their open arenas with
+    /// light that has no shadow:
+    /// <list type="bullet">
+    /// <item>The second directional light, a blue light straight down from the sky (Angle1 -1.571 in the hosts and
+    /// in DS3): m45_00 0.10 beside a sun of 0.6, m45_01 0.25 beside 0.5, m45_02 0.40 beside 0.4 (as strong as the
+    /// sun). Stormveil Castle's is 0. DS3's own is 0.1 beside a sun of 0.8 (Firelink), 0.1 beside 1.23 (High Wall)
+    /// and 0.2 beside 1.5 (Undead Settlement): 8 to 13% of the sun, where the port had 17%, 50% and 100%. Only the
+    /// sun casts shadows, so on map 3 every shadow was filled back in with light as strong as the sun's, and rooms
+    /// were lit from above through their roofs.</item>
+    /// <item>The "local" directional lights 1 and 2: m45_00 has the first switched on at 0.10 (reflections 0.23);
+    /// DS3's light set 0 leaves both without light on all three maps (black, or strength 0).</item>
+    /// <item>How far screen-space occlusion (the shade in corners and under things) dims the sun and the second
+    /// light: m45_00 0.5 and 0, m45_01 1 and 0; Stormveil and m45_02 1 and 1.</item>
+    /// </list>
+    /// So each of these lights takes DS3's colour and DS3's strength times the host's sun strength over DS3's (the
+    /// scale the lamps take, <see cref="MapLampStrength.SunScale"/>), the local lights are on where DS3 has them on,
+    /// and the occlusion weights are Stormveil's. The hemisphere light stays the host's (the hosts and Stormveil
+    /// agree on it). "--host-fill-lights" (fallback "map-fill-light" B) keeps the host's strengths.
+    /// Returns what changed, for the log; nothing when either file lacks a sun strength.
+    /// </summary>
+    public static string? FillLights(GPARAM.Group light, GPARAM.Group ds3Light, float sunScale)
+    {
+        var inv = CultureInfo.InvariantCulture;
+        var notes = new List<string>();
+        foreach (var (name, label) in new[]
+                 {
+                     ("Directional Light DiffColor1", "second light"), ("Directional Light SpecColor1", ""),
+                     ("Directional Light LocalLight DiffColor1", "local light 1"), ("Directional Light LocalLight SpecColor1", ""),
+                     ("Directional Light LocalLight DiffColor2", "local light 2"), ("Directional Light LocalLight SpecColor2", ""),
+                 })
+        {
+            if (Value<Vector4>(ds3Light, name) is not { } ds3Colour || Value<Vector4>(light, name) is not { } old)
+                continue;
+            var value = new Vector4(ds3Colour.X, ds3Colour.Y, ds3Colour.Z, ds3Colour.W * sunScale);
+            SetAll(light, name, v => v is Vector4 ? value : v);
+            // What the light gives: its strength times its brightest channel (DS3 switches a light off by making it black).
+            static float Gives(Vector4 c) => c.W * Math.Max(c.X, Math.Max(c.Y, c.Z));
+            if (label.Length > 0)
+                notes.Add(string.Create(inv, $"{label} {Gives(old):0.###} -> {Gives(value):0.###}")
+                          + (Gives(ds3Colour) <= 0 ? " (DS3 has it dark)" : string.Create(inv, $" (DS3's {Gives(ds3Colour):0.###})")));
+        }
+        foreach (var name in new[] { "Directional Enable LocalLight1", "Directional Enable LocalLight2" })
+            if (Value<bool>(ds3Light, name) is { } on)
+                SetAll(light, name, v => v is bool ? on : v);
+        int weights = 0;
+        foreach (var name in new[] { "Directional Light SsaoWeight0", "Directional Light SsaoWeight1", "Directional Light SsaoWeight3" })
+            weights += SetAll(light, name, v => v is float ? SsaoWeight : v);
+        if (notes.Count == 0 && weights == 0)
+            return null;
+        return string.Create(inv, $"lights without shadows at DS3's share of the sun (x{sunScale:0.##}): ") + string.Join(", ", notes)
+               + (weights > 0 ? "; corner shade (SSAO) on the sun and second light as on Stormveil" : "");
+    }
+
     /// <summary>Changes the host's draw params in place. Returns what changed, for the log.</summary>
-    public static List<string> Apply(GPARAM gparam, GPARAM ds3, float ground, float sunTurnDegrees = 0)
+    public static List<string> Apply(GPARAM gparam, GPARAM ds3, float ground, float sunTurnDegrees = 0, bool hostFillLights = false)
     {
         var inv = CultureInfo.InvariantCulture;
         string C(Vector4 v) => string.Create(inv, $"{v.X:F2} {v.Y:F2} {v.Z:F2}");
@@ -143,6 +207,9 @@ public static class MapAtmosphere
         var sunColour = Value<Vector4>(ds3Light, "Directional Light DiffColor0");
         var sunAngle = Value<Vector2>(ds3Light, "Directional Light Angle0");
         var light = Group(gparam, "LightSet");
+        // Before anything is changed: the host's sun strength over DS3's.
+        float sunScale = MapLampStrength.SunScale(gparam, ds3);
+        bool sunStrengths = Value<Vector4>(light, "Directional Light DiffColor0") is { W: > 0 } && sunColour is { W: > 0 };
         if (light is not null && ds3Light is not null)
         {
             int set = 0;
@@ -156,6 +223,10 @@ public static class MapAtmosphere
                 ? string.Create(inv, $"sun colour {C(sc)} at {sa.X:F2},{sa.Y:F2} from DS3 light set 0 ({set} values)")
                   + (sunTurnDegrees != 0 ? string.Create(inv, $", turned {sunTurnDegrees:0.#} degrees with the map to {ta.X:F2},{ta.Y:F2} (sun yaw {ta.Y * 180 / MathF.PI:0} degrees, {SunHeight(ta):0} above the horizon)") : "")
                 : $"light set: {set} values from DS3");
+            if (hostFillLights)
+                changes.Add("lights without shadows keep the host's strengths (--host-fill-lights)");
+            else if (sunStrengths && FillLights(light, ds3Light, sunScale) is { } fill)
+                changes.Add(fill);
         }
         else
             changes.Add("light set: none in " + (light is null ? "the host" : "DS3") + "; kept");

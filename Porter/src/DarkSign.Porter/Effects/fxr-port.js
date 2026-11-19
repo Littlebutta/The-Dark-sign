@@ -1,5 +1,5 @@
 // DarkSign porter adapter for @cccode/fxr: reads a DS3 effect, renumbers it and its resources, writes it for Elden Ring.
-import { FXR, Game, ProxyNode, GenericNode, NodeType, Action, SFXReference, BasicNode, BillboardEx, NodeSound, BlendMode, LightingMode } from './fxr.js';
+import { FXR, Game, ProxyNode, GenericNode, NodeType, Action, SFXReference, BasicNode, BillboardEx, NodeSound, BlendMode, LightingMode, PointLight, SpotLight } from './fxr.js';
 
 export function inspect(bytes) {
   const fxr = FXR.read(bytes, Game.DarkSouls3);
@@ -14,7 +14,44 @@ export function inspect(bytes) {
     id: fxr.id, sfx: fxr.getReferences().sfx,
     textures: [...new Set(r.textures.map(t => t.resource))], models: r.models, anibnds: r.anibnds, sounds: r.sounds,
     heldSounds, unheldSounds,
+    ...look(fxr),
   });
+}
+
+// What an effect does to the light around it, for the lamps the port places at DS3's flames (FlameLights):
+// lights = the point and spot lights it carries itself; glow = the things it draws that add light to the picture
+// (the additive blends: Add, and Unk0 and Unk7, which the library finds to work like it; flames, embers, glows.
+// Smoke and fog blend normally); glowColour = the mean colour those are
+// drawn in (their colour values multiplied; an animated value counts at its last keyframe), or null when none
+// could be read.
+function look(fxr) {
+  let lights = 0, glow = 0, n = 0;
+  const sum = [0, 0, 0];
+  for (const action of fxr.root.walkActions()) {
+    if (action instanceof PointLight || action instanceof SpotLight) { lights++; continue; }
+    if (!action || !('blendMode' in action)) continue;
+    const mode = typeof action.blendMode === 'number' ? action.blendMode : action.blendMode?.value;
+    if (mode !== BlendMode.Add && mode !== BlendMode.Unk0 && mode !== BlendMode.Unk7) continue;
+    glow++;
+    const colour = [1, 1, 1];
+    let read = false;
+    for (const name of ['color1', 'color2', 'color3']) {
+      const c = colourOf(action[name]);
+      if (!c) continue;
+      read = true;
+      for (let i = 0; i < 3; i++) colour[i] *= c[i];
+    }
+    if (read) { n++; for (let i = 0; i < 3; i++) sum[i] += colour[i]; }
+  }
+  return { lights, glow, glowColour: n > 0 ? sum.map(v => v / n) : null };
+}
+
+// A colour value of an action as [r, g, b]: a plain value, or the last keyframe (or the value) of an animated one.
+function colourOf(value) {
+  if (Array.isArray(value)) return value.length >= 3 && value.every(v => typeof v === 'number') ? value : null;
+  if (!value || typeof value !== 'object') return null;
+  if (Array.isArray(value.keyframes) && value.keyframes.length > 0) return colourOf(value.keyframes[value.keyframes.length - 1].value);
+  return colourOf(value.value);
 }
 
 // The sound actions of a node: the library keeps them on the node's configs (root.nodes[..].configs[..].nodeAudio).
@@ -82,6 +119,21 @@ export function sample(id, child, texture, sound = 0, blendMode = BlendMode.Norm
 export function soundsOfConverted(bytes) {
   const all = [...FXR.read(bytes, Game.EldenRing).root.walk()].flatMap(audios).filter(a => a.sound > 0);
   return JSON.stringify({ held: all.filter(a => a.unk_ds3_f1_2 === true).map(a => a.sound), sounds: all.map(a => a.sound) });
+}
+
+// For the self-tests and diagnostics: look() of an Elden Ring effect (a converted one, or one of the game's own).
+export function lookOfElden(bytes) {
+  return JSON.stringify(look(FXR.read(bytes, Game.EldenRing)));
+}
+
+// For the self-tests: a small DS3 effect that draws one additive billboard in a colour and, with light set, carries
+// a point light.
+export function flameSample(id, texture, r, g, b, light) {
+  const fxr = new FXR(id);
+  // A node draws one thing, so the light gets a node of its own.
+  fxr.root.nodes.push(new BasicNode([new BillboardEx({ texture, blendMode: BlendMode.Add, color1: [r, g, b, 1] })]));
+  if (light) fxr.root.nodes.push(new BasicNode([new PointLight({ radius: 3 })]));
+  return new Uint8Array(fxr.toArrayBuffer(Game.DarkSouls3));
 }
 
 // For the self-tests: the lighting mode of each billboard of a converted (Elden Ring) effect.

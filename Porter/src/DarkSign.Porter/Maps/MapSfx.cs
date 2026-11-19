@@ -53,13 +53,17 @@ public static class MapSfx
     /// <summary>Writes DS3 effect ID -> converted ID for the map effects that converted; the rest are listed with why not.</summary>
     public static string WriteTable(PorterContext ctx, IEnumerable<int> wanted, FxrPort.Result effects)
     {
-        var lines = new List<string> { "ds3_effect\ter_effect\tnote" };
+        var inv = System.Globalization.CultureInfo.InvariantCulture;
+        var lines = new List<string> { "ds3_effect\ter_effect\tnote\tlights\tglow\tglow_colour" };
         int ok = 0, missing = 0;
         foreach (var id in wanted.Distinct().Order())
         {
             if (effects.Map(id) is { } er)
             {
-                lines.Add($"{id}\t{er}\t");
+                // What the effect does to the light around it, for the lamps at DS3's flames (FlameLights).
+                var look = effects.Looks.GetValueOrDefault(id);
+                lines.Add($"{id}\t{er}\t\t{look?.Lights}\t{look?.Glow}\t" +
+                          (look?.GlowColour is { Length: >= 3 } c ? string.Create(inv, $"{c[0]:0.###},{c[1]:0.###},{c[2]:0.###}") : ""));
                 ok++;
             }
             else
@@ -96,14 +100,46 @@ public static class MapSfx
         return map;
     }
 
-    public sealed record Result(int Added, int Missing, IReadOnlyDictionary<int, int> MissingByEffect);
+    /// <summary>DS3 effect ID -> what it does to the light around it, from the table (empty when the table is from
+    /// a build that didn't write it: run port-weapons again).</summary>
+    public static Dictionary<int, FxrPort.Look> ReadLooks(PorterContext ctx)
+    {
+        var looks = new Dictionary<int, FxrPort.Look>();
+        var path = ctx.WorkPath(TableFile);
+        if (!File.Exists(path))
+            return looks;
+        var inv = System.Globalization.CultureInfo.InvariantCulture;
+        foreach (var line in File.ReadLines(path).Skip(1))
+        {
+            var cols = line.Split('\t');
+            if (cols.Length < 6 || !int.TryParse(cols[0], out var ds3) || !int.TryParse(cols[3], out var lights) || !int.TryParse(cols[4], out var glow))
+                continue;
+            var parts = cols[5].Split(',');
+            float[]? colour = parts.Length == 3 && parts.All(p => float.TryParse(p, System.Globalization.NumberStyles.Float, inv, out _))
+                ? [.. parts.Select(p => float.Parse(p, inv))] : null;
+            looks[ds3] = new FxrPort.Look(lights, glow, colour);
+        }
+        return looks;
+    }
+
+    public sealed record Result(int Added, int Missing, IReadOnlyDictionary<int, int> MissingByEffect, int OtherState = 0);
 
     /// <summary>
     /// Adds an SFX region to <paramref name="msb"/> for each of the DS3 map's SFX regions whose effect is in
     /// <paramref name="converted"/>, replacing the ones an earlier run added.
+    /// <para>
+    /// A region of another state of the map is left out, by the rule the parts follow (<see cref="MsbPort.OtherState"/>:
+    /// off DS3's layer bit 0). The High Wall keeps a second set of its fog for the eclipse sky ("蝕用": 95 of its 238
+    /// SFX regions, on layer bit 10 only, each at the same spot as one of the 103 on every layer but that one), and
+    /// DS3 shows one set at a time. Up to 1.0.491 both were placed, so the High Wall's fog banks stood twice in each
+    /// other, twice as thick and twice as bright under a lamp (the fog at Vordt's gate, 2026-11-19 playtest).
+    /// <paramref name="allLayers"/> ("--all-layers", fallback "map-layers" B) places every region again.
+    /// </para>
     /// </summary>
-    public static Result Convert(MSB3 ds3, MSBE msb, MapId ds3Id, MapId erId, IReadOnlyDictionary<int, int> converted)
+    public static Result Convert(MSB3 ds3, MSBE msb, MapId ds3Id, MapId erId, IReadOnlyDictionary<int, int> converted, bool allLayers = false)
     {
+        bool layerOk = !allLayers && MsbPort.BaseLayerMeans(ds3);
+        int otherState = 0;
         msb.Regions.SFX.RemoveAll(r => r.Name.StartsWith(NamePrefix, StringComparison.Ordinal));
         var taken = msb.Regions.GetEntries().Select(r => r.Name).ToHashSet(StringComparer.Ordinal);
         int nextRegionId = msb.Regions.GetEntries().Select(r => r.RegionID).DefaultIfEmpty(-1).Max() + 1;
@@ -111,6 +147,11 @@ public static class MapSfx
         int added = 0;
         foreach (var src in ds3.Regions.SFX)
         {
+            if (layerOk && (src.MapStudioLayer & 1) == 0)
+            {
+                otherState++;
+                continue;
+            }
             if (!converted.TryGetValue(src.EffectID, out var effect))
             {
                 missing[src.EffectID] = missing.GetValueOrDefault(src.EffectID) + 1;
@@ -138,11 +179,11 @@ public static class MapSfx
             });
             added++;
         }
-        return new Result(added, missing.Values.Sum(), missing);
+        return new Result(added, missing.Values.Sum(), missing, otherState);
     }
 
     /// <summary>The port-maps step: rewrites each ported slot's map file with its DS3 map effects.</summary>
-    public static string Apply(PorterContext ctx, GameArchives ds3, IEnumerable<MapSlots.Slot> slots)
+    public static string Apply(PorterContext ctx, GameArchives ds3, IEnumerable<MapSlots.Slot> slots, bool allLayers = false)
     {
         if (!Enabled)
             return "map effects: off (DARKSIGN_MAP_SFX=0)";
@@ -157,9 +198,10 @@ public static class MapSfx
                 continue;
             var ds3Msb = MSB3.Read(ds3.Read(MapPorter.MsbPath(slot.Ds3)));
             var msb = MSBE.Read(DCX.Decompress(File.ReadAllBytes(path), out var compression));
-            var result = Convert(ds3Msb, msb, slot.Ds3, slot.Er, converted);
+            var result = Convert(ds3Msb, msb, slot.Ds3, slot.Er, converted, allLayers);
             File.WriteAllBytes(path, DCX.Compress(msb.Write(), compression));
             lines.Add($"map effects: {slot.Ds3} -> {slot.Er}: {result.Added} SFX regions added" +
+                      (result.OtherState == 0 ? "" : $", {result.OtherState} of another state of the map left out (off DS3's layer bit 0)") +
                       (result.Missing == 0 ? "" : $", {result.Missing} left out (effects not converted: " +
                           string.Join(", ", result.MissingByEffect.OrderByDescending(k => k.Value).Take(12).Select(k => $"{k.Key} x{k.Value}")) + ")"));
         }
