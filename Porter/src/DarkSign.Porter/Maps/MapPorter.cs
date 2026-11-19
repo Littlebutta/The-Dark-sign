@@ -492,6 +492,11 @@ public static class MapPorter
             Step(report, "flag allocation", () => FlagAlloc.WriteForNewIds(ctx, er, ported.Select(p => p.Slot)));
         }
 
+        // DS3's talk scripts for the people placed, with their lines, menu text and shops (after the events step:
+        // the flags move the way the scripts moved them, and a new map ID's copied files are already there).
+        if (_talk is { UsedCount: > 0 } talk && ported.Count > 0)
+            Step(report, "people talk", () => PortTalk(ctx, ds3, er, talk, ported.Select(p => p.Slot).ToList()));
+
         var warps = ported.Select((p, i) => new RunEvents.Warp(p.Slot.Er, (uint)p.StartEntity, i)).ToList();
         WriteMapList(ctx, ported.Select(p => p.Slot), warps);
         // Only arenas of maps that made it, numbered in port order.
@@ -660,6 +665,71 @@ public static class MapPorter
     }
 
     /// <summary>
+    /// Writes the converted DS3 talk scripts, lines and shops; if that fails, the placed people lose their talk
+    /// scripts again so no part names a script that isn't there.
+    /// </summary>
+    private static string PortTalk(PorterContext ctx, GameArchives ds3, GameArchives er, TalkPort talk, List<MapSlots.Slot> slots)
+    {
+        var lines = new List<string>();
+        try
+        {
+            var regulation = ActionButtons.LoadRegulation(ctx);
+            ParamStore? ds3Params = null;
+            try
+            {
+                ds3Params = ctx.LoadParams(PorterGame.DarkSouls3);
+            }
+            catch (Exception ex) when (ex is IOException or InvalidDataException)
+            {
+                lines.Add($"  people talk: DS3's params unreadable ({ex.Message})");
+            }
+            var flagPath = ctx.ModPath(MapEvents.FlagFile);
+            var flags = FlagMap.Load(flagPath);
+            var defs = Emedf.Parse(File.ReadAllText(ctx.Data.Emedf("ds3-common")));
+            var mover = new EventPort(defs, defs, slots.Select(s => (s.Ds3, s.Er)).Distinct().ToList(), flags);
+            var summary = talk.Write(ctx, ds3, er, slots, regulation, ds3Params, f => mover.Move(f, EventPort.Kind.Flag), TalkItems(ctx, ds3, er, regulation, ds3Params, lines));
+            flags.Save(flagPath);
+            lines.Insert(0, summary);
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            lines.Insert(0, $"people talk: FAILED ({ex.GetType().Name}: {ex.Message}); {TalkPort.Revert(ctx, slots)} people left silent");
+        }
+        return string.Join(Environment.NewLine, lines);
+    }
+
+    /// <summary>A DS3 shop ware (equipType 0 weapon, 1 armour, 2 ring, 3 goods) -> the Elden Ring item, by the drops' rule.</summary>
+    private static Func<int, int, int?> TalkItems(PorterContext ctx, GameArchives ds3, GameArchives er, ParamStore regulation, ParamStore? ds3Params, List<string> lines)
+    {
+        try
+        {
+            var notes = new List<string>();
+            var items = new DarkSign.Porter.Enemies.DropPort.ItemMap(DarkSign.Porter.Enemies.DropPort.PortedWeapons(ctx, notes));
+            var names = DarkSign.Porter.Enemies.DropPort.Names.Load(er, ds3, notes);
+            var kinds = new[]
+            {
+                (DarkSign.Porter.Enemies.DropPort.Kind.Weapon, "EquipParamWeapon"), (DarkSign.Porter.Enemies.DropPort.Kind.Armor, "EquipParamProtector"),
+                (DarkSign.Porter.Enemies.DropPort.Kind.Ring, "EquipParamAccessory"), (DarkSign.Porter.Enemies.DropPort.Kind.Goods, "EquipParamGoods"),
+            };
+            foreach (var (kind, param) in kinds)
+            {
+                PARAM? ds3Param = ds3Params?.Get(param), erParam = regulation.Get(param);
+                items.Add(kind,
+                    names.Ds3.GetValueOrDefault(kind) is { Count: > 0 } d ? d : DarkSign.Porter.Enemies.DropPort.RowNames(ds3Param),
+                    names.Er.GetValueOrDefault(kind) is { Count: > 0 } e ? e : DarkSign.Porter.Enemies.DropPort.RowNames(erParam),
+                    erParam?.Rows.Select(r => r.ID));
+            }
+            lines.AddRange(notes.Select(n => "  people talk: " + n));
+            return (type, id) => type is >= 0 and <= 3 ? items.Map(kinds[type].Item1, id)?.Id : null;
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            lines.Add($"  people talk: shop wares not mapped ({ex.Message}); the shelves are empty");
+            return (_, _) => null;
+        }
+    }
+
+    /// <summary>
     /// DS3 weapon or ammunition ID -> the Elden Ring row a ported person holds, by the drops' rule (the ported weapon,
     /// else the Elden Ring item of the same name; <see cref="DarkSign.Porter.Enemies.DropPort.ItemMap"/>), only rows
     /// the regulation has. Null (the stand-ins' own weapons) when the tables can't be read.
@@ -792,7 +862,7 @@ public static class MapPorter
                 var seats = EnemyPort.Seats(ds3Msb, EnemyPort.EventWarps(scripts));
                 var placed = EnemyPort.Place(ds3Msb, layout.Msb, ds3Id, erId, new MsbPort.Options { Ds3Culling = options.Ds3Culling, NoGroups = options.NoGroups, AllLayers = options.AllLayers },
                     enemies.Chooser, e => enemies.Describe(e, bosses), EnemyPort.AnyEnemyPart(enemies.Catalog), _placedEnemies, partNames,
-                    enemies.People, seats, placePeople: !options.NoPeople, armour: options.ErPeople ? null : _armour, erStandIns: options.ErPeople);
+                    enemies.People, seats, placePeople: !options.NoPeople, armour: options.ErPeople ? null : _armour, erStandIns: options.ErPeople, talk: _talk);
                 enemiesPlaced = placed;
                 report.AppendLine($"  enemies: {placed.Placed} placed ({placed.Ported} ported DS3 characters, {placed.StandIns} Elden Ring stand-ins, "
                                   + $"{placed.People} people{(options.NoPeople ? ", people off (--no-people)" : options.ErPeople ? ", Elden Ring people stand in (--er-people)" : _armour is null ? ", DS3's own people only" : ", DS3's own people and DS3 humans in their DS3 armour")}), {placed.Npcs} people left out, {placed.Skipped} with nothing to stand in; {bosses.Count} DS3 boss entities");
@@ -1387,6 +1457,7 @@ public static class MapPorter
     private static EnemyContext? _enemies;
     /// <summary>DS3's humans in their DS3 armour (null: off, or not planned).</summary>
     private static PeopleArmour? _armour;
+    private static TalkPort? _talk;
     /// <summary>darksign_enemies.tsv rows for this run: every DS3 enemy placed, for the randomizer.</summary>
     private static readonly List<string> _placedEnemies = [];
 
@@ -1428,6 +1499,19 @@ public static class MapPorter
             {
                 notes.Add($"people armour: not planned ({ex.Message}); DS3's humans are left out");
             }
+        _talk = null;
+        if (TalkPort.Enabled && !options.NoPeople)
+            try
+            {
+                _talk = TalkPort.Plan(ds3, MapSlots.All.Select(s => s.Ds3));
+                notes.AddRange(_talk.Notes.Select(n => "people talk: " + n));
+            }
+            catch (Exception ex) when (ex is not OutOfMemoryException)
+            {
+                notes.Add($"people talk: not planned ({ex.Message}); DS3's people stay silent");
+            }
+        else
+            notes.Add("people talk: off (DARKSIGN_PEOPLE_TALK=0 or --no-people, fallback map-people G); DS3's people stay silent");
         EnemyPort.ChrMap? ported = null;
         var mapPath = ctx.ModPath(EnemyPort.ChrMap.FileName);
         if (options.Enemies == EnemyPort.Method.Auto && File.Exists(mapPath))

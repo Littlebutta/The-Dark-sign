@@ -657,6 +657,8 @@ public static class Fallbacks
                 { PorterEnv = Env("DARKSIGN_PEOPLE_WEAPONS", "0") },
             new("F", "DS3 armour hides the body like a closed helm", "As A, but every DS3 armour piece hides the body like the most common Elden Ring piece of its slot (DARKSIGN_PEOPLE_HIDES=common), as up to 1.0.42x, where open helms such as Hawkwood's Chain Helm hid his head. Try it if hair, a face or skin pokes through a person's DS3 armour with A.")
                 { PorterEnv = Env("DARKSIGN_PEOPLE_HIDES", "common") },
+            new("G", "Silent people", "As A, but DS3's people have no talk script, as up to 1.0.47x: nobody can be talked to and there are no DS3 shops (DARKSIGN_PEOPLE_TALK=0). Try it if a DS3 map crashes or hangs while loading or when you walk up to or talk to a DS3 person, or a talk menu can't be closed.")
+                { PorterEnv = Env("DARKSIGN_PEOPLE_TALK", "0") },
         ]),
 
         new("enemy-port", "DS3 maps", "How DS3's enemies and bosses are ported", Stage.Build,
