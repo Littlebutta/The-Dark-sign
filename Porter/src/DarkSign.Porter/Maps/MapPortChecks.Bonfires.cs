@@ -1,0 +1,160 @@
+using System.Numerics;
+using SoulsFormats;
+
+namespace DarkSign.Porter.Maps;
+
+public static partial class MapPortChecks
+{
+    private static IEnumerable<(string Name, Action Test)> BonfireChecks()
+    {
+        yield return ("bonfires: DS3's rows with a talker in the base state are the map's bonfires (leftover rows, the other state and other maps are not)", BonfiresFound);
+        yield return ("bonfires: each gets Elden Ring's grace asset, talker and standing point under Elden Ring's numbers; the sword keeps the flame", BonfiresPlaced);
+        yield return ("bonfires: the script registers what DS3's lines don't and lights the sword's flame from the lit flag", BonfireEvents);
+    }
+
+    private static readonly MapId BonfireDs3 = MapId.Parse("m30_00_00_00"), BonfireEr = MapId.Parse("m45_01_00_00");
+
+    // The High Wall's layout in small: bonfire 0 with its sword, talker and point; bonfire 1 with a talker and no sword
+    // (its sword failed to convert); bonfire 3 in the map's other state; rows naming nothing in the map.
+    private static (MSB3 Msb, List<Bonfires.Ds3Row> Rows) BonfireMap()
+    {
+        var msb = new MSB3();
+        msb.Parts.MapPieces.Add(new MSB3.Part.MapPiece { Name = "m000000_0000", ModelName = "m000000", MapStudioLayer = 1 });
+        msb.Parts.Objects.Add(new MSB3.Part.Object { Name = "o000100_0001", ModelName = "o000100", EntityID = 3001950, MapStudioLayer = 0xFFFFE7FF, Position = new Vector3(-19, 41.2f, -15), Rotation = new Vector3(0, -60, 0) });
+        msb.Parts.Enemies.Add(new MSB3.Part.Enemy { Name = "c1000_0002", ModelName = "c1000", EntityID = 3000950, TalkID = 300000, MapStudioLayer = 0xFFFFFFFF, Position = new Vector3(-19, 40.7f, -15), CollisionName = "h000201" });
+        msb.Parts.Enemies.Add(new MSB3.Part.Enemy { Name = "c1000_0000", ModelName = "c1000", EntityID = 3000951, TalkID = 300001, MapStudioLayer = 0xFFFFFFFF, Position = new Vector3(-89, -49, 429), Rotation = new Vector3(0, 90, 0) });
+        msb.Parts.Objects.Add(new MSB3.Part.Object { Name = "o000100_0003", ModelName = "o000100", EntityID = 3001953, MapStudioLayer = 2, Position = new Vector3(5, 5, 5) });
+        msb.Parts.Enemies.Add(new MSB3.Part.Enemy { Name = "c1000_0003", ModelName = "c1000", EntityID = 3000953, MapStudioLayer = 2, Position = new Vector3(5, 5, 5) });
+        msb.Parts.Objects.Add(new MSB3.Part.Object { Name = "o000100_0007", ModelName = "o000100", EntityID = 3001960, MapStudioLayer = 0xFFFFE7FF, Position = new Vector3(-19, -999, -15) });
+        var rows = new List<Bonfires.Ds3Row>
+        {
+            new(4001950, 14000000, 211200, "Firelink Shrine"),
+            new(3001950, 13000009, 211210, "High Wall of Lothric - High Wall of Lothric"),
+            new(3001960, 13000000, 211210, "High Wall of Lothric - High Wall of Lothric - Initial Warp"),
+            new(3001951, 13000001, 211217, "High Wall of Lothric - Consumed King's Garden"),
+            new(3001953, 13000003, 211211, "High Wall of Lothric - Other state"),
+            new(3001959, 13000003, 211210, "High Wall of Lothric - High Wall of Lothric"),
+            new(3001950, 13000009, 211210, "High Wall of Lothric - again"),
+        };
+        return (msb, rows);
+    }
+
+    private static void BonfiresFound()
+    {
+        var (msb, rows) = BonfireMap();
+        var found = Bonfires.Find(rows, msb, BonfireDs3);
+        Expect(found.Select(b => b.Ds3Entity).SequenceEqual([3001950, 3001951]), "found " + string.Join(" ", found.Select(b => b.Ds3Entity)));
+        Expect(found[0] is { Number: 0, Ds3Flag: 13000009, Name: "High Wall of Lothric", Turn: -60, Collision: "h000201" } && found[0].Position.Y == 41.2f
+               && found[0].TalkerPosition.Y == 40.7f, $"bonfire 0: {found[0]}");
+        Expect(found[1] is { Number: 1, Name: "Consumed King's Garden", Turn: 90, Collision: null } && found[1].Position == found[1].TalkerPosition,
+            $"a bonfire without its sword stands at its talker: {found[1]}");
+        Expect(Bonfires.Find(rows, msb, BonfireDs3, allLayers: true).Count == 3, "--all-layers keeps the other state's bonfire");
+        Expect(Bonfires.Find(rows, msb, MapId.Parse("m31_00_00_00")).Count == 0, "another map has none of these");
+        Expect(Bonfires.ModeOf(null) == Bonfires.Method.Grace && Bonfires.ModeOf("sword") == Bonfires.Method.Sword && Bonfires.ModeOf("0") == Bonfires.Method.Off, "modes");
+        Expect(Bonfires.RowId(BonfireEr, 5) == 450105 && Bonfires.RowId(MapId.Parse("m19_70_00_00"), 0) == 197000 && Bonfires.RowId(MapId.Parse("m10_00_00_00"), 8) == 100008,
+            "row numbers follow Elden Ring's (Stormveil's ninth grace is row 100008)");
+    }
+
+    // The slot's map as the earlier steps leave it: the sword as an asset under DS3's moved entity, DS3's points as player parts.
+    private static MSBE BonfireSlot()
+    {
+        var msb = new MSBE();
+        var sword = ObjectPort.NewPart();
+        sword.Name = "AEG920_000_9000";
+        sword.ModelName = "AEG920_000";
+        sword.EntityID = 45011950;
+        msb.Parts.Assets.Add(sword);
+        msb.Models.Assets.Add(new MSBE.Model.Asset { Name = "AEG920_000" });
+        msb.Parts.Collisions.Add(new MSBE.Part.Collision { Name = "h000201_0000", ModelName = "h000201" });
+        msb.Models.Collisions.Add(new MSBE.Model.Collision { Name = "h000201" });
+        msb.Parts.Players.Add(new MSBE.Part.Player { Name = "c0000_9990", ModelName = "c0000", EntityID = (uint)MsbPort.StartEntityId(BonfireEr) });
+        msb.Parts.Players.Add(new MSBE.Part.Player { Name = "c0000_0002", ModelName = "c0000", EntityID = 45010970, Position = new Vector3(-16.7f, 41.2f, -13), Rotation = new Vector3(0, 94, 0) });
+        msb.Parts.Players.Add(new MSBE.Part.Player { Name = "c0000_0005", ModelName = "c0000", EntityID = 45010980, Position = new Vector3(-21, 49, -55) });
+        msb.Models.Players.Add(new MSBE.Model.Player { Name = "c0000" });
+        return msb;
+    }
+
+    private static void BonfiresPlaced()
+    {
+        var (ds3, rows) = BonfireMap();
+        var found = Bonfires.Find(rows, ds3, BonfireDs3);
+        var partNames = new Dictionary<string, string> { ["h000201"] = "h000201_0000" };
+
+        var msb = BonfireSlot();
+        var notes = new List<string>();
+        var placed = Bonfires.Place(msb, BonfireDs3, BonfireEr, found, Bonfires.Method.Grace, partNames, notes);
+        msb = MSBE.Read(msb.Write());
+        Expect(placed.Count == 2, $"placed {placed.Count}");
+        // Stormveil's first grace: asset 10001950, talker 10000950, point 10000980.
+        Expect(placed[0] is { Entity: 45011950, Talker: 45010950, Point: 45010980, GraceAsset: true } && placed[0].Sword == BonfireEr.EntityBase + Bonfires.SpareEntity,
+            $"numbers: {placed[0]}");
+        var grace = msb.Parts.Assets.Single(a => a.EntityID == 45011950);
+        Expect(grace.ModelName == Bonfires.GraceModel && grace.Position.Y == 41.2f && grace.Rotation.Y == -60 && msb.Models.Assets.Any(m => m.Name == Bonfires.GraceModel),
+            "the grace asset stands where the sword does and holds the bonfire's entity");
+        Expect(msb.Parts.Assets.Single(a => a.ModelName == "AEG920_000").EntityID == placed[0].Sword, "the sword moved to its spare entity");
+        var talker = msb.Parts.Enemies.Single(e => e.EntityID == 45010950);
+        Expect(talker is { ModelName: "c1000", TalkID: Bonfires.GraceTalk, NPCParamID: Bonfires.GraceNpc, ThinkParamID: Bonfires.GraceThink, CollisionPartName: "h000201_0000" }
+               && talker.Position.Y == 40.7f && msb.Models.Enemies.Any(m => m.Name == "c1000"), "the talker is Elden Ring's grace talker on DS3's floor");
+        var point = msb.Parts.Players.Single(p => p.EntityID == 45010980);
+        Expect(point.Position == new Vector3(-16.7f, 41.2f, -13) && point.Rotation.Y == 94, "the standing point is DS3's point for this bonfire");
+        Expect(msb.Parts.Players.Single(p => p.Name == "c0000_0005").EntityID == 0 && notes.Any(n => n.Contains("c0000_0005")), "a DS3 point with the standing point's number gives it up, and the log says so");
+        // No sword and no DS3 point: a grace asset anyway, the point a step in front of it.
+        Expect(placed[1] is { Entity: 45011951, Sword: 0, GraceAsset: true } && Vector3.Distance(placed[1].PointPosition, found[1].Position) is > 1.4f and < 1.6f,
+            $"bonfire without a sword: {placed[1]}");
+        var ids = msb.Parts.GetEntries().Where(p => p.EntityID != 0).GroupBy(p => p.EntityID).Where(g => g.Count() > 1).Select(g => g.Key).ToList();
+        Expect(ids.Count == 0, "entities named twice: " + string.Join(" ", ids));
+
+        // DARKSIGN_BONFIRES=sword: the sword is the registered asset; a bonfire without one still gets the grace asset.
+        var swordMsb = BonfireSlot();
+        var byMode = Bonfires.Place(swordMsb, BonfireDs3, BonfireEr, found, Bonfires.Method.Sword, partNames, []);
+        Expect(byMode[0] is { Entity: 45011950, Sword: 45011950, GraceAsset: false } && byMode[1].GraceAsset
+               && swordMsb.Parts.Assets.Count(a => a.ModelName == Bonfires.GraceModel) == 1, "sword mode");
+        Expect(Bonfires.Place(BonfireSlot(), BonfireDs3, BonfireEr, found, Bonfires.Method.Off, partNames, []).Count == 0, "off places nothing");
+
+        // The run's start point (990) is never taken: bonfire 10 is left out.
+        var tenth = found[0] with { Number = 10, Ds3Entity = 3001960 };
+        var skipNotes = new List<string>();
+        Expect(Bonfires.Place(BonfireSlot(), BonfireDs3, BonfireEr, [tenth], Bonfires.Method.Grace, partNames, skipNotes).Count == 0 && skipNotes.Count == 1,
+            "a bonfire whose point would be the start point is left out");
+    }
+
+    private static void BonfireEvents()
+    {
+        var (ds3, rows) = BonfireMap();
+        var found = Bonfires.Find(rows, ds3, BonfireDs3);
+        var placed = Bonfires.Place(BonfireSlot(), BonfireDs3, BonfireEr, found, Bonfires.Method.Grace, null, []);
+        long Flag(long f) => f - 13000000 + 45010000;
+
+        // The converted script: DS3's literal line for bonfire 0; bonfire 1 passed to a common event that registers it.
+        var script = new EMEVD();
+        var zero = new EMEVD.Event(0, EMEVD.Event.RestBehaviorType.Default);
+        zero.Instructions.Add(RunEvents.Make(2009, 3, 45010009u, 45011950u, 5f, 180f, 0, 0f));
+        script.Events.Add(zero);
+        var common = new EMEVD();
+        var boss = new EMEVD.Event(1038291000, EMEVD.Event.RestBehaviorType.Default);
+        boss.Instructions.Add(RunEvents.Make(2009, 3, 0u, 0u, 5f, 180f, 0, 0f));
+        boss.Parameters.Add(new EMEVD.Parameter(0, 4, 8, 4));
+        common.Events.Add(boss);
+        Expect(Bonfires.Registers(script, common, 45011950) && !Bonfires.Registers(script, common, 45011951), "only bonfire 0 is registered so far");
+        Expect(!Bonfires.Registers(common, null, 0), "a line filled in from a parameter registers nothing by itself");
+        var withCall = new EMEVD();
+        var start = new EMEVD.Event(0, EMEVD.Event.RestBehaviorType.Default);
+        start.Instructions.Add(RunEvents.Make(2000, 6, 0, 1038291000u, 45010800u, 45010001u, 45011951u, 45010951u));
+        withCall.Events.Add(start);
+        Expect(Bonfires.Registers(withCall, common, 45011951) && !Bonfires.Registers(withCall, null, 45011951), "a call to a registering common event registers its bonfire");
+
+        var (registered, flames) = Bonfires.AddEvents(script, common, BonfireEr, placed, Flag, 900800061);
+        script = EMEVD.Read(script.Write());
+        Expect(registered == 1 && flames == 1, $"registered {registered}, flames {flames} (bonfire 1 has no sword)");
+        var added = script.Events.Single(e => e.ID == 0).Instructions.Single(i => i.Bank == 2009 && BitConverter.ToUInt32(i.ArgData, 4) == 45011951);
+        Expect(BitConverter.ToUInt32(added.ArgData, 0) == 45010001 && added.ArgData.Length == 24, "the added line names the bonfire's lit flag in Elden Ring's six-argument layout");
+        var flame = script.Events.Single(e => e.ID == BonfireEr.EntityBase + Bonfires.FirstEvent);
+        Expect(flame.Instructions.Count == 2 && flame.Instructions[0] is { Bank: 3, ID: 0 } && BitConverter.ToUInt32(flame.Instructions[0].ArgData, 4) == 45010009
+               && flame.Instructions[1] is { Bank: 2006, ID: 4 } && BitConverter.ToUInt32(flame.Instructions[1].ArgData, 0) == placed[0].Sword
+               && BitConverter.ToInt32(flame.Instructions[1].ArgData, 4) == Bonfires.FlameDummy && BitConverter.ToInt32(flame.Instructions[1].ArgData, 8) == 900800061,
+            "the flame event waits for the lit flag and puts the fire on the sword's dummy poly 200");
+        Expect(script.Events.Single(e => e.ID == 0).Instructions.Any(i => i.Bank == 2000 && i.ID == 0 && BitConverter.ToUInt32(i.ArgData, 4) == flame.ID), "event 0 starts it");
+        var (again, noFlame) = Bonfires.AddEvents(script, common, BonfireEr, placed, Flag, 0);
+        Expect(again == 0 && noFlame == 0, "nothing is registered twice, and an unconverted effect adds no flame event");
+    }
+}

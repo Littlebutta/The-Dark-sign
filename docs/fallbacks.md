@@ -498,6 +498,14 @@ Try the next option if: A DS3 map crashes, hangs while loading or hitches since 
 - **C: Region effects only.** DS3's fog, light shafts and other placed effects as in A, but no flames on objects (DARKSIGN_OBJECT_SFX=0): candles and torches stand unlit, as builds up to 1.0.44x had them. (`DARKSIGN_OBJECT_SFX=0`)
 - **D: Smoke and fog effects unlit.** DS3's effects as in A, but their smoke, fog and dust are drawn unlit, at full colour whatever light they stand in (DARKSIGN_FXR_LIT=0), as builds up to 1.0.44x had them: in dark places they glow white. This goes for weapon and enemy effects too. (`DARKSIGN_FXR_LIT=0`)
 
+### DS3's bonfires as sites of grace (`map-bonfires`, rebuilds the content)
+
+Try the next option if: Resting at a DS3 bonfire does nothing or breaks (no prompt, no menu, a crash or a hang at the bonfire or on respawn), you respawn in the wrong place, or you want DS3's bonfire without Elden Ring's golden grace light on it.
+
+- **A: Sites of grace at DS3's bonfires (default).** Every DS3 bonfire gets an Elden Ring site of grace where its sword stands: touch it to light it, rest to level up and refill flasks, and you respawn there. It is built exactly as Elden Ring builds its own (the grace asset, the invisible talker with the grace menu, the standing point, a BonfireWarpParam row with DS3's bonfire name), and a DS3 fire burns on the sword once it is lit. The grace's golden light shows at the sword. Report: the bonfires lines of the port-maps log.
+- **B: DS3's sword is the grace.** As A, but with no Elden Ring grace asset (DARKSIGN_BONFIRES=sword): DS3's own sword in the ash is registered as the site of grace, so there is no golden light, only the DS3 fire once it is lit. Unproven: Elden Ring may expect its own grace model here. (`DARKSIGN_BONFIRES=sword`)
+- **C: Scenery.** DS3's bonfires can't be used (DARKSIGN_BONFIRES=0), as every build up to 1.0.46x had them: you respawn at your last Elden Ring grace. (`DARKSIGN_BONFIRES=0`)
+
 ### Water in the DS3 maps (`map-water`, rebuilds the content)
 
 Try the next option if: A DS3 map crashes or hangs while loading since its water was added, or its pools, puddles and rivers look wrong (black, glowing, flickering or floating).

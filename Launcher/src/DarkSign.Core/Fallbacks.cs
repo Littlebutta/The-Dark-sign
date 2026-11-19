@@ -603,6 +603,16 @@ public static class Fallbacks
                 { PorterEnv = Env("DARKSIGN_FXR_LIT", "0") },
         ]),
 
+        new("map-bonfires", "DS3 maps", "DS3's bonfires as sites of grace", Stage.Build,
+            "Resting at a DS3 bonfire does nothing or breaks (no prompt, no menu, a crash or a hang at the bonfire or on respawn), you respawn in the wrong place, or you want DS3's bonfire without Elden Ring's golden grace light on it.",
+        [
+            new("A", "Sites of grace at DS3's bonfires (default)", "Every DS3 bonfire gets an Elden Ring site of grace where its sword stands: touch it to light it, rest to level up and refill flasks, and you respawn there. It is built exactly as Elden Ring builds its own (the grace asset, the invisible talker with the grace menu, the standing point, a BonfireWarpParam row with DS3's bonfire name), and a DS3 fire burns on the sword once it is lit. The grace's golden light shows at the sword. Report: the bonfires lines of the port-maps log."),
+            new("B", "DS3's sword is the grace", "As A, but with no Elden Ring grace asset (DARKSIGN_BONFIRES=sword): DS3's own sword in the ash is registered as the site of grace, so there is no golden light, only the DS3 fire once it is lit. Unproven: Elden Ring may expect its own grace model here.")
+                { PorterEnv = Env("DARKSIGN_BONFIRES", "sword") },
+            new("C", "Scenery", "DS3's bonfires can't be used (DARKSIGN_BONFIRES=0), as every build up to 1.0.46x had them: you respawn at your last Elden Ring grace.")
+                { PorterEnv = Env("DARKSIGN_BONFIRES", "0") },
+        ]),
+
         new("map-water", "DS3 maps", "Water in the DS3 maps", Stage.Build,
             "A DS3 map crashes or hangs while loading since its water was added, or its pools, puddles and rivers look wrong (black, glowing, flickering or floating).",
         [
