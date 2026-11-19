@@ -48,6 +48,8 @@ public static partial class MapPortChecks
             yield return check;
         foreach (var check in MusicChecks())
             yield return check;
+        foreach (var check in TalkChecks())
+            yield return check;
         foreach (var check in BonfireChecks())
             yield return check;
         yield return ("validate: layout checks catch a missing start point and parts without models", ValidateLayout);

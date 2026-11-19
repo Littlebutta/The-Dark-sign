@@ -81,7 +81,36 @@ public static partial class ChrPort
         : double.TryParse(text?.Trim(), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var v) && v is >= 0 and <= 1 ? v : 0;
 
     /// <summary>A DS3 character as the maps use it: its model, the NpcParam rows placed with it, its name.</summary>
-    public sealed record Ds3Chr(int Chr, string Name, bool Boss, SortedSet<int> NpcParams);
+    /// <param name="People">The NpcParam rows DS3 places as people (someone to talk to who is not a boss): friendly in Elden Ring too.</param>
+    public sealed record Ds3Chr(int Chr, string Name, bool Boss, SortedSet<int> NpcParams, SortedSet<int>? People = null);
+
+    /// <summary>
+    /// Off (fallback map-people H, DARKSIGN_PEOPLE_BODIES=0): DS3's people with a body of their own (Fire Keeper, Andre,
+    /// the Shrine Handmaid, Ludleth, Yoel, the Painting Woman...) are not ported, as up to 1.0.47x, where they were left out.
+    /// </summary>
+    public static bool PeopleBodies => Environment.GetEnvironmentVariable("DARKSIGN_PEOPLE_BODIES") != "0";
+
+    /// <summary>
+    /// The team Elden Ring's own people are on: the commonest teamType of its human NPC rows (523xxxxxx: 26 on 130 of
+    /// 288 rows in 1.16, Varré, Tanith, the merchants), which doesn't fight the player until struck.
+    /// </summary>
+    public static int FriendlyTeam(PARAM npcParam) =>
+        npcParam.Rows.Where(r => r.ID is >= 523_000_000 and < 524_000_000).Select(r => Maps.PeopleArmour.Cell(r, "teamType")).Where(t => t > 0)
+            .GroupBy(t => t).OrderByDescending(g => g.Count()).ThenBy(g => g.Key).Select(g => g.Key).FirstOrDefault(26);
+
+    /// <summary>
+    /// Puts the rows of DS3's people on Elden Ring's friendly team. A ported character's row is its template enemy's
+    /// with DS3's numbers, so without this a ported Fire Keeper would be on the enemies' side.
+    /// </summary>
+    public static int MakePeopleFriendly(PARAM npcParam, IEnumerable<(Plan Plan, Dictionary<int, int> NpcRows)> ported)
+    {
+        int team = FriendlyTeam(npcParam), done = 0;
+        foreach (var (plan, rows) in ported)
+            foreach (var ds3Id in plan.Ds3.People ?? [])
+                if (rows.TryGetValue(ds3Id, out var id) && npcParam[id] is { } row && Maps.PeopleArmour.SetCell(row, "teamType", team))
+                    done++;
+        return done;
+    }
 
     /// <summary>The choice for one DS3 character.</summary>
     public sealed record Plan(Ds3Chr Ds3, EnemyPort.ErEnemy Template, int TemplateChr, double BoneMatch, Method Method, int NewChr, Stage Stage = Stage.All);
@@ -776,6 +805,9 @@ public static partial class ChrPort
                 result.Notes.Add($"c{plan.Ds3.Chr:D4} {plan.Ds3.Name}: params failed ({Describe(ex)})");
             }
         }
+        int friendly = MakePeopleFriendly(regulation.Get("NpcParam")!, result.Params);
+        if (friendly > 0)
+            result.Notes.Add($"people: {friendly} NpcParam rows of DS3's people with a body of their own put on Elden Ring's friendly team ({FriendlyTeam(regulation.Get("NpcParam")!)})");
         int thinkRows = 0;
         if (result.Ai.Count > 0 && regulation.Get("NpcThinkParam") is { } erThink)
         {
@@ -964,6 +996,7 @@ public static partial class ChrPort
     public static List<Ds3Chr> Ds3Characters(GameArchives ds3, PARAM? ds3Npc)
     {
         var byChr = new SortedDictionary<int, Ds3Chr>();
+        var hostile = new HashSet<(int Chr, int Npc)>();
         foreach (var (id, _) in MapSlots.Ds3Maps)
         {
             var mapId = MapId.Parse(id);
@@ -981,13 +1014,24 @@ public static partial class ChrPort
             foreach (var e in msb.Parts.Enemies)
             {
                 int chr = ChrId(e.ModelName);
-                // Talkers are people, except bosses who speak (Friede, Ariandel): see EnemyPort.BossEncounter.
-                if (chr <= 0 || e.TalkID > 0 && !bosses.Contains(e.EntityID) || e.NPCParamID <= 0)
+                if (chr <= 0 || e.NPCParamID <= 0)
                     continue;
                 var name = ds3Npc?[e.NPCParamID]?.Name is { Length: > 0 } n ? n : $"c{chr:D4}";
+                // Talkers are people, except bosses who speak (Friede, Ariandel): see EnemyPort.BossEncounter. A person
+                // with a body of their own (Fire Keeper c1400, Andre c3190...) is ported like any character, on the
+                // friendly team; up to 1.0.47x they were skipped here, so the maps had nobody to place and left them out.
+                // DS3's invisible logic characters (talk dummy c1000, patrol leader c0100) have nothing to port.
+                bool person = e.TalkID > 0 && !bosses.Contains(e.EntityID);
+                if (person && (!PeopleBodies || EnemyPort.People.IsLogic(e.ModelName, name)))
+                    continue;
                 if (!byChr.TryGetValue(chr, out var known))
-                    byChr[chr] = known = new Ds3Chr(chr, name, false, []);
+                    byChr[chr] = known = new Ds3Chr(chr, name, false, [], []);
                 known.NpcParams.Add(e.NPCParamID);
+                // A row DS3 also places as an enemy somewhere stays an enemy's (hostile wins: nothing friendly should hit).
+                if (person && !hostile.Contains((chr, e.NPCParamID)))
+                    known.People!.Add(e.NPCParamID);
+                else if (!person && hostile.Add((chr, e.NPCParamID)))
+                    known.People?.Remove(e.NPCParamID);
                 if (bosses.Contains(e.EntityID) && !known.Boss)
                     byChr[chr] = known with { Boss = true };
             }
