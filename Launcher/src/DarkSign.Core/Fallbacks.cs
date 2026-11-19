@@ -677,6 +677,8 @@ public static class Fallbacks
                 { PorterEnv = Env("DARKSIGN_ENEMY_FUR", "0") },
             new("L", "One move set per enemy", "As A, but every variant of a ported enemy plays the base move set (DARKSIGN_ENEMY_VARIANTS=0), as up to 1.0.443, when the High Wall's spear Lothric Knights played the sword knights' moves and held their shield sideways. Use when ported enemies freeze, T-pose or crash the game when they spawn or start a move with A.")
                 { PorterEnv = Env("DARKSIGN_ENEMY_VARIANTS", "0") },
+            new("M", "The template's limb IK", "As A, but a ported enemy keeps the limb IK of the Elden Ring enemy it is built on (DARKSIGN_ENEMY_IK=template), as up to 1.0.460, when Father Ariandel's arms were stretched towards where Dragonlord Placidusax's front feet rest. Use when a ported enemy's hands or feet slide, sink into the floor or float with A.")
+                { PorterEnv = Env("DARKSIGN_ENEMY_IK", "template") },
         ]),
         new("enemy-drops", "DS3 maps", "What ported DS3 enemies drop", Stage.Build,
             "A ported DS3 enemy drops nothing where DS3 drops something, drops the wrong item or far too often, the game crashes or hangs when a ported enemy dies, or the build's enemy params step says the drops were not ported.",
