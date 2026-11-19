@@ -445,6 +445,15 @@ public static class Fallbacks
             new("B", "DS3's hit filters", "Every collision keeps DS3's hit filter number (port-maps --ds3-hit-filters), as in every build up to 1.0.353: enemies fall through the floor where a filter-24 copy is the top surface.")
                 { MapsArgs = ["--ds3-hit-filters"] },
         ]),
+        new("map-empty-collision", "DS3 maps", "Collision DS3 keeps on one side only", Stage.Build,
+            "Enemies on a DS3 map (the Painted World above all) die as soon as the map loads, or since this option you bump into something invisible or the game stops while the Painted World loads.",
+        [
+            new("A", "The same collision on both sides (default)", "Some DS3 collision is an empty placeholder in its high-detail (h) file and real in its low-detail (l) file: 28 parts of the Painted World. They were left out of the map with their l collision, so enemies standing on that ground fell and died as the map loaded. They stay, and the empty side gets the same collision as the other, the way JortPob writes every collision into both. The port log's \"collision with an empty DS3 file on one side\" line counts them and the DS3 enemies that stand on them."),
+            new("B", "Only the side DS3 has", "The parts stay with DS3's collision on the side it has; the empty side gets no file (port-maps --empty-collision-alone).")
+                { MapsArgs = ["--empty-collision-alone"] },
+            new("C", "Left out", "Every part whose high-detail file is empty in DS3 is left out of the map, low-detail collision and all (port-maps --drop-empty-collisions), as in every build up to this option: the Painted World's enemies on that ground die as the map loads.")
+                { MapsArgs = ["--drop-empty-collisions"] },
+        ]),
         new("map-stand-ins", "DS3 maps", "DS3's low-detail stand-ins and far views", Stage.Build,
             "A far part of a DS3 map is missing (a castle wall, a hall, a tower or mountains you could see from a distance), or blocky slabs, steps or low-resolution polygons floating over the map are back.",
         [

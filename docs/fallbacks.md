@@ -358,6 +358,14 @@ Try the next option if: Enemies stand in mid-air or on surfaces they shouldn't s
 - **A: Written as normal floor (default).** DS3 lays copies of its floors in collision with hit filter 24, which Elden Ring reads differently: enemies that landed on one fell through the map (1.0.347, map 3). They are written as normal floor (hit filter 8). The port log's layout notes count them.
 - **B: DS3's hit filters.** Every collision keeps DS3's hit filter number (port-maps --ds3-hit-filters), as in every build up to 1.0.353: enemies fall through the floor where a filter-24 copy is the top surface. (`port-maps --ds3-hit-filters`)
 
+### Collision DS3 keeps on one side only (`map-empty-collision`, rebuilds the content)
+
+Try the next option if: Enemies on a DS3 map (the Painted World above all) die as soon as the map loads, or since this option you bump into something invisible or the game stops while the Painted World loads.
+
+- **A: The same collision on both sides (default).** Some DS3 collision is an empty placeholder in its high-detail (h) file and real in its low-detail (l) file: 28 parts of the Painted World. They were left out of the map with their l collision, so enemies standing on that ground fell and died as the map loaded. They stay, and the empty side gets the same collision as the other, the way JortPob writes every collision into both. The port log's "collision with an empty DS3 file on one side" line counts them and the DS3 enemies that stand on them.
+- **B: Only the side DS3 has.** The parts stay with DS3's collision on the side it has; the empty side gets no file (port-maps --empty-collision-alone). (`port-maps --empty-collision-alone`)
+- **C: Left out.** Every part whose high-detail file is empty in DS3 is left out of the map, low-detail collision and all (port-maps --drop-empty-collisions), as in every build up to this option: the Painted World's enemies on that ground die as the map loads. (`port-maps --drop-empty-collisions`)
+
 ### DS3's low-detail stand-ins and far views (`map-stand-ins`, rebuilds the content)
 
 Try the next option if: A far part of a DS3 map is missing (a castle wall, a hall, a tower or mountains you could see from a distance), or blocky slabs, steps or low-resolution polygons floating over the map are back.

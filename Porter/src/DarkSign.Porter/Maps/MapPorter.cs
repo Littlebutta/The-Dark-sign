@@ -110,6 +110,12 @@ public static class MapPorter
         /// </summary>
         public bool BinaryCollision { get; set; } = true;
         public bool KeepSimdTree { get; set; }
+        /// <summary>
+        /// A collision part whose DS3 file is an empty placeholder in one binder and real in the other: the empty side gets
+        /// the other's collision (default), stays empty (--empty-collision-alone, fallback "map-empty-collision" B) or the
+        /// part is left out (--drop-empty-collisions, C, as up to 1.0.460). See <see cref="MapCollisions.EmptySideMethod"/>.
+        /// </summary>
+        public MapCollisions.EmptySideMethod EmptyCollision { get; set; } = MapCollisions.EmptySideMethod.Copy;
 
         /// <summary>
         /// --after-pid: the port-weapons process started alongside this one. The events step edits the regulation.bin
@@ -183,6 +189,8 @@ public static class MapPorter
                     case "--binary-collision": o.BinaryCollision = true; break;
                     case "--xml-collision": o.BinaryCollision = false; break;
                     case "--simd": o.KeepSimdTree = true; break;
+                    case "--empty-collision-alone": o.EmptyCollision = MapCollisions.EmptySideMethod.Alone; break;
+                    case "--drop-empty-collisions": o.EmptyCollision = MapCollisions.EmptySideMethod.Drop; break;
                     case "--enemies" when i + 1 < list.Count: o.Enemies = EnemyPort.ParseMethod(list[i + 1]); i++; break;
                     case "--objects" when i + 1 < list.Count: o.Objects = ObjectPort.ParseMethod(list[i + 1]); i++; break;
                     case "--moving-objects" when i + 1 < list.Count: o.MovingObjects = ObjectPort.ParseMoving(list[i + 1]); i++; break;
@@ -1042,22 +1050,25 @@ public static class MapPorter
         var emptyCollisions = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var collisionModels = layout.Msb.Models.Collisions.Select(m => m.Name).ToHashSet(StringComparer.OrdinalIgnoreCase);
         clock.Restart();
+        var collisionResults = new Dictionary<string, MapCollisions.Result>();
         foreach (var kind in new[] { "h", "l" })
         {
             var result = MapCollisions.Port(ctx, ds3, er, ds3Id, erId, kind, options, hostId);
+            collisionResults[kind] = result;
             report.AppendLine($"  collision {kind}: {result.Summary}");
             collisionFilesEmpty += result.Empty?.Count ?? 0;
             collisionFilesFailed += result.Failed;
-            if (kind == "h")
-                foreach (var name in collisionModels.Where(n => !result.Ported.Contains(ModelNumber(n))))
-                {
-                    missingCollisions.Add(name);
-                    if (result.Empty?.Contains(ModelNumber(name)) == true)
-                        emptyCollisions.Add(name);
-                }
+        }
+        foreach (var (name, isEmpty) in CollisionModelsLeftOut(collisionModels, collisionResults, options.EmptyCollision))
+        {
+            missingCollisions.Add(name);
+            if (isEmpty)
+                emptyCollisions.Add(name);
         }
         foreach (var name in missingCollisions)
             report.AppendLine($"  collision {name}: left out ({(emptyCollisions.Contains(name) ? "its DS3 file is empty: no collision to convert" : "no converted file")})");
+        foreach (var line in EmptySideNotes(ds3Msb, collisionResults, options.EmptyCollision))
+            report.AppendLine("  " + line);
         report.AppendLine($"  time: collision {clock.Elapsed.TotalSeconds:F0} s");
         clock.Restart();
 
@@ -1575,6 +1586,57 @@ public static class MapPorter
     public static string ErMapBndPath(MapId id, string number) => $"/map/{id.AreaFolder}/{id}/{id}_{number}.mapbnd.dcx";
 
     // "m000100" -> "000100"; "h000100" -> "000100"
+    /// <summary>
+    /// The collision models (and so the parts) left out of a ported map, and whether DS3's h file for each was empty. A
+    /// model stays when either binder got its collision: DS3's l collision alone is ground too (the Painted World's 28
+    /// parts with an empty h file, whose enemies died on load while those parts were left out). Under
+    /// --drop-empty-collisions only the h binder counts, as up to 1.0.460.
+    /// </summary>
+    public static IEnumerable<(string Model, bool Empty)> CollisionModelsLeftOut(IEnumerable<string> models,
+        IReadOnlyDictionary<string, MapCollisions.Result> results, MapCollisions.EmptySideMethod method)
+    {
+        bool Converted(string kind, string model) => results.TryGetValue(kind, out var r) && r.Ported.Contains(model);
+        foreach (var name in models)
+        {
+            var model = ModelNumber(name);
+            if (Converted("h", model) || (method != MapCollisions.EmptySideMethod.Drop && Converted("l", model)))
+                continue;
+            yield return (name, results.TryGetValue("h", out var h) && h.Empty?.Contains(model) == true);
+        }
+    }
+
+    /// <summary>
+    /// Port log lines for collision models whose DS3 file is an empty placeholder in one binder and real in the other
+    /// (<see cref="MapCollisions.EmptySideMethod"/>): how many DS3 collision parts use them and how many DS3 enemies name
+    /// one as the floor they stand on, so a log shows whether enemies stood on ground the port used to leave out.
+    /// </summary>
+    public static IEnumerable<string> EmptySideNotes(MSB3 ds3Msb, IReadOnlyDictionary<string, MapCollisions.Result> results,
+        MapCollisions.EmptySideMethod method)
+    {
+        HashSet<string> Of(string kind, Func<MapCollisions.Result, HashSet<string>?> pick) =>
+            results.TryGetValue(kind, out var r) ? pick(r) ?? [] : [];
+        var oneSided = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        oneSided.UnionWith(Of("h", r => r.Borrowed));
+        oneSided.UnionWith(Of("l", r => r.Borrowed));
+        var h = Of("h", r => r.Ported);
+        var l = Of("l", r => r.Ported);
+        oneSided.UnionWith(h.Except(l, StringComparer.OrdinalIgnoreCase).Where(m => Of("l", r => r.Empty).Contains(m)));
+        oneSided.UnionWith(l.Except(h, StringComparer.OrdinalIgnoreCase).Where(m => Of("h", r => r.Empty).Contains(m)));
+        if (oneSided.Count == 0)
+            yield break;
+        var parts = ds3Msb.Parts.Collisions.Where(c => oneSided.Contains(ModelNumber(c.ModelName ?? ""))).Select(c => c.Name).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var standing = ds3Msb.Parts.Enemies.Where(e => parts.Contains(e.CollisionName ?? "")).ToList();
+        var what = method switch
+        {
+            MapCollisions.EmptySideMethod.Copy => "kept, the same collision in h and l",
+            MapCollisions.EmptySideMethod.Alone => "kept with only the side DS3 has (--empty-collision-alone)",
+            _ => "left out (--drop-empty-collisions)",
+        };
+        yield return $"collision with an empty DS3 file on one side: {oneSided.Count} models, {parts.Count} collision parts {what}; "
+                     + $"{standing.Count} DS3 enemies name one as their floor"
+                     + (standing.Count == 0 ? "" : $" ({string.Join(", ", standing.Take(12).Select(e => $"{e.Name} {e.EntityID} on {e.CollisionName}"))}{(standing.Count > 12 ? ", ..." : "")})");
+    }
+
     public static string ModelNumber(string model) => model.Length > 1 && char.IsLetter(model[0]) ? model[1..] : model;
 
     // "/map/m45/x.dcx" -> ["map", "m45", "x.dcx"]
