@@ -6,6 +6,11 @@
    looping between DS3's loop points, fading out the old track when another takes over (a boss's second phase) or when
    no flag is on (the boss died, the player left Firelink Shrine, a death or map load reset the flags).
 
+   DS3's scripts switch a track off and on again within a moment (Firelink Shrine's event starts over whenever the
+   player leaves the ground: off, half a second, on; DS3 fades over 5 s so nothing is heard). So a track whose flag
+   goes off keeps playing for HOLD_POLLS before it fades, and a track that is wanted again while it fades out carries
+   on from where it is instead of starting over.
+
    The music plays on its own XAudio2 stream, as the DLL sounds of fallback "sounds" D (DOOM RING's approach,
    stanleymov/DOOM-RING, MIT: a DLL's own audio stream instead of the game's Wwise), so no Wwise bank has to load.
    On whenever port-maps wrote darksign_music.tsv; off with DKSIGN_NO_MAP_MUSIC=1 (launcher fallback "map-music" B). DKSIGN_MUSIC_VOLUME=0-100 sets the level (default 70). */
@@ -30,6 +35,8 @@ namespace {
 constexpr DWORD TICK_MS = 20;        // fade steps
 constexpr int POLL_TICKS = 5;        // flags read every 100 ms
 constexpr int FADE_IN_MS = 1000;
+constexpr int HOLD_POLLS = 8;        // a track whose flag went off plays on this long (0.8 s) before it fades
+constexpr int MAX_LOG_LINES = 200;
 constexpr size_t MAX_CACHED = 3;     // decoded tracks kept in memory (a boss's two phases and the area's)
 
 struct Entry {
@@ -191,7 +198,7 @@ void start(const Entry &e)
 {
     Wave *wave = wave_for(e.file);
     if (!wave) {
-        if (g_logged++ < 40)
+        if (g_logged++ < MAX_LOG_LINES)
             dks_log("music: no track %ls for%s (flag %u)", e.file.c_str(), e.where.c_str(), e.flag);
         return;
     }
@@ -217,8 +224,22 @@ void start(const Entry &e)
     p.target = g_level;
     p.step = step_for(FADE_IN_MS, g_level);
     g_voices.push_back(p);
-    if (g_logged++ < 40)
+    if (g_logged++ < MAX_LOG_LINES)
         dks_log("music: playing %ls for%s (flag %u)", e.file.c_str(), e.where.c_str(), e.flag);
+}
+
+/* A track that is fading out and wanted again: it carries on from where it is. */
+bool resume(const Entry &e)
+{
+    for (auto it = g_voices.rbegin(); it != g_voices.rend(); ++it)
+        if (it->voice && it->file == e.file) {
+            it->target = g_level;
+            it->step = step_for(FADE_IN_MS, g_level);
+            if (g_logged++ < MAX_LOG_LINES)
+                dks_log("music: carrying on %ls for%s (flag %u)", e.file.c_str(), e.where.c_str(), e.flag);
+            return true;
+        }
+    return false;
 }
 
 void fade_out(Playing &p, int ms)
@@ -258,6 +279,7 @@ const std::wstring *current_file()
 DWORD WINAPI run(LPVOID)
 {
     unsigned long long clock = 0, started = 0; // the stamp of the flag whose track was started last
+    int idle = 0;                              // polls since no flag was on while a track played
     for (int t = 0;; t++) {
         Sleep(TICK_MS);
         tick_fades();
@@ -281,6 +303,8 @@ DWORD WINAPI run(LPVOID)
                 if (e.on && (!want || e.stamp > want->stamp))
                     want = &e;
         const std::wstring *now = current_file();
+        if (want)
+            idle = 0;
         if (want && now && *now == want->file)
             continue;
         // A track that plays once and has ended isn't started again until its flag turns on anew.
@@ -288,6 +312,11 @@ DWORD WINAPI run(LPVOID)
             continue;
         if (!want && !now)
             continue;
+        // No flag on: the track plays on for a moment (DS3 switches a track off and on again), unless the flags
+        // can't be read (a death or a load: it fades at once).
+        if (!want && flags_known && ++idle < HOLD_POLLS)
+            continue;
+        idle = 0;
         // Another track (or none): the playing one fades out with its DS3 fade-out time.
         for (auto &p : g_voices)
             if (p.target > 0) {
@@ -296,11 +325,12 @@ DWORD WINAPI run(LPVOID)
                     if (e.file == p.file)
                         ms = e.fade_ms;
                 fade_out(p, ms);
-                if (g_logged++ < 40)
+                if (g_logged++ < MAX_LOG_LINES)
                     dks_log("music: fading out %ls", p.file.c_str());
             }
         if (want) {
-            start(*want);
+            if (!resume(*want))
+                start(*want);
             started = want->stamp;
         }
     }

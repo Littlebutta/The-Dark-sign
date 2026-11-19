@@ -25,7 +25,10 @@ public sealed class EventPort
     /// respawns at (moved like any entity; the map port makes each one a spawn point, <see cref="WarpPoints"/>).
     /// ActionButton: an ActionButtonParam row ID (DS3's rows get Elden Ring copies, <see cref="ActionButtons.RowForDs3"/>).
     /// </summary>
-    public enum Kind { Other, Entity, Flag, FlagRangeStart, FlagRangeEnd, Event, Area, Block, PackedMap, Cutscene, SpEffect, WarpPoint, ActionButton, ObjAct }
+    /// <remarks>MusicRegion: a value an event uses only as the region of DS3's music lines (the shared boss events'
+    /// track regions). The lines that start the event pass the region's switch flag there instead
+    /// (<see cref="MapMusic.Plan.SwitchFor"/>), and the event's music lines set that flag.</remarks>
+    public enum Kind { Other, Entity, Flag, FlagRangeStart, FlagRangeEnd, Event, Area, Block, PackedMap, Cutscene, SpEffect, WarpPoint, ActionButton, ObjAct, MusicRegion }
 
     private readonly Emedf _ds3, _er;
     private readonly IReadOnlyList<(MapId Ds3, MapId Er)> _maps;
@@ -369,8 +372,21 @@ public sealed class EventPort
                 var ins = e.Instructions[(int)p.InstructionIndex];
                 var def = _ds3.Get(ins.Bank, ins.ID);
                 var arg = def?.ArgAt(p.TargetStartByte) ?? -1;
-                if (arg >= 0)
-                    kinds.TryAdd(p.SourceStartByte, KindOf(def!.Args[arg].Name));
+                if (arg < 0)
+                    continue;
+                var kind = KindOf(def!.Args[arg].Name);
+                // A region passed to DS3's music lines (the 2010[07] that readies the next phase's track included).
+                if (Music is not null && ins.Bank == 2010 && ins.ID is MapMusic.SetMapSoundState or MapMusic.EnableBossMapSound or MapMusic.EnableMapSoundWithFade or 7
+                    && def.Args[arg].Name.Equals("Entity ID", StringComparison.OrdinalIgnoreCase))
+                    kind = Kind.MusicRegion;
+                if (!kinds.TryAdd(p.SourceStartByte, kind) && kinds[p.SourceStartByte] != kind
+                    && (kind == Kind.MusicRegion || kinds[p.SourceStartByte] == Kind.MusicRegion))
+                {
+                    // Used as a music region and as something else: it moves as the something else, and the music
+                    // lines it reaches stay no-ops.
+                    kinds[p.SourceStartByte] = kind == Kind.MusicRegion ? kinds[p.SourceStartByte] : kind;
+                    Stats.Notes.Add($"event {e.ID}: value {p.SourceStartByte} is a music region and a {kinds[p.SourceStartByte]}; its music lines are left out");
+                }
             }
             // Flag ranges are placed first, so they stay consecutive.
             foreach (var ins in e.Instructions)
@@ -395,6 +411,8 @@ public sealed class EventPort
     /// <summary>A DS3 ID moved into Elden Ring by what it is.</summary>
     public long Move(long value, Kind kind)
     {
+        if (kind == Kind.MusicRegion)
+            return Music?.SwitchFor(value) ?? value;
         if (value <= 0)
             return value;
         if (Override?.Invoke(value, kind) is { } over)
@@ -551,6 +569,8 @@ public sealed class EventPort
         {
             var ins = e.Instructions[i];
             Stats.Instructions++;
+            _event = e;
+            _line = i;
             var (converted, map) = ConvertInstruction(ins, e.Parameters.Where(p => p.InstructionIndex == i).Select(p => p.TargetStartByte).ToHashSet());
             if (converted is null)
             {
@@ -656,8 +676,8 @@ public sealed class EventPort
             }
             return (new EMEVD.Instruction(2000, ins.ID, data), null);
         }
-        if (ins.Bank == 2010 && Music?.Convert(ins, _ds3, paramBytes, MusicMap) is { } music)
-            return (music, null);
+        if (ins.Bank == 2010 && Music is not null && MusicLine(ins, paramBytes) is var (music, musicMap))
+            return (music, musicMap);
         if (ins.Bank == 3 && ActionButtonIds.Contains(ins.ID))
             return ActionButton(ins);
         if (ins.Bank == 1003 && ClientChecks.ContainsKey(ins.ID))
@@ -725,6 +745,43 @@ public sealed class EventPort
             Emedf.Write(output, arg, value);
         }
         return (new EMEVD.Instruction(to.Bank, to.Id, output), map);
+    }
+
+    // The event and line being converted (for what the line's passed-in values hold).
+    private EMEVD.Event? _event;
+    private int _line;
+
+    /// <summary>
+    /// A DS3 music line as the flag line the music port makes of it (<see cref="MapMusic.Plan.Convert"/>), or null
+    /// when it stays a no-op. A line with passed-in values comes with the mapping that puts them in the new line's
+    /// bytes: the region's value fills the flag (the lines that start the event pass the switch flag there), the
+    /// state fills the state, and a value with no place in the new line (a fade time) is dropped.
+    /// </summary>
+    private (EMEVD.Instruction Instruction, Mapping? Map)? MusicLine(EMEVD.Instruction ins, IReadOnlySet<long> paramBytes)
+    {
+        if (_ds3.Get(ins.Bank, ins.ID) is not { } def)
+            return null;
+        int entityArg = def.Args.ToList().FindIndex(a => a.Name.Equals("Entity ID", StringComparison.OrdinalIgnoreCase));
+        int stateArg = def.Args.ToList().FindIndex(a => a.Name.Equals("Enable/Disable", StringComparison.OrdinalIgnoreCase));
+        // The region is passed in, and that value of the event holds nothing but music regions.
+        bool passedMusic = entityArg >= 0 && _event is { } e && _paramKinds.TryGetValue(e.ID, out var kinds)
+            && e.Parameters.Any(p => p.InstructionIndex == _line && p.TargetStartByte == def.Args[entityArg].Offset
+                                     && kinds.GetValueOrDefault(p.SourceStartByte) == Kind.MusicRegion);
+        if (Music!.Convert(ins, _ds3, paramBytes, MusicMap, passedMusic) is not { } line)
+            return null;
+        if (paramBytes.Count == 0)
+            return (line, null);
+        if (_er.Get((int)line.Bank, (int)line.ID) is not { } to)
+            return null; // no layout to place the passed-in values by
+        var source = new int[to.Args.Count];
+        Array.Fill(source, -1);
+        // Set Event Flag (flag type, flag, state): the region's value is the flag, the state the state.
+        if (line.Bank == 2003 && line.ID == 66 && to.Args.Count >= 3)
+        {
+            source[1] = entityArg;
+            source[2] = stateArg;
+        }
+        return (line, new Mapping(def, to, source, new Kind[to.Args.Count], false));
     }
 
     /// <summary>
