@@ -81,7 +81,7 @@ public static partial class ChrMoves
     /// <para>
     /// An entry with no file of its own borrows another move's clip ("ImportsHKX"): Elden Ring's Giant Beast Skeleton
     /// (c3061, the template of the High Wall's Hollow Soldiers) plays 30016 for its waiting pose 700 and 10001 for 701,
-    /// and has no file in the 700s at all. Up to 1.0.443 a donor had to have a file of its own, so no waiting pose of
+    /// and has no file in the 700s at all. Up to 1.0.460 a donor had to have a file of its own, so no waiting pose of
     /// DS3's came along: the 33 High Wall hollows DS3's map script kneels in 700-706 until they are hit (common event
     /// 20005290) were forced into the template's borrowed clip or into a pose with no state, and fought at once.
     /// </para>
@@ -115,7 +115,7 @@ public static partial class ChrMoves
 
     /// <summary>
     /// Fallback enemy-ai J: DARKSIGN_ENEMY_OWN_POSES=0 gives no DS3 move a file where the template's entry borrows
-    /// another move's clip, and takes donors with a file of their own only (as up to 1.0.443).
+    /// another move's clip, and takes donors with a file of their own only (as up to 1.0.460).
     /// </summary>
     public static bool BorrowedClips => Environment.GetEnvironmentVariable("DARKSIGN_ENEMY_OWN_POSES") != "0";
 

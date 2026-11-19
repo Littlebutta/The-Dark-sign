@@ -66,6 +66,9 @@ public static class MapPorter
         /// <summary>--first-blend-layer: a DS3 terrain blend (2m/3m/4m) shows only its first layer, as up to 1.0.353
         /// (fallback "map-blend-layers" B; see <see cref="MapTerrainBlends"/>).</summary>
         public bool FirstBlendLayer { get; set; }
+        /// <summary>--raw-half-normals: DS3 normals stored as half floats keep what SoulsFormats reads, as every build
+        /// before 2026-11-19 (fallback "map-materials" C; see <see cref="Ds3HalfNormals"/>).</summary>
+        public bool RawHalfNormals { get; set; }
         /// <summary>--tint-materials (diagnostic, not a fallback): DS3 material families that keep something in vertex
         /// alpha are drawn in solid colours (see <see cref="MapModelPort.Tints"/>).</summary>
         public bool TintMaterials { get; set; }
@@ -169,6 +172,7 @@ public static class MapPorter
                     case "--stand-ins": o.StandIns = true; break;
                     case "--solid-overlays": o.SolidOverlays = true; break;
                     case "--first-blend-layer": o.FirstBlendLayer = true; break;
+                    case "--raw-half-normals": o.RawHalfNormals = true; break;
                     case "--cut-faded-overlays": o.CutFadedOverlays = true; o.FadeOverlays = true; break;
                     case "--fade-overlays": o.FadeOverlays = true; break;
                     case "--tint-materials": o.TintMaterials = true; break;
@@ -215,6 +219,7 @@ public static class MapPorter
     {
         port.Ds3Alpha = !options.SolidOverlays;
         port.TerrainLayers = !options.FirstBlendLayer;
+        port.HalfNormals = !options.RawHalfNormals;
         port.CutFadedOverlays = options.CutFadedOverlays;
         port.FadeOverlays = options.FadeOverlays;
         return port;
@@ -819,6 +824,7 @@ public static class MapPorter
         models.UnlitCastShadows = options.HostLighting;
         models.Ds3Alpha = !options.SolidOverlays;
         models.TerrainLayers = !options.FirstBlendLayer;
+        models.HalfNormals = !options.RawHalfNormals;
         models.TintMaterials = options.TintMaterials;
         models.CutFadedOverlays = options.CutFadedOverlays;
         models.FadeOverlays = options.FadeOverlays;
@@ -1064,6 +1070,7 @@ public static class MapPorter
         {
             report.AppendLine("  " + (options.SolidOverlays ? "vertex alpha: every vertex solid, two-layer materials show their first layer (--solid-overlays)" : models.Overlays.Summary));
             report.AppendLine("  " + (options.FirstBlendLayer ? "terrain blends: every mesh shows its first layer (--first-blend-layer)" : models.Blends.Summary));
+            report.AppendLine("  " + (options.RawHalfNormals ? "half-float normals: kept as SoulsFormats reads them (--raw-half-normals)" : models.HalfNormalStats.Summary));
         }
         if (copied > 0)
             textures.Need(main.Textures, ds3Id);

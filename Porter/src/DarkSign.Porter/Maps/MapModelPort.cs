@@ -76,7 +76,7 @@ public sealed class MapModelPort
     /// <summary>A new port with the same templates and none of this one's materials (one per map).</summary>
     public MapModelPort Fresh() => new(_templates, _templateFlver)
         { VanillaMaterials = VanillaMaterials, TemplateTextures = TemplateTextures, Ds3Alpha = Ds3Alpha, TerrainLayers = TerrainLayers, TintMaterials = TintMaterials,
-          OverlayBacking = OverlayBacking, CutFadedOverlays = CutFadedOverlays, FadeOverlays = FadeOverlays };
+          HalfNormals = HalfNormals, OverlayBacking = OverlayBacking, CutFadedOverlays = CutFadedOverlays, FadeOverlays = FadeOverlays };
 
     /// <summary>
     /// Diagnostic "--tint-materials": the albedo of each DS3 material family that keeps something in vertex alpha is a
@@ -131,6 +131,16 @@ public sealed class MapModelPort
     /// its first layer, as every build up to 1.0.353.
     /// </summary>
     public bool TerrainLayers { get; set; } = true;
+
+    /// <summary>
+    /// True (the default): DS3 normals stored as half floats (terrain blends) are read as half floats
+    /// (<see cref="Ds3HalfNormals"/>). False (fallback "map-materials" C, --raw-half-normals): they keep what SoulsFormats
+    /// reads, as up to 1.0.460, and terrain blend ground draws far too dark.
+    /// </summary>
+    public bool HalfNormals { get; set; } = true;
+
+    /// <summary>What <see cref="Ds3HalfNormals"/> did to this port's models, for the port log.</summary>
+    public Ds3HalfNormals.Stats HalfNormalStats { get; } = new();
 
     /// <summary>
     /// The map's index of surfaces under faded overlay triangles (<see cref="MapOverlayBacking"/>): a faded triangle is
@@ -767,6 +777,13 @@ public sealed class MapModelPort
             Unk74 = h.Unk74, BoundingBoxMin = bboxMin, BoundingBoxMax = bboxMax,
         };
         MakeStatic(flver);
+        // Terrain blends' half-float normals, while the DS3 vertex layouts still say which meshes have them.
+        if (HalfNormals)
+        {
+            var stats = new Ds3HalfNormals.Stats();
+            Ds3HalfNormals.Fix(flver, stats);
+            HalfNormalStats.Add(stats);
+        }
         // Overlays and two-layer materials, while the DS3 materials and vertex colours are still there.
         var keepAlpha = new HashSet<FLVER2.Mesh>();
         if (Ds3Alpha)
