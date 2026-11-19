@@ -394,8 +394,9 @@ Try the next option if: Paving, rubble or a layer of ash looks wrong on a DS3 ma
 
 Try the next option if: A DS3 map's ground or walls show the wrong texture in patches, or change texture at hard, jagged edges since this option.
 
-- **A: Each triangle shows DS3's layer (default).** DS3 paints two to four ground textures across one terrain mesh (brick, earth, ash and the like), choosing each by a weight stored on every vertex. Elden Ring has no shader in use that blends DS3's layers, so the port splits each such mesh and draws every triangle with the layer DS3 shows there, with that layer's own texture, normal map and tiling. The port log's "terrain blends:" line counts the triangles each layer got.
+- **A: Cut along DS3's layer edges (default).** DS3 paints two to four ground textures across one terrain mesh (brick, earth, sand, ash and the like), choosing each by a weight stored on every vertex. Elden Ring has no shader in use that blends DS3's layers, so the port splits each such mesh into one mesh per layer, with that layer's own texture, normal map and tiling. A triangle whose corners show different layers is cut along the line where DS3 changes layer, so a painted patch keeps its outline (the same goes for two-layer materials). The port log's "terrain blends:" line counts the triangles each layer got and how many were cut.
 - **B: First layer only.** Every terrain mesh shows only its first layer (port-maps --first-blend-layer), as in every build up to 1.0.353: dark brick shards lie across the ash around Firelink Shrine and the walls show one texture, but no part of the ground changes texture at a hard edge. (`port-maps --first-blend-layer`)
+- **C: Whole triangles.** Each triangle goes whole to the layer its three corners show on average (port-maps --whole-blend-triangles), as in builds 1.0.354 to 1.0.46x: no triangle is cut, but the edge of every painted patch follows the triangles, which drew pale, jagged, flat shards on the Undead Settlement's ground. (`port-maps --whole-blend-triangles`)
 
 ### Colours of light and fog in the DS3 maps (`map-atmosphere`, rebuilds the content)
 
@@ -488,6 +489,7 @@ Try the next option if: A DS3 map crashes or hangs while loading since regions w
 
 - **A: DS3's regions and map-file events (default).** The areas DS3's events watch (boss rooms, ambush triggers, warp points), enemy patrol routes, platoons and enemy generators are carried into the map with their DS3 entity IDs.
 - **B: None.** The map file has no DS3 regions, patrol routes, platoons or generators (port-maps --no-regions), as every build up to 1.0.299 was: events that wait for the player to enter an area never fire and enemies don't patrol. (`port-maps --no-regions`)
+- **C: Route types from the route only.** As A, but a patrol route takes only the kind DS3's route event carries, not the move type DS3 keeps on the enemy, and no enemy wanders around its spot (DARKSIGN_ENEMY_MOVE_TYPES=route), as up to 1.0.470, when enemies DS3 walks there and back walked in a loop and its wandering dogs stood still. Use when a DS3 map crashes or hangs while loading, or enemies walk off and never come back, with A. (`DARKSIGN_ENEMY_MOVE_TYPES=route`)
 
 ### DS3's map effects (candles, fog, light shafts) (`map-effects`, rebuilds the content)
 
@@ -608,6 +610,7 @@ Try the next option if: Ported DS3 enemies stand still, never attack, repeat one
 - **H: Each character's own AI rows only.** As A, but a DS3 enemy that DS3 places with another family's AI (the Cemetery of Ash hollows run the Hollow Soldiers' rows) gets its own character's first AI row instead of that family's (DARKSIGN_ENEMY_SHARED_THINK=0), as up to 1.0.417, when those hollows circled the player without attacking. Use when a ported enemy freezes or the game crashes when it notices you with A. (`DARKSIGN_ENEMY_SHARED_THINK=0`)
 - **I: Map-script AI markers on the enemy row.** As A, but the markers DS3's map scripts put on an enemy only to steer its AI (Ariandel's wolves get one when their pack leader is gone) are on its enemy row from the start (DARKSIGN_ENEMY_SCRIPT_MARKERS=keep), as in 1.0.442, when Ariandel's wolf only circled and never attacked. Use when a ported enemy behaves worse than in 1.0.442. (`DARKSIGN_ENEMY_SCRIPT_MARKERS=keep`)
 - **J: The template's borrowed clips.** As A, but a DS3 waiting pose, getting-up move, map-script move or attack gets no clip of its own where the Elden Ring template's move of that number plays another move's clip, and is added only next to a template move with a clip of its own (DARKSIGN_ENEMY_OWN_POSES=0), as up to 1.0.460, when the High Wall's kneeling Hollow Soldiers stood up and fought at once instead of waiting until hit. Use when a ported enemy stands in a T-pose, freezes or the game crashes as a map starts with A. (`DARKSIGN_ENEMY_OWN_POSES=0`)
+- **K: The template's senses.** As A, but a ported enemy keeps the Elden Ring template's hearing, forget times, long-range search sight and in-battle sight (DARKSIGN_ENEMY_SENSES=template), as up to 1.0.470, when enemies built on a far-sighted template (35 m on the Giant Beast Skeleton) came from much further away than DS3's 13 to 15 m. Use when ported enemies ignore you until hit, or forget you at once, with A. (`DARKSIGN_ENEMY_SENSES=template`)
 
 ### Ported DS3 enemies' glows (`enemy-glow`, rebuilds the content)
 

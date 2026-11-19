@@ -23,7 +23,9 @@ namespace DarkSign.Porter.Maps;
 /// m000080's ash-covered brick has alpha 0 on all 55,785 vertices: it is ash (the second layer, m40_00_o329222_332)
 /// with the plain brick overlay above it fading in. Elden Ring has no matching two-layer map shader in use (one mesh
 /// in all of Stormveil names [Mb2], and it blends by mask), so each triangle takes the layer its corners mostly
-/// show: the mesh is split in two, the second half drawn with the second layer's textures, UVs and tangents.</item>
+/// show: the mesh is split in two, the second half drawn with the second layer's textures, UVs and tangents. A triangle
+/// whose corners disagree is cut along the line where alpha passes <see cref="FirstLayerFrom"/>
+/// (<see cref="MapLayerContours"/>).</item>
 /// </list>
 /// Terrain blends (_2m/_3m/_4m, GSBlendMap: alpha 1 everywhere) are drawn by layer in <see cref="MapTerrainBlends"/>; grass (vertex colour sways it), snow, water and
 /// scrolling materials keep their alpha meaning to themselves and are not touched.
@@ -103,8 +105,12 @@ public static class MapOverlays
     /// False: one-layer meshes are left as they are (drawn solid), only two-layer meshes are split. Their vertex alpha
     /// turned out not to be a fade (see <see cref="MapModelPort.FadeOverlays"/>).
     /// </param>
+    /// <param name="contours">
+    /// True: a two-layer triangle whose corners show different layers is cut along the line between them
+    /// (<see cref="MapLayerContours"/>). False: it goes whole to the layer its corners show on average.
+    /// </param>
     public static HashSet<FLVER2.Mesh> Apply(FLVER2 flver, Stats stats, Func<Vector3, Vector3, Vector3, Vector3, bool>? behind = null,
-                                             bool fadeOverlays = true)
+                                             bool fadeOverlays = true, bool contours = true)
     {
         // The model's own surfaces, indexed before any mesh here changes (only when something here fades).
         if (fadeOverlays && behind is null && flver.Meshes.Any(m => m.MaterialIndex >= 0 && m.MaterialIndex < flver.Materials.Count
@@ -170,13 +176,15 @@ public static class MapOverlays
                         flver.Materials.Add(SecondLayer(material));
                         secondLayer[mesh.MaterialIndex] = second = flver.Materials.Count - 1;
                     }
-                    static bool First(FLVER2.Mesh m, int[] tri) => tri.Average(i => Alpha(m.Vertices[i])) >= FirstLayerFrom;
+                    // Part 1 is the first layer (alpha at least half), part 0 the second; cut along the line between them.
+                    var split = MapLayerContours.Split(mesh, 2, (v, _) => Alpha(v), _ => true, FirstLayerFrom, contours, out _);
+                    int toSecond = MapLayerContours.Triangles(mesh, split[0]);
                     var copy = Copy(mesh);
-                    var (toSecond, all) = Keep(mesh, tri => First(mesh, tri));
-                    Keep(copy, tri => !First(copy, tri));
                     stats.TwoLayerMeshes++;
                     stats.SecondLayerTriangles += toSecond;
-                    stats.TwoLayerTriangles += all;
+                    stats.TwoLayerTriangles += toSecond + MapLayerContours.Triangles(mesh, split[1]);
+                    Use(mesh, split[1]);
+                    Use(copy, split[0]);
                     if (copy.FaceSets.Any(f => f.Indices.Count > 0))
                     {
                         copy.MaterialIndex = second;
@@ -253,6 +261,17 @@ public static class MapOverlays
         }
         Compact(mesh);
         return (cut, total);
+    }
+
+    /// <summary>Gives each face set its new triangle list and drops the vertices none of them uses.</summary>
+    internal static void Use(FLVER2.Mesh mesh, List<int>[] triangles)
+    {
+        for (int s = 0; s < mesh.FaceSets.Count; s++)
+        {
+            mesh.FaceSets[s].Indices = [.. triangles[s]];
+            mesh.FaceSets[s].TriangleStrip = false;
+        }
+        Compact(mesh);
     }
 
     /// <summary>Drops vertices no face set names and renumbers the indices.</summary>

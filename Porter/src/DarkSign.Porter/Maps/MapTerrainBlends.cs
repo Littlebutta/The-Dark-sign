@@ -21,14 +21,16 @@ namespace DarkSign.Porter.Maps;
 /// strength, so a layer with weight of at least <see cref="LayerFrom"/> covers the ones below it.</item>
 /// </list>
 /// Elden Ring has no matching shader in use (one mesh in all of Stormveil names [Mb2], none [Mb3] or [Mb4], and
-/// those blend by a mask texture and a different per-vertex value), so each triangle is drawn with the one layer its
-/// corners show: the mesh is split into one mesh per layer, each with that layer's albedo, normal map and tiling in
-/// the first layer's texture slots.
+/// those blend by a mask texture and a different per-vertex value), so each spot is drawn with the one layer its
+/// weights show: the mesh is split into one mesh per layer, each with that layer's albedo, normal map and tiling in
+/// the first layer's texture slots. A triangle whose corners disagree is cut along the line where the weight passes
+/// <see cref="LayerFrom"/> (<see cref="MapLayerContours"/>); up to 1.0.46x it went whole to one layer, which drew the
+/// edges of painted patches as jagged shards (the Undead Settlement's sand paths).
 /// </para>
 /// </summary>
 public static class MapTerrainBlends
 {
-    /// <summary>A layer whose weight averages at least this over a triangle's corners covers the layers below it.</summary>
+    /// <summary>A layer covers the layers below it where its weight is at least this.</summary>
     public const float LayerFrom = 0.5f;
 
     /// <summary>The name suffix of a terrain blend's copy for layer k (from 1): "_L1".</summary>
@@ -63,7 +65,7 @@ public static class MapTerrainBlends
     /// <summary>What <see cref="Apply"/> did, for the port log.</summary>
     public sealed class Stats
     {
-        public int Meshes, Triangles, NoWeights;
+        public int Meshes, Triangles, NoWeights, Cut;
         public readonly int[] LayerTriangles = new int[4];
 
         public void Add(Stats other)
@@ -71,6 +73,7 @@ public static class MapTerrainBlends
             Interlocked.Add(ref Meshes, other.Meshes);
             Interlocked.Add(ref Triangles, other.Triangles);
             Interlocked.Add(ref NoWeights, other.NoWeights);
+            Interlocked.Add(ref Cut, other.Cut);
             for (int i = 0; i < LayerTriangles.Length; i++)
                 Interlocked.Add(ref LayerTriangles[i], other.LayerTriangles[i]);
         }
@@ -78,6 +81,7 @@ public static class MapTerrainBlends
         public string Summary =>
             $"terrain blends: {Meshes} meshes drawn by layer, {Triangles:N0} triangles: "
             + string.Join(", ", LayerTriangles.Select((n, i) => $"layer {i + 1} {n:N0}"))
+            + $"; {Cut:N0} DS3 triangles cut along a layer's edge"
             + (NoWeights > 0 ? $"; {NoWeights} without blend weights show their first layer" : "");
     }
 
@@ -85,7 +89,9 @@ public static class MapTerrainBlends
     /// Splits every terrain blend mesh of a DS3 FLVER (still with DS3's vertex layouts and materials) into one mesh
     /// per layer it shows. Layer 0 stays in the mesh itself; the others are copies with their own material.
     /// </summary>
-    public static void Apply(FLVER2 flver, Stats stats)
+    /// <param name="contours">True: a triangle a layer's boundary crosses is cut along it (<see cref="MapLayerContours"/>).
+    /// False: each triangle goes whole to the layer its corners show on average, as 1.0.354 to 1.0.46x.</param>
+    public static void Apply(FLVER2 flver, Stats stats, bool contours = true)
     {
         var layerMaterials = new Dictionary<(int Material, int Layer), int>();
         foreach (var mesh in flver.Meshes.ToList())
@@ -104,39 +110,29 @@ public static class MapTerrainBlends
             }
             // Layers with no albedo can't be drawn; their triangles go to the layer under them.
             var drawable = Enumerable.Range(0, layers).Select(k => k == 0 || Slot(material, "AlbedoMap", k) is not null).ToArray();
-            int Shown(FLVER2.Mesh m, int[] tri)
-            {
-                for (int k = layers - 1; k > 0; k--)
-                    if (drawable[k] && tri.Average(i => Weight(m.Vertices[i], entry, k - 1)) >= LayerFrom)
-                        return k;
-                return 0;
-            }
-
+            // Each layer's share of the mesh, cut along the lines where a weight crosses half (MapLayerContours).
+            var split = MapLayerContours.Split(mesh, layers, (v, k) => Weight(v, entry, k - 1), k => drawable[k], LayerFrom, contours, out int cut);
             var copies = new List<FLVER2.Mesh>();
             for (int k = 1; k < layers; k++)
             {
-                if (!drawable[k])
-                    continue;
-                int layer = k;
-                var copy = MapOverlays.Copy(mesh);
-                MapOverlays.Keep(copy, tri => Shown(copy, tri) == layer);
-                if (copy.FaceSets.All(f => f.Indices.Count == 0))
+                if (split[k].All(f => f.Count == 0))
                     continue;
                 if (!layerMaterials.TryGetValue((mesh.MaterialIndex, k), out int index))
                 {
                     flver.Materials.Add(Layer(material, k));
                     layerMaterials[(mesh.MaterialIndex, k)] = index = flver.Materials.Count - 1;
                 }
+                stats.LayerTriangles[k] += MapLayerContours.Triangles(mesh, split[k]);
+                var copy = MapOverlays.Copy(mesh);
+                MapOverlays.Use(copy, split[k]);
                 copy.MaterialIndex = index;
                 copies.Add(copy);
             }
-            var (moved, total) = MapOverlays.Keep(mesh, tri => Shown(mesh, tri) == 0);
             stats.Meshes++;
-            stats.Triangles += total;
-            stats.LayerTriangles[0] += total - moved;
-            foreach (var copy in copies)
-                stats.LayerTriangles[LayerOf(flver.Materials[copy.MaterialIndex])] += copy.FaceSets
-                    .Where(f => f.Flags == FLVER2.FaceSet.FSFlags.None).Sum(f => f.Indices.Count / 3);
+            stats.Cut += cut;
+            stats.LayerTriangles[0] += MapLayerContours.Triangles(mesh, split[0]);
+            stats.Triangles += split.Sum(part => MapLayerContours.Triangles(mesh, part));
+            MapOverlays.Use(mesh, split[0]);
             flver.Meshes.InsertRange(flver.Meshes.IndexOf(mesh) + 1, copies);
             if (mesh.FaceSets.All(f => f.Indices.Count == 0))
                 flver.Meshes.Remove(mesh);

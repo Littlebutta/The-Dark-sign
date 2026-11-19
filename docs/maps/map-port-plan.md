@@ -259,8 +259,13 @@ by per-vertex weights in the third UV member, four normalized bytes. A mesh with
 (m40's 3m wall m900285 keeps the third at 0, every mesh keeps the fourth at 0, and they don't sum to one), and layer k
 is painted over the layers below it with weight k - 1, sharpened by the edge texture. Up to 1.0.353 every such mesh
 showed only layer 0, which around Firelink Shrine is the dark brick under the ash: a `--tint-materials` build coloured
-every shard of map 1 as a terrain blend. `MapTerrainBlends` gives each triangle the highest layer whose weight averages
-0.5 or more over its corners, and splits the mesh into one mesh per layer with that layer's textures and tiling.
+every shard of map 1 as a terrain blend. `MapTerrainBlends` shows, at each spot, the highest layer whose weight is
+0.5 or more, and splits the mesh into one mesh per layer with that layer's textures and tiling. From 1.0.354 to 1.0.46x
+a whole triangle went to the layer its corners averaged to; DS3's ground triangles are one to two metres wide, so the
+edges of painted patches (the Undead Settlement's sand paths) were pale jagged shards. `MapLayerContours` now cuts a
+triangle whose corners disagree along the line where the interpolated weight is 0.5, with cut points shared by the
+triangles on both sides of an edge (no gaps); two-layer materials (`MapOverlays`) are cut the same way by vertex
+alpha. Fallback `map-blend-layers` C (`--whole-blend-triangles`) brings whole triangles back.
 The port log's `terrain blends:` line counts triangles per layer; fallback `map-blend-layers` B
 (`--first-blend-layer`) shows the first layer everywhere again. Unlit or scrolling "2m" materials are not ground:
 DS3's sky domes (`m009000` of m31 and m40, `M[A]_2m_NoLight_scroll`) cross-fade two cloud layers with the same bytes,

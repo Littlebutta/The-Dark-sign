@@ -28,7 +28,7 @@ public static partial class MapPortChecks
         var ds3 = SyntheticDs3();
         ds3.Models.Enemies.Add(new MSB3.Model.Enemy { Name = "c1240" });
         ds3.Parts.Enemies.Add(new MSB3.Part.Enemy { Name = "c1240_0000", ModelName = "c1240", EntityID = 4000100, NPCParamID = 124000, WalkRouteName = "route A", CollisionName = "h000100_0000" });
-        ds3.Parts.Enemies.Add(new MSB3.Part.Enemy { Name = "c1240_0001", ModelName = "c1240", EntityID = 4000101, NPCParamID = 124000, CollisionName = "h000100_0000" });
+        ds3.Parts.Enemies.Add(new MSB3.Part.Enemy { Name = "c1240_0001", ModelName = "c1240", EntityID = 4000101, NPCParamID = 124000, CollisionName = "h000100_0000", PointMoveType = RegionPort.WalkAround });
         ds3.Regions.Events.Add(new MSB3.Region.Event { Name = "boss room", EntityID = 4002800, Position = new Vector3(5, 6, 7), Rotation = new Vector3(0, 45, 0), Shape = new MSB.Shape.Box { Width = 10, Depth = 20, Height = 5 } });
         ds3.Regions.Events.Add(new MSB3.Region.Event { Name = "boss room", EntityID = 4002801, Shape = new MSB.Shape.Sphere { Radius = 3 } });
         ds3.Regions.WarpPoints.Add(new MSB3.Region.WarpPoint { Name = "arrival", EntityID = 4002990 });
@@ -211,12 +211,18 @@ public static partial class MapPortChecks
         var (msb, result) = ConvertWithRegions();
         Expect(result.Patrols == 1 && result.EnemiesOnPatrol == 1 && result.Platoons == 1 && result.Generators == 1, result.Summary);
         Expect(result.Notes.Any(n => n.Contains("1 patrol routes left out")), "a route whose points weren't carried is left out and reported");
-        var patrol = msb.Events.PatrolInfo.Single();
+        var patrol = msb.Events.PatrolInfo.Single(p => p.WalkRegionNames[0] is not null);
         Expect(patrol.WalkRegionNames[0] == "p1" && patrol.WalkRegionNames[1] == "p2" && patrol.WalkRegionNames[2] is null, "the route's points, in order");
         Expect(patrol.PatrolType == 1, "DS3's route kind is kept");
         var walker = msb.Parts.Enemies.Single(e => e.EntityID == 45000100);
         Expect(walker.WalkRouteName == patrol.Name, "the enemy walks its DS3 route");
-        Expect(msb.Parts.Enemies.Single(e => e.EntityID == 45000101).WalkRouteName is null or "", "an enemy without a route has none");
+        // DS3 keeps a move type on the enemy as well: one that wanders around its spot gets a pointless wander route.
+        var wander = msb.Events.PatrolInfo.Single(p => p.WalkRegionNames[0] is null);
+        Expect(wander.PatrolType == RegionPort.WalkAround && msb.Parts.Enemies.Single(e => e.EntityID == 45000101).WalkRouteName == wander.Name,
+            "an enemy DS3 has wander without a route gets a wander route of its own");
+        Expect(result.Notes.Any(n => n.Contains("1 enemies without a route wander")), "and the log counts it");
+        Expect(RegionPort.MoveType(0, [1, 1]) == 1 && RegionPort.MoveType(0, [1, 0]) == 0 && RegionPort.MoveType(5, [1]) == 5 && RegionPort.MoveType(0, []) == 0,
+            "a plain route takes the move type its enemies agree on; a route with its own kind keeps it");
         var platoon = msb.Events.PlatoonInfo.Single();
         Expect(platoon.GroupPartsNames[0] == walker.Name && platoon.GroupPartsNames[1] is not null && platoon.PlatoonIDScriptActivate == 7, "the platoon names the ported enemy parts");
         var generator = msb.Events.Generators.Single();
