@@ -412,6 +412,13 @@ public static partial class MovesetPort
                 // The flame of a lit bonfire (Bonfires): DS3 lights them in the engine, so no row asks for it.
                 if (Maps.Bonfires.Mode != Maps.Bonfires.Method.Off)
                     mapEffects.Add(Maps.Bonfires.FlameEffect);
+                // The effects the maps' cutscenes play (boss intros): pointed at their converted copies by the cutscene port.
+                if (Maps.CutscenePort.Enabled)
+                    try { mapEffects.UnionWith(Maps.CutscenePort.WantedEffects(ds3Archives, Maps.MapSlots.All, notes)); }
+                    catch (Exception e) when (e is not OutOfMemoryException)
+                    {
+                        notes.Add($"cutscene effects: not read ({e.GetType().Name}: {e.Message}); cutscenes get no DS3 effects");
+                    }
                 notes.ForEach(Console.WriteLine);
                 wantedEffects.UnionWith(mapEffects);
             }

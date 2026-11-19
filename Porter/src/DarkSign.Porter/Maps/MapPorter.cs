@@ -1073,6 +1073,8 @@ public static class MapPorter
             }
         foreach (var note in models.Notes.Distinct().Take(20))
             report.AppendLine($"  note: {note}");
+        if (models.SolidDecals > 0)
+            report.AppendLine($"  solid models under DS3's decal shader: {models.SolidDecals} meshes drawn as ordinary surfaces");
         if (models.EmptyFlvers > 0)
             report.AppendLine($"  extra FLVERs: {models.EmptyFlvers} left out of their binders (only shadow casters, water or effects in them); the drawable FLVER beside each was kept");
         if (models.LeftOut.Count > 0)

@@ -541,6 +541,7 @@ Try the next option if: The game crashes, hangs or shows a black screen when a D
 - **C: Silent cutscenes.** The cutscenes play as in A but without DS3's sound (DARKSIGN_CUTSCENE_SOUND=0): no cutscene sound banks, and the timelines keep their sound events as the first cutscene builds had them. (`DARKSIGN_CUTSCENE_SOUND=0`)
 - **D: DS3's timelines as converted.** The cutscenes play as in A, but their timelines keep DS3's field values (DARKSIGN_CUTSCENE_CONFORM=0) instead of taking Elden Ring's shape: events may run past the end of a cut, cut flags and parameter lists stay DS3's, as builds up to 1.0.42x had them. (`DARKSIGN_CUTSCENE_CONFORM=0`)
 - **E: DS3's cast and files as converted.** The cutscenes play as in A, but keep every part DS3 names even when Elden Ring has no model for it, DS3's draw settings, and DS3's cut file names (DARKSIGN_CUTSCENE_CAST=0), as builds up to 1.0.44x had them: a cutscene naming something Elden Ring can't load stays on a black screen. (`DARKSIGN_CUTSCENE_CAST=0`)
+- **F: DS3's fade-out kept.** The cutscenes play as in A, but a cutscene DS3 ends with a fade-out keeps it (DARKSIGN_CUTSCENE_FADE=1), as builds up to 1.0.47x had it: the Dancer's intro ended on a black screen. (`DARKSIGN_CUTSCENE_FADE=1`)
 
 ### DS3's music (areas and boss fights) (`map-music`, rebuilds the content)
 

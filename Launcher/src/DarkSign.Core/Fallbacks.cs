@@ -657,6 +657,8 @@ public static class Fallbacks
                 { PorterEnv = Env("DARKSIGN_CUTSCENE_CONFORM", "0") },
             new("E", "DS3's cast and files as converted", "The cutscenes play as in A, but keep every part DS3 names even when Elden Ring has no model for it, DS3's draw settings, and DS3's cut file names (DARKSIGN_CUTSCENE_CAST=0), as builds up to 1.0.44x had them: a cutscene naming something Elden Ring can't load stays on a black screen.")
                 { PorterEnv = Env("DARKSIGN_CUTSCENE_CAST", "0") },
+            new("F", "DS3's fade-out kept", "The cutscenes play as in A, but a cutscene DS3 ends with a fade-out keeps it (DARKSIGN_CUTSCENE_FADE=1), as builds up to 1.0.47x had it: the Dancer's intro ended on a black screen.")
+                { PorterEnv = Env("DARKSIGN_CUTSCENE_FADE", "1") },
         ]),
 
         new("map-music", "DS3 maps", "DS3's music (areas and boss fights)", Stage.Build,

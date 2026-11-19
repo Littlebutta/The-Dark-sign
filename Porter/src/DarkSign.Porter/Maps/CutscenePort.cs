@@ -283,16 +283,48 @@ public static partial class CutscenePort
         public hkaSkeleton? PlayerSkeleton;
         /// <summary>A camera skeleton of Elden Ring's, for its float slots (field of view).</summary>
         public hkaSkeleton? Camera;
+        /// <summary>The skeleton of an Elden Ring character model ("c7126": the mod's ported one or the game's), or null
+        /// when it can't be read. A character's cut animation is laid out on it (<see cref="ConvertHkx"/>).</summary>
+        public Func<string, AnimPort.ErSkeleton?>? ModelSkeleton;
     }
+
+    /// <summary>
+    /// A cut skeleton's bone without its part: "Pelvis" for c6020_0000's "c6020_0000_Pelvis" and for the DS3 player's
+    /// "c0000_0000Pelvis" (DS3 leaves the underscore out for the player), "" for the root bone, which carries the
+    /// part's own name. Both games name a cut skeleton's bones after the part that plays them (Elden Ring's Margit
+    /// intro: skeleton "c2130_9000", bones "c2130_9000", "c2130_9000_Pelvis", ...; its player "c0000_0000_Pelvis").
+    /// </summary>
+    public static string BareBone(string bone, string part)
+    {
+        if (bone.Equals(part, StringComparison.OrdinalIgnoreCase))
+            return "";
+        if (!bone.StartsWith(part, StringComparison.OrdinalIgnoreCase))
+            return bone;
+        var rest = bone[part.Length..];
+        return rest.StartsWith('_') ? rest[1..] : rest;
+    }
+
+    /// <summary>A bone under its part's name, as Elden Ring's cut skeletons have it: "c7126_9000_Pelvis"; the part's name for the root ("").</summary>
+    public static string PartBone(string bare, string part) => bare.Length == 0 ? part : part + "_" + bare;
+
+    /// <summary>A DS3 cut bone under the Elden Ring part's name; a bone not named after its DS3 part is kept.</summary>
+    private static string RenameBone(string bone, string ds3Part, string erPart) =>
+        bone.StartsWith(ds3Part, StringComparison.OrdinalIgnoreCase) ? PartBone(BareBone(bone, ds3Part), erPart) : bone;
+
+    [GeneratedRegex(@"^c\d{4}_\d{4}$", RegexOptions.IgnoreCase)]
+    private static partial Regex ChrPartRegex();
 
     public sealed class HkxStats
     {
         public int Files, Animations, Copied, Retargeted, Renamed, Failed, Uncompressed, LeftOut;
+        /// <summary>Character animations laid out on their Elden Ring model's skeleton, and DS3 tracks of bones that model lacks.</summary>
+        public int OnModel, TracksWithoutBone;
         public List<string> Notes { get; } = [];
 
         public void Add(HkxStats o)
         {
             Files += o.Files; Animations += o.Animations; Copied += o.Copied; Retargeted += o.Retargeted; Renamed += o.Renamed; Failed += o.Failed; Uncompressed += o.Uncompressed; LeftOut += o.LeftOut;
+            OnModel += o.OnModel; TracksWithoutBone += o.TracksWithoutBone;
             Notes.AddRange(o.Notes.Take(Math.Max(0, 20 - Notes.Count)));
         }
     }
@@ -407,9 +439,12 @@ public static partial class CutscenePort
             if (ds3Name == PlayerPart && template is { Player: { } erPlayer, PlayerSkeleton: { } erPlayerSkeleton })
             {
                 // DS3's player bones carried over to Elden Ring's player skeleton, as the moveset port does.
+                // Bones are matched without their part: DS3 writes the player's "c0000_0000Pelvis", Elden Ring
+                // "c0000_0000_Pelvis" (template.Player's names are bare already). Until 1.0.47x the full names were
+                // compared, only the root matched, and the player slid through every cutscene in one pose.
                 var ds3Sk = new AnimPort.Ds3Skeleton
                 {
-                    Names = Enumerable.Range(0, bones).Select(i => t.Skeleton.Bones[i].Name.GetString()).ToList(),
+                    Names = Enumerable.Range(0, bones).Select(i => BareBone(t.Skeleton.Bones[i].Name.GetString(), ds3Name)).ToList(),
                     ReferencePose = Enumerable.Range(0, bones).Select(i => NewBlendableTransform.FromHKXTransform(t.Skeleton.Transforms[i])).ToList(),
                     Parents = (int)t.Skeleton.ParentIndices.Size == bones ? Enumerable.Range(0, bones).Select(i => t.Skeleton.ParentIndices[i].data).ToList() : [],
                 };
@@ -437,11 +472,51 @@ public static partial class CutscenePort
                 var post = erPlayer.Post ?? Enumerable.Repeat(Quaternion.Identity, erBones).ToArray();
                 var spline = SplineTranscode.Build(t.Animation, [.. ds3TrackOf], [.. offsets], bound.Select(b => erPlayer.ReferencePose[b]).ToList(),
                     bound.Select(b => pre[b]).ToArray(), bound.Select(b => post[b]).ToArray());
-                spline.m_annotationTracks = bound.Select(b => new hkaAnnotationTrack { m_trackName = erPlayer.Names[b] }).ToList();
-                animation = spline;
                 skeleton = Clone(erPlayerSkeleton, name);
+                spline.m_annotationTracks = bound.Select(b => new hkaAnnotationTrack { m_trackName = skeleton.m_bones[b].m_name }).ToList();
+                animation = spline;
                 boneOf = bound.Select(b => (short)b).ToList();
                 stats.Retargeted++;
+            }
+            else if (ChrPartRegex().IsMatch(name) && template.ModelSkeleton?.Invoke(name[..5]) is { Names.Count: > 0 } model)
+            {
+                // A character: its DS3 tracks on the Elden Ring model's own skeleton, bone by bone by name. The ported
+                // model's skeleton is its template's with DS3's bones added (ChrPort.MergeSkeleton), so it has every
+                // DS3 bone, at DS3's rest pose, but in another order and among bones DS3 doesn't have. Until 1.0.47x
+                // the cut kept DS3's skeleton with DS3's bone names ("c6020_0000_Pelvis" under part c7126_9000), which
+                // Elden Ring couldn't match to the model: the boss stood in one pose and only its root moved.
+                var erBone = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+                for (int b = 1; b < model.Names.Count; b++)
+                    erBone.TryAdd(model.Names[b], b);
+                var trackOf = Enumerable.Repeat(-1, model.Names.Count).ToArray();
+                for (int tr = 0; tr < trackBone.Count; tr++)
+                {
+                    if (trackBone[tr] < 0 || trackBone[tr] >= bones)
+                        continue;
+                    var bare = BareBone(t.Skeleton.Bones[trackBone[tr]].Name.GetString(), ds3Name);
+                    // The root (named after the part) places the character in the scene: the model's root bone.
+                    int b = bare.Length == 0 ? 0 : erBone.GetValueOrDefault(bare, -1);
+                    if (b >= 0 && trackOf[b] < 0)
+                        trackOf[b] = tr;
+                    else
+                        stats.TracksWithoutBone++;
+                }
+                var bound = Enumerable.Range(0, model.Names.Count).Where(b => trackOf[b] >= 0).ToList();
+                var spline = SplineTranscode.Build(t.Animation, bound.Select(b => trackOf[b]).ToArray(), new Vector3[bound.Count],
+                    bound.Select(b => model.ReferencePose[b]).ToList());
+                skeleton = new hkaSkeleton
+                {
+                    m_name = name,
+                    m_parentIndices = [.. model.Parents],
+                    m_bones = model.Names.Select((n, b) => new hkaBone { m_name = PartBone(b == 0 ? "" : n, name), m_lockTranslation = false }).ToList(),
+                    m_referencePose = [.. model.ReferencePose],
+                    m_referenceFloats = [],
+                    m_floatSlots = [],
+                };
+                spline.m_annotationTracks = bound.Select(b => new hkaAnnotationTrack { m_trackName = skeleton.m_bones[b].m_name }).ToList();
+                animation = spline;
+                boneOf = bound.Select(b => (short)b).ToList();
+                stats.OnModel++;
             }
             else
             {
@@ -451,9 +526,9 @@ public static partial class CutscenePort
                     m_parentIndices = Enumerable.Range(0, (int)t.Skeleton.ParentIndices.Size).Select(i => t.Skeleton.ParentIndices[i].data).ToList(),
                     m_bones = Enumerable.Range(0, bones).Select(i =>
                     {
+                        // Every bone carries its part's name (the root is the part itself): the Elden Ring part's.
                         var boneName = t.Skeleton.Bones[i].Name.GetString();
-                        // A part's root bone is usually named after the part too.
-                        return new hkaBone { m_name = boneName == ds3Name ? name : boneName, m_lockTranslation = t.Skeleton.Bones[i].LockTranslation != 0 };
+                        return new hkaBone { m_name = RenameBone(boneName, ds3Name, name), m_lockTranslation = t.Skeleton.Bones[i].LockTranslation != 0 };
                     }).ToList(),
                     m_referencePose = Enumerable.Range(0, (int)t.Skeleton.Transforms.Size).Select(i => Qs(t.Skeleton.Transforms[i])).ToList(),
                     m_referenceFloats = Enumerable.Range(0, (int)t.Skeleton.ReferenceFloats.Size).Select(i => t.Skeleton.ReferenceFloats[i].data).ToList(),
@@ -493,7 +568,7 @@ public static partial class CutscenePort
                 m_originalSkeletonName = name,
                 m_animation = animation,
                 m_transformTrackToBoneIndices = boneOf,
-                m_floatTrackToFloatSlotIndices = ds3Name == PlayerPart && stats.Retargeted > 0 ? [] : floatSlots,
+                m_floatTrackToFloatSlotIndices = animation.m_numberOfFloatTracks == 0 ? [] : floatSlots,
                 m_partitionIndices = [],
                 m_blendHint = hkaAnimationBinding.BlendHint.NORMAL,
             });
@@ -524,7 +599,7 @@ public static partial class CutscenePort
                 m_bones = Enumerable.Range(0, bones).Select(i =>
                 {
                     var boneName = u.Skeleton.Bones[i].Name.GetString();
-                    return new hkaBone { m_name = boneName == ds3Name ? name : boneName, m_lockTranslation = u.Skeleton.Bones[i].LockTranslation != 0 };
+                    return new hkaBone { m_name = RenameBone(boneName, ds3Name, name), m_lockTranslation = u.Skeleton.Bones[i].LockTranslation != 0 };
                 }).ToList(),
                 m_referencePose = Enumerable.Range(0, (int)u.Skeleton.Transforms.Size).Select(i => Qs(u.Skeleton.Transforms[i])).ToList(),
                 m_referenceFloats = Enumerable.Range(0, (int)u.Skeleton.ReferenceFloats.Size).Select(i => u.Skeleton.ReferenceFloats[i].data).ToList(),
@@ -631,7 +706,8 @@ public static partial class CutscenePort
                     if (sk is null)
                         continue;
                     havok.PlayerSkeleton = sk;
-                    havok.Player = new AnimPort.ErSkeleton { Names = sk.m_bones.Select(b => b.m_name ?? "").ToList(), ReferencePose = sk.m_referencePose, Parents = sk.m_parentIndices };
+                    // Bare bone names ("Pelvis"), to match DS3's player bones by (BareBone).
+                    havok.Player = new AnimPort.ErSkeleton { Names = sk.m_bones.Select(b => BareBone(b.m_name ?? "", PlayerPart)).ToList(), ReferencePose = sk.m_referencePose, Parents = sk.m_parentIndices };
                 }
                 break;
             }
@@ -673,6 +749,75 @@ public static partial class CutscenePort
         /// <summary>Events' timeline numbers after the port took timelines out and added some.</summary>
         public CutsceneTimelineLinks.Result? Links;
         public int OtherFiles;
+        /// <summary>Effect events pointed at a converted DS3 effect, and ones left out because theirs didn't convert.</summary>
+        public int EffectsMapped, EffectsLeftOut;
+        public SortedSet<int> EffectsMissing { get; } = [];
+    }
+
+    /// <summary>The parameter of a timeline event that names the effect it plays (kind 103 "SFX" events in both games).</summary>
+    public const string EffectParam = "sfxId";
+
+    /// <summary>The DS3 effect IDs a timeline's events play.</summary>
+    public static IEnumerable<int> EffectIds(MQB mqb) =>
+        mqb.Cuts.SelectMany(c => c.Timelines).SelectMany(t => t.Events).SelectMany(e => e.Parameters)
+            .Where(p => p.Name == EffectParam && p.Value is int and > 0).Select(p => (int)p.Value);
+
+    /// <summary>
+    /// The DS3 effects the cutscenes of the given maps play (Vordt's and the Dancer's dark mist, Friede's scythe
+    /// frost), for port-weapons to convert with the map effects (<see cref="MapSfx"/>): cutscene events name effects
+    /// by DS3's IDs, which Elden Ring doesn't have (or has as something else), so up to 1.0.47x no boss intro showed
+    /// its effects.
+    /// </summary>
+    public static SortedSet<int> WantedEffects(GameArchives ds3, IEnumerable<MapSlots.Slot> slots, List<string>? notes = null)
+    {
+        var ids = new SortedSet<int>();
+        foreach (var map in slots.Select(s => s.Ds3).Distinct())
+        {
+            int cutscenes = 0;
+            foreach (var name in CutscenesOf(ds3, map))
+                try
+                {
+                    foreach (var f in BND4.Read(ds3.Read(Ds3Path(name))).Files.Where(f => f.Name.EndsWith(".mqb", StringComparison.OrdinalIgnoreCase)))
+                    {
+                        ids.UnionWith(EffectIds(MQB.Read(f.Bytes)));
+                        cutscenes++;
+                    }
+                }
+                catch (Exception ex) when (ex is not OutOfMemoryException)
+                {
+                    notes?.Add($"cutscene effects: {name} not read ({ex.Message})");
+                }
+            if (cutscenes > 0)
+                notes?.Add($"cutscene effects: {map}'s {cutscenes} cutscenes read");
+        }
+        notes?.Add($"cutscene effects: {ids.Count} DS3 effects played by the ported maps' cutscenes");
+        return ids;
+    }
+
+    /// <summary>
+    /// Points a DS3 timeline's effect events at the converted effects; an event whose effect didn't convert is left
+    /// out (Elden Ring would play nothing, or its own effect of that number).
+    /// </summary>
+    public static void MapEffects(MQB mqb, Func<int, int?> converted, BinderStats stats)
+    {
+        foreach (var tl in mqb.Cuts.SelectMany(c => c.Timelines))
+            tl.Events.RemoveAll(ev =>
+            {
+                foreach (var p in ev.Parameters)
+                {
+                    if (p.Name != EffectParam || p.Value is not int id || id <= 0)
+                        continue;
+                    if (converted(id) is not { } to)
+                    {
+                        stats.EffectsLeftOut++;
+                        stats.EffectsMissing.Add(id);
+                        return true;
+                    }
+                    p.Value = to;
+                    stats.EffectsMapped++;
+                }
+                return false;
+            });
     }
 
     /// <summary>
@@ -683,7 +828,7 @@ public static partial class CutscenePort
     /// Elden Ring model). Given, it renames parts, leaves out what Elden Ring can't load and lays the cut files out as
     /// Elden Ring's (<see cref="CutsceneCast"/>); null converts as before (fallback map-cutscenes E).</param>
     public static (BND4 Binder, BinderStats Stats) ConvertBinder(BND4 ds3, string ds3Name, string erName, Func<string, string?> rename,
-        MapId ds3Map, MapId erMap, ErSide side, Action<MQB>? sound = null, Func<string, string?>? cast = null)
+        MapId ds3Map, MapId erMap, ErSide side, Action<MQB>? sound = null, Func<string, string?>? cast = null, Func<int, int?>? effects = null)
     {
         var stats = new BinderStats();
         var bnd = new BND4
@@ -701,6 +846,8 @@ public static partial class CutscenePort
             if (!MQB.IsRead(data, out MQB? mqb))
                 continue;
             var links = CutsceneTimelineLinks.Take(mqb);
+            if (effects is not null)
+                MapEffects(mqb, effects, stats);
             sound?.Invoke(mqb);
             if (cast is not null)
             {
@@ -807,6 +954,42 @@ public static partial class CutscenePort
                   + $"camera float slots {side.Havok.Camera?.m_floatSlots.Count.ToString() ?? "none"} ({string.Join(" ", side.Havok.Camera?.m_floatSlots ?? [])})");
         var total = new BinderStats();
         var rows = new List<(int Id, MapId Map)>();
+        // Each character's cut animation goes on its Elden Ring model's skeleton: the mod's (a ported DS3 enemy) or the game's.
+        var modelSkeletons = new Dictionary<string, AnimPort.ErSkeleton?>(StringComparer.OrdinalIgnoreCase);
+        side.Havok.ModelSkeleton = model =>
+        {
+            if (modelSkeletons.TryGetValue(model, out var known))
+                return known;
+            AnimPort.ErSkeleton? skeleton = null;
+            try
+            {
+                var archive = $"/chr/{model.ToLowerInvariant()}.anibnd.dcx";
+                var modFile = ctx.ModPath(MapPorter.ModParts(archive));
+                var bytes = File.Exists(modFile) ? File.ReadAllBytes(modFile) : er.Contains(archive) ? er.Read(archive) : null;
+                if (bytes is not null)
+                {
+                    var bnd = BND4.Read(bytes);
+                    var file = bnd.Files.FirstOrDefault(f => ItemText.Leaf(f.Name).Equals("skeleton.hkx", StringComparison.OrdinalIgnoreCase));
+                    var compendium = bnd.Files.FirstOrDefault(f => f.Name.EndsWith(".compendium", StringComparison.OrdinalIgnoreCase))?.Bytes;
+                    if (file is not null)
+                        lock (AnimPort.HavokLock)
+                            skeleton = AnimPort.ReadErSkeleton(file.Bytes, compendium);
+                }
+                if (skeleton is null)
+                    notes.Add($"{model}: no skeleton found in the mod or the game; its cut animations keep DS3's skeleton");
+            }
+            catch (Exception ex) when (ex is not OutOfMemoryException)
+            {
+                notes.Add($"{model}: skeleton not read ({ex.GetType().Name}: {ex.Message}); its cut animations keep DS3's skeleton");
+            }
+            return modelSkeletons[model] = skeleton;
+        };
+        // DS3 effect ID -> the converted effect in the common binder (port-weapons converts the ones WantedEffects lists).
+        var effectTable = MapSfx.Enabled ? MapSfx.ReadTable(ctx) : [];
+        Func<int, int?> effects = id => effectTable.TryGetValue(id, out var to) ? to : null;
+        lines.Add(MapSfx.Enabled
+            ? $"effects: {effectTable.Count} converted DS3 effects known (Work\\{MapSfx.TableFile}); a cutscene effect that didn't convert is left out"
+            : "effects: off (DARKSIGN_MAP_SFX=0); cutscene effects are left out");
         // The cutscenes' sound (CutsceneSound): one bank per cutscene, built as each is converted.
         CutsceneSound? sounds = null;
         if (CutsceneSound.Enabled)
@@ -863,7 +1046,7 @@ public static partial class CutscenePort
                     CutsceneSound.Plan? plan = null;
                     int thisIndex = soundNumbers[name];
                     Action<MQB>? prepare = sounds is null ? null : m => plan = CutsceneSound.Prepare(m, erName, thisIndex, sounds.Known, sounds.Voice);
-                    var (bnd, stats) = ConvertBinder(source, name, erName, rename, map.Slot.Ds3, map.Slot.Er, side, prepare, cast);
+                    var (bnd, stats) = ConvertBinder(source, name, erName, rename, map.Slot.Ds3, map.Slot.Er, side, prepare, cast, effects);
                     // The bank first: the timeline keeps only the sounds it holds.
                     if (sounds is not null && plan is not null)
                         lines.Add($"{name} sound: {plan}; {BuildSound(sounds, plan, bnd, null)}");
@@ -890,6 +1073,10 @@ public static partial class CutscenePort
                               + (stats.Hkx.Notes.Count > 0 ? $"; notes: {string.Join("; ", stats.Hkx.Notes.Distinct().Take(3))}" : ""));
                     if (cast is not null)
                         lines.Add($"{name} -> {erName}: {stats.Cast}; {stats.Hkx.LeftOut} Havok tracks of left-out parts dropped");
+                    lines.Add($"{name} -> {erName}: {stats.Hkx.OnModel} character animations on their Elden Ring model's skeleton"
+                              + (stats.Hkx.TracksWithoutBone > 0 ? $" ({stats.Hkx.TracksWithoutBone} DS3 bone tracks the model has no bone for)" : "")
+                              + $"; effects: {stats.EffectsMapped} events play a converted DS3 effect, {stats.EffectsLeftOut} left out"
+                              + (stats.EffectsMissing.Count > 0 ? $" (not converted: {string.Join(" ", stats.EffectsMissing.Take(12))})" : ""));
                 }
                 catch (Exception ex) when (ex is not OutOfMemoryException)
                 {
