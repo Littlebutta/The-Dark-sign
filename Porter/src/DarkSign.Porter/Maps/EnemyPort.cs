@@ -282,6 +282,8 @@ public static class EnemyPort
         var layerOk = !options.AllLayers && MsbPort.BaseLayerMeans(ds3);
         int otherState = 0, phantoms = 0, logic = 0;
         var otherStateNames = new Dictionary<string, int>();
+        var laterVersions = OneVersion ? LaterVersions(ds3.Parts.Enemies.Where(e => !MsbPort.OtherState(e, layerOk)), describe) : [];
+        var laterNames = new Dictionary<string, int>();
         foreach (var src in ds3.Parts.Enemies)
         {
             var what = describe(src);
@@ -295,6 +297,12 @@ public static class EnemyPort
             if (what.Npc && People.IsPhantom(what.Name))
             {
                 phantoms++;
+                npcs++;
+                continue;
+            }
+            if (laterVersions.Contains(src.Name))
+            {
+                laterNames[what.Name] = laterNames.GetValueOrDefault(what.Name) + 1;
                 npcs++;
                 continue;
             }
@@ -429,6 +437,9 @@ public static class EnemyPort
             notes.Add($"{logic} DS3 logic characters left out (talk dummy c1000, platoon leader c0100, target dummies): DS3 shows nothing there");
         if (phantoms > 0)
             notes.Add($"people: {phantoms} DS3 summons and invaders (White/Mad Phantom, Dark Spirit) left out: they only appear when summoned or invading");
+        if (laterNames.Count > 0)
+            notes.Add($"people: {laterNames.Values.Sum()} later quest versions of a person left out (DS3 places every version and its scripts show one; the first, lowest talk script, stands) [DARKSIGN_PEOPLE_ONE_VERSION=0 off]: "
+                      + string.Join("; ", laterNames.OrderBy(n => n.Key, StringComparer.Ordinal).Select(n => $"{n.Key} x{n.Value}")));
         if (seated > 0)
             notes.Add($"people: {seated} moved from DS3's holding spot to the seat DS3's scripts warp them to"
                       + (sameSeat > 0 ? $"; {sameSeat} other versions of a seated person left out (DS3 shows one by quest state)" : ""));
@@ -572,6 +583,38 @@ public static class EnemyPort
                 }
             }
         return warps;
+    }
+
+    /// <summary>
+    /// DARKSIGN_PEOPLE_ONE_VERSION=0 places every version of a DS3 person again (launcher fallback map-people M).
+    /// <para>FACTS (DS3 m40_00_00_00.msb and its scripts, read 2026-11-20): DS3 places each quest state of a person as a
+    /// part of its own, and its scripts enable one by quest flags. Irina of Carim is c0000_0021/0003/0004 (NpcParam
+    /// 25701/25702/25703, talk 400260/400261/400262), Eygon 25801 (talk 400270) and 25802 (400271, "Enemy"), Sirris
+    /// 25200 (talk 400180) and 25204 (no talk, her hostile version), Hawkwood 25100 twice (400170/400171), Anri 26001
+    /// twice (400290/400295), Patches 26103/26104 (400300/400301). A person's versions share their NpcParam ID's
+    /// hundreds (257xx is Irina). The scripts' warps seat Irina's second version and Eygon's enemy version at
+    /// (171, -67, 616), 36 m from Gundyr's arena, and Sirris's hostile one 61 m from it: Devin's "NPCs in random
+    /// places, like right outside Corrupted Gundyr's arena" (2026-11-20), as every version stood at once.</para>
+    /// </summary>
+    public static readonly bool OneVersion = Environment.GetEnvironmentVariable("DARKSIGN_PEOPLE_ONE_VERSION") != "0";
+
+    /// <summary>The parts that are a later quest version of a DS3 person (<see cref="OneVersion"/>): among the DS3
+    /// humans (c0000) whose NpcParam IDs share the hundreds, when one of them talks, every one but the talker with
+    /// the lowest talk script (DS3's first state). Groups where nobody talks (enemies in one family) are kept whole.</summary>
+    public static HashSet<string> LaterVersions(IEnumerable<MSB3.Part.Enemy> parts, Func<MSB3.Part.Enemy, Ds3Enemy> describe)
+    {
+        var later = new HashSet<string>(StringComparer.Ordinal);
+        var people = parts.Where(p => p.NPCParamID > 0 && People.IsHuman(p.ModelName) && describe(p).Npc && !People.IsPhantom(describe(p).Name));
+        foreach (var group in people.GroupBy(p => p.NPCParamID / 100))
+        {
+            var first = group.Where(p => p.TalkID > 0).OrderBy(p => p.TalkID).ThenBy(p => p.Name, StringComparer.Ordinal).FirstOrDefault();
+            if (first is null)
+                continue;
+            foreach (var p in group)
+                if (!ReferenceEquals(p, first))
+                    later.Add(p.Name);
+        }
+        return later;
     }
 
     /// <summary>Where a seated person stands: the DS3 region or part it is warped to, and a collision near it.</summary>

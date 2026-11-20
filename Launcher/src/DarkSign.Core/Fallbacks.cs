@@ -767,6 +767,8 @@ public static class Fallbacks
                 { PorterEnv = Env("DARKSIGN_TALK_ENGINE_FLAGS", "0") },
             new("L", "Flat voices", "As A, but DS3's people speak through the cutscene sound setup, flat and dry from everywhere (DARKSIGN_PEOPLE_VOICE_BUS=0), as up to 1.0.50x, instead of Elden Ring's own NPC voice setup (room reverb, fading with distance, from the speaker). Try it if DS3 voices went silent, too quiet or cut off.")
                 { PorterEnv = Env("DARKSIGN_PEOPLE_VOICE_BUS", "0") },
+            new("M", "Every version of a person", "As A, but every quest version of a DS3 person is placed (DARKSIGN_PEOPLE_ONE_VERSION=0), as up to 1.0.5xx: DS3 places each state of a person (Irina three times, Eygon friendly and hostile, Sirris's hostile version) and its scripts show one, so all of them stood at once, some by Gundyr's arena. Try it if a DS3 person you expect is missing.")
+                { PorterEnv = Env("DARKSIGN_PEOPLE_ONE_VERSION", "0") },
         ]),
 
         new("enemy-port", "DS3 maps", "How DS3's enemies and bosses are ported", Stage.Build,
