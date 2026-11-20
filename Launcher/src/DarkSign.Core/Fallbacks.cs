@@ -678,7 +678,7 @@ public static class Fallbacks
         new("map-text", "DS3 maps", "DS3's event messages and area names", Stage.Build,
             "A message in a DS3 map shows no words, a placeholder or the wrong words (a locked door, a lever that won't move, a map event), an area's name shows wrongly or keeps popping up, or a DS3 map crashes or hangs since its text was added.",
         [
-            new("A", "DS3's own words (default)", "Every message a DS3 script, door or lever shows (\"Locked by some contraption\", \"Does not open from this side\", \"Used Tower Key\") is DS3's own text, copied into Elden Ring's event text at 1,000,000,000 + the DS3 number, and each DS3 area shows its name when you enter it (\"High Wall of Lothric\"). Report: the map text lines of the port-maps log."),
+            new("A", "DS3's own words (default)", "Every message a DS3 script, door or lever shows (\"Locked by some contraption\", \"Does not open from this side\", \"Used Tower Key\") is DS3's own text, copied into Elden Ring's event text at 1,000,000,000 + the DS3 number, and each DS3 area shows its name where DS3 shows it (\"High Wall of Lothric\"), once as you cross into it. Report: the map text lines of the port-maps log."),
             new("B", "No area names", "Messages as in A, but no area name shows on entering a DS3 area (DARKSIGN_MAP_TEXT=noplaces), as every build up to 1.0.50x had it.")
                 { PorterEnv = Env("DARKSIGN_MAP_TEXT", "noplaces") },
             new("C", "DS3's text numbers, as up to 1.0.50x", "Scripts, doors and levers keep DS3's text numbers (DARKSIGN_MAP_TEXT=0), which Elden Ring looks up in its own text: messages show no words or the wrong ones, and no area name shows.")
