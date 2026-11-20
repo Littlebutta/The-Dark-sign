@@ -519,11 +519,12 @@ Try the next option if: A DS3 map crashes, hangs while loading or hitches since 
 
 ### DS3's bonfires as sites of grace (`map-bonfires`, rebuilds the content)
 
-Try the next option if: Resting at a DS3 bonfire does nothing or breaks (no prompt, no menu, a crash or a hang at the bonfire or on respawn), you respawn in the wrong place, or you want DS3's bonfire without Elden Ring's golden grace light on it.
+Try the next option if: Resting at a DS3 bonfire does nothing or breaks (no prompt, no menu, a crash or a hang at the bonfire, on respawn or in Travel), you respawn or travel to the wrong place, or the bonfire fire looks wrong.
 
-- **A: Sites of grace at DS3's bonfires (default).** Every DS3 bonfire gets an Elden Ring site of grace where its sword stands: touch it to light it, rest to level up and refill flasks, and you respawn there. It is built exactly as Elden Ring builds its own (the grace asset, the invisible talker with the grace menu, the standing point, a BonfireWarpParam row with DS3's bonfire name), and a DS3 fire burns on the sword once it is lit. The grace's golden light shows at the sword. Report: the bonfires lines of the port-maps log.
-- **B: DS3's sword is the grace.** As A, but with no Elden Ring grace asset (DARKSIGN_BONFIRES=sword): DS3's own sword in the ash is registered as the site of grace, so there is no golden light, only the DS3 fire once it is lit. Unproven: Elden Ring may expect its own grace model here. (`DARKSIGN_BONFIRES=sword`)
+- **A: DS3's bonfires as sites of grace (default).** Every DS3 bonfire works like a site of grace: touch it to light it, rest to level up and refill flasks, and you respawn there. DS3's own sword in the ash is the grace, with no Elden Ring grace on top: it burns with DS3's own bonfire fire, at DS3's size, played by its own animations as in DS3. Resting opens Elden Ring's grace menu with two more entries: Travel (DS3's bonfire list, area by area in DS3's order, lit bonfires only) and Return to the Lands Between (back to Roundtable Hold, as the F1 menu's Leave). Report: the bonfires and bonfire travel lines of the port-maps log.
+- **B: Elden Ring's grace at the sword.** As 1.0.48x: an Elden Ring grace (its golden light) stands at each DS3 sword and is what you use, and the sword gets a stand-in fire (DARKSIGN_BONFIRES=grace). Try it if A's bonfires can't be lit, rested at or respawned at. (`DARKSIGN_BONFIRES=grace`)
 - **C: Scenery.** DS3's bonfires can't be used (DARKSIGN_BONFIRES=0), as every build up to 1.0.46x had them: you respawn at your last Elden Ring grace. (`DARKSIGN_BONFIRES=0`)
+- **D: Plain grace menu.** As A, but resting opens Elden Ring's grace menu as it is, without Travel and Return (DARKSIGN_BONFIRE_TRAVEL=0). Try it if the bonfire menu crashes, hangs, can't be closed, or Travel warps you somewhere wrong. (`DARKSIGN_BONFIRE_TRAVEL=0`)
 
 ### Water in the DS3 maps (`map-water`, rebuilds the content)
 
@@ -571,6 +572,7 @@ Try the next option if: A DS3 map crashes or hangs while loading since people we
 - **F: DS3 armour hides the body like a closed helm.** As A, but every DS3 armour piece hides the body like the most common Elden Ring piece of its slot (DARKSIGN_PEOPLE_HIDES=common), as up to 1.0.42x, where open helms such as Hawkwood's Chain Helm hid his head. Try it if hair, a face or skin pokes through a person's DS3 armour with A. (`DARKSIGN_PEOPLE_HIDES=common`)
 - **G: Silent people.** As A, but DS3's people have no talk script, as up to 1.0.47x: nobody can be talked to and there are no DS3 shops (DARKSIGN_PEOPLE_TALK=0). Try it if a DS3 map crashes or hangs while loading or when you walk up to or talk to a DS3 person, or a talk menu can't be closed. (`DARKSIGN_PEOPLE_TALK=0`)
 - **H: No people with their own bodies.** As A, but DS3's people with a body of their own (Fire Keeper, Andre, the Shrine Handmaid, Ludleth, Yoel, Emma, the Painting Woman, the Corvian settlers) are not ported and are left out of the maps, as up to 1.0.47x (DARKSIGN_PEOPLE_BODIES=0). Try it if one of them crashes the game, attacks you, T-poses or is a mess of stretched polygons. (`DARKSIGN_PEOPLE_BODIES=0`)
+- **I: Menus wait for DS3's characters.** As A, but a talk menu that waits for a signal only DS3's own character sends (the Fire Keeper's level up, which waits for her bow) keeps waiting for it (DARKSIGN_TALK_ENGINE_FLAGS=0), as up to 1.0.479, where the Fire Keeper's Level Up did nothing. Try it if a DS3 person's menu opens something before they have finished speaking or bowing, or opens it twice. (`DARKSIGN_TALK_ENGINE_FLAGS=0`)
 
 ### How DS3's enemies and bosses are ported (`enemy-port`, rebuilds the content)
 

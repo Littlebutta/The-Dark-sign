@@ -50,7 +50,13 @@ public static partial class MapPortChecks
             $"a bonfire without its sword stands at its talker: {found[1]}");
         Expect(Bonfires.Find(rows, msb, BonfireDs3, allLayers: true).Count == 3, "--all-layers keeps the other state's bonfire");
         Expect(Bonfires.Find(rows, msb, MapId.Parse("m31_00_00_00")).Count == 0, "another map has none of these");
-        Expect(Bonfires.ModeOf(null) == Bonfires.Method.Grace && Bonfires.ModeOf("sword") == Bonfires.Method.Sword && Bonfires.ModeOf("0") == Bonfires.Method.Off, "modes");
+        Expect(Bonfires.ModeOf(null) == Bonfires.Method.Sword && Bonfires.ModeOf("grace") == Bonfires.Method.Grace && Bonfires.ModeOf("sword") == Bonfires.Method.Sword
+               && Bonfires.ModeOf("0") == Bonfires.Method.Off, "modes: DS3's sword by default, Elden Ring's grace asset on request");
+        Expect(found[0] is { List: 99, Order: 0 } && Bonfires.AreaOf("High Wall of Lothric - Knight's Rest") == "High Wall of Lothric" && Bonfires.AreaOf("Firelink Shrine") == "Firelink Shrine",
+            "rows without a warp-list tab sort last; the area is the row name's first part");
+        var listed = Bonfires.Find([new(3001950, 13000009, 211210, "High Wall of Lothric - High Wall of Lothric", 12, 99), new(3001950, 13000009, 211210, "High Wall of Lothric - High Wall of Lothric", 6, 1)],
+            msb, BonfireDs3);
+        Expect(listed[0] is { List: 1, Order: 6, Area: "High Wall of Lothric" }, $"a bonfire takes the place of its listed row: {listed[0].List}/{listed[0].Order}");
         Expect(Bonfires.RowId(BonfireEr, 5) == 450105 && Bonfires.RowId(MapId.Parse("m19_70_00_00"), 0) == 197000 && Bonfires.RowId(MapId.Parse("m10_00_00_00"), 8) == 100008,
             "row numbers follow Elden Ring's (Stormveil's ninth grace is row 100008)");
     }

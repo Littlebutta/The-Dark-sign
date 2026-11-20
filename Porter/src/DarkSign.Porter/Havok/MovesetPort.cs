@@ -409,9 +409,17 @@ public static partial class MovesetPort
                     {
                         notes.Add($"object effects: not read ({e.GetType().Name}: {e.Message}); objects get no DS3 effects");
                     }
-                // The flame of a lit bonfire (Bonfires): DS3 lights them in the engine, so no row asks for it.
-                if (Maps.Bonfires.Mode != Maps.Bonfires.Method.Off)
+                // The effects DS3 objects play from their animations (a bonfire's fire, a door's dust: ObjectAnims).
+                try { mapEffects.UnionWith(Maps.ObjectAnims.WantedEffects(ds3Archives, Maps.MapSlots.All, notes)); }
+                catch (Exception e) when (e is not OutOfMemoryException)
+                {
+                    notes.Add($"object animation effects: not read ({e.GetType().Name}: {e.Message}); moving objects play no effects");
+                }
+                // The stand-in flame for a sword next to an Elden Ring grace asset (Bonfires, DARKSIGN_BONFIRES=grace).
+                if (Maps.Bonfires.Mode == Maps.Bonfires.Method.Grace)
                     mapEffects.Add(Maps.Bonfires.FlameEffect);
+                if (Maps.Bonfires.Mode != Maps.Bonfires.Method.Off)
+                    mapEffects.UnionWith(Maps.Bonfires.OwnEffects);
                 // The effects the maps' cutscenes play (boss intros): pointed at their converted copies by the cutscene port.
                 if (Maps.CutscenePort.Enabled)
                     try { mapEffects.UnionWith(Maps.CutscenePort.WantedEffects(ds3Archives, Maps.MapSlots.All, notes)); }

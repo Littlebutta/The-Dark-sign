@@ -26,8 +26,11 @@ namespace DarkSign.Porter.Maps;
 /// as the weapon moves (<see cref="AnimPort"/>, onto the same skeleton, so nothing is retargeted), and the TAE gets
 /// one entry per animation in Elden Ring's format.
 ///
-/// Not ported yet: DS3's TAE events (the door's creak and dust: DS3 object sounds and effects, which Elden Ring's
-/// banks don't have), so the objects move silently.
+/// DS3's effect events (TAE type 96: effect, dummy poly) come along where the effect is converted (<see cref="MapSfx"/>'s
+/// table): a door's dust, and the fire of a bonfire, which is nothing but its object's animations (0 hidden, 1
+/// unlit with effect 1010, 10-103 lit with 1011 on dummy poly 201; Elden Ring's grace AEG099_060 has the same
+/// animations with the same events).
+/// Not ported yet: DS3's sound events (Elden Ring's banks don't have the sounds), so the objects move silently.
 ///
 /// Collision: Elden Ring's door collision (AEG219_000_L.hkx) has one body per part, named after the bone it follows
 /// (the leaf is "Model_AEG219_000_01", a box that turns with the bone of that name); the frame stays put. A moving
@@ -113,14 +116,110 @@ public static partial class ObjectAnims
     [GeneratedRegex(@"^a(\d{3})_(\d{6})\.hkx$", RegexOptions.IgnoreCase)]
     private static partial Regex AnimLeaf();
 
-    public sealed record Result(byte[] Anibnd, int Animations, int Failed, IReadOnlyList<string> Bones, string Summary);
+    public sealed record Result(byte[] Anibnd, int Animations, int Failed, IReadOnlyList<string> Bones, string Summary)
+    {
+        public int EffectEvents { get; init; }
+    }
 
     /// <summary>
     /// The animation binder for one ported object. <paramref name="rename"/> renames DS3 names (the object's root,
     /// "o300310", becomes the asset name, as in Elden Ring's skeletons) the same way the model's nodes were renamed.
     /// Throws when the objbnd has no usable skeleton or no animation converts.
     /// </summary>
-    public static Result Build(BND4 objbnd, string assetName, Template t, IReadOnlyDictionary<string, string> rename)
+    public const int EffectEvent = 96;
+    /// <summary>
+    /// Elden Ring's effect event is 24 bytes (effect, dummy poly, two more values DS3 has too, then zeros); DS3's is
+    /// 16 or 24. Written at 24, DS3's bonfire events come out byte for byte as Elden Ring's grace has them.
+    /// </summary>
+    public static int ErLength(int ds3Length) => Math.Max(ds3Length, 24);
+
+    /// <summary>DS3's TAE of an objbnd (null when it has no animation binder or no TAE).</summary>
+    public static TAE? Ds3Tae(BND4 objbnd)
+    {
+        var anibnd = objbnd.Files.FirstOrDefault(f => ItemText.Leaf(f.Name).EndsWith(".anibnd", StringComparison.OrdinalIgnoreCase));
+        if (anibnd is null)
+            return null;
+        var inner = BND4.Read(DCX.Is(anibnd.Bytes) ? DCX.Decompress(anibnd.Bytes) : anibnd.Bytes);
+        var file = inner.Files.FirstOrDefault(f => ItemText.Leaf(f.Name).EndsWith(".tae", StringComparison.OrdinalIgnoreCase));
+        return file is null ? null : TAE.Read(file.Bytes);
+    }
+
+    /// <summary>The effects an object's animations play (TAE type 96, first value).</summary>
+    public static SortedSet<int> Effects(TAE tae)
+    {
+        var ids = new SortedSet<int>();
+        foreach (var e in tae.Animations.SelectMany(a => a.Events).Where(e => e.Type == EffectEvent))
+        {
+            var bytes = e.GetParameterBytes(tae.BigEndian);
+            if (bytes.Length >= 4 && BitConverter.ToInt32(bytes, 0) > 0)
+                ids.Add(BitConverter.ToInt32(bytes, 0));
+        }
+        return ids;
+    }
+
+    /// <summary>The effects a ported asset's animation binder (file 400 of its asset binder) plays; empty when unreadable.</summary>
+    public static SortedSet<int> BinderEffects(byte[] anibnd)
+    {
+        var file = BND4.Read(anibnd).Files.FirstOrDefault(f => ItemText.Leaf(f.Name).EndsWith(".tae", StringComparison.OrdinalIgnoreCase));
+        return file is null ? [] : Effects(TAE.Read(file.Bytes));
+    }
+
+    /// <summary>The effects the animations of every slot's DS3 objects play (for port-weapons, which converts them).</summary>
+    public static SortedSet<int> WantedEffects(GameArchives ds3, IEnumerable<MapSlots.Slot> slots, List<string>? notes = null)
+    {
+        var models = new SortedSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var ds3Id in slots.Select(s => s.Ds3).Distinct())
+            if (ds3.Contains(MapPorter.MsbPath(ds3Id)))
+                models.UnionWith(MSB3.Read(ds3.Read(MapPorter.MsbPath(ds3Id))).Parts.Objects.Select(o => o.ModelName));
+        var ids = new SortedSet<int>();
+        int animated = 0;
+        Parallel.ForEach(models, Parallelism.Options, model =>
+        {
+            var path = $"/obj/{model.ToLowerInvariant()}.objbnd.dcx";
+            try
+            {
+                if (!ds3.Contains(path) || Ds3Tae(BND4.Read(ds3.Read(path))) is not { } tae)
+                    return;
+                var mine = Effects(tae);
+                lock (ids)
+                {
+                    animated++;
+                    ids.UnionWith(mine);
+                }
+            }
+            catch (Exception ex) when (ex is not OutOfMemoryException) { _ = ex; }
+        });
+        notes?.Add($"object animation effects: {animated} of {models.Count} DS3 object models are animated; their animations play {ids.Count} effects (bonfire flames, door dust...)");
+        return ids;
+    }
+
+    /// <summary>
+    /// DS3's effect events of one animation in Elden Ring's layout, for the effects <paramref name="converted"/> names.
+    /// </summary>
+    public static (List<TAE.Event> Events, int Dropped) EffectEvents(TAE.Animation ds3, bool bigEndian, IReadOnlyDictionary<int, int> converted)
+    {
+        var events = new List<TAE.Event>();
+        int dropped = 0;
+        TAE.EventGroup? group = null;
+        foreach (var e in ds3.Events.Where(e => e.Type == EffectEvent))
+        {
+            var bytes = e.GetParameterBytes(bigEndian);
+            if (bytes.Length < 16 || !converted.TryGetValue(BitConverter.ToInt32(bytes, 0), out int effect) || effect <= 0)
+            {
+                dropped++;
+                continue;
+            }
+            var er = new byte[ErLength(bytes.Length)];
+            bytes.CopyTo(er, 0);
+            BitConverter.GetBytes(effect).CopyTo(er, 0);
+            group ??= new TAE.EventGroup(EffectEvent);
+            events.Add(new TAE.Event(e.StartTime, e.EndTime, EffectEvent, e.Unk04, er, false) { Group = group });
+        }
+        return (events, dropped);
+    }
+
+    public static Result Build(BND4 objbnd, string assetName, Template t, IReadOnlyDictionary<string, string> rename,
+        IReadOnlyDictionary<int, int>? effects = null)
     {
         var anibndFile = objbnd.Files.FirstOrDefault(f => ItemText.Leaf(f.Name).EndsWith(".anibnd", StringComparison.OrdinalIgnoreCase))
                          ?? throw new InvalidDataException("the objbnd has no animation binder");
@@ -195,17 +294,44 @@ public static partial class ObjectAnims
         if (converted == 0)
             throw new InvalidDataException(failed == 0 ? "the animation binder has no animations" : $"no animation converted ({string.Join("; ", errors.Take(2))})");
 
-        // One TAE entry per animation, in the template's format; DS3's events (sounds, effects) are left out.
+        // One TAE entry per animation, in the template's format, with DS3's effect events; its sounds are left out.
         var tae = TAE.Read(t.Tae);
         tae.SibName = $"{upper}.sib";
         tae.Animations = ids.Order().Select(id => new TAE.Animation(id, new TAE.Animation.AnimMiniHeader.Standard(), $"a{id / 1_000_000:D3}_{id % 1_000_000:D6}.hkt")).ToList();
+        int effectEvents = 0, effectsDropped = 0;
+        if (effects is not null)
+            try
+            {
+                var ds3TaeFile = ds3Bnd.Files.FirstOrDefault(f => ItemText.Leaf(f.Name).EndsWith(".tae", StringComparison.OrdinalIgnoreCase));
+                if (ds3TaeFile is not null)
+                {
+                    var ds3Tae = TAE.Read(ds3TaeFile.Bytes);
+                    foreach (var anim in tae.Animations)
+                    {
+                        if (ds3Tae.Animations.FirstOrDefault(a => a.ID == anim.ID) is not { } source)
+                            continue;
+                        var (events, dropped) = EffectEvents(source, ds3Tae.BigEndian, effects);
+                        effectsDropped += dropped;
+                        if (events.Count == 0)
+                            continue;
+                        anim.EventGroups.Add(events[0].Group);
+                        anim.Events.AddRange(events);
+                        effectEvents += events.Count;
+                    }
+                }
+            }
+            catch (Exception ex) when (ex is not OutOfMemoryException)
+            {
+                errors.Add($"effect events not read ({ex.Message})");
+            }
         bnd.Files.Add(new BinderFile(flags, 3000000, folder + $@"tae\{upper}.tae", tae.Write()));
         if (t.Compendium is not null)
             bnd.Files.Add(new BinderFile(flags, 7000000, folder + $@"hkx_compendium\{upper}.compendium", t.Compendium));
         bnd.Files.Sort((a, b) => a.ID.CompareTo(b.ID));
 
-        var summary = $"{converted} animations ({string.Join(" ", ids.Order())}), {count} bones" + (failed > 0 ? $", {failed} failed ({errors[0]})" : "");
-        return new Result(bnd.Write(), converted, failed, ds3Skeleton.Names, summary);
+        var summary = $"{converted} animations ({string.Join(" ", ids.Order())}), {count} bones" + (failed > 0 ? $", {failed} failed ({errors[0]})" : "")
+                      + (effectEvents + effectsDropped > 0 ? $", {effectEvents} effect events" + (effectsDropped > 0 ? $" ({effectsDropped} more name effects that aren't converted)" : "") : "");
+        return new Result(bnd.Write(), converted, failed, ds3Skeleton.Names, summary) { EffectEvents = effectEvents };
     }
 
     /// <summary>The path the asset binder names its animation binder by (file ID 400).</summary>
