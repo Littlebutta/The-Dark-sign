@@ -342,6 +342,9 @@ public static partial class MapPortChecks
         var tracks = new Dictionary<string, MapMusic.Track> { ["m000400000"] = new(4800, 96000, 2000, "test") };
         var list = plan.ListLines(tracks).ToList();
         Expect(list.Count == 1, "only tracks with audio are listed");
+        var watch = plan.WatchLines(tracks).ToList();
+        Expect(watch.Count == 1 && watch[0].Split('\t') is var w && uint.Parse(w[0]) == plan.ByEntity[4004800].SwitchFlag && w[1] == "-",
+            "the DLL watches the listed track's switch flag: " + string.Join("|", watch));
         var cols = list[0].Split('\t');
         Expect(cols.Length == 7 && uint.Parse(cols[0]) == plan.ByEntity[4004800].PlayFlag && cols[1] == "m000400000.wav" && cols[2] == "4800" && cols[3] == "96000"
                && cols[4] == "2000" && cols[5] == "m45_00_00_00" && cols[6] == "gundyr 1", list[0]);
