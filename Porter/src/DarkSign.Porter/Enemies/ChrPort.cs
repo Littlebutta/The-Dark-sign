@@ -488,6 +488,27 @@ public static partial class ChrPort
         return FailureSummary(notes.Count, built, notes);
     }
 
+    /// <summary>The fewest animations a template needs to carry a DS3 character that fits no template's skeleton.</summary>
+    public const int CarryMinMoves = 30;
+
+    /// <summary>
+    /// Which of the ranked templates carries a character none fits: the first with at least <see cref="CarryMinMoves"/>
+    /// animations (its own or its base's), else the first with any; null when none has animations.
+    /// </summary>
+    public static int? CarryPick<T>(IReadOnlyList<T> ranked, Func<T, int> animations)
+    {
+        int? any = null;
+        for (int i = 0; i < ranked.Count; i++)
+        {
+            int count = animations(ranked[i]);
+            if (count >= CarryMinMoves)
+                return i;
+            if (count > 0)
+                any ??= i;
+        }
+        return any;
+    }
+
     /// <summary>The choice for every DS3 character: its template, how it is ported, its new ID.</summary>
     public static List<Plan> MakePlans(GameArchives erArchives, GameArchives ds3Archives, IReadOnlyList<Ds3Chr> characters,
         IReadOnlyList<EnemyPort.ErEnemy> catalog, Method method, List<string> notes, Action<Ds3Chr>? skipped = null,
@@ -513,6 +534,7 @@ public static partial class ChrPort
 
         var plans = new List<Plan>();
         var fileChrs = new ConcurrentDictionary<int, int>();
+        var moveCounts = new ConcurrentDictionary<int, int>();
         double carry = CarryBoneMatch;
         foreach (var ds3Chr in characters)
         {
@@ -525,13 +547,15 @@ public static partial class ChrPort
             }
             // No template fits (too few of DS3's bones): the character is carried by the best one that has
             // animations of its own or its base's (Rykard's Corpse, the Ancient Wyvern's best by size, has none).
+            // It must also have a move set to put DS3's moves in (CarryMinMoves): in 1.0.501 the Ancient Wyvern and the
+            // Pilgrim Butterfly sat on Rykard's Corpse, whose base has one animation, and so had one move.
             if (pick.Match < MinBoneMatch && pick.Match >= carry && method != Method.Stats)
-                foreach (var r in RankTemplates(ds3Chr, shape, catalog, ErShape))
-                    if (fileChrs.GetOrAdd(ChrId(r.Template.Model), c => FileChr(c, chr => AnimationCount(erArchives, chr))) >= 0)
-                    {
-                        pick = (r.Template, r.Match);
-                        break;
-                    }
+            {
+                int Files(EnemyPort.ErEnemy t) => fileChrs.GetOrAdd(ChrId(t.Model), c => FileChr(c, chr => AnimationCount(erArchives, chr)));
+                var order = RankTemplates(ds3Chr, shape, catalog, ErShape);
+                if (CarryPick(order.Select(r => r.Template).ToList(), t => Files(t) is >= 0 and var f ? moveCounts.GetOrAdd(f, c => AnimationCount(erArchives, c)) : 0) is { } at)
+                    pick = (order[at].Template, order[at].Match);
+            }
             var chosen = pick.Match < carry && method != Method.Stats ? Method.Stats : method;
             double boneMatch = pick.Match;
             // The template's own body will be what stands there: pick it by kind (PickBody), not by bone names.
@@ -1833,6 +1857,27 @@ public static partial class ChrPort
         int merged = 0;
         var signals = new Dictionary<int, int>();
         var unlaid = new Dictionary<int, int>();
+        // Each event type's layout over all of the template's TAE files and all of DS3's (ChrTae.Layout): one file's
+        // first event of a type is no measure of it.
+        Dictionary<int, int>? pooledLengths = null, ds3Lengths = null;
+        Dictionary<int, TAE.EventGroup>? pooledGroups = null;
+        if (ChrTae.PooledLayout && stage > Stage.Moves)
+        {
+            var templateEvents = new List<TAE.Event>();
+            foreach (var (_, (bnd, _)) in anibnds)
+                foreach (var file in bnd.Files.Where(f => f.Name.EndsWith(".tae", StringComparison.OrdinalIgnoreCase)))
+                    try { templateEvents.AddRange(TAE.Read(file.Bytes).Animations.SelectMany(a => a.Events)); }
+                    catch (Exception) { }
+            pooledLengths = ChrTae.Layout(templateEvents);
+            pooledGroups = templateEvents.Where(e => e.Group is not null).GroupBy(e => e.Type).ToDictionary(g => g.Key, g => g.First().Group!);
+            ds3Lengths = ChrTae.Layout(ds3Taes.SelectMany(t => t.Item2.Animations.SelectMany(a => a.Events)));
+            // A type the template never uses but other Elden Ring characters do at DS3's length comes along too (its
+            // group from those characters, see ChrTae.Merge): the Hollow Manservant's 114 type-795 events.
+            if (fx is not null)
+                foreach (var (type, length) in ds3Lengths)
+                    if (!pooledLengths.ContainsKey(type) && fx.Lengths.TryGetValue(type, out var erLengths) && erLengths.Contains(length))
+                        pooledLengths[type] = length;
+        }
         foreach (var (_, (bnd, _)) in anibnds)
             foreach (var file in bnd.Files.Where(f => stage > Stage.Moves && f.Name.EndsWith(".tae", StringComparison.OrdinalIgnoreCase)))
             {
@@ -1840,9 +1885,9 @@ public static partial class ChrPort
                 try { tae = TAE.Read(file.Bytes); }
                 catch (Exception) { continue; }
                 int section = TaeSection(file.Name);
-                var lengths = tae.Animations.SelectMany(a => a.Events).GroupBy(e => e.Type)
+                var lengths = pooledLengths ?? tae.Animations.SelectMany(a => a.Events).GroupBy(e => e.Type)
                     .ToDictionary(g => g.Key, g => g.First().GetParameterBytes(false).Length);
-                var groups = tae.Animations.SelectMany(a => a.Events).Where(e => e.Group is not null)
+                var groups = pooledGroups ?? tae.Animations.SelectMany(a => a.Events).Where(e => e.Group is not null)
                     .GroupBy(e => e.Type).ToDictionary(g => g.Key, g => g.First().Group!);
                 bool changed = false;
                 foreach (var anim in tae.Animations)
@@ -1853,7 +1898,7 @@ public static partial class ChrPort
                         continue;
                     var source = ChooseMove(AnimKey(anim.ID, section), ds3Additive.Contains(moves[content].Hkx) ? additiveKeys : wholeKeys, fill) is { } own
                                  && moves[own].Hkx == moves[content].Hkx ? own : content;
-                    anim.Events = ChrTae.Merge(moves[source].Events, anim, lengths, groups, d.Ds3, d.Er, session, fx?.Groups, signals, unlaid);
+                    anim.Events = ChrTae.Merge(moves[source].Events, anim, lengths, groups, d.Ds3, d.Er, session, fx?.Groups, signals, unlaid, ds3Lengths);
                     changed = true;
                     merged++;
                 }
