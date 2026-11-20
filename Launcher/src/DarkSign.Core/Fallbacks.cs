@@ -746,6 +746,14 @@ public static class Fallbacks
                 { PorterEnv = Env("DARKSIGN_MAP_MUSIC", "arena") },
         ]),
 
+        new("map-reverb", "DS3 maps", "DS3's room echo (reverb) per place", Stage.Build,
+            "Since 1.0.55x voices or other sounds echo where DS3 is dry (outdoors), are dry in a hall that should echo, or a DS3 map crashes or stutters on loading.",
+        [
+            new("A", "DS3's reverb per place (default)", "Each piece of DS3 ground keeps DS3's own room reverb (none outdoors, small to extra large in rooms, halls and caves), as Elden Ring reverb regions over it; the rest of the map is dry. Without them Elden Ring picks its reverb from the walls around you and echoes everywhere in DS3's walled-in maps. Report: the \"reverb:\" lines of the port-maps log."),
+            new("B", "Elden Ring's automatic reverb", "No reverb regions (DARKSIGN_MAP_REVERB=0), as up to 1.0.55x: Elden Ring decides the reverb everywhere, so voices and sounds echo in most DS3 places.")
+                { PorterEnv = Env("DARKSIGN_MAP_REVERB", "0") },
+        ]),
+
         new("map-setup", "DS3 maps", "DS3's new-game flags", Stage.Build,
             "Since 1.0.54x a DS3 character or place acts as if something had already happened (or never happens), or you want to compare with the flags left off as before.",
         [

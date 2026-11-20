@@ -1445,6 +1445,27 @@ public static class MapPorter
             }
         }
 
+        // DS3's room reverb per piece of ground as Elden Ring reverb regions (MapReverb): without them Elden Ring's
+        // automatic reverb echoes everywhere in DS3's walled-in maps. A failure leaves the automatic reverb.
+        if (!MapReverb.Enabled)
+            report.AppendLine("  reverb: off (DARKSIGN_MAP_REVERB=0), Elden Ring's automatic reverb");
+        else
+        {
+            try
+            {
+                var reverb = MapReverb.Port(ds3, ds3Msb, ds3Id, layout.Msb);
+                MSBE.Read(layout.Msb.Write());
+                report.AppendLine("  " + reverb.Summary);
+                foreach (var note in reverb.Notes)
+                    report.AppendLine($"  reverb: {note}");
+            }
+            catch (Exception ex) when (ex is not OutOfMemoryException)
+            {
+                MapReverb.Strip(layout.Msb);
+                report.AppendLine($"  reverb: FAILED ({ex.Message}); Elden Ring's automatic reverb");
+            }
+        }
+
         _partNames[erId] = new Dictionary<string, string>(partNames, StringComparer.Ordinal);
 
         // An arrival point in each boss arena, for the F1 menu's boss warps. A failure leaves the map without them.
