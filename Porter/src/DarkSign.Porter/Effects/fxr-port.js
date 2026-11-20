@@ -1,5 +1,5 @@
 // DarkSign porter adapter for @cccode/fxr: reads a DS3 effect, renumbers it and its resources, writes it for Elden Ring.
-import { FXR, Game, ProxyNode, GenericNode, NodeType, Action, SFXReference, BasicNode, BillboardEx, NodeSound, BlendMode, LightingMode, PointLight, SpotLight } from './fxr.js';
+import { FXR, Game, ProxyNode, GenericNode, NodeType, Action, SFXReference, BasicNode, BillboardEx, NodeSound, BlendMode, LightingMode, PointLight, SpotLight, anyValueMult } from './fxr.js';
 
 export function inspect(bytes) {
   const fxr = FXR.read(bytes, Game.DarkSouls3);
@@ -84,6 +84,10 @@ export function convert(bytes, newId, mapJson) {
   if (map.lit?.all)
     for (const action of fxr.root.walkActions())
       if (action instanceof BillboardEx && smokeBlend(action.blendMode)) action.lighting = LightingMode.UnkMinus2;
+  // With map.lights, the point lights DS3's effects carry get Elden Ring's light settings (erLight).
+  if (map.lights?.all)
+    for (const action of fxr.root.walkActions())
+      if (action instanceof PointLight) erLight(action);
   fxr.root.remapResources((type, resource) => map[type]?.[resource] ?? resource);
   const sfx = map.sfx ?? {};
   for (const node of fxr.root.walk()) {
@@ -96,6 +100,32 @@ export function convert(bytes, newId, mapJson) {
     }
   }
   return new Uint8Array(fxr.toArrayBuffer(Game.EldenRing));
+}
+
+// A DS3 point light (a weapon's glow, a spell, a candle) set up the way Elden Ring sets up its own. Measured on the
+// games' files (2026-11-20): 673 point lights in 638 of DS3's 2,704 common and map effects, 2,979 in 2,621 of Elden
+// Ring's 7,157. Converted as read, DS3's lights hardly lit anything in Elden Ring:
+// - Strength: colour times multiplier is 1.25 at the median (0.31 to 5.0) for DS3's lights as the library converts
+//   them (DS3 colour times 10), 12.8 (3.2 to 32) for Elden Ring's. Elden Ring's lights also have an adaptation
+//   exponent of 1 (2,665 of them; 0.5 for 211): where the place is already bright the light is multiplied by 0.1, so
+//   12.8 there is 1.28, DS3's own strength, and the full 12.8 lights dark places. DS3's lights have 0 and so were a
+//   tenth of Elden Ring's in the dark, where an effect's light shows. Each light now takes 10 times DS3's strength
+//   with an exponent of 1: as strong as in DS3 in daylight, as strong as Elden Ring's own at night and indoors.
+// - Falloff (unk_ds3_p2_0, which the library documents as the falloff: 0 or less switches the light off, below 1 it
+//   fades out sooner): Elden Ring writes a quarter of the radius (median 0.250 of the radius, 0.249 to 0.5). Half
+//   of DS3's lights (337) have 0.01, the rest 1 (the candle f839010 0.01 over 2 m, Friede's and the Dancer's
+//   weapon lights 0.01 over 3.75 m), so half faded out within a hand's width. Each light now takes a quarter of its
+//   radius, as Elden Ring's do.
+// - Volume density, the faint glow a light gives the air around it: 0.5 for 2,788 of Elden Ring's lights, 0 for all
+//   of DS3's. Now 0.5.
+// Colours, radius, flicker, shadows and fade times stay DS3's. Fallback "map-effects" E (DARKSIGN_FXR_LIGHTS=ds3)
+// keeps the lights as the library converts them, as builds before 2026-11-20 had them.
+function erLight(light) {
+  light.diffuseMultiplier = anyValueMult(10, light.diffuseMultiplier);
+  light.specularMultiplier = anyValueMult(10, light.specularMultiplier);
+  light.adaptationExponent = 1;
+  light.unk_ds3_p2_0 = anyValueMult(0.25, light.radius);
+  light.volumeDensity = 0.5;
 }
 
 // A billboard blend mode that layers like smoke (Normal, or Unk6, which looks the same) rather than adding light.
@@ -127,13 +157,29 @@ export function lookOfElden(bytes) {
 }
 
 // For the self-tests: a small DS3 effect that draws one additive billboard in a colour and, with light set, carries
-// a point light.
-export function flameSample(id, texture, r, g, b, light) {
+// a point light of radius 3 with that falloff (unk_ds3_p2_0; half of DS3's lights have 0.01, the rest 1).
+export function flameSample(id, texture, r, g, b, light, falloff = 1) {
   const fxr = new FXR(id);
   // A node draws one thing, so the light gets a node of its own.
   fxr.root.nodes.push(new BasicNode([new BillboardEx({ texture, blendMode: BlendMode.Add, color1: [r, g, b, 1] })]));
-  if (light) fxr.root.nodes.push(new BasicNode([new PointLight({ radius: 3 })]));
+  if (light) fxr.root.nodes.push(new BasicNode([new PointLight({ radius: 3, unk_ds3_p2_0: falloff })]));
   return new Uint8Array(fxr.toArrayBuffer(Game.DarkSouls3));
+}
+
+// For the self-tests: the point lights of a converted (Elden Ring) effect, with each value at its largest.
+export function lightsOfConverted(bytes) {
+  return JSON.stringify([...FXR.read(bytes, Game.EldenRing).root.walkActions()].filter(a => a instanceof PointLight).map(a => ({
+    strength: largest(a.diffuseMultiplier), adaptation: a.adaptationExponent, falloff: largest(a.unk_ds3_p2_0),
+    radius: largest(a.radius), volume: a.volumeDensity,
+  })));
+}
+
+// The largest a scalar value gets: a number, a property's value or its largest keyframe.
+function largest(value) {
+  if (typeof value === 'number') return value;
+  if (!value || typeof value !== 'object') return NaN;
+  if (Array.isArray(value.keyframes) && value.keyframes.length > 0) return Math.max(...value.keyframes.map(k => largest(k.value)));
+  return largest(value.value);
 }
 
 // For the self-tests: the lighting mode of each billboard of a converted (Elden Ring) effect.

@@ -654,13 +654,15 @@ public static class Fallbacks
         new("map-effects", "DS3 maps", "DS3's map effects (candles, fog, light shafts)", Stage.Build,
             "A DS3 map crashes, hangs while loading or hitches since its effects were added, or a fog bank, light shaft or flame looks wrong or floats in the air.",
         [
-            new("A", "DS3's map effects (default)", "The effects DS3 places in its maps (fog banks, light shafts, crows, flies and fires) are converted with the weapons' effects and stand where DS3 has them (their smoke and fog take the light around them, as Elden Ring's do), and the objects DS3 shows lit (candles, torches, braziers) carry their flames: DS3's object effect rows become Elden Ring asset effect rows. Report: Work\\map-sfx.tsv lists any effect that couldn't be converted, and the object effects line of the port-maps log counts the lit objects."),
+            new("A", "DS3's map effects (default)", "The effects DS3 places in its maps (fog banks, light shafts, crows, flies and fires) are converted with the weapons' effects and stand where DS3 has them (their smoke and fog take the light around them, as Elden Ring's do), and the objects DS3 shows lit (candles, torches, braziers) carry their flames: DS3's object effect rows become Elden Ring asset effect rows. The lights DS3's effects carry (weapon glows, spells, candles; weapon and enemy effects too) are set up as Elden Ring sets up its own: ten times DS3's strength, dimmed where it is already bright, fading out at the edge of their reach. Report: Work\\map-sfx.tsv lists any effect that couldn't be converted, the object effects line of the port-maps log counts the lit objects, and the effects line about point lights in the build log counts the effects that carry lights."),
             new("B", "None", "The DS3 maps have none of DS3's map effects (DARKSIGN_MAP_SFX=0), as every build up to 1.0.366 was.")
                 { PorterEnv = Env("DARKSIGN_MAP_SFX", "0") },
             new("C", "Region effects only", "DS3's fog, light shafts and other placed effects as in A, but no flames on objects (DARKSIGN_OBJECT_SFX=0): candles and torches stand unlit, as builds up to 1.0.44x had them.")
                 { PorterEnv = Env("DARKSIGN_OBJECT_SFX", "0") },
             new("D", "Smoke and fog effects unlit", "DS3's effects as in A, but their smoke, fog and dust are drawn unlit, at full colour whatever light they stand in (DARKSIGN_FXR_LIT=0), as builds up to 1.0.44x had them: in dark places they glow white. This goes for weapon and enemy effects too.")
                 { PorterEnv = Env("DARKSIGN_FXR_LIT", "0") },
+            new("E", "Effect lights as DS3 wrote them", "DS3's effects as in A, but the lights they carry (a weapon's glow, a spell, a candle's flame) keep DS3's settings as converted (DARKSIGN_FXR_LIGHTS=ds3), as builds before 2026-11-20 had them: in Elden Ring they are a tenth as strong as its own in the dark and half of them fade out a hand's width from the flame, so effects hardly light anything. This goes for weapon and enemy effects too.")
+                { PorterEnv = Env("DARKSIGN_FXR_LIGHTS", "ds3") },
         ]),
 
         new("map-bonfires", "DS3 maps", "DS3's bonfires as sites of grace", Stage.Build,
