@@ -364,6 +364,7 @@ public static class MapPorter
         _arenas.Clear();
         _partNames.Clear();
         _coverage.Clear();
+        _standInWorld.Clear();
         _templates.Clear();
         _converted.Clear();
         _objects = null;
@@ -465,6 +466,8 @@ public static class MapPorter
                 : $"maps: {order.Count} ported, one at a time");
             Time(report, "all maps", mapsClock);
         }
+        if (_standInWorld.Count > 1 && Environment.GetEnvironmentVariable("DARKSIGN_WORLD_STAND_INS") is not "0")
+            Step(report, "world stand-ins", () => WorldStandIns(ctx));
         // The objects' materials and textures: shared by every map, so they are added once, to every area's binder.
         if (_objects is not null && ported.Count > 0)
         {
@@ -1234,6 +1237,7 @@ public static class MapPorter
                     .Where(p => missingModels.Contains(p.ModelName) || (!options.HelperPieces && MsbPort.HelperKind(p, layerOk) is not null))
                     .Select(p => p.Name).ToHashSet(StringComparer.Ordinal);
                 var judged = MapStandIns.Find(ds3Msb, models.ModelMeshes, skip);
+                _standInWorld[ds3Id] = (erId, judged, ds3Msb.Parts.ConnectCollisions.Select(c => c.MapID.ToArray()).ToList());
                 standIns = judged.LeftOut;
                 farViews = judged.FarViews;
                 report.AppendLine("  " + judged.Summary);
@@ -1634,6 +1638,53 @@ public static class MapPorter
     private static readonly Dictionary<MapId, Dictionary<string, string>> _partNames = [];
     /// <summary>Each ported map's coverage row, for the side-by-side summary at the end of the run (<see cref="MapCoverage"/>).</summary>
     private static readonly List<MapCoverage.Row> _coverage = [];
+
+    // Each ported DS3 map's judged pieces and its connect collisions' map numbers, for "world stand-ins".
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<MapId, (MapId Er, MapStandIns.Result Judged, List<byte[]> Connects)> _standInWorld = new();
+
+    /// <summary>
+    /// "world stand-ins" step: leaves out each map's low-detail stand-ins that a neighbouring ported map's real pieces
+    /// stand in (<see cref="MapStandIns.AcrossMaps"/>), from the layouts already written. Neighbours are the maps DS3
+    /// joins with connect collisions, either way. Off: DARKSIGN_WORLD_STAND_INS=0 (fallback "map-world" D).
+    /// </summary>
+    private static string WorldStandIns(PorterContext ctx)
+    {
+        var maps = _standInWorld.Keys.ToList();
+        var joined = maps.ToDictionary(m => m, _ => new HashSet<MapId>());
+        foreach (var (map, entry) in _standInWorld)
+            foreach (var id in entry.Connects)
+                if (MsbPort.ConnectTarget(id, maps) is { } to && to != map)
+                {
+                    joined[map].Add(to);
+                    joined[to].Add(map);
+                }
+        var lines = new List<string>();
+        int total = 0;
+        foreach (var map in maps.OrderBy(m => m.ToString()))
+        {
+            var (er, judged, _) = _standInWorld[map];
+            var kept = judged.KeptStandIns.ToHashSet(StringComparer.Ordinal);
+            if (kept.Count == 0 || joined[map].Count == 0)
+                continue;
+            var verdicts = MapStandIns.AcrossMaps(judged.Pieces, kept, joined[map].SelectMany(n => _standInWorld[n].Judged.Pieces));
+            var leftOut = verdicts.Where(v => v.LeftOut).Select(v => v.Part).ToHashSet(StringComparer.Ordinal);
+            lines.Add($"  {map} -> {er}: {leftOut.Count} of {kept.Count} kept stand-ins left out for {string.Join(", ", joined[map].OrderBy(n => n.ToString()))}"
+                      + (leftOut.Count > 0 ? $" ({string.Join(", ", leftOut.Take(20))}{(leftOut.Count > 20 ? ", ..." : "")})" : ""));
+            if (leftOut.Count == 0)
+                continue;
+            var path = ctx.ModPath(ModParts(MsbPath(er)));
+            if (!File.Exists(path))
+                continue;
+            var msb = MSBE.Read(DCX.Decompress(File.ReadAllBytes(path), out var compression));
+            int removed = msb.Parts.MapPieces.RemoveAll(p => leftOut.Contains(p.Name));
+            var used = msb.Parts.MapPieces.Select(p => p.ModelName).ToHashSet(StringComparer.Ordinal);
+            msb.Models.MapPieces.RemoveAll(m => !used.Contains(m.Name));
+            File.WriteAllBytes(path, DCX.Compress(msb.Write(), compression));
+            total += removed;
+        }
+        return $"world stand-ins: {total} low-detail stand-ins left out where a neighbouring ported map's real pieces stand"
+               + (lines.Count > 0 ? Environment.NewLine + string.Join(Environment.NewLine, lines) : "");
+    }
 
     private static EnemyContext Enemies(PorterContext ctx, GameArchives ds3, GameArchives er, Options options, StringBuilder report)
     {

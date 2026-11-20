@@ -12,6 +12,7 @@ public static partial class MapPortChecks
     private static IEnumerable<(string Name, Action Test)> AtmosphereChecks()
     {
         yield return ("stand-ins: a low-detail piece over detailed pieces it is never drawn with is left out; one with nothing under it stays", StandIns);
+        yield return ("world stand-ins: a kept stand-in over a neighbouring map's real pieces is left out; one over nothing stays", WorldStandIns);
         yield return ("far views: a low-detail copy of an area with ordinary textures, drawn only from a lookout, is left out; the sky dome, a building shell and a piece drawn with most of what it covers stay", FarViews);
         yield return ("atmosphere: the slot's gparam takes DS3's sun and fog colours, Stormveil's fog amounts, no colour grading", Atmosphere);
         yield return ("atmosphere: the sun's direction turns with DS3's map offset, like the map's lamps and baked light", SunTurned);
@@ -111,6 +112,29 @@ public static partial class MapPortChecks
 
         var report = MapPorter.PieceReport(ds3, VisualPort().Port, new HashSet<string>(), false, result.LeftOut, result.FarViews);
         Expect(report.Split('\n').Any(l => l.StartsWith("m903400_9500\tm903400\tleft out: far view")), "the piece report names a far view");
+    }
+
+    private static void WorldStandIns()
+    {
+        var own = new List<MapStandIns.PieceBox>
+        {
+            new("m900065_9000", new Vector3(0, 0, 0), new Vector3(100, 50, 100), 1000, true),
+            new("m900070_9000", new Vector3(500, 0, 500), new Vector3(600, 50, 600), 1000, true),
+            new("m000100_0000", new Vector3(10, 0, 10), new Vector3(20, 10, 20), 5000, false),
+        };
+        var neighbour = new List<MapStandIns.PieceBox>
+        {
+            new("m001000_0000", new Vector3(10, 0, 10), new Vector3(20, 10, 20), 200, false),
+            new("m001001_0000", new Vector3(30, 0, 30), new Vector3(40, 10, 40), 200, false),
+            new("m001002_0000", new Vector3(50, 0, 50), new Vector3(60, 10, 60), 200, false),
+            new("m909000_0000", new Vector3(500, 0, 500), new Vector3(600, 50, 600), 5000, true), // the neighbour's own stand-in
+        };
+        var verdicts = MapStandIns.AcrossMaps(own, new HashSet<string> { "m900065_9000", "m900070_9000" }, neighbour);
+        Expect(verdicts.Count == 2, "only kept stand-ins are judged");
+        Expect(verdicts.Single(v => v.Part == "m900065_9000").LeftOut, "three detailed neighbour pieces with 600 of 1000 vertices: left out");
+        Expect(!verdicts.Single(v => v.Part == "m900070_9000").LeftOut, "only the neighbour's own stand-in there: kept");
+        var few = MapStandIns.AcrossMaps(own, new HashSet<string> { "m900065_9000" }, neighbour.Take(2));
+        Expect(!few.Single().LeftOut, "two pieces are too few");
     }
 
     private static void StandIns()

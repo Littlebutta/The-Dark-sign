@@ -161,7 +161,8 @@ public static class MsbPort
         int connects = 0, connectsSkipped = 0;
         foreach (var src in ds3.Parts.ConnectCollisions)
         {
-            MapId? target = slots?.Where(s => s.Ds3.Area == src.MapID[0] && s.Ds3.Block == src.MapID[1]).Select(s => (MapId?)s.Er).FirstOrDefault();
+            MapId? target = slots is null ? null : ConnectTarget(src.MapID, slots.Select(s => s.Ds3)) is { } ds3To
+                ? slots.First(s => s.Ds3 == ds3To).Er : null;
             if (target is not { } to || connectTemplate is null || msb.Parts.Collisions.All(c => c.Name != src.CollisionName))
             {
                 connectsSkipped++;
@@ -214,6 +215,25 @@ public static class MsbPort
         // indices from names on write.
         return new Result(msb, msb.Parts.MapPieces.Count, msb.Parts.Collisions.Count, msb.Parts.Players.Count,
             StartEntityId(erId), notes);
+    }
+
+    /// <summary>
+    /// The DS3 map a connect collision names, among <paramref name="maps"/>. Most DS3 maps write the full number
+    /// (m30_01's [30, 0, 0, 0] for the High Wall), but Road of Sacrifices, the Cathedral and the Catacombs write only the
+    /// area, the rest 255 ([31, 255, 255, 255] for the Undead Settlement; read from Devin's DS3 files 2026-11-20): 255
+    /// means "that area's map", block 0 where the area has several. Up to the 1.0.52x build those connects found no
+    /// map, so all 37 of them were left out and those three maps never loaded their neighbours. [255, 255, 255, 255]
+    /// (two in m33) names no map.
+    /// </summary>
+    public static MapId? ConnectTarget(IReadOnlyList<byte> mapId, IEnumerable<MapId> maps)
+    {
+        if (mapId.Count < 2 || mapId[0] == 255)
+            return null;
+        var inArea = maps.Where(m => m.Area == mapId[0]).Distinct().OrderBy(m => m.Block).ToList();
+        if (mapId[1] != 255)
+            return inArea.Where(m => m.Block == mapId[1]).Select(m => (MapId?)m).FirstOrDefault();
+        return inArea.Where(m => m.Block == 0).Select(m => (MapId?)m).FirstOrDefault()
+               ?? (inArea.Count == 1 ? inArea[0] : null);
     }
 
     /// <summary>
