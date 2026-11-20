@@ -576,6 +576,37 @@ Still missing after stage 1: object effects (candle and bonfire flames, torches)
 ObjActParam, object animations), ladders, fog walls, breakable objects, treasure
 (items lying in the map), what people say and sell (see below), sound regions.
 
+### Event messages and area names
+
+2026-11-19, not yet playtested; checked offline by `map-selftest` ("map text: ...") and in a cloud thread against
+DS3's real text binders, the scripts of m30, m31, m37, m40 and m45 with common_func, and the map files of m30, m31,
+m40 and m45. Fallback `map-text` (B `DARKSIGN_MAP_TEXT=noplaces`, C `=0`). Code: `Maps/MapText.cs`, written at the
+end of the events step.
+
+- **Cause.** DS3's text numbers were carried over as they were and Elden Ring looked them up in its own text. The
+  scripts' "Message ID" (Display Generic Dialog, Display Status Message, Display Message, and the values passed to the
+  shared door and lever events) and the ObjActParam rows' `actionFailedMsgId` name DS3's event text (イベントテキスト:
+  10010160 "Locked by some contraption", 10010161 "Does not open from this side", 10010170 "Contraption does not
+  move"), which Elden Ring's EventTextForMap doesn't have. The five maps' scripts name 34 such messages; all 34 are in
+  DS3's event text files.
+- **Fix.** A DS3 text number N is 1,000,000,000 + N in Elden Ring (the rule the dialogue lines use, which shows in
+  game). All 1,374 DS3 event texts go into EventTextForMap_dlc02 and all 63 area names into PlaceName_dlc02, so every
+  step finds a text without a shared table. `<?gdsparam@N?>` (181 texts: "Used <key>") is filled with DS3's item name,
+  since Elden Ring would fill it with its own goods N; 37 name an item DS3 has no name for and keep the tag.
+- **Area names.** DS3's collisions carry the area name (MapNameID): positive on the few collisions where the banner
+  shows (m30: 3000 High Wall of Lothric x4, 3010 Lothric Castle x3, 3015 Consumed King's Garden x4), negative on the
+  rest of the area (-3000 x42), -1 for none. Elden Ring's collisions have the same field (LocationTextID), which was
+  always written -1. The sign is kept. Unproven: that Elden Ring reads a negative name the way DS3 does (the area,
+  without the banner); if a banner shows on every step, that is the cause (fallback B).
+- **Prompts.** `ActionButtons` looked for DS3's event text files under an English name, so every menu text file
+  answered in binder order, the dialogue first: 46 event text numbers are also a dialogue line's number. The event
+  text files now answer first. The log's "prompt text" line printed its counts as "{reused}"; fixed.
+- **ObjActParam.** `actionEnableMsgId` took DS3's 10010400; Elden Ring's rows show the prompt from the action button
+  row, so it is the template's again.
+- **Left out.** "Display Epitaph Message" (2003[61]) has no Elden Ring instruction. The multiplayer tags
+  (`<?hostName?>`, `<?joinName?>`) stay as DS3 wrote them. Text is English only (msg/engus), like every other text
+  the port writes.
+
 ### Bonfires as sites of grace
 
 2026-11-19, not yet playtested; checked offline by `map-selftest` ("bonfires: ...") and run in a cloud thread on the
