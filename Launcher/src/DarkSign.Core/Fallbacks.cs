@@ -462,8 +462,8 @@ public static class Fallbacks
         new("map-hit-filters", "DS3 maps", "Floor copies in DS3 collision", Stage.Build,
             "Enemies stand in mid-air or on surfaces they shouldn't since 1.0.354, or anything about the ground changed since then.",
         [
-            new("A", "Written as normal floor (default)", "DS3 lays copies of its floors in collision with hit filter 24, which Elden Ring reads differently: enemies that landed on one fell through the map (1.0.347, map 3). They are written as normal floor (hit filter 8). The port log's layout notes count them."),
-            new("B", "DS3's hit filters", "Every collision keeps DS3's hit filter number (port-maps --ds3-hit-filters), as in every build up to 1.0.353: enemies fall through the floor where a filter-24 copy is the top surface.")
+            new("A", "Written as normal floor (default)", "DS3 lays copies of its floors in collision with hit filter 24, which Elden Ring reads differently: enemies that landed on one fell through the map (1.0.347, map 3). They are written as normal floor (hit filter 8). The port log's layout notes count them. A collision with a filter Elden Ring never uses (14 in four of the newer maps) is left out, so the layout reads back."),
+            new("B", "DS3's hit filters", "Every collision keeps DS3's hit filter number (port-maps --ds3-hit-filters), as in every build up to 1.0.353: enemies fall through the floor where a filter-24 copy is the top surface. Collisions with a filter Elden Ring never uses are kept too, and the steps that read those layouts back (bonfires, map and object effects) fail.")
                 { MapsArgs = ["--ds3-hit-filters"] },
         ]),
         new("map-empty-collision", "DS3 maps", "Collision DS3 keeps on one side only", Stage.Build,

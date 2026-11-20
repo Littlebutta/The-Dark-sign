@@ -544,7 +544,16 @@ public static class Bonfires
                 lines.Add($"bonfires: {slot.Ds3} -> {slot.Er}: DS3 names no bonfire with a talker in this map");
                 continue;
             }
-            var msb = MSBE.Read(DCX.Decompress(File.ReadAllBytes(path), out var compression));
+            // One map whose layout doesn't read back must not take every other map's bonfires with it (1.0.521: one
+            // DS3 hit filter in four maps failed the whole step, and no bonfire anywhere could be rested at or lit).
+            MSBE msb;
+            DCX.CompressionInfo compression;
+            try { msb = MSBE.Read(DCX.Decompress(File.ReadAllBytes(path), out compression)); }
+            catch (Exception ex) when (ex is not OutOfMemoryException)
+            {
+                lines.Add($"bonfires: {slot.Ds3} -> {slot.Er}: WARN the ported layout doesn't read back ({ex.Message}); this map's {found.Count} bonfires are left as they are");
+                continue;
+            }
             var notes = new List<string>();
             var placed = Place(msb, slot.Ds3, slot.Er, found, mode, partNames(slot.Er), notes);
             MSBE.Read(msb.Write());
