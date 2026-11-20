@@ -407,6 +407,13 @@ Try the next option if: A DS3 map's ground or walls show the wrong texture in pa
 - **B: First layer only.** Every terrain mesh shows only its first layer (port-maps --first-blend-layer), as in every build up to 1.0.353: dark brick shards lie across the ash around Firelink Shrine and the walls show one texture, but no part of the ground changes texture at a hard edge. (`port-maps --first-blend-layer`)
 - **C: Whole triangles.** Each triangle goes whole to the layer its three corners show on average (port-maps --whole-blend-triangles), as in builds 1.0.354 to 1.0.46x: no triangle is cut, but the edge of every painted patch follows the triangles, which drew pale, jagged, flat shards on the Undead Settlement's ground. (`port-maps --whole-blend-triangles`)
 
+### Which of its two pictures a DS3 sky shows (`map-sky-layer`, rebuilds the content)
+
+Try the next option if: A DS3 map's sky shows a plain colour, a flat cloud picture, or huge grey shapes since this option.
+
+- **A: The picture that covers most of the sky (default).** Some DS3 skies cross-fade two pictures (a sky and its clouds) by a weight on each point of the dome, a blend Elden Ring has no shader for, so the port shows one picture over the whole dome: the one DS3 shows over most of it. The Painted World's sky shows its sky picture; the other maps' skies are as before. The port log's "sky domes:" line names the domes that show their second picture.
+- **B: First picture.** Every two-picture sky shows its first picture (port-maps --first-sky-layer), as in every build up to 1.0.50x: the Painted World's sky is its cloud picture, whose shapes stand over the map as huge grey blurs. (`port-maps --first-sky-layer`)
+
 ### Colours of light and fog in the DS3 maps (`map-atmosphere`, rebuilds the content)
 
 Try the next option if: A DS3 map looks washed out, too foggy, too clear, or wrongly coloured since the maps took DS3's colours.

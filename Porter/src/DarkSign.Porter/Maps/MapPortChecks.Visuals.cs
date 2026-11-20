@@ -346,6 +346,35 @@ public static partial class MapPortChecks
         MapTerrainBlends.Apply(sky, skyStats);
         Expect(skyStats.Meshes == 3 && sky.Meshes.Count(m => m.MaterialIndex == 2) == 1 && Triangles(sky.Meshes.Single(m => m.MaterialIndex == 2)) == 2,
             $"the sky dome stays one mesh on its first layer ({skyStats.Summary})");
+        var firstSky = new MapTerrainBlends.SkyStats();
+        MapTerrainBlends.ApplySky(sky, firstSky);
+        Expect(firstSky.Meshes == 1 && firstSky.SecondLayer == 0 && sky.Meshes.Count(m => m.MaterialIndex == 2) == 1,
+            $"a dome whose second layer covers half of it or less keeps its first, as m31/m40 ({firstSky.Summary})");
+        Expect(MapTerrainBlends.IsSkyBlend(@"N:\FDP\data\Material\mtd\map\MultiBlend\M[A]_2m_NoLight_scroll.mtd")
+               && !MapTerrainBlends.IsSkyBlend("M[ARSN]_2m_l") && !MapTerrainBlends.IsSkyBlend("M[A]_NoLight"), "only two-layer unlit domes are sky blends");
+
+        // The Painted World's dome (m45 m090000): clouds first (kumo_30), sky second (sky_01), c0 over half on most of it.
+        var painted = BlendFlver();
+        painted.Materials[2].MTD = @"N:\FDP\data\Material\mtd\map\MultiBlend\M[A]_2m_NoLight_scroll.mtd";
+        foreach (var v in painted.Meshes[3].Vertices.Take(3))
+            v.UVs[2] = new Vector3(0.64f, 0, 0);
+        var paintedStats = new MapTerrainBlends.SkyStats();
+        MapTerrainBlends.ApplySky(painted, paintedStats);
+        var domeMaterial = painted.Materials[painted.Meshes[3].MaterialIndex];
+        Expect(paintedStats.SecondLayer == 1 && MapTerrainBlends.LayerOf(domeMaterial) == 1
+               && MapModelPort.Ds3Texture(domeMaterial, "albedo")?.Path.Contains("m40_00_wall_013") == true
+               && painted.Meshes[3].FaceSets[0].Indices.Count == 6,
+            $"a dome mostly covered by its second layer shows that layer, whole ({paintedStats.Summary})");
+        Expect(MapPorter.Options.Parse(["--first-sky-layer"]).FirstSkyLayer && !new MapPorter.Options().FirstSkyLayer, "--first-sky-layer is read");
+        var (skyPort, skyBnd) = VisualPort();
+        skyPort.SkyLayers = false;
+        painted = BlendFlver();
+        painted.Materials[2].MTD = @"N:\FDP\data\Material\mtd\map\MultiBlend\M[A]_2m_NoLight_scroll.mtd";
+        foreach (var v in painted.Meshes[3].Vertices)
+            v.UVs[2] = new Vector3(0.9f, 0, 0);
+        ConvertOne(skyPort, skyBnd, FLVER2.Read(painted.Write()));
+        Expect(skyPort.Materials.Any(m => m.Albedo == "m40_00_wall_011_a") && skyPort.Materials.All(m => m.Albedo != "m40_00_wall_013_a"),
+            $"--first-sky-layer shows the first layer: {string.Join(", ", skyPort.Materials.Select(m => m.Albedo))}");
 
         // Fallback map-blend-layers B: the first layer everywhere, as up to 1.0.353.
         Expect(MapPorter.Options.Parse(["--first-blend-layer"]).FirstBlendLayer && !new MapPorter.Options().FirstBlendLayer, "--first-blend-layer is read");

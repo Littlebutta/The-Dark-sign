@@ -273,7 +273,11 @@ alpha. Fallback `map-blend-layers` C (`--whole-blend-triangles`) brings whole tr
 The port log's `terrain blends:` line counts triangles per layer; fallback `map-blend-layers` B
 (`--first-blend-layer`) shows the first layer everywhere again. Unlit or scrolling "2m" materials are not ground:
 DS3's sky domes (`m009000` of m31 and m40, `M[A]_2m_NoLight_scroll`) cross-fade two cloud layers with the same bytes,
-and splitting one drew blue sky shards over map 3 in 1.0.366, so they stay whole on their first layer.
+and splitting one drew blue sky shards over map 3 in 1.0.366, so they stay whole. `MapTerrainBlends.ApplySky` gives
+each dome mesh the layer that covers most of its vertices (layer 2 where c0 >= 0.5 on more than half): m31 and m40
+keep their first layer, the Painted World's `m090000` (clouds `kumo_30` first, sky `sky_01` second, c0 0.64 on
+average) shows its sky; up to 1.0.50x its cloud picture stood over the map as huge grey shapes. Port log line
+`sky domes:`; fallback `map-sky-layer` B (`--first-sky-layer`) shows the first layer again.
 
 **Atmosphere.** A slot used to keep its colosseum's gparam: Caelid's red volumetric fog lit at 1.6 on map 2,
 Leyndell's golden colour grading (LUT 101) and fog out to 2 km on map 1. `MapAtmosphere` writes the slot's

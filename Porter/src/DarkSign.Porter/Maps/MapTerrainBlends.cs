@@ -139,6 +139,71 @@ public static class MapTerrainBlends
         }
     }
 
+    /// <summary>Whether a DS3 material type is a two-layer sky dome ("M[A]_2m_NoLight_scroll"), not ground.</summary>
+    public static bool IsSkyBlend(string mtd)
+    {
+        var name = Path.GetFileNameWithoutExtension(ItemText.Leaf(mtd ?? ""));
+        return BlendMtd.Match(name) is { Success: true } m && m.Groups[1].Value == "2" && NotGround.IsMatch(name);
+    }
+
+    /// <summary>What <see cref="ApplySky"/> did, for the port log.</summary>
+    public sealed class SkyStats
+    {
+        public int Meshes, SecondLayer;
+        public readonly List<string> Shown = [];
+
+        public void Add(SkyStats other)
+        {
+            Interlocked.Add(ref Meshes, other.Meshes);
+            Interlocked.Add(ref SecondLayer, other.SecondLayer);
+            lock (Shown)
+                Shown.AddRange(other.Shown);
+        }
+
+        public string Summary =>
+            $"sky domes: {Meshes} two-layer meshes, {SecondLayer} show their second layer"
+            + (Shown.Count > 0 ? " (" + string.Join(", ", Shown.Distinct().Take(12)) + ")" : "");
+    }
+
+    /// <summary>
+    /// A DS3 sky dome ("M[A]_2m_NoLight_scroll") cross-fades two textures by the same per-vertex weight c0 a terrain
+    /// blend uses (layer 2 covers layer 1 where c0 is at least half), and its sky shader scrolls them. Elden Ring has
+    /// no such shader in use, and splitting the dome by weight drew it as shards (1.0.366, see <see cref="NotGround"/>),
+    /// so the whole mesh shows one texture. Up to 1.0.50x that was always the first. That suits m31 (sky_a under
+    /// cloud_04, c0 under half on most of it) and m40 (sky_53 under sky_54), but the Painted World's dome (m45
+    /// m090000) has its clouds first (kumo_30) and its sky second (sky_01, c0 0.64 on average): drawn unlit over the
+    /// whole sky, the cloud picture's shapes stood above the map as huge grey blurs (Devin, 2026-11-19, "a large cloud
+    /// looking building hovering above the map"). So each dome mesh now shows the layer that covers most of its
+    /// vertices: the second where c0 is at least half on more than half of them.
+    /// </summary>
+    public static void ApplySky(FLVER2 flver, SkyStats stats)
+    {
+        var layerMaterials = new Dictionary<int, int>();
+        foreach (var mesh in flver.Meshes)
+        {
+            if (mesh.MaterialIndex < 0 || mesh.MaterialIndex >= flver.Materials.Count || mesh.Vertices.Count == 0)
+                continue;
+            var material = flver.Materials[mesh.MaterialIndex];
+            if (!IsSkyBlend(material.MTD))
+                continue;
+            stats.Meshes++;
+            int entry = WeightEntry(flver, mesh);
+            if (entry < 0 || mesh.Vertices.Any(v => v.UVs.Count < entry + 1) || Slot(material, "AlbedoMap", 1) is null)
+                continue;
+            int covered = mesh.Vertices.Count(v => Weight(v, entry, 0) >= LayerFrom);
+            if (covered * 2 <= mesh.Vertices.Count)
+                continue;
+            if (!layerMaterials.TryGetValue(mesh.MaterialIndex, out int index))
+            {
+                flver.Materials.Add(Layer(material, 1));
+                layerMaterials[mesh.MaterialIndex] = index = flver.Materials.Count - 1;
+            }
+            mesh.MaterialIndex = index;
+            stats.SecondLayer++;
+            stats.Shown.Add(Path.GetFileNameWithoutExtension(ItemText.Leaf(Slot(material, "AlbedoMap", 1)!.Path)));
+        }
+    }
+
     /// <summary>
     /// The index of the vertex UV entry that holds c0 and c1 (c2 is the entry after it): the first UV member of four
     /// normalized bytes in the mesh's DS3 vertex layouts, counted in UV entries as SoulsFormats reads them. -1 if none.
