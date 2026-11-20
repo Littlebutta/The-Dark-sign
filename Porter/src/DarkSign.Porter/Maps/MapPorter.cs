@@ -1320,7 +1320,7 @@ public static class MapPorter
         foreach (var note in models.Notes.Skip(notesSoFar).Distinct().Take(5))
             report.AppendLine($"  note: {note}");
         if (!options.HostLighting)
-            report.AppendLine($"  sunlight: {models.Materials.Count(m => m.Template.Kind is "nolight" or "nolight-blend")} unlit materials (sky domes and the layers around them) cast no shadow");
+            report.AppendLine($"  sunlight: {models.Materials.Count(m => m.Template.Kind is "nolight" or "nolight-blend" or "nolight-edge")} unlit materials (sky domes and the layers around them) cast no shadow");
         if (test != PieceTest.VanillaModel && copied == 0)
         {
             report.AppendLine($"  load: {models.LoadSummary}");
