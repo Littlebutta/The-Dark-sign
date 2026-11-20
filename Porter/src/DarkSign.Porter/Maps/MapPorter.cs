@@ -1320,7 +1320,7 @@ public static class MapPorter
         foreach (var note in models.Notes.Skip(notesSoFar).Distinct().Take(5))
             report.AppendLine($"  note: {note}");
         if (!options.HostLighting)
-            report.AppendLine($"  sunlight: {models.Materials.Count(m => m.Template.Kind == "nolight")} unlit materials (sky domes) cast no shadow");
+            report.AppendLine($"  sunlight: {models.Materials.Count(m => m.Template.Kind is "nolight" or "nolight-blend")} unlit materials (sky domes and the layers around them) cast no shadow");
         if (test != PieceTest.VanillaModel && copied == 0)
         {
             report.AppendLine($"  load: {models.LoadSummary}");
@@ -1331,6 +1331,8 @@ public static class MapPorter
             report.AppendLine("  " + (options.SolidOverlays ? "vertex alpha: every vertex solid, two-layer materials show their first layer (--solid-overlays)" : models.Overlays.Summary));
             report.AppendLine("  " + (options.FirstBlendLayer ? "terrain blends: every mesh shows its first layer (--first-blend-layer)" : models.Blends.Summary));
             report.AppendLine("  " + (options.FirstSkyLayer ? "sky domes: every mesh shows its first layer (--first-sky-layer)" : models.Skies.Summary));
+            report.AppendLine("  " + (MapModelPort.UnlitBlendEnabled ? models.UnlitBlends.Summary
+                : "see-through sky layers: left out (DARKSIGN_SKY_CLOUDS=0)"));
             report.AppendLine("  " + (options.RawHalfNormals ? "half-float normals: kept as SoulsFormats reads them (--raw-half-normals)" : models.HalfNormalStats.Summary));
         }
         if (copied > 0)

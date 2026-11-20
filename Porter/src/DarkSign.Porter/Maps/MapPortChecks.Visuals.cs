@@ -358,6 +358,7 @@ public static partial class MapPortChecks
         painted.Materials[2].MTD = @"N:\FDP\data\Material\mtd\map\MultiBlend\M[A]_2m_NoLight_scroll.mtd";
         foreach (var v in painted.Meshes[3].Vertices.Take(3))
             v.UVs[2] = new Vector3(0.64f, 0, 0);
+        var secondUv = painted.Meshes[3].Vertices.Select(v => v.UVs[1]).ToList();
         var paintedStats = new MapTerrainBlends.SkyStats();
         MapTerrainBlends.ApplySky(painted, paintedStats);
         var domeMaterial = painted.Materials[painted.Meshes[3].MaterialIndex];
@@ -365,6 +366,9 @@ public static partial class MapPortChecks
                && MapModelPort.Ds3Texture(domeMaterial, "albedo")?.Path.Contains("m40_00_wall_013") == true
                && painted.Meshes[3].FaceSets[0].Indices.Count == 6,
             $"a dome mostly covered by its second layer shows that layer, whole ({paintedStats.Summary})");
+        // ... on its own texture coordinates (DS3's UV 2: the Painted World's panorama), not the cloud tile's (1.0.52x).
+        Expect(paintedStats.OwnUv == 1 && painted.Meshes[3].Vertices.Select(v => v.UVs[0]).SequenceEqual(secondUv),
+            $"the second layer is drawn on DS3's UV 2 ({paintedStats.Summary})");
         Expect(MapPorter.Options.Parse(["--first-sky-layer"]).FirstSkyLayer && !new MapPorter.Options().FirstSkyLayer, "--first-sky-layer is read");
         var (skyPort, skyBnd) = VisualPort();
         skyPort.SkyLayers = false;
@@ -838,7 +842,7 @@ public static partial class MapPortChecks
     private static void MeshLayoutAndBox()
     {
         var (port, hostBnd) = VisualPort();
-        Expect(port.TemplateSummary == "opaque=m10_00_004, edge=m10_00_207, alpha=m10_00_218, nolight=m10_00_003"
+        Expect(port.TemplateSummary == "opaque=m10_00_004, edge=m10_00_207, alpha=m10_00_218, nolight=m10_00_003, nolight-blend=m10_00_003"
                || MapModelPort.Kinds.All(k => port.TemplateSummary.Contains(k + "=")), $"templates {port.TemplateSummary}");
         Expect(port.TemplateSummary.Contains("opaque=m10_00_004"), $"the normal-mapped shader wins over albedo-only and overlay ones: {port.TemplateSummary}");
         Expect(port.Complete(false), "every kind found");
@@ -893,7 +897,7 @@ public static partial class MapPortChecks
                  {
                      ("M[ARSN]", "opaque"), ("M[ARSN]_l", "opaque"), ("M[ARSN]_4m_et1_l", "opaque"), ("M[ARSN]_e", "edge"), ("M[ARSN]_l_e", "edge"),
                      ("M[ARSN]_e_grass", "edge"), ("M[ARSN]_Alp", "edge"), ("M[A]_NoLight", "nolight"), ("M[A]_2m_NoLight_scroll", "nolight"),
-                     ("M[A]_al_NoLight", "none"), ("M[A]_al_m_NoLight_Opacity", "none"), ("M[ARSN]_al", "alpha"), ("M[A]_Add_NoLight", "none"),
+                     ("M[A]_al_NoLight", "nolight-blend"), ("M[A]_al_m_NoLight_Opacity", "none"), ("M[A]_add", "none"), ("M[ARSN]_al", "alpha"), ("M[A]_Add_NoLight", "none"),
                      ("M[ARSN]_Decal", "none"), ("M[Shadow]", "none"), ("M[ARSN]_Water_3normaltet", "water"), ("M[ARSN]_Water_DL", "water"), ("M[A]_Waterfall_add", "none"), ("M[Fog]", "none"),
                  })
             Expect(Kind(mtd) == kind, $"{mtd} is {Kind(mtd)}, expected {kind}");
@@ -908,6 +912,33 @@ public static partial class MapPortChecks
         var kept = ConvertOne(port, hostBnd, both);
         Expect(kept.Meshes.Count == 1 && kept.Meshes[0].MaterialIndex == 0, "the additive mesh is left out, the wall stays");
         Expect(port.LeftOut.TryGetValue("M[A]_Add_NoLight", out var n) && n == 1, "left-out meshes are counted by DS3 material");
+
+        // DS3's see-through unlit layers (M[A]_al_NoLight: High Wall's sky_02 rings, Firelink's horizon cloud band and
+        // far mountain ring) are drawn unlit and blended with DS3's fade; a triangle under half everywhere is left out.
+        var (cloudPort, cloudBnd) = VisualPort();
+        var cloud = SyntheticFlver(0x20014, @"N:\FDP\data\Material\mtd\map\M[A]_al_NoLight.mtd", ("g_DiffuseTexture", @"N:\x\m30_00_sky_02_a.tif"));
+        cloud.BufferLayouts[0].Insert(1, new FLVER.LayoutMember(FLVER.LayoutType.UByte4Norm, FLVER.LayoutSemantic.VertexColor));
+        float[] fades = [0.8f, 0.3f, 0.3f];
+        for (int i = 0; i < 3; i++)
+            cloud.Meshes[0].Vertices[i].Colors.Add(new FLVER.VertexColor(fades[i], 1f, 0f, 1f));
+        var gone = FLVER2.Read(cloud.Write()).Meshes[0];
+        foreach (var v in gone.Vertices)
+            v.Colors[0] = new FLVER.VertexColor(0.2f, 1f, 0f, 1f);
+        cloud.Meshes.Add(gone);
+        var drawn = ConvertOne(cloudPort, cloudBnd, FLVER2.Read(cloud.Write()));
+        Expect(drawn.Meshes.Count == 1 && drawn.Meshes[0].Vertices.Select(v => MathF.Round(v.Colors.Single().A, 1)).SequenceEqual([0.8f, 0.3f, 0.3f]),
+            $"the layer keeps DS3's fade, the wholly faded triangle is left out: {string.Join("; ", drawn.Meshes.Select(m => string.Join(",", m.Vertices.Select(v => v.Colors.FirstOrDefault().A))))}");
+        Expect(cloudPort.Materials.Single().Template.Kind == "nolight-blend" && cloudPort.Materials.Single().Albedo == "m30_00_sky_02_a",
+            $"drawn on the unlit template, blended: {string.Join(", ", cloudPort.Materials.Select(m => m.Template.Kind + " " + m.Albedo))}");
+        Expect(cloudPort.UnlitBlends is { Meshes: 2, Triangles: 2, TrianglesCut: 1, Empty: 1 }, $"counted: {cloudPort.UnlitBlends.Summary}");
+        Expect(cloudPort.LeftOut.Count == 0, $"nothing left out: {string.Join(", ", cloudPort.LeftOut.Keys)}");
+        var blendBin = new MATBIN();
+        blendBin.Params.Add(new MATBIN.Param { Name = "g_BlendMode", Type = MATBIN.ParamType.Int, Value = 0 });
+        blendBin.Params.Add(new MATBIN.Param { Name = "g_GX_bDisableDepthWrite", Type = MATBIN.ParamType.Bool, Value = false });
+        blendBin.Params.Add(new MATBIN.Param { Name = "g_AlphaRef", Type = MATBIN.ParamType.Int2, Value = new[] { 0, 0 } });
+        Expect(MapModelPort.SetUnlitBlend(blendBin).Count == 0 && MATBIN.Read(blendBin.Write()) is var reread
+               && (int)reread.Params[0].Value == 2 && (bool)reread.Params[1].Value && ((int[])reread.Params[2].Value).SequenceEqual([1, 0]),
+            "the unlit template's copy blends as vanilla m15_00_865 (g_BlendMode 2, no depth write, alpha cut 1)");
         var only = SyntheticFlver(0x20014, @"N:\FDP\data\Material\mtd\map\M[ARSN]_Decal.mtd", ("g_DiffuseTexture", @"N:\x\m40_00_dirt_a.tif"));
         try
         {

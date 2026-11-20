@@ -146,22 +146,29 @@ public static class MapTerrainBlends
         return BlendMtd.Match(name) is { Success: true } m && m.Groups[1].Value == "2" && NotGround.IsMatch(name);
     }
 
+    /// <summary>
+    /// True (the default): a dome mesh that shows its second picture draws it on that picture's own texture coordinates
+    /// (DS3's UV 2). False (fallback "map-sky-layer" C, DARKSIGN_SKY_LAYER_UV=first): on the first picture's, as 1.0.52x.
+    /// </summary>
+    public static bool SecondLayerOwnUv => Environment.GetEnvironmentVariable("DARKSIGN_SKY_LAYER_UV") != "first";
+
     /// <summary>What <see cref="ApplySky"/> did, for the port log.</summary>
     public sealed class SkyStats
     {
-        public int Meshes, SecondLayer;
+        public int Meshes, SecondLayer, OwnUv;
         public readonly List<string> Shown = [];
 
         public void Add(SkyStats other)
         {
             Interlocked.Add(ref Meshes, other.Meshes);
             Interlocked.Add(ref SecondLayer, other.SecondLayer);
+            Interlocked.Add(ref OwnUv, other.OwnUv);
             lock (Shown)
                 Shown.AddRange(other.Shown);
         }
 
         public string Summary =>
-            $"sky domes: {Meshes} two-layer meshes, {SecondLayer} show their second layer"
+            $"sky domes: {Meshes} two-layer meshes, {SecondLayer} show their second layer ({OwnUv} on its own texture coordinates, DS3's UV 2)"
             + (Shown.Count > 0 ? " (" + string.Join(", ", Shown.Distinct().Take(12)) + ")" : "");
     }
 
@@ -175,6 +182,15 @@ public static class MapTerrainBlends
     /// whole sky, the cloud picture's shapes stood above the map as huge grey blurs (Devin, 2026-11-19, "a large cloud
     /// looking building hovering above the map"). So each dome mesh now shows the layer that covers most of its
     /// vertices: the second where c0 is at least half on more than half of them.
+    /// <para>
+    /// The second picture has texture coordinates of its own: DS3's UV 2 (the second UV entry; c0 sits in the entry
+    /// after it). The Painted World's dome (m090000, measured 2026-11-20): UV 1 is the cloud picture's scrolling tile
+    /// (its v stays 0.50 from the bottom of the dome to the top), UV 2 runs the panorama sky_01 (4096 x 1024: the
+    /// mountains at the bottom, the starry dark at the top) from v 1.00 at the horizon to 0.18 at 2.8 km up. 1.0.52x
+    /// drew sky_01 on UV 1, so the whole dome showed one smeared middle row of it: the streaky cyan sky under a
+    /// starry cap in Devin's 2026-11-20 screenshot. <see cref="SecondLayerOwnUv"/> false (fallback "map-sky-layer" C,
+    /// DARKSIGN_SKY_LAYER_UV=first) draws it on UV 1 again.
+    /// </para>
     /// </summary>
     public static void ApplySky(FLVER2 flver, SkyStats stats)
     {
@@ -199,6 +215,13 @@ public static class MapTerrainBlends
                 layerMaterials[mesh.MaterialIndex] = index = flver.Materials.Count - 1;
             }
             mesh.MaterialIndex = index;
+            // The second picture's own texture coordinates (DS3's UV 2) take the first's place.
+            if (SecondLayerOwnUv && entry >= 2)
+            {
+                foreach (var v in mesh.Vertices)
+                    v.UVs[0] = v.UVs[1];
+                stats.OwnUv++;
+            }
             stats.SecondLayer++;
             stats.Shown.Add(Path.GetFileNameWithoutExtension(ItemText.Leaf(Slot(material, "AlbedoMap", 1)!.Path)));
         }

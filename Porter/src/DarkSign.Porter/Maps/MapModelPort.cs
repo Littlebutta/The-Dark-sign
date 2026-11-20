@@ -28,7 +28,7 @@ public sealed class MapModelPort
         FLVER2.BufferLayout Layout, int Rank = 0);
 
     /// <summary>The kinds of template, in the order their GX lists and layouts are written.</summary>
-    public static readonly string[] Kinds = ["opaque", "edge", "alpha", "nolight", "water"];
+    public static readonly string[] Kinds = ["opaque", "edge", "alpha", "nolight", "water", "nolight-blend"];
 
     /// <summary>The kinds the template search looks for in the template maps (water comes from <see cref="WaterBinders"/>).</summary>
     public static readonly string[] SearchedKinds = ["opaque", "edge", "alpha", "nolight"];
@@ -49,6 +49,34 @@ public sealed class MapModelPort
     /// vanilla m35_00_400 and m12_00_932 MATBINs 2026-11-20). Up to the 1.0.52x build the porter looked for
     /// "M_MuddyWater", found no water template, and left every DS3 water surface out (the swamp in Farron Keep).
     private static readonly Regex WaterShader = new(@"^M(?:_|\[)(MuddyWater|Water_Cheap)\]?$", RegexOptions.IgnoreCase);
+
+    /// <summary>
+    /// Fallback "map-sky-clouds" B: DARKSIGN_SKY_CLOUDS=0 leaves DS3's see-through unlit layers (M[A]_al_NoLight: cloud
+    /// bands, haze and far mountain rings around the sky) out again, as every build up to 1.0.52x.
+    /// </summary>
+    public static bool UnlitBlendEnabled => Environment.GetEnvironmentVariable("DARKSIGN_SKY_CLOUDS") != "0";
+
+    /// <summary>
+    /// What a see-through unlit material ("nolight-blend") sets in its copy of the unlit template's MATBIN: blended
+    /// (g_BlendMode 2), no depth write and alpha 1/255 cut, as vanilla Elden Ring's own blended unlit map material
+    /// m15_00_865 (shader M[A]_NoLight, the same as the unlit template m10_00_003; read from allmaterial 2026-11-20).
+    /// </summary>
+    public static readonly (string Name, object Value)[] UnlitBlendParams =
+        [("g_BlendMode", 2), ("g_GX_bDisableDepthWrite", true), ("g_AlphaRef", new[] { 1, 0 })];
+
+    /// <summary>Sets <see cref="UnlitBlendParams"/> in a MATBIN; returns the names it doesn't have.</summary>
+    public static List<string> SetUnlitBlend(MATBIN matbin)
+    {
+        var missing = new List<string>();
+        foreach (var (param, value) in UnlitBlendParams)
+        {
+            if (matbin.Params.FirstOrDefault(p => p.Name == param) is { } found)
+                found.Value = value;
+            else
+                missing.Add(param);
+        }
+        return missing;
+    }
 
     /// <summary>Fallback "map-water" B: DARKSIGN_MAP_WATER=0 leaves DS3's water out again (builds up to 1.0.42x).</summary>
     public static bool WaterEnabled => Environment.GetEnvironmentVariable("DARKSIGN_MAP_WATER") != "0";
@@ -194,6 +222,9 @@ public sealed class MapModelPort
     /// <summary>What <see cref="MapTerrainBlends.ApplySky"/> did to this port's models, for the port log.</summary>
     public MapTerrainBlends.SkyStats Skies { get; } = new();
 
+    /// <summary>What <see cref="MapUnlitBlends"/> did to this port's models, for the port log.</summary>
+    public MapUnlitBlends.Stats UnlitBlends { get; } = new();
+
     /// <summary>What <see cref="MapOverlays"/> did to this port's models, for the port log.</summary>
     public MapOverlays.Stats Overlays { get; } = new();
 
@@ -279,6 +310,9 @@ public sealed class MapModelPort
             }
         if (!templates.ContainsKey("opaque"))
             throw new InvalidDataException("no plain one-layer material among these models to use as a template");
+        // DS3's see-through unlit layers take the unlit template with Elden Ring's blend switches (UnlitBlendParams).
+        if (templates.TryGetValue("nolight", out var unlit))
+            templates["nolight-blend"] = unlit with { Kind = "nolight-blend" };
         return new MapModelPort(templates, headerFlver ?? flvers[0]);
     }
 
@@ -350,8 +384,12 @@ public sealed class MapModelPort
     /// <summary>
     /// The kind of Elden Ring material a DS3 material maps to, from its MTD name: "opaque", "edge" (alpha tested:
     /// _e, _Alp, Edge), "alpha" (blended: _al), "nolight" (unlit: sky domes), or "none" for what an opaque surface
-    /// can't stand in for (additive glows, decals, fog cards, shadow-only casters, water, multiply layers, unlit
-    /// blended cloud layers). "none" meshes are left out of the model until those materials are ported.
+    /// can't stand in for (additive glows, decals, fog cards, shadow-only casters, water, multiply layers), or
+    /// "nolight-blend" for an unlit see-through layer (M[A]_al_NoLight: the cloud bands, haze and far mountain rings
+    /// around DS3's skies, see <see cref="MapUnlitBlends"/>). "none" meshes are left out of the model until those
+    /// materials are ported. Unlit layers whose shape comes from opacity masks (M[A]_al_m_NoLight_Opacity: a cloud
+    /// card's albedo is a solid square, two scrolling mask textures cut the cloud out of it) stay "none": Elden Ring's
+    /// unlit map shader reads one albedo texture, so they would stand in the sky as solid squares.
     /// </summary>
     public static string Ds3Kind(FLVER2.Material material)
     {
@@ -364,7 +402,9 @@ public sealed class MapModelPort
         if (Regex.IsMatch(mtd, @"_add|decal|fog|shadow|_mul|water|sfx|ghost", RegexOptions.IgnoreCase))
             return "none";
         if (Regex.IsMatch(mtd, @"_al(?![a-z])", RegexOptions.IgnoreCase))
-            return noLight ? "none" : "alpha";
+            return !noLight ? "alpha"
+                : UnlitBlendEnabled && !mtd.Contains("Opacity", StringComparison.OrdinalIgnoreCase) ? "nolight-blend"
+                : "none";
         if (noLight)
             return "nolight";
         if (Regex.IsMatch(mtd, @"_e(?![a-z])|_alp|edge", RegexOptions.IgnoreCase))
@@ -411,7 +451,7 @@ public sealed class MapModelPort
     private MaterialTemplate? TemplateFor(string kind) =>
         kind == "none" ? null
         : _templates.TryGetValue(kind, out var t) ? t
-        : kind is "alpha" or "water" ? null
+        : kind is "alpha" or "water" or "nolight-blend" ? null
         : _templates["opaque"];
 
     /// <summary>
@@ -927,6 +967,13 @@ public sealed class MapModelPort
             MapTerrainBlends.ApplySky(flver, stats);
             Skies.Add(stats);
         }
+        // DS3's see-through unlit layers around the sky keep their fade (MapUnlitBlends), while DS3's colours are here.
+        if (UnlitBlendEnabled)
+        {
+            var stats = new MapUnlitBlends.Stats();
+            keepAlpha.UnionWith(MapUnlitBlends.Apply(flver, stats));
+            UnlitBlends.Add(stats);
+        }
         if (TintMaterials)
             // A material shared by a faded overlay and a solid mesh: the overlay gets its own copy, so it can be told apart.
             foreach (var mesh in keepAlpha)
@@ -1245,7 +1292,10 @@ public sealed class MapModelPort
                 if (Role(sampler.Type) is ("albedo" or "normal", 0) && material.Scale != default && material.Scale != Vector2.One)
                     sampler.Unk14 = material.Scale;
             }
-            if (material.Template.Kind == "nolight" && !UnlitCastShadows)
+            if (material.Template.Kind == "nolight-blend")
+                foreach (var param in SetUnlitBlend(matbin))
+                    Notes.Add($"{material.Template.Matbin} has no {param}: {material.Name} (a see-through unlit sky layer) may draw solid");
+            if (material.Template.Kind is "nolight" or "nolight-blend" && !UnlitCastShadows)
             {
                 if (matbin.Params.FirstOrDefault(p => p.Name == NoShadowParam && p.Value is bool) is { } noShadow)
                     noShadow.Value = true;
