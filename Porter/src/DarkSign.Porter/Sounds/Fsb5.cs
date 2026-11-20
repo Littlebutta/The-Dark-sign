@@ -5,7 +5,9 @@ namespace DarkSign.Porter;
 /// <summary>
 /// Reads FMOD sound banks (FSB5, DS3's .fsb) and decodes their Vorbis samples to 16-bit PCM. FMOD stores each sample
 /// as bare Vorbis packets (u16 size + bytes) and drops the three Vorbis headers, keeping only a CRC32 of the setup
-/// header. The setup headers come from Sounds/fsb5-vorbis-setups.bin (made by Porter/tools/gen_fsb5_vorbis_setups.py);
+/// header. The setup headers come from Sounds/fsb5-vorbis-setups.bin (made by Porter/tools/gen_fsb5_vorbis_setups.py, plus
+/// the FMOD setups vgmstream ships, added by merge_vgmstream_fsb_setups.py: FMOD encodes with 256/2048 blocks, and DS3's
+/// 8-24 kHz samples, boss voices among them, use setups libvorbisenc cannot rebuild; credits in CREDITS.md);
 /// the identification and comment headers are rebuilt, everything is wrapped in an Ogg stream and decoded by NVorbis.
 /// </summary>
 public sealed class Fsb5

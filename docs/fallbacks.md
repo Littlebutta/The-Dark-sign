@@ -687,6 +687,7 @@ Try the next option if: A ported DS3 enemy crashes the game when it spawns or at
 - **B: DS3's effects and abilities, the template's sounds.** As A, but ported enemies keep the sounds of the Elden Ring enemy they are built on (DARKSIGN_ENEMY_SOUNDS=0). Use when ported enemies are silent, make wrong sounds, or the game crashes or hangs loading one with A. (`DARKSIGN_ENEMY_SOUNDS=0`)
 - **C: The Elden Ring template's effects and sounds.** Ported enemies keep the effects, sounds and abilities of the Elden Ring enemy they are built on (DARKSIGN_ENEMY_EFFECTS=0), as in every build up to 1.0.299. (`DARKSIGN_ENEMY_EFFECTS=0`)
 - **D: DS3's effects, plus the template's own.** As A, but a ported enemy also keeps the effects only its Elden Ring template has (DARKSIGN_ENEMY_TEMPLATE_FX=keep), as in builds before this option, when enemies built on the Giant Beast Skeleton came back to life unless hit again. Work\reports\enemy-template-effects.tsv lists what A takes off. (`DARKSIGN_ENEMY_TEMPLATE_FX=keep`)
+- **E: No floor-impact sounds from DS3 moves.** As A, but DS3's floor-material sound events (steps, landings and body slams of Corrupted Gundyr, Oceiros, the Curse-rotted Greatwood, Yhorm, Gravetender's Greatwolf, the Judicator and others) stay as DS3 had them and play nothing (DARKSIGN_FLOOR_SOUNDS=0), as up to this option. Use when a ported enemy's steps or slams sound wrong, too loud, or the game crashes when one moves with A. (`DARKSIGN_FLOOR_SOUNDS=0`)
 
 ### Ported DS3 enemies' AI and attacks (`enemy-ai`, rebuilds the content)
 

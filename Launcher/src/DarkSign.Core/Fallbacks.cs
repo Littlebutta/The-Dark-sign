@@ -857,6 +857,8 @@ public static class Fallbacks
                 { PorterEnv = Env("DARKSIGN_ENEMY_EFFECTS", "0") },
             new("D", "DS3's effects, plus the template's own", "As A, but a ported enemy also keeps the effects only its Elden Ring template has (DARKSIGN_ENEMY_TEMPLATE_FX=keep), as in builds before this option, when enemies built on the Giant Beast Skeleton came back to life unless hit again. Work\\reports\\enemy-template-effects.tsv lists what A takes off.")
                 { PorterEnv = Env("DARKSIGN_ENEMY_TEMPLATE_FX", "keep") },
+            new("E", "No floor-impact sounds from DS3 moves", "As A, but DS3's floor-material sound events (steps, landings and body slams of Corrupted Gundyr, Oceiros, the Curse-rotted Greatwood, Yhorm, Gravetender's Greatwolf, the Judicator and others) stay as DS3 had them and play nothing (DARKSIGN_FLOOR_SOUNDS=0), as up to this option. Use when a ported enemy's steps or slams sound wrong, too loud, or the game crashes when one moves with A.")
+                { PorterEnv = Env("DARKSIGN_FLOOR_SOUNDS", "0") },
         ]),
         new("enemy-ai", "DS3 maps", "Ported DS3 enemies' AI and attacks", Stage.Build,
             "Ported DS3 enemies stand still, never attack, repeat one move, use Elden Ring attacks, never do what DS3's map makes them do (the High Wall's Hollow Soldiers bursting into the Pus of Man), or the game crashes or hangs when a ported enemy notices you.",

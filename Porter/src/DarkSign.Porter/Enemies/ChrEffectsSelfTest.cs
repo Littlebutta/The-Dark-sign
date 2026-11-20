@@ -205,6 +205,9 @@ public static class ChrEffectsSelfTest
             new Dictionary<int, TAE.EventGroup> { [67] = new TAE.EventGroup(67), [2] = new TAE.EventGroup(2) });
         Check($"TAE merge with effects: the template's effect is replaced by DS3's, DS3's SpEffect and projectile are added with groups from other Elden Ring files ({string.Join(",", merged.Select(e => e.Type))})",
             merged.Select(e => e.Type).SequenceEqual([96, 67, 2, 0]) && BitConverter.ToInt32(merged[0].GetParameterBytes(false), 0) == 800_000_500 && merged.All(e => e.Group is not null));
+        var floor = new TAE.Event(0, 1, 131, 0, Ints(8, 511001001, 0, 0), false);
+        Check("enemy sounds: a DS3 floor-material sound event (kind 8, Corrupted Gundyr's steps) is ported as the c-sound of its ID, not left with DS3's kind",
+            fx.PortedSound(floor) == (1, 511001001) && fx.PortedSound(ds3Events[5]) == (1, 128000100) && ChrEffects.IsOwnSoundKind(ChrEffects.FloorSoundKind));
         var sound = fx.SoundEvent(1, 900_128_000);
         Check("enemy sounds: a ported sound plays through Elden Ring's one-shot sound event, naming itself as the sound to play",
             sound is { Type: 129 } && BitConverter.ToInt32(sound.Value.Bytes, 4) == 900_128_000 && BitConverter.ToInt32(sound.Value.Bytes, 24) == 900_128_000

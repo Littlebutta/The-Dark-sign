@@ -31,6 +31,9 @@ public static class SoundSelfTest
         var bnk = Cat(Sec("BKHD", Cat(U32(135), U32(1), new byte[8])), Sec("DIDX", Cat(U32(media), U32(0), U32(4))), Sec("DATA", [1, 2, 3, 4]), Sec("HIRC", hirc));
 
         var bank = WwiseBank.Read(bnk);
+        // FMOD's low-rate setups (256/2048 blocks), from vgmstream's table: DS3's boss voices at 8-24 kHz use them.
+        foreach (uint crc in new uint[] { 0x39E4F39A, 0x6A5436BF, 0x5949B893, 0xD7913109 })
+            Check(VorbisSetups.Find(crc) is { BlockShort: 256, BlockLong: 2048 }, $"Vorbis setup {crc:X8} (DS3 8-24 kHz samples) is in the table");
         Check(bank.Write().SequenceEqual(bnk), "round trip");
         foreach (var o in bank.Objects.Where(o => o.Type is 2 or 5 or 7)) Check(WwiseNode.Read(o) is not null, $"reads {o.Id}");
         var chain = bank.Chain(E)!.Value;
