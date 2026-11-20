@@ -314,14 +314,48 @@ public static class MapBakedLight
     }
 
     /// <summary>
+    /// How Elden Ring's light volumes store brightness in their 8-bit alpha: as brightness to the power 1 / this
+    /// (2026-11-20 playtest, Friede's hall: "I cant see the ground like i should in ds3"; Devin: find why, fix it
+    /// everywhere). The port wrote DS3's probe brightness straight into the alpha, open sky = the sky alpha, a room at
+    /// a fifth of open sky = a fifth of that alpha. Measured on the games' files, that makes every DS3 room about half
+    /// as bright, against open sky, as Elden Ring's own rooms:
+    /// <list type="bullet">
+    /// <item>Stormveil's 122 room volumes (map-diag lightvol, 2026-11-12): order-0 alpha against its open sky (58) at
+    /// p25 0.26, median 0.47, p75 0.71, p90 0.81. Their reflection cubes (BC6H, stored as brightness) are 15 to 150
+    /// times darker than outdoors, which as straight alpha would be 0.007 to 0.07: the volumes cannot be straight.</item>
+    /// <item>DS3's 160 rooms (environment boxes of m40, m30, m31, m45 with 8 probes or more): median probe brightness
+    /// against open sky at p25 0.005, median 0.23, p75 0.36, p90 0.60. To the power 1/2.2 that is 0.09, 0.51, 0.63,
+    /// 0.79, Stormveil's spread (1/2: 0.48, 0.60, 0.78; straight: 0.23, 0.36, 0.60).</item>
+    /// <item>The reflection cubes at 1/15 to 1/150 of outdoors give 0.10 to 0.29 to the power 1/2.2, where
+    /// Stormveil's rooms with those cubes sit (alpha 2 to 20 of 58: 0.03 to 0.34).</item>
+    /// </list>
+    /// An 8-bit value holding light as brightness to a power near 2.2 is also how images keep dark tones from banding.
+    /// So order 0 is now written as open-sky alpha times (brightness / open sky)^(1/2.2); the first-order terms are
+    /// scaled by the same factor at each texel, so the light's direction (Elden Ring's up term is 0.87 of order 0 in
+    /// open arenas, DS3's 0.88) is kept. Open sky itself is unchanged. Friede's hall floor (DS3 0.2 to 0.56 of open sky
+    /// in the middle, 0.01 to 0.03 at the sides) goes from alpha 4 to 11 to 9 to 15 in the middle and 2 to 4 at the
+    /// sides (open sky 19.6). Fallback "map-baked-light" E: DARKSIGN_LIGHT_VOLUME_LINEAR=1 writes it straight again.
+    /// </summary>
+    public const float VolumeGamma = 2.2f;
+
+    public static bool VolumeCurve => Environment.GetEnvironmentVariable("DARKSIGN_LIGHT_VOLUME_LINEAR") != "1";
+
+    /// <summary>The factor a texel's coefficients are multiplied by so that its order-0 size <paramref name="m0"/>
+    /// (alpha units, open sky = <paramref name="hostAlpha"/>) is written as hostAlpha * (m0 / hostAlpha)^(1/gamma).</summary>
+    internal static float CurveFactor(float m0, float hostAlpha) =>
+        m0 <= 1e-6f || hostAlpha <= 0 ? 1 : hostAlpha * MathF.Pow(m0 / hostAlpha, 1 / VolumeGamma) / m0;
+
+    /// <summary>
     /// The four textures of a level from the spread coefficients: per texel and coefficient, alpha = its largest
-    /// channel's size times <paramref name="scale"/> and colour = 128 + 127 * c / that size. Order 0 never goes below
-    /// 3% of open sky, so a room DS3 lit only with lamps isn't pitch black.
+    /// channel's size times <paramref name="scale"/> (brought onto Elden Ring's curve, <see cref="VolumeGamma"/>) and
+    /// colour = 128 + 127 * c / that size. Order 0 never goes below 3% of open sky, so a room DS3 lit only with lamps
+    /// isn't pitch black.
     /// </summary>
     internal static Dictionary<char, byte[]> Encode(float[] field, int w, int h, int d, float scale, float hostAlpha, Options options)
     {
         var result = new Dictionary<char, byte[]>();
         float floor = MathF.Max(1, hostAlpha * 0.03f);
+        bool curve = VolumeCurve;
         for (int k = 0; k < 4; k++)
         {
             var rgba = new byte[w * h * d * 4];
@@ -334,6 +368,14 @@ public static class MapBakedLight
                         int sx = options.FlipX ? w - 1 - x : x, sy = options.FlipY ? h - 1 - y : y, sz = options.FlipZ ? d - 1 - z : z;
                         int src = ((sz * h + sy) * w + sx) * 12 + k * 3;
                         float r = field[src] * scale, g = field[src + 1] * scale, b = field[src + 2] * scale;
+                        if (curve)
+                        {
+                            // The texel's order-0 size decides the factor for all four coefficients.
+                            int w0 = src - k * 3;
+                            float m0 = MathF.Max(MathF.Abs(field[w0]), MathF.Max(MathF.Abs(field[w0 + 1]), MathF.Abs(field[w0 + 2]))) * scale;
+                            float f = CurveFactor(m0, hostAlpha);
+                            (r, g, b) = (r * f, g * f, b * f);
+                        }
                         float m = MathF.Max(MathF.Abs(r), MathF.Max(MathF.Abs(g), MathF.Abs(b)));
                         int o = ((z * h + y) * w + x) * 4;
                         if (k == 0 && m < floor)

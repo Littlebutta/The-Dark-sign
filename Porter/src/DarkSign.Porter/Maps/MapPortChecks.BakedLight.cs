@@ -104,7 +104,13 @@ public static partial class MapPortChecks
         var outside = w.At(ox, oy, oz);
         var inside = w.At(ix, iy, iz);
         Expect(Math.Abs(outside.a - 56) <= 6, $"open sky W alpha {outside.a}, host 56");
-        Expect(inside.a < outside.a / 5, $"the room is darker: W alpha {inside.a} against {outside.a}");
+        // The room at 0.05 of open sky is written on Elden Ring's curve: 56 x 0.05^(1/2.2) = 14 (straight: 2.8).
+        float roomWant = 56 * MathF.Pow(0.05f, 1 / MapBakedLight.VolumeGamma);
+        Expect(Math.Abs(inside.a - roomWant) <= 3 && inside.a < outside.a / 3, $"the room is darker, on Elden Ring's curve: W alpha {inside.a} against {outside.a} (want {roomWant:0.#})");
+        Expect(Math.Abs(MapBakedLight.CurveFactor(56, 56) - 1) < 1e-5f && Math.Abs(MapBakedLight.CurveFactor(0.2f * 19.6f, 19.6f) * 0.2f * 19.6f - 9.43f) < 0.05f,
+            "open sky is unchanged; Friede's hall floor at 0.2 of open sky (alpha 3.9 straight) becomes 9.4 of 19.6");
+        var roomUp = y.At(ix, iy, iz);
+        Expect(Math.Abs(roomUp.a / (float)inside.a - 0.2f) <= 0.12f, $"the room's up term keeps DS3's share of its order 0 (10 of 50): {roomUp.a} of {inside.a}");
         Expect(outside.r >= 245 && outside.b < outside.r && outside.b >= 200, $"W colour 128 + 127 * c / max: {outside.r} {outside.g} {outside.b}");
         Expect(w.Px.All(p => p.r >= 120 && p.g >= 120 && p.b >= 120), "order 0 never goes below the middle grey");
         var up = y.At(ox, oy, oz);
@@ -308,7 +314,8 @@ public static partial class MapPortChecks
         var w = MapLightDiag.DecodeVolume(MapBakedLight.VolumeDds(HostVolumeDds(1, 2, 3, 4), high.W, high.H, high.D, high.Bc7['W']))!.Value;
         var yh = yard.Levels["high"];
         var wy = MapLightDiag.DecodeVolume(MapBakedLight.VolumeDds(HostVolumeDds(1, 2, 3, 4), yh.W, yh.H, yh.D, yh.Bc7['W']))!.Value;
-        Expect(w.Px.Max(p => p.a) * 5 < wy.Px.Min(p => p.a), $"the room's volume is darker than the courtyard's ({w.Px.Max(p => p.a)} against {wy.Px.Min(p => p.a)})");
+        // The room's probes at 0.05 of open sky: alpha 56 x 0.05^(1/2.2) = 14 on Elden Ring's curve (MapBakedLight.VolumeGamma).
+        Expect(w.Px.Max(p => p.a) * 3 < wy.Px.Min(p => p.a), $"the room's volume is darker than the courtyard's ({w.Px.Max(p => p.a)} against {wy.Px.Min(p => p.a)})");
 
         var boxes = msb.Regions.EnvironmentMapEffectBoxes.ToDictionary(b => b.Name);
         Expect(boxes.ContainsKey("Env_Box102") && boxes["Env_Box102"].UnkT0A == 100, "the box naming 100's point shares it");

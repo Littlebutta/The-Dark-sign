@@ -570,6 +570,8 @@ public static class Fallbacks
                 { MapsArgs = ["--baked-light-flip", "x"] },
             new("D", "Baked light mirrored north-south", "The same baked light with the volume mirrored along z (port-maps --baked-light-flip z). Try it if C didn't line the dark patches up with the rooms.")
                 { MapsArgs = ["--baked-light-flip", "z"] },
+            new("E", "Baked light stored straight", "The same baked light, written into the light volumes as DS3's brightness straight (DARKSIGN_LIGHT_VOLUME_LINEAR=1), as builds up to 1.0.54x had it. Elden Ring stores that light on a curve (dark tones get more room), so read straight every DS3 room, tunnel and shaded floor came out about half as bright against open sky as Elden Ring's own rooms (Friede's hall floor barely visible). Try it if rooms and shade now look washed out or too bright.")
+                { PorterEnv = Env("DARKSIGN_LIGHT_VOLUME_LINEAR", "1") },
         ]),
         new("map-sky-level", "DS3 maps", "How bright the sky's light is in the DS3 maps", Stage.Build,
             "Since this option came in, a DS3 map looks too dark (outside, in shade or in rooms), or it still looks too light.",
