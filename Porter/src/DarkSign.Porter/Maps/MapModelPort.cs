@@ -28,7 +28,7 @@ public sealed class MapModelPort
         FLVER2.BufferLayout Layout, int Rank = 0);
 
     /// <summary>The kinds of template, in the order their GX lists and layouts are written.</summary>
-    public static readonly string[] Kinds = ["opaque", "edge", "alpha", "nolight", "water", "nolight-blend"];
+    public static readonly string[] Kinds = ["opaque", "edge", "alpha", "nolight", "water", "nolight-blend", "nolight-edge"];
 
     /// <summary>The kinds the template search looks for in the template maps (water comes from <see cref="WaterBinders"/>).</summary>
     public static readonly string[] SearchedKinds = ["opaque", "edge", "alpha", "nolight"];
@@ -64,11 +64,34 @@ public sealed class MapModelPort
     public static readonly (string Name, object Value)[] UnlitBlendParams =
         [("g_BlendMode", 2), ("g_GX_bDisableDepthWrite", true), ("g_AlphaRef", new[] { 1, 0 })];
 
+    /// <summary>
+    /// Fallback "map-far-cards" B: DARKSIGN_FAR_CARDS=0 leaves DS3's alpha-tested unlit meshes (M[A]_NoLight_e: the
+    /// far forest cards around the Painted World, Irithyll and the Ringed City) out of the map, instead of drawing
+    /// them with their cut-out (see <see cref="UnlitEdgeParams"/>).
+    /// </summary>
+    public static bool UnlitEdgeEnabled => Environment.GetEnvironmentVariable("DARKSIGN_FAR_CARDS") != "0";
+
+    /// <summary>
+    /// What an alpha-tested unlit material ("nolight-edge") sets in its copy of the unlit template's MATBIN: alpha cut
+    /// at 160 of 255, opaque blend and depth written, as vanilla Elden Ring's own alpha-tested unlit asset material
+    /// AEG007_145 (shader M[A]_NoLight, g_BlendMode 0, g_AlphaRef [160 0]; the same cut as its _Edge foliage such as
+    /// AEG001_344_leaves; read from allmaterial 2026-11-20). The unlit template m10_00_003 has g_AlphaRef [0 0]: no
+    /// cut, so up to 1.0.53x every DS3 M[A]_NoLight_e card stood as a solid rectangle. DS3's far tree atlases are BC1
+    /// with one-bit alpha, copied byte for byte, so the cut-out reaches the game.
+    /// </summary>
+    public static readonly (string Name, object Value)[] UnlitEdgeParams =
+        [("g_BlendMode", 0), ("g_GX_bDisableDepthWrite", false), ("g_AlphaRef", new[] { 160, 0 })];
+
+    /// <summary>Sets <see cref="UnlitEdgeParams"/> in a MATBIN; returns the names it doesn't have.</summary>
+    public static List<string> SetUnlitEdge(MATBIN matbin) => SetParams(matbin, UnlitEdgeParams);
+
     /// <summary>Sets <see cref="UnlitBlendParams"/> in a MATBIN; returns the names it doesn't have.</summary>
-    public static List<string> SetUnlitBlend(MATBIN matbin)
+    public static List<string> SetUnlitBlend(MATBIN matbin) => SetParams(matbin, UnlitBlendParams);
+
+    private static List<string> SetParams(MATBIN matbin, (string Name, object Value)[] values)
     {
         var missing = new List<string>();
-        foreach (var (param, value) in UnlitBlendParams)
+        foreach (var (param, value) in values)
         {
             if (matbin.Params.FirstOrDefault(p => p.Name == param) is { } found)
                 found.Value = value;
@@ -312,7 +335,11 @@ public sealed class MapModelPort
             throw new InvalidDataException("no plain one-layer material among these models to use as a template");
         // DS3's see-through unlit layers take the unlit template with Elden Ring's blend switches (UnlitBlendParams).
         if (templates.TryGetValue("nolight", out var unlit))
+        {
             templates["nolight-blend"] = unlit with { Kind = "nolight-blend" };
+            // DS3's alpha-tested unlit cards take it with Elden Ring's alpha cut (UnlitEdgeParams).
+            templates["nolight-edge"] = unlit with { Kind = "nolight-edge" };
+        }
         return new MapModelPort(templates, headerFlver ?? flvers[0]);
     }
 
@@ -405,6 +432,11 @@ public sealed class MapModelPort
             return !noLight ? "alpha"
                 : UnlitBlendEnabled && !mtd.Contains("Opacity", StringComparison.OrdinalIgnoreCase) ? "nolight-blend"
                 : "none";
+        // An alpha-tested unlit card (M[A]_NoLight_e: the far forest rings of the Painted World, Irithyll and the Ringed
+        // City, a tree atlas whose one-bit alpha cuts the trees out). Up to 1.0.53x it was "nolight" (no cut) and each
+        // card stood as a grey rectangle: the Painted World's "cloud tower" (m002110, enkei_70).
+        if (noLight && Regex.IsMatch(mtd, @"_e(?![a-z])|_alp|edge", RegexOptions.IgnoreCase))
+            return UnlitEdgeEnabled ? "nolight-edge" : "none";
         if (noLight)
             return "nolight";
         if (Regex.IsMatch(mtd, @"_e(?![a-z])|_alp|edge", RegexOptions.IgnoreCase))
@@ -451,7 +483,7 @@ public sealed class MapModelPort
     private MaterialTemplate? TemplateFor(string kind) =>
         kind == "none" ? null
         : _templates.TryGetValue(kind, out var t) ? t
-        : kind is "alpha" or "water" or "nolight-blend" ? null
+        : kind is "alpha" or "water" or "nolight-blend" or "nolight-edge" ? null
         : _templates["opaque"];
 
     /// <summary>
@@ -1065,7 +1097,8 @@ public sealed class MapModelPort
                     if (t is not null)
                         Textures.Add(t);
 
-            var key = string.Join("|", template.Matbin, albedo, normal, scale.X.ToString("R", System.Globalization.CultureInfo.InvariantCulture),
+            // The unlit kinds share one template MATBIN; a cut-out card is its own material even on a shared texture.
+            var key = string.Join("|", template.Kind == "nolight-edge" ? template.Matbin + "#edge" : template.Matbin, albedo, normal, scale.X.ToString("R", System.Globalization.CultureInfo.InvariantCulture),
                 scale.Y.ToString("R", System.Globalization.CultureInfo.InvariantCulture));
             if (!_materials.TryGetValue(key, out var material))
             {
@@ -1295,7 +1328,10 @@ public sealed class MapModelPort
             if (material.Template.Kind == "nolight-blend")
                 foreach (var param in SetUnlitBlend(matbin))
                     Notes.Add($"{material.Template.Matbin} has no {param}: {material.Name} (a see-through unlit sky layer) may draw solid");
-            if (material.Template.Kind is "nolight" or "nolight-blend" && !UnlitCastShadows)
+            if (material.Template.Kind == "nolight-edge")
+                foreach (var param in SetUnlitEdge(matbin))
+                    Notes.Add($"{material.Template.Matbin} has no {param}: {material.Name} (an alpha-tested unlit far card) may draw as a solid rectangle");
+            if (material.Template.Kind is "nolight" or "nolight-blend" or "nolight-edge" && !UnlitCastShadows)
             {
                 if (matbin.Params.FirstOrDefault(p => p.Name == NoShadowParam && p.Value is bool) is { } noShadow)
                     noShadow.Value = true;

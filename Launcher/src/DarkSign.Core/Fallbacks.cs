@@ -524,6 +524,13 @@ public static class Fallbacks
             new("B", "Left out", "The see-through sky layers are left out (DARKSIGN_SKY_CLOUDS=0), as every build up to 1.0.52x: the far view shows only the dome itself, with no mountains below its skyline and a hard line where the scenery meets it.")
                 { PorterEnv = Env("DARKSIGN_SKY_CLOUDS", "0") },
         ]),
+        new("map-far-cards", "DS3 maps", "Far forests drawn as cut-out tree cards", Stage.Build,
+            "Since this option came in, a DS3 map's far forest shows black or grey squares, trees with hard black outlines, or a map crashes or hangs while loading.",
+        [
+            new("A", "Cut-out tree cards (default)", "The flat, unlit tree cards DS3 stands far out as a forest (the forest rings around the Painted World, Irithyll and the Ringed City) are drawn unlit with the trees cut out of each card, as Elden Ring's own cut-out unlit pieces are. Builds up to 1.0.53x drew each card as a solid rectangle: the grey \"cloud tower\" over the Painted World's trees."),
+            new("B", "Left out", "The far tree cards are left out (DARKSIGN_FAR_CARDS=0): no grey rectangles, but no far forest either.")
+                { PorterEnv = Env("DARKSIGN_FAR_CARDS", "0") },
+        ]),
         new("map-atmosphere", "DS3 maps", "Colours of light and fog in the DS3 maps", Stage.Build,
             "A DS3 map looks washed out, too foggy, too clear, or wrongly coloured since the maps took DS3's colours.",
         [

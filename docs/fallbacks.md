@@ -425,6 +425,13 @@ Try the next option if: Since this option came in, a DS3 map's sky has solid gre
 - **A: DS3's see-through sky layers (default).** The see-through layers DS3 stands around its sky (its unlit, faded cloud bands, haze and far mountain rings: the cloud band that hides the foot of the distant castle from Firelink, the mountain range below the horizon there, High Wall's ring of distant mountains and clouds, the cloud layer under the Undead Settlement) are drawn unlit and blended, as Elden Ring's own see-through unlit pieces are, keeping DS3's fade. The parts DS3 shows less than half of are left out. Cloud cards DS3 cuts out with scrolling masks (the Painted World's) are not part of this. The port log's "see-through sky layers:" line counts them.
 - **B: Left out.** The see-through sky layers are left out (DARKSIGN_SKY_CLOUDS=0), as every build up to 1.0.52x: the far view shows only the dome itself, with no mountains below its skyline and a hard line where the scenery meets it. (`DARKSIGN_SKY_CLOUDS=0`)
 
+### Far forests drawn as cut-out tree cards (`map-far-cards`, rebuilds the content)
+
+Try the next option if: Since this option came in, a DS3 map's far forest shows black or grey squares, trees with hard black outlines, or a map crashes or hangs while loading.
+
+- **A: Cut-out tree cards (default).** The flat, unlit tree cards DS3 stands far out as a forest (the forest rings around the Painted World, Irithyll and the Ringed City) are drawn unlit with the trees cut out of each card, as Elden Ring's own cut-out unlit pieces are. Builds up to 1.0.53x drew each card as a solid rectangle: the grey "cloud tower" over the Painted World's trees.
+- **B: Left out.** The far tree cards are left out (DARKSIGN_FAR_CARDS=0): no grey rectangles, but no far forest either. (`DARKSIGN_FAR_CARDS=0`)
+
 ### Colours of light and fog in the DS3 maps (`map-atmosphere`, rebuilds the content)
 
 Try the next option if: A DS3 map looks washed out, too foggy, too clear, or wrongly coloured since the maps took DS3's colours.
