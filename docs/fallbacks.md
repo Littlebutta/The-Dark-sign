@@ -273,6 +273,14 @@ Try the next option if: Warping into a DS3 map fails (nothing happens, endless l
 - **A: Colosseum slots (default).** Firelink/Cemetery of Ash, High Wall and Undead Settlement replace the three colosseum arenas (m45_00-02), which single-player never visits.
 - **B: Spare map IDs.** Each DS3 map gets a map ID of its own that Elden Ring lists in its map registry and single-player never visits (m11_70, m11_72, m19_70; each ships a small map of its own), built from the colosseums' file formats. The Painted World then takes the first colosseum. Untested in game. A map ID the game doesn't list at all is not an option: registering one crashed the game at boot (1.0.238); see `docs/maps/own-map-ids.md`. (`DARKSIGN_MAP_SLOTS=new`)
 
+### Which of DS3's other maps are ported (`map-world`, rebuilds the content)
+
+Try the next option if: The game crashes at boot or hangs on the title screen since the build that ported every DS3 map, or one of the new maps (Lothric Castle, Road of Sacrifices, Cathedral, Catacombs, Irithyll, Irithyll Dungeon, Grand Archives, Archdragon Peak, Kiln, Dreg Heap, Ringed City) won't load, or walking from one map into the next leaves you in the void.
+
+- **A: Every DS3 map (default).** Besides Firelink, High Wall, the Undead Settlement and the Painted World, the other 11 DS3 maps are ported (Filianore's Rest has no slot), under map IDs Elden Ring lists and never visits (m11_70, m11_72, test maps m38_10-12) or new blocks of its own areas (m45_03-05, m38_13-15) that the porter adds to the game's map list. Neighbouring maps are joined where DS3 joins them. Untested in game. See `docs/maps/own-map-ids.md`, "Third look".
+- **B: The first four maps only.** Only Firelink, High Wall, the Undead Settlement and the Painted World, as builds up to 1.0.50x had it; the game's map list isn't changed. (`DARKSIGN_MAP_WORLD=0`)
+- **C: Every map, no map link rows.** As A, but without the WorldMapLegacyConvParam rows that tell the game two neighbouring maps share one space. Try it if walking into the next map crashes or puts it in the wrong place. (`DARKSIGN_MAP_LINKS=0`)
+
 ### Where the Painted World of Ariandel goes (`map-painted-world`, rebuilds the content)
 
 Try the next option if: Warping to the Painted World (or the F1 menu's Friede fight) fails: nothing happens, endless loading, or a crash.

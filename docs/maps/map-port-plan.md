@@ -41,7 +41,11 @@ single-player game never visits (area m19 is otherwise only the final boss arena
 per-map side files come from m45_00, the colosseum every slot is proven to load from. Fallback `map-painted-world` B
 puts it in m45_02 instead (the Undead Settlement is then left out), C leaves it out.
 
-The other DS3 maps need more slots and are listed in `MapSlots.Ds3Maps`.
+Since 2026-11-19 the other DS3 maps are ported too (`MapSlots.WorldSlots`, fallback `map-world`): Lothric Castle
+m45_03, Road of Sacrifices m45_04, Cathedral m45_05, Catacombs m38_10, Irithyll m38_11, Irithyll Dungeon m38_12,
+Grand Archives m38_13, Archdragon Peak m38_14, Kiln m38_15, Dreg Heap m11_70, Ringed City m11_72; Filianore's Rest has
+no slot. The new blocks are added to the game's map list within its fixed arrays; see `own-map-ids.md`, "Third look".
+Neighbours DS3 joins get connect collisions and WorldMapLegacyConvParam rows (`Maps/MapLinks.cs`).
 Entity IDs move with the map: 4000xxxx becomes 4500xxxx. The run starts at the DS3 player point with entity
 x990-x999, which gets entity 45000990.
 
