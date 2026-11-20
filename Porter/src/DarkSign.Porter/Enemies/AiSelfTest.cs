@@ -238,14 +238,24 @@ public static class AiSelfTest
             chooser.ThinkFor(jailer, 223005) == 70719005 && chooser.ThinkFor(jailer, 223000) == 70719000 && map.Think(223005, "c9999") is null);
 
         // ---- ChrMoves ----
-        var plan = ChrMoves.Plan([3000, 3010, 3033, 5000], new HashSet<int> { 3000, 3001, 3002 }, new HashSet<int> { 3000, 3001, 3002 }, new HashSet<int> { 3002 });
+        var plan = ChrMoves.Plan([3000, 3010, 3033], new HashSet<int> { 3000, 3001, 3002 }, new HashSet<int> { 3000, 3001, 3002 }, new HashSet<int> { 3002 });
         Check("extra attacks: only DS3 attacks the template lacks, each with its nearest whole attack",
             plan.SequenceEqual([new ChrMoves.Added(3010, 3001), new ChrMoves.Added(3033, 3001)]));
-        var idlePlan = ChrMoves.Plan([702, 1702, 1760, 20005, 30001, 3010], new HashSet<int> { 700, 701, 1700, 20004, 3001 },
+        var idlePlan = ChrMoves.Plan([702, 1702, 9760, 20005, 30001, 3010], new HashSet<int> { 700, 701, 1700, 20004, 3001 },
             new HashSet<int> { 700, 701, 1700, 20004, 3001 }, new HashSet<int>());
         Check("extra moves: waiting poses, getting-up moves and map-script moves get a donor of their own family (none for a family the template lacks)",
             idlePlan.SequenceEqual([new ChrMoves.Added(702, 701), new ChrMoves.Added(1702, 1700), new ChrMoves.Added(3010, 3001), new ChrMoves.Added(20005, 20004)])
-            && ChrMoves.Wanted(702, false) && !ChrMoves.Wanted(3010, false) && ChrMoves.Wanted(3010, true) && !ChrMoves.Wanted(5000, true));
+            && ChrMoves.Wanted(702, false) && !ChrMoves.Wanted(3010, false) && ChrMoves.Wanted(3010, true) && !ChrMoves.Wanted(5000, true) && !ChrMoves.Wanted(9760, true));
+        // The Dancer's AI asks for 1500 (her phase change) as an attack: it takes a state cloned from the nearest whole
+        // attack, as a move the template has an entry but no file for does (its entry gets a file of its own).
+        var namedBefore = ChrMoves.AiNamed;
+        ChrMoves.AiNamed = new HashSet<int> { 1500, 1600 };
+        var phasePlan = ChrMoves.Plan([1500, 1600, 1702, 3010], new HashSet<int> { 1600, 1700, 3000, 3020 }, new HashSet<int> { 1700, 3000, 3020 }, new HashSet<int>());
+        Check("AI moves: moves DS3's AI asks for outside 3000-3999 (phase changes) take the nearest whole attack as donor, only with DS3's AI naming them",
+            phasePlan.SequenceEqual([new ChrMoves.Added(1500, 3000), new ChrMoves.Added(1600, 3000, OwnEntry: true), new ChrMoves.Added(1702, 1700), new ChrMoves.Added(3010, 3000)])
+            && ChrMoves.Wanted(1500, true) && !ChrMoves.Wanted(1500, false) && !ChrMoves.Wanted(1510, true) && ChrMoves.FamilyOf(1702)?.Name == "getting up"
+            && ChrMoves.FamilyOf(1500)?.Machine == "Attack_SM");
+        ChrMoves.AiNamed = namedBefore;
         // Elden Ring's c3061 plays other moves' clips for its waiting poses (700 imports 30016): DS3's 700 gets a file
         // of its own, its other poses take a 700s entry as donor, and a family with no entry at all stays out.
         var borrowedPlan = ChrMoves.Plan([700, 702, 1702, 3010], new HashSet<int> { 700, 701, 1700, 1701, 3000 },
@@ -293,6 +303,32 @@ public static class AiSelfTest
             && sm.m_wildcardTransitions!.m_transitions.Where(t => t.m_toStateId == added.m_stateId).Select(t => strings.m_eventNames[t.m_eventId]).Order()
                 .SequenceEqual(["W_Attack3033", "W_Event3033"])
             && all.OfType<hkbBehaviorGraphData>().First().m_eventInfos.Count == strings.m_eventNames.Count);
+
+        var phaseGraph = Graph();
+        int phaseStates = ChrMoves.AddStates(phaseGraph, [new ChrMoves.Added(1500, 3001)]);
+        var phaseAll = HavokGraph.All(phaseGraph);
+        var phaseSm = phaseAll.OfType<hkbStateMachine>().First();
+        var phaseStrings = phaseAll.OfType<hkbBehaviorGraphStringData>().First();
+        var phase = phaseSm.m_states.FirstOrDefault(st => st.m_name == "Attack1500");
+        Check("AI moves: a phase change gets an Attack_SM state playing its own clip, reached by W_Attack1500 (what the AI's attack request fires)",
+            phaseStates == 1 && phase?.m_generator is CustomManualSelectorGenerator { m_name: "Attack1500_CMSG", m_animId: 1500 } pg
+            && pg.m_generators.OfType<hkbClipGenerator>().Single().m_animationName == "a000_001500"
+            && phaseSm.m_wildcardTransitions!.m_transitions.Where(t => t.m_toStateId == phase.m_stateId).Select(t => phaseStrings.m_eventNames[t.m_eventId]).Order()
+                .SequenceEqual(["W_Attack1500", "W_Event1500"]));
+
+        var ownTae = new TAE { Format = TAE.TAEFormat.SDT, Animations = [], Flags = new byte[8], SkeletonName = "skeleton.hkt", SibName = "c7000.sib", ID = 200007000 };
+        ownTae.Animations.Add(new TAE.Animation(1600, new TAE.Animation.AnimMiniHeader.Standard { ImportsHKX = true, ImportHKXSourceAnimID = 3000 }, "a000_003000.hkt"));
+        ownTae.Animations.Add(new TAE.Animation(3000, new TAE.Animation.AnimMiniHeader.Standard(), "a000_003000.hkt"));
+        var ownMain = new BND4();
+        ownMain.Files.Add(new BinderFile(SoulsFormats.Binder.FileFlags.Flag1, 5000000, @"N:\GR\data\INTERROOT_win64\chr\c7000\tae\c7000.tae", ownTae.Write()));
+        var ownBnd = new BND4();
+        ownBnd.Files.Add(new BinderFile(SoulsFormats.Binder.FileFlags.Flag1, 1000003000, folder + "a000_003000.hkx", [1, 2, 3]));
+        var ownAdded = ChrMoves.AddAnimations([ownMain, ownBnd], [new ChrMoves.Added(1500, 3000), new ChrMoves.Added(1600, 3000, OwnEntry: true)], new HashSet<int> { 3000 });
+        var ownBack = TAE.Read(ownMain.Files[0].Bytes);
+        Check("AI moves: a phase change gets a file and an entry; one the template has an entry for keeps it, pointed at its own file",
+            ownAdded.Count == 2 && ownBnd.Files.Any(f => f.ID == 1000001500) && ownBnd.Files.Any(f => f.ID == 1000001600)
+            && ownBack.Animations.Count(a => a.ID == 1600) == 1 && ownBack.Animations.Any(a => a.ID == 1500 && a.AnimFileName == "a000_001500.hkt")
+            && ownBack.Animations.First(a => a.ID == 1600) is { AnimFileName: "a000_001600.hkt", MiniHeader: TAE.Animation.AnimMiniHeader.Standard { ImportsHKX: false } });
 
         var idleGraph = IdleGraph();
         int idleStates = ChrMoves.AddStates(idleGraph, [new ChrMoves.Added(702, 700)]);

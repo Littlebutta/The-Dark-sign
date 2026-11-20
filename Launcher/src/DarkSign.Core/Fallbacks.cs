@@ -898,6 +898,8 @@ public static class Fallbacks
                 { PorterEnv = Env("DARKSIGN_ENEMY_OWN_POSES", "0") },
             new("K", "The template's senses", "As A, but a ported enemy keeps the Elden Ring template's hearing, forget times, long-range search sight and in-battle sight (DARKSIGN_ENEMY_SENSES=template), as up to 1.0.470, when enemies built on a far-sighted template (35 m on the Giant Beast Skeleton) came from much further away than DS3's 13 to 15 m. Use when ported enemies ignore you until hit, or forget you at once, with A.")
                 { PorterEnv = Env("DARKSIGN_ENEMY_SENSES", "template") },
+            new("L", "No added phase changes", "As A, but a move DS3's AI asks for outside the usual attack numbers 3000-3999 (the bosses' phase changes, 1500 and 1600) gets no state of its own and is not played (DARKSIGN_ENEMY_AI_MOVES=0), as up to 1.0.549, when the Dancer and Pontiff Sulyvahn froze at half health instead of starting their second phase. Use when a ported boss freezes, T-poses or the game crashes at its phase change with A.")
+                { PorterEnv = Env("DARKSIGN_ENEMY_AI_MOVES", "0") },
         ]),
         new("enemy-glow", "DS3 maps", "Ported DS3 enemies' glows", Stage.Build,
             "A ported DS3 enemy's glow is the wrong colour or missing (the Jailer's lantern, Pontiff Sulyvahn's swords, the Soul of Cinder), a part of it glows far too brightly or draws black, or the game crashes or hangs loading a ported enemy that glows.",
