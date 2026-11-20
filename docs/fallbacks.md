@@ -609,6 +609,13 @@ Try the next option if: A DS3 map or boss fight plays the wrong music, Elden Rin
 - **C: DS3's music, Elden Ring battle music kept.** As A, but ported enemies keep their Elden Ring template's threat level and Elden Ring stand-ins their own rows (DARKSIGN_ENEMY_THREAT=template), as up to 1.0.45x: an enemy built on, or standing in as, an Elden Ring field boss starts that boss's battle music. (`DARKSIGN_ENEMY_THREAT=template`)
 - **D: DS3's music, a boss's music from the arena's door.** As A, but a boss's tracks are not switched by its fight (DARKSIGN_MAP_MUSIC=arena): they play whenever you stand in the boss's arena, the last phase's track over the others, as in 1.0.479. For when a boss fight stays silent with A. (`DARKSIGN_MAP_MUSIC=arena`)
 
+### DS3's new-game flags (`map-setup`, rebuilds the content)
+
+Try the next option if: Since 1.0.54x a DS3 character or place acts as if something had already happened (or never happens), or you want to compare with the flags left off as before.
+
+- **A: DS3's new-game flags (default).** The DS3 events that put a new game's flags in their first state (DS3's common event 50 starts them) run in Elden Ring too, once per save where DS3 runs them once: for example the flag that says the Fire Keeper has no eyes yet, so Firelink Shrine plays its own music, not the Fire Keeper's theme. Report: the "DS3 setup:" line of the port-maps log.
+- **B: No new-game flags.** DS3's new-game flags are never set (DARKSIGN_DS3_SETUP=0), as up to 1.0.53x: Firelink Shrine plays the Fire Keeper's theme from the start. (`DARKSIGN_DS3_SETUP=0`)
+
 ### Which state of a DS3 map is ported (`map-layers`, rebuilds the content)
 
 Try the next option if: Enemies, objects or fog you expected are missing from a DS3 map since 1.0.327 (for example on the way to Firelink Shrine), or you want to see the Untended Graves' enemies.

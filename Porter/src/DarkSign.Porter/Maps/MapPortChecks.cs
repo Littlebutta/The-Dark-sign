@@ -48,6 +48,8 @@ public static partial class MapPortChecks
             yield return check;
         foreach (var check in MusicChecks())
             yield return check;
+        foreach (var check in SetupChecks())
+            yield return check;
         foreach (var check in TalkChecks())
             yield return check;
         foreach (var check in BonfireChecks())

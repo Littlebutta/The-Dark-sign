@@ -345,6 +345,14 @@ public static class MapMusic
                 var t = tracks[s.Sound];
                 return string.Join('\t', s.PlayFlag, $"{s.Sound}.wav", t.LoopStart, t.LoopEnd, t.FadeOutMs, s.Er, Clean(s.Name));
             });
+
+        /// <summary>
+        /// The DLL's watch lines (file "-"): each listed track's switch flag, which the DLL only logs when it changes,
+        /// so its log tells a track the map's script switched off from one whose player left its region.
+        /// </summary>
+        public IEnumerable<string> WatchLines(IReadOnlyDictionary<string, Track> tracks) =>
+            Sources.Where(s => s.PlayFlag != 0 && s.SwitchFlag != 0 && tracks.ContainsKey(s.Sound))
+                .Select(s => string.Join('\t', s.SwitchFlag, "-", -1, -1, 0, s.Er, Clean(s.Name)));
     }
 
     private static string Clean(string text) => text.Replace('\t', ' ').Replace('\n', ' ').Replace('\r', ' ');
@@ -632,7 +640,7 @@ public static class MapMusic
             }
         }
         var list = plan.ListLines(tracks).ToList();
-        File.WriteAllLines(listPath, list);
+        File.WriteAllLines(listPath, [.. list, .. plan.WatchLines(tracks)]);
         lines.Add($"music: {tracks.Count}/{sounds.Count} tracks decoded ({bytes / (1024 * 1024)} MB in Mods\\ER\\{Folder}), {list.Count} lines in {ListFile}" +
                   (missing.Count > 0 ? $"; FAIL no DS3 audio for: {string.Join(", ", missing.Take(12))}" : ""));
         foreach (var s in plan.Sources)

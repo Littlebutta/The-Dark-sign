@@ -634,7 +634,7 @@ public static class MapPorter
         Step(report, "enemy tables", () => WriteEnemyTables(ctx, ported.Select(p => p.Slot.Ds3.ToString()).ToHashSet()));
         var startMap = ported.FirstOrDefault(p => p.Slot.Ds3 == MapId.Parse("m40_00_00_00") && !p.Slot.Probe);
         if (startMap.Slot is not null)
-            Step(report, "run events", () => AddRunEvents(ctx, er, startMap.Slot.Er, (uint)startMap.StartEntity, warps, arenas, menuCutscenes));
+            Step(report, "run events", () => AddRunEvents(ctx, ds3, er, startMap.Slot.Er, (uint)startMap.StartEntity, warps, arenas, menuCutscenes));
         else
             report.AppendLine("run events: not added (Firelink Shrine / Cemetery of Ash was not ported)");
 
@@ -2111,7 +2111,7 @@ public static class MapPorter
         File.WriteAllLines(ctx.ModPath("darksign_maps.tsv"), lines);
     }
 
-    private static string AddRunEvents(PorterContext ctx, GameArchives er, MapId host, uint startEntity, IReadOnlyList<RunEvents.Warp> warps,
+    private static string AddRunEvents(PorterContext ctx, GameArchives ds3, GameArchives er, MapId host, uint startEntity, IReadOnlyList<RunEvents.Warp> warps,
         IReadOnlyList<BossArenas.Arena> arenas, IReadOnlyList<CutsceneMenu.Entry> cutscenes)
     {
         const string Common = "/event/common.emevd.dcx";
@@ -2133,11 +2133,30 @@ public static class MapPorter
         var flagPort = new EventPort(defs, defs, slots, flags);
         BossArenas.AddWarps(common, arenas, f => flagPort.Move(f, EventPort.Kind.Flag));
         CutsceneMenu.AddEvents(common, cutscenes);
+        // DS3's new-game flags (Ds3Setup): DS3's common event 50 sets them; the maps' scripts read them.
+        string setupNote = "DS3 setup: off (DARKSIGN_DS3_SETUP=0, fallback map-setup B); DS3's new-game flags stay off";
+        if (Ds3Setup.Enabled)
+            try
+            {
+                if (!ds3.Contains(Ds3Setup.Ds3Common))
+                    setupNote = "DS3 setup: DS3 has no common.emevd; DS3's new-game flags stay off";
+                else
+                {
+                    var erDefs = Emedf.Parse(File.ReadAllText(ctx.Data.Emedf("er-common")));
+                    var maps = MapSlots.All.Where(s => !s.Probe).Select(s => (s.Ds3, s.Er)).Distinct().ToList();
+                    setupNote = Ds3Setup.AddTo(common, EMEVD.Read(ds3.Read(Ds3Setup.Ds3Common)), new EventPort(defs, erDefs, maps, flags));
+                }
+            }
+            catch (Exception ex) when (ex is not OutOfMemoryException)
+            {
+                setupNote = $"DS3 setup: FAILED ({ex.Message}); DS3's new-game flags stay off";
+            }
         flags.Save(ctx.ModPath(MapEvents.FlagFile));
         File.WriteAllBytes(modCommon, DCX.Compress(common.Write(), compression));
         return $"run events: start warps to {host} entity {startEntity}; leave warps to {back.Map} entity {back.EntityId}; "
                + $"{warps.Count} per-map warps ({string.Join(", ", warps.Select(w => $"{w.Map} flag {RunEvents.WarpRequestFlag(w.Index)}"))}); "
                + $"{arenas.Count} boss arena warps ({string.Join(", ", arenas.Select(a => $"{a.Name} flag {BossArenas.RequestFlag(a.Index)}"))}); "
-               + $"{cutscenes.Count} F1 cutscene events ({string.Join(", ", cutscenes.Select(c => $"{c.ErName} {c.Label} flag {CutsceneMenu.RequestFlag(c.Index)}"))})";
+               + $"{cutscenes.Count} F1 cutscene events ({string.Join(", ", cutscenes.Select(c => $"{c.ErName} {c.Label} flag {CutsceneMenu.RequestFlag(c.Index)}"))})"
+               + "\n  " + setupNote;
     }
 }

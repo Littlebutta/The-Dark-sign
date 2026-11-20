@@ -13,6 +13,10 @@
 
    The music plays on its own XAudio2 stream, as the DLL sounds of fallback "sounds" D (DOOM RING's approach,
    stanleymov/DOOM-RING, MIT: a DLL's own audio stream instead of the game's Wwise), so no Wwise bank has to load.
+   A line whose file is "-" names a flag that is only watched: the porter lists each track's switch flag that way, and
+   every music flag's change is logged ("music: flag N on/off"), so a log tells a track switched off by its map's
+   script from one whose player left its region.
+
    On whenever port-maps wrote darksign_music.tsv; off with DKSIGN_NO_MAP_MUSIC=1 (launcher fallback "map-music" B). DKSIGN_MUSIC_VOLUME=0-100 sets the level (default 70). */
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
@@ -37,6 +41,7 @@ constexpr int POLL_TICKS = 5;        // flags read every 100 ms
 constexpr int FADE_IN_MS = 1000;
 constexpr int HOLD_POLLS = 8;        // a track whose flag went off plays on this long (0.8 s) before it fades
 constexpr int MAX_LOG_LINES = 200;
+constexpr int MAX_FLAG_LOG_LINES = 600; // flag changes, counted apart so they can't crowd out the track lines
 constexpr size_t MAX_CACHED = 3;     // decoded tracks kept in memory (a boss's two phases and the area's)
 
 struct Entry {
@@ -45,6 +50,7 @@ struct Entry {
     int loop_start, loop_end, fade_ms;
     std::string where;
     bool on;
+    bool watch;               // file "-": a flag that is only logged, never played
     unsigned long long stamp; // when it last turned on
 };
 
@@ -68,6 +74,7 @@ std::map<std::wstring, Wave *> g_cache;
 std::vector<std::wstring> g_cache_order;
 std::vector<Playing> g_voices;
 int g_logged;
+int g_flags_logged;
 
 std::wstring widen(const char *s)
 {
@@ -104,6 +111,7 @@ bool load_list(const wchar_t *path)
         e.loop_end = atoi(cols[3]);
         e.fade_ms = atoi(cols[4]);
         e.where = std::string(n > 5 ? cols[5] : "") + " " + (n > 6 ? cols[6] : "");
+        e.watch = e.file == L"-";
         if (e.flag && !e.file.empty())
             g_entries.push_back(e);
     }
@@ -296,11 +304,13 @@ DWORD WINAPI run(LPVOID)
             }
             if (state && !e.on)
                 e.stamp = ++clock;
+            if ((state != 0) != e.on && g_flags_logged++ < MAX_FLAG_LOG_LINES)
+                dks_log("music: flag %u %s (%s%s)", e.flag, state ? "on" : "off", e.watch ? "switch," : "playing,", e.where.c_str());
             e.on = state != 0;
         }
         if (flags_known)
             for (auto &e : g_entries)
-                if (e.on && (!want || e.stamp > want->stamp))
+                if (!e.watch && e.on && (!want || e.stamp > want->stamp))
                     want = &e;
         const std::wstring *now = current_file();
         if (want)

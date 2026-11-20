@@ -746,6 +746,14 @@ public static class Fallbacks
                 { PorterEnv = Env("DARKSIGN_MAP_MUSIC", "arena") },
         ]),
 
+        new("map-setup", "DS3 maps", "DS3's new-game flags", Stage.Build,
+            "Since 1.0.54x a DS3 character or place acts as if something had already happened (or never happens), or you want to compare with the flags left off as before.",
+        [
+            new("A", "DS3's new-game flags (default)", "The DS3 events that put a new game's flags in their first state (DS3's common event 50 starts them) run in Elden Ring too, once per save where DS3 runs them once: for example the flag that says the Fire Keeper has no eyes yet, so Firelink Shrine plays its own music, not the Fire Keeper's theme. Report: the \"DS3 setup:\" line of the port-maps log."),
+            new("B", "No new-game flags", "DS3's new-game flags are never set (DARKSIGN_DS3_SETUP=0), as up to 1.0.53x: Firelink Shrine plays the Fire Keeper's theme from the start.")
+                { PorterEnv = Env("DARKSIGN_DS3_SETUP", "0") },
+        ]),
+
         new("map-layers", "DS3 maps", "Which state of a DS3 map is ported", Stage.Build,
             "Enemies, objects or fog you expected are missing from a DS3 map since 1.0.327 (for example on the way to Firelink Shrine), or you want to see the Untended Graves' enemies.",
         [
