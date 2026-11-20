@@ -507,6 +507,13 @@ public static class Fallbacks
             new("B", "The colosseum's fill lights", "These lights keep the host colosseum's strengths and occlusion weights (port-maps --host-fill-lights), as up to 1.0.491.")
                 { MapsArgs = ["--host-fill-lights"] },
         ]),
+        new("map-light-sets", "DS3 maps", "Which light each DS3 map piece, object and character is lit with", Stage.Build,
+            "Since this option came in, parts of a DS3 map are black or far too bright, a room flickers between light and dark, or a boss or enemy is lit oddly.",
+        [
+            new("A", "DS3's light set per part (default)", "Each map piece, object, floor and character names the light set DS3 gives it, and the map's draw params get DS3's sets: Friede's hall and other rooms DS3 lights only with their candles, windows and baked light have no sun, and the bosses get their own light (Ariandel's warm fire). No light of these sets is stronger than twice the map's sun."),
+            new("B", "One light for everything", "Every part is lit with the map's outdoor light (port-maps --one-light-set), as up to 1.0.499: rooms lit by the sun through their roofs.")
+                { MapsArgs = ["--one-light-set"] },
+        ]),
         new("map-env-light", "DS3 maps", "Light the DS3 map pieces get from around them", Stage.Build,
             "A DS3 map's walls and ground look flat, too dark or too grey, or shine oddly since the colosseum's colour was taken out of their light.",
         [

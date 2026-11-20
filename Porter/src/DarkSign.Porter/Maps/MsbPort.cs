@@ -299,6 +299,8 @@ public static class MsbPort
         part.Position = src.Position;
         part.Rotation = src.Rotation;
         part.Scale = src.Scale == Vector3.Zero ? Vector3.One : src.Scale;
+        // DS3's light set (MapLightSets); one the slot's draw params lack goes back to -1 when the map is written.
+        MapLightSets.Carry(src, part);
         part.EntityID = src.EntityID > 0 ? (uint)ds3Id.MoveEntity(src.EntityID, erId) : 0;
         part.EntityGroupIDs = new uint[part.EntityGroupIDs?.Length ?? 8];
         for (int i = 0; i < Math.Min(part.EntityGroupIDs.Length, src.EntityGroups.Length); i++)

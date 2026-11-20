@@ -95,6 +95,9 @@ public static class MapPorter
         /// weights) keep the host colosseum's strengths, as up to 1.0.491 (fallback "map-fill-light" B; see
         /// <see cref="MapAtmosphere.FillLights"/>).</summary>
         public bool HostFillLights { get; set; }
+        /// <summary>--one-light-set: every ported part names the default light set (-1), as up to 1.0.499, instead of
+        /// DS3's own per part (fallback "map-light-sets" B; see <see cref="MapLightSets"/>).</summary>
+        public bool OneLightSet { get; set; }
         /// <summary>--ds3-lamp-strength: DS3's lamps keep the strengths DS3's light file writes instead of being brought
         /// to Elden Ring's scale, as up to 1.0.491 (fallback "map-lamps" B; see <see cref="MapLampStrength"/>).</summary>
         public bool Ds3LampStrength { get; set; }
@@ -205,6 +208,7 @@ public static class MapPorter
                     case "--no-light-offset": o.NoLightOffset = true; o.UnturnedSun = true; o.BakedLight = o.BakedLight with { NoOffset = true }; break;
                     case "--unturned-sun": o.UnturnedSun = true; break;
                     case "--host-fill-lights": o.HostFillLights = true; break;
+                    case "--one-light-set": o.OneLightSet = true; break;
                     case "--ds3-lamp-strength": o.Ds3LampStrength = true; break;
                     case "--no-flame-lights": o.NoFlameLights = true; break;
                     case "--no-new-light-file": o.NoNewLightFile = true; break;
@@ -1387,15 +1391,21 @@ public static class MapPorter
             report.AppendLine($"  sky: FAILED: {ex.Message}");
         }
         // Colours of light and air: DS3's instead of the colosseum's. A failure leaves the host's.
+        var lightSets = new HashSet<int>();
         try
         {
-            report.AppendLine("  " + MapAtmosphere.Write(ctx, ds3, er, ds3Id, erId, hostId, ds3Msb, options.HostAtmosphere, options.UnturnedSun, options.HostFillLights));
+            report.AppendLine("  " + MapAtmosphere.Write(ctx, ds3, er, ds3Id, erId, hostId, ds3Msb, options.HostAtmosphere, options.UnturnedSun, options.HostFillLights,
+                msb, lightSets, options.OneLightSet));
         }
         catch (Exception ex) when (ex is not OutOfMemoryException)
         {
             try { File.Delete(ctx.ModPath(ModParts(MapAtmosphere.GparamPath(erId)))); } catch (IOException) { }
+            lightSets.Clear();
             report.AppendLine($"  atmosphere: FAILED: {ex.Message}; the host's colours stay");
         }
+        // Parts on a light set the slot's draw params lack go back to the default (all of them when the atmosphere
+        // wasn't written: the host's file has none of DS3's sets).
+        report.AppendLine("  " + MapLightSets.Finish(msb, lightSets, options.OneLightSet));
         File.WriteAllBytes(ctx.ModPath(ModParts(MsbPath(erId))), DCX.Compress(msb.Write(), msbCompression));
         report.AppendLine($"  written: {msb.Parts.MapPieces.Count} map pieces, {msb.Parts.Collisions.Count} collisions, {msb.Parts.Players.Count} player points, {msb.Parts.Enemies.Count} enemies, "
                           + $"{msb.Parts.Assets.Count} objects, {msb.Regions.GetEntries().Count} regions, {msb.Events.GetEntries().Count} map-file events");
