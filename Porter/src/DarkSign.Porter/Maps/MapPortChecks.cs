@@ -294,7 +294,14 @@ public static partial class MapPortChecks
         ds3.Models.Collisions.Add(new MSB3.Model.Collision { Name = "h009000" });
         ds3.Parts.Collisions.Add(new MSB3.Part.Collision { Name = "h000105_0000", ModelName = "h000105", HitFilterID = 24 });
         ds3.Parts.Collisions.Add(new MSB3.Part.Collision { Name = "h009000_0000", ModelName = "h009000", HitFilterID = 15 });
+        // DS3's filter 14 (one h900001 in Irithyll and three other newer maps) is not in Elden Ring's list: left out,
+        // so the layout reads back (1.0.521: it didn't, and the bonfire step failed for every map).
+        ds3.Models.Collisions.Add(new MSB3.Model.Collision { Name = "h900001" });
+        ds3.Parts.Collisions.Add(new MSB3.Part.Collision { Name = "h900001_0000", ModelName = "h900001", HitFilterID = 14 });
         var result = MsbPort.Convert(ds3, SyntheticHost(), Ds3Id, ErId);
+        Expect(result.Msb.Parts.Collisions.All(c => c.Name != "h900001_0000"), "a filter Elden Ring never uses is left out");
+        Expect(result.Notes.Any(n => n.StartsWith("hit filters: 1 DS3 collisions left out") && n.Contains("h900001_0000 (filter 14)")), "the port log names it");
+        Expect(MsbPort.ErKnowsFilter(8) && MsbPort.ErKnowsFilter(24) && !MsbPort.ErKnowsFilter(14), "filters Elden Ring names");
         var filters = MSBE.Read(result.Msb.Write()).Parts.Collisions.ToDictionary(c => c.Name, c => (int)c.HitFilterID);
         Expect(filters["h000100_0000"] == 8 && filters["h000105_0000"] == 8 && filters["h009000_0000"] == 15, $"filters {string.Join(" ", filters)}");
         Expect(result.Notes.Any(n => n.StartsWith("hit filters: 1 DS3 filter-24")), "the port log counts the floor copies");

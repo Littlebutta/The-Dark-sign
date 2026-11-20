@@ -121,9 +121,15 @@ public static class MsbPort
             notes.Add("most of this map's pieces are off DS3's base layer; layers are not used to leave pieces out");
 
         var remapped = new List<string>();
+        var unknownFilter = new List<string>();
         var textMode = MapText.Mode;
         foreach (var src in ds3.Parts.Collisions)
         {
+            if (!options.Ds3HitFilters && !ErKnowsFilter(src.HitFilterID))
+            {
+                unknownFilter.Add($"{src.Name} (filter {src.HitFilterID})");
+                continue;
+            }
             var part = (MSBE.Part.Collision)collisionTemplate.DeepCopy();
             CopyCommon(src, part, ds3Id, erId);
             ApplyCollisionGroups(src, part.Unk1, options);
@@ -142,6 +148,9 @@ public static class MsbPort
             AddModel(msb.Models.Collisions, src.ModelName, collisionModel, erId);
         }
 
+        if (unknownFilter.Count > 0)
+            notes.Add($"hit filters: {unknownFilter.Count} DS3 collisions left out, their filter is one Elden Ring never uses and the layout "
+                      + $"would not read back: {string.Join(", ", unknownFilter.Take(12))}{(unknownFilter.Count > 12 ? ", ..." : "")}");
         if (remapped.Count > 0)
             notes.Add($"hit filters: {remapped.Count} DS3 filter-{Ds3FloorCopyFilter} collisions written as normal floor ({(int)MSBE.Part.Collision.HitFilterType.Standard}): "
                       + $"{string.Join(", ", remapped.Take(12))}{(remapped.Count > 12 ? ", ..." : "")}");
@@ -224,6 +233,16 @@ public static class MsbPort
     /// pass through. DS3's floor copies (<see cref="Ds3FloorCopyFilter"/>) become normal floor, so a character that
     /// finds one under it stands on it. <paramref name="keepDs3"/>: DS3's number unchanged.
     /// </summary>
+    /// <summary>
+    /// Whether Elden Ring's layout format names this hit filter. DS3 uses a few that Elden Ring never does (14 on one
+    /// special h900001 collision in Irithyll, Road of Sacrifices, Cathedral and Grand Archives); written as they are,
+    /// the layout no longer reads back, and from 1.0.5xx (#228) every step that reads the ported layouts again failed
+    /// on them: bonfires (no site of grace anywhere: nothing to rest at, no fire), map effects and object effects.
+    /// Such a collision is left out (fallback map-hit-filters B keeps it).
+    /// </summary>
+    public static bool ErKnowsFilter(byte ds3) =>
+        ds3 == Ds3FloorCopyFilter || Enum.IsDefined(typeof(MSBE.Part.Collision.HitFilterType), ds3);
+
     public static MSBE.Part.Collision.HitFilterType HitFilter(byte ds3, bool keepDs3) =>
         !keepDs3 && ds3 == Ds3FloorCopyFilter ? MSBE.Part.Collision.HitFilterType.Standard : (MSBE.Part.Collision.HitFilterType)ds3;
 
