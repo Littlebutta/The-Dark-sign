@@ -361,6 +361,15 @@ public static class Fallbacks
             new("B", "Spare map IDs", "Each DS3 map gets a map ID of its own that Elden Ring lists and single-player never visits (m11_70, m11_72, m19_70), built from the colosseums' file formats; the Painted World takes the first colosseum. Untested; IDs the game doesn't list at all crash it at boot.")
                 { PorterEnv = Env("DARKSIGN_MAP_SLOTS", "new") },
         ]),
+        new("map-world", "DS3 maps", "Which of DS3's other maps are ported", Stage.Build,
+            "The game crashes at boot or hangs on the title screen since the build that ported every DS3 map, or one of the new maps (Lothric Castle, Road of Sacrifices, Cathedral, Catacombs, Irithyll, Irithyll Dungeon, Grand Archives, Archdragon Peak, Kiln, Dreg Heap, Ringed City) won't load, or walking from one map into the next leaves you in the void.",
+        [
+            new("A", "Every DS3 map (default)", "Besides Firelink, High Wall, the Undead Settlement and the Painted World, the other 11 DS3 maps are ported (Filianore's Rest has no slot), under map IDs Elden Ring lists and never visits (m11_70, m11_72, test maps m38_10-12) or new blocks of its own areas (m45_03-05, m38_13-15) that the porter adds to the game's map list. Neighbouring maps are joined where DS3 joins them. Untested in game."),
+            new("B", "The first four maps only", "Only Firelink, High Wall, the Undead Settlement and the Painted World, as builds up to 1.0.50x had it; the game's map list isn't changed. (DARKSIGN_MAP_WORLD=0)")
+                { PorterEnv = Env("DARKSIGN_MAP_WORLD", "0") },
+            new("C", "Every map, no map link rows", "As A, but without the WorldMapLegacyConvParam rows that tell the game two neighbouring maps share one space. Try it if walking into the next map crashes or puts it in the wrong place. (DARKSIGN_MAP_LINKS=0)")
+                { PorterEnv = Env("DARKSIGN_MAP_LINKS", "0") },
+        ]),
         new("map-painted-world", "DS3 maps", "Where the Painted World of Ariandel goes", Stage.Build,
             "Warping to the Painted World (or the F1 menu's Friede fight) fails: nothing happens, endless loading, or a crash.",
         [

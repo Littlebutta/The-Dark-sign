@@ -93,21 +93,42 @@ public static class MapValidate
         {
             var flags = FlagMap.Load(ctx.ModPath(MapEvents.FlagFile));
             var registered = MapRegistry.Registered(er);
-            // The game's own registry only: a mod copy naming an ID the game doesn't ship crashed every boot
-            // (1.0.238, eldenring.exe+0xAED000), so the porter writes none and a leftover one is a failure.
-            foreach (var path in MapRegistry.Lists)
+            // The mod's copy of the base list (MapRegistry.Write) must stay inside the game's arrays: an open-world area
+            // number past the six it has crashed every boot (1.0.238, eldenring.exe+0xAED000).
+            var modRegistry = ctx.ModPath(MapPorter.ModParts(MapRegistry.ListPath));
+            foreach (var path in MapRegistry.Lists.Skip(1).Where(p => File.Exists(ctx.ModPath(MapPorter.ModParts(p)))))
+                report.Fail($"the mod overrides {Path.GetFileName(path)}; the porter only writes the base list. Rebuild the content");
+            if (File.Exists(modRegistry))
             {
-                var modRegistry = ctx.ModPath(MapPorter.ModParts(path));
-                if (File.Exists(modRegistry))
-                    report.Fail($"the mod overrides Elden Ring's map registry ({Path.GetFileName(modRegistry)}): the game crashes at boot "
-                                + "when the list names a map ID it doesn't ship (1.0.238). Rebuild the content; a full port-maps run deletes it");
+                var vanilla = MapRegistry.ReadLists(er);
+                var modded = MapRegistry.Parse(MapRegistry.ReadModList(modRegistry));
+                var lists = new List<List<MapRegistry.Entry>> { modded }.Concat(vanilla.Skip(1)).ToList();
+                var mapsAll = lists.SelectMany(l => l).Select(e => e.Map).ToHashSet();
+                var vanillaAll = vanilla.SelectMany(l => l).Select(e => e.Map).ToHashSet();
+                var grid = mapsAll.Where(MapRegistry.IsGridArea).Select(m => m.Area).Distinct().Count();
+                var vanillaGrid = vanillaAll.Where(MapRegistry.IsGridArea).Select(m => m.Area).Distinct().Count();
+                var dungeon = mapsAll.Where(m => !MapRegistry.IsGridArea(m)).ToList();
+                int baseLines = modded.Count(e => !MapRegistry.IsGridArea(e.Map));
+                if (grid > vanillaGrid)
+                    report.Fail($"the mod's map registry names {grid} open-world areas, the game {vanillaGrid}: the game has no room for more (1.0.238 boot crash)");
+                else if (baseLines > MapRegistry.MaxBaseDungeonLines || dungeon.Count > MapRegistry.MaxBlocks
+                         || dungeon.Select(m => m.Area).Distinct().Count() > MapRegistry.MaxDungeonAreas)
+                    report.Fail($"the mod's map registry is past the game's arrays: {baseLines}/{MapRegistry.MaxBaseDungeonLines} base dungeon lines, "
+                                + $"{dungeon.Count}/{MapRegistry.MaxBlocks} blocks, {dungeon.Select(m => m.Area).Distinct().Count()}/{MapRegistry.MaxDungeonAreas} areas");
+                else if (vanillaAll.Except(mapsAll).Any())
+                    report.Fail($"the mod's map registry lost maps the game names: {string.Join(", ", vanillaAll.Except(mapsAll))}");
+                else
+                    report.Ok($"map registry: {mapsAll.Except(vanillaAll).Count()} map(s) added ({string.Join(", ", mapsAll.Except(vanillaAll))}); "
+                              + $"{baseLines}/{MapRegistry.MaxBaseDungeonLines} base dungeon lines, {dungeon.Count}/{MapRegistry.MaxBlocks} blocks, "
+                              + $"{dungeon.Select(m => m.Area).Distinct().Count()}/{MapRegistry.MaxDungeonAreas} areas, {grid} open-world areas as in the game");
+                registered.UnionWith(mapsAll);
             }
             foreach (var (_, erId) in listed)
                 if (registered.Contains(erId))
-                    report.Ok($"{erId}: in Elden Ring's map registry (worldmsblist)");
+                    report.Ok($"{erId}: in the map registry (worldmsblist)");
                 else
-                    report.Fail($"{erId}: not in Elden Ring's map registry (worldmsblist.worldloadlistlist); the game never loads it "
-                                + "(endless loading screen) and registering it crashes the boot. Use a registered ID");
+                    report.Fail($"{erId}: not in the map registry (worldmsblist.worldloadlistlist); the game never loads it "
+                                + "(endless loading screen). Rebuild the content");
             FlagAlloc.Check(er, report, listed.Select(l => l.Er), flags.Flags.Values.Concat(flags.Events.Values),
                 ctx.ModPath(MapPorter.ModParts(FlagAlloc.LegacyList)), registered);
             // The in-game check (dksign_testmenu.dll) asks the game itself about these blocks.

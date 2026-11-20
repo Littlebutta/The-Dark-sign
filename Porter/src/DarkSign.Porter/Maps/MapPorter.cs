@@ -390,14 +390,14 @@ public static class MapPorter
             Time(report, "enemy port", enemyClock);
         }
 
-        // Only map IDs the game ships: a registry line for any other crashed every boot (1.0.238), and an unregistered
-        // ID never loads, so such a slot is reported and left out rather than built.
-        var registered = MapRegistry.Registered(er);
+        // Only map IDs the registry names or can name: an unlisted ID never loads, and an open-world area number past
+        // the game's six crashed every boot (1.0.238), so such a slot is reported and left out rather than built.
+        var registryLists = MapRegistry.ReadLists(er);
         var slots = MapSlots.All.Where(s => options.Only.Count == 0 || options.Only.Contains(s.Ds3.ToString())).ToList();
-        foreach (var slot in MapRegistry.Unregistered(registered, slots))
+        foreach (var slot in MapRegistry.Unregistered(registryLists, slots))
         {
-            report.AppendLine(MapRegistry.SkipReason(slot));
-            Console.Error.WriteLine("  " + MapRegistry.SkipReason(slot));
+            report.AppendLine(MapRegistry.SkipReason(registryLists, slot));
+            Console.Error.WriteLine("  " + MapRegistry.SkipReason(registryLists, slot));
             slots.Remove(slot);
         }
         // Probe slots last: they copy their main slot's converted map pieces.
@@ -572,6 +572,13 @@ public static class MapPorter
         // A slot under a registered ID that ships no map (map-slots B) gets what the game's own maps have: the
         // template's per-map files under the new ID, and a flag allocation line where the template has one. The map
         // registry itself is never written (see MapRegistry: a line for an unshipped ID crashed every boot).
+        // New blocks of the game's own areas (MapSlots.WorldSlots) get a line in the base list; only maps that were
+        // ported, so the list never names a map with no files.
+        if (ported.Count > 0)
+            Step(report, "map registry", () => MapRegistry.Write(ctx, er, ported.Select(p => p.Slot).ToList()));
+        // DS3's neighbouring maps share one world space; the rows tell Elden Ring so (MapLinks).
+        if (ported.Count > 1 && MapLinks.Enabled)
+            Step(report, "map links", () => MapLinks.Write(ctx, ds3, ported.Select(p => p.Slot).ToList()));
         if (ported.Any(p => p.Slot.Host != p.Slot.Er))
         {
             Step(report, "new map ID files", () => NewIdFiles.Copy(ctx, er, ported.Select(p => p.Slot)));
@@ -699,7 +706,7 @@ public static class MapPorter
             }
         }
 
-        var every = MapSlots.PaintedWorldSlots(null).Concat(MapSlots.NewIdSlots()).Concat(MapSlots.LegacyNewIdSlots()).ToList();
+        var every = MapSlots.PaintedWorldSlots(null).Concat(MapSlots.WorldSlots()).Concat(MapSlots.NewIdSlots()).Concat(MapSlots.LegacyNewIdSlots()).ToList();
         var ids = every.Select(s => s.Er).Distinct().ToList();
         foreach (var id in ids)
         {
@@ -735,7 +742,7 @@ public static class MapPorter
                          [$"/map/breakgeom/lod0/{slot.Host}_lod0.breakgeom.dcx", $"/map/onav/{slot.Host}.onav.dcx",
                           $"/param/drawparam/m{slot.Host.Area:D2}_{slot.Host.Block:D2}_0000.gparam.dcx"], slot.Host, slot.Er))
                 Delete(Local(path));
-        // MapRegistry.ListPath: builds 1.0.234-1.0.238 wrote it for the m50 probe and it crashed the boot; never again.
+        // MapRegistry.ListPath: rewritten by every full run that adds maps (MapRegistry.Write).
         foreach (var path in new[] { "/event/common.emevd.dcx", MapEvents.CommonFunc, MaterialBinder, OldMaterialBinder, ActionButtons.ModMenu, FlagAlloc.LegacyList, MapRegistry.ListPath })
             Delete(Local(path));
         var musicFolder = Path.Combine(root, MapMusic.Folder);

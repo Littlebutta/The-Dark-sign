@@ -78,18 +78,24 @@ public static class MapSlots
     }
 
     /// <summary>
-    /// The slots in use: <see cref="Colosseums"/> plus the Painted World (<see cref="PaintedWorldSlots"/>), or
-    /// <see cref="NewIdSlots"/> when DARKSIGN_MAP_SLOTS=new (launcher fallback "map-slots" B).
+    /// The slots in use: <see cref="Colosseums"/> plus the Painted World (<see cref="PaintedWorldSlots"/>) plus the
+    /// rest of DS3's world (<see cref="WorldSlots"/>, off with DARKSIGN_MAP_WORLD=0, launcher fallback "map-world" B),
+    /// or <see cref="NewIdSlots"/> when DARKSIGN_MAP_SLOTS=new (launcher fallback "map-slots" B).
     /// </summary>
     public static IReadOnlyList<Slot> All => _all ??= Choose(
         string.Equals(Environment.GetEnvironmentVariable("DARKSIGN_MAP_SLOTS"), "new", StringComparison.OrdinalIgnoreCase),
-        Environment.GetEnvironmentVariable("DARKSIGN_PAINTED_WORLD"));
+        Environment.GetEnvironmentVariable("DARKSIGN_PAINTED_WORLD"),
+        Environment.GetEnvironmentVariable("DARKSIGN_MAP_WORLD") is not "0");
 
     private static IReadOnlyList<Slot>? _all;
 
-    /// <summary>The slot list for a map-slots method and a DARKSIGN_PAINTED_WORLD value (null, "colosseum" or "0").</summary>
-    public static IReadOnlyList<Slot> Choose(bool newIds, string? paintedWorld) =>
-        !newIds ? PaintedWorldSlots(paintedWorld)
+    /// <summary>
+    /// The slot list for a map-slots method, a DARKSIGN_PAINTED_WORLD value (null, "colosseum" or "0") and whether
+    /// the rest of DS3's world is ported (<see cref="WorldSlots"/>; the colosseum method only, because map-slots B
+    /// already uses m11_70 and m11_72).
+    /// </summary>
+    public static IReadOnlyList<Slot> Choose(bool newIds, string? paintedWorld, bool world = false) =>
+        !newIds ? (world ? [.. PaintedWorldSlots(paintedWorld), .. WorldSlots()] : PaintedWorldSlots(paintedWorld))
         : PaintedWorldOff(paintedWorld) ? NewIdSlots()
         : [.. NewIdSlots(), PaintedWorldInColosseum(MapId.Parse("m45_00_00_00"))];
 
@@ -149,6 +155,39 @@ public static class MapSlots
         new(MapId.Parse("m30_00_00_00"), MapId.Parse("m51_00_00_00"), "High Wall of Lothric", Template: MapId.Parse("m45_01_00_00")),
         new(MapId.Parse("m31_00_00_00"), MapId.Parse("m52_00_00_00"), "Undead Settlement", Template: MapId.Parse("m45_02_00_00")),
     ];
+
+    /// <summary>
+    /// The rest of DS3's world (2026-11-19, Devin: "make it so each of the maps in the whole game are loaded and work
+    /// together"). Elden Ring builds its table of maps at boot from the map registry (worldmsblist), in fixed arrays
+    /// (read from eldenring.exe 2.7.2, see <see cref="MapRegistry"/>): 28 dungeon areas, 192 dungeon blocks, 96
+    /// dungeon lines in the base list, and 6 open-world areas (area numbers 50-88), all in use. The m50 probe that
+    /// crashed every boot in 1.0.238 was a seventh open-world area, not an ID the game refuses. So a ported map takes
+    /// either an ID the registry already names and single-player never visits (m11_70, m11_72, and the three test
+    /// maps m38_10-12), or a new block of an area the game already has (m45_03-05 beside the colosseums, m38_13-15
+    /// beside the test maps), which <see cref="MapRegistry.Write"/> adds to the base list: 6 new lines fit (90 used).
+    /// Neighbours sharing DS3's textures share an Elden Ring area (a texture binder per area): High Wall and Lothric
+    /// Castle are both in m45. Every map is built from the first colosseum's formats and side files, as the Painted
+    /// World is. Filianore's Rest (m51_01) has no slot left. Untested in game as of 2026-11-19.
+    /// </summary>
+    public static IReadOnlyList<Slot> WorldSlots()
+    {
+        var template = MapId.Parse("m45_00_00_00");
+        Slot S(string ds3, string er, string name) => new(MapId.Parse(ds3), MapId.Parse(er), name, Template: template);
+        return
+        [
+            S("m30_01_00_00", "m45_03_00_00", "Lothric Castle"),
+            S("m33_00_00_00", "m45_04_00_00", "Road of Sacrifices / Farron Keep"),
+            S("m35_00_00_00", "m45_05_00_00", "Cathedral of the Deep"),
+            S("m38_00_00_00", "m38_10_00_00", "Catacombs of Carthus / Smouldering Lake"),
+            S("m37_00_00_00", "m38_11_00_00", "Irithyll of the Boreal Valley"),
+            S("m39_00_00_00", "m38_12_00_00", "Irithyll Dungeon"),
+            S("m34_01_00_00", "m38_13_00_00", "Grand Archives"),
+            S("m32_00_00_00", "m38_14_00_00", "Archdragon Peak"),
+            S("m41_00_00_00", "m38_15_00_00", "Kiln of the First Flame"),
+            S("m50_00_00_00", "m11_70_00_00", "The Dreg Heap"),
+            S("m51_00_00_00", "m11_72_00_00", "The Ringed City"),
+        ];
+    }
 
     public static readonly IReadOnlyList<Slot> Colosseums =
     [
