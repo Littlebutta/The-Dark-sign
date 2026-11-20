@@ -12,7 +12,7 @@ public static partial class MapPortChecks
     private static IEnumerable<(string Name, Action Test)> AtmosphereChecks()
     {
         yield return ("stand-ins: a low-detail piece over detailed pieces it is never drawn with is left out; one with nothing under it stays", StandIns);
-        yield return ("world stand-ins: a kept stand-in over a neighbouring map's real pieces is left out; one over nothing stays", WorldStandIns);
+        yield return ("world stand-ins: a kept stand-in over a neighbouring map's real pieces draws only while that map is not loaded; one over nothing stays", WorldStandIns);
         yield return ("far views: a low-detail copy of an area with ordinary textures, drawn only from a lookout, is left out; the sky dome, a building shell and a piece drawn with most of what it covers stay", FarViews);
         yield return ("atmosphere: the slot's gparam takes DS3's sun and fog colours, Stormveil's fog amounts, no colour grading", Atmosphere);
         yield return ("atmosphere: the sun's direction turns with DS3's map offset, like the map's lamps and baked light", SunTurned);
@@ -135,6 +135,39 @@ public static partial class MapPortChecks
         Expect(!verdicts.Single(v => v.Part == "m900070_9000").LeftOut, "only the neighbour's own stand-in there: kept");
         var few = MapStandIns.AcrossMaps(own, new HashSet<string> { "m900065_9000" }, neighbour.Take(2));
         Expect(!few.Single().LeftOut, "two pieces are too few");
+        // Draw groups: the stand-in is matched to the neighbour with its detail there, even one big piece whose box
+        // only meets the stand-in's.
+        var castle = MapId.Parse("m45_03_00_00");
+        var archives = MapId.Parse("m38_13_00_00");
+        var big = new List<MapStandIns.PieceBox> { new("m002000_0000", new Vector3(90, 0, 90), new Vector3(300, 50, 300), 800, false) };
+        var matched = MapStandIns.ForNeighbours(own, new HashSet<string> { "m900065_9000", "m900070_9000" },
+            new Dictionary<MapId, IEnumerable<MapStandIns.PieceBox>> { [castle] = big, [archives] = neighbour.Take(1) });
+        Expect(matched.Count == 1 && matched[0].Key == "m900065_9000" && matched[0].Value == castle,
+            "the stand-in goes with the map holding most detail there: " + string.Join(", ", matched));
+
+        var highWall = MapId.Parse("m45_01_00_00");
+        var bits = MapNeighbourGroups.Assign([castle, highWall, archives]);
+        Expect(bits[archives] == 0 && bits[highWall] == 1 && bits[castle] == 2, "bits by map ID");
+        var msb = new MSBE();
+        var standIn = new MSBE.Part.MapPiece { Name = "m900065_9000", ModelName = "m900065" };
+        var plain = new MSBE.Part.MapPiece { Name = "m000100_0000", ModelName = "m000100" };
+        MapDrawGroups.Clear(standIn.Unk1);
+        MapDrawGroups.Clear(plain.Unk1);
+        msb.Parts.MapPieces.AddRange([standIn, plain]);
+        var near = new MSBE.Part.Collision { Name = "h000100", ModelName = "h000100" };
+        var far = new MSBE.Part.Collision { Name = "h000200", ModelName = "h000200" };
+        msb.Parts.Collisions.AddRange([near, far]);
+        msb.Parts.ConnectCollisions.Add(new MSBE.Part.ConnectCollision { Name = "h000100_0000", ModelName = "h000100", CollisionName = "h000100", MapID = [45, 3, 0, 255] });
+        int written = MapNeighbourGroups.Apply(msb, highWall, new Dictionary<string, MapId> { ["m900065_9000"] = castle }, bits);
+        Expect(written == 2, "both collisions written");
+        Expect(MapDrawGroups.Draw(standIn.Unk1)[MapNeighbourGroups.Word] == 1u << bits[castle], "the stand-in draws with the castle's group");
+        Expect(MapDrawGroups.IsEmpty(MapDrawGroups.Draw(plain.Unk1)), "an ordinary piece keeps no groups (drawn from everywhere)");
+        uint farShows = MapDrawGroups.Display(far.Unk1)[MapNeighbourGroups.Word], nearShows = MapDrawGroups.Display(near.Unk1)[MapNeighbourGroups.Word];
+        Expect(MapNeighbourGroups.Shows(bits[castle], farShows), "away from the castle's connect, the castle's stand-ins show");
+        Expect(!MapNeighbourGroups.Shows(bits[castle], nearShows), "on the collision that loads the castle, they don't");
+        Expect(!MapNeighbourGroups.Shows(bits[highWall], farShows), "the High Wall's own group is never shown in the High Wall");
+        Expect(MapDrawGroups.Display(far.Unk1)[0] == 0xFFFFFFFF && MapDrawGroups.Draw(far.Unk1)[0] == 0xFFFFFFFF, "collisions keep every other group and every draw group");
+        Expect(MapDrawGroups.Display(msb.Parts.ConnectCollisions[0].Unk1)[MapNeighbourGroups.Word] == nearShows, "the connect collision shows what its collision shows");
     }
 
     private static void StandIns()
