@@ -246,6 +246,7 @@ public sealed class CutsceneSound
 
     private readonly PorterContext _ctx;
     private readonly GameArchives _ds3;
+    private readonly GameArchives _er;
     private readonly Dictionary<string, (Fev.Event Event, string Fsb)> _events;
     private readonly Dictionary<int, int> _voices;
     private readonly byte[] _template;
@@ -255,9 +256,10 @@ public sealed class CutsceneSound
     private readonly List<(uint BankId, List<uint> Events)> _written = [];
     private static readonly string[] Suffixes = ["", "b", "c", "d", "e", "f", "g", "h"];
 
-    private CutsceneSound(PorterContext ctx, GameArchives ds3, Dictionary<string, (Fev.Event, string)> events, Dictionary<int, int> voices,
+    private CutsceneSound(PorterContext ctx, GameArchives ds3, GameArchives er, Dictionary<string, (Fev.Event, string)> events, Dictionary<int, int> voices,
         byte[] template, string templateName, uint play, uint stop, uint bankId)
     {
+        _er = er;
         (_ctx, _ds3, _events, _voices, _template, _templateName, _templatePlay, _templateStop, _templateBankId) =
             (ctx, ds3, events, voices, template, templateName, play, stop, bankId);
     }
@@ -309,7 +311,7 @@ public sealed class CutsceneSound
                 {
                     notes.Add($"DS3 TalkParam not read ({e.Message}); spoken lines use the talk's own number");
                 }
-                return new CutsceneSound(ctx, ds3, events, voices, bytes, name, play, stop, bank.BankId);
+                return new CutsceneSound(ctx, ds3, er, events, voices, bytes, name, play, stop, bank.BankId);
             }
             catch (Exception e) when (e is InvalidDataException or ArgumentException or IndexOutOfRangeException)
             {
@@ -481,6 +483,79 @@ public sealed class CutsceneSound
     /// Play_v&lt;number, nine digits&gt;), DS3's sound name (v&lt;DS3 voice&gt;) or null, and how long a silent stand-in lasts.</summary>
     public sealed record VoiceLine(int VoiceId, string? Ds3Name, float Seconds);
 
+    /// <summary>
+    /// DARKSIGN_PEOPLE_VOICE_BUS=0 builds the voice banks on the cutscene template again (launcher fallback map-people L).
+    /// <para>Why voices aren't built on it by default: every DS3 voice event (5,962 in fdp_vm30-51.fev) is in FMOD
+    /// category "Voice" with user property mixerID_0=1, the same mixer DS3's world sounds use (621 of fdp_main's c
+    /// events, 437 g, 494 s, 728 z have mixerID_0=1); that mixer is fdp_mixer.fev's "fdp_rev" (the room reverb, set by
+    /// the "sd_reverb_size" parameter: SFX Reverb, FMOD Lowpass Simple, FMOD Echo), and 5,912 of the voice events also
+    /// carry their own "FMOD Lowpass Simple" envelope. So DS3 voices are heard in the room, from the speaker. The
+    /// cutscene template plays its sound flat and dry (a pre-mixed cutscene track), which is how ported lines sounded
+    /// in 1.0.50x (Devin, 2026-11-20: "no voice effects/modulations"). Elden Ring's own NPC voices (vcNNN.bnk) hang
+    /// under its voice actor-mixers, which carry Elden Ring's room reverb, distance and positioning; the voice banks
+    /// are now built on one of those.</para>
+    /// </summary>
+    public static readonly bool VoiceBus = Environment.GetEnvironmentVariable("DARKSIGN_PEOPLE_VOICE_BUS") != "0";
+
+    // An Elden Ring NPC voice bank to build voice banks on: its bytes, name, a Play event and a Stop event of it.
+    private sealed record VoiceTemplate(byte[] Bytes, string Name, uint Play, uint Stop, uint BankId);
+    private VoiceTemplate? _voiceTemplate;
+    private bool _voiceTemplateLooked;
+    private string _voiceTemplateNote = "";
+
+    /// <summary>Which template the voice banks are built on (for the log).</summary>
+    public string VoiceTemplateNote
+    {
+        get
+        {
+            VoiceTemplateOf();
+            return _voiceTemplateNote;
+        }
+    }
+
+    /// <summary>The smallest Elden Ring NPC voice bank (/sd/[enus/]vcNNN.bnk) with an event whose Sound hangs under
+    /// actor-mixers a bank of our own can copy (<see cref="Builds"/>); null (cutscene template) when none or when
+    /// <see cref="VoiceBus"/> is off.</summary>
+    private VoiceTemplate? VoiceTemplateOf()
+    {
+        if (_voiceTemplateLooked)
+            return _voiceTemplate;
+        _voiceTemplateLooked = true;
+        if (!VoiceBus)
+        {
+            _voiceTemplateNote = $"built on the cutscene template {_templateName} (DARKSIGN_PEOPLE_VOICE_BUS=0)";
+            return null;
+        }
+        var candidates = _er.Entries.Where(e => e.Path is not null && Regex.IsMatch(e.Path, @"^/sd/(enus/)?vc\d{3}\.bnk$", RegexOptions.IgnoreCase))
+            .Select(e => (Path: e.Path!, Size: e.Header.PaddedFileSize)).OrderBy(c => c.Size).ThenBy(c => c.Path, StringComparer.Ordinal).ToList();
+        int looked = 0;
+        foreach (var (path, _) in candidates.Take(40))
+        {
+            looked++;
+            try
+            {
+                var bytes = _er.Read(path);
+                var bank = WwiseBank.Read(bytes);
+                uint stop = bank.Objects.Where(o => o.Type == WwiseBank.EventType).Select(o => o.Id)
+                    .FirstOrDefault(id => bank.StopTemplate(id) is not null);
+                foreach (var ev in bank.Objects.Where(o => o.Type == WwiseBank.EventType).Take(64))
+                {
+                    if (bank.Chain(ev.Id) is not { } chain || WwiseNode.Read(chain.Sound) is null || !Builds(bytes, ev.Id))
+                        continue;
+                    _voiceTemplate = new VoiceTemplate(bytes, Path.GetFileNameWithoutExtension(path), ev.Id, stop, bank.BankId);
+                    _voiceTemplateNote = $"built on Elden Ring's NPC voice bank {path} (its voice actor-mixers: room reverb, distance, position; " +
+                                         $"{(stop != 0 ? "its Stop action" : "the cutscene Stop action")}) [DARKSIGN_PEOPLE_VOICE_BUS=0 off]";
+                    return _voiceTemplate;
+                }
+            }
+            catch (Exception e) when (e is InvalidDataException or ArgumentException or IndexOutOfRangeException or InvalidOperationException)
+            {
+            }
+        }
+        _voiceTemplateNote = $"built on the cutscene template {_templateName}: no Elden Ring voice bank to copy ({candidates.Count} found, {looked} looked at)";
+        return null;
+    }
+
     private readonly List<(uint BankId, List<uint> Events)> _voiceBanks = [];
 
     /// <summary>Halves the sample rate of 44.1 kHz and up (speech loses nothing it needs; a bank is held in memory whole).</summary>
@@ -509,9 +584,12 @@ public sealed class CutsceneSound
         var done = new HashSet<int>();
         if (lines.Count == 0)
             return ("no lines", done);
-        var bank = WwiseBank.Read(_template);
-        var template = bank.Chain(_templatePlay)!.Value;
-        var stopTemplate = bank.StopTemplate(_templateStop);
+        var voice = VoiceTemplateOf();
+        var bank = WwiseBank.Read(voice?.Bytes ?? _template);
+        var template = bank.Chain(voice?.Play ?? _templatePlay)!.Value;
+        var stopTemplate = voice is { Stop: not 0 } ? bank.StopTemplate(voice.Stop) : voice is null ? bank.StopTemplate(_templateStop) : null;
+        if (voice is not null && stopTemplate is null)
+            stopTemplate = WwiseBank.Read(_template).StopTemplate(_templateStop);
         HashSet<uint> taken = [];
         var events = new List<uint>();
         int spoken = 0, silent = 0;
@@ -564,7 +642,7 @@ public sealed class CutsceneSound
             done.Add(line.VoiceId);
         }
         uint bankId = FxSoundExplore.Fnv1(bankName);
-        var written = bank.WriteOwnBank(bankId) ?? throw new InvalidDataException($"the template bank {_templateName}'s sounds don't hang under an actor-mixer this port can copy");
+        var written = bank.WriteOwnBank(bankId) ?? throw new InvalidDataException($"the template bank {voice?.Name ?? _templateName}'s sounds don't hang under an actor-mixer this port can copy");
         foreach (var path in VoiceBankPaths(_ctx, bankName))
         {
             Directory.CreateDirectory(Path.GetDirectoryName(path)!);

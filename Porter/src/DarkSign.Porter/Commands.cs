@@ -330,7 +330,8 @@ public static class Commands
                 foreach (var lod in new[] { false, true })
                 {
                     var model = ModelPort.Convert(ds3, er, ds3Model, templateModel, plan.NewModelId!.Value, lod,
-                        holdTurns is not null && holdTurns.TryGetValue(plan, out var turn) ? turn : null, shapeTurn);
+                        holdTurns is not null && holdTurns.TryGetValue(plan, out var turn) ? turn : null, shapeTurn,
+                        lod ? mine.Select(m => m.NewMatbin).ToList() : null);
                     if (model is null)
                         continue;
                     shapeTurn ??= model.ShapeTurn;

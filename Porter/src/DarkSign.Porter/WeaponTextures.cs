@@ -43,10 +43,12 @@ public static class WeaponTextures
     {
         var byName = tpf.Textures.ToDictionary(t => t.Name, StringComparer.OrdinalIgnoreCase);
         var added = new List<TPF.Texture>();
-        foreach (var r in tpf.Textures.Where(t => t.Name.EndsWith("_r", StringComparison.OrdinalIgnoreCase)).ToList())
+        // A LOD texture carries the LOD mark after the map letter (WP_A_9020_r_l -> WP_A_9020_m_l), as Elden Ring's do.
+        foreach (var r in tpf.Textures.Where(t => t.Name.EndsWith("_r", StringComparison.OrdinalIgnoreCase) || t.Name.EndsWith("_r_l", StringComparison.OrdinalIgnoreCase)).ToList())
         {
-            var stem = r.Name[..^2];
-            if (byName.ContainsKey(stem + "_m"))
+            var lodMark = r.Name.EndsWith("_l", StringComparison.OrdinalIgnoreCase) ? r.Name[^2..] : "";
+            var stem = r.Name[..^(2 + lodMark.Length)];
+            if (byName.ContainsKey(stem + "_m" + lodMark))
                 continue;
             byte[] metallic = ModelPort.BlackBc4Dds();
             if (mode != Mode.Flat)
@@ -64,7 +66,7 @@ public static class WeaponTextures
                     }
                     metallic = Encode(mPixels, sw, sh, CompressionFormat.Bc4, DxgiBc4Unorm);
 
-                    if (mode == Mode.Full && byName.TryGetValue(stem + "_a", out var albedo)
+                    if (mode == Mode.Full && byName.TryGetValue(stem + "_a" + lodMark, out var albedo)
                         && AlbedoFormat(albedo.Bytes) is { } fmt)
                     {
                         var (diff, aw, ah) = Decode(albedo.Bytes);
@@ -93,7 +95,7 @@ public static class WeaponTextures
                     metallic = ModelPort.BlackBc4Dds();
                 }
             }
-            added.Add(new TPF.Texture(stem + "_m", 103, 0, metallic, TPF.TPFPlatform.PC));
+            added.Add(new TPF.Texture(stem + "_m" + lodMark, 103, 0, metallic, TPF.TPFPlatform.PC));
         }
         tpf.Textures.AddRange(added);
     }
@@ -222,6 +224,22 @@ public static class WeaponTextures
         flat.Textures.Add(new TPF.Texture("X_r", 0, 0, Encode(r, n, n, CompressionFormat.Bc1, 72), TPF.TPFPlatform.PC));
         AddMetallicMaps(flat, Mode.Flat);
         Check(flat.Textures.Any(t => t.Name == "X_m" && t.Bytes.SequenceEqual(ModelPort.BlackBc4Dds())), "off mode keeps the flat black _m");
+
+        // LOD layout (ModelPort.LodSharesMaterials): Elden Ring's LOD binders name textures <main name>_l and draw with
+        // the main model's MATBIN.
+        var lodTpf = new TPF { Platform = TPF.TPFPlatform.PC, Encoding = 1, Flag2 = 3 };
+        lodTpf.Textures.Add(new TPF.Texture("WP_A_9020_r_l", 0, 0, Encode(r, n, n, CompressionFormat.Bc1, 72), TPF.TPFPlatform.PC));
+        AddMetallicMaps(lodTpf, Mode.Flat);
+        Check(lodTpf.Textures.Any(t => t.Name == "WP_A_9020_m_l"), "a LOD _r_l gets an _m_l");
+        if (ModelPort.LodSharesMaterials)
+        {
+            Check(ModelPort.TextureName("WP_A_0201_a_l", "WP_A_0201", "WP_A_9020") == "WP_A_9020_a_l", "a LOD texture keeps _l at the end (WP_A_9020_a_l)");
+            Check(ModelPort.TextureName("WP_A_0201_1_n_l", "WP_A_0201", "WP_A_9020") == "WP_A_9020_1_n_l", "a LOD part texture keeps _l at the end");
+            string[] main = ["P[WP_A_9020]_Metal", "P[WP_A_9020_1]_Leather"];
+            Check(ModelPort.LodMatbin("P[WP_A_9020_L]_Metal", "WP_A_9020_L", "", main) == "P[WP_A_9020]_Metal", "a LOD material draws with the main MATBIN");
+            Check(ModelPort.LodMatbin("P[WP_A_9020_1_L]_Metal", "WP_A_9020_1_L", "", main) == "P[WP_A_9020_1]_Leather", "a LOD part draws with its main part's MATBIN");
+            Check(ModelPort.LodMatbin("P[WP_A_9020_2_L]_Metal", "WP_A_9020_2_L", "", main) is null, "a LOD part the main model lacks keeps a MATBIN of its own");
+        }
         Console.WriteLine(fails == 0 ? "texture-selftest: all passed" : $"texture-selftest: {fails} failed");
         return fails == 0 ? 0 : 1;
     }
