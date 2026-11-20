@@ -512,6 +512,9 @@ public static class MapPorter
         if (_objects is not null && ported.Count > 0)
         {
             var objectClock = System.Diagnostics.Stopwatch.StartNew();
+            // The moving objects' sound banks first: a row names its bank only when the bank was written.
+            Step(report, "object sounds", _objects.WriteSounds);
+            objectClock.Restart();
             try
             {
                 report.AppendLine(_objects.WriteParams());

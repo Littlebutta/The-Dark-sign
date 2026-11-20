@@ -12,6 +12,73 @@ namespace DarkSign.Porter.Maps;
 /// </summary>
 public static class ObjectCollisionDiag
 {
+    /// <summary>
+    /// "object-diag model &lt;binder&gt;...": a DS3 objbnd's or a ported asset binder's (decompressed: "enemy-diag unpack"
+    /// first) models, how each mesh hangs on its nodes (NormalW nodes or bone weights), and the skeleton the animation
+    /// binder moves. Written for the Undead Settlement tower lift whose floor rose while the platform stayed put.
+    /// </summary>
+    public static int Model(IReadOnlyList<string> files)
+    {
+        int failed = 0;
+        foreach (var path in files)
+        {
+            Console.WriteLine($"== {Path.GetFileName(path)}");
+            try
+            {
+                var bytes = File.ReadAllBytes(path);
+                var bnd = BND4.Read(DCX.Is(bytes) ? DCX.Decompress(bytes) : bytes);
+                foreach (var f in bnd.Files)
+                    Console.WriteLine($"   file {f.ID}: {ItemText.Leaf(f.Name)} ({f.Bytes.Length:N0} bytes)");
+                foreach (var f in bnd.Files.Where(f => FLVER2.Is(f.Bytes)))
+                    foreach (var line in DescribeFlver(FLVER2.Read(f.Bytes), ItemText.Leaf(f.Name)))
+                        Console.WriteLine("   " + line);
+                var anibnd = bnd.Files.FirstOrDefault(f => ItemText.Leaf(f.Name).EndsWith(".anibnd", StringComparison.OrdinalIgnoreCase) || f.ID == 400);
+                if (anibnd is not null)
+                {
+                    var inner = BND4.Read(DCX.Is(anibnd.Bytes) ? DCX.Decompress(anibnd.Bytes) : anibnd.Bytes);
+                    var skeleton = inner.Files.FirstOrDefault(f => ItemText.Leaf(f.Name).Equals("skeleton.hkx", StringComparison.OrdinalIgnoreCase));
+                    if (skeleton is not null)
+                    {
+                        try
+                        {
+                            var s = AnimPort.ReadDs3Skeleton(skeleton.Bytes);
+                            Console.WriteLine($"   skeleton (DS3): {s.Names.Count} bones: " + string.Join(" ", s.Names.Select((n, i) => $"{i}:{n}<{(i < s.Parents.Count ? s.Parents[i] : -9)}")));
+                        }
+                        catch (Exception ex) when (ex is not OutOfMemoryException)
+                        {
+                            Console.WriteLine($"   skeleton: not a DS3 one ({ex.GetType().Name})");
+                        }
+                    }
+                    foreach (var line in TaeEvents(bnd))
+                        Console.WriteLine("   " + line);
+                }
+            }
+            catch (Exception ex) when (ex is not OutOfMemoryException)
+            {
+                failed++;
+                Console.WriteLine($"   FAILED: {ex.GetType().Name}: {ex.Message}");
+            }
+        }
+        return failed == 0 ? 0 : 1;
+    }
+
+    public static IEnumerable<string> DescribeFlver(FLVER2 flver, string name)
+    {
+        yield return $"flver {name}: version 0x{flver.Header.Version:X}, {flver.Nodes.Count} nodes, {flver.Meshes.Count} meshes, {flver.Dummies.Count} dummies";
+        yield return "  nodes: " + string.Join(" ", flver.Nodes.Select((n, i) => $"{i}:{n.Name}<{n.ParentIndex}"));
+        for (int m = 0; m < flver.Meshes.Count; m++)
+        {
+            var mesh = flver.Meshes[m];
+            var mat = mesh.MaterialIndex >= 0 && mesh.MaterialIndex < flver.Materials.Count ? flver.Materials[mesh.MaterialIndex] : null;
+            var normalWs = mesh.Vertices.GroupBy(v => v.NormalWs.Count > 0 ? v.NormalWs[0] : -1).OrderBy(g => g.Key).Select(g => $"{g.Key}x{g.Count()}");
+            var bones = mesh.Vertices.SelectMany(v => Enumerable.Range(0, 4).Where(i => v.BoneWeights[i] > 0).Select(i => v.BoneIndices[i])).GroupBy(b => b).OrderBy(g => g.Key).Select(g => $"{g.Key}x{g.Count()}");
+            var layout = mesh.VertexBuffers.Count > 0 && mesh.VertexBuffers[0].LayoutIndex < flver.BufferLayouts.Count
+                ? string.Join(",", flver.BufferLayouts[mesh.VertexBuffers[0].LayoutIndex].Select(l => $"{l.Semantic}{l.Index}:{l.Type}")) : "?";
+            yield return $"  mesh {m}: {mesh.Vertices.Count} vertices, mtd {mat?.MTD}, node {mesh.NodeIndex}, skinned {mesh.UseBoneWeights}, bone list [{string.Join(" ", mesh.BoneIndices)}], "
+                         + $"NormalW {string.Join(" ", normalWs.Take(12))}, weighted bones {string.Join(" ", bones.Take(12))}, box {mesh.BoundingBox?.Min} .. {mesh.BoundingBox?.Max}, layout {layout}";
+        }
+    }
+
     public static int Run(IReadOnlyList<string> files)
     {
         int failed = 0;
@@ -22,6 +89,8 @@ public static class ObjectCollisionDiag
             {
                 var bytes = File.ReadAllBytes(path);
                 var bnd = BND4.Read(DCX.Is(bytes) ? DCX.Decompress(bytes) : bytes);
+                foreach (var line in TaeEvents(bnd))
+                    Console.WriteLine("   " + line);
                 foreach (var file in bnd.Files.Where(f => ItemText.Leaf(f.Name).EndsWith(".hkx", StringComparison.OrdinalIgnoreCase)))
                 {
                     Console.WriteLine($"-- {ItemText.Leaf(file.Name)} ({file.Bytes.Length:N0} bytes)");
@@ -51,6 +120,29 @@ public static class ObjectCollisionDiag
             }
         }
         return failed == 0 ? 0 : 1;
+    }
+
+    /// <summary>Each animation's TAE events in an objbnd's animation binder: type, time, and the first parameters.</summary>
+    public static IEnumerable<string> TaeEvents(BND4 objbnd)
+    {
+        var anibndFile = objbnd.Files.FirstOrDefault(f => ItemText.Leaf(f.Name).EndsWith(".anibnd", StringComparison.OrdinalIgnoreCase));
+        if (anibndFile is null)
+            yield break;
+        var anibnd = BND4.Read(DCX.Is(anibndFile.Bytes) ? DCX.Decompress(anibndFile.Bytes) : anibndFile.Bytes);
+        foreach (var f in anibnd.Files)
+            yield return $"anibnd file {f.ID}: {ItemText.Leaf(f.Name)} ({f.Bytes.Length:N0} bytes)";
+        foreach (var file in anibnd.Files.Where(f => f.Name.EndsWith(".tae", StringComparison.OrdinalIgnoreCase)))
+        {
+            var tae = TAE.Read(file.Bytes);
+            yield return $"tae {ItemText.Leaf(file.Name)}: {tae.Animations.Count} animations, format {tae.Format}, big endian {tae.BigEndian}";
+            foreach (var anim in tae.Animations)
+                foreach (var e in anim.Events)
+                {
+                    var b = e.GetParameterBytes(tae.BigEndian);
+                    var ints = Enumerable.Range(0, Math.Min(b.Length / 4, 6)).Select(i => BitConverter.ToInt32(b, i * 4));
+                    yield return $"  anim {anim.ID}: event {e.Type} at {e.StartTime:0.###}-{e.EndTime:0.###}: {string.Join(" ", ints)}";
+                }
+        }
     }
 
     public static IEnumerable<string> Describe(Ds3.hkRootLevelContainer root)
