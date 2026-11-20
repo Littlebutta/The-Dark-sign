@@ -560,6 +560,9 @@ public static class MapPorter
         // Quiet copies of the stand-ins' Elden Ring rows (no Elden Ring battle music on DS3 maps).
         if (_quiet is { Copies.Count: > 0 } quiet && ported.Count > 0)
             Step(report, "stand-in battle music", () => PortQuietRows(ctx, quiet, ported.Select(p => p.Slot).ToList()));
+        // Each ported map's Elden Ring field music and ambience area: its template colosseum's (MapSoundPlace).
+        if (ported.Count > 0)
+            Step(report, "map music areas", () => PortSoundPlaces(ctx, ported.Select(p => p.Slot).ToList()));
         // DS3's cutscenes (boss intros...) converted first, so the events step can play the ones that made it.
         Dictionary<int, int>? cutscenes = null;
         Dictionary<int, CutscenePort.Info> cutsceneInfo = [];
@@ -819,6 +822,18 @@ public static class MapPorter
         {
             return $"stand-in battle music: FAILED ({ex.Message}); {quiet.Revert(ctx, slots)} stand-ins put back on their Elden Ring rows (Elden Ring battle music possible)";
         }
+    }
+
+    /// <summary>Gives each ported map its template's field music and ambience area in MapDefaultInfoParam.</summary>
+    private static string PortSoundPlaces(PorterContext ctx, List<MapSlots.Slot> slots)
+    {
+        if (!MapSoundPlace.Enabled)
+            return "map music areas: off (DARKSIGN_MAP_SOUND_PLACE=0, fallback map-music E); a map with no MapDefaultInfoParam row of its own plays Elden Ring's row-0 field music (Limgrave's)";
+        var regulation = ActionButtons.LoadRegulation(ctx);
+        var param = regulation.Get(MapSoundPlace.ParamName) ?? throw new InvalidDataException($"Elden Ring has no {MapSoundPlace.ParamName}");
+        var line = MapSoundPlace.Apply(param, slots);
+        regulation.Save(ctx.ModPath("regulation.bin"));
+        return line;
     }
 
     /// <summary>
