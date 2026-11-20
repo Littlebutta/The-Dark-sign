@@ -44,7 +44,7 @@ public static partial class ChrMoves
     /// and the poses and moves DS3's map scripts force (the Hollow Soldier waiting crouched in 702 and getting up with
     /// 1702 before common event 20005415 has it burst into the Pus of Man).
     /// </summary>
-    public sealed record Family(string Name, int Min, int Max, string Machine)
+    public sealed record Family(string Name, int Min, int Max, string Machine, string? DonorFamily = null)
     {
         public bool Contains(int id) => id >= Min && id <= Max;
     }
@@ -56,12 +56,46 @@ public static partial class ChrMoves
         new("getting up", 1700, 1749, "IdleUniqueToIdle_SM"),
         new("map-script move", 20000, 29999, "EventSingle_SM"),
         new("map-script loop", 30000, 39999, "EventLoop_SM"),
+        // Last, so the families above keep their IDs (1700-1749 stay "getting up").
+        new(AiMoveFamily, 1000, 6999, "Attack_SM", DonorFamily: "attack"),
     ];
+
+    /// <summary>
+    /// Moves outside 3000-3999 that DS3's AI asks for as attacks: the bosses' phase changes above all. DS3's
+    /// PursuitHeroine_battle (the Dancer) runs <c>AddSubGoal(GOAL_COMMON_AttackTunableSpin, 10, 1500, ...)</c> once her HP
+    /// is under 60% and SpEffect 5404 isn't on, and 1500's events put 5404 on (+1,000,000: her a001 moves) and signal the
+    /// map script; Pontiff (Sulivan_Normal), Friede, Aldrich, Soul of Cinder and more do the same with 1500/1600.
+    /// Up to 1.0.549 only 3000-3999 got states, so these moves had none ("not playable" in enemy-port.tsv): the AI
+    /// asked for the phase change, nothing played, 5404 never came on, and it asked again every think, which looks
+    /// like a freeze at half health. They take a state in Attack_SM cloned from the nearest attack, like any attack.
+    /// </summary>
+    public const string AiMoveFamily = "AI move";
+
+    /// <summary>
+    /// Fallback enemy-ai L: DARKSIGN_ENEMY_AI_MOVES=0 adds no state for moves DS3's AI asks for outside 3000-3999
+    /// (phase changes stay unplayable, as up to 1.0.549).
+    /// </summary>
+    public static bool AiMovesEnabled => Environment.GetEnvironmentVariable("DARKSIGN_ENEMY_AI_MOVES") != "0";
+
+    /// <summary>
+    /// The whole numbers DS3's AI scripts name (constants of every function in every luabnd), set by the enemy port
+    /// once DS3's AI is read (<see cref="AiPort.NamedNumbers"/>). An ID of the AI-move family is added only when the AI
+    /// names it: the AI is what asks for it.
+    /// </summary>
+    public static IReadOnlySet<int> AiNamed { get; set; } = new HashSet<int>();
 
     public static Family? FamilyOf(int id) => Families.FirstOrDefault(f => f.Contains(id));
 
-    /// <summary>The IDs that may be added: attacks only with DS3's AI (which is what asks for them), the rest with any AI.</summary>
-    public static bool Wanted(int id, bool ds3Ai) => FamilyOf(id) is { } f && (f.Name == "attack" ? ds3Ai : !AttacksOnly);
+    /// <summary>
+    /// The IDs that may be added: attacks only with DS3's AI (which is what asks for them), AI moves only with DS3's
+    /// AI and when its scripts name them, the rest with any AI.
+    /// </summary>
+    public static bool Wanted(int id, bool ds3Ai) => FamilyOf(id) is { } f && f.Name switch
+    {
+        "attack" => ds3Ai,
+        AiMoveFamily => ds3Ai && AiMovesEnabled && !AttacksOnly && AiNamed.Contains(id),
+        _ => !AttacksOnly,
+    };
 
     [GeneratedRegex(@"^a(\d{3})_(\d{6})\.hkx$", RegexOptions.IgnoreCase)]
     private static partial Regex HkxLeaf();
@@ -69,9 +103,11 @@ public static partial class ChrMoves
     /// <summary>
     /// A DS3 move given a place in the template: a new ID cloned from the template's <paramref name="Donor"/> (its TAE
     /// entry and, by <see cref="AddStates"/>, its behaviour state), or, with <paramref name="FileOnly"/>, an ID the
-    /// template already has an entry and a state for but no animation file of its own (Donor = Id).
+    /// template already has an entry and a state for but no animation file of its own (Donor = Id). With
+    /// <paramref name="OwnEntry"/>, an AI move the template has a TAE entry for but no file and no Attack_SM state: the
+    /// entry is pointed at a file of its own and the state cloned from <paramref name="Donor"/>.
     /// </summary>
-    public readonly record struct Added(int Id, int Donor, bool FileOnly = false);
+    public readonly record struct Added(int Id, int Donor, bool FileOnly = false, bool OwnEntry = false);
 
     /// <summary>
     /// The DS3 animations of a <see cref="Families">family</see> (section 0) the template has no animation file of its
@@ -97,14 +133,17 @@ public static partial class ChrMoves
         {
             // The donor is the template's nearest ID of the same family, a whole move with a file of its own when
             // there is one, else any entry of the family (its state is what the new ID's state is cloned from).
-            var entries = templateEntries.Where(family.Contains).ToList();
+            var donorFamily = family.DonorFamily is { } dn ? Families.First(f => f.Name == dn) : family;
+            var entries = templateEntries.Where(id => FamilyOf(id) == donorFamily).ToList();
             var whole = entries.Where(id => templateFiles.Contains(id) && !additive.Contains(id)).Order().ToList();
             var donors = whole.Count > 0 ? whole : BorrowedClips ? entries.Where(id => !additive.Contains(id)).Order().ToList() : [];
             if (donors.Count == 0)
                 continue;
-            foreach (var id in ds3.Where(family.Contains))
+            foreach (var id in ds3.Where(id => FamilyOf(id) == family))
             {
-                if (!templateEntries.Contains(id))
+                if (family.DonorFamily is not null)
+                    plan.Add(new Added(id, donors.MinBy(d => (Math.Abs(d - id), d)), OwnEntry: templateEntries.Contains(id)));
+                else if (!templateEntries.Contains(id))
                     plan.Add(new Added(id, donors.MinBy(d => (Math.Abs(d - id), d))));
                 else if (BorrowedClips)
                     plan.Add(new Added(id, id, FileOnly: true));
@@ -147,7 +186,8 @@ public static partial class ChrMoves
             var carrier = clips.Where(c => c.Id == a.Donor && (carriers is null || carriers.Contains(c.Id)))
                 .Concat(clips.Where(c => carriers is not null && carriers.Contains(c.Id)).OrderBy(c => Math.Abs(c.Id - a.Id)).ThenBy(c => c.Id))
                 .FirstOrDefault();
-            if (donorEntry is null || carrier.File is null || clips.Any(c => c.Id == a.Id) || (!a.FileOnly && taeFile.Animations.Any(x => x.ID == a.Id)))
+            var ownEntry = a.OwnEntry ? taeFile.Animations.FirstOrDefault(x => x.ID == a.Id) : null;
+            if (donorEntry is null || carrier.File is null || clips.Any(c => c.Id == a.Id) || (!a.FileOnly && ownEntry is null && taeFile.Animations.Any(x => x.ID == a.Id)))
                 continue;
             var (bnd, carrierFile) = (carrier.Bnd, carrier.File);
             long id = carrierFile.ID - carrier.Id + a.Id;
@@ -161,6 +201,8 @@ public static partial class ChrMoves
             clips.Add((bnd, file, a.Id));
             if (a.FileOnly)
                 OwnFile(donorEntry);
+            else if (ownEntry is not null)
+                OwnFile(ownEntry);
             else
                 taeFile.Animations.Add(CloneEntry(donorEntry, a.Id));
             added.Add(a);

@@ -641,6 +641,9 @@ public static partial class ChrPort
                 ds3Think = ctx.LoadParams(PorterGame.DarkSouls3).Get("NpcThinkParam") ?? throw new InvalidDataException("DS3 has no NpcThinkParam");
                 erThink = ctx.LoadParams(PorterGame.EldenRing).Get("NpcThinkParam") ?? throw new InvalidDataException("Elden Ring has no NpcThinkParam");
                 ai = AiPort.Create(erArchives, ds3Archives, erThink);
+                // The moves DS3's AI asks for outside 3000-3999 (phase changes) get behaviour states (ChrMoves).
+                var aiFamily = ChrMoves.Families.First(f => f.Name == ChrMoves.AiMoveFamily);
+                ChrMoves.AiNamed = ai.NamedNumbers(aiFamily.Min, aiFamily.Max);
                 // The scripts' SpEffect checks point at the rows the effect port adds (700,000,000 + DS3 ID).
                 if (fx is not null && SpEffectPort.Enabled && ctx.LoadParams(PorterGame.DarkSouls3).Get("SpEffectParam") is { } ds3Sp)
                     ai.SpEffectPorted = id => ds3Sp[id] is { } r && !(r.Name ?? "").TrimStart().StartsWith("[HKS]", StringComparison.OrdinalIgnoreCase);
@@ -1937,10 +1940,13 @@ public static partial class ChrPort
             if (binders.TryGetValue($"/chr/c{n:D4}.behbnd.dcx", out var behbnd))
                 try { states = ChrMoves.AddStates(behbnd.Bnd, extra, notes); }
                 catch (Exception ex) when (ex is not OutOfMemoryException) { notes.Add($"extra DS3 moves: behaviour states not added ({Describe(ex)})"); }
+            bool aiMove(ChrMoves.Added e) => ChrMoves.FamilyOf(e.Id)?.Name == ChrMoves.AiMoveFamily;
             var attacks = extra.Where(e => ChrMoves.IsAttack(e.Id) && !e.FileOnly).ToList();
-            var others = extra.Where(e => !ChrMoves.IsAttack(e.Id) && !e.FileOnly).ToList();
+            var aiMoves = extra.Where(aiMove).ToList();
+            var others = extra.Where(e => !ChrMoves.IsAttack(e.Id) && !aiMove(e) && !e.FileOnly).ToList();
             var ownFiles = extra.Where(e => e.FileOnly).ToList();
             notes.Add((attacks.Count > 0 ? $"{attacks.Count} DS3 attacks the template has no slot for added ({string.Join(",", attacks.Select(e => e.Id))}), " : "")
+                      + (aiMoves.Count > 0 ? $"{aiMoves.Count} other moves DS3's AI asks for (phase changes) added ({string.Join(",", aiMoves.Select(e => e.Id))}), " : "")
                       + (others.Count > 0 ? $"{others.Count} DS3 poses and map-script moves added ({string.Join(",", others.Select(e => e.Id))}), " : "")
                       + (ownFiles.Count > 0 ? $"{ownFiles.Count} template moves that borrowed another clip given DS3's own ({string.Join(",", ownFiles.Select(e => e.Id))}), " : "")
                       + $"{states} behaviour states");
