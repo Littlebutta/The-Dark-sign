@@ -61,6 +61,23 @@ public sealed class ChrSounds
         (_ctx, _er, _ds3, _main, _mainBankId, _templateIds, _events) = (ctx, er, ds3, main, mainBankId, templateIds, events);
     }
 
+    /// <summary>
+    /// The c-sound a DS3 floor-material sound event (TAE kind 8) plays: DS3 picks the variant whose last two digits are
+    /// the floor's material (c526001001 01, 02, 03... 21), and the event's own ID (..01) is the default one, which is
+    /// what the port plays. When DS3 has no sound of that exact ID (Yhorm's c526001501 exists only as the water
+    /// variant 21), the lowest variant of the same sound.
+    /// </summary>
+    public int FloorVariant(int id)
+    {
+        if (_events.ContainsKey($"c{id:D9}"))
+            return id;
+        int baseId = id - id % 100;
+        for (int v = 0; v < 100; v++)
+            if (_events.ContainsKey($"c{baseId + v:D9}"))
+                return baseId + v;
+        return id;
+    }
+
     private static string Staging(PorterContext ctx) => ctx.WorkPath("enemy-sounds", "wem");
 
     public static ChrSounds Create(PorterContext ctx, GameArchives er, GameArchives ds3, List<int> templateIds)

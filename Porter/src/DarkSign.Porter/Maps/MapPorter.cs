@@ -560,6 +560,9 @@ public static class MapPorter
         // Quiet copies of the stand-ins' Elden Ring rows (no Elden Ring battle music on DS3 maps).
         if (_quiet is { Copies.Count: > 0 } quiet && ported.Count > 0)
             Step(report, "stand-in battle music", () => PortQuietRows(ctx, quiet, ported.Select(p => p.Slot).ToList()));
+        // Each ported map's Elden Ring field music and ambience area: its template colosseum's (MapSoundPlace).
+        if (ported.Count > 0)
+            Step(report, "map music areas", () => PortSoundPlaces(ctx, ported.Select(p => p.Slot).ToList()));
         // DS3's cutscenes (boss intros...) converted first, so the events step can play the ones that made it.
         Dictionary<int, int>? cutscenes = null;
         Dictionary<int, CutscenePort.Info> cutsceneInfo = [];
@@ -819,6 +822,18 @@ public static class MapPorter
         {
             return $"stand-in battle music: FAILED ({ex.Message}); {quiet.Revert(ctx, slots)} stand-ins put back on their Elden Ring rows (Elden Ring battle music possible)";
         }
+    }
+
+    /// <summary>Gives each ported map its template's field music and ambience area in MapDefaultInfoParam.</summary>
+    private static string PortSoundPlaces(PorterContext ctx, List<MapSlots.Slot> slots)
+    {
+        if (!MapSoundPlace.Enabled)
+            return "map music areas: off (DARKSIGN_MAP_SOUND_PLACE=0, fallback map-music E); a map with no MapDefaultInfoParam row of its own plays Elden Ring's row-0 field music (Limgrave's)";
+        var regulation = ActionButtons.LoadRegulation(ctx);
+        var param = regulation.Get(MapSoundPlace.ParamName) ?? throw new InvalidDataException($"Elden Ring has no {MapSoundPlace.ParamName}");
+        var line = MapSoundPlace.Apply(param, slots);
+        regulation.Save(ctx.ModPath("regulation.bin"));
+        return line;
     }
 
     /// <summary>
@@ -1320,7 +1335,7 @@ public static class MapPorter
         foreach (var note in models.Notes.Skip(notesSoFar).Distinct().Take(5))
             report.AppendLine($"  note: {note}");
         if (!options.HostLighting)
-            report.AppendLine($"  sunlight: {models.Materials.Count(m => m.Template.Kind is "nolight" or "nolight-blend")} unlit materials (sky domes and the layers around them) cast no shadow");
+            report.AppendLine($"  sunlight: {models.Materials.Count(m => m.Template.Kind is "nolight" or "nolight-blend" or "nolight-edge")} unlit materials (sky domes and the layers around them) cast no shadow");
         if (test != PieceTest.VanillaModel && copied == 0)
         {
             report.AppendLine($"  load: {models.LoadSummary}");
@@ -1442,6 +1457,27 @@ public static class MapPorter
                     layout.Msb.Parts.Players.RemoveRange(playersBefore, layout.Msb.Parts.Players.Count - playersBefore);
                 warpPoints = new HashSet<int>();
                 report.AppendLine($"  regions: FAILED ({ex.Message}); the map has no DS3 regions");
+            }
+        }
+
+        // DS3's room reverb per piece of ground as Elden Ring reverb regions (MapReverb): without them Elden Ring's
+        // automatic reverb echoes everywhere in DS3's walled-in maps. A failure leaves the automatic reverb.
+        if (!MapReverb.Enabled)
+            report.AppendLine("  reverb: off (DARKSIGN_MAP_REVERB=0), Elden Ring's automatic reverb");
+        else
+        {
+            try
+            {
+                var reverb = MapReverb.Port(ds3, ds3Msb, ds3Id, layout.Msb);
+                MSBE.Read(layout.Msb.Write());
+                report.AppendLine("  " + reverb.Summary);
+                foreach (var note in reverb.Notes)
+                    report.AppendLine($"  reverb: {note}");
+            }
+            catch (Exception ex) when (ex is not OutOfMemoryException)
+            {
+                MapReverb.Strip(layout.Msb);
+                report.AppendLine($"  reverb: FAILED ({ex.Message}); Elden Ring's automatic reverb");
             }
         }
 

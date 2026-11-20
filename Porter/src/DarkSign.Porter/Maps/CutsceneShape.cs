@@ -291,8 +291,7 @@ public sealed class CutsceneShape
             foreach (var tl in cut.Timelines)
             {
                 var tk = CutscenePort.TimelineKind(mqb, tl);
-                if (TimelineUnk10.TryGetValue(tk, out var u) && u.Holds && tl.Unk10 != u.Value)
-                    Note($"kind {tk} timeline Unk10 {tl.Unk10}, Elden Ring {u.Value}", cut.Name);
+                // Unk10 isn't a per-kind value: it is the timeline the timeline hangs on (CutsceneTimelineLinks).
                 if (TimelineParams.TryGetValue(tk, out var ts) && SigHolds(ts) && string.Join(",", tl.Parameters.Select(x => x.Name)) != ts.Key)
                     Note($"kind {tk} timeline params [{string.Join(",", tl.Parameters.Select(x => x.Name))}], Elden Ring [{ts.Key}]", cut.Name);
                 foreach (var ev in tl.Events)
@@ -366,7 +365,9 @@ public sealed class CutsceneShape
                         changed++;
                     }
                 var tk = CutscenePort.TimelineKind(mqb, tl);
-                if (TimelineUnk10.TryGetValue(tk, out var u) && u.Holds && tl.Unk10 != u.Value)
+                // Unk10 is left alone: it names the timeline this one hangs on, set by CutsceneTimelineLinks.Relink
+                // (with DARKSIGN_CUTSCENE_PARENTS=0, Elden Ring's most common value per kind, as up to 1.0.549).
+                if (!CutsceneTimelineLinks.ParentsOn && TimelineUnk10.TryGetValue(tk, out var u) && u.Holds && tl.Unk10 != u.Value)
                 {
                     tl.Unk10 = u.Value;
                     changed++;

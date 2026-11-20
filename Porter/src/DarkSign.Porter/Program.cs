@@ -42,6 +42,7 @@ const string Usage = """
       timing-selftest              offline checks that ported moves' combo/cancel windows don't cut DS3 swings short
       enemy-diag survey|unpack <file>...  enemy port diagnostics: every character's skeleton and animation IDs; decompress files
       object-diag model <binder>...  a DS3 objbnd's or ported asset binder's models (how meshes hang on nodes), skeleton and TAE events
+      object-anim-test <o304822>...  convert DS3 objects' animations into Work\\scratch\\object-anims as port-maps would, and read them back
       object-sound-test <o311500>...  build DS3 objects' sound banks into Work\\scratch\\object-sounds as port-maps would, and check them
       object-diag collision <objbnd>...  each collision body of DS3 object binders: its shape, its mesh sections, and what it converts to (no game folder needed)
       enemy-diag tae <anibnd> [from-to...]  a decompressed animation binder's TAE entries and events, and each file's length and blend hint
@@ -119,6 +120,8 @@ try
         return DarkSign.Porter.Enemies.EnemyBonesDiag.RunFiles(argList.Skip(2).ToList());
     if (argList[0].Equals("object-diag", StringComparison.OrdinalIgnoreCase) && argList.Count >= 3 && argList[1].Equals("model", StringComparison.OrdinalIgnoreCase))
         return DarkSign.Porter.Maps.ObjectCollisionDiag.Model(argList.Skip(2).ToList());
+    if (argList[0].Equals("object-diag", StringComparison.OrdinalIgnoreCase) && argList.Count >= 3 && argList[1].Equals("anim-types", StringComparison.OrdinalIgnoreCase))
+        return DarkSign.Porter.Maps.ObjectCollisionDiag.AnimTypes(argList.Skip(2).ToList());
     if (argList[0].Equals("object-diag", StringComparison.OrdinalIgnoreCase) && argList.Count >= 3 && argList[1].Equals("collision", StringComparison.OrdinalIgnoreCase))
         return DarkSign.Porter.Maps.ObjectCollisionDiag.Run(argList.Skip(2).ToList());
     if (argList[0].Equals("moveset-selftest", StringComparison.OrdinalIgnoreCase))
@@ -141,6 +144,7 @@ try
     {
         "scan" => Commands.Scan(ctx),
         "extract" when argList.Count >= 3 => Commands.Extract(ctx, PorterGame.Parse(argList[1]), argList[2..]),
+        "unpack-mod" when argList.Count >= 2 => Commands.UnpackMod(ctx, argList[1..]),
         "inventory" => Commands.Inventory(ctx),
         "dump-param" when argList.Count >= 3 =>
             Commands.DumpParam(ctx, PorterGame.Parse(argList[1]), argList[2], argList[3..]),
@@ -186,6 +190,7 @@ try
         "chr-survey" when argList.Count >= 3 => ChrSurvey.Run(ctx, PorterGame.Parse(argList[1]), argList[2..]),
         "attack-events" when argList.Count >= 2 => AttackEventSurvey.Run(ctx, PorterGame.Parse(argList[1]), argList[2..]),
         "object-sound-test" when argList.Count >= 2 => DarkSign.Porter.Maps.ObjectSoundBanks.Test(ctx, argList[1..]),
+        "object-anim-test" when argList.Count >= 2 => DarkSign.Porter.Maps.ObjectAnims.Test(ctx, argList[1..]),
         "tae-dump" when argList.Count == 3 => TaeDump.Run(ctx, PorterGame.Parse(argList[1]), int.Parse(argList[2])),
         _ => Fail(Usage),
     };

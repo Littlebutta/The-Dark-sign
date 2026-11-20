@@ -474,6 +474,17 @@ public static partial class MapPortChecks
         Expect(ObjectPort.ObjActRow(300310) == 70300310 && ObjectPort.ObjActRow(-1) == -1 && ObjectPort.ObjActRow(0) == 0, "row IDs move, 'none' stays");
         Expect(EventPort.KindOf("ObjAct Param ID") == EventPort.Kind.ObjAct && EventPort.KindOf("Object Parameter ID") == EventPort.Kind.ObjAct,
             "the scripts' ObjActParam arguments (Set ObjAct State) are moved the same way");
+
+        // "IF ObjAct Event Flag" names the ObjAct by its entity: moved like the MSB's ObjActEntityID, even into a slot
+        // that keeps no map flag block (the Painted World's m19_70, where every Ariandel lever waited on a flag before).
+        Expect(EventPort.KindOf("ObjAct Event Flag") == EventPort.Kind.Entity, $"ObjAct Event Flag is {EventPort.KindOf("ObjAct Event Flag")}, not Entity");
+        var defs = Emedf.Parse("{\"main_classes\": []}");
+        var ds3Map = MapId.Parse("m45_00_00_00");
+        var slot = MapId.Parse("m19_70_00_00");
+        var events = new EventPort(defs, defs, [(ds3Map, slot)], new FlagMap());
+        long lever = 4503631;
+        Expect(events.Move(lever, EventPort.KindOf("ObjAct Event Flag")) == ds3Map.MoveEntity((int)lever, slot),
+            $"a lever's ObjAct entity moves with its ObjAct event ({events.Move(lever, EventPort.KindOf("ObjAct Event Flag"))} vs {ds3Map.MoveEntity((int)lever, slot)})");
     }
 
     private static void ObjActEvents()

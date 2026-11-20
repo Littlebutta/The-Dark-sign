@@ -259,6 +259,15 @@ public sealed class AiPort
                 _ds3Library.TryAdd(name, s);
     }
 
+    /// <summary>
+    /// Every whole number from <paramref name="min"/> to <paramref name="max"/> that DS3's AI scripts name (a numeric
+    /// constant of any function of any script): the animation IDs the AI may ask for, among other numbers.
+    /// </summary>
+    public HashSet<int> NamedNumbers(int min, int max) =>
+        _ds3.SelectMany(s => s.Chunk.Main.All()).SelectMany(f => f.Constants)
+            .Where(k => k.AsNumber is double d && d >= min && d <= max && d == Math.Floor(d))
+            .Select(k => (int)k.AsNumber!.Value).ToHashSet();
+
     /// <summary>Reads Elden Ring's aicommon and every DS3 luabnd from the archives (aicommon, DS3's maps m30-m51, then the rest).</summary>
     public static AiPort Create(GameArchives er, GameArchives ds3, PARAM? erThink)
     {

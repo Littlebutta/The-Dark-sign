@@ -1024,6 +1024,19 @@ public static partial class CutscenePort
         else
             lines.Add("sound: off (DARKSIGN_CUTSCENE_SOUND=0, fallback map-cutscenes C)");
         var soundNumbers = SoundNumbers(ds3);
+        // Subtitles (CutsceneSubtitles): DS3's words for each line, rows written with the CutsceneMapIdParam rows.
+        Func<int, string?>? subtitleText = null;
+        var subtitleLines = new List<CutsceneSubtitles.Line>();
+        var silentVoices = new HashSet<int>();
+        int subtitlesDropped = 0;
+        if (CutsceneSubtitles.Enabled)
+        {
+            ParamStore? ds3Params = null;
+            try { ds3Params = ctx.LoadParams(PorterGame.DarkSouls3); }
+            catch (Exception ex) when (ex is IOException or InvalidDataException) { notes.Add($"subtitles: DS3's params unreadable ({ex.Message}); talk numbers used as text numbers"); }
+            try { subtitleText = CutsceneSubtitles.LoadText(ds3, ds3Params); }
+            catch (Exception ex) when (ex is not OutOfMemoryException) { lines.Add($"subtitles: DS3's text unreadable ({ex.Message}); subtitles left out"); subtitleText = _ => null; }
+        }
         // What Elden Ring can load for a cutscene's cast (CutsceneCast): models in the mod or the game.
         EnemyPort.ChrMap? chrMap = null;
         if (CutsceneCast.Enabled && File.Exists(ctx.ModPath(EnemyPort.ChrMap.FileName)))
@@ -1061,11 +1074,21 @@ public static partial class CutscenePort
                     }
                     CutsceneSound.Plan? plan = null;
                     int thisIndex = soundNumbers[name];
-                    Action<MQB>? prepare = sounds is null ? null : m => plan = CutsceneSound.Prepare(m, erName, thisIndex, sounds.Known, sounds.Voice);
+                    List<CutsceneSubtitles.Line> said = [];
+                    int saidDropped = 0;
+                    Action<MQB>? prepare = sounds is null && subtitleText is null ? null : m =>
+                    {
+                        if (sounds is not null)
+                            plan = CutsceneSound.Prepare(m, erName, thisIndex, sounds.Known, sounds.Voice);
+                        if (subtitleText is not null)
+                            said = CutsceneSubtitles.Prepare(m, thisIndex, subtitleText, plan?.VoiceOfTalk, out saidDropped);
+                    };
                     var (bnd, stats) = ConvertBinder(source, name, erName, rename, map.Slot.Ds3, map.Slot.Er, side, prepare, cast, effects);
                     // The bank first: the timeline keeps only the sounds it holds.
                     if (sounds is not null && plan is not null)
-                        lines.Add($"{name} sound: {plan}; {BuildSound(sounds, plan, bnd, null)}");
+                        lines.Add($"{name} sound: {plan}; {BuildSound(sounds, plan, bnd, null, silentVoices)}");
+                    if (subtitleText is not null && (said.Count > 0 || saidDropped > 0))
+                        lines.Add($"{name} subtitles: {said.Count} lines ({said.Count(l => l.VoiceId >= 0)} with a DS3 voice){(saidDropped > 0 ? $", {saidDropped} events without DS3 words left out" : "")}");
                     // Checked by reading it back before it is written.
                     foreach (var f in bnd.Files)
                         if (f.Name.EndsWith(".mqb", StringComparison.OrdinalIgnoreCase))
@@ -1075,6 +1098,8 @@ public static partial class CutscenePort
                     File.WriteAllBytes(path, DCX.Compress(bnd.Write(), side.Compression));
                     ported[ds3Id] = erId;
                     rows.Add((erId, map.Slot.Er));
+                    subtitleLines.AddRange(said);
+                    subtitlesDropped += saidDropped;
                     // A binder without a timeline (DS3's s45_00_0090) still converts; the menu shows it with no characters.
                     var sourceMqb = source.Files.FirstOrDefault(f => f.Name.EndsWith(".mqb", StringComparison.OrdinalIgnoreCase)) is { } mqbFile ? MQB.Read(mqbFile.Bytes) : null;
                     infos[ds3Id] = new Info(name, erName, map.Slot.Er, sourceMqb is null ? [] : Characters(sourceMqb),
@@ -1110,6 +1135,11 @@ public static partial class CutscenePort
             {
                 var regulation = ActionButtons.LoadRegulation(ctx);
                 lines.Add(WriteRows(regulation.Get(ParamName) ?? throw new InvalidDataException("Elden Ring has no " + ParamName), rows));
+                if (subtitleText is not null)
+                {
+                    try { lines.Add(CutsceneSubtitles.Write(ctx, er, regulation, subtitleLines, silentVoices) + (subtitlesDropped > 0 ? $"; {subtitlesDropped} events without DS3 words left out" : "")); }
+                    catch (Exception ex) when (ex is not OutOfMemoryException) { lines.Add($"subtitles: FAILED ({ex.GetType().Name}: {ex.Message}); the cutscenes show no words"); }
+                }
                 regulation.Save(ctx.ModPath("regulation.bin"));
             }
             catch (Exception ex) when (ex is not OutOfMemoryException)
@@ -1148,7 +1178,7 @@ public static partial class CutscenePort
 
     /// <summary>Builds a cutscene's bank and strips the converted timeline's events for sounds it couldn't build (all
     /// of them when the bank failed). Returns the log text.</summary>
-    public static string BuildSound(CutsceneSound sounds, CutsceneSound.Plan plan, BND4 bnd, string? folder)
+    public static string BuildSound(CutsceneSound sounds, CutsceneSound.Plan plan, BND4 bnd, string? folder, ISet<int>? silentOut = null)
     {
         string built;
         IReadOnlySet<int> silent;
@@ -1157,6 +1187,7 @@ public static partial class CutscenePort
         {
             (built, silent) = ($"bank FAILED ({ex.GetType().Name}: {ex.Message})", plan.Sounds.Values.ToHashSet());
         }
+        silentOut?.UnionWith(silent);
         int stripped = CutsceneSound.Strip(bnd, silent);
         return stripped > 0 ? $"{built}; {stripped} events of sounds not in the bank left out" : built;
     }

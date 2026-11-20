@@ -242,6 +242,13 @@ public sealed class EventPort
             return Kind.PlaceName;
         // Where the player lands: Warp Player's "Initial Area (Entity) ID", the respawn point, and the point a
         // cutscene warps the player to (DS3's "Play Cutscene and Warp Player").
+        // "IF ObjAct Event Flag" (5[02], both games) names the ObjAct map event by its entity ID (DS3's lever
+        // events wait on 3004202, the ObjAct's own entity; its flag field is 0 or another flag), not by a flag.
+        // Moved as a flag it only matched the moved ObjAct while the slot kept the map's flag block: in the
+        // Painted World slot (m19_70 keeps none) every lever and lever door waited on a flag nothing set, so
+        // the Ariandel village lift and the doors and gates its levers open never moved (2026-11-20).
+        if (n == "objact event flag")
+            return Kind.Entity;
         if (n.Contains("initial area") || n.Contains("respawn point") || n.Contains("respawn area") || n == "point entity id")
             return Kind.WarpPoint;
         if (n.Contains("flag") && !n.Contains("state") && !n.Contains("type") && !n.Contains("bit") && !n.Contains("comparison")

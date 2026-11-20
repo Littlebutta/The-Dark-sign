@@ -842,7 +842,7 @@ public static partial class MapPortChecks
     private static void MeshLayoutAndBox()
     {
         var (port, hostBnd) = VisualPort();
-        Expect(port.TemplateSummary == "opaque=m10_00_004, edge=m10_00_207, alpha=m10_00_218, nolight=m10_00_003, nolight-blend=m10_00_003"
+        Expect(port.TemplateSummary == "opaque=m10_00_004, edge=m10_00_207, alpha=m10_00_218, nolight=m10_00_003, nolight-blend=m10_00_003, nolight-edge=m10_00_003"
                || MapModelPort.Kinds.All(k => port.TemplateSummary.Contains(k + "=")), $"templates {port.TemplateSummary}");
         Expect(port.TemplateSummary.Contains("opaque=m10_00_004"), $"the normal-mapped shader wins over albedo-only and overlay ones: {port.TemplateSummary}");
         Expect(port.Complete(false), "every kind found");
@@ -896,7 +896,7 @@ public static partial class MapPortChecks
         foreach (var (mtd, kind) in new[]
                  {
                      ("M[ARSN]", "opaque"), ("M[ARSN]_l", "opaque"), ("M[ARSN]_4m_et1_l", "opaque"), ("M[ARSN]_e", "edge"), ("M[ARSN]_l_e", "edge"),
-                     ("M[ARSN]_e_grass", "edge"), ("M[ARSN]_Alp", "edge"), ("M[A]_NoLight", "nolight"), ("M[A]_2m_NoLight_scroll", "nolight"),
+                     ("M[ARSN]_e_grass", "edge"), ("M[ARSN]_Alp", "edge"), ("M[A]_NoLight", "nolight"), ("M[A]_2m_NoLight_scroll", "nolight"), ("M[A]_NoLight_e", "nolight-edge"),
                      ("M[A]_al_NoLight", "nolight-blend"), ("M[A]_al_m_NoLight_Opacity", "none"), ("M[A]_add", "none"), ("M[ARSN]_al", "alpha"), ("M[A]_Add_NoLight", "none"),
                      ("M[ARSN]_Decal", "none"), ("M[Shadow]", "none"), ("M[ARSN]_Water_3normaltet", "water"), ("M[ARSN]_Water_DL", "water"), ("M[A]_Waterfall_add", "none"), ("M[Fog]", "none"),
                  })
@@ -939,6 +939,37 @@ public static partial class MapPortChecks
         Expect(MapModelPort.SetUnlitBlend(blendBin).Count == 0 && MATBIN.Read(blendBin.Write()) is var reread
                && (int)reread.Params[0].Value == 2 && (bool)reread.Params[1].Value && ((int[])reread.Params[2].Value).SequenceEqual([1, 0]),
             "the unlit template's copy blends as vanilla m15_00_865 (g_BlendMode 2, no depth write, alpha cut 1)");
+
+        // DS3's alpha-tested unlit cards (M[A]_NoLight_e: the Painted World's far forest m002110, enkei_70) are drawn
+        // unlit with Elden Ring's alpha cut, as vanilla AEG007_145 (g_AlphaRef 160); up to 1.0.53x they had no cut and
+        // stood as grey rectangles over the trees (the "cloud tower").
+        var (cardPort, cardBnd) = VisualPort();
+        var card = SyntheticFlver(0x20014, @"N:\FDP\data\Material\mtd\map\M[A]_NoLight_e.mtd", ("g_DiffuseTexture", @"N:\x\m45_00_enkei_70_a.tif"));
+        var cardOut = ConvertOne(cardPort, cardBnd, card);
+        Expect(cardOut.Meshes.Count == 1 && cardPort.Materials.Single() is { Template.Kind: "nolight-edge", Albedo: "m45_00_enkei_70_a" },
+            $"the far card is drawn on the unlit template, cut out: {string.Join(", ", cardPort.Materials.Select(m => m.Template.Kind + " " + m.Albedo))}");
+        var cardBin = MATBIN.Read(cardPort.MatbinFiles(0).Single().Bytes);
+        Expect(cardBin.ShaderPath.Contains("NoLight")
+               && (cardBin.Params.FirstOrDefault(p => p.Name == "g_AlphaRef") is not { } aref ? cardPort.Notes.Any(n => n.Contains("g_AlphaRef"))
+                   : ((int[])aref.Value).SequenceEqual([160, 0])),
+            $"its MATBIN cuts at 160 or the port notes it can't: {string.Join("; ", cardPort.Notes)}");
+        var edgeBin = new MATBIN();
+        edgeBin.Params.Add(new MATBIN.Param { Name = "g_BlendMode", Type = MATBIN.ParamType.Int, Value = 2 });
+        edgeBin.Params.Add(new MATBIN.Param { Name = "g_GX_bDisableDepthWrite", Type = MATBIN.ParamType.Bool, Value = true });
+        edgeBin.Params.Add(new MATBIN.Param { Name = "g_AlphaRef", Type = MATBIN.ParamType.Int2, Value = new[] { 0, 0 } });
+        Expect(MapModelPort.SetUnlitEdge(edgeBin).Count == 0 && MATBIN.Read(edgeBin.Write()) is var edgeRead
+               && (int)edgeRead.Params[0].Value == 0 && !(bool)edgeRead.Params[1].Value && ((int[])edgeRead.Params[2].Value).SequenceEqual([160, 0]),
+            "the unlit template's copy cuts as vanilla AEG007_145 (g_BlendMode 0, depth written, alpha cut 160)");
+        var farCards = Environment.GetEnvironmentVariable("DARKSIGN_FAR_CARDS");
+        try
+        {
+            Environment.SetEnvironmentVariable("DARKSIGN_FAR_CARDS", "0");
+            Expect(MapModelPort.Ds3Kind(new FLVER2.Material("m", @"N:\x\M[A]_NoLight_e.mtd", 0)) == "none", "fallback map-far-cards B leaves the cards out");
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("DARKSIGN_FAR_CARDS", farCards);
+        }
         var only = SyntheticFlver(0x20014, @"N:\FDP\data\Material\mtd\map\M[ARSN]_Decal.mtd", ("g_DiffuseTexture", @"N:\x\m40_00_dirt_a.tif"));
         try
         {

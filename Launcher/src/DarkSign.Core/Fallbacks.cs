@@ -526,6 +526,13 @@ public static class Fallbacks
             new("B", "Left out", "The see-through sky layers are left out (DARKSIGN_SKY_CLOUDS=0), as every build up to 1.0.52x: the far view shows only the dome itself, with no mountains below its skyline and a hard line where the scenery meets it.")
                 { PorterEnv = Env("DARKSIGN_SKY_CLOUDS", "0") },
         ]),
+        new("map-far-cards", "DS3 maps", "Far forests drawn as cut-out tree cards", Stage.Build,
+            "Since this option came in, a DS3 map's far forest shows black or grey squares, trees with hard black outlines, or a map crashes or hangs while loading.",
+        [
+            new("A", "Cut-out tree cards (default)", "The flat, unlit tree cards DS3 stands far out as a forest (the forest rings around the Painted World, Irithyll and the Ringed City) are drawn unlit with the trees cut out of each card, as Elden Ring's own cut-out unlit pieces are. Builds up to 1.0.53x drew each card as a solid rectangle: the grey \"cloud tower\" over the Painted World's trees."),
+            new("B", "Left out", "The far tree cards are left out (DARKSIGN_FAR_CARDS=0): no grey rectangles, but no far forest either.")
+                { PorterEnv = Env("DARKSIGN_FAR_CARDS", "0") },
+        ]),
         new("map-atmosphere", "DS3 maps", "Colours of light and fog in the DS3 maps", Stage.Build,
             "A DS3 map looks washed out, too foggy, too clear, or wrongly coloured since the maps took DS3's colours.",
         [
@@ -572,6 +579,8 @@ public static class Fallbacks
                 { MapsArgs = ["--baked-light-flip", "x"] },
             new("D", "Baked light mirrored north-south", "The same baked light with the volume mirrored along z (port-maps --baked-light-flip z). Try it if C didn't line the dark patches up with the rooms.")
                 { MapsArgs = ["--baked-light-flip", "z"] },
+            new("E", "Baked light stored straight", "The same baked light, written into the light volumes as DS3's brightness straight (DARKSIGN_LIGHT_VOLUME_LINEAR=1), as builds up to 1.0.54x had it. Elden Ring stores that light on a curve (dark tones get more room), so read straight every DS3 room, tunnel and shaded floor came out about half as bright against open sky as Elden Ring's own rooms (Friede's hall floor barely visible). Try it if rooms and shade now look washed out or too bright.")
+                { PorterEnv = Env("DARKSIGN_LIGHT_VOLUME_LINEAR", "1") },
         ]),
         new("map-sky-level", "DS3 maps", "How bright the sky's light is in the DS3 maps", Stage.Build,
             "Since this option came in, a DS3 map looks too dark (outside, in shade or in rooms), or it still looks too light.",
@@ -723,7 +732,7 @@ public static class Fallbacks
         new("map-cutscenes", "DS3 maps", "DS3's cutscenes (boss intros)", Stage.Build,
             "The game crashes, hangs or shows a black screen when a DS3 cutscene should play (walking up to Ariandel for the Friede fight, a boss fog, or Play in the F1 menu's Cutscenes tab), a cutscene looks broken and you'd rather go straight to the fight, or a cutscene's sound is wrong or breaks the game's sound.",
         [
-            new("A", "DS3's cutscenes with their sound (default)", "Every cutscene of the ported DS3 maps is converted from your DS3 files into Elden Ring's format and plays where DS3's scripts play it (and from the F1 menu's Cutscenes tab), with the ported bosses in it. Its sound comes along: DS3's cutscene audio, effects and spoken lines in a sound bank of its own (sd\\sAA_BB_NNNN.bnk), armour movement as Elden Ring's. Subtitles aren't shown. Report: the cutscenes section of the port-maps log."),
+            new("A", "DS3's cutscenes with their sound (default)", "Every cutscene of the ported DS3 maps is converted from your DS3 files into Elden Ring's format and plays where DS3's scripts play it (and from the F1 menu's Cutscenes tab), with the ported bosses in it. Its sound comes along: DS3's cutscene audio, effects and spoken lines in a sound bank of its own (sd\\sAA_BB_NNNN.bnk), armour movement as Elden Ring's. What the characters say shows as subtitles at the bottom of the screen, DS3's own words. Report: the cutscenes section of the port-maps log."),
             new("B", "None", "No DS3 cutscenes (DARKSIGN_CUTSCENES=0): the scripts skip them and a cutscene that moves you only moves you, as builds up to 1.0.38x did.")
                 { PorterEnv = Env("DARKSIGN_CUTSCENES", "0") },
             new("C", "Silent cutscenes", "The cutscenes play as in A but without DS3's sound (DARKSIGN_CUTSCENE_SOUND=0): no cutscene sound banks, and the timelines keep their sound events as the first cutscene builds had them.")
@@ -734,18 +743,32 @@ public static class Fallbacks
                 { PorterEnv = Env("DARKSIGN_CUTSCENE_CAST", "0") },
             new("F", "DS3's fade-out kept", "The cutscenes play as in A, but a cutscene DS3 ends with a fade-out keeps it (DARKSIGN_CUTSCENE_FADE=1), as builds up to 1.0.47x had it: the Dancer's intro ended on a black screen.")
                 { PorterEnv = Env("DARKSIGN_CUTSCENE_FADE", "1") },
+            new("G", "No subtitles", "The cutscenes play as in A, but without subtitles (DARKSIGN_CUTSCENE_SUBTITLES=0): the spoken lines play as sounds of the cutscene, as up to 1.0.549.")
+                { PorterEnv = Env("DARKSIGN_CUTSCENE_SUBTITLES", "0") },
+            new("H", "Timeline links as up to 1.0.549", "The cutscenes play as in A, but each timeline keeps the link to the timeline it hangs on that DS3 gave it (DARKSIGN_CUTSCENE_PARENTS=0), as up to 1.0.549, where only the events' links were renumbered after the port took timelines out: Friede's intro and Cathedral of the Deep's cutscenes hung.")
+                { PorterEnv = Env("DARKSIGN_CUTSCENE_PARENTS", "0") },
         ]),
 
         new("map-music", "DS3 maps", "DS3's music (areas and boss fights)", Stage.Build,
             "A DS3 map or boss fight plays the wrong music, Elden Ring's music, or none; the music doesn't change with a boss's phase or doesn't stop; or the game stutters or crashes when a track starts.",
         [
-            new("A", "DS3's music (default)", "Every music region of the ported DS3 maps plays its DS3 track when DS3's own scripts turn it on: Firelink Shrine's music while you stand in the shrine, a boss's track when its fight starts (not when you walk into the arena), the next track when the boss changes phase, and silence when the boss dies, you die or leave. The tracks are decoded from your DS3 files to Mods\\ER\\darksign_music and the test menu DLL plays them on its own audio stream (it is loaded for this even with the F1 test menu unticked). Ported enemies no longer start Elden Ring's battle music. Report: the music lines of the port-maps log, \"music:\" lines in dksign_testmenu.log."),
+            new("A", "DS3's music (default)", "Every music region of the ported DS3 maps plays its DS3 track when DS3's own scripts turn it on: Firelink Shrine's music while you stand in the shrine, a boss's track when its fight starts (not when you walk into the arena), the next track when the boss changes phase, and silence when the boss dies, you die or leave. The tracks are decoded from your DS3 files to Mods\\ER\\darksign_music and the test menu DLL plays them on its own audio stream (it is loaded for this even with the F1 test menu unticked). Ported enemies no longer start Elden Ring's battle music, and every ported map takes its colosseum's Elden Ring field music setting, so no map falls back to Limgrave's field music. Report: the music lines of the port-maps log (\"map music areas:\" among them), \"music:\" lines in dksign_testmenu.log."),
             new("B", "No DS3 music", "No DS3 music is built or played (DARKSIGN_MAP_MUSIC=0): the DS3 maps are quiet apart from Elden Ring's own music, as up to 1.0.45x.")
                 { PorterEnv = Env("DARKSIGN_MAP_MUSIC", "0"), GameEnv = Env(NoMapMusicVariable, "1") },
             new("C", "DS3's music, Elden Ring battle music kept", "As A, but ported enemies keep their Elden Ring template's threat level and Elden Ring stand-ins their own rows (DARKSIGN_ENEMY_THREAT=template), as up to 1.0.45x: an enemy built on, or standing in as, an Elden Ring field boss starts that boss's battle music.")
                 { PorterEnv = Env("DARKSIGN_ENEMY_THREAT", "template") },
             new("D", "DS3's music, a boss's music from the arena's door", "As A, but a boss's tracks are not switched by its fight (DARKSIGN_MAP_MUSIC=arena): they play whenever you stand in the boss's arena, the last phase's track over the others, as in 1.0.479. For when a boss fight stays silent with A.")
                 { PorterEnv = Env("DARKSIGN_MAP_MUSIC", "arena") },
+            new("E", "DS3's music, Elden Ring's map music areas", "As A, but the ported maps keep Elden Ring's own field music and ambience settings (DARKSIGN_MAP_SOUND_PLACE=0), as up to 1.0.55x: a map Elden Ring has no settings row for (the Painted World, Lothric Castle and the maps after it) plays Limgrave's field music. For comparing, or when a map's ambience sounds wrong with A.")
+                { PorterEnv = Env("DARKSIGN_MAP_SOUND_PLACE", "0") },
+        ]),
+
+        new("map-reverb", "DS3 maps", "DS3's room echo (reverb) per place", Stage.Build,
+            "Since 1.0.55x voices or other sounds echo where DS3 is dry (outdoors), are dry in a hall that should echo, or a DS3 map crashes or stutters on loading.",
+        [
+            new("A", "DS3's reverb per place (default)", "Each piece of DS3 ground keeps DS3's own room reverb (none outdoors, small to extra large in rooms, halls and caves), as Elden Ring reverb regions over it; the rest of the map is dry. Without them Elden Ring picks its reverb from the walls around you and echoes everywhere in DS3's walled-in maps. Report: the \"reverb:\" lines of the port-maps log."),
+            new("B", "Elden Ring's automatic reverb", "No reverb regions (DARKSIGN_MAP_REVERB=0), as up to 1.0.55x: Elden Ring decides the reverb everywhere, so voices and sounds echo in most DS3 places.")
+                { PorterEnv = Env("DARKSIGN_MAP_REVERB", "0") },
         ]),
 
         new("map-setup", "DS3 maps", "DS3's new-game flags", Stage.Build,
@@ -859,6 +882,8 @@ public static class Fallbacks
                 { PorterEnv = Env("DARKSIGN_ENEMY_EFFECTS", "0") },
             new("D", "DS3's effects, plus the template's own", "As A, but a ported enemy also keeps the effects only its Elden Ring template has (DARKSIGN_ENEMY_TEMPLATE_FX=keep), as in builds before this option, when enemies built on the Giant Beast Skeleton came back to life unless hit again. Work\\reports\\enemy-template-effects.tsv lists what A takes off.")
                 { PorterEnv = Env("DARKSIGN_ENEMY_TEMPLATE_FX", "keep") },
+            new("E", "No floor-impact sounds from DS3 moves", "As A, but DS3's floor-material sound events (steps, landings and body slams of Corrupted Gundyr, Oceiros, the Curse-rotted Greatwood, Yhorm, Gravetender's Greatwolf, the Judicator and others) stay as DS3 had them and play nothing (DARKSIGN_FLOOR_SOUNDS=0), as up to this option. Use when a ported enemy's steps or slams sound wrong, too loud, or the game crashes when one moves with A.")
+                { PorterEnv = Env("DARKSIGN_FLOOR_SOUNDS", "0") },
         ]),
         new("enemy-ai", "DS3 maps", "Ported DS3 enemies' AI and attacks", Stage.Build,
             "Ported DS3 enemies stand still, never attack, repeat one move, use Elden Ring attacks, never do what DS3's map makes them do (the High Wall's Hollow Soldiers bursting into the Pus of Man), or the game crashes or hangs when a ported enemy notices you.",
@@ -884,6 +909,8 @@ public static class Fallbacks
                 { PorterEnv = Env("DARKSIGN_ENEMY_OWN_POSES", "0") },
             new("K", "The template's senses", "As A, but a ported enemy keeps the Elden Ring template's hearing, forget times, long-range search sight and in-battle sight (DARKSIGN_ENEMY_SENSES=template), as up to 1.0.470, when enemies built on a far-sighted template (35 m on the Giant Beast Skeleton) came from much further away than DS3's 13 to 15 m. Use when ported enemies ignore you until hit, or forget you at once, with A.")
                 { PorterEnv = Env("DARKSIGN_ENEMY_SENSES", "template") },
+            new("L", "No added phase changes", "As A, but a move DS3's AI asks for outside the usual attack numbers 3000-3999 (the bosses' phase changes, 1500 and 1600) gets no state of its own and is not played (DARKSIGN_ENEMY_AI_MOVES=0), as up to 1.0.549, when the Dancer and Pontiff Sulyvahn froze at half health instead of starting their second phase. Use when a ported boss freezes, T-poses or the game crashes at its phase change with A.")
+                { PorterEnv = Env("DARKSIGN_ENEMY_AI_MOVES", "0") },
         ]),
         new("enemy-glow", "DS3 maps", "Ported DS3 enemies' glows", Stage.Build,
             "A ported DS3 enemy's glow is the wrong colour or missing (the Jailer's lantern, Pontiff Sulyvahn's swords, the Soul of Cinder), a part of it glows far too brightly or draws black, or the game crashes or hangs loading a ported enemy that glows.",

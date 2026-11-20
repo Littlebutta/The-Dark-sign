@@ -35,6 +35,10 @@ public static class MapDiag
             return MapWorldDiag.Run(ctx, args.Skip(1).ToList());
         if (args.Count > 0 && args[0].Equals("music", StringComparison.OrdinalIgnoreCase))
             return MapMusicDiag.Run(ctx, args.Skip(1).ToList());
+        if (args.Count > 0 && args[0].Equals("anim-types", StringComparison.OrdinalIgnoreCase))
+            return ObjectCollisionDiag.AnimTypes(ctx, args.Skip(1).ToList());
+        if (args.Count > 0 && args[0].Equals("object-events", StringComparison.OrdinalIgnoreCase))
+            return MapObjectEventsDiag.Run(ctx, args.Skip(1).ToList());
         if (args.Count == 0 || !args[0].Equals("colours", StringComparison.OrdinalIgnoreCase))
         {
             Console.Error.WriteLine("map-diag colours [DS3 map ID...]   (default: every slot's DS3 map)");
@@ -45,6 +49,7 @@ public static class MapDiag
             Console.Error.WriteLine("map-diag stand-ins [DS3 map ID...] (low-detail stand-ins and far views the port leaves out, from DS3's files)");
             Console.Error.WriteLine("map-diag music [DS3 map ID...]     (DS3's sound regions, the script events that switch music and what starts them)");
             Console.Error.WriteLine("map-diag world [DS3 map ID...]     (every map's pieces, collisions and walkable floor in DS3's shared world space, TSVs)");
+            Console.Error.WriteLine("map-diag object-events [DS3 map ID...] (each object's ObjAct events and script events, and whether the port keeps them)");
             return 1;
         }
         var maps = args.Skip(1).Select(MapId.Parse).ToList();

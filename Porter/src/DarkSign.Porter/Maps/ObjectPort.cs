@@ -568,7 +568,10 @@ public sealed class ObjectPort
 
         // Objects that move: animations, nodes and moving collision (on the moving pass). Breaking objects stay
         // still (their animations are the breaking; ported, they would block the way while unbreakable).
-        bool moves = asset.Animated && !asset.Breakable && !asset.Ladder && Moving != MovingMethod.Off;
+        // A ladder stays put too (Elden Ring climbs a still asset), unless DS3 marks it a moving object: Ariandel's
+        // lever-lowered ladder (o459150, isMoveObj and isLadder) has to come down before it can be climbed, and
+        // standing still it never did (2026-11-20).
+        bool moves = asset.Animated && !asset.Breakable && (!asset.Ladder || asset.MoveObj) && Moving != MovingMethod.Off;
         if (moves && !movingPass)
             return false;
         if (moves)

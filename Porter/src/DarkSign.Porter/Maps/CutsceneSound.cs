@@ -21,7 +21,8 @@ namespace DarkSign.Porter.Maps;
 /// timeline plays, decoded to PCM the way the weapon and enemy sound ports do (<see cref="SoundPort"/>: DS3's event
 /// file says which samples, level and pitch). Each sound gets a new seType 4 ID (<see cref="IdBase"/> + the cutscene's
 /// number * 1000 + n), its events are rewritten to Elden Ring's kind 135 form, armour movement goes to seType 15, and
-/// a subtitle event whose talk has a DS3 voice plays that voice instead (the subtitle text isn't ported). A DS3 sound
+/// a subtitle event whose talk has a DS3 voice keeps its subtitle and speaks through its TalkParam row
+/// (<see cref="CutsceneSubtitles"/>; with DARKSIGN_CUTSCENE_SUBTITLES=0 it becomes a sound event, as up to 1.0.549). A DS3 sound
 /// that can't be found or decoded leaves its event out, so the game never plays an Elden Ring sound of that number.
 /// Off with DARKSIGN_CUTSCENE_SOUND=0 (launcher fallback map-cutscenes C): the timelines keep their sound events as
 /// the cutscene port left them.
@@ -57,6 +58,10 @@ public sealed class CutsceneSound
         public int Index { get; } = index;
         /// <summary>DS3 sound name (p450000002, v004005000) -> new seType 4 ID, in the order first played.</summary>
         public Dictionary<string, int> Sounds { get; } = new(StringComparer.Ordinal);
+        /// <summary>Spoken lines kept as subtitles (<see cref="CutsceneSubtitles"/>): DS3 talk -> its voice's new ID. The
+        /// bank names these Play_v&lt;ID&gt; (Elden Ring plays a subtitle's TalkParam voiceId from the cutscene's bank).</summary>
+        public Dictionary<int, int> VoiceOfTalk { get; } = new();
+        public HashSet<int> VoiceIds { get; } = [];
         public int Main, Effects, Voices, Armour, Dropped, Auto;
         public List<string> Missing { get; } = [];
 
@@ -126,6 +131,21 @@ public sealed class CutsceneSound
                         if (Number(Param(ev.Parameters, "talkParamId")) is not { } talk || talk <= 0)
                             return false;
                         var name = voice((int)talk) is { } v && v > 0 ? $"v{v:D9}" : null;
+                        if (CutsceneSubtitles.Enabled)
+                        {
+                            // Elden Ring's way (s10_00_0010: subtitle talk 2003000 -> TalkParam voiceId 20030000, and
+                            // the cutscene's own bank lists Play_v020030000): the subtitle stays and its TalkParam row
+                            // names the voice, which the bank holds as Play_v<ID>. CutsceneSubtitles rewrites the event.
+                            if (name is not null && known(name) && plan.Assign(name) is var vid && vid >= 0)
+                            {
+                                plan.VoiceOfTalk[(int)talk] = vid;
+                                plan.VoiceIds.Add(vid);
+                                plan.Voices++;
+                            }
+                            else
+                                plan.Missing.Add(name ?? $"talk {talk}");
+                            return false;
+                        }
                         if (name is null || !known(name) || plan.Assign(name) is var id && id < 0)
                         {
                             plan.Dropped++;
@@ -218,10 +238,24 @@ public sealed class CutsceneSound
     {
         if (ids.Count == 0)
             return 0;
+        return Strip(mqb, ids, out _);
+    }
+
+    /// <summary><see cref="Strip(MQB, IReadOnlySet{int})"/>, also giving the timelines it left with no events.</summary>
+    public static int Strip(MQB mqb, IReadOnlySet<int> ids, out HashSet<MQB.Timeline> emptied)
+    {
+        emptied = new HashSet<MQB.Timeline>(ReferenceEqualityComparer.Instance);
+        if (ids.Count == 0)
+            return 0;
         int removed = 0;
         foreach (var tl in mqb.Cuts.SelectMany(c => c.Timelines))
-            removed += tl.Events.RemoveAll(ev => ev.ResourceIndex >= 0 && ev.ResourceIndex < mqb.Resources.Count && mqb.Resources[ev.ResourceIndex].Unk48 == KindSound
+        {
+            int n = tl.Events.RemoveAll(ev => ev.ResourceIndex >= 0 && ev.ResourceIndex < mqb.Resources.Count && mqb.Resources[ev.ResourceIndex].Unk48 == KindSound
                 && Number(Param(ev.Parameters, "seType")) == SeTypeCutscene && Number(Param(ev.Parameters, "seId")) is { } id && id <= int.MaxValue && ids.Contains((int)id));
+            if (n > 0 && tl.Events.Count == 0)
+                emptied.Add(tl);
+            removed += n;
+        }
         return removed;
     }
 
@@ -234,9 +268,13 @@ public sealed class CutsceneSound
         foreach (var f in bnd.Files.Where(f => f.Name.EndsWith(".mqb", StringComparison.OrdinalIgnoreCase)))
         {
             var mqb = MQB.Read(f.Bytes);
-            int n = Strip(mqb, ids);
+            int n = Strip(mqb, ids, out var emptied);
             if (n > 0)
+            {
+                // A timeline the strip left empty goes and the rest are renumbered (CutsceneTimelineLinks.Compact).
+                CutsceneTimelineLinks.Compact(mqb, emptied);
                 f.Bytes = mqb.Write();
+            }
             removed += n;
         }
         return removed;
@@ -457,7 +495,9 @@ public sealed class CutsceneSound
                 silentIds.Add(id);
                 continue;
             }
-            uint play = FxSoundExplore.Fnv1($"Play_p{id:D9}"), stop = FxSoundExplore.Fnv1($"Stop_p{id:D9}");
+            // A subtitle's voice is played by its TalkParam row (voiceId): Play_v; every other sound by a seType 4 event: Play_p.
+            char kind = plan.VoiceIds.Contains(id) ? 'v' : 'p';
+            uint play = FxSoundExplore.Fnv1($"Play_{kind}{id:D9}"), stop = FxSoundExplore.Fnv1($"Stop_{kind}{id:D9}");
             bank.AddSound(template, play, layers, streamed: false, new WwiseBank.StopEvent(stop, ev.FadeOutMs, stopTemplate));
             events.Add(play);
             events.Add(stop);
