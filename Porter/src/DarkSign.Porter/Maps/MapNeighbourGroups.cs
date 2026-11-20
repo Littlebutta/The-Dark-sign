@@ -3,6 +3,8 @@ using SoulsFormats;
 namespace DarkSign.Porter.Maps;
 
 /// <summary>
+/// Fallback "map-world" F only (DARKSIGN_WORLD_STAND_INS=neighbour-groups); the default is DS3's own doorway lists,
+/// <see cref="MapConnectDisplay"/>.
 /// Draws a map's stand-ins for a neighbouring map only while that neighbour isn't loaded, the way DS3 swaps them,
 /// with as little of Elden Ring's culling as that takes (the "world stand-ins" step, <see cref="MapPorter"/>).
 /// <para>

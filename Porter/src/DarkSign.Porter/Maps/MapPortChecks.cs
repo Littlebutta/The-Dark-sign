@@ -46,6 +46,8 @@ public static partial class MapPortChecks
             yield return check;
         foreach (var check in CoverageChecks())
             yield return check;
+        foreach (var check in DoorwayChecks())
+            yield return check;
         foreach (var check in MusicChecks())
             yield return check;
         foreach (var check in SetupChecks())

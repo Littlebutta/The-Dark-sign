@@ -2,7 +2,6 @@ using System.Globalization;
 using System.Numerics;
 using System.Text;
 using SoulsFormats;
-using Ds3 = HKX2;
 
 namespace DarkSign.Porter.Maps;
 
@@ -22,8 +21,6 @@ namespace DarkSign.Porter.Maps;
 /// </summary>
 public static class MapWorldDiag
 {
-    private const float Grid = 4f;
-
     public static int Run(PorterContext ctx, IReadOnlyList<string> args)
     {
         var maps = args.Select(MapId.Parse).ToList();
@@ -35,11 +32,12 @@ public static class MapWorldDiag
         var collisions = new StringBuilder("map\tpart\tmodel\tdispGroups\tdrawGroups\tconnects\n");
         var floor = new StringBuilder("map\tcollision\tx\ty\tz\n");
         var points = new StringBuilder("map\tkind\tpart\tmodel\tx\ty\tz\tcollision\n");
+        var world = new List<MapConnectDisplay.MapData>();
         foreach (var slot in slots)
         {
             try
             {
-                Dump(ds3, slot, pieces, collisions, floor, points);
+                world.Add(Dump(ds3, slot, pieces, collisions, floor, points));
                 Console.WriteLine($"{slot.Ds3} -> {slot.Er}: done");
             }
             catch (Exception ex) when (ex is not OutOfMemoryException)
@@ -51,19 +49,39 @@ public static class MapWorldDiag
         File.WriteAllText(Path.Combine(dir, "world-collisions.tsv"), collisions.ToString());
         File.WriteAllText(Path.Combine(dir, "world-floor.tsv"), floor.ToString());
         File.WriteAllText(Path.Combine(dir, "world-points.tsv"), points.ToString());
-        Console.WriteLine($"reports: {dir}\\world-*.tsv");
+        // The doorway display check (MapConnectDisplay): what the port draws over each map's walkable floor where DS3
+        // hides it, before and after the doorway lists.
+        var check = new StringBuilder();
+        var plan = MapConnectDisplay.Build(world);
+        var result = MapConnectDisplay.Verify(world, plan);
+        check.AppendLine(string.Join(Environment.NewLine, plan.Notes));
+        check.AppendLine($"a neighbour's pieces drawn over walkable floor where DS3 hides them: {result.NeighbourBefore:N0} cells with every piece drawn (before this change), {result.NeighbourAfter:N0} with the doorway lists");
+        check.AppendLine($"own stand-ins for a neighbour on their own doorway collisions: {result.OwnBefore:N0} before, {result.OwnAfter:N0} after");
+        check.AppendLine($"cells where a piece DS3 shows would be hidden: {result.HiddenButShown:N0}");
+        foreach (var (m, (b, a)) in result.PerMap.OrderBy(p => p.Key.ToString()))
+            check.AppendLine($"  {m}: {b:N0} -> {a:N0}");
+        foreach (var l in result.Leftovers)
+            check.AppendLine($"  still drawn: {l}");
+        foreach (var l in result.WronglyHidden)
+            check.AppendLine($"  wrongly hidden: {l}");
+        foreach (var (er, mp) in plan.Maps.OrderBy(p => p.Key.ToString()))
+            check.AppendLine($"  {er}: {mp.DoorwayLists} doorway lists into it; own pieces hidden on its doorways: {string.Join(", ", mp.BorderHidden.Select(b => $"{b.Key} (over {string.Join("/", b.Value)})"))}");
+        File.WriteAllText(Path.Combine(dir, "world-check.txt"), check.ToString());
+        Console.Write(check.ToString());
+        Console.WriteLine($"reports: {dir}\\world-*.tsv, world-check.txt");
         return 0;
     }
 
     private static string F(float v) => v.ToString("0.0", CultureInfo.InvariantCulture);
     private static string Hex(uint[] g) => string.Concat(g.Select(w => w.ToString("X8")));
 
-    private static void Dump(GameArchives ds3, MapSlots.Slot slot, StringBuilder pieces, StringBuilder collisions, StringBuilder floor, StringBuilder points)
+    private static MapConnectDisplay.MapData Dump(GameArchives ds3, MapSlots.Slot slot, StringBuilder pieces, StringBuilder collisions, StringBuilder floor, StringBuilder points)
     {
         var map = slot.Ds3;
         var msb = MSB3.Read(ds3.Read(MapPorter.MsbPath(map)));
         bool layerOk = MsbPort.BaseLayerMeans(msb);
         var models = new Dictionary<string, (List<MapModelPort.MeshInfo> Meshes, bool Lod)>(StringComparer.OrdinalIgnoreCase);
+        var boxes = new List<MapStandIns.PieceBox>();
         foreach (var p in msb.Parts.MapPieces)
         {
             var number = MapPorter.ModelNumber(p.ModelName);
@@ -92,6 +110,8 @@ public static class MapWorldDiag
             }
             var (min, max) = MapStandIns.WorldBox(p, drawn.Select(m => m.Min).Aggregate(Vector3.Min), drawn.Select(m => m.Max).Aggregate(Vector3.Max));
             int verts = drawn.Sum(m => m.Vertices), low = drawn.Where(m => MapStandIns.IsLowTexture(m.Albedo)).Sum(m => m.Vertices);
+            if (MsbPort.HelperKind(p, layerOk) is null)
+                boxes.Add(new MapStandIns.PieceBox(p.Name, min, max, verts, low > 0 && low * 2 >= verts));
             pieces.Append($"{map}\t{slot.Er}\t{p.Name}\t{p.ModelName}\t{MsbPort.HelperKind(p, layerOk) ?? ""}\t{F(min.X)}\t{F(min.Y)}\t{F(min.Z)}\t{F(max.X)}\t{F(max.Y)}\t{F(max.Z)}\t{verts}\t{low}\t{(info.Lod ? 1 : 0)}\t{Hex(p.DrawGroups)}\n");
         }
 
@@ -107,62 +127,9 @@ public static class MapWorldDiag
         foreach (var e in msb.Parts.Objects)
             points.Append($"{map}\tobject\t{e.Name}\t{e.ModelName}\t{F(e.Position.X)}\t{F(e.Position.Y)}\t{F(e.Position.Z)}\t{e.CollisionName}\n");
 
-        // Walkable floor: the h collision's upward faces, one sample per 4 m cell per collision part.
-        var hPath = MapCollisions.Ds3BinderPath(map, "h");
-        if (!ds3.Contains(hPath))
-            return;
-        var bxf = BXF4.Read(ds3.Read(hPath), ds3.Read(hPath[..^3] + "bdt"));
-        foreach (var f in bxf.Files.Where(f => f.Name.EndsWith(".hkx.dcx", StringComparison.OrdinalIgnoreCase)))
-        {
-            Ds3.hkRootLevelContainer root;
-            try { root = CollisionPort.ReadDs3(DCX.Decompress(f.Bytes)); }
-            catch (Exception) { continue; }
-            var number = MapCollisions.ModelNumberOf(ItemText.Leaf(f.Name));
-            var parts = msb.Parts.Collisions.Where(c => MapPorter.ModelNumber(c.ModelName) == number).ToList();
-            if (parts.Count == 0)
-                continue;
-            var bodies = (root.m_namedVariants ?? []).Select(v => v.m_variant).OfType<Ds3.hknpPhysicsSceneData>()
-                .SelectMany(s => s.m_systemDatas ?? []).SelectMany(s => s.m_bodyCinfos ?? []).ToList();
-            var decoded = CollisionPort.Decode(root);
-            foreach (var part in parts)
-            {
-                const float rad = MathF.PI / 180;
-                var r = part.Rotation;
-                var scale = part.Scale == Vector3.Zero ? Vector3.One : part.Scale;
-                var partM = Matrix4x4.CreateScale(scale) * Matrix4x4.CreateRotationX(r.X * rad) * Matrix4x4.CreateRotationZ(r.Z * rad)
-                            * Matrix4x4.CreateRotationY(r.Y * rad) * Matrix4x4.CreateTranslation(part.Position);
-                var cells = new HashSet<(int, int, int)>();
-                for (int b = 0; b < decoded.Count; b++)
-                {
-                    var body = bodies.FirstOrDefault(x => x.m_name == decoded[b].Name) ?? (b < bodies.Count ? bodies[b] : null);
-                    var bodyM = body is null ? Matrix4x4.Identity
-                        : Matrix4x4.CreateFromQuaternion(body.m_orientation == default ? Quaternion.Identity : body.m_orientation)
-                          * Matrix4x4.CreateTranslation(body.m_position.X, body.m_position.Y, body.m_position.Z);
-                    var m = bodyM * partM;
-                    foreach (var (a0, b0, c0) in decoded[b].Triangles)
-                    {
-                        var a = Vector3.Transform(a0, m);
-                        var bb = Vector3.Transform(b0, m);
-                        var c = Vector3.Transform(c0, m);
-                        var n = Vector3.Cross(bb - a, c - a);
-                        if (n.Length() < 1e-6f)
-                            continue;
-                        n = Vector3.Normalize(n);
-                        if (Math.Abs(n.Y) < 0.7f)
-                            continue;
-                        // Sample the triangle on a grid finer than the cells, so large floor triangles cover every cell.
-                        int steps = Math.Clamp((int)MathF.Ceiling(MathF.Max((bb - a).Length(), MathF.Max((c - bb).Length(), (a - c).Length())) / (Grid / 2)), 1, 200);
-                        for (int i = 0; i <= steps; i++)
-                        for (int j = 0; i + j <= steps; j++)
-                        {
-                            var q = a + (bb - a) * (i / (float)steps) + (c - a) * (j / (float)steps);
-                            var cell = ((int)MathF.Floor(q.X / Grid), (int)MathF.Floor(q.Y / Grid), (int)MathF.Floor(q.Z / Grid));
-                            if (cells.Add(cell))
-                                floor.Append($"{map}\t{part.Name}\t{F(q.X)}\t{F(q.Y)}\t{F(q.Z)}\n");
-                        }
-                    }
-                }
-            }
-        }
+        var cells = MapWorldFloor.Sample(ds3, map, msb);
+        foreach (var cell in cells)
+            floor.Append($"{map}\t{cell.Collision}\t{F(cell.At.X)}\t{F(cell.At.Y)}\t{F(cell.At.Z)}\n");
+        return new MapConnectDisplay.MapData(map, slot.Er, msb, boxes, cells);
     }
 }
