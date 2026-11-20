@@ -84,10 +84,11 @@ export function convert(bytes, newId, mapJson) {
   if (map.lit?.all)
     for (const action of fxr.root.walkActions())
       if (action instanceof BillboardEx && smokeBlend(action.blendMode)) action.lighting = LightingMode.UnkMinus2;
-  // With map.lights, the point lights DS3's effects carry get Elden Ring's light settings (erLight).
+  // With map.lights, the point and spot lights DS3's effects carry get Elden Ring's light settings (erLight, erSpot).
   if (map.lights?.all)
     for (const action of fxr.root.walkActions())
       if (action instanceof PointLight) erLight(action);
+      else if (action instanceof SpotLight) erSpot(action);
   fxr.root.remapResources((type, resource) => map[type]?.[resource] ?? resource);
   const sfx = map.sfx ?? {};
   for (const node of fxr.root.walk()) {
@@ -125,6 +126,22 @@ function erLight(light) {
   light.specularMultiplier = anyValueMult(10, light.specularMultiplier);
   light.adaptationExponent = 1;
   light.unk_ds3_p2_0 = anyValueMult(0.25, light.radius);
+  light.volumeDensity = 0.5;
+}
+
+// A DS3 spot light set up the way erLight sets up the point lights: 10 times DS3's strength with Elden Ring's
+// daylight dimming (adaptation 1) and the faint glow in the air (volume density 0.5) Elden Ring gives its lights.
+// DS3's effects carry two spot lights, f845210 and f845211: the windows at the end of Friede's hall in the Painted
+// World (SFX regions "spotボスエリアの窓", a cone 48 m long, 40 by 52 degrees, pale blue 0.63 0.83 0.96, strength
+// 2.55 as converted). In DS3 they draw the light shafts from the window and the bright patch on the floor under them
+// (2026-11-20 playtest: "missing the light shaft from the window", "I cant see the ground like i should in ds3").
+// Converted as read, they had a tenth of an Elden Ring light's strength in the dark and no volume density, so Elden
+// Ring drew neither the shaft (the lit air inside the cone) nor the patch. A spot light has no falloff value to set.
+// Fallback "map-effects" E (DARKSIGN_FXR_LIGHTS=ds3) keeps them as converted, with the point lights.
+function erSpot(light) {
+  light.diffuseMultiplier = anyValueMult(10, light.diffuseMultiplier);
+  light.specularMultiplier = anyValueMult(10, light.specularMultiplier);
+  light.adaptationExponent = 1;
   light.volumeDensity = 0.5;
 }
 
@@ -166,11 +183,23 @@ export function flameSample(id, texture, r, g, b, light, falloff = 1) {
   return new Uint8Array(fxr.toArrayBuffer(Game.DarkSouls3));
 }
 
-// For the self-tests: the point lights of a converted (Elden Ring) effect, with each value at its largest.
+// For the self-tests: a small DS3 effect that carries one spot light as the windows of Friede's hall do (f845210).
+export function spotSample(id) {
+  const fxr = new FXR(id);
+  fxr.root.nodes.push(new BasicNode([new SpotLight({
+    diffuseColor: [0.63, 0.83, 0.96, 0.235], specularColor: [0.63, 0.83, 0.96, 0.118], diffuseMultiplier: 2.55, specularMultiplier: 2.55,
+    near: 0.48, far: 48, radiusX: 40, radiusY: 52,
+  })]));
+  return new Uint8Array(fxr.toArrayBuffer(Game.DarkSouls3));
+}
+
+// For the self-tests: the point and spot lights of a converted (Elden Ring) effect, with each value at its largest.
 export function lightsOfConverted(bytes) {
-  return JSON.stringify([...FXR.read(bytes, Game.EldenRing).root.walkActions()].filter(a => a instanceof PointLight).map(a => ({
-    strength: largest(a.diffuseMultiplier), adaptation: a.adaptationExponent, falloff: largest(a.unk_ds3_p2_0),
-    radius: largest(a.radius), volume: a.volumeDensity,
+  return JSON.stringify([...FXR.read(bytes, Game.EldenRing).root.walkActions()].filter(a => a instanceof PointLight || a instanceof SpotLight).map(a => ({
+    kind: a instanceof SpotLight ? 'spot' : 'point',
+    strength: largest(a.diffuseMultiplier), adaptation: a.adaptationExponent,
+    falloff: a instanceof PointLight ? largest(a.unk_ds3_p2_0) : null,
+    radius: a instanceof PointLight ? largest(a.radius) : largest(a.far), volume: a.volumeDensity,
   })));
 }
 

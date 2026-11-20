@@ -58,6 +58,68 @@ public static class MapLightSets
     public static SortedSet<int> Wanted(MSBE msb) =>
         new(msb.Parts.GetEntries().Select(Er).Where(g => g is not null).Select(g => g!.LightSetID).Where(id => id >= 0));
 
+    /// <summary>
+    /// The light sets only characters name (each part of the layout that names it is an enemy, a person or a boss):
+    /// DS3's boss and character sets (m45_00 111 Friede, 120 Ariandel; m40_00 110 the Fire Keeper, 120 Gundyr).
+    /// </summary>
+    public static SortedSet<int> CharacterOnly(MSBE msb)
+    {
+        var map = new HashSet<int>();
+        var characters = new HashSet<int>();
+        foreach (var part in msb.Parts.GetEntries())
+            if (Er(part) is { LightSetID: >= 0 } g)
+                (part is MSBE.Part.EnemyBase ? characters : map).Add(g.LightSetID);
+        return new(characters.Except(map));
+    }
+
+    /// <summary>
+    /// The set Elden Ring lights its own characters with (2026-11-20 playtest: "Father Ariandel's lighting is too
+    /// bright just like the firekeeper in the firelink shrine"). Measured on the hosts' draw params: Elden Ring's
+    /// characters name set 100, whose lights are the sun (0.6 on m45_00) and next to nothing else (a second light of
+    /// 0.05 that follows the camera, a local light of 0.015): 0.665 in all, as diffuse and as specular light. DS3 gives
+    /// its characters strong lights of their own besides the sun: Ariandel's set 120 has a second light of 1.6, local
+    /// lights of 0.47 and 1.59 (2.74 in all on the slot's scale, 4.1 times Elden Ring's set 100), the Fire Keeper's
+    /// set 110 0.4, 0.3 and 0.4 with specular light of 1 and 2 (2.7 as specular light). Elden Ring has no baked light
+    /// to brighten the room around them as DS3 did, so they stood out lit like a stage. A character-only set now lights
+    /// no more in all than the slot's character set: its lights keep DS3's colours, directions and proportions, all
+    /// scaled down together. Fallback "map-light-sets" D: DARKSIGN_CHARACTER_LIGHT=ds3 keeps DS3's strengths (each
+    /// light within <see cref="MaxOverSun"/>), as builds up to 1.0.53x had them.
+    /// </summary>
+    public const int HostCharacterSet = 100;
+
+    public static bool CharacterLightLimited => Environment.GetEnvironmentVariable("DARKSIGN_CHARACTER_LIGHT") != "ds3";
+
+    /// <summary>The diffuse colours, the specular ones, and the switch each light needs on to count (null: always on).</summary>
+    private static readonly (string Diffuse, string Specular, string? Switch)[] Lights =
+    [
+        ("Directional Light DiffColor0", "Directional Light SpecColor0", null),
+        ("Directional Light DiffColor1", "Directional Light SpecColor1", null),
+        ("Directional Light LocalLight DiffColor1", "Directional Light LocalLight SpecColor1", "Directional Enable LocalLight1"),
+        ("Directional Light LocalLight DiffColor2", "Directional Light LocalLight SpecColor2", "Directional Enable LocalLight2"),
+    ];
+
+    /// <summary>All the light a set gives (strengths of the lights that are on and not black), as diffuse and as
+    /// specular light, times <paramref name="scale"/>.</summary>
+    internal static (float Diffuse, float Specular) Total(GPARAM.Group group, int id, float scale = 1)
+    {
+        T? At<T>(string name) where T : struct
+        {
+            var p = group.Params.FirstOrDefault(x => x.Name1 == name);
+            int i = p?.ValueIDs.IndexOf(id) ?? -1;
+            return p is not null && i >= 0 && i < p.Values.Count && p.Values[i] is T v ? v : null;
+        }
+        float W(string name) => At<Vector4>(name) is { } c && Math.Max(c.X, Math.Max(c.Y, c.Z)) > 0 ? Math.Max(0, c.W) * scale : 0;
+        float diffuse = 0, specular = 0;
+        foreach (var (d, s, on) in Lights)
+        {
+            if (on is not null && At<bool>(on) == false)
+                continue;
+            diffuse += W(d);
+            specular += W(s);
+        }
+        return (diffuse, specular);
+    }
+
     /// <summary>The light set params DS3 writes in its own map space whose angles turn with the map offset.</summary>
     private static bool IsAngle(GPARAM.Param p) => p.Name1.Contains("Angle", StringComparison.Ordinal) && p.Type == GPARAM.ParamType.Float2;
 
@@ -111,7 +173,10 @@ public static class MapLightSets
     /// proportions to each other; every light direction, turned by the map offset like set 0's sun; and which local
     /// lights are on. Values are kept in ID order. Returns the IDs added and a line for the log (null when none).
     /// </summary>
-    public static (List<int> Added, string? Note) Add(GPARAM gparam, GPARAM ds3, IEnumerable<int> wanted, float sunScale, float sunTurnDegrees)
+    /// <param name="characterSets">Sets only characters name (<see cref="CharacterOnly"/>): their lights are scaled down
+    /// together to light no more in all than the slot's own character set (<see cref="HostCharacterSet"/>).</param>
+    public static (List<int> Added, string? Note) Add(GPARAM gparam, GPARAM ds3, IEnumerable<int> wanted, float sunScale, float sunTurnDegrees,
+        IReadOnlySet<int>? characterSets = null)
     {
         var added = new List<int>();
         var light = MapAtmosphere.Group(gparam, "LightSet");
@@ -139,6 +204,10 @@ public static class MapLightSets
         float farCap = hostSun > 0 ? hostSun * MaxFarOverSun : float.MaxValue;
         var capped = new SortedSet<int>();
         var far = new SortedSet<int>();
+        // Elden Ring's own character lighting: the slot's set 100 (set 0 when it has none).
+        var hostCharacter = Total(light, hostIds.Contains(HostCharacterSet) ? HostCharacterSet : 0);
+        var toned = new List<string>();
+        var inv = CultureInfo.InvariantCulture;
 
         foreach (var id in added)
         {
@@ -146,6 +215,19 @@ public static class MapLightSets
             if (farView)
                 far.Add(id);
             float setCap = farView ? farCap : cap;
+            // A character-only set: every light scaled by one factor so the set's total stays within the slot's
+            // character set, as diffuse and as specular light.
+            float diffuseScale = 1, specularScale = 1;
+            if (CharacterLightLimited && characterSets is not null && characterSets.Contains(id) && !farView)
+            {
+                var (d, s) = Total(ds3Light, id, sunScale);
+                if (d > hostCharacter.Diffuse && hostCharacter.Diffuse > 0)
+                    diffuseScale = hostCharacter.Diffuse / d;
+                if (s > hostCharacter.Specular && hostCharacter.Specular > 0)
+                    specularScale = hostCharacter.Specular / s;
+                if (diffuseScale < 1 || specularScale < 1)
+                    toned.Add(string.Create(inv, $"{id} ({d:0.##}/{s:0.##} -> {d * diffuseScale:0.##}/{s * specularScale:0.##})"));
+            }
             int at = -1;
             foreach (var p in light.Params)
             {
@@ -160,7 +242,7 @@ public static class MapLightSets
                     var ds3Value = source.Values[si];
                     if (Colours.Contains(p.Name1) && ds3Value is Vector4 c && value is Vector4)
                     {
-                        float w = c.W * sunScale;
+                        float w = c.W * sunScale * (p.Name1.Contains("Spec", StringComparison.Ordinal) ? specularScale : diffuseScale);
                         // A black light gives nothing whatever its strength (DS3 switches lights off that way).
                         if (w > setCap && Math.Max(c.X, Math.Max(c.Y, c.Z)) > 0)
                         {
@@ -201,11 +283,11 @@ public static class MapLightSets
         foreach (var u in gparam.Unk3s.Where(u => u.GroupIndex == groupIndex))
             u.ValueIDs = [.. Ids(light).Order()];
 
-        var inv = CultureInfo.InvariantCulture;
         var names = added.Select(id => Ds3Name(id) is { Length: > 0 } n ? $"{id} ({n})" : id.ToString(inv));
         return (added, string.Create(inv, $"DS3 light sets {string.Join(", ", names)} added beside the host's {string.Join(", ", hostIds.Order())} (strengths x{sunScale:0.##})")
             + (far.Count > 0 ? string.Create(inv, $"; far-view sets {string.Join(", ", far)} may reach {MaxFarOverSun} times the sun ({farCap:0.##})") : "")
-            + (capped.Count > 0 ? string.Create(inv, $"; lights over their limit turned down in sets {string.Join(", ", capped)}") : ""));
+            + (capped.Count > 0 ? string.Create(inv, $"; lights over their limit turned down in sets {string.Join(", ", capped)}") : "")
+            + (toned.Count > 0 ? string.Create(inv, $"; character sets toned down to the slot's character light ({hostCharacter.Diffuse:0.##} diffuse / {hostCharacter.Specular:0.##} specular in all): {string.Join(", ", toned)}") : ""));
     }
 
     /// <summary>Every ID a group's params have a value for.</summary>
