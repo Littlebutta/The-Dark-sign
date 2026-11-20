@@ -371,8 +371,10 @@ public static class Fallbacks
                 { PorterEnv = Env("DARKSIGN_MAP_WORLD", "0") },
             new("C", "Every map, no map link rows", "As A, but without the WorldMapLegacyConvParam rows that tell the game two neighbouring maps share one space. Try it if walking into the next map crashes or puts it in the wrong place. (DARKSIGN_MAP_LINKS=0)")
                 { PorterEnv = Env("DARKSIGN_MAP_LINKS", "0") },
-            new("D", "Every map, keep stand-ins for neighbours", "As A, but a map's low-detail stand-ins for a neighbouring map stay even where that map's real pieces stand (builds up to 1.0.52x). Try it if a far view (a castle on the skyline) went missing since the build that left them out; you may see low-resolution slabs over the real pieces again. (DARKSIGN_WORLD_STAND_INS=0)")
+            new("D", "Every map, stand-ins for neighbours always drawn", "As A, but a map's low-detail stand-ins for a neighbouring map are drawn all the time, also while that map's real pieces are loaded there (builds up to 1.0.52x). Try it if a far view (a castle on the skyline) blinks or goes missing; you may see low-resolution slabs over the real pieces again. (DARKSIGN_WORLD_STAND_INS=0)")
                 { PorterEnv = Env("DARKSIGN_WORLD_STAND_INS", "0") },
+            new("E", "Every map, stand-ins for neighbours left out", "As A, but a map's low-detail stand-ins for a neighbouring map are left out where that map's real pieces stand, as builds 1.0.53x did (no draw groups at all). Try it if map pieces vanish or flicker as you walk between maps; far views of the next map are missing until it loads. (DARKSIGN_WORLD_STAND_INS=remove)")
+                { PorterEnv = Env("DARKSIGN_WORLD_STAND_INS", "remove") },
         ]),
         new("map-painted-world", "DS3 maps", "Where the Painted World of Ariandel goes", Stage.Build,
             "Warping to the Painted World (or the F1 menu's Friede fight) fails: nothing happens, endless loading, or a crash.",

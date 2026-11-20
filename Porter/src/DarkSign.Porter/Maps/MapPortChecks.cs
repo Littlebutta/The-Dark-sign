@@ -804,8 +804,19 @@ public static partial class MapPortChecks
         var template = new PARAM.Row(MapLinks.TemplateRow, "Subterranean Shunning-Grounds -> Leyndell", def);
         param.Rows.Add(template);
         param.Rows.Add(new PARAM.Row(MapLinks.FirstRow + 50, "stale", def));
-        int rows = MapLinks.WriteRows(param, pairs);
-        Expect(rows == 12 && param.Rows.Count == 13, "two rows per pair, the old ones replaced: " + param.Rows.Count);
+        // Vanilla's test-map row 234 (m38_10 -> m38_11, 672 m apart) names two IDs the port fills: it goes.
+        var testMaps = new PARAM.Row(234, "test maps", def);
+        testMaps["srcAreaNo"].Value = (byte)38; testMaps["srcGridXNo"].Value = (byte)10; testMaps["dstAreaNo"].Value = (byte)38; testMaps["dstGridXNo"].Value = (byte)11;
+        testMaps["srcPosZ"].Value = -416f; testMaps["dstPosZ"].Value = 256f;
+        param.Rows.Add(testMaps);
+        // A vanilla row between two maps the port doesn't use stays.
+        var other = new PARAM.Row(100, "Stormveil -> Limgrave", def);
+        other["srcAreaNo"].Value = (byte)10; other["dstAreaNo"].Value = (byte)60; other["dstGridXNo"].Value = (byte)39; other["dstGridZNo"].Value = (byte)39;
+        param.Rows.Add(other);
+        int rows = MapLinks.WriteRows(param, pairs, slots.Where(s => !s.Probe).Select(s => s.Er));
+        Expect(rows == 12 && param.Rows.Count == 14, "two rows per pair, the old ones replaced: " + param.Rows.Count);
+        Expect(param[234] is null && MapLinks.VanillaRowsLeftOut == 1, "vanilla's test-map row for m38_10/m38_11 is taken out");
+        Expect(param[100] is not null, "a vanilla row for maps the port leaves alone stays");
         var first = param[MapLinks.FirstRow]!;
         Expect((byte)first["srcAreaNo"].Value == 45 && (byte)first["srcGridXNo"].Value == 0 && (byte)first["dstGridXNo"].Value == 1 && (byte)first["isBasePoint"].Value == 1,
             "first row: Firelink (m45_00) -> High Wall (m45_01), a base point");

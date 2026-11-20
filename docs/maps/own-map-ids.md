@@ -206,3 +206,13 @@ ported map are kept (`MsbPort`). Elden Ring lists linked legacy maps in WorldMap
 map's coordinates; maps built in one space have the same point on both sides (Leyndell and the Shunning-Grounds, rows
 12 and 110). `MapLinks` adds such a pair of rows for every two ported maps a DS3 connect collision joins (rows 9000+;
 fallback `map-world` C leaves them out).
+
+## Fourth look (2026-11-20): the game's own link rows for the test maps
+
+Elden Ring's WorldMapLegacyConvParam ships rows 234 (m38_10 at 0,0,-416 = m38_11 at 0,0,256) and 235 (m38_11 at
+0,0,-160 = m38_12 at 0,0,256) for its test maps, the IDs the Catacombs, Irithyll and Irithyll Dungeon use. They come
+before the port's rows (9000+) and put the maps hundreds of metres apart, where DS3 has them in one space. The
+1.0.53x playtest walked from the Catacombs into Irithyll (game file log: m38_11 loaded without a warp) and found
+Irithyll's geometry "totally broken". `MapLinks.WriteRows` now takes out every vanilla row that names a map ID the
+port fills. The same log shows the joins themselves work: Lothric Castle, the Grand Archives and Road of Sacrifices
+were all loaded as neighbours, without a warp.
