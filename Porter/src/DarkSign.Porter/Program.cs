@@ -141,6 +141,7 @@ try
     {
         "scan" => Commands.Scan(ctx),
         "extract" when argList.Count >= 3 => Commands.Extract(ctx, PorterGame.Parse(argList[1]), argList[2..]),
+        "unpack-mod" when argList.Count >= 2 => Commands.UnpackMod(ctx, argList[1..]),
         "inventory" => Commands.Inventory(ctx),
         "dump-param" when argList.Count >= 3 =>
             Commands.DumpParam(ctx, PorterGame.Parse(argList[1]), argList[2], argList[3..]),

@@ -23,7 +23,7 @@ public static partial class MapPortChecks
         yield return ("cutscenes: Clear played cutscenes lists each cutscene's seen flags (set and checked by its event, parameters followed) and its event's own flag", CutsceneReplayFlags);
     }
 
-    private static void CutsceneSoundEvents()
+    private static (MQB Mqb, MQB.Timeline Main, MQB.Timeline Fx, MQB.Timeline Talk, MQB.Timeline Armour) SoundSample()
     {
         var mqb = new MQB { Version = MQB.MQBVersion.DarkSouls3, Name = "s45_00_0000", Framerate = 30, ResourceDirectory = "", Resources = [], Cuts = [] };
         mqb.Resources.Add(new MQB.Resource { Name = "a0000.HKT", ParentIndex = -1, Unk48 = 266 });
@@ -45,22 +45,54 @@ public static partial class MapPortChecks
         armour.Events.Add(new MQB.Event { ResourceIndex = 4, StartFrame = 5, Duration = 20, Parameters = [P("seType", MQB.Parameter.DataType.UInt, 9u), P("seId", MQB.Parameter.DataType.Int, 100), P("dmypolyId", MQB.Parameter.DataType.Int, -1), P("slotNo", MQB.Parameter.DataType.Int, -1)] });
         cut.Timelines.AddRange([main, fx, talk, armour]);
         mqb.Cuts.Add(cut);
+        return (mqb, main, fx, talk, armour);
+    }
 
+    private static void CutsceneSoundEvents()
+    {
         var known = new HashSet<string> { "p450000002", "p140000050", "v004005000" };
-        var plan = CutsceneSound.Prepare(mqb, "s19_70_0000", 2, known.Contains, t => t == 45001000 ? 4005000 : null);
         int Id(MQB.Event e) => (int)e.Parameters.First(p => p.Name == "seId").Value;
         uint Type(MQB.Event e) => (uint)e.Parameters.First(p => p.Name == "seType").Value;
+        int? Voice(int t) => t == 45001000 ? 4005000 : null;
+
+        // As up to 1.0.549 (DARKSIGN_CUTSCENE_SUBTITLES=0): a subtitle becomes a sound event that plays its voice.
+        var old = Environment.GetEnvironmentVariable("DARKSIGN_CUTSCENE_SUBTITLES");
+        Environment.SetEnvironmentVariable("DARKSIGN_CUTSCENE_SUBTITLES", "0");
+        CutsceneSound.Plan plan;
+        MQB mqb;
+        MQB.Timeline main, fx, talk, armour;
+        try
+        {
+            (mqb, main, fx, talk, armour) = SoundSample();
+            plan = CutsceneSound.Prepare(mqb, "s19_70_0000", 2, known.Contains, Voice);
+        }
+        finally { Environment.SetEnvironmentVariable("DARKSIGN_CUTSCENE_SUBTITLES", old); }
         Expect(mqb.Resources[1].Unk48 == 135, "cutscene SE resource becomes kind 135");
         Expect(Id(main.Events[0]) == 990_002_000 && main.Events[0].Parameters.Count == 5 && main.Events[0].Parameters[4].Name == "IsForceRefLocalPlayerEquipData",
             "main audio: first new ID of cutscene 2, Elden Ring's five parameters");
         Expect(fx.Events.Count == 2 && Id(fx.Events[0]) == 990_002_001 && Id(fx.Events[1]) == 990_002_001 && (int)fx.Events[0].Parameters[2].Value == 3,
             "an effect sound keeps its dummy poly; the same sound twice gets one ID; an unknown one is left out");
         Expect(talk.Events.Count == 1 && talk.Events[0].ResourceIndex == 5 && mqb.Resources[5].Unk48 == 135 && Id(talk.Events[0]) == 990_002_002 && Type(talk.Events[0]) == 4,
-            "a talk with a voice plays it through a new sound resource; one without is left out");
+            "subtitles off: a talk with a voice plays it through a new sound resource; one without is left out");
         Expect(Type(armour.Events[0]) == 15 && Id(armour.Events[0]) == 100, "armour movement: DS3 seType 9 -> 15");
         Expect(plan.Sounds.Count == 3 && plan.Main == 1 && plan.Effects == 2 && plan.Voices == 1 && plan.Armour == 1 && plan.Dropped == 2,
             plan.ToString());
-        Expect(plan.Sounds["v004005000"] == 990_002_002, "voice name");
+        Expect(plan.Sounds["v004005000"] == 990_002_002 && plan.VoiceOfTalk.Count == 0, "voice name");
+
+        // Subtitles on (the default): the subtitle stays a kind 27 event, its voice goes in the bank as Play_v<new ID>.
+        (mqb, main, fx, talk, armour) = SoundSample();
+        plan = CutsceneSound.Prepare(mqb, "s19_70_0000", 2, known.Contains, Voice);
+        Expect(talk.Events.Count == 2 && talk.Events.All(e => e.ResourceIndex == 3) && mqb.Resources.Count == 5,
+            "subtitles stay on their kind 27 resource; no sound resource is added for them");
+        Expect(plan.VoiceOfTalk.Count == 1 && plan.VoiceOfTalk[45001000] == 990_002_002 && plan.VoiceIds.SetEquals([990_002_002]) && plan.Voices == 1 && plan.Dropped == 1,
+            plan.ToString());
+        var lines = CutsceneSubtitles.Prepare(mqb, 2, t => t == 45001000 ? "Words" : null, plan.VoiceOfTalk, out int noText);
+        int TalkId(MQB.Event e) => (int)e.Parameters.First(p => p.Name == "talkParamId").Value;
+        Expect(noText == 1 && talk.Events.Count == 1 && TalkId(talk.Events[0]) == CutsceneSubtitles.RowId(2, 0) && CutsceneSubtitles.RowId(2, 0) == 1_100_002_000,
+            $"a subtitle points at the port's row (cutscene 2, line 0); one with no DS3 words is left out ({noText})");
+        Expect(lines.Count == 1 && lines[0] is { RowId: 1_100_002_000, Ds3Talk: 45001000, VoiceId: 990_002_002, Words: "Words" }, string.Join(" ", lines));
+        Expect(CutsceneSubtitles.IsOurs(1_100_002_000) && !CutsceneSubtitles.IsOurs(TalkPort.TextBase + 5) && !CutsceneSubtitles.IsOurs(CutsceneSubtitles.TemplateRow),
+            "the cutscenes' rows don't overlap the talk port's or Elden Ring's");
 
         // The rewritten timeline survives the cutscene port's filter of Elden Ring kinds and parameters.
         var catalog = new CutscenePort.Catalog();
@@ -71,11 +103,12 @@ public static partial class MapPortChecks
         var erCut = new MQB.Cut { Name = "cut0010", Duration = 100, Timelines = [] };
         var erTl = new MQB.Timeline();
         erTl.Events.Add(new MQB.Event { ResourceIndex = 1, Duration = 100, Parameters = CutsceneSound.SoundParams(4, 100000500) });
+        erTl.Events.Add(new MQB.Event { ResourceIndex = 2, StartFrame = 10, Duration = 50, Parameters = [P("talkParamId", MQB.Parameter.DataType.Int, 2003000), P("dmypolyId", MQB.Parameter.DataType.Int, -1)] });
         erCut.Timelines.Add(erTl);
         er.Cuts.Add(erCut);
         catalog.Add(er);
         var stats = CutscenePort.ConvertMqb(mqb, "s45_00_0000", "s19_70_0000", _ => null, MapId.Parse("m45_00_00_00"), MapId.Parse("m19_70_00_00"), catalog);
-        Expect(stats.EventsDropped == 0, $"sound events kept by the filter ({stats.EventsDropped} dropped)");
+        Expect(stats.EventsDropped == 0 && talk.Events.Count == 1, $"sound and subtitle events kept by the filter ({stats.EventsDropped} dropped)");
     }
 
     private static void CutsceneSoundAutoAndStrip()
@@ -117,6 +150,8 @@ public static partial class MapPortChecks
         var back = MQB.Read(bnd.Files[0].Bytes);
         var left = back.Cuts.SelectMany(c => c.Timelines).SelectMany(t => t.Events).Where(e => e.Parameters.Any(p => p.Name == "seId")).ToList();
         Expect(removed == 1 && left.Count == 1 && (int)left[0].Parameters[1].Value == 990_009_000, $"strip removed {removed}, {left.Count} left");
+        Expect(back.Cuts[1].Timelines.Count == 1 && back.Cuts[0].Timelines.Count == 2 && !CutsceneTimelineLinks.Problems(back).Any(),
+            "the timeline the strip emptied goes; the rest are renumbered: " + string.Join("; ", CutsceneTimelineLinks.Problems(back)));
     }
 
     private static MQB ShapeSample(string name, int cutFrames, bool er)
@@ -154,7 +189,7 @@ public static partial class MapPortChecks
         var before = shape.Check(ds3);
         Expect(shape.NeverPastCut(1) && shape.CutUnk44 is { Value: 0, Holds: true }, "learned: Elden Ring's kind 1 events never end after their cut; cut Unk44 0");
         Expect(before.Any(l => l.Contains("ends after its cut")) && before.Any(l => l.Contains("cut Unk44 2")), string.Join(" | ", before));
-        Expect(before.Any(l => l.Contains("kind 265 event Unk18")) && before.Any(l => l.Contains("kind 1 timeline Unk10")) && before.Any(l => l.Contains("kind 1 timeline params")),
+        Expect(before.Any(l => l.Contains("kind 265 event Unk18")) && before.Any(l => l.Contains("kind 1 timeline params")) && !before.Any(l => l.Contains("Unk10")),
             string.Join(" | ", before));
         int changed = shape.Conform(ds3);
         var after = shape.Check(ds3);
@@ -163,9 +198,9 @@ public static partial class MapPortChecks
         Expect(off.Unk18 == 301 && off.Unk1C == 301, $"offset event fields follow the cut ({off.Unk18} {off.Unk1C})");
         Expect(off.Unk28 == 0, $"Unk28 is a timeline link, left to CutsceneTimelineLinks ({off.Unk28})");
         var tl = ds3.Cuts[0].Timelines[1];
-        Expect(tl.Unk10 == 1 && string.Join(",", tl.Parameters.Select(p => p.Name)) == "areaNo,blockNo,mapNo,equipDispType"
+        Expect(tl.Unk10 == 0 && string.Join(",", tl.Parameters.Select(p => p.Name)) == "areaNo,blockNo,mapNo,equipDispType"
                && (int)tl.Parameters[0].Value == 45 && (int)tl.Parameters[2].Value == -1 && (int)tl.Parameters[3].Value == 0,
-            "part timeline: DS3's map kept, Elden Ring's other parameters added at its usual values, in its order");
+            "part timeline: its parent link (Unk10) left to CutsceneTimelineLinks; DS3's map kept, Elden Ring's other parameters added at its usual values, in its order");
         Expect(ds3.Cuts[0].Unk44 == 0, "cut Unk44 set to Elden Ring's 0");
         Expect(tl.Events.Count == 2 && tl.Events[1].StartFrame == 295 && tl.Events[1].Duration == 6,
             $"an event past the cut is cut short to cut + 1 (301), one starting after it is left out ({string.Join(" ", tl.Events.Select(x => $"{x.StartFrame}+{x.Duration}"))})");
@@ -304,7 +339,8 @@ public static partial class MapPortChecks
         int[] hangsOn = [-1, 0, 1, 1, 3, 2];
         for (int i = 0; i < hangsOn.Length; i++)
         {
-            var tl = new MQB.Timeline();
+            // As in every DS3 and Elden Ring timeline: its Unk10 is the parent its events' Unk28 names.
+            var tl = new MQB.Timeline { Unk10 = hangsOn[i] };
             tl.Events.Add(new MQB.Event { ID = i, ResourceIndex = i, Duration = 100, Unk08 = i, Unk28 = hangsOn[i] });
             cut.Timelines.Add(tl);
         }
@@ -321,6 +357,7 @@ public static partial class MapPortChecks
         Expect(events.Select(e => e.ID).SequenceEqual([0, 1, 2, 5, 9]), $"B's effect goes with B ({string.Join(",", events.Select(e => e.ID))}, {result})");
         Expect(events.Select(e => e.Unk08).SequenceEqual([0, 1, 2, 3, 4]), "Unk08: the event's own timeline");
         Expect(events.Select(e => e.Unk28).SequenceEqual([-1, 0, 1, 2, 1]), $"Unk28: the same timeline as before ({string.Join(",", events.Select(e => e.Unk28))})");
+        Expect(cut.Timelines.Select(t => t.Unk10).SequenceEqual([-1, 0, 1, 2, 1]), $"timeline Unk10 renumbered with its events' Unk28 ({string.Join(",", cut.Timelines.Select(t => t.Unk10))}; 1.0.549's Friede/Cathedral hang)");
         Expect(result.EventsDropped == 1 && result.TimelinesDropped == 1 && !CutsceneTimelineLinks.Problems(mqb).Any(), result.ToString());
         // The shape rules never touch the link fields.
         Expect(CutsceneShape.IsLink(0) && CutsceneShape.IsLink(5) && !CutsceneShape.IsLink(2), "Unk08/Unk28 are links");

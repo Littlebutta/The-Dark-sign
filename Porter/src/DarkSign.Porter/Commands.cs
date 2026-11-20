@@ -53,6 +53,44 @@ public static class Commands
     }
 
     /// <summary>
+    /// `unpack-mod &lt;patterns...&gt;`: writes the built mod's files (paths under Mods\ER, "*" allowed in the file name,
+    /// e.g. cutscene/s19_70_*.cutscenebnd.dcx) without their DCX compression to Work\extract\MOD, so they can be read
+    /// where Oodle isn't available (a cloud thread). Read-only for the mod.
+    /// </summary>
+    public static int UnpackMod(PorterContext ctx, IReadOnlyList<string> patterns)
+    {
+        int count = 0;
+        // Opening Elden Ring's archives puts the game's oo2core on the search path (KRAK files need it).
+        using var er = ctx.OpenArchives(PorterGame.EldenRing);
+        foreach (var pattern in patterns)
+        {
+            var relative = pattern.Replace('\\', '/').TrimStart('/');
+            var dir = ctx.ModPath(relative.Contains('/') ? relative[..relative.LastIndexOf('/')].Split('/') : []);
+            var leaf = relative[(relative.LastIndexOf('/') + 1)..];
+            if (!Directory.Exists(dir))
+            {
+                Console.Error.WriteLine($"no such mod folder: {dir}");
+                continue;
+            }
+            foreach (var file in Directory.EnumerateFiles(dir, leaf).Order(StringComparer.OrdinalIgnoreCase))
+            {
+                var raw = File.ReadAllBytes(file);
+                var bytes = DCX.Is(raw) ? DCX.Decompress(raw) : raw;
+                var rel = Path.GetRelativePath(ctx.ModPath(), file).Replace('\\', '/');
+                if (rel.EndsWith(".dcx", StringComparison.OrdinalIgnoreCase))
+                    rel = rel[..^4];
+                var outPath = ctx.WorkPath(["extract", "MOD", .. rel.Split('/')]);
+                Directory.CreateDirectory(Path.GetDirectoryName(outPath)!);
+                File.WriteAllBytes(outPath, bytes);
+                Console.WriteLine(outPath);
+                count++;
+            }
+        }
+        Console.WriteLine($"{count} mod files unpacked.");
+        return count > 0 ? 0 : 1;
+    }
+
+    /// <summary>
     /// Lists what DS3 has to port (weapons, armor, rings, spells, enemies) and what Elden Ring already uses,
     /// and writes it to Work\reports\inventory.json.
     /// </summary>
