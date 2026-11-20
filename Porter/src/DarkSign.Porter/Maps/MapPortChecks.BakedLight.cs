@@ -19,6 +19,7 @@ public static partial class MapPortChecks
         yield return ("baked light: probes move and turn by DS3's map offset", BakedOffset);
         yield return ("baked light: environment point/box over the probes, GIIV0900 textures added to the binder", BakedRegionAndBinder);
         yield return ("baked light: --flat-env-light and --baked-light-flip are read", BakedOptions);
+        yield return ("baked light: open sky at DS3's share of the sun (map 1 unchanged, map 2 and 3 darker), options read", BakedSkyLevel);
         yield return ("light areas: each DS3 room gets its own volume and darker reflection cube, in box order, shared points kept", LightAreas);
         yield return ("light areas: every volume's textures go into the binder under its own number", LightAreasBinder);
     }
@@ -221,6 +222,33 @@ public static partial class MapPortChecks
         box.Position = new Vector3(vol.Min.X + vol.Size.X / 2, vol.Min.Y, vol.Min.Z + vol.Size.Z / 2);
         Expect(probes.All(p => MapLighting.Holds(box, p.Position)), "the volume's box holds every probe");
         Expect(MapBakedLight.LevelOf("/map/m45/x_envmap_03_middle_00.tpfbnd.dcx") == "middle", "levels read from binder names");
+    }
+
+    private static void BakedSkyLevel()
+    {
+        var o = MapBakedLight.Options.Default;
+        // Measured open sky and sun scales (port log 1.0.499): map 1 877 x 0.75, map 2 625 x 0.41, map 3 571 x 0.27.
+        float m1 = MapBakedLight.SkyAlpha(877, 0.6f / 0.8f, 56, o);
+        float m2 = MapBakedLight.SkyAlpha(625, 0.5f / 1.23f, 73, o);
+        float m3 = MapBakedLight.SkyAlpha(571, 0.4f / 1.5f, 89, o);
+        Expect(Math.Abs(m1 - 56) <= 1.5f, $"map 1 keeps alpha 56 ({m1:0.0})");
+        Expect(m2 / 73 is > 0.25f and < 0.36f, $"map 2 at about 1/3.4 of the colosseum's ({m2:0.0} of 73)");
+        Expect(m3 / 89 is > 0.11f and < 0.18f, $"map 3 at about 1/7 of the colosseum's ({m3:0.0} of 89)");
+        Expect(MapBakedLight.SkyAlpha(625, 0.41f, 73, o with { ColosseumSky = true }) == 73, "--colosseum-sky-light keeps the colosseum's");
+        Expect(Math.Abs(MapBakedLight.SkyAlpha(625, 0.41f, 73, o with { Level = 2 }) - 2 * MapBakedLight.SkyAlpha(625, 0.41f, 73, o)) < 0.01f, "--baked-light-level scales it");
+        Expect(MapPorter.Options.Parse(["--colosseum-sky-light"]).BakedLight.ColosseumSky, "--colosseum-sky-light is read");
+        Expect(MapPorter.Options.Parse(["--baked-light-level", "0.6"]).BakedLight.Level == 0.6f, "--baked-light-level 0.6 is read");
+        Expect(MapPorter.Options.Parse(["--baked-light-level", "x"]).BakedLight.Level == 1, "a bad level is ignored");
+        Expect(MapPorter.Options.Parse(["--brighter-sky-light"]).BakedLight.Level == 1.6f && MapPorter.Options.Parse(["--darker-sky-light"]).BakedLight.Level == 0.6f, "map-sky-level C/D flags are read");
+
+        // The colosseum's even light and cube are dimmed by the same share.
+        var volume = new TPF.Texture("v_GIIV0000_00_W", 102, 0, HostVolumeDds(250, 230, 170, 60), TPF.TPFPlatform.PC);
+        MapEnvironment.NeutraliseVolume(volume, 0.3f);
+        var a = MapLightDiag.DecodeVolume(volume.Bytes)!.Value.At(0, 0, 0).a;
+        Expect(Math.Abs(a - 18) <= 1, $"even light alpha 60 x 0.3 = {a}");
+        var cube = new TPF.Texture("c_GILM0000_00_rem", 115, 0, MapEnvironment.TestDds(MapEnvironment.DxgiBc6hUf16, MapEnvironment.Bc6hBlock(0.05f)), TPF.TPFPlatform.PC);
+        MapEnvironment.NeutraliseCube(cube, 0.5f);
+        Expect(Math.Abs(MapEnvironment.DecodeGrey(cube.Bytes) - 0.025f) < 0.002f, "reflection cube 0.05 x 0.5");
     }
 
     private static void BakedOptions()

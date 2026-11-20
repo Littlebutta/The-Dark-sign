@@ -56,6 +56,9 @@ public static class MapEnvironment
         if (binders.Count == 0)
             return $"environment light: the host {hostId} has no environment map binders; nothing written";
 
+        // The baked map-wide volume's open sky against the colosseum's (MapBakedLight.SkyAlpha): the even light kept
+        // for the far scenery and the reflection cubes go by the same scale.
+        float dim = baked is { Count: > 0 } ? baked[0].HostDim : 1;
         var volumes = new List<string>();
         var cubes = new List<string>();
         int volumeCount = 0, cubeCount = 0, bakedFiles = 0;
@@ -73,8 +76,8 @@ public static class MapEnvironment
                 foreach (var t in tpf.Textures)
                 {
                     var name = t.Name ?? "";
-                    var result = name.Contains("_GIIV", StringComparison.OrdinalIgnoreCase) ? NeutraliseVolume(t)
-                        : name.Contains("_GILM", StringComparison.OrdinalIgnoreCase) ? NeutraliseCube(t)
+                    var result = name.Contains("_GIIV", StringComparison.OrdinalIgnoreCase) ? NeutraliseVolume(t, dim)
+                        : name.Contains("_GILM", StringComparison.OrdinalIgnoreCase) ? NeutraliseCube(t, dim)
                         : null;
                     if (result is null)
                         continue;
@@ -108,7 +111,8 @@ public static class MapEnvironment
             File.WriteAllBytes(target, DCX.Compress(bnd.Write(), compression));
         }
         var line = $"environment light: {binders.Count} environment map binders written from {hostId}'s with {volumeCount} light volume textures and "
-                   + $"{cubeCount} reflection cubes made one even grey (the colosseum's colour and arena taken out)";
+                   + $"{cubeCount} reflection cubes made one even grey (the colosseum's colour and arena taken out)"
+                   + (Math.Abs(dim - 1) > 0.005f ? FormattableString.Invariant($", at {dim:0.00} of the colosseum's strength (DS3's sky against its sun)") : "");
         if (volumes.Count > 0)
             line += $"; e.g. {volumes[0]}";
         if (cubes.Count > 0)
@@ -132,8 +136,9 @@ public static class MapEnvironment
     /// <summary>
     /// Makes a BC7 light volume one even grey: every block becomes the same one-colour block, so every slice and
     /// size stays as it was. Returns "mean r g b a -> grey v alpha a", or "!reason" when the texture isn't BC7.
+    /// <paramref name="dim"/> scales the strength (alpha).
     /// </summary>
-    public static string NeutraliseVolume(TPF.Texture t)
+    public static string NeutraliseVolume(TPF.Texture t, float dim = 1)
     {
         var (offset, dxgi) = Layout(t.Bytes);
         if (offset < 0 || dxgi is not (DxgiBc7 or DxgiBc7Srgb) || (t.Bytes.Length - offset) % 16 != 0)
@@ -143,13 +148,13 @@ public static class MapEnvironment
         foreach (var c in px) { r += c.r; g += c.g; b += c.b; a += c.a; }
         double n = Math.Max(1, px.Length);
         byte grey = (byte)Math.Clamp(Math.Round(Math.Max(r, Math.Max(g, b)) / n), 0, 255);
-        byte alpha = (byte)Math.Clamp(Math.Round(a / n), 0, 255);
+        byte alpha = (byte)Math.Clamp(Math.Round(a / n * dim), dim < 1 ? 1 : 0, 255);
         Fill(t.Bytes, offset, Bc7Block(grey, grey, grey, alpha));
         return FormattableString.Invariant($"mean {r / n:0} {g / n:0} {b / n:0} {a / n:0} -> grey {grey} alpha {alpha}");
     }
 
-    /// <summary>Makes a BC6H reflection cube one even grey of its mean brightness (every face and level).</summary>
-    public static string NeutraliseCube(TPF.Texture t)
+    /// <summary>Makes a BC6H reflection cube one even grey of its mean brightness (every face and level), times <paramref name="dim"/>.</summary>
+    public static string NeutraliseCube(TPF.Texture t, float dim = 1)
     {
         var (offset, dxgi) = Layout(t.Bytes);
         if (offset < 0 || dxgi != DxgiBc6hUf16 || (t.Bytes.Length - offset) % 16 != 0)
@@ -159,7 +164,7 @@ public static class MapEnvironment
         double r = 0, g = 0, b = 0;
         foreach (var c in px) { r += c.r; g += c.g; b += c.b; }
         double n = Math.Max(1, px.Length);
-        float grey = (float)((0.2126 * r + 0.7152 * g + 0.0722 * b) / n);
+        float grey = (float)((0.2126 * r + 0.7152 * g + 0.0722 * b) / n) * dim;
         Fill(t.Bytes, offset, Bc6hBlock(grey));
         return FormattableString.Invariant($"mean {r / n:0.###} {g / n:0.###} {b / n:0.###} -> grey {grey:0.###}");
     }
