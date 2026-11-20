@@ -119,6 +119,8 @@ try
         return DarkSign.Porter.Enemies.EnemyBonesDiag.RunFiles(argList.Skip(2).ToList());
     if (argList[0].Equals("object-diag", StringComparison.OrdinalIgnoreCase) && argList.Count >= 3 && argList[1].Equals("model", StringComparison.OrdinalIgnoreCase))
         return DarkSign.Porter.Maps.ObjectCollisionDiag.Model(argList.Skip(2).ToList());
+    if (argList[0].Equals("object-diag", StringComparison.OrdinalIgnoreCase) && argList.Count >= 3 && argList[1].Equals("anim-types", StringComparison.OrdinalIgnoreCase))
+        return DarkSign.Porter.Maps.ObjectCollisionDiag.AnimTypes(argList.Skip(2).ToList());
     if (argList[0].Equals("object-diag", StringComparison.OrdinalIgnoreCase) && argList.Count >= 3 && argList[1].Equals("collision", StringComparison.OrdinalIgnoreCase))
         return DarkSign.Porter.Maps.ObjectCollisionDiag.Run(argList.Skip(2).ToList());
     if (argList[0].Equals("moveset-selftest", StringComparison.OrdinalIgnoreCase))

@@ -17,6 +17,76 @@ public static class ObjectCollisionDiag
     /// first) models, how each mesh hangs on its nodes (NormalW nodes or bone weights), and the skeleton the animation
     /// binder moves. Written for the Undead Settlement tower lift whose floor rose while the platform stayed put.
     /// </summary>
+    /// <summary>
+    /// "object-diag anim-types &lt;objbnd or folder&gt;...": which Havok animation class each DS3 object animation is
+    /// stored as (spline-compressed, interleaved, quantized ...), read from the class names in each file, and what
+    /// SoulsAssetPipeline reads of it. Written for the lifts that stood still because their animations were not
+    /// spline-compressed ("the DS3 file has no spline-compressed animation" in object-port.tsv).
+    /// </summary>
+    public static int AnimTypes(IReadOnlyList<string> inputs)
+    {
+        var files = inputs.SelectMany(i => Directory.Exists(i)
+            ? Directory.EnumerateFiles(i, "*.objbnd*", SearchOption.TopDirectoryOnly)
+            : [i]).OrderBy(f => f, StringComparer.OrdinalIgnoreCase).ToList();
+        var totals = new SortedDictionary<string, int>(StringComparer.Ordinal);
+        var notSpline = new List<string>();
+        foreach (var path in files)
+        {
+            try
+            {
+                var bytes = File.ReadAllBytes(path);
+                var bnd = BND4.Read(DCX.Is(bytes) ? DCX.Decompress(bytes) : bytes);
+                var anibnd = bnd.Files.FirstOrDefault(f => ItemText.Leaf(f.Name).EndsWith(".anibnd", StringComparison.OrdinalIgnoreCase) || f.ID == 400);
+                if (anibnd is null)
+                    continue;
+                var inner = BND4.Read(DCX.Is(anibnd.Bytes) ? DCX.Decompress(anibnd.Bytes) : anibnd.Bytes);
+                var line = new List<string>();
+                bool anyOther = false;
+                foreach (var f in inner.Files.Where(f => System.Text.RegularExpressions.Regex.IsMatch(ItemText.Leaf(f.Name), @"^a\d+_\d+\.hkx$", System.Text.RegularExpressions.RegexOptions.IgnoreCase)))
+                {
+                    var kind = AnimationClass(f.Bytes);
+                    totals[kind] = totals.GetValueOrDefault(kind) + 1;
+                    string read;
+                    try
+                    {
+                        var hkx = SoulsAssetPipeline.Animation.HKX.Read(f.Bytes, SoulsAssetPipeline.Animation.HKX.HKXVariation.HKXDS3, false);
+                        read = string.Join("+", hkx.DataSection.Objects.Select(o => o.GetType().Name).Where(n => n.StartsWith("HKA", StringComparison.Ordinal)).Distinct());
+                    }
+                    catch (Exception ex) when (ex is not OutOfMemoryException)
+                    {
+                        read = "unreadable: " + ex.GetType().Name;
+                    }
+                    if (kind != "hkaSplineCompressedAnimation")
+                        anyOther = true;
+                    line.Add($"{ItemText.Leaf(f.Name)}={kind}" + (kind == "hkaSplineCompressedAnimation" ? "" : $" [{read}, {f.Bytes.Length:N0} bytes]"));
+                }
+                if (anyOther)
+                {
+                    notSpline.Add(Path.GetFileName(path));
+                    Console.WriteLine($"== {Path.GetFileName(path)}: {string.Join("; ", line)}");
+                }
+            }
+            catch (Exception ex) when (ex is not OutOfMemoryException)
+            {
+                Console.WriteLine($"== {Path.GetFileName(path)}: FAILED {ex.GetType().Name}: {ex.Message}");
+            }
+        }
+        Console.WriteLine($"{files.Count} binders; animation classes: {string.Join(", ", totals.Select(t => $"{t.Key} x{t.Value}"))}");
+        Console.WriteLine($"{notSpline.Count} binders hold an animation that is not spline-compressed: {string.Join(" ", notSpline)}");
+        return 0;
+    }
+
+    /// <summary>The Havok animation class a packfile names (from its class-name strings), or "none".</summary>
+    public static string AnimationClass(byte[] hkx)
+    {
+        var text = System.Text.Encoding.ASCII.GetString(hkx);
+        foreach (var name in new[] { "hkaSplineCompressedAnimation", "hkaInterleavedUncompressedAnimation", "hkaQuantizedAnimation",
+                     "hkaPredictiveCompressedAnimation", "hkaDeltaCompressedAnimation", "hkaWaveletCompressedAnimation" })
+            if (text.Contains(name, StringComparison.Ordinal))
+                return name;
+        return "none";
+    }
+
     public static int Model(IReadOnlyList<string> files)
     {
         int failed = 0;

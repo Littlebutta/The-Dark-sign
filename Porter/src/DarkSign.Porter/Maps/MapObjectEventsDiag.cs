@@ -93,7 +93,7 @@ public static class MapObjectEventsDiag
             {
                 var acts = objActs.Where(a => a.ObjActPartName == o.Name || a.ObjActEntityID == id).ToList();
                 var events = named.Where(n => n.Value.Contains(id)).Select(n => $"{n.Key.Where} {n.Key.Event}").ToList();
-                var row = portRows.FirstOrDefault(r => r.Contains(slot.Ds3.ToString()) && r.Contains(o.Name));
+                var row = portRows.FirstOrDefault(r => r.StartsWith(o.ModelName + "\t", StringComparison.OrdinalIgnoreCase)); // one row per DS3 model
                 Line($"  {o.Name} model {o.ModelName} entity {id}" +
                      (acts.Count > 0 ? "; ObjAct " + string.Join(" / ", acts.Select(a => $"{a.Name} (entity {a.ObjActEntityID}, param {a.ObjActParamID}, flag {a.EventFlagID}, state {a.ObjActStateType})")) : "") +
                      (events.Count > 0 ? $"; events {string.Join(", ", events)}" : "; named by no event"));
