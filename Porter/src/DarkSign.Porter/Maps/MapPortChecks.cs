@@ -52,6 +52,8 @@ public static partial class MapPortChecks
             yield return check;
         foreach (var check in BonfireChecks())
             yield return check;
+        foreach (var check in BonfireTravelChecks())
+            yield return check;
         foreach (var check in TextChecks())
             yield return check;
         yield return ("validate: layout checks catch a missing start point and parts without models", ValidateLayout);

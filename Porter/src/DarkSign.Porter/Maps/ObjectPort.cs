@@ -137,7 +137,9 @@ public sealed class ObjectPort
     public PARAM? Ds3ObjActParam { get; init; }
     public MovingMethod Moving { get; init; } = MovingMethod.Full;
     private ObjectAnims.Template? _animTemplate;
-    private bool _animTemplateTried;
+    private bool _animTemplateTried, _effectsTried;
+    /// <summary>DS3 effect -> converted effect (MapSfx's table), for the effect events of the animations.</summary>
+    private IReadOnlyDictionary<int, int>? _effects;
 
     public MapModelPort Models => _models;
     public IReadOnlyCollection<Asset> Assets => _assets.Values;
@@ -678,7 +680,15 @@ public sealed class ObjectPort
                 }
         var template = _animTemplate ?? throw new InvalidDataException("no Elden Ring animation template");
         var rename = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase) { [asset.Ds3Model] = asset.Name };
-        var anims = ObjectAnims.Build(bnd, asset.Name, template, rename);
+        if (!_effectsTried)
+            lock (_assets)
+                if (!_effectsTried)
+                {
+                    try { _effects = MapSfx.Enabled ? MapSfx.ReadTable(_ctx) : null; }
+                    catch (Exception ex) when (ex is not OutOfMemoryException) { Notes.Add($"moving objects: the effect table is unreadable ({ex.Message}); animations play no effects"); }
+                    _effectsTried = true;
+                }
+        var anims = ObjectAnims.Build(bnd, asset.Name, template, rename, _effects);
         var result = ConvertBinder(bnd, asset.Ds3Model, asset.Name, _models, _binderTemplate, _fileFlags, rename, out var nodeNote);
         var nodeNames = result.Flver.Nodes.Select(n => n.Name).ToHashSet(StringComparer.OrdinalIgnoreCase);
         var unmatched = anims.Bones.Skip(1).Where(b => !nodeNames.Contains(b)).ToList();

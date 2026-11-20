@@ -657,13 +657,15 @@ public static class Fallbacks
         ]),
 
         new("map-bonfires", "DS3 maps", "DS3's bonfires as sites of grace", Stage.Build,
-            "Resting at a DS3 bonfire does nothing or breaks (no prompt, no menu, a crash or a hang at the bonfire or on respawn), you respawn in the wrong place, or you want DS3's bonfire without Elden Ring's golden grace light on it.",
+            "Resting at a DS3 bonfire does nothing or breaks (no prompt, no menu, a crash or a hang at the bonfire, on respawn or in Travel), you respawn or travel to the wrong place, or the bonfire fire looks wrong.",
         [
-            new("A", "Sites of grace at DS3's bonfires (default)", "Every DS3 bonfire gets an Elden Ring site of grace where its sword stands: touch it to light it, rest to level up and refill flasks, and you respawn there. It is built exactly as Elden Ring builds its own (the grace asset, the invisible talker with the grace menu, the standing point, a BonfireWarpParam row with DS3's bonfire name), and a DS3 fire burns on the sword once it is lit. The grace's golden light shows at the sword. Report: the bonfires lines of the port-maps log."),
-            new("B", "DS3's sword is the grace", "As A, but with no Elden Ring grace asset (DARKSIGN_BONFIRES=sword): DS3's own sword in the ash is registered as the site of grace, so there is no golden light, only the DS3 fire once it is lit. Unproven: Elden Ring may expect its own grace model here.")
-                { PorterEnv = Env("DARKSIGN_BONFIRES", "sword") },
+            new("A", "DS3's bonfires as sites of grace (default)", "Every DS3 bonfire works like a site of grace: touch it to light it, rest to level up and refill flasks, and you respawn there. DS3's own sword in the ash is the grace, with no Elden Ring grace on top: it burns with DS3's own bonfire fire, at DS3's size, played by its own animations as in DS3. Resting opens Elden Ring's grace menu with two more entries: Travel (DS3's bonfire list, area by area in DS3's order, lit bonfires only) and Return to the Lands Between (back to Roundtable Hold, as the F1 menu's Leave). Report: the bonfires and bonfire travel lines of the port-maps log."),
+            new("B", "Elden Ring's grace at the sword", "As 1.0.48x: an Elden Ring grace (its golden light) stands at each DS3 sword and is what you use, and the sword gets a stand-in fire (DARKSIGN_BONFIRES=grace). Try it if A's bonfires can't be lit, rested at or respawned at.")
+                { PorterEnv = Env("DARKSIGN_BONFIRES", "grace") },
             new("C", "Scenery", "DS3's bonfires can't be used (DARKSIGN_BONFIRES=0), as every build up to 1.0.46x had them: you respawn at your last Elden Ring grace.")
                 { PorterEnv = Env("DARKSIGN_BONFIRES", "0") },
+            new("D", "Plain grace menu", "As A, but resting opens Elden Ring's grace menu as it is, without Travel and Return (DARKSIGN_BONFIRE_TRAVEL=0). Try it if the bonfire menu crashes, hangs, can't be closed, or Travel warps you somewhere wrong.")
+                { PorterEnv = Env("DARKSIGN_BONFIRE_TRAVEL", "0") },
         ]),
 
         new("map-text", "DS3 maps", "DS3's event messages and area names", Stage.Build,
@@ -742,6 +744,8 @@ public static class Fallbacks
                 { PorterEnv = Env("DARKSIGN_PEOPLE_WEAPON_LOOKS", "0") },
             new("J", "No voices", "As A, but DS3's people have no voice banks: their lines are subtitles only, as up to 1.0.501, where the game moved on from each line at once (DARKSIGN_PEOPLE_VOICES=0). Try it if the game crashes, hangs or goes silent when a DS3 person speaks, or a voice is noise.")
                 { PorterEnv = Env("DARKSIGN_PEOPLE_VOICES", "0") },
+            new("K", "Menus wait for DS3's characters", "As A, but a talk menu that waits for a signal only DS3's own character sends (the Fire Keeper's level up, which waits for her bow) keeps waiting for it (DARKSIGN_TALK_ENGINE_FLAGS=0), as up to 1.0.479, where the Fire Keeper's Level Up did nothing. Try it if a DS3 person's menu opens something before they have finished speaking or bowing, or opens it twice.")
+                { PorterEnv = Env("DARKSIGN_TALK_ENGINE_FLAGS", "0") },
         ]),
 
         new("enemy-port", "DS3 maps", "How DS3's enemies and bosses are ported", Stage.Build,

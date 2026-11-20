@@ -631,7 +631,7 @@ end of the events step.
 
 2026-11-19, not yet playtested; checked offline by `map-selftest` ("bonfires: ...") and run in a cloud thread on the
 real DS3 layouts of m30, m31, m37, m40 and m45 with DS3's and Elden Ring's regulations (30 bonfires found and placed).
-Fallback `map-bonfires` (B `DARKSIGN_BONFIRES=sword`, C `=0`). Code: `Maps/Bonfires.cs`, a port-maps step after the events.
+Fallback `map-bonfires` (since 2026-11-20: A DS3's sword, B `DARKSIGN_BONFIRES=grace`, C `=0`, D no travel). Code: `Maps/Bonfires.cs`, a port-maps step after the events.
 
 - **Same four things in both games** (read from DS3's m30/m40 and Stormveil's m10_00_00_00): a registered object or
   asset (map-local entity 1950+n; Elden Ring's is AEG099_060), an invisible talker c1000 (950+n; Elden Ring's all have
@@ -654,6 +654,26 @@ Fallback `map-bonfires` (B `DARKSIGN_BONFIRES=sword`, C `=0`). Code: `Maps/Bonfi
   flame; the standing point at a boss bonfire before the boss dies (the sword shows early, the grace does not).
 - **Where to look:** the "bonfires:" lines of the port-maps log (which bonfires, rows, names, registrations, the
   flame's effect ID).
+
+#### 2026-11-20 follow-up (Devin's 1.0.479 playtest: fire far too large, grace and bonfire overlaid)
+
+- **The fire is the bonfire's animations.** DS3's o000100 and Elden Ring's AEG099_060 have the same animation numbers
+  (0 hidden, 1 unlit, 10-103 lit, 999999) and the same effect events (type 96: 1010 embers and 1011 fire on dummy 201,
+  1000-1002 lighting bursts on 200), DS3's in 16 bytes, Elden Ring's in 24; written at 24 the ported events equal
+  Elden Ring's byte for byte (checked on both games' files). Moving objects (`ObjectAnims`) now carry DS3's effect
+  events for every effect port-weapons converted (`ObjectAnims.WantedEffects`), so the default (`Method.Sword`)
+  registers DS3's own sword with no grace asset and no stand-in flame; a sword whose animations didn't port gets a
+  flame event with 1011 on dummy 201. Unproven: that the engine plays the lit animations on a registered asset that
+  isn't AEG099_060. Fallback `map-bonfires` B (`DARKSIGN_BONFIRES=grace`) is the 1.0.48x layout.
+- **Travel and Return** (`Maps/BonfireTravel.cs`): the talker runs t899001000, a copy of Elden Ring's grace menu
+  t000001000 with entries 61 Travel and 62 Return to the Lands Between before Leave, and new state groups made from
+  the script's own sub-menu pieces: the areas (BonfireWarpParam ListId, DS3's tab order) and per area the lit bonfires
+  (row order). Picking sets request flag 1039292110+i; common.emevd event 1039291110+i warps to the bonfire's 980+n
+  point. Return sets the F1 leave request (Roundtable Hold: Elden Ring gives scripts no way to warp to the last grace
+  rested at). Fallback D (`DARKSIGN_BONFIRE_TRAVEL=0`).
+- **Fire Keeper level up** (`TalkPort.EngineFlags`): her level-up entry sets 74000135/136 and waits for 74000137/138,
+  which only her DS3 character's behaviour sets; such handshake flags read as on (Firelink also has 74000391/392 and
+  74000432/433). Fallback `map-people` K.
 
 ### Doors, lifts and levers (objects that move)
 

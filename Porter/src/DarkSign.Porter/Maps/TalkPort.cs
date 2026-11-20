@@ -36,6 +36,9 @@ public sealed class TalkPort
 {
     public static bool Enabled => Environment.GetEnvironmentVariable("DARKSIGN_PEOPLE_TALK") != "0";
 
+    /// <summary>DARKSIGN_TALK_ENGINE_FLAGS=0 (fallback map-people K) keeps waiting on the flags only DS3's characters set.</summary>
+    public static bool EngineFlagsOn => Environment.GetEnvironmentVariable("DARKSIGN_TALK_ENGINE_FLAGS") != "0";
+
     /// <summary>Off (fallback map-people J, DARKSIGN_PEOPLE_VOICES=0): no voice banks; lines are subtitles only, as
     /// up to 1.0.501, where Elden Ring moved on from each line at once.</summary>
     public static bool Voices => Environment.GetEnvironmentVariable("DARKSIGN_PEOPLE_VOICES") != "0";
@@ -393,7 +396,7 @@ public sealed class TalkPort
 
     public sealed class Stats
     {
-        public int Flags, Lines, Texts, Shops, Buttons, CommandsLeftOut, CommandsReshaped, FunctionsZeroed;
+        public int Flags, Lines, Texts, Shops, Buttons, CommandsLeftOut, CommandsReshaped, FunctionsZeroed, EngineFlags;
         public SortedDictionary<string, int> LeftOutCommands = new(StringComparer.Ordinal), ZeroedFunctions = new(StringComparer.Ordinal);
     }
 
@@ -409,7 +412,9 @@ public sealed class TalkPort
     /// says whether Elden Ring has an action button row. Throws when an expression can't be read (the script is then
     /// left out and its person stays silent).
     /// </summary>
-    public static Stats Convert(ESD esd, Vocabulary er, Func<long, long> moveFlag, Func<int, bool> hasButton, Needs needs)
+    /// <param name="engineDone">DS3 flags that only DS3's engine turns on (<see cref="EngineFlags"/>): read as on.</param>
+    public static Stats Convert(ESD esd, Vocabulary er, Func<long, long> moveFlag, Func<int, bool> hasButton, Needs needs,
+        Func<long, bool>? engineDone = null)
     {
         var stats = new Stats();
         // Every expression of every group, parsed once: (the command it is an argument of, its nodes).
@@ -464,8 +469,30 @@ public sealed class TalkPort
             }
         }
 
+        Node Engine(Node n)
+        {
+            switch (n)
+            {
+                case Call { Func: Lit { Value: 15 }, Args: [var a] } when engineDone is not null && Core(a) is Lit l && engineDone(l.Value):
+                    stats.EngineFlags++;
+                    return new Lit(1);
+                case Call c:
+                    for (int i = 0; i < c.Args.Count; i++)
+                        c.Args[i] = Engine(c.Args[i]);
+                    return c;
+                case Op p:
+                    for (int i = 0; i < p.Kids.Count; i++)
+                        p.Kids[i] = Engine(p.Kids[i]);
+                    return p;
+                default:
+                    return n;
+            }
+        }
+
         void Functions(List<Node> nodes)
         {
+            for (int i = 0; i < nodes.Count; i++)
+                nodes[i] = Engine(nodes[i]);
             foreach (var call in nodes.SelectMany(Walk).OfType<Call>())
                 if (call.Func is Lit f && FunctionKinds.TryGetValue(f.Value, out var fk))
                     for (int i = 0; i < Math.Min(fk.Length, call.Args.Count); i++)
@@ -549,6 +576,83 @@ public sealed class TalkPort
                         }
                     }
         return stats;
+    }
+
+    /// <summary>
+    /// The flags DS3's engine sets for a map's talk scripts, which nothing ported sets: a talk script waits for them,
+    /// no talk script of the map turns them on or off, the map's events never turn them on but do reset them, and the
+    /// state group that waits for one turns on a flag within 3 of it (the request it answers). DS3's Fire Keeper is the
+    /// case found (1.0.479, "can't level up at the firekeeper"): her level-up entry sets 74000135/136 and waits for
+    /// 74000137 and 74000138, which her character's own behaviour sets when her bow is done (no script does; m40's
+    /// event 14005600 only resets 135-138), so the menu waited forever on a body whose behaviour is Elden Ring's.
+    /// Read as on, the menu opens once she is asked. Firelink has two more of the same handshake (74000391/392 and
+    /// 74000432/433, read off m40's talk binder 2026-11-20).
+    /// </summary>
+    public static HashSet<long> EngineFlags(IEnumerable<ESD> scripts, IEnumerable<EMEVD> events)
+    {
+        var read = new HashSet<long>();
+        var on = new HashSet<long>();
+        var off = new HashSet<long>();
+        static long? Lit1(byte[] e)
+        {
+            try { return Core(Parse(e).LastOrDefault() ?? new Lit(0)) is Lit l ? l.Value : null; }
+            catch (Exception ex) when (ex is InvalidDataException or ArgumentException or IndexOutOfRangeException) { return null; }
+        }
+        // Candidates per state group: flags it waits for next to a flag it turns on (the request they answer).
+        var waited = new HashSet<long>();
+        var talkOff = new HashSet<long>();
+        foreach (var esd in scripts)
+            foreach (var group in esd.StateGroups.Values)
+            {
+                var groupRead = new HashSet<long>();
+                var groupOn = new HashSet<long>();
+                foreach (var state in group.Values)
+                {
+                    foreach (var cond in state.Conditions.SelectMany(Flatten))
+                        try
+                        {
+                            foreach (var call in Parse(cond.Evaluator).SelectMany(Walk).OfType<Call>())
+                                if (call.Func is Lit { Value: 15 } && call.Args.Count == 1 && Core(call.Args[0]) is Lit f)
+                                    groupRead.Add(f.Value);
+                        }
+                        catch (Exception ex) when (ex is InvalidDataException or ArgumentException or IndexOutOfRangeException) { _ = ex; }
+                    foreach (var c in Commands(state))
+                    {
+                        int flagAt = (c.CommandBank, c.CommandID) switch { (1, 11) => 0, (5, 11) => 1, _ => -1 };
+                        if (flagAt < 0 || c.Arguments.Count < flagAt + 2 || Lit1(c.Arguments[flagAt]) is not long flag)
+                            continue;
+                        // A value that isn't a plain number (an argument, an expression) may be on.
+                        bool isOff = Lit1(c.Arguments[flagAt + 1]) == 0;
+                        (isOff ? talkOff : on).Add(flag);
+                        if (!isOff)
+                            groupOn.Add(flag);
+                    }
+                }
+                waited.UnionWith(groupRead.Where(f => groupOn.Any(r => r != f && Math.Abs(r - f) <= 3)));
+                read.UnionWith(groupRead);
+            }
+        foreach (var e in events.SelectMany(s => s.Events).SelectMany(e => e.Instructions))
+        {
+            var a = e.ArgData;
+            if (e.Bank == 2003 && e.ID == 66 && a.Length >= 9)         // Set Event Flag (type, flag, state)
+                (a[8] == 0 ? off : on).Add(BitConverter.ToUInt32(a, 4));
+            else if (e.Bank == 2003 && e.ID == 22 && a.Length >= 9)    // Batch Set Event Flags (start, end, state)
+            {
+                uint from = BitConverter.ToUInt32(a, 0), to = BitConverter.ToUInt32(a, 4);
+                if (to >= from && to - from < 1000)
+                    for (uint f = from; f <= to; f++)
+                        (a[8] == 0 ? off : on).Add(f);
+            }
+            else if (e.Bank == 2003 && e.ID is 69 or 41 && a.Length >= 8)   // flag changes by other means: may be on
+                on.Add(BitConverter.ToUInt32(a, a.Length >= 12 ? 4 : 0));
+        }
+        read.IntersectWith(off);
+        read.ExceptWith(on);
+        read.IntersectWith(waited);
+        // A flag a talk script turns off itself is one it takes as a one-time signal: left as it is.
+        read.ExceptWith(talkOff);
+        read.RemoveWhere(f => f <= 0);
+        return read;
     }
 
     // ---- The plan and the files ----
@@ -650,7 +754,22 @@ public sealed class TalkPort
         {
             if (!_used.TryGetValue(slot.Ds3, out var used) || used.Count == 0)
                 continue;
-            var source = BND4.Read(ds3.Read(TalkPath(slot.Ds3))).Files.Where(f => ScriptId(f.Name) is int id && used.Contains(id)).ToList();
+            var allScripts = BND4.Read(ds3.Read(TalkPath(slot.Ds3))).Files;
+            var source = allScripts.Where(f => ScriptId(f.Name) is int id && used.Contains(id)).ToList();
+            HashSet<long> engine = [];
+            if (EngineFlagsOn)
+                try
+                {
+                    var events = new[] { MapEvents.ScriptPath(slot.Ds3), "/event/common.emevd.dcx" }.Where(ds3.Contains).Select(p => EMEVD.Read(ds3.Read(p)));
+                    engine = EngineFlags(allScripts.Select(f => { try { return ESD.Read(f.Bytes); } catch (Exception ex) when (ex is not OutOfMemoryException) { _ = ex; return null; } })
+                        .OfType<ESD>(), events);
+                    if (engine.Count > 0)
+                        lines.Add($"  people talk: {slot.Ds3}: {engine.Count} flags only DS3's characters set, read as on ({string.Join(" ", engine.Order().Take(12))})");
+                }
+                catch (Exception ex) when (ex is not OutOfMemoryException)
+                {
+                    lines.Add($"  people talk: {slot.Ds3}: engine flags not worked out ({ex.Message}); menus that wait on a character may hang");
+                }
             var modPath = ctx.ModPath(MapPorter.ModParts(TalkPath(slot.Er)));
             var (vanilla, compression) = er.ReadWithCompression(er.Contains(TalkPath(slot.Er)) ? TalkPath(slot.Er) : templatePath!);
             var bnd = BND4.Read(File.Exists(modPath) ? DCX.Decompress(File.ReadAllBytes(modPath)) : vanilla);
@@ -666,7 +785,7 @@ public sealed class TalkPort
                 {
                     var esd = ESD.Read(file.Bytes);
                     var before = needs.Lines.ToHashSet();
-                    var stats = Convert(esd, vocabulary, moveFlag, buttons.Contains, needs);
+                    var stats = Convert(esd, vocabulary, moveFlag, buttons.Contains, needs, engine.Contains);
                     foreach (var line in needs.Lines.Where(l => !before.Contains(l)))
                         lineBank.TryAdd(line, id / 1_000_000);
                     esd.Name = $"t{id}";

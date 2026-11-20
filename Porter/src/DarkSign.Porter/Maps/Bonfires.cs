@@ -31,9 +31,15 @@ namespace DarkSign.Porter.Maps;
 /// <list type="bullet">
 /// <item>the talker (c1000, talk 1000) at DS3's talker, laid out like JortPob's interactor (infernoplus/JortPob
 /// Common/MakePart.cs Bed), and the standing point 980+n at DS3's 970+n point;</item>
-/// <item><see cref="Method.Grace"/> (default): an AEG099_060 where the sword stands, which takes the bonfire's entity
-/// (so DS3's own lines, that show a boss's bonfire once the boss is dead, act on it); the sword stays as scenery under
-/// a spare entity. <see cref="Method.Sword"/>: no Elden Ring asset, the DS3 sword itself is registered;</item>
+/// <item><see cref="Method.Sword"/> (default since 1.0.49x): the DS3 sword itself is the registered asset, with no
+/// Elden Ring asset and no golden light. A bonfire's fire is its object's animations in both games: the engine plays
+/// animation 1 on an unlit one and 10-103 on a lit one, and the animation's events carry the effects (DS3 o000100 and
+/// Elden Ring's AEG099_060 have the same animation numbers and the same events, read 2026-11-19; DS3's effects 1010,
+/// 1011, 1000-1002 are its bonfire's embers, fire and lighting burst, Elden Ring's the grace's light under the same
+/// numbers). So the ported sword plays DS3's own fire, at DS3's size, from its ported animations
+/// (<see cref="ObjectAnims"/>). <see cref="Method.Grace"/> (1.0.48x, where both showed on top of each other): an
+/// AEG099_060 where the sword stands takes the bonfire's entity and the sword stays as scenery under a spare entity,
+/// with a stand-in flame;</item>
 /// <item>a BonfireWarpParam row (a copy of a Stormveil row; not drawn on the world map, whose coordinates mean nothing
 /// in a DS3 map) with DS3's bonfire name in PlaceName;</item>
 /// <item>"Register Bonfire" in the map script for any bonfire DS3 registers some way that didn't convert, and an event
@@ -41,8 +47,8 @@ namespace DarkSign.Porter.Maps;
 /// ModelSfxParam row names o000100), so the flame is DS3's firewood fire (effect 800061, "Fire of firewood" in
 /// DS3's ModelSfxParam) on dummy poly 200, where DS3's own script plays the bonfire's appearing effect.</item>
 /// </list>
-/// DARKSIGN_BONFIRES: "sword" for <see cref="Method.Sword"/>, "0" for <see cref="Method.Off"/> (launcher fallback
-/// "map-bonfires").
+/// DARKSIGN_BONFIRES: "grace" for <see cref="Method.Grace"/>, "0" for <see cref="Method.Off"/> (launcher fallback
+/// "map-bonfires"). The menu's travel list is <see cref="BonfireTravel"/>.
 /// </summary>
 public static class Bonfires
 {
@@ -52,8 +58,8 @@ public static class Bonfires
 
     public static Method ModeOf(string? value) =>
         value is "0" || string.Equals(value, "off", StringComparison.OrdinalIgnoreCase) ? Method.Off
-        : string.Equals(value, "sword", StringComparison.OrdinalIgnoreCase) ? Method.Sword
-        : Method.Grace;
+        : string.Equals(value, "grace", StringComparison.OrdinalIgnoreCase) ? Method.Grace
+        : Method.Sword;
 
     public const string GraceModel = "AEG099_060", TalkerModel = "c1000";
 
@@ -66,6 +72,14 @@ public static class Bonfires
     /// <summary>DS3's "Fire of firewood" and the dummy poly DS3's script plays the bonfire's appearing effect on.</summary>
     public const int FlameEffect = 800061, FlameDummy = 200;
 
+    /// <summary>
+    /// The effects of DS3's bonfire object (o000100's animation events): the lighting burst, the two kindling bursts,
+    /// the unlit embers, the fire, and the Untended Graves' dark one. <see cref="LitEffect"/> on <see cref="LitDummy"/>
+    /// is the fire of every lit animation.
+    /// </summary>
+    public static readonly int[] OwnEffects = [1000, 1001, 1002, 1010, 1011, 1040];
+    public const int LitEffect = 1011, LitDummy = 201;
+
     /// <summary>First map-local entity number tried for a sword that gave its entity to the grace asset.</summary>
     public const int SpareEntity = 9930;
 
@@ -75,11 +89,19 @@ public static class Bonfires
     public const string ParamName = "BonfireWarpParam";
 
     /// <summary>A row of DS3's BonfireWarpParam: the registered object, the lit flag, the name text and the row's own name.</summary>
-    public sealed record Ds3Row(int Entity, long Flag, int NameId, string Name);
+    /// <param name="Id">The row's number: DS3 lists a tab's bonfires in row order.</param>
+    /// <param name="List">DS3's warp-menu tab (ListId: 0 Cemetery of Ash, 1 High Wall...; 99 = not listed).</param>
+    public sealed record Ds3Row(int Entity, long Flag, int NameId, string Name, int Id = 0, int List = 99);
 
     /// <summary>A DS3 bonfire of one map: n is its number (object 1950+n, talker 950+n, point 970+n).</summary>
     public sealed record Bonfire(int Number, int Ds3Entity, long Ds3Flag, int NameId, string Name, Vector3 Position, float Turn,
-        Vector3 TalkerPosition, string? Collision);
+        Vector3 TalkerPosition, string? Collision)
+    {
+        /// <summary>DS3's warp-menu tab, the row's place in it and the tab's name ("High Wall of Lothric").</summary>
+        public int List { get; init; } = 99;
+        public int Order { get; init; }
+        public string Area { get; init; } = "";
+    }
 
     /// <summary>What a bonfire became in the slot's map file.</summary>
     public sealed record Placed(Bonfire Source, uint Entity, uint Talker, uint Point, uint Sword, Vector3 PointPosition, bool GraceAsset);
@@ -92,7 +114,8 @@ public static class Bonfires
         {
             long Cell(string field) => row.Cells.FirstOrDefault(c => c.Def.InternalName.Equals(field, StringComparison.OrdinalIgnoreCase))
                 ?.Value is { } v and not byte[] ? System.Convert.ToInt64(v) : -1;
-            rows.Add(new Ds3Row((int)Cell("WarpEventId"), Cell("LocationEventId"), (int)Cell("BonfireNameId"), row.Name ?? ""));
+            long list = Cell("ListId");
+            rows.Add(new Ds3Row((int)Cell("WarpEventId"), Cell("LocationEventId"), (int)Cell("BonfireNameId"), row.Name ?? "", row.ID, list < 0 ? 99 : (int)list));
         }
         return rows;
     }
@@ -102,6 +125,13 @@ public static class Bonfires
     {
         var at = rowName.LastIndexOf(" - ", StringComparison.Ordinal);
         return (at >= 0 ? rowName[(at + 3)..] : rowName).Trim();
+    }
+
+    /// <summary>"High Wall of Lothric - Knight's Rest" -> "High Wall of Lothric"; a name without " - " is its own area.</summary>
+    public static string AreaOf(string rowName)
+    {
+        var at = rowName.IndexOf(" - ", StringComparison.Ordinal);
+        return (at >= 0 ? rowName[..at] : rowName).Trim();
     }
 
     /// <summary>
@@ -114,7 +144,9 @@ public static class Bonfires
     {
         var layerOk = !allLayers && MsbPort.BaseLayerMeans(ds3);
         var found = new SortedDictionary<int, Bonfire>();
-        foreach (var row in rows)
+        var all = rows.ToList();
+        Ds3Row listed(Ds3Row row) => all.Where(r => r.Entity == row.Entity && r.List != 99).OrderBy(r => r.Id).FirstOrDefault() ?? row;
+        foreach (var row in all)
         {
             int n = row.Entity - ds3Id.Ds3EntityBase - AssetNumber;
             if (n < 0 || n >= 20 || row.Flag <= 0 || found.ContainsKey(n))
@@ -125,7 +157,11 @@ public static class Bonfires
                 continue;
             var sword = ds3.Parts.Objects.FirstOrDefault(o => o.EntityID == row.Entity && !MsbPort.OtherState(o, layerOk));
             found[n] = new Bonfire(n, row.Entity, row.Flag, row.NameId, NameOf(row.Name), sword?.Position ?? talker.Position,
-                sword?.Rotation.Y ?? talker.Rotation.Y, talker.Position, string.IsNullOrEmpty(talker.CollisionName) ? null : talker.CollisionName);
+                sword?.Rotation.Y ?? talker.Rotation.Y, talker.Position, string.IsNullOrEmpty(talker.CollisionName) ? null : talker.CollisionName)
+            {
+                // Its place in DS3's warp menu: the listed row of the same bonfire (Firelink has an unlisted row first).
+                List = listed(row).List, Order = listed(row).Id, Area = AreaOf(listed(row).Name),
+            };
         }
         return [.. found.Values];
     }
@@ -317,6 +353,8 @@ public static class Bonfires
             {
                 Set(row, "noIgnitionSfxDmypolyId_0", -1);
                 Set(row, "noIgnitionSfxId_0", -1);
+                Set(row, "noIgnitionSfxDmypolyId_1", -1);
+                Set(row, "noIgnitionSfxId_1", -1);
             }
             param.Rows.Add(row);
         }
@@ -383,7 +421,13 @@ public static class Bonfires
     /// </summary>
     /// <returns>(registrations added, flame events added).</returns>
     public static (int Registered, int Flames) AddEvents(EMEVD script, EMEVD? common, MapId er, IReadOnlyList<Placed> placed,
-        Func<long, long> flag, int flameSfx)
+        Func<long, long> flag, int flameSfx) =>
+        AddEvents(script, common, er, placed, flag, _ => (flameSfx, FlameDummy));
+
+    /// <param name="flame">The effect and dummy poly of a bonfire's flame event; an effect of 0 or less adds none (a
+    /// sword that plays its own fire from its animations needs none).</param>
+    public static (int Registered, int Flames) AddEvents(EMEVD script, EMEVD? common, MapId er, IReadOnlyList<Placed> placed,
+        Func<long, long> flag, Func<Placed, (int Sfx, int Dummy)> flame)
     {
         if (placed.Count == 0)
             return (0, 0);
@@ -402,13 +446,14 @@ public static class Bonfires
                 constructor.Instructions.Add(RunEvents.Make(RegisterBank, RegisterId, lit, p.Entity, 5f, 180f, 0, 0f));
                 registered++;
             }
+            var (flameSfx, flameDummy) = flame(p);
             if (p.Sword == 0 || flameSfx <= 0)
                 continue;
             while (!eventIds.Add(nextEvent))
                 nextEvent++;
             var e = new EMEVD.Event(nextEvent, EMEVD.Event.RestBehaviorType.Restart);
             e.Instructions.Add(RunEvents.Make(3, 0, (sbyte)0, (byte)1, (byte)0, lit));            // IF Event Flag (MAIN, ON, flag)
-            e.Instructions.Add(RunEvents.Make(2006, 4, p.Sword, FlameDummy, flameSfx));            // Create Asset-following SFX
+            e.Instructions.Add(RunEvents.Make(2006, 4, p.Sword, flameDummy, flameSfx));            // Create Asset-following SFX
             script.Events.Add(e);
             constructor.Instructions.Add(RunEvents.Make(2000, 0, 0, (uint)nextEvent, 0u));
             flames++;
@@ -467,6 +512,25 @@ public static class Bonfires
         var lines = new List<string>();
         var main = slots.Where(s => !s.Probe).Select(s => (s.Ds3, s.Er)).ToList();
         var work = new List<(MapSlots.Slot Slot, string MsbPath, MSBE Msb, DCX.CompressionInfo MsbCompression, List<Placed> Placed, Func<long, long> Flag)>();
+        // A sword that is the bonfire burns by its own animations; one whose animations didn't port gets a flame event.
+        var animated = new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase);
+        var swordModel = new Dictionary<uint, string>();
+        bool Animated(string model)
+        {
+            if (animated.TryGetValue(model, out var known))
+                return known;
+            bool yes = false;
+            try
+            {
+                var file = ctx.ModPath(MapPorter.ModParts(ObjectPort.GeomBndPath(model)));
+                if (File.Exists(file))
+                    yes = BND4.Read(DCX.Decompress(File.ReadAllBytes(file))).Files.Any(f => f.ID == 400
+                        && ObjectAnims.BinderEffects(f.Bytes).Contains(flameTable.GetValueOrDefault(LitEffect, -1)));
+            }
+            catch (Exception ex) when (ex is not OutOfMemoryException) { _ = ex; }
+            return animated[model] = yes;
+        }
+        int ownFire = 0;
         int rows = 0, named = 0;
         foreach (var slot in slots)
         {
@@ -501,6 +565,13 @@ public static class Bonfires
                 named++;
                 return id;
             }
+            foreach (var p in placed.Where(p => !p.GraceAsset && p.Sword != 0))
+                if (msb.Parts.Assets.FirstOrDefault(a => a.EntityID == p.Sword) is { } swordPart)
+                {
+                    swordModel[p.Sword] = swordPart.ModelName;
+                    if (Animated(swordPart.ModelName))
+                        ownFire++;
+                }
             rows += WriteRows(param, template, slot.Er, placed, Flag, TextId);
             work.Add((slot, path, msb, compression, placed, Flag));
             lines.Add($"bonfires: {slot.Ds3} -> {slot.Er}: {placed.Count} of {found.Count} DS3 bonfires are sites of grace ("
@@ -518,6 +589,26 @@ public static class Bonfires
         }
         regulation.Save(ctx.ModPath("regulation.bin"));
 
+        // The bonfire menu: Elden Ring's grace menu with "Travel" (DS3's warp list) and "Return to the Lands Between".
+        if (BonfireTravel.Enabled)
+            try
+            {
+                var destinations = work.SelectMany(w => w.Placed.Select(p => new BonfireTravel.Destination(w.Slot.Er, p.Source.Number,
+                    ds3Names.GetValueOrDefault(p.Source.NameId) is { Length: > 0 } text ? text : p.Source.Name,
+                    p.Source.Area.Length > 0 ? p.Source.Area : w.Slot.Ds3.ToString(), p.Source.List, p.Source.Order, (uint)w.Flag(p.Source.Ds3Flag), p.Point)));
+                lines.Add(BonfireTravel.Write(ctx, er, destinations));
+                foreach (var w in work)
+                    foreach (var p in w.Placed)
+                        foreach (var talker in w.Msb.Parts.Enemies.Where(e => e.EntityID == p.Talker))
+                            talker.TalkID = BonfireTravel.TalkId;
+            }
+            catch (Exception ex) when (ex is not OutOfMemoryException)
+            {
+                lines.Add($"bonfire travel: not added ({ex.GetType().Name}: {ex.Message}); the bonfires have Elden Ring's plain grace menu");
+            }
+        else
+            lines.Add("bonfire travel: off (DARKSIGN_BONFIRE_TRAVEL=0); the bonfires have Elden Ring's plain grace menu");
+
         // Scripts: the common events the maps call are in the mod's common_func.
         var commonPath = ctx.ModPath(MapPorter.ModParts(MapEvents.CommonFunc));
         var common = File.Exists(commonPath) ? EMEVD.Read(DCX.Decompress(File.ReadAllBytes(commonPath))) : null;
@@ -531,7 +622,10 @@ public static class Bonfires
                 continue;
             }
             var script = EMEVD.Read(DCX.Decompress(File.ReadAllBytes(scriptPath), out var scriptCompression));
-            var (r, f) = AddEvents(script, common, w.Slot.Er, w.Placed, w.Flag, flameSfx);
+            var (r, f) = AddEvents(script, common, w.Slot.Er, w.Placed, w.Flag, p =>
+                p.GraceAsset ? (flameSfx, FlameDummy)
+                : swordModel.TryGetValue(p.Sword, out var model) && Animated(model) ? (0, 0)
+                : (flameTable.GetValueOrDefault(LitEffect), LitDummy));
             registered += r;
             flames += f;
             File.WriteAllBytes(scriptPath, DCX.Compress(script.Write(), scriptCompression));
@@ -539,9 +633,12 @@ public static class Bonfires
         }
         lines.Add($"bonfires: {rows} {ParamName} rows, {named} names in {(placeFile is null ? "no PlaceName file (unnamed)" : ItemText.Leaf(placeFile.Name))}; "
                   + $"{registered} registered here (the rest by DS3's own lines), {flames} flame events"
-                  + (flameSfx > 0 ? $" (DS3 effect {FlameEffect} -> {flameSfx})" : $" (DS3 effect {FlameEffect} not converted: lit bonfires show no flame)")
-                  + (noScript > 0 ? $"; {noScript} maps have no script and stay without bonfires" : "")
-                  + (mode == Method.Sword ? "; DS3's swords are the registered bonfires (DARKSIGN_BONFIRES=sword)" : ""));
+                  + (mode == Method.Grace
+                      ? (flameSfx > 0 ? $" (DS3 effect {FlameEffect} -> {flameSfx})" : $" (DS3 effect {FlameEffect} not converted: lit bonfires show no flame)")
+                        + "; Elden Ring's grace asset stands at each sword (DARKSIGN_BONFIRES=grace)"
+                      : $"; DS3's swords are the registered bonfires, {ownFire} burn by their own animations (DS3 effects "
+                        + string.Join(", ", OwnEffects.Select(e => flameTable.TryGetValue(e, out var c) ? $"{e} -> {c}" : $"{e} not converted")) + ")")
+                  + (noScript > 0 ? $"; {noScript} maps have no script and stay without bonfires" : ""));
         return string.Join(Environment.NewLine, lines);
     }
 }
