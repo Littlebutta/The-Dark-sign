@@ -81,6 +81,9 @@ public sealed class Fev
         /// <summary>The definition's pitch and pitch randomisation, in FMOD's raw unit (see <see cref="Cents"/>).</summary>
         public float Pitch { get; init; }
         public float PitchRandom { get; init; }
+        /// <summary>The names its envelopes give (an envelope drives a DSP effect or a property such as volume by a
+        /// parameter: "FMOD Lowpass", "Volume"...); empty names left out.</summary>
+        public IReadOnlyList<string> Envelopes { get; init; } = [];
     }
 
     public sealed record Event(string Name, IReadOnlyList<Layer> Layers)
@@ -98,6 +101,12 @@ public sealed class Fev
         public int FadeOutMs { get; init; }
         /// <summary>The distance at which the event is no longer heard (0 when the header holds none).</summary>
         public float MaxDistance { get; init; }
+        /// <summary>The categories the event is in (FMOD Designer categories carry the mixer's effects and levels).</summary>
+        public IReadOnlyList<string> Categories { get; init; } = [];
+        /// <summary>The event's user properties as text ("playDistance=40").</summary>
+        public IReadOnlyList<string> Properties { get; init; } = [];
+        /// <summary>The fixed header (type, name, GUID and 144 bytes up to the layer count), for surveys.</summary>
+        public byte[] Header { get; init; } = [];
     }
 
     /// <summary>A linear volume in dB, no lower than -96 (silence).</summary>
@@ -215,16 +224,19 @@ public sealed class Fev
             float Field(int at, float otherwise, float low, float high) =>
                 BitConverter.ToSingle(d, p + at) is var v && float.IsFinite(v) && v >= low && v <= high ? v : otherwise;
             int fade = BitConverter.ToInt32(d, p + 144);
+            int tail = -1;
+            var categories = new List<string>();
+            var properties = new List<string>();
+            try { tail = SkipTail(d, end, lgcyEnd, categories, properties); }
+            catch (Exception e) when (e is IndexOutOfRangeException or ArgumentException or OverflowException) { }
             _events.TryAdd(name, new Event(name, layers)
             {
+                Categories = categories, Properties = properties, Header = d.AsSpan(p, HeaderSize).ToArray(),
                 Volume = Field(24, 1, 0, 8), Pitch = Field(28, 0, -1, 1), PitchRandom = Math.Abs(Field(32, 0, -1, 1)),
                 VolumeRandomMin = 1 - Field(36, 0, 0, 1), MaxDistance = Field(60, 0, 0, 100_000),
                 OneShot = (BitConverter.ToUInt32(d, p + 72) & OneShotFlag) != 0,
                 FadeOutMs = fade is >= 0 and <= 600_000 ? fade : 0,
             });
-            int tail = -1;
-            try { tail = SkipTail(d, end, lgcyEnd); }
-            catch (Exception e) when (e is IndexOutOfRangeException or ArgumentException or OverflowException) { }
             p = tail > 0 ? tail : end;
         }
     }
@@ -260,6 +272,7 @@ public sealed class Fev
             if (sounds > 256 || envelopes > 256 || p + (long)sounds * SoundSize > limit)
                 return null;
             var waves = new List<string>();
+            var named = new List<string>();
             // The layer's level, pitch and loop mode are its first sound's (no DS3 layer has more than one).
             int loopMode = 1;
             PropertySet set = new(1, 1, 0, 0);
@@ -279,7 +292,10 @@ public sealed class Fev
             {
                 if (p + 8 > limit || BitConverter.ToInt32(d, p) is < -1 or > 256)
                     return null;
-                p = SkipString(d, p + 4, limit);
+                int nameAt = p + 4;
+                p = SkipString(d, nameAt, limit);
+                if (p > nameAt + 5)
+                    named.Add(Encoding.ASCII.GetString(d, nameAt + 4, p - nameAt - 5));
                 if (p < 0 || p + 16 > limit)
                     return null;
                 uint points = BitConverter.ToUInt32(d, p + 12);
@@ -291,7 +307,7 @@ public sealed class Fev
             }
             layers.Add(new Layer(waves)
             {
-                LoopMode = loopMode, Volume = set.Volume, VolumeRandomMin = set.VolumeRandomMin, Pitch = set.Pitch, PitchRandom = set.PitchRandom,
+                Envelopes = named, LoopMode = loopMode, Volume = set.Volume, VolumeRandomMin = set.VolumeRandomMin, Pitch = set.Pitch, PitchRandom = set.PitchRandom,
             });
         }
         end = p;
@@ -299,7 +315,7 @@ public sealed class Fev
     }
 
     // What follows an event's layers: parameters, user properties, categories. Returns the record's end, or -1.
-    private static int SkipTail(byte[] d, int p, int limit)
+    private static int SkipTail(byte[] d, int p, int limit, List<string>? categoryNames = null, List<string>? propertyText = null)
     {
         if (p + 4 > limit)
             return -1;
@@ -324,16 +340,20 @@ public sealed class Fev
             return -1;
         for (int i = 0; i < properties; i++)
         {
+            int nameAt = p;
             p = SkipString(d, p, limit);
             if (p < 0 || p + 8 > limit)
                 return -1;
+            string key = Text(d, nameAt, p);
             uint type = BitConverter.ToUInt32(d, p);
             p += 4;
             if (type > 2)
                 return -1;
+            int valueAt = p;
             p = type == 2 ? SkipString(d, p, limit) : p + 4;
             if (p < 0)
                 return -1;
+            propertyText?.Add(key + "=" + (type switch { 0 => BitConverter.ToInt32(d, valueAt).ToString(), 1 => BitConverter.ToSingle(d, valueAt).ToString(System.Globalization.CultureInfo.InvariantCulture), _ => Text(d, valueAt, p) }));
         }
         if (p + 4 > limit)
             return -1;
@@ -343,12 +363,17 @@ public sealed class Fev
             return -1;
         for (int i = 0; i < categories; i++)
         {
+            int nameAt = p;
             p = SkipString(d, p, limit);
             if (p < 0)
                 return -1;
+            categoryNames?.Add(Text(d, nameAt, p));
         }
         return p;
     }
+
+    // The text of a string that starts at p and ends (after its NUL) at end.
+    private static string Text(byte[] d, int p, int end) => end > p + 5 ? Encoding.ASCII.GetString(d, p + 4, end - p - 5) : "";
 
     // Steps over a string (u32 length counting its NUL, then the bytes; length 0 is no string). -1 when it isn't one.
     private static int SkipString(byte[] d, int p, int limit)

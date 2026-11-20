@@ -250,6 +250,8 @@ public static class Fallbacks
                 { PorterEnv = Env("DARKSIGN_SHIELD_HOLD", "0") },
             new("G", "Shields skip the template shape check", "As A, but ported shields are only turned by the hold frames (DARKSIGN_SHIELD_SHAPE=0), as in 1.0.420, and their face is not laid on the face of the Elden Ring shield they are built on. Use it if a shield that looked right in 1.0.420 sits worse now.")
                 { PorterEnv = Env("DARKSIGN_SHIELD_SHAPE", "0") },
+            new("H", "Low detail models with their own materials", "As A, but each ported weapon's low detail model (the one other characters' weapons and far-away weapons use) gets materials of its own with textures named WP_A_9xxx_L_a (DARKSIGN_WEAPON_LOD_LAYOUT=0), as up to 1.0.50x, when the weapons DS3's people held looked white, shiny and untextured. Use it if a ported weapon's low detail look got worse.")
+                { PorterEnv = Env("DARKSIGN_WEAPON_LOD_LAYOUT", "0") },
         ]),
 
         // ---- Weapon sounds and effects ----
@@ -755,6 +757,8 @@ public static class Fallbacks
                 { PorterEnv = Env("DARKSIGN_PEOPLE_VOICES", "0") },
             new("K", "Menus wait for DS3's characters", "As A, but a talk menu that waits for a signal only DS3's own character sends (the Fire Keeper's level up, which waits for her bow) keeps waiting for it (DARKSIGN_TALK_ENGINE_FLAGS=0), as up to 1.0.479, where the Fire Keeper's Level Up did nothing. Try it if a DS3 person's menu opens something before they have finished speaking or bowing, or opens it twice.")
                 { PorterEnv = Env("DARKSIGN_TALK_ENGINE_FLAGS", "0") },
+            new("L", "Flat voices", "As A, but DS3's people speak through the cutscene sound setup, flat and dry from everywhere (DARKSIGN_PEOPLE_VOICE_BUS=0), as up to 1.0.50x, instead of Elden Ring's own NPC voice setup (room reverb, fading with distance, from the speaker). Try it if DS3 voices went silent, too quiet or cut off.")
+                { PorterEnv = Env("DARKSIGN_PEOPLE_VOICE_BUS", "0") },
         ]),
 
         new("enemy-port", "DS3 maps", "How DS3's enemies and bosses are ported", Stage.Build,

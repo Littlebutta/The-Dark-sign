@@ -60,7 +60,8 @@ public static class TextureCheck
                 int templateModel = Convert.ToInt32(erWeapons[plan.TemplateId!.Value]!["equipModelId"].Value);
                 var mine = new List<ModelPort.NewMaterial>();
                 foreach (var lod in new[] { false, true })
-                    if (ModelPort.Convert(ds3, er, ds3Model, templateModel, plan.NewModelId!.Value, lod) is { } model)
+                    if (ModelPort.Convert(ds3, er, ds3Model, templateModel, plan.NewModelId!.Value, lod,
+                            mainMatbins: lod ? mine.Select(m => m.NewMatbin).ToList() : null) is { } model)
                     {
                         converted[ModelPort.PartsPath(plan.NewModelId.Value, lod)] = model.Binder.Write();
                         mine.AddRange(model.Materials);
