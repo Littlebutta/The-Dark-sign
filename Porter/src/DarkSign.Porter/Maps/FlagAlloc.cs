@@ -157,6 +157,7 @@ public static class FlagAlloc
         Add(RunEvents.Ds3RunActive, "DS3 run active flag (saved)");
         Add(RunEvents.StartDs3Request, "F1 menu start/leave/warp request flags");
         Add(RunEvents.StartEventId, "run event IDs");
+        Add(MapMusic.FirstFlag, "DS3 music switch and playing flags (MapMusic)");
         foreach (var s in slots.Distinct())
             Add(s.EntityBase, $"{s} map flags (e.g. boss defeated)");
         foreach (var f in globalFlags.Where(f => f > 0))
@@ -177,6 +178,7 @@ public static class FlagAlloc
         void Add(long flag, string what) => blocks.TryAdd(flag / 1000, what);
         Add(RunEvents.Ds3RunActive, "DS3 run active flag, saved");
         Add(RunEvents.StartDs3Request, "F1 menu start/leave/warp requests");
+        Add(MapMusic.FirstFlag, "DS3 music flags, reset on load");
         if (slotFlags)
             foreach (var s in slots.Distinct())
                 for (long b = 0; b < 10; b++)

@@ -119,7 +119,7 @@ public static partial class MapPortChecks
         Expect(again.Count == 5 && FlagAlloc.Find([("legacy", again)], 50000)?.Entry.Index == 74, "reads back");
         Expect(FlagAlloc.WithMaps(data, [open], [(probe, ErId)]).Added.Count == 0, "nothing added twice");
         var blocks = FlagAlloc.UsedBlocks([ErId, ErId], [1030290005, 1030290006, 1038291000]);
-        Expect(blocks.Keys.SequenceEqual(new long[] { 45000, 1030290, 1038291, 1039290, 1039291, 1039292 }),
+        Expect(blocks.Keys.SequenceEqual(new long[] { 45000, 1030290, 1038291, 1039290, 1039291, 1039292, 1039295 }),
             "blocks: " + string.Join(",", blocks.Keys));
     }
 
@@ -198,7 +198,7 @@ public static partial class MapPortChecks
         var probes = lines.Select(l => long.Parse(l.Split('\t')[0])).ToList();
         Expect(probes.All(p => p % 1000 == 999), "probe flags are a block's last number");
         Expect(probes.Contains(1039290999) && probes.Contains(1039292999) && probes.Contains(45000999) && probes.Contains(45009999)
-               && probes.Contains(1030290999) && probes.Contains(1031290999), "probes: " + string.Join(",", probes));
+               && probes.Contains(1030290999) && probes.Contains(1031290999) && probes.Contains(MapMusic.FirstFlag / 1000 * 1000 + 999), "probes: " + string.Join(",", probes));
         Expect(!probes.Contains(1039291999), "event IDs need no flag block");
         Expect(!FlagAlloc.ProbeLines([ErId], [], slotFlags: false).Any(l => l.StartsWith("4500")), "map-flags B drops the slot blocks");
 

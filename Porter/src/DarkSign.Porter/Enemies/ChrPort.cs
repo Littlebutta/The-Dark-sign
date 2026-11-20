@@ -2161,15 +2161,27 @@ public static partial class ChrPort
     /// <summary>
     /// The last safety net: every NpcParam row the maps and the F1 spawn list name exists, at least as a plain copy of
     /// the template's row (a missing row crashes the game when the character loads). Returns how many were added.
+    /// An NpcParam copy gets the quiet threat level too (<see cref="MusicThreatLevel"/>): a plain copy of a field
+    /// boss's row started Elden Ring's battle music on a DS3 map.
     /// </summary>
     public static int EnsureNpcRows(PARAM npc, IEnumerable<(int Template, int Row)> rows)
     {
         int added = 0;
+        long? quiet = null;
+        bool quietKnown = false;
         foreach (var (templateId, id) in rows)
         {
             if (npc[id] is not null || npc[templateId] is not { } template)
                 continue;
-            npc.Rows.Add(CopyRow(npc, template, id));
+            if (!quietKnown)
+            {
+                quiet = KeepTemplateThreat ? null : MusicThreatLevel(npc);
+                quietKnown = true;
+            }
+            var row = CopyRow(npc, template, id);
+            if (quiet is { } threat && Cell(row, "threatLv") is { } threatCell)
+                Set(threatCell, threat);
+            npc.Rows.Add(row);
             added++;
         }
         if (added > 0)
