@@ -34,6 +34,19 @@ public static class ChrTae
 
     public const int DrawMaskType = 233;
 
+    /// <summary>
+    /// Event types both games have whose Elden Ring layout reads a field DS3 always writes 0 or doesn't have
+    /// (DSAnimStudio's TAE.Template.DS3.xml / TAE.Template.ER.xml, compared field by field 2026-11-20). They come along
+    /// only where the template itself uses the type, never just because another Elden Ring character does.
+    /// 601 SetAdditiveAnim never comes along: Elden Ring plays the animation its last field names, which DS3 leaves 0
+    /// (the Winged Knight's 258 such events in 1.0.5xx, after #226 let ER-wide types in, played animation 0 on top of
+    /// every move).
+    /// </summary>
+    public static readonly HashSet<int> ReadDifferently = [64, 65, 95, 119, 123, 132, 145, 193, 224, 522, 601, 604, 606, 706, 10096, 10130, 10137, 10138];
+
+    /// <summary>DS3 event types that never come along (see <see cref="ReadDifferently"/>).</summary>
+    public static readonly HashSet<int> NeverPorted = [601];
+
     /// <summary>DS3 event types Elden Ring reads the same, with their parameter length, kept even when the template's TAE has none.</summary>
     public static readonly IReadOnlyDictionary<int, int> SharedTypes = new Dictionary<int, int>
     {
@@ -101,6 +114,12 @@ public static class ChrTae
             }
             if (TemplateTypes.Contains(e.Type))
                 continue;
+            if (NeverPorted.Contains(e.Type))
+            {
+                if (dropped is not null)
+                    dropped[e.Type] = dropped.GetValueOrDefault(e.Type) + 1;
+                continue;
+            }
             var bytes = e.GetParameterBytes(false);
             bool known = erLengths.TryGetValue(e.Type, out var length);
             if (!known && Shared(e.Type) && SharedTypes.TryGetValue(e.Type, out length))

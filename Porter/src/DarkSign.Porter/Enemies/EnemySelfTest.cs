@@ -365,6 +365,26 @@ public static class EnemySelfTest
         Check("carrying: the first ranked template with a move set is taken over one with a single animation",
             ChrPort.CarryPick([1, 300, 900], c => c) == 1 && ChrPort.CarryPick([0, 1, 5], c => c) == 1 && ChrPort.CarryPick([0, 0], c => c) is null);
 
+        // 1.0.5xx: the High Wall's Winged Knight vanished after its attacks. #226 let DS3's 601 SetAdditiveAnim events in
+        // (other Elden Ring characters use the type at DS3's length), and Elden Ring plays the animation their last field
+        // names, which DS3 leaves 0. They never come along, even where the template's TAE has the type.
+        var additive = new byte[16];
+        BitConverter.GetBytes(1f).CopyTo(additive, 4);
+        var additiveDropped = new Dictionary<int, int>();
+        var additiveAnim = new TAE.Animation(3000, new TAE.Animation.AnimMiniHeader.Standard(), "a000_003000.hkx");
+        var additiveMerged = ChrTae.Merge([new(0.1f, 0.9f, 601, 0, additive, false)], additiveAnim, new Dictionary<int, int> { [601] = 16 },
+            new Dictionary<int, TAE.EventGroup> { [601] = new(601) }, 1f, 1f, dropped: additiveDropped);
+        Check("TAE merge: DS3's SetAdditiveAnim (601) never comes along, even at Elden Ring's length with a template group",
+            additiveMerged.Count == 0 && additiveDropped.GetValueOrDefault(601) == 1);
+        Check("TAE layouts: types Elden Ring reads differently (601 additive, 193 opacity) are not admitted from other Elden Ring characters",
+            ChrTae.ReadDifferently.Contains(601) && ChrTae.ReadDifferently.Contains(193) && !ChrTae.ReadDifferently.Contains(5) && !ChrTae.ReadDifferently.Contains(1));
+        // 1.0.5xx: Pontiff's right-hand cape stuck to his left = the template's cloth (c3570_c.hkx, its own skirt and tail
+        // bones) kept in the chrbnd under DS3's model.
+        Check("cloth: the template's cloth files are recognised and left out by default",
+            ChrPort.IsClothFile(@"N:\GR\data\INTERROOT_win64\chr\c7113\c7113_c.hkx") && ChrPort.IsClothFile("c7113_c.clm2")
+            && !ChrPort.IsClothFile("c7113.hkx") && !ChrPort.IsClothFile("c7113_cloth.flver") && !ChrPort.IsClothFile("c7113.flver")
+            && (Environment.GetEnvironmentVariable("DARKSIGN_ENEMY_CLOTH") is not null || ChrPort.DropTemplateCloth));
+
         // Every NpcParam row the maps and spawn list name exists, even when its params step failed (a missing row
         // crashed the game when a ported character loaded: 2026-11-07 test).
         var def = new PARAMDEF { ParamType = "NPC_PARAM_ST", Fields = [] };
