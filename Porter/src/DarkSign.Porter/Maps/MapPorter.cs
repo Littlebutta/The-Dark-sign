@@ -551,6 +551,9 @@ public static class MapPorter
         // DS3's humans in their DS3 armour: models, materials and the rows the placed people name.
         if (_armour is { StandIns.Count: > 0 } armour && ported.Count > 0)
             Step(report, "people armour", () => PortArmour(ctx, ds3, er, armour, ported.Select(p => p.Slot).ToList()));
+        // Quiet copies of the stand-ins' Elden Ring rows (no Elden Ring battle music on DS3 maps).
+        if (_quiet is { Copies.Count: > 0 } quiet && ported.Count > 0)
+            Step(report, "stand-in battle music", () => PortQuietRows(ctx, quiet, ported.Select(p => p.Slot).ToList()));
         // DS3's cutscenes (boss intros...) converted first, so the events step can play the ones that made it.
         Dictionary<int, int>? cutscenes = null;
         Dictionary<int, CutscenePort.Info> cutsceneInfo = [];
@@ -794,6 +797,25 @@ public static class MapPorter
     }
 
     /// <summary>
+    /// Writes the quiet copies of the stand-ins' rows; if they can't be written, the stand-ins go back on Elden Ring's
+    /// own rows so no part names a row that doesn't exist.
+    /// </summary>
+    private static string PortQuietRows(PorterContext ctx, QuietStandIns quiet, List<MapSlots.Slot> slots)
+    {
+        try
+        {
+            var regulation = ActionButtons.LoadRegulation(ctx);
+            var line = quiet.WriteParams(regulation);
+            regulation.Save(ctx.ModPath("regulation.bin"));
+            return line;
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            return $"stand-in battle music: FAILED ({ex.Message}); {quiet.Revert(ctx, slots)} stand-ins put back on their Elden Ring rows (Elden Ring battle music possible)";
+        }
+    }
+
+    /// <summary>
     /// Writes the converted DS3 talk scripts, lines and shops; if that fails, the placed people lose their talk
     /// scripts again so no part names a script that isn't there.
     /// </summary>
@@ -1002,7 +1024,7 @@ public static class MapPorter
                 var seats = EnemyPort.Seats(ds3Msb, EnemyPort.EventWarps(scripts));
                 var placed = EnemyPort.Place(ds3Msb, layout.Msb, ds3Id, erId, new MsbPort.Options { Ds3Culling = options.Ds3Culling, NoGroups = options.NoGroups, AllLayers = options.AllLayers },
                     enemies.Chooser, e => enemies.Describe(e, bosses), EnemyPort.AnyEnemyPart(enemies.Catalog), _placedEnemies, partNames,
-                    enemies.People, seats, placePeople: !options.NoPeople, armour: options.ErPeople ? null : _armour, erStandIns: options.ErPeople, talk: _talk);
+                    enemies.People, seats, placePeople: !options.NoPeople, armour: options.ErPeople ? null : _armour, erStandIns: options.ErPeople, talk: _talk, quiet: _quiet);
                 enemiesPlaced = placed;
                 report.AppendLine($"  enemies: {placed.Placed} placed ({placed.Ported} ported DS3 characters, {placed.StandIns} Elden Ring stand-ins, "
                                   + $"{placed.People} people{(options.NoPeople ? ", people off (--no-people)" : options.ErPeople ? ", Elden Ring people stand in (--er-people)" : _armour is null ? ", DS3's own people only" : ", DS3's own people and DS3 humans in their DS3 armour")}), {placed.Npcs} people left out, {placed.Skipped} with nothing to stand in; {bosses.Count} DS3 boss entities");
@@ -1624,6 +1646,7 @@ public static class MapPorter
     private static EnemyContext? _enemies;
     /// <summary>DS3's humans in their DS3 armour (null: off, or not planned).</summary>
     private static PeopleArmour? _armour;
+    private static QuietStandIns? _quiet;
     private static TalkPort? _talk;
     /// <summary>darksign_enemies.tsv rows for this run: every DS3 enemy placed, for the randomizer.</summary>
     private static readonly List<string> _placedEnemies = [];
@@ -1651,6 +1674,10 @@ public static class MapPorter
         try { ds3Npc = ctx.LoadParams(PorterGame.DarkSouls3).Get("NpcParam"); }
         catch (Exception ex) { notes.Add($"DS3 NpcParam names unavailable ({ex.Message}); every DS3 enemy gets the most common stand-in"); }
         var catalog = EnemyPort.BuildCatalog(er, erNpc, notes, out var people, erCharaInit);
+        _quiet = QuietStandIns.Create(erNpc);
+        notes.Add(_quiet is not null ? $"stand-in battle music: stand-ins whose Elden Ring row has a threat level other than {_quiet.QuietLevel} get a quiet copy of it"
+            : QuietStandIns.Enabled ? "stand-in battle music: Elden Ring's NpcParam threat levels unreadable; stand-ins keep their own (Elden Ring battle music possible)"
+            : "stand-in battle music: off (DARKSIGN_ENEMY_THREAT=template, fallback map-music C); stand-ins keep their own threat levels");
         _armour = null;
         if (PeopleArmour.Enabled && !options.NoPeople && !options.ErPeople)
             try

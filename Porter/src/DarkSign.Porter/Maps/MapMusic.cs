@@ -33,9 +33,11 @@ namespace DarkSign.Porter.Maps;
 /// itself (an XAudio2 stream, as the DLL sounds of fallback "sounds" D) instead of through Elden Ring's Wwise banks,
 /// because an added bank's loading is unproven in this mod (Elden Ring's music is its own music hierarchy, and loose
 /// streamed media stayed silent in game, see <see cref="SoundPort"/>).</para>
-/// <para>Flags 1039292000-2099 are in JortPob's reset-on-load range of the run block (<see cref="RunEvents"/>), so a
-/// death or a map change stops every track and the map's events start the right one again; the zone events are
-/// 1039291000-1099. Off with DARKSIGN_MAP_MUSIC=0 (launcher fallback "map-music" B).</para>
+/// <para>Flags 1039295000-5998 are in JortPob's second reset-on-load range of the run block (<see cref="RunEvents"/>),
+/// so a death or a map change stops every track and the map's events start the right one again; the zone events are
+/// 1039291000-1099. Until 2026-11-20 the flags were 1039292000-2099: room for 99, while DS3's whole world (15 maps since
+/// the world slots) has more tracks than that, each switched one taking two, so the last maps' tracks went silent.
+/// Off with DARKSIGN_MAP_MUSIC=0 (launcher fallback "map-music" B).</para>
 /// </summary>
 public static class MapMusic
 {
@@ -53,8 +55,10 @@ public static class MapMusic
     /// <summary>Where the tracks go (Mods\ER\darksign_music\m&lt;ID&gt;.wav); must match TestMenu/src/music.cpp.</summary>
     public const string Folder = "darksign_music";
 
-    public const uint FirstFlag = RunEvents.FlagBlock + 2000;
-    public const int MaxFlags = 100;
+    // 5000-5999: JortPob's second reset-on-load range (ScriptCommon.cs); 2000-2999 is full (run, bonfire, warp,
+    // cutscene, arena and boss kit flags). 5999 is the block's probe flag (FlagAlloc.ProbeLines), never handed out.
+    public const uint FirstFlag = RunEvents.FlagBlock + 5000;
+    public const int MaxFlags = 999;
     /// <summary>The numbered flags stop before the spare flag (<see cref="Plan.SpareFlag"/>).</summary>
     private const uint SpareFlagLimit = FirstFlag + MaxFlags - 1;
     public const uint FirstEvent = RunEvents.FlagBlock + 1000;
@@ -479,6 +483,19 @@ public static class MapMusic
         return plan;
     }
 
+    /// <summary>
+    /// One report line: each ported map's tracks that got a flag (and so can play) out of the tracks DS3 has there,
+    /// and the maps with none, so a map that plays nothing or Elden Ring's music can be told apart from one whose
+    /// tracks ran out of flags.
+    /// </summary>
+    public static string PerMap(Plan plan)
+    {
+        var maps = plan.Sources.GroupBy(s => s.Er).OrderBy(g => g.Key.ToString(), StringComparer.Ordinal)
+            .Select(g => $"{g.Key} ({g.First().Ds3}) {g.Count(s => s.PlayFlag != 0)}/{g.Count()}");
+        var none = MapSlots.All.Where(s => !s.Probe && plan.Sources.All(x => x.Er != s.Er)).Select(s => $"{s.Er} ({s.Name})").Distinct();
+        return $"music: per map, tracks with a flag/tracks: {string.Join("; ", maps)}" + (none.Any() ? $"; no DS3 music region: {string.Join(", ", none)}" : "");
+    }
+
     /// <summary>A literal argument's value, or -1 when it is passed in (or missing).</summary>
     private static long Value(EMEVD.Instruction ins, Emedf.Instr def, string name, IReadOnlySet<long> paramBytes) =>
         def.Args.FirstOrDefault(a => a.Name.Equals(name, StringComparison.OrdinalIgnoreCase)) is { } a && !paramBytes.Contains(a.Offset) ? Emedf.Read(ins.ArgData, a) : -1;
@@ -539,7 +556,7 @@ public static class MapMusic
         var listPath = ctx.ModPath(ListFile);
         if (File.Exists(listPath))
             File.Delete(listPath);
-        var lines = new List<string> { plan.Summary };
+        var lines = new List<string> { plan.Summary, PerMap(plan) };
         lines.AddRange(plan.Notes.Select(n => "music: " + n));
         lines.Add($"music: {plan.Converted} script lines switch a track by name, {plan.PassedIn} switch the track their event is started with " +
                   $"(DS3's shared boss events), {plan.BossStops} stop the boss music, {plan.MusicPlaysLeftOut} Elden Ring music plays left out; " +

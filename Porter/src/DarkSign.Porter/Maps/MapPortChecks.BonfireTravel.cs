@@ -43,7 +43,7 @@ public static partial class MapPortChecks
         Expect(kr[0] is { Bank: 1003, ID: 0 } && BitConverter.ToUInt32(kr[0].ArgData, 4) == BonfireTravel.RequestFlag(3)
                && kr[3] is { Bank: 2003, ID: 14 } && kr[3].ArgData[0] == 45 && kr[3].ArgData[1] == 1 && BitConverter.ToUInt32(kr[3].ArgData, 4) == 45010985,
             "Knight's Rest's event waits for its flag and warps to its standing point");
-        Expect(BonfireTravel.RequestFlag(0) == 1039292110 && BonfireTravel.RequestFlag(BonfireTravel.MaxDestinations - 1) < MapMusic.FirstFlag + 200
+        Expect(BonfireTravel.RequestFlag(0) == 1039292110 && BonfireTravel.RequestFlag(BonfireTravel.MaxDestinations - 1) < RunEvents.WarpRequestFlag(0)
                && BonfireTravel.EventId(0) == 1039291110 && BonfireTravel.EventId(BonfireTravel.MaxDestinations - 1) < RunEvents.WarpEventId(0),
             "flags in the reset-on-load range, events clear of the per-map warps");
         Expect(BonfireTravel.RequestFlag(BonfireTravel.MaxDestinations - 1) < RunEvents.WarpRequestFlag(0), "request flags clear of the per-map warps");
