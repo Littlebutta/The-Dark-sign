@@ -721,7 +721,7 @@ public static class Fallbacks
         new("map-cutscenes", "DS3 maps", "DS3's cutscenes (boss intros)", Stage.Build,
             "The game crashes, hangs or shows a black screen when a DS3 cutscene should play (walking up to Ariandel for the Friede fight, a boss fog, or Play in the F1 menu's Cutscenes tab), a cutscene looks broken and you'd rather go straight to the fight, or a cutscene's sound is wrong or breaks the game's sound.",
         [
-            new("A", "DS3's cutscenes with their sound (default)", "Every cutscene of the ported DS3 maps is converted from your DS3 files into Elden Ring's format and plays where DS3's scripts play it (and from the F1 menu's Cutscenes tab), with the ported bosses in it. Its sound comes along: DS3's cutscene audio, effects and spoken lines in a sound bank of its own (sd\\sAA_BB_NNNN.bnk), armour movement as Elden Ring's. Subtitles aren't shown. Report: the cutscenes section of the port-maps log."),
+            new("A", "DS3's cutscenes with their sound (default)", "Every cutscene of the ported DS3 maps is converted from your DS3 files into Elden Ring's format and plays where DS3's scripts play it (and from the F1 menu's Cutscenes tab), with the ported bosses in it. Its sound comes along: DS3's cutscene audio, effects and spoken lines in a sound bank of its own (sd\\sAA_BB_NNNN.bnk), armour movement as Elden Ring's. What the characters say shows as subtitles at the bottom of the screen, DS3's own words. Report: the cutscenes section of the port-maps log."),
             new("B", "None", "No DS3 cutscenes (DARKSIGN_CUTSCENES=0): the scripts skip them and a cutscene that moves you only moves you, as builds up to 1.0.38x did.")
                 { PorterEnv = Env("DARKSIGN_CUTSCENES", "0") },
             new("C", "Silent cutscenes", "The cutscenes play as in A but without DS3's sound (DARKSIGN_CUTSCENE_SOUND=0): no cutscene sound banks, and the timelines keep their sound events as the first cutscene builds had them.")
@@ -732,6 +732,10 @@ public static class Fallbacks
                 { PorterEnv = Env("DARKSIGN_CUTSCENE_CAST", "0") },
             new("F", "DS3's fade-out kept", "The cutscenes play as in A, but a cutscene DS3 ends with a fade-out keeps it (DARKSIGN_CUTSCENE_FADE=1), as builds up to 1.0.47x had it: the Dancer's intro ended on a black screen.")
                 { PorterEnv = Env("DARKSIGN_CUTSCENE_FADE", "1") },
+            new("G", "No subtitles", "The cutscenes play as in A, but without subtitles (DARKSIGN_CUTSCENE_SUBTITLES=0): the spoken lines play as sounds of the cutscene, as up to 1.0.549.")
+                { PorterEnv = Env("DARKSIGN_CUTSCENE_SUBTITLES", "0") },
+            new("H", "Timeline links as up to 1.0.549", "The cutscenes play as in A, but each timeline keeps the link to the timeline it hangs on that DS3 gave it (DARKSIGN_CUTSCENE_PARENTS=0), as up to 1.0.549, where only the events' links were renumbered after the port took timelines out: Friede's intro and Cathedral of the Deep's cutscenes hung.")
+                { PorterEnv = Env("DARKSIGN_CUTSCENE_PARENTS", "0") },
         ]),
 
         new("map-music", "DS3 maps", "DS3's music (areas and boss fights)", Stage.Build,

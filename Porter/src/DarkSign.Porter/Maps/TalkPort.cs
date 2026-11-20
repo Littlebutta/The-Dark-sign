@@ -853,8 +853,9 @@ public sealed class TalkPort
         var eventFile = Fmg("EventTextForTalk");
         var talkMsg = FMG.Read(talkFile.Bytes);
         var eventText = FMG.Read(eventFile.Bytes);
-        talkMsg.Entries.RemoveAll(e => e.ID >= TextBase);
-        eventText.Entries.RemoveAll(e => e.ID >= TextBase);
+        // From TextBase up to the cutscenes' subtitles (CutsceneSubtitles.RowBase), which the cutscene port wrote earlier.
+        talkMsg.Entries.RemoveAll(e => e.ID >= TextBase && !CutsceneSubtitles.IsOurs(e.ID));
+        eventText.Entries.RemoveAll(e => e.ID >= TextBase && !CutsceneSubtitles.IsOurs(e.ID));
 
         // DS3 names its text files in Japanese: 会話 = conversation, イベントテキスト = event text.
         var ds3Talk = LoadDs3Text(ds3, "会話", "Conversation", "TalkMsg");
@@ -871,7 +872,7 @@ public sealed class TalkPort
 
         var talkParam = regulation.Get("TalkParam") ?? throw new InvalidDataException("Elden Ring has no TalkParam");
         var ds3TalkParam = ds3Params?.Get("TalkParam");
-        talkParam.Rows.RemoveAll(r => r.ID >= TextBase);
+        talkParam.Rows.RemoveAll(r => r.ID >= TextBase && !CutsceneSubtitles.IsOurs(r.ID));
         // The row to copy: one of Elden Ring's with a line and, if there is one, no voice.
         var template = talkParam.Rows.Where(r => PeopleArmour.Cell(r, "msgId") > 0).OrderBy(r => PeopleArmour.Cell(r, "voiceId") > 0 ? 1 : 0).ThenBy(r => r.ID).FirstOrDefault()
                        ?? throw new InvalidDataException("Elden Ring's TalkParam has no row with a line");
