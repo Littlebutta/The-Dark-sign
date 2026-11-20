@@ -112,7 +112,9 @@ public static class Commands
         var ds3Names = ItemText.LoadNamesOrRowNames(ds3Archives, ds3Params);
         var erNames = ItemText.LoadNamesOrRowNames(erArchives, erParams);
 
-        var plans = WeaponPort.Plan(ds3Params, erParams, ds3Names, erNames);
+        PARAM? ds3People = null;
+        try { ds3People = ds3Store.Get("CharaInitParam"); } catch (Exception e) when (e is not OutOfMemoryException) { Console.WriteLine($"plan: DS3's CharaInitParam not read ({e.Message}); no look-only weapons for DS3's people"); }
+        var plans = WeaponPort.Plan(ds3Params, erParams, ds3Names, erNames, WeaponPort.HeldByPeople(ds3People));
         var path = ctx.WorkPath("reports", "weapons-plan.json");
         File.WriteAllText(path, JsonSerializer.Serialize(plans, new JsonSerializerOptions { WriteIndented = true }));
         foreach (var g in plans.GroupBy(p => p.Status.Split(':')[0] == "port" ? "port" : p.Status))
@@ -311,7 +313,7 @@ public static class Commands
     {
         // Each weapon's model is independent (its own binder in, its own file out), so they convert on every core.
         // Results are kept per weapon and merged in plan order, so the materials list is the same on every run.
-        var ported = plans.Where(p => p.Status == "port").ToList();
+        var ported = plans.Where(p => p.Status is "port" or WeaponPort.Look).ToList();
         var models = ported.Select(plan => (
             Ds3Model: Convert.ToInt32(ds3Weapons[plan.Ds3Id]!["equipModelId"].Value),
             TemplateModel: Convert.ToInt32(erWeapons[plan.TemplateId!.Value]!["equipModelId"].Value))).ToList();

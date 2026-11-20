@@ -849,7 +849,12 @@ public static class MapPorter
             items.Add(DarkSign.Porter.Enemies.DropPort.Kind.Weapon, DarkSign.Porter.Enemies.DropPort.RowNames(ds3Weapons),
                 DarkSign.Porter.Enemies.DropPort.RowNames(erWeapons), erWeapons.Rows.Select(r => r.ID));
             lines.AddRange(notes.Select(n => "  people weapons: " + n));
-            return ds3 => items.Map(DarkSign.Porter.Enemies.DropPort.Kind.Weapon, ds3)?.Id;
+            // A weapon Elden Ring has by name: DS3's people hold the look-only copy with DS3's model (WeaponPort.Look),
+            // when port-weapons wrote its row.
+            var looks = DarkSign.Porter.Enemies.DropPort.LookWeapons(ctx).Where(l => erWeapons[l.Value] is not null).ToDictionary(l => l.Key, l => l.Value);
+            if (looks.Count > 0)
+                lines.Add($"  people weapons: {looks.Count} weapons Elden Ring has by name are held as look-only copies with DS3's model");
+            return ds3 => ds3 > 0 && looks.TryGetValue(ds3 - ds3 % 10000, out var look) ? look : items.Map(DarkSign.Porter.Enemies.DropPort.Kind.Weapon, ds3)?.Id;
         }
         catch (Exception ex) when (ex is not OutOfMemoryException)
         {
