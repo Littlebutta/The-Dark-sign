@@ -15,6 +15,7 @@ public static partial class MapPortChecks
         yield return ("music: layers mix into one track, the DLL's list names flag, file and loop points", MusicMixAndList);
         yield return ("music: ported enemies get the threat level most Elden Ring enemies have (no Elden Ring battle music)", MusicThreat);
         yield return ("music: stand-ins and plain fallback rows get the quiet threat level too, on copies of Elden Ring's rows", MusicQuietStandIns);
+        yield return ("music: every templated map gets its template's field music and ambience area (no row-0 Limgrave music)", MusicSoundPlaces);
     }
 
     // DarkScript3's ds3-common layouts of the music instructions (bank 2010).
@@ -410,5 +411,51 @@ public static partial class MapPortChecks
         Expect(Enemies.ChrPort.MusicThreatLevel(param) == 1, "the commonest threat level (ordinary enemies)");
         var none = new PARAM { ParamType = "X", Rows = [] };
         Expect(Enemies.ChrPort.MusicThreatLevel(none) is null, "no rows, no value");
+    }
+
+    private static void MusicSoundPlaces()
+    {
+        var def = new PARAMDEF { ParamType = "MAP_DEFAULT_INFO_PARAM_ST", DataVersion = 1, FormatVersion = 203, Unicode = true, Fields = [] };
+        def.Fields.Add(new PARAMDEF.Field(def, PARAMDEF.DefType.u32, "EnableFastTravelEventFlagId"));
+        def.Fields.Add(new PARAMDEF.Field(def, PARAMDEF.DefType.s16, "BgmPlaceInfo"));
+        def.Fields.Add(new PARAMDEF.Field(def, PARAMDEF.DefType.s16, "EnvPlaceInfo"));
+        var param = new PARAM { ParamType = def.ParamType, Rows = [] };
+        param.ApplyParamdef(def);
+        void Add(int id, uint travel, short bgm, short env)
+        {
+            var row = new PARAM.Row(id, $"row {id}", def);
+            row["EnableFastTravelEventFlagId"].Value = travel;
+            row["BgmPlaceInfo"].Value = bgm;
+            row["EnvPlaceInfo"].Value = env;
+            param.Rows.Add(row);
+        }
+        Add(0, 0, 0, 0);               // the default: Limgrave's music
+        Add(11700000, 77, 999, 9);     // a slot Elden Ring has a row for
+        Add(45000000, 55, 180, 18);    // the template colosseum
+        var template = MapId.Parse("m45_00_00_00");
+        MapSlots.Slot S(string ds3, string er, MapId? t) => new(MapId.Parse(ds3), MapId.Parse(er), ds3, Template: t);
+        var slots = new[]
+        {
+            S("m40_00_00_00", "m45_00_00_00", null),      // the colosseum itself: left alone
+            S("m45_00_00_00", "m19_70_00_00", template),  // no row: added
+            S("m50_00_00_00", "m11_70_00_00", template),  // has a row: two fields changed
+            S("m30_01_00_00", "m45_03_00_00", template),
+            new MapSlots.Slot(MapId.Parse("m45_00_00_00"), MapId.Parse("m38_13_00_00"), "probe", template, Probe: true),
+        };
+        Expect(MapSoundPlace.RowId(MapId.Parse("m19_70_00_00")) == 19700000 && MapSoundPlace.RowId(MapId.Parse("m45_03_00_00")) == 45030000, "row IDs");
+        var line = MapSoundPlace.Apply(param, slots);
+        Expect(line.Contains("2 MapDefaultInfoParam rows added, 1 changed"), line);
+        Expect(param[19700000] is { } pw && Convert.ToInt32(pw["BgmPlaceInfo"].Value) == 180 && Convert.ToInt32(pw["EnvPlaceInfo"].Value) == 18
+               && Convert.ToUInt32(pw["EnableFastTravelEventFlagId"].Value) == 0, "a new row is row 0 with the template's music and ambience: " + line);
+        Expect(param[11700000] is { } dreg && Convert.ToInt32(dreg["BgmPlaceInfo"].Value) == 180 && Convert.ToUInt32(dreg["EnableFastTravelEventFlagId"].Value) == 77,
+            "an existing row keeps everything but the two fields");
+        Expect(Convert.ToInt32(param[45000000]!["BgmPlaceInfo"].Value) == 180 && Convert.ToInt32(param[0]!["BgmPlaceInfo"].Value) == 0, "template and row 0 unchanged");
+        Expect(param[38130000] is null, "no row for a probe slot");
+        Expect(param.Rows.Select(r => r.ID).SequenceEqual(param.Rows.Select(r => r.ID).Order()), "rows stay sorted");
+        Expect(MapSoundPlace.Apply(param, slots).Contains("0 MapDefaultInfoParam rows added, 0 changed, 3 already right"), "a second run changes nothing");
+        // The sizes the game reads survive a write.
+        var back = PARAM.Read(param.Write());
+        back.ApplyParamdef(def);
+        Expect(back[19700000] is { } r && Convert.ToInt32(r["BgmPlaceInfo"].Value) == 180, "the added row survives a write");
     }
 }
