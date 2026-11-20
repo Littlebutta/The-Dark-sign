@@ -79,6 +79,26 @@ public static class MapLightSets
     /// </summary>
     public const float MaxOverSun = 2;
 
+    /// <summary>
+    /// How much stronger than the slot's sun a light of a far-view set may be (<see cref="IsFarView"/>). DS3 lights
+    /// the scenery past the play area with sets of its own, far stronger than its sun, so it stands out bright through
+    /// the haze (2026-11-20 playtest: Irithyll's Anor Londo and far mountains black against the sky beside DS3's pale
+    /// blue). At <see cref="MaxOverSun"/> they came out black, so they keep DS3's proportion to the sun up to this.
+    /// </summary>
+    public const float MaxFarOverSun = 8;
+
+    /// <summary>
+    /// A light set for the scenery past the play area: DS3 names them 遠景 ("distant view": m30_00 13, 132, 137, 138,
+    /// 300 最遠景; m40_00 300, 310; m45_00 8; m37_00 6 最遠景の山脈, 8 他マップの遠景) or 天球 ("sky sphere", m37_00 9),
+    /// and numbers them from 300 where unnamed (m31_00 300, 310 light the m901xxx and m903xxx pieces 6 km out).
+    /// </summary>
+    public static bool IsFarView(int id, string ds3Name) =>
+        ds3Name.Contains("遠景", StringComparison.Ordinal) || ds3Name.Contains("天球", StringComparison.Ordinal) || id is >= 300 and < 400;
+
+    /// <summary>Fallback "map-light-sets" C: DARKSIGN_FAR_LIGHT_CAP=1 keeps far-view sets within
+    /// <see cref="MaxOverSun"/> like every other set, as builds up to 1.0.52x had them.</summary>
+    public static bool FarViewsBright => Environment.GetEnvironmentVariable("DARKSIGN_FAR_LIGHT_CAP") != "1";
+
     /// <summary>Switches DS3 sets per light set.</summary>
     public static readonly string[] Switches = ["Directional Enable LocalLight1", "Directional Enable LocalLight2", "Directional LightLight1 FollowedCamera"];
 
@@ -116,10 +136,16 @@ public static class MapLightSets
         // No light of a new set stronger than MaxOverSun times the slot's sun.
         float hostSun = MapAtmosphere.Value<Vector4>(light, "Directional Light DiffColor0")?.W ?? 0;
         float cap = hostSun > 0 ? hostSun * MaxOverSun : float.MaxValue;
+        float farCap = hostSun > 0 ? hostSun * MaxFarOverSun : float.MaxValue;
         var capped = new SortedSet<int>();
+        var far = new SortedSet<int>();
 
         foreach (var id in added)
         {
+            bool farView = FarViewsBright && IsFarView(id, Ds3Name(id));
+            if (farView)
+                far.Add(id);
+            float setCap = farView ? farCap : cap;
             int at = -1;
             foreach (var p in light.Params)
             {
@@ -136,9 +162,9 @@ public static class MapLightSets
                     {
                         float w = c.W * sunScale;
                         // A black light gives nothing whatever its strength (DS3 switches lights off that way).
-                        if (w > cap && Math.Max(c.X, Math.Max(c.Y, c.Z)) > 0)
+                        if (w > setCap && Math.Max(c.X, Math.Max(c.Y, c.Z)) > 0)
                         {
-                            w = cap;
+                            w = setCap;
                             capped.Add(id);
                         }
                         value = new Vector4(c.X, c.Y, c.Z, w);
@@ -178,7 +204,8 @@ public static class MapLightSets
         var inv = CultureInfo.InvariantCulture;
         var names = added.Select(id => Ds3Name(id) is { Length: > 0 } n ? $"{id} ({n})" : id.ToString(inv));
         return (added, string.Create(inv, $"DS3 light sets {string.Join(", ", names)} added beside the host's {string.Join(", ", hostIds.Order())} (strengths x{sunScale:0.##})")
-            + (capped.Count > 0 ? string.Create(inv, $"; lights over {MaxOverSun} times the sun ({cap:0.##}) turned down in sets {string.Join(", ", capped)}") : ""));
+            + (far.Count > 0 ? string.Create(inv, $"; far-view sets {string.Join(", ", far)} may reach {MaxFarOverSun} times the sun ({farCap:0.##})") : "")
+            + (capped.Count > 0 ? string.Create(inv, $"; lights over their limit turned down in sets {string.Join(", ", capped)}") : ""));
     }
 
     /// <summary>Every ID a group's params have a value for.</summary>

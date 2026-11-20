@@ -418,9 +418,10 @@ Try the next option if: A DS3 map's sky shows a plain colour, a flat cloud pictu
 
 Try the next option if: A DS3 map looks washed out, too foggy, too clear, or wrongly coloured since the maps took DS3's colours.
 
-- **A: DS3's colours (default).** Each map's sun and fog take DS3's colours and sun angle (each fog colour at DS3's own strength for it), the fog is as thick as Stormveil Castle's, and the colosseum's colour grading is off. How bright the sun is stays Elden Ring's.
+- **A: DS3's colours (default).** Each map's sun and fog take DS3's colours and sun angle (each fog colour at DS3's own strength for it), the fog hides as much of the distance as DS3's does at the height the map is played at, and the colosseum's colour grading is off. How bright the sun is stays Elden Ring's.
 - **B: The colosseum's own.** The map keeps the Elden Ring colosseum's colour, fog and sun settings (port-maps --host-atmosphere), as in every build before this option: a red tint on map 2 and thick golden fog on map 1. (`port-maps --host-atmosphere`)
 - **C: DS3's fog colours at full strength.** As A, but each fog colour is used as DS3 writes it, without DS3's own strength for it (DARKSIGN_FOG_STRENGTH=0), as builds up to 1.0.44x had it: map 2's haze is a bright cream. (`DARKSIGN_FOG_STRENGTH=0`)
+- **D: Stormveil's fog thickness.** As A, but the fog is Stormveil Castle's thickness from the map's lowest ground up (DARKSIGN_FOG_DEPTH=stormveil), as builds up to 1.0.52x had it: maps played high above their lowest point, such as Irithyll, have almost no haze. (`DARKSIGN_FOG_DEPTH=stormveil`)
 
 ### How strong the lights without shadows are in the DS3 maps (`map-fill-light`, rebuilds the content)
 
@@ -433,8 +434,9 @@ Try the next option if: Since this option came in, a DS3 map's shade is too dark
 
 Try the next option if: Since this option came in, parts of a DS3 map are black or far too bright, a room flickers between light and dark, or a boss or enemy is lit oddly.
 
-- **A: DS3's light set per part (default).** Each map piece, object, floor and character names the light set DS3 gives it, and the map's draw params get DS3's sets: Friede's hall and other rooms DS3 lights only with their candles, windows and baked light have no sun, and the bosses get their own light (Ariandel's warm fire). No light of these sets is stronger than twice the map's sun.
+- **A: DS3's light set per part (default).** Each map piece, object, floor and character names the light set DS3 gives it, and the map's draw params get DS3's sets: Friede's hall and other rooms DS3 lights only with their candles, windows and baked light have no sun, and the bosses get their own light (Ariandel's warm fire). No light of these sets is stronger than twice the map's sun, except DS3's far-view and sky sets, which may reach eight times it so far scenery stays bright through the haze.
 - **B: One light for everything.** Every part is lit with the map's outdoor light (port-maps --one-light-set), as up to 1.0.499: rooms lit by the sun through their roofs. (`port-maps --one-light-set`)
+- **C: Far views as dim as the rest.** As A, but DS3's light sets for far scenery and the sky are kept within twice the map's sun like every other set (DARKSIGN_FAR_LIGHT_CAP=1), as builds up to 1.0.52x had them: far buildings and mountains stand black against the sky. (`DARKSIGN_FAR_LIGHT_CAP=1`)
 
 ### Light the DS3 map pieces get from around them (`map-env-light`, rebuilds the content)
 

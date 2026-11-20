@@ -296,6 +296,19 @@ public static partial class MapPortChecks
         Expect(changes.Any(c => c.Contains("DS3 light sets 1 (暗闇用), 4, 111 (ボス_娘　戦闘) added") && c.Contains("turned down in sets 4")), string.Join(" | ", changes));
         var back = GPARAM.Read(host.Write());
         Expect(MapAtmosphere.Group(back, "LightSet")!.Params.All(p => p.Values.Count == 5), "the file reads back");
+        // Far-view and sky sets (DS3 names them 遠景 / 天球, or numbers them from 300) may be brighter than other sets.
+        Expect(MapLightSets.IsFarView(8, "他マップの遠景") && MapLightSets.IsFarView(9, "天球") && MapLightSets.IsFarView(310, "")
+               && !MapLightSets.IsFarView(4, "") && !MapLightSets.IsFarView(1, "暗闇用"), "far-view sets are told apart");
+        var farHost = new GPARAM();
+        farHost.Groups.Add(G("LightSet", P("Directional Light DiffColor0", GPARAM.ParamType.Float4, new Vector4(1, 1, 1, 0.6f))));
+        farHost.Groups[0].Params[0].TimeOfDay = [0f];
+        var farDs3 = new GPARAM { Game = GPARAM.GPGame.DarkSouls3 };
+        farDs3.Groups.Add(G("LightSet", D("Directional Light DiffColor0", GPARAM.ParamType.Float4, (0, new Vector4(1, 1, 1, 1.2f)), (8, new Vector4(0.6f, 0.85f, 1, 6)), (11, new Vector4(1, 1, 1, 6)))));
+        farDs3.Groups[0].Comments.AddRange(["", "他マップの遠景", ""]);
+        MapLightSets.Add(farHost, farDs3, [8, 11], 0.5f, 0);
+        var farSun = farHost.Groups[0].Params[0];
+        float W(int id) => ((Vector4)farSun.Values[farSun.ValueIDs.IndexOf(id)]).W;
+        Expect(W(8) == 3 && W(11) == 0.6f * MapLightSets.MaxOverSun, $"a far view keeps DS3's 6 x 0.5 = 3 (within {MapLightSets.MaxFarOverSun} x the sun); another set is capped at {MapLightSets.MaxOverSun} x ({W(8)}, {W(11)})");
 
         // Parts: a DS3 part's set is carried; one the draw params lack, and every one with the fallback, goes to -1.
         var piece = new MSB3.Part.MapPiece { Name = "m010701_5000", ModelName = "m010701" };
@@ -378,6 +391,19 @@ public static partial class MapPortChecks
             msb.Parts.Enemies.Add(new MSB3.Part.Enemy { Name = $"c1000_{i:D4}", ModelName = "c1000", Position = new Vector3(0, i - 10, 0) });
         Expect(MapAtmosphere.GroundHeight(msb) == -8, $"ground height {MapAtmosphere.GroundHeight(msb)}");
         Expect(MapAtmosphere.GroundHeight(new MSB3()) == 0, "a map with no entities starts the fog at 0");
+
+        // DS3's depth haze: as thick at the middle play height as hides DS3's fog 0 strength at the fog's reach.
+        var layer = MapAtmosphere.Layer(msb);
+        Expect(layer.Height == 10 && layer.Span == 36, $"play height {layer.Height}, span {layer.Span}");
+        var (density, distribution, offset) = MapAtmosphere.DepthFog(0.268f, new MapAtmosphere.FogLayer(-180, 130));
+        Expect(MathF.Abs(1 - MathF.Exp(-density * MapAtmosphere.FogFarDepth) - 0.268f) < 1e-4f && offset == -180
+               && MathF.Abs(MathF.Exp(distribution * 65) - 2) < 1e-3f, $"map 3's haze: density {density}, distribution {distribution}, offset {offset}");
+        var (thin, flat, _) = MapAtmosphere.DepthFog(0, new MapAtmosphere.FogLayer(0, 10));
+        Expect(thin > 0 && MathF.Abs(MathF.Exp(flat * MapAtmosphere.MinFogSpan / 2) - 2) < 1e-3f, "a map with no DS3 strength or height still gets a little haze, spread over the least span");
+        var depthHost = new GPARAM();
+        depthHost.Groups.Add(G("VolumetricFog", P("VolumetricFog Global HeightFogOffset", GPARAM.ParamType.Float, 0f), P("VolumetricFog Global HeightFogDensity Scale", GPARAM.ParamType.Float, 0.004f)));
+        MapAtmosphere.Apply(depthHost, ds3, -278, layer: new MapAtmosphere.FogLayer(-150, 200));
+        Expect(MapAtmosphere.Value<float>(MapAtmosphere.Group(depthHost, "VolumetricFog"), "VolumetricFog Global HeightFogOffset") == -150f, "the fog sits at the play height, not the lowest ground");
 
         // Nothing to take from DS3: the host's values stay. Fallback map-atmosphere B keeps the file.
         var plain = new GPARAM();
