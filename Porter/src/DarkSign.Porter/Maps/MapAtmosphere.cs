@@ -20,8 +20,9 @@ namespace DarkSign.Porter.Maps;
 /// DS3 or a legacy dungeon does.</item>
 /// <item>VolumetricFog: the colours from DS3's fog 0 (Fog-Color for the sunward glow, heightColor for the rest), each
 /// scaled by its own DS3 strength (<see cref="FogColours"/>); how
-/// thick the fog is, how far it reaches and how strongly it is lit come from Stormveil Castle (m10_00, an outdoor
-/// castle like DS3's maps, its first time of day), with the height fog starting at the DS3 map's own ground.</item>
+/// far the fog reaches and how strongly it is lit come from Stormveil Castle (m10_00, an outdoor castle like DS3's
+/// maps, its first time of day); how thick it is comes from DS3's fog 0 strength at the height the map is played at
+/// (<see cref="DepthFog"/>).</item>
 /// <item>ColorGrading off, so no colosseum's tint is laid over DS3's colours.</item>
 /// </list>
 /// Exposure, bloom and every other group stay the host's. Fallback "map-atmosphere" B (--host-atmosphere) keeps the
@@ -94,7 +95,7 @@ public static class MapAtmosphere
         var gparam = GPARAM.Read(hostBytes);
         var ds3Draw = GPARAM.Read(ds3.Read(source));
         var wanted = layout is null || oneLightSet ? null : MapLightSets.Wanted(layout);
-        var changes = Apply(gparam, ds3Draw, GroundHeight(ds3Msb), unturnedSun ? 0 : MapLighting.OffsetDegrees(ds3Msb), hostFillLights, wanted);
+        var changes = Apply(gparam, ds3Draw, GroundHeight(ds3Msb), unturnedSun ? 0 : MapLighting.OffsetDegrees(ds3Msb), hostFillLights, wanted, Layer(ds3Msb));
         if (unturnedSun && MapLighting.OffsetDegrees(ds3Msb) != 0)
             changes.Add("sun direction as DS3's file writes it, not turned with the map (--unturned-sun)");
         var target = ctx.ModPath(MapPorter.ModParts(GparamPath(erId)));
@@ -203,7 +204,7 @@ public static class MapAtmosphere
     /// <param name="lightSets">The light sets the layout's parts name: DS3's sets among them that the host lacks are
     /// added (<see cref="MapLightSets.Add"/>).</param>
     public static List<string> Apply(GPARAM gparam, GPARAM ds3, float ground, float sunTurnDegrees = 0, bool hostFillLights = false,
-        IEnumerable<int>? lightSets = null)
+        IEnumerable<int>? lightSets = null, FogLayer? layer = null)
     {
         var inv = CultureInfo.InvariantCulture;
         string C(Vector4 v) => string.Create(inv, $"{v.X:F2} {v.Y:F2} {v.Z:F2}");
@@ -252,11 +253,16 @@ public static class MapAtmosphere
             SetAll(fog, "VolumetricFog SkyLight SkyColor", _ => new Vector4(rest.X, rest.Y, rest.Z, FogSkyStrength));
             SetAll(fog, "VolumetricFog FarDepth", _ => FogFarDepth);
             SetAll(fog, "VolumetricFog FogEndDepth", _ => FogEndDepth);
-            SetAll(fog, "VolumetricFog Global HeightFogDistribution", _ => FogDistribution);
-            SetAll(fog, "VolumetricFog Global HeightFogDensity Scale", _ => FogDensity);
-            SetAll(fog, "VolumetricFog Global HeightFogOffset", _ => ground);
-            SetAll(fog, "VolumetricFog Global HeightFogReferenceOffset", _ => ground);
-            changes.Add(string.Create(inv, $"fog colour {C(direct)} / {C(rest)} from DS3 fog 0 ({(FogStrengthEnabled ? $"its colours {C(ds3Colour)} at {ds3Colour.W:F2} and {C(heightColour ?? ds3Colour)} at {(heightColour ?? ds3Colour).W:F2}" : "colours without their strengths")}), Stormveil's thickness (density {FogDensity}, out to {FogFarDepth} m) from height {ground:F0}"));
+            var depth = layer is { } l && FogDepthEnabled ? DepthFog(ds3Colour.W, l) : ((float Density, float Distribution, float Offset)?)null;
+            var (density, distribution, offset) = depth ?? (FogDensity, FogDistribution, ground);
+            SetAll(fog, "VolumetricFog Global HeightFogDistribution", _ => distribution);
+            SetAll(fog, "VolumetricFog Global HeightFogDensity Scale", _ => density);
+            SetAll(fog, "VolumetricFog Global HeightFogOffset", _ => offset);
+            SetAll(fog, "VolumetricFog Global HeightFogReferenceOffset", _ => offset);
+            var thickness = depth is null
+                ? string.Create(inv, $"Stormveil's thickness (density {FogDensity}, out to {FogFarDepth} m) from height {ground:F0}")
+                : string.Create(inv, $"DS3's depth haze: {Math.Clamp(ds3Colour.W, MinHaze, MaxHaze):0.##} of the view hidden at {FogFarDepth} m (density {density:0.#####}) through the height the map is played at ({layer!.Value.Height:F0}, halving every {MathF.Log(2) / distribution:F0} m up)");
+            changes.Add(string.Create(inv, $"fog colour {C(direct)} / {C(rest)} from DS3 fog 0 ({(FogStrengthEnabled ? $"its colours {C(ds3Colour)} at {ds3Colour.W:F2} and {C(heightColour ?? ds3Colour)} at {(heightColour ?? ds3Colour).W:F2}" : "colours without their strengths")}), ") + thickness);
         }
         else
             changes.Add("fog: " + (fog is null ? "no volumetric fog in the host" : "no fog colour in DS3") + "; kept");
@@ -264,6 +270,49 @@ public static class MapAtmosphere
         if (Group(gparam, "ColorGrading") is { } grading && SetAll(grading, "Yebis-ColorGrading-Enable", v => v is int ? 0 : v) > 0)
             changes.Add("colour grading off");
         return changes;
+    }
+
+    /// <summary>Where a DS3 map is played: the middle height of its enemies and player points, and the height
+    /// between the lowest and highest twentieth of them.</summary>
+    public readonly record struct FogLayer(float Height, float Span);
+
+    /// <summary>The height a map is played at (<see cref="FogLayer"/>); 0 and 0 for a map with no entities.</summary>
+    public static FogLayer Layer(MSB3 ds3)
+    {
+        var heights = ds3.Parts.Enemies.Select(e => e.Position.Y).Concat(ds3.Parts.Players.Select(p => p.Position.Y)).Order().ToList();
+        if (heights.Count == 0)
+            return new FogLayer(0, 0);
+        return new FogLayer(heights[heights.Count / 2], heights[Math.Min(heights.Count - 1, heights.Count * 19 / 20)] - heights[heights.Count / 20]);
+    }
+
+    /// <summary>Fallback "map-atmosphere" D: DARKSIGN_FOG_DEPTH=stormveil keeps Stormveil's fog thickness from the
+    /// map's ground up, as builds up to 1.0.52x had it.</summary>
+    public static bool FogDepthEnabled => !string.Equals(Environment.GetEnvironmentVariable("DARKSIGN_FOG_DEPTH"), "stormveil", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>The least and most of the view DS3's haze may hide (DS3's fog 0 strength, clamped).</summary>
+    public const float MinHaze = 0.02f, MaxHaze = 0.9f;
+
+    /// <summary>The play height's span below which the fog's change with height is spread as over this one.</summary>
+    public const float MinFogSpan = 50;
+
+    /// <summary>
+    /// DS3's depth haze (2026-11-20 playtest, Irithyll beside DS3: "look at all the lighting differences"; the port's
+    /// far cathedral and Anor Londo stood sharp and black where DS3's fade into blue). DS3's distance fog hides up to
+    /// its fog 0 strength (the fourth value of Fog-Color: m30_00 0.12, m40_00 0.26, m31_00 0.27) of what lies past its
+    /// reach, wherever the camera stands; its height fog is a separate layer. The port gave every map Stormveil's
+    /// height fog (density 0.004, falling to half every 12 m above the map's ground: the twentieth lowest entity), so
+    /// a map played well above its lowest point had next to no haze: Irithyll's ground is -278 and its bridge some 130 m
+    /// higher, where that fog is 1/2000 as thick. Now the fog is as thick at the height the map is played at (the
+    /// middle of its entities) as hides DS3's share of the view at the fog's reach (<see cref="FogFarDepth"/>), and it
+    /// changes four times over the map's played heights (twice as thick at the lowest twentieth, half at the
+    /// highest), so it thins out into the sky above. Returns the density, the height distribution and the offset.
+    /// </summary>
+    public static (float Density, float Distribution, float Offset) DepthFog(float ds3Strength, FogLayer layer)
+    {
+        float hidden = Math.Clamp(ds3Strength, MinHaze, MaxHaze);
+        float density = -MathF.Log(1 - hidden) / FogFarDepth;
+        float distribution = MathF.Log(4) / Math.Max(MinFogSpan, layer.Span);
+        return (density, distribution, layer.Height);
     }
 
     /// <summary>The group whose short name (Name2, trimmed) is <paramref name="name"/>.</summary>
