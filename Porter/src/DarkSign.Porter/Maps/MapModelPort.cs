@@ -75,7 +75,7 @@ public sealed class MapModelPort
 
     /// <summary>A new port with the same templates and none of this one's materials (one per map).</summary>
     public MapModelPort Fresh() => new(_templates, _templateFlver)
-        { VanillaMaterials = VanillaMaterials, TemplateTextures = TemplateTextures, Ds3Alpha = Ds3Alpha, TerrainLayers = TerrainLayers, TintMaterials = TintMaterials,
+        { VanillaMaterials = VanillaMaterials, TemplateTextures = TemplateTextures, Ds3Alpha = Ds3Alpha, TerrainLayers = TerrainLayers, SkyLayers = SkyLayers, TintMaterials = TintMaterials,
           HalfNormals = HalfNormals, LayerContours = LayerContours, OverlayBacking = OverlayBacking, CutFadedOverlays = CutFadedOverlays, FadeOverlays = FadeOverlays };
 
     /// <summary>
@@ -133,6 +133,13 @@ public sealed class MapModelPort
     public bool TerrainLayers { get; set; } = true;
 
     /// <summary>
+    /// True (the default): a two-layer DS3 sky dome shows the layer that covers most of each of its meshes
+    /// (<see cref="MapTerrainBlends.ApplySky"/>). False (fallback "map-sky-layer" B, --first-sky-layer): it shows its
+    /// first layer, as every build up to 1.0.50x (the Painted World's sky was its cloud picture).
+    /// </summary>
+    public bool SkyLayers { get; set; } = true;
+
+    /// <summary>
     /// True (the default): a terrain blend or two-layer triangle whose corners show different layers is cut along the
     /// line where DS3 changes layer (<see cref="MapLayerContours"/>). False (fallback "map-blend-layers" C,
     /// --whole-blend-triangles): it goes whole to one layer, as 1.0.354 to 1.0.46x, and the edges of painted patches
@@ -180,6 +187,9 @@ public sealed class MapModelPort
 
     /// <summary>What <see cref="MapTerrainBlends"/> did to this port's models, for the port log.</summary>
     public MapTerrainBlends.Stats Blends { get; } = new();
+
+    /// <summary>What <see cref="MapTerrainBlends.ApplySky"/> did to this port's models, for the port log.</summary>
+    public MapTerrainBlends.SkyStats Skies { get; } = new();
 
     /// <summary>What <see cref="MapOverlays"/> did to this port's models, for the port log.</summary>
     public MapOverlays.Stats Overlays { get; } = new();
@@ -844,6 +854,13 @@ public sealed class MapModelPort
             var stats = new MapTerrainBlends.Stats();
             MapTerrainBlends.Apply(flver, stats, LayerContours);
             Blends.Add(stats);
+        }
+        // Sky domes: the layer that covers most of each dome mesh (the weights are still in DS3's vertex layout here).
+        if (SkyLayers)
+        {
+            var stats = new MapTerrainBlends.SkyStats();
+            MapTerrainBlends.ApplySky(flver, stats);
+            Skies.Add(stats);
         }
         if (TintMaterials)
             // A material shared by a faded overlay and a solid mesh: the overlay gets its own copy, so it can be told apart.

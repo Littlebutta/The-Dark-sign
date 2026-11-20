@@ -66,6 +66,9 @@ public static class MapPorter
         /// <summary>--first-blend-layer: a DS3 terrain blend (2m/3m/4m) shows only its first layer, as up to 1.0.353
         /// (fallback "map-blend-layers" B; see <see cref="MapTerrainBlends"/>).</summary>
         public bool FirstBlendLayer { get; set; }
+        /// <summary>--first-sky-layer: a two-layer DS3 sky dome shows its first layer, as up to 1.0.50x (fallback
+        /// "map-sky-layer" B; see <see cref="MapTerrainBlends.ApplySky"/>).</summary>
+        public bool FirstSkyLayer { get; set; }
         /// <summary>--whole-blend-triangles: a terrain blend or two-layer triangle goes whole to the layer its corners
         /// show on average instead of being cut along the layer's edge, as 1.0.354 to 1.0.46x (fallback
         /// "map-blend-layers" C; see <see cref="MapLayerContours"/>).</summary>
@@ -205,6 +208,7 @@ public static class MapPorter
                     case "--stand-ins": o.StandIns = true; break;
                     case "--solid-overlays": o.SolidOverlays = true; break;
                     case "--first-blend-layer": o.FirstBlendLayer = true; break;
+                    case "--first-sky-layer": o.FirstSkyLayer = true; break;
                     case "--whole-blend-triangles": o.WholeBlendTriangles = true; break;
                     case "--raw-half-normals": o.RawHalfNormals = true; break;
                     case "--cut-faded-overlays": o.CutFadedOverlays = true; o.FadeOverlays = true; break;
@@ -269,6 +273,7 @@ public static class MapPorter
     {
         port.Ds3Alpha = !options.SolidOverlays;
         port.TerrainLayers = !options.FirstBlendLayer;
+        port.SkyLayers = !options.FirstSkyLayer;
         port.LayerContours = !options.WholeBlendTriangles;
         port.HalfNormals = !options.RawHalfNormals;
         port.CutFadedOverlays = options.CutFadedOverlays;
@@ -1035,6 +1040,7 @@ public static class MapPorter
         models.UnlitCastShadows = options.HostLighting;
         models.Ds3Alpha = !options.SolidOverlays;
         models.TerrainLayers = !options.FirstBlendLayer;
+        models.SkyLayers = !options.FirstSkyLayer;
         models.LayerContours = !options.WholeBlendTriangles;
         models.HalfNormals = !options.RawHalfNormals;
         models.TintMaterials = options.TintMaterials;
@@ -1295,6 +1301,7 @@ public static class MapPorter
         {
             report.AppendLine("  " + (options.SolidOverlays ? "vertex alpha: every vertex solid, two-layer materials show their first layer (--solid-overlays)" : models.Overlays.Summary));
             report.AppendLine("  " + (options.FirstBlendLayer ? "terrain blends: every mesh shows its first layer (--first-blend-layer)" : models.Blends.Summary));
+            report.AppendLine("  " + (options.FirstSkyLayer ? "sky domes: every mesh shows its first layer (--first-sky-layer)" : models.Skies.Summary));
             report.AppendLine("  " + (options.RawHalfNormals ? "half-float normals: kept as SoulsFormats reads them (--raw-half-normals)" : models.HalfNormalStats.Summary));
         }
         if (copied > 0)
