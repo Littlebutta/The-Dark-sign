@@ -1,10 +1,11 @@
 # Loading the DS3 maps under their own map IDs
 
-**Answered 2026-11-09: the executable gates map IDs.** Registering an ID Elden Ring doesn't ship (the m50 probe)
-crashed the game at boot on every launch of 1.0.238; an unregistered one sits on the loading screen for ever
-(1.0.230). The default build has no probe any more, the porter never writes the map registry, and map-slots B now
-uses IDs the registry already names (m11_70, m11_72, m19_70). Details in "Second probe result" below; the sections
-before it are the history.
+**Answered again 2026-11-19 (see "Third look" at the end): the executable does not keep a list of allowed map IDs.**
+It builds its map table at boot from the map registry, in fixed-size arrays. The m50 probe crashed the boot because
+area numbers 50-88 are open-world areas and the game has room for exactly the six it ships, not because m50 is
+unknown. New blocks of dungeon areas the game already has fit, within the arrays' sizes, and the porter now adds them
+to port the rest of DS3 (`MapSlots.WorldSlots`, `MapRegistry.Write`, launcher fallback `map-world`). The sections
+before "Third look" are the history.
 
 Devin's question (2026-11-08): would the ported maps load better as their own maps, instead of taking over the
 colosseum arenas (m45_00-02) and their names and logic? This note is the assessment and the plan. It is written
@@ -154,3 +155,54 @@ is deleted, not rescued), in the next playtest build:
    - **Crash:** send the Save test report; the crash offset says whether it died in map lookup (ID refused) or in
      content (same bugs as the colosseum slot, which then say nothing about IDs).
 3. Whatever the outcome, keep fixing map content under the method that loads: those bugs are the same under both.
+
+## Third look (2026-11-19): what the game really keeps
+
+Devin asked for every DS3 map, loaded and joined like DS3. That needs about a dozen more map IDs than the
+colosseums and the three spare IDs give, so the 1.0.238 crash was read again, this time in the executable itself
+(Devin's eldenring.exe 2.7.2, disassembled with capstone; struct names from vswarte/fromsoftware-rs,
+`crates/eldenring/src/cs/field_area.rs`):
+
+| What | Where (RVA) | Size | Vanilla use |
+|---|---|---|---|
+| Dungeon ("legacy") area entries, one per distinct area number | WorldInfo +0x10, filled by +0x66CE10 | 28 x 0x50 | 27 (m10-16, 18-22, 25, 28, 30-32, 34, 35, 38-43, 45, 49) |
+| Block entries, one per registry line | +0x148 / +0xB790 | 192 x 0xE0 | 111 |
+| Open-world grid area entries, one per area number 50-88 | +0x20 / +0xB780, filled by +0x66D0A0 | 6 x 0xF80 | 6 (m60, m61, m62, m70, m80, m88) |
+| Base list's dungeon IDs ("is a base game map", +0x621EF0) | WorldRes +0xB31D8, filled by +0x66C4D0 | 96 x 4, DL_PANIC past 0x60 | 90 |
+
+The area/grid split is `area - 50 <= 38` (+0x662270, +0x66C709). None of the fill loops checks the array sizes. The
+m50 line made a seventh grid area: its 0xF80-byte entry was written past the end of the grid array, over the object
+at owner+0xB3630 (the crash function +0xAECFC0 calls `[rcx+0xB3630]->vtable[0xC0/8]`), so its vtable was zero and the
+call read address 0xC0. That is exactly the 1.0.238 dump. The endless loading of 1.0.230 was simply the unlisted ID.
+
+So a new map needs an area number below 50 (or above 88), and the totals must stay within 28 areas, 192 blocks and
+96 base-list dungeon lines. The porter adds new blocks of areas the game already has:
+
+| DS3 | Elden Ring | How it is listed |
+|---|---|---|
+| m30_01 Lothric Castle | m45_03 | added (shares m45's texture binder with the High Wall) |
+| m33_00 Road of Sacrifices / Farron Keep | m45_04 | added |
+| m35_00 Cathedral of the Deep | m45_05 | added |
+| m38_00 Catacombs of Carthus / Smouldering Lake | m38_10 | listed by the game (a test map, `testmap=1`) |
+| m37_00 Irithyll of the Boreal Valley | m38_11 | listed (test map) |
+| m39_00 Irithyll Dungeon | m38_12 | listed (test map) |
+| m34_01 Grand Archives | m38_13 | added |
+| m32_00 Archdragon Peak | m38_14 | added |
+| m41_00 Kiln of the First Flame | m38_15 | added |
+| m50_00 The Dreg Heap | m11_70 | listed, never visited |
+| m51_00 The Ringed City | m11_72 | listed, never visited |
+| m51_01 Filianore's Rest | none | the six free base-list lines are used |
+
+All of them are built from m45_00's formats and side files, like the Painted World in m19_70. `MapRegistry.Write`
+writes the base list with the added lines, compressed like the game's copy; `map-validate` fails a mod list that
+names a new open-world area or goes past an array. Untested in game. What `testmap=1` changes for m38_10-12 is not
+known. If the boot crashes with this build, take fallback `map-world` B (the four maps as before) and read the dump:
+a crash at +0xAED000 again means an array is fuller than counted here.
+
+**Joining the maps.** DS3 places every map in one world space: each map's parts carry its MSB MapOffset (m31 at
+50, -155, -580 turned -156 degrees), and a connect collision names the neighbour whose parts lie right there. The port
+keeps every part's DS3 position, so ported neighbours are already in the same space, and connect collisions to any
+ported map are kept (`MsbPort`). Elden Ring lists linked legacy maps in WorldMapLegacyConvParam with one point in each
+map's coordinates; maps built in one space have the same point on both sides (Leyndell and the Shunning-Grounds, rows
+12 and 110). `MapLinks` adds such a pair of rows for every two ported maps a DS3 connect collision joins (rows 9000+;
+fallback `map-world` C leaves them out).

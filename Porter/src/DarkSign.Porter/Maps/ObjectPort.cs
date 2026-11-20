@@ -893,8 +893,11 @@ public sealed class ObjectPort
     /// </list>
     /// Returns how many rows were added.
     /// </summary>
-    public static int AddObjActRows(PARAM erParam, PARAM ds3Param, PARAM? actionButtons, List<string>? notes = null)
+    public static int AddObjActRows(PARAM erParam, PARAM ds3Param, PARAM? actionButtons, List<string>? notes = null,
+        MapText.Method? text = null, ISet<int>? used = null)
     {
+        var textMode = text ?? MapText.Mode;
+        int messages = 0;
         var template = erParam[ObjActTemplateRow] ?? erParam.Rows.FirstOrDefault() ?? throw new InvalidDataException("ObjActParam has no rows to copy");
         erParam.Rows.RemoveAll(r => r.ID >= ObjActBase && r.ID < ObjActBase + 5_000_000);
         var buttons = actionButtons?.Rows.Select(r => r.ID).ToHashSet();
@@ -921,6 +924,18 @@ public sealed class ObjectPort
                 }
             if (Number(row, "spQualifiedPassEventFlag") < 0)
                 Set(row, "spQualifiedPassEventFlag", 0);
+            // Text by number (MapText). The message shown when the action fails ("Does not open from this side",
+            // "Locked") is DS3's event text: it names the copy of DS3's words. The prompt comes from the action
+            // button row in Elden Ring, so DS3's "action enabled" message (10010400) gives way to the template's.
+            var failed = (long)Number(row, "actionFailedMsgId");
+            if (MapText.Message(failed, textMode) is var failedText && failedText != failed)
+            {
+                Set(row, "actionFailedMsgId", (int)failedText);
+                messages++;
+                used?.Add((int)failed);
+            }
+            if (textMode != MapText.Method.Off && template.Cells.FirstOrDefault(c => c.Def.InternalName == "actionEnableMsgId")?.Value is { } enable)
+                Set(row, "actionEnableMsgId", enable);
             var button = (int)Number(row, "actionButtonParamId");
             if (buttons is not null && button > 0 && !buttons.Contains(button))
             {
@@ -931,7 +946,7 @@ public sealed class ObjectPort
             added++;
         }
         erParam.Rows.Sort((a, b) => a.ID.CompareTo(b.ID));
-        notes?.Add($"ObjActParam: {added} DS3 rows at {ObjActBase:N0} + the DS3 ID ({keys} key requirements dropped: keys aren't ported, so those doors open without one; {prompts} prompts Elden Ring lacks use its door/lever prompt)");
+        notes?.Add($"ObjActParam: {added} DS3 rows at {ObjActBase:N0} + the DS3 ID ({keys} key requirements dropped: keys aren't ported, so those doors open without one; {prompts} prompts Elden Ring lacks use its door/lever prompt; {messages} \"can't do that\" messages name DS3's text)");
         return added;
     }
 

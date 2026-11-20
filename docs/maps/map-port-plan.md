@@ -41,7 +41,11 @@ single-player game never visits (area m19 is otherwise only the final boss arena
 per-map side files come from m45_00, the colosseum every slot is proven to load from. Fallback `map-painted-world` B
 puts it in m45_02 instead (the Undead Settlement is then left out), C leaves it out.
 
-The other DS3 maps need more slots and are listed in `MapSlots.Ds3Maps`.
+Since 2026-11-19 the other DS3 maps are ported too (`MapSlots.WorldSlots`, fallback `map-world`): Lothric Castle
+m45_03, Road of Sacrifices m45_04, Cathedral m45_05, Catacombs m38_10, Irithyll m38_11, Irithyll Dungeon m38_12,
+Grand Archives m38_13, Archdragon Peak m38_14, Kiln m38_15, Dreg Heap m11_70, Ringed City m11_72; Filianore's Rest has
+no slot. The new blocks are added to the game's map list within its fixed arrays; see `own-map-ids.md`, "Third look".
+Neighbours DS3 joins get connect collisions and WorldMapLegacyConvParam rows (`Maps/MapLinks.cs`).
 Entity IDs move with the map: 4000xxxx becomes 4500xxxx. The run starts at the DS3 player point with entity
 x990-x999, which gets entity 45000990.
 
@@ -343,6 +347,22 @@ second light to Stormveil's 1 (m45_00 had 0.5 and 0, m45_01 1 and 0). The atmosp
 change. Not done: DS3's other light sets (m40's pieces inside Firelink name sets 30 to 32, with no sun and a strong
 local light; every ported piece uses set 0). Fallback `map-fill-light` B (`--host-fill-lights`).
 
+### Light sets per part (1.0.499 playtest: Friede's boss room "isn't lit like the original")
+
+Every DS3 part names a light set (an ID in the LightSet group of the map's draw params). Most of a map is on set 0,
+which the slot's draw params take from DS3, but DS3 lights its rooms with sets of their own. Friede's hall (the
+Painted World, box -262..-195, 15..60, -255..-205) is 132 map pieces and 135 objects on set 1, which DS3's file calls
+暗闇用 ("for darkness"): no sun, no second light, no local light, so only candles, window shafts and baked light
+reach it. The bosses have sets too (Friede 111, Ariandel 120 with a warm light from the fire bowl). The port copied
+every part from a colosseum part on set -1, so each room was lit by the outdoor sun through its roof.
+
+`MapLightSets` carries DS3's set onto each ported map piece, asset, collision and enemy; `MapAtmosphere` adds to the
+slot's draw params every DS3 set the layout names that the host lacks (DS3's colours and directions, strengths times
+the host's sun over DS3's, no light above twice the slot's sun; the rest copied from set 0), keeping the values and
+the group's ID list in ID order; a part whose set is still missing goes back to -1. The host's sets 0, 100, 1000 and
+1100 stay (Elden Ring's floors name 100, as DS3's outdoor floors and characters do). Unproven: Elden Ring's own map
+pieces name only 0 and -1. Fallback `map-light-sets` B (`--one-light-set`). Log line: `light sets:`.
+
 ### Lamps and flames (2026-11-19 playtest: large white lights on map 2, candles that light nothing)
 
 DS3's lamps kept DS3's strengths while the sun took Elden Ring's (host 0.6 / 0.5 / 0.4 against DS3's 0.8 / 1.23 /
@@ -575,6 +595,37 @@ Stage 1 (2026-11-11, not yet playtested; written without game files, checked off
 Still missing after stage 1: object effects (candle and bonfire flames, torches), doors/levers/lifts (ObjAct events,
 ObjActParam, object animations), ladders, fog walls, breakable objects, treasure
 (items lying in the map), what people say and sell (see below), sound regions.
+
+### Event messages and area names
+
+2026-11-19, not yet playtested; checked offline by `map-selftest` ("map text: ...") and in a cloud thread against
+DS3's real text binders, the scripts of m30, m31, m37, m40 and m45 with common_func, and the map files of m30, m31,
+m40 and m45. Fallback `map-text` (B `DARKSIGN_MAP_TEXT=noplaces`, C `=0`). Code: `Maps/MapText.cs`, written at the
+end of the events step.
+
+- **Cause.** DS3's text numbers were carried over as they were and Elden Ring looked them up in its own text. The
+  scripts' "Message ID" (Display Generic Dialog, Display Status Message, Display Message, and the values passed to the
+  shared door and lever events) and the ObjActParam rows' `actionFailedMsgId` name DS3's event text (イベントテキスト:
+  10010160 "Locked by some contraption", 10010161 "Does not open from this side", 10010170 "Contraption does not
+  move"), which Elden Ring's EventTextForMap doesn't have. The five maps' scripts name 34 such messages; all 34 are in
+  DS3's event text files.
+- **Fix.** A DS3 text number N is 1,000,000,000 + N in Elden Ring (the rule the dialogue lines use, which shows in
+  game). All 1,374 DS3 event texts go into EventTextForMap_dlc02 and all 63 area names into PlaceName_dlc02, so every
+  step finds a text without a shared table. `<?gdsparam@N?>` (181 texts: "Used <key>") is filled with DS3's item name,
+  since Elden Ring would fill it with its own goods N; 37 name an item DS3 has no name for and keep the tag.
+- **Area names.** DS3's collisions carry the area name (MapNameID): positive on the few collisions where the banner
+  shows (m30: 3000 High Wall of Lothric x4, 3010 Lothric Castle x3, 3015 Consumed King's Garden x4), negative on the
+  rest of the area (-3000 x42), -1 for none. Elden Ring's collisions have the same field (LocationTextID), which was
+  always written -1. The sign is kept. Unproven: that Elden Ring reads a negative name the way DS3 does (the area,
+  without the banner); if a banner shows on every step, that is the cause (fallback B).
+- **Prompts.** `ActionButtons` looked for DS3's event text files under an English name, so every menu text file
+  answered in binder order, the dialogue first: 46 event text numbers are also a dialogue line's number. The event
+  text files now answer first. The log's "prompt text" line printed its counts as "{reused}"; fixed.
+- **ObjActParam.** `actionEnableMsgId` took DS3's 10010400; Elden Ring's rows show the prompt from the action button
+  row, so it is the template's again.
+- **Left out.** "Display Epitaph Message" (2003[61]) has no Elden Ring instruction. The multiplayer tags
+  (`<?hostName?>`, `<?joinName?>`) stay as DS3 wrote them. Text is English only (msg/engus), like every other text
+  the port writes.
 
 ### Bonfires as sites of grace
 

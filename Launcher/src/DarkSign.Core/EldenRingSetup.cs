@@ -17,6 +17,14 @@ public sealed class EldenRingSetup(string root)
     public const string ItemsVariable = "DKSIGN_ITEMS";
     public const string PorterAsset = "DarkSignPorter.zip";
     public const string BuildStampName = "darksign_build.txt";
+    /// <summary>The <see cref="ContentId"/> the content was built with (beside the stamp).</summary>
+    public const string ContentIdName = "darksign_build_id.txt";
+
+    /// <summary>
+    /// Bump when the launcher starts the porter differently for a content build (MainWindow.BuildContentAsync: the
+    /// commands, their order, fixed arguments): it is part of <see cref="ContentId"/>, so the next update rebuilds.
+    /// </summary>
+    public const string BuildRecipe = "1";
 
     public const string ModEngineUrl =
         "https://github.com/soulsmods/ModEngine2/releases/download/release-2.1.0/ModEngine-2.1.0.0-win64.zip";
@@ -55,10 +63,56 @@ public sealed class EldenRingSetup(string root)
 
     public string? ContentVersion => File.Exists(BuildStampFile) ? File.ReadAllText(BuildStampFile).Trim() : null;
 
-    /// <summary>The content is rebuilt when it was never built, or was built by a different porter.</summary>
-    public bool NeedsContentBuild(string porterVersion) =>
-        !File.Exists(Path.Combine(ModDir, "regulation.bin")) || !File.Exists(ItemsFile) || ContentVersion != porterVersion
-        || IconFilesProblem() is not null;
+    private string ContentIdFile => Path.Combine(ModDir, ContentIdName);
+
+    /// <summary>The <see cref="ContentId"/> the content in the mod folder was built with, or null (built before 1.0.51x).</summary>
+    public string? BuiltContentId => File.Exists(ContentIdFile) ? File.ReadAllText(ContentIdFile).Trim() : null;
+
+    /// <summary>
+    /// What a content build's result depends on, apart from the player's game files: every file of the installed
+    /// porter (byte for byte; version.txt left out), the build methods with the porter environment and port-maps
+    /// arguments they give, and <see cref="BuildRecipe"/>. A launcher update whose release reused the previous porter
+    /// (the release workflow rebuilds it only when Porter/, DarkSign.Core or the randomizer change) gives the same
+    /// ID, so the content it would build is the content already built. Null when no porter is installed.
+    /// </summary>
+    public string? ContentId(IReadOnlyDictionary<string, string>? methods)
+    {
+        if (!Directory.Exists(PorterDir))
+            return null;
+        using var hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
+        void Add(string text) => hash.AppendData(Encoding.UTF8.GetBytes(text + "\n"));
+        Add("recipe " + BuildRecipe);
+        var files = Directory.GetFiles(PorterDir, "*", SearchOption.AllDirectories)
+            .Select(f => Path.GetRelativePath(PorterDir, f).Replace('\\', '/'))
+            .Where(f => !f.Equals("version.txt", StringComparison.OrdinalIgnoreCase))
+            .Order(StringComparer.Ordinal).ToList();
+        if (files.Count == 0)
+            return null;
+        foreach (var file in files)
+        {
+            var bytes = File.ReadAllBytes(Path.Combine(PorterDir, file));
+            Add($"file {file} {bytes.Length}");
+            hash.AppendData(bytes);
+        }
+        Add("methods " + Fallbacks.BuildSignature(methods));
+        foreach (var (k, v) in Fallbacks.PorterEnvironment(methods).OrderBy(e => e.Key, StringComparer.Ordinal))
+            Add($"env {k}={v}");
+        Add("maps " + string.Join(" ", Fallbacks.MapsArguments(methods)));
+        Add("serial " + Fallbacks.SerialBuild(methods));
+        return Convert.ToHexString(hash.GetHashAndReset());
+    }
+
+    /// <summary>
+    /// The content is rebuilt when it was never built, or was built by a different porter. A different porter
+    /// version whose <see cref="ContentId"/> is the one the content was built with is the same porter (a launcher-only
+    /// update): nothing to rebuild (<paramref name="contentId"/> null: compare versions only).
+    /// </summary>
+    public bool NeedsContentBuild(string porterVersion, string? contentId = null) =>
+        !File.Exists(Path.Combine(ModDir, "regulation.bin")) || !File.Exists(ItemsFile) || IconFilesProblem() is not null
+        || (ContentVersion != porterVersion && !SameContent(contentId));
+
+    /// <summary>True when the content was built by the porter, methods and recipe <paramref name="contentId"/> stands for.</summary>
+    public bool SameContent(string? contentId) => contentId is not null && BuiltContentId == contentId;
 
     /// <summary>The menu files the porter writes for item icons, in menu\hi and menu\low (see the porter's IconPort).</summary>
     public static readonly string[] IconFiles = ["01_common.tpf.dcx", "01_common.sblytbnd.dcx", "00_solo.tpfbhd", "00_solo.tpfbdt"];
@@ -78,7 +132,19 @@ public sealed class EldenRingSetup(string root)
         return null;
     }
 
-    public void MarkContentBuilt(string porterVersion) => File.WriteAllText(Guard(BuildStampFile), porterVersion);
+    /// <summary>
+    /// Writes the build stamp, and the <see cref="ContentId"/> it was built with (null: none, so the next update
+    /// compares versions only). Also used when an update keeps the content (<see cref="SameContent"/>): the stamp
+    /// then names the new version, whose porter is the same.
+    /// </summary>
+    public void MarkContentBuilt(string porterVersion, string? contentId = null)
+    {
+        File.WriteAllText(Guard(BuildStampFile), porterVersion);
+        if (contentId is not null)
+            File.WriteAllText(Guard(ContentIdFile), contentId);
+        else if (File.Exists(ContentIdFile))
+            File.Delete(Guard(ContentIdFile));
+    }
 
     /// <summary>Unpacks ModEngine2's release zip into TheDarkSign\Tools\ModEngine2 after checking its hash.</summary>
     public void InstallModEngine(string zipPath)
