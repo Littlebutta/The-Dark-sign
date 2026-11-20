@@ -8,7 +8,7 @@ public static partial class MapPortChecks
     private static IEnumerable<(string Name, Action Test)> TextChecks()
     {
         yield return ("map text: a script's dialog, status and message lines name DS3's event text at 1,000,000,000 + the DS3 number, written in the line or passed in", TextInScripts);
-        yield return ("map text: an area welcome line and a collision's area name point at DS3's place name; DARKSIGN_MAP_TEXT turns each off", TextPlaces);
+        yield return ("map text: an area welcome line and a collision's positive area name point at DS3's place name, a negative one names none; DARKSIGN_MAP_TEXT turns each off", TextPlaces);
         yield return ("map text: a door's 'can't do that' message names DS3's event text and the prompt message is Elden Ring's", TextObjAct);
         yield return ("map text: DS3's text is merged into an Elden Ring text file, replacing an earlier run's and keeping Elden Ring's", TextMerge);
     }
@@ -108,8 +108,9 @@ public static partial class MapPortChecks
         Expect(Arg(noPlaces.Convert(script, EMEVD.Game.Sekiro, MoveToSlot).Events[0].Instructions[0], "Message ID", er) == 3000, "noplaces keeps the area name's DS3 number");
 
         Expect(MapText.CollisionPlace(3000, MapText.Method.All) == MapText.Base + 3000, "a collision's area name moves");
-        Expect(MapText.CollisionPlace(-1, MapText.Method.All) == -1 && MapText.CollisionPlace(0, MapText.Method.All) == 0, "a collision with no area name keeps none");
-        Expect(MapText.CollisionPlace(-3000, MapText.Method.All) == -(MapText.Base + 3000), "a negative area name keeps its sign");
+        Expect(MapText.CollisionPlace(-1, MapText.Method.All) == -1 && MapText.CollisionPlace(0, MapText.Method.All) == -1, "a collision with no area name (or 0) names none");
+        Expect(MapText.CollisionPlace(-3000, MapText.Method.All) == -1,
+            "a negative area name (DS3: the rest of the area, no banner) names none: Elden Ring showed ?PlaceName? for it and a banner at every step onto it");
         Expect(MapText.CollisionPlace(3000, MapText.Method.NoPlaces) == -1 && MapText.CollisionPlace(3000, MapText.Method.Off) == -1, "area names off: collisions name none, as before");
         Expect(MapText.ModeOf(null) == MapText.Method.All && MapText.ModeOf("noplaces") == MapText.Method.NoPlaces && MapText.ModeOf("0") == MapText.Method.Off, "DARKSIGN_MAP_TEXT is read");
         Expect(MapText.Message(10010160, MapText.Method.NoPlaces) == MapText.Base + 10010160 && MapText.Message(MapText.Base + 5, MapText.Method.All) == MapText.Base + 5,

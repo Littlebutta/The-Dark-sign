@@ -70,7 +70,16 @@ public static class MapText
     public static long Place(long ds3Id) => Place(ds3Id, Mode);
 
     /// <summary>A DS3 collision's area name as the Elden Ring collision's (-1, none, when area names are off).</summary>
-    public static int CollisionPlace(short ds3MapNameId, Method mode) => mode == Method.All ? (int)Place(ds3MapNameId, mode) : -1;
+    /// <remarks>
+    /// Only DS3's positive names are kept. DS3 gives a few collisions at an area's edge the name (m31: 3100 Undead
+    /// Settlement x2), the rest of the area the negative of it (-3100 x48) and some none (-1 x43). Up to 1.0.52x the
+    /// negative names were carried over: Elden Ring has no text under a negative number, shows "?PlaceName?" for it,
+    /// and shows a banner each time the player steps from one name onto another, so walking around the Undead
+    /// Settlement cycled "Undead Settlement" / "?PlaceName?". A negative name (and 0) is now Elden Ring's "none" (-1),
+    /// so the banner shows where DS3 shows it: on the collisions that carry the positive name.
+    /// </remarks>
+    public static int CollisionPlace(short ds3MapNameId, Method mode) =>
+        mode == Method.All && ds3MapNameId > 0 ? (int)Place(ds3MapNameId, mode) : -1;
 
     public static bool IsOurs(int id) => id >= Base || id <= -Base;
 

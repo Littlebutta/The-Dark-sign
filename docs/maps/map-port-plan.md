@@ -620,8 +620,10 @@ end of the events step.
 - **Area names.** DS3's collisions carry the area name (MapNameID): positive on the few collisions where the banner
   shows (m30: 3000 High Wall of Lothric x4, 3010 Lothric Castle x3, 3015 Consumed King's Garden x4), negative on the
   rest of the area (-3000 x42), -1 for none. Elden Ring's collisions have the same field (LocationTextID), which was
-  always written -1. The sign is kept. Unproven: that Elden Ring reads a negative name the way DS3 does (the area,
-  without the banner); if a banner shows on every step, that is the cause (fallback B).
+  always written -1. Only the positive names are carried over; a negative name (and 0) becomes -1. In 1.0.52x the
+  negative names were kept, and Elden Ring showed "?PlaceName?" for them and a banner at every step between a named
+  and a negative collision: the Undead Settlement cycled "Undead Settlement" / "?PlaceName?" (Devin, 2026-11-20).
+  That was RULE 2 attempt 2 for this item.
 - **Prompts.** `ActionButtons` looked for DS3's event text files under an English name, so every menu text file
   answered in binder order, the dialogue first: 46 event text numbers are also a dialogue line's number. The event
   text files now answer first. The log's "prompt text" line printed its counts as "{reused}"; fixed.
