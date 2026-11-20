@@ -90,11 +90,13 @@ public static class Fallbacks
         new("build-threads", "Starting the game", "Content build speed", Stage.Build,
             "The content build fails or gives different results from one run to the next.",
         [
-            new("A", "Every core (default)", "port-weapons and port-maps run side by side, each on every core."),
+            new("A", "Every core (default)", "port-weapons and port-maps run side by side, each on every core, and port-maps ports several DS3 maps side by side."),
             new("B", "One core", "Everything one step at a time (DARKSIGN_THREADS=1), as builds were before 1.0.12x. Slower, but rules out a threading bug.")
                 { PorterEnv = Env("DARKSIGN_THREADS", "1") },
             new("C", "Collision one file at a time", "Every core, but map collision files are serialized one at a time under a lock (DARKSIGN_COLLISION_LOCK=1), as builds before 1.0.23x did. Minutes slower per map; rules the lock-free Havok serialization out if a map's collision misbehaves.")
                 { PorterEnv = Env("DARKSIGN_COLLISION_LOCK", "1") },
+            new("D", "One map at a time", "Every core, but port-maps ports the DS3 maps one after another (DARKSIGN_MAPS_AT_ONCE=1), as builds up to 1.0.50x did, instead of several side by side. A few minutes slower; rules porting maps side by side out if a map looks different from one build to the next.")
+                { PorterEnv = Env("DARKSIGN_MAPS_AT_ONCE", "1") },
         ]),
 
         // ---- Weapon movesets ----
@@ -359,6 +361,15 @@ public static class Fallbacks
             new("B", "Spare map IDs", "Each DS3 map gets a map ID of its own that Elden Ring lists and single-player never visits (m11_70, m11_72, m19_70), built from the colosseums' file formats; the Painted World takes the first colosseum. Untested; IDs the game doesn't list at all crash it at boot.")
                 { PorterEnv = Env("DARKSIGN_MAP_SLOTS", "new") },
         ]),
+        new("map-world", "DS3 maps", "Which of DS3's other maps are ported", Stage.Build,
+            "The game crashes at boot or hangs on the title screen since the build that ported every DS3 map, or one of the new maps (Lothric Castle, Road of Sacrifices, Cathedral, Catacombs, Irithyll, Irithyll Dungeon, Grand Archives, Archdragon Peak, Kiln, Dreg Heap, Ringed City) won't load, or walking from one map into the next leaves you in the void.",
+        [
+            new("A", "Every DS3 map (default)", "Besides Firelink, High Wall, the Undead Settlement and the Painted World, the other 11 DS3 maps are ported (Filianore's Rest has no slot), under map IDs Elden Ring lists and never visits (m11_70, m11_72, test maps m38_10-12) or new blocks of its own areas (m45_03-05, m38_13-15) that the porter adds to the game's map list. Neighbouring maps are joined where DS3 joins them. Untested in game."),
+            new("B", "The first four maps only", "Only Firelink, High Wall, the Undead Settlement and the Painted World, as builds up to 1.0.50x had it; the game's map list isn't changed. (DARKSIGN_MAP_WORLD=0)")
+                { PorterEnv = Env("DARKSIGN_MAP_WORLD", "0") },
+            new("C", "Every map, no map link rows", "As A, but without the WorldMapLegacyConvParam rows that tell the game two neighbouring maps share one space. Try it if walking into the next map crashes or puts it in the wrong place. (DARKSIGN_MAP_LINKS=0)")
+                { PorterEnv = Env("DARKSIGN_MAP_LINKS", "0") },
+        ]),
         new("map-painted-world", "DS3 maps", "Where the Painted World of Ariandel goes", Stage.Build,
             "Warping to the Painted World (or the F1 menu's Friede fight) fails: nothing happens, endless loading, or a crash.",
         [
@@ -507,6 +518,13 @@ public static class Fallbacks
             new("B", "The colosseum's fill lights", "These lights keep the host colosseum's strengths and occlusion weights (port-maps --host-fill-lights), as up to 1.0.491.")
                 { MapsArgs = ["--host-fill-lights"] },
         ]),
+        new("map-light-sets", "DS3 maps", "Which light each DS3 map piece, object and character is lit with", Stage.Build,
+            "Since this option came in, parts of a DS3 map are black or far too bright, a room flickers between light and dark, or a boss or enemy is lit oddly.",
+        [
+            new("A", "DS3's light set per part (default)", "Each map piece, object, floor and character names the light set DS3 gives it, and the map's draw params get DS3's sets: Friede's hall and other rooms DS3 lights only with their candles, windows and baked light have no sun, and the bosses get their own light (Ariandel's warm fire). No light of these sets is stronger than twice the map's sun."),
+            new("B", "One light for everything", "Every part is lit with the map's outdoor light (port-maps --one-light-set), as up to 1.0.499: rooms lit by the sun through their roofs.")
+                { MapsArgs = ["--one-light-set"] },
+        ]),
         new("map-env-light", "DS3 maps", "Light the DS3 map pieces get from around them", Stage.Build,
             "A DS3 map's walls and ground look flat, too dark or too grey, or shine oddly since the colosseum's colour was taken out of their light.",
         [
@@ -639,6 +657,16 @@ public static class Fallbacks
                 { PorterEnv = Env("DARKSIGN_BONFIRE_TRAVEL", "0") },
         ]),
 
+        new("map-text", "DS3 maps", "DS3's event messages and area names", Stage.Build,
+            "A message in a DS3 map shows no words, a placeholder or the wrong words (a locked door, a lever that won't move, a map event), an area's name shows wrongly or keeps popping up, or a DS3 map crashes or hangs since its text was added.",
+        [
+            new("A", "DS3's own words (default)", "Every message a DS3 script, door or lever shows (\"Locked by some contraption\", \"Does not open from this side\", \"Used Tower Key\") is DS3's own text, copied into Elden Ring's event text at 1,000,000,000 + the DS3 number, and each DS3 area shows its name when you enter it (\"High Wall of Lothric\"). Report: the map text lines of the port-maps log."),
+            new("B", "No area names", "Messages as in A, but no area name shows on entering a DS3 area (DARKSIGN_MAP_TEXT=noplaces), as every build up to 1.0.50x had it.")
+                { PorterEnv = Env("DARKSIGN_MAP_TEXT", "noplaces") },
+            new("C", "DS3's text numbers, as up to 1.0.50x", "Scripts, doors and levers keep DS3's text numbers (DARKSIGN_MAP_TEXT=0), which Elden Ring looks up in its own text: messages show no words or the wrong ones, and no area name shows.")
+                { PorterEnv = Env("DARKSIGN_MAP_TEXT", "0") },
+        ]),
+
         new("map-water", "DS3 maps", "Water in the DS3 maps", Stage.Build,
             "A DS3 map crashes or hangs while loading since its water was added, or its pools, puddles and rivers look wrong (black, glowing, flickering or floating).",
         [
@@ -701,7 +729,11 @@ public static class Fallbacks
                 { PorterEnv = Env("DARKSIGN_PEOPLE_TALK", "0") },
             new("H", "No people with their own bodies", "As A, but DS3's people with a body of their own (Fire Keeper, Andre, the Shrine Handmaid, Ludleth, Yoel, Emma, the Painting Woman, the Corvian settlers) are not ported and are left out of the maps, as up to 1.0.47x (DARKSIGN_PEOPLE_BODIES=0). Try it if one of them crashes the game, attacks you, T-poses or is a mess of stretched polygons.")
                 { PorterEnv = Env("DARKSIGN_PEOPLE_BODIES", "0") },
-            new("I", "Menus wait for DS3's characters", "As A, but a talk menu that waits for a signal only DS3's own character sends (the Fire Keeper's level up, which waits for her bow) keeps waiting for it (DARKSIGN_TALK_ENGINE_FLAGS=0), as up to 1.0.479, where the Fire Keeper's Level Up did nothing. Try it if a DS3 person's menu opens something before they have finished speaking or bowing, or opens it twice.")
+            new("I", "Elden Ring's weapon models for people", "As A, but DS3's people hold Elden Ring's model of a weapon Elden Ring has by name (Hawkwood's Bastard Sword, Sirris's Estoc, Siegward's Zweihander), as up to 1.0.501, instead of a copy with DS3's model (DARKSIGN_PEOPLE_WEAPON_LOOKS=0). Try it if a person's weapon is invisible, crashes the game or sits wrongly in the hand.")
+                { PorterEnv = Env("DARKSIGN_PEOPLE_WEAPON_LOOKS", "0") },
+            new("J", "No voices", "As A, but DS3's people have no voice banks: their lines are subtitles only, as up to 1.0.501, where the game moved on from each line at once (DARKSIGN_PEOPLE_VOICES=0). Try it if the game crashes, hangs or goes silent when a DS3 person speaks, or a voice is noise.")
+                { PorterEnv = Env("DARKSIGN_PEOPLE_VOICES", "0") },
+            new("K", "Menus wait for DS3's characters", "As A, but a talk menu that waits for a signal only DS3's own character sends (the Fire Keeper's level up, which waits for her bow) keeps waiting for it (DARKSIGN_TALK_ENGINE_FLAGS=0), as up to 1.0.479, where the Fire Keeper's Level Up did nothing. Try it if a DS3 person's menu opens something before they have finished speaking or bowing, or opens it twice.")
                 { PorterEnv = Env("DARKSIGN_TALK_ENGINE_FLAGS", "0") },
         ]),
 
@@ -717,6 +749,8 @@ public static class Fallbacks
                 { PorterEnv = Env("DARKSIGN_ENEMY_MIN_BONES", "0.25") },
             new("E", "Enemies without moves of their own keep the template's", "As A, but a DS3 character whose animation file holds no moves of its own (Undead Clerics, the Devout of the Deep, Sage's Prentices, the Irithyll Dog) keeps every animation of its Elden Ring template (DARKSIGN_ENEMY_SHARED_MOVES=0), as up to 1.0.479, instead of the moves of the DS3 character with the same skeleton (Hollow Soldier, Undead Dog). Try it if those enemies crash the game, T-pose or stretch.")
                 { PorterEnv = Env("DARKSIGN_ENEMY_SHARED_MOVES", "0") },
+            new("F", "DS3 events checked one file at a time", "As A, but a DS3 move's events are compared with the first event of each type in one of the template's TAE files, as up to 1.0.501 (DARKSIGN_ENEMY_EVENT_LAYOUT=0), where the Hollow Manservant lost 174 behaviour events and the Boreal Outrider Knight 11 of its attack hits. Try it if ported enemies crash, freeze or misbehave mid-attack after 1.0.501.")
+                { PorterEnv = Env("DARKSIGN_ENEMY_EVENT_LAYOUT", "0") },
             new("off", "Off (plain stand-ins)", "No enemy port: the DS3 maps use Elden Ring enemies of the same kind as stand-ins (DARKSIGN_ENEMY_PORT=0).")
                 { PorterEnv = Env("DARKSIGN_ENEMY_PORT", "0") },
         ]),

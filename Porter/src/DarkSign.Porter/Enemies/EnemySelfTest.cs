@@ -345,6 +345,26 @@ public static class EnemySelfTest
         Check("TAE merge: DS3's draw mask change (Iudex Gundyr's Pus of Man and red eyes) comes along though the template never uses it, with a group of its own; other unknown types don't",
             drawMask.Count == 1 && drawMask[0] is { Type: 233, Group.GroupType: 233 } && drawMask[0].GetParameterBytes(false)[1] == 1 && transform.EventGroups.Contains(drawMask[0].Group!));
 
+        // Event layouts (2026-11-19, the Hollow Manservant lost 174 type-5 events): the usual length counts, not the
+        // first event of a file, and DS3's odd-length events (the reader's guess off by 8) are written at the usual one.
+        var layout = ChrTae.Layout([new(0, 1, 5, 0, new byte[24], false), new(0, 1, 5, 0, new byte[16], false), new(0, 1, 5, 0, new byte[16], false)]);
+        Check("TAE layout: a type's usual parameter length is its most common one, not its first", layout[5] == 16);
+        var behaviour = new byte[8];
+        BitConverter.GetBytes(3002).CopyTo(behaviour, 4);
+        var attack24 = new byte[24];
+        attack24[8] = 0x6E;
+        var padAnim = new TAE.Animation(7000, new TAE.Animation.AnimMiniHeader.Standard(), "a000_007000.hkx");
+        var padded = ChrTae.Merge([new(0.1f, 0.2f, 5, 0, behaviour, false), new(0.3f, 0.4f, 1, 0, attack24, false), new(0.5f, 0.6f, 1, 0, Enumerable.Repeat((byte)1, 24).ToArray(), false)],
+            padAnim, new Dictionary<int, int> { [1] = 16, [5] = 16 }, new Dictionary<int, TAE.EventGroup> { [1] = new(1), [5] = new(5) }, 1f, 1f,
+            ds3Lengths: new Dictionary<int, int> { [1] = 16, [5] = 16 });
+        Check("TAE merge: DS3 events 8 bytes off their type's usual length come along at that length (zero padding only)",
+            padded.Count == 2 && padded.All(e => e.GetParameterBytes(false).Length == 16)
+            && BitConverter.ToInt32(padded.First(e => e.Type == 5).GetParameterBytes(false), 4) == 3002 && padded.First(e => e.Type == 1).GetParameterBytes(false)[8] == 0x6E);
+        // A character no template fits is carried by one with a move set (1.0.501: the Ancient Wyvern on Rykard's
+        // Corpse, one animation), else the first with any.
+        Check("carrying: the first ranked template with a move set is taken over one with a single animation",
+            ChrPort.CarryPick([1, 300, 900], c => c) == 1 && ChrPort.CarryPick([0, 1, 5], c => c) == 1 && ChrPort.CarryPick([0, 0], c => c) is null);
+
         // Every NpcParam row the maps and spawn list name exists, even when its params step failed (a missing row
         // crashed the game when a ported character loaded: 2026-11-07 test).
         var def = new PARAMDEF { ParamType = "NPC_PARAM_ST", Fields = [] };

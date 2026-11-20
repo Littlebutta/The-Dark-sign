@@ -8,6 +8,22 @@ public static partial class MapPortChecks
     {
         yield return ("talk: script expressions read and write back byte for byte", TalkExpressions);
         yield return ("talk: a DS3 talk script's flags, lines and shops move (through state group arguments too), commands and functions Elden Ring lacks go", TalkConvert);
+        yield return ("talk: each converted script has a prefix (voice bank vc900-vc998) of its own, never Elden Ring's vc999; speech is halved to 22 kHz", TalkVoices);
+    }
+
+    private static void TalkVoices()
+    {
+        var talk = new TalkPort();
+        Expect(talk.IdFor(400120) == 900_400_120 && talk.IdFor(300330) == 901_300_330 && talk.IdFor(400120) == 900_400_120,
+            "scripts get prefixes 900, 901... in the order they are first placed, and keep them");
+        for (int i = 2; i < 120; i++)
+            talk.IdFor(500000 + i);
+        Expect(Enumerable.Range(2, 118).All(i => talk.IdFor(500000 + i) / 1_000_000 is >= 900 and <= 998), "past 99 scripts the prefixes are shared, 999 never used");
+        Expect(TalkPort.IsOurs(talk.IdFor(400120)), "converted scripts are still recognised as the port's");
+        var (half, rate) = CutsceneSound.Halve([0, 100, 200, 300, -100, -300], 1, 44100);
+        Expect(rate == 22050 && half.SequenceEqual(new short[] { 50, 250, -200 }), "44.1 kHz speech is averaged down to 22.05 kHz");
+        var (same, keep) = CutsceneSound.Halve([1, 2], 1, 22050);
+        Expect(keep == 22050 && same.Length == 2, "lower rates are kept");
     }
 
     private static byte[] TalkInt(int v) => EsdExpr.WriteInt(v);

@@ -67,8 +67,32 @@ public static class WeaponPort
         "correctStrength", "correctAgility", "correctMagic", "correctFaith", "correctLuck",
     ];
 
+    /// <summary>The status of a plan that is only DS3's look: see <see cref="Plan"/>.</summary>
+    public const string Look = "look";
+
+    /// <summary>DARKSIGN_PEOPLE_WEAPON_LOOKS=0 (fallback map-people I): no look-only weapons; DS3's people hold Elden
+    /// Ring's weapon where it has one of the same name, as up to 1.0.501.</summary>
+    public static readonly bool Looks = Environment.GetEnvironmentVariable("DARKSIGN_PEOPLE_WEAPON_LOOKS") != "0";
+
+    /// <summary>The DS3 weapons (base IDs) DS3's people hold: every weapon slot of every CharaInitParam row.</summary>
+    public static HashSet<int> HeldByPeople(PARAM? ds3CharaInit)
+    {
+        var held = new HashSet<int>();
+        foreach (var row in ds3CharaInit?.Rows ?? [])
+            foreach (var field in new[] { "equip_Wep_Right", "equip_Subwep_Right", "equip_Wep_Left", "equip_Subwep_Left" })
+                if (row[field]?.Value is { } v && Convert.ToInt32(v) is > 0 and var id)
+                    held.Add(id - id % 10000);
+        return held;
+    }
+
+    /// <param name="heldByPeople">DS3 weapons DS3's people hold (<see cref="HeldByPeople"/>). One of these that is
+    /// skipped because Elden Ring has a weapon of the same name (Bastard Sword, Estoc, Zweihander, Uchigatana...) still
+    /// gets a plan of status <see cref="Look"/>: a copy of that Elden Ring weapon's row with DS3's model, which only
+    /// DS3's people hold (PeopleArmour). Without it Hawkwood, Sirris, Siegward and others held Elden Ring's model of
+    /// their weapon (1.0.501: "the weapons NPCs have don't seem to have ported models"). Look plans take their IDs
+    /// after every ported weapon, so the ported weapons' IDs don't move.</param>
     public static List<WeaponPlan> Plan(PARAM ds3, PARAM er, IReadOnlyDictionary<int, string> ds3Names,
-        IReadOnlyDictionary<int, string> erNames)
+        IReadOnlyDictionary<int, string> erNames, IReadOnlySet<int>? heldByPeople = null)
     {
         var erTaken = erNames.Values.Select(ItemText.Normalize).ToHashSet();
         var templates = ChooseTemplates(er, erNames);
@@ -121,6 +145,25 @@ public static class WeaponPort
             plans.Add(new(row.ID, name, motion, template.ID, erNames.GetValueOrDefault(template.ID, template.Name),
                 FirstNewId + next * 10000, FirstNewModelId + next, "port"));
             next++;
+        }
+        if (Looks && heldByPeople is { Count: > 0 })
+        {
+            // Elden Ring's weapon of each name: the plain (base) row with the lowest ID.
+            var erByName = new Dictionary<string, int>();
+            foreach (var row in er.Rows.Where(r => r.ID > 0 && r.ID % 10000 == 0).OrderBy(r => r.ID))
+                if (erNames.TryGetValue(row.ID, out var erName) && ItemText.Normalize(erName) is { Length: > 0 } key)
+                    erByName.TryAdd(key, row.ID);
+            for (int i = 0; i < plans.Count; i++)
+            {
+                var plan = plans[i];
+                if (plan.Status != "skip: Elden Ring already has it" || plan.Ds3Id == 110000 || !heldByPeople.Contains(plan.Ds3Id)
+                    || !erByName.TryGetValue(ItemText.Normalize(plan.Name), out var same))
+                    continue;
+                while (!Free(next))
+                    next++;
+                plans[i] = plan with { TemplateId = same, TemplateName = erNames.GetValueOrDefault(same, plan.Name), NewId = FirstNewId + next * 10000, NewModelId = FirstNewModelId + next, Status = Look };
+                next++;
+            }
         }
         return plans;
     }
@@ -222,6 +265,24 @@ public static class WeaponPort
                 added++;
             }
         }
+        // Look-only weapons: Elden Ring's weapon of the same name, row for row, with DS3's model. Only the plain row:
+        // nobody reinforces or infuses these, DS3's people hold them (PeopleArmour).
+        var looks = new List<string>();
+        foreach (var plan in plans.Where(p => p.Status == Look))
+        {
+            if (!erById.TryGetValue(plan.TemplateId!.Value, out var same))
+                continue;
+            var row = new PARAM.Row(plan.NewId!.Value, "", er.AppliedParamdef);
+            for (int i = 0; i < row.Cells.Count; i++)
+                row.Cells[i].Value = same.Cells[i].Value;
+            row["equipModelId"].Value = (ushort)plan.NewModelId!.Value;
+            row["originEquipWep"].Value = plan.NewId.Value;
+            er.Rows.Add(row);
+            added++;
+            looks.Add(plan.Name);
+        }
+        if (looks.Count > 0)
+            Console.WriteLine($"weapons: {looks.Count} weapons Elden Ring has by name get a look-only copy with DS3's model for DS3's people: {string.Join(", ", looks)} [DARKSIGN_PEOPLE_WEAPON_LOOKS=0 off]");
         er.Rows.Sort((a, b) => a.ID.CompareTo(b.ID));
         Console.WriteLine(Ds3Hold
             ? $"weapons: {holdNotes.Count} weapons stand and walk in DS3's hold instead of their template's (one-handed/two-handed): {string.Join("; ", holdNotes)} [DARKSIGN_DS3_HOLD=0 keeps the template's]"

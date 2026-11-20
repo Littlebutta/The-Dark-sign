@@ -121,6 +121,7 @@ public static class MsbPort
             notes.Add("most of this map's pieces are off DS3's base layer; layers are not used to leave pieces out");
 
         var remapped = new List<string>();
+        var textMode = MapText.Mode;
         foreach (var src in ds3.Parts.Collisions)
         {
             var part = (MSBE.Part.Collision)collisionTemplate.DeepCopy();
@@ -134,7 +135,9 @@ public static class MsbPort
                 remapped.Add(src.Name);
             // Online/region IDs from the colosseum would only confuse the game; Elden Ring treats 0/-1 as unset.
             part.PlayRegionID = -1;
-            part.LocationTextID = -1;
+            // DS3's area name for this ground ("High Wall of Lothric"), shown as a banner on stepping onto it: the
+            // copy of DS3's name the map text step writes (MapText). Up to 1.0.50x no DS3 area showed its name.
+            part.LocationTextID = MapText.CollisionPlace(src.MapNameID, textMode);
             msb.Parts.Collisions.Add(part);
             AddModel(msb.Models.Collisions, src.ModelName, collisionModel, erId);
         }
@@ -299,6 +302,8 @@ public static class MsbPort
         part.Position = src.Position;
         part.Rotation = src.Rotation;
         part.Scale = src.Scale == Vector3.Zero ? Vector3.One : src.Scale;
+        // DS3's light set (MapLightSets); one the slot's draw params lack goes back to -1 when the map is written.
+        MapLightSets.Carry(src, part);
         part.EntityID = src.EntityID > 0 ? (uint)ds3Id.MoveEntity(src.EntityID, erId) : 0;
         part.EntityGroupIDs = new uint[part.EntityGroupIDs?.Length ?? 8];
         for (int i = 0; i < Math.Min(part.EntityGroupIDs.Length, src.EntityGroups.Length); i++)

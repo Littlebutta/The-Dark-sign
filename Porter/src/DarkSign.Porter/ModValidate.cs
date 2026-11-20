@@ -94,7 +94,10 @@ public static partial class ModValidate
         var weapons = mod.Get("EquipParamWeapon")!;
         var ported = weapons.Rows.Where(row => row.ID >= WeaponPort.FirstNewId && row.ID < 90_000_000).ToList();
         var bases = ported.Where(row => row.ID % 10000 == 0).ToList();
-        r.Info($"{bases.Count} ported weapons ({ported.Count} rows with affinities and upgrades)");
+        // Look-only copies (WeaponPort.Look: an Elden Ring weapon's row with DS3's model, for DS3's people) keep the
+        // Elden Ring weapon's icon, moves and hits; only their model is the mod's.
+        var lookIds = DarkSign.Porter.Enemies.DropPort.LookWeapons(ctx).Values.ToHashSet();
+        r.Info($"{bases.Count - bases.Count(b => lookIds.Contains(b.ID))} ported weapons ({ported.Count} rows with affinities and upgrades), {bases.Count(b => lookIds.Contains(b.ID))} look-only copies for DS3's people");
         if (bases.Count == 0)
             r.Warn("no ported weapon rows (IDs 80000000+) in the mod's regulation");
 
@@ -130,7 +133,7 @@ public static partial class ModValidate
             if (!isBase)
                 continue;
             int icon = Field(row, "iconId");
-            if (icon < WeaponPort.FirstNewIconId || icon > ushort.MaxValue)
+            if (!lookIds.Contains(row.ID) && (icon < WeaponPort.FirstNewIconId || icon > ushort.MaxValue))
                 r.Error($"weapon {row.ID}: iconId {icon} outside {WeaponPort.FirstNewIconId}-65535 (Elden Ring's 16-bit icon IDs; lower ones clash with chrmake)");
             int model = Field(row, "equipModelId");
             if (model >= WeaponPort.FirstNewModelId && !File.Exists(Path.Combine(modDir, "parts", $"wp_a_{model:D4}.partsbnd.dcx")))
@@ -147,7 +150,7 @@ public static partial class ModValidate
             else if (variation > 0)
                 hitVariations.Add(variation);
         }
-        CheckIcons(r, modDir, bases.Select(row => Field(row, "iconId")).ToHashSet());
+        CheckIcons(r, modDir, bases.Where(row => !lookIds.Contains(row.ID)).Select(row => Field(row, "iconId")).ToHashSet());
         // Behaviour rows the game can never reach: a row of a real variation numbered without the prefix the game adds
         // when it looks a hit up (1 player, 2 enemy). 1.0.183-1.0.271 wrote every ported row that way: ported weapons
         // dealt no damage and ported enemies' attacks did nothing.

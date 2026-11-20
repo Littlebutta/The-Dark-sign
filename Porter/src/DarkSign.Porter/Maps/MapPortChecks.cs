@@ -54,11 +54,14 @@ public static partial class MapPortChecks
             yield return check;
         foreach (var check in BonfireTravelChecks())
             yield return check;
+        foreach (var check in TextChecks())
+            yield return check;
         yield return ("validate: layout checks catch a missing start point and parts without models", ValidateLayout);
         yield return ("validate: run event checks pass on ported events and catch a missing one", ValidateEvents);
         yield return ("rebuild: a full run deletes port-maps' own old outputs (both slot methods) and keeps the other steps' files", CleanStale);
         yield return ("flags: the allocation lists parse, blocks map to their maps, and a new map ID gets a line", FlagAllocProbe);
-        yield return ("map registry: worldmsblist parses, and a slot under an ID it doesn't name is skipped, never registered", MapRegistryList);
+        yield return ("map registry: worldmsblist parses; new blocks of dungeon areas are added within the game's arrays, open-world area IDs skipped", MapRegistryList);
+        yield return ("map links: a pair of WorldMapLegacyConvParam rows for every two ported maps DS3 joins", MapLinkRows);
         yield return ("new map IDs: the template's per-map files are found, renamed and the port's own outputs skipped", NewIdFileSet);
         yield return ("flags: in-game probe flags are each block's last number, and map-flags B uses JortPob's saved ranges", FlagProbesAndLocalFlags);
     }
@@ -130,14 +133,29 @@ public static partial class MapPortChecks
         var entries = MapRegistry.Parse(list);
         Expect(entries.Count == 5 && entries[1].Options == ",testmap=1" && entries[3].Map == ErId && entries[3].Options == "",
             "parse: " + string.Join(" ", entries));
-        var registered = entries.Select(e => e.Map).ToHashSet();
+        var lists = new List<List<MapRegistry.Entry>> { entries };
         var probe = new MapSlots.Slot(Ds3Id, MapId.Parse("m50_00_00_00"), "probe", Template: ErId, Probe: true);
         var real = MapSlots.Colosseums[0];
-        var skipped = MapRegistry.Unregistered(registered, [real, probe, MapSlots.Colosseums[1]]);
-        Expect(skipped.SequenceEqual([probe]), "only the unshipped ID is skipped: " + string.Join(" ", skipped.Select(s => s.Er)));
-        Expect(MapRegistry.SkipReason(probe).Contains("m50_00_00_00") && MapRegistry.SkipReason(probe).Contains("SKIPPED"), "skip reason names the ID");
-        // Nothing in the porter writes the registry any more (the 1.0.238 boot crash).
-        Expect(typeof(MapRegistry).GetMethods().All(m => !m.Name.StartsWith("Write")), "the registry must never be written");
+        var skipped = MapRegistry.Unregistered(lists, [real, probe, MapSlots.Colosseums[1]]);
+        Expect(skipped.SequenceEqual([probe]), "only the open-world area ID is skipped: " + string.Join(" ", skipped.Select(s => s.Er)));
+        Expect(MapRegistry.SkipReason(lists, probe).Contains("m50_00_00_00") && MapRegistry.SkipReason(lists, probe).Contains("open-world"), "skip reason names the ID and why");
+
+        // New blocks of dungeon areas fit; open-world areas (50-88) never do (the 1.0.238 boot crash).
+        var newBlock = new MapSlots.Slot(Ds3Id, MapId.Parse("m45_03_00_00"), "new", Template: ErId);
+        var (added, refused) = MapRegistry.Additions(lists, [real, newBlock, probe]);
+        Expect(added.SequenceEqual([newBlock]) && refused.Single().Slot == probe, "a new block of area 45 is added, m50 refused");
+        var full = Enumerable.Range(0, 96).Select(i => new MapRegistry.Entry(new MapId(10 + i / 90, i % 90, 0, 0), "")).ToList();
+        Expect(MapRegistry.Additions([full], [newBlock]).Refused.Count == 1, "the base list's 96 dungeon lines are the limit");
+        var manyAreas = Enumerable.Range(10, MapRegistry.MaxDungeonAreas).Select(a => new MapRegistry.Entry(new MapId(a, 0, 0, 0), "")).ToList();
+        var newArea = newBlock with { Er = MapId.Parse("m47_00_00_00") };
+        Expect(MapRegistry.Additions([manyAreas], [newArea]).Refused.Count == 1, "28 dungeon areas are the limit");
+        Expect(MapRegistry.Additions([manyAreas], [newBlock with { Er = MapId.Parse("m10_05_00_00") }]).Added.Count == 1, "a new block of a used area needs no new area");
+
+        var written = MapRegistry.WithLines(text, [MapId.Parse("m45_03_00_00"), MapId.Parse("m38_13_00_00")]);
+        var reparsed = MapRegistry.Parse(System.Text.Encoding.UTF8.GetBytes(written));
+        Expect(reparsed.Count == 7 && reparsed[5].Map.ToString() == "m45_03_00_00", "the new line follows its area's last line: " + string.Join(" ", reparsed.Select(e => e.Map)));
+        Expect(written.Contains("map:/MapStudio/m45_03_00_00.msb \r\n"), "same line shape and line ends as the game's");
+        Expect(entries.All(e => reparsed.Any(r => r.Map == e.Map && r.Options == e.Options)), "every line the game had is kept");
     }
 
     private static void NewIdFileSet()
@@ -716,5 +734,49 @@ public static partial class MapPortChecks
         var newIds = MapSlots.Choose(true, null);
         Expect(newIds.Count == 4 && newIds.Select(s => s.Er).Distinct().Count() == 4, "method B: three new IDs and the Painted World");
         Expect(newIds.Single(s => s.Ds3 == MapSlots.PaintedWorld).Er.ToString() == "m45_00_00_00", "method B puts the Painted World in the first colosseum");
+
+        // The rest of DS3's world (map-world A): every ID a dungeon area, inside the game's arrays, no ID shared.
+        var world = MapSlots.Choose(false, null, world: true);
+        Expect(world.Count == 15, "Firelink, High Wall, Undead Settlement, the Painted World and 11 more: " + world.Count);
+        Expect(world.Select(s => s.Er).Distinct().Count() == world.Count && world.Select(s => s.Ds3).Distinct().Count() == world.Count, "one slot per map");
+        Expect(world.All(s => !MapRegistry.IsGridArea(s.Er)), "no open-world area numbers");
+        Expect(MapSlots.WorldSlots().All(s => s.Template?.ToString() == "m45_00_00_00"), "built from the first colosseum");
+        var registeredNow = RegisteredUnvisited.Concat(["m38_10_00_00", "m38_11_00_00", "m38_12_00_00"]).ToHashSet();
+        var newLines = world.Where(s => s.Er.Area != 45 || s.Er.Block > 2).Count(s => !registeredNow.Contains(s.Er.ToString()));
+        Expect(newLines <= MapRegistry.MaxBaseDungeonLines - 90, $"new base-list lines fit the 6 free ones of 2.7.2: {newLines}");
+        Expect(MapSlots.Choose(true, null, world: true).Count == 4, "map-slots B keeps its own four slots");
+        Expect(MapSlots.Ds3Maps.Count(m => world.All(s => s.Ds3.ToString() != m.Id)) == 1, "only Filianore's Rest is left without a slot");
+    }
+
+    private static void MapLinkRows()
+    {
+        var slots = MapSlots.Choose(false, null, world: true);
+        var connects = new Dictionary<string, MapId[]>
+        {
+            ["m30_00_00_00"] = [MapId.Parse("m30_01_00_00"), MapId.Parse("m31_00_00_00"), MapId.Parse("m34_01_00_00"), MapId.Parse("m40_00_00_00")],
+            ["m31_00_00_00"] = [MapId.Parse("m30_00_00_00"), MapId.Parse("m33_00_00_00")],
+            ["m40_00_00_00"] = [MapId.Parse("m30_00_00_00"), MapId.Parse("m41_00_00_00"), MapId.Parse("m99_00_00_00")],
+        };
+        var pairs = MapLinks.Pairs(slots, m => connects.GetValueOrDefault(m.ToString()) ?? []);
+        Expect(pairs.Count == 6, "High Wall's four neighbours, the Settlement's Road, Firelink's Kiln; each pair once: " + pairs.Count);
+        Expect(pairs.All(p => p.A.Er != p.B.Er), "no map linked to itself");
+        var def = new PARAMDEF { ParamType = "WORLD_MAP_LEGACY_CONV_PARAM_ST", DataVersion = 1 };
+        foreach (var (name, type) in new[] { ("srcAreaNo", PARAMDEF.DefType.u8), ("srcGridXNo", PARAMDEF.DefType.u8), ("srcGridZNo", PARAMDEF.DefType.u8),
+                     ("srcPosX", PARAMDEF.DefType.f32), ("srcPosY", PARAMDEF.DefType.f32), ("srcPosZ", PARAMDEF.DefType.f32),
+                     ("dstAreaNo", PARAMDEF.DefType.u8), ("dstGridXNo", PARAMDEF.DefType.u8), ("dstGridZNo", PARAMDEF.DefType.u8),
+                     ("dstPosX", PARAMDEF.DefType.f32), ("dstPosY", PARAMDEF.DefType.f32), ("dstPosZ", PARAMDEF.DefType.f32), ("isBasePoint", PARAMDEF.DefType.u8) })
+            def.Fields.Add(new PARAMDEF.Field(def, type, name));
+        var param = new PARAM { ParamType = def.ParamType, Rows = [] };
+        param.ApplyParamdef(def);
+        var template = new PARAM.Row(MapLinks.TemplateRow, "Subterranean Shunning-Grounds -> Leyndell", def);
+        param.Rows.Add(template);
+        param.Rows.Add(new PARAM.Row(MapLinks.FirstRow + 50, "stale", def));
+        int rows = MapLinks.WriteRows(param, pairs);
+        Expect(rows == 12 && param.Rows.Count == 13, "two rows per pair, the old ones replaced: " + param.Rows.Count);
+        var first = param[MapLinks.FirstRow]!;
+        Expect((byte)first["srcAreaNo"].Value == 45 && (byte)first["srcGridXNo"].Value == 0 && (byte)first["dstGridXNo"].Value == 1 && (byte)first["isBasePoint"].Value == 1,
+            "first row: Firelink (m45_00) -> High Wall (m45_01), a base point");
+        var back = param[MapLinks.FirstRow + 1]!;
+        Expect((byte)back["srcGridXNo"].Value == 1 && (byte)back["dstGridXNo"].Value == 0, "and the way back");
     }
 }

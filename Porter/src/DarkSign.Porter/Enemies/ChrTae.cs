@@ -41,9 +41,32 @@ public static class ChrTae
         [DrawMaskType] = 32, // ChangeChrDrawMask: one u8 per display mask bit (both games' TAE templates)
     };
 
+    /// <summary>
+    /// Whether event layouts are compared by each type's usual length over the whole character (default) or, as up to
+    /// 1.0.501, by the first event of the type in one TAE file. Fallback enemy-port F: DARKSIGN_ENEMY_EVENT_LAYOUT=0.
+    /// </summary>
+    public static bool PooledLayout => Environment.GetEnvironmentVariable("DARKSIGN_ENEMY_EVENT_LAYOUT")?.Trim() != "0";
+
+    /// <summary>
+    /// Each event type's parameter length: the most common one among the events (the longer on a tie). A TAE file
+    /// doesn't store the length; the reader takes the distance to whatever is written next, so an event at the end of
+    /// a block reads 8 bytes long or short (measured 2026-11-19 on c3060, c3000, c4340, c1100, c1310, c6040: type 5 is
+    /// 16 bytes 401 times and 24 bytes 30 times in Elden Ring, 16 x131 and 8 x5 in DS3; type 1 16 x317 and 24 x14).
+    /// Comparing one sample of each game dropped every DS3 event of a type whenever either sample was such an odd one
+    /// (the Hollow Manservant lost 174 type-5 behaviour events, the Wolf of Ariandel its type 5 and 16).
+    /// </summary>
+    public static Dictionary<int, int> Layout(IEnumerable<TAE.Event> events) =>
+        events.GroupBy(e => e.Type).ToDictionary(g => g.Key, g => g.GroupBy(e => e.GetParameterBytes(false).Length)
+            .OrderByDescending(l => l.Count()).ThenByDescending(l => l.Key).First().Key);
+
+    /// <param name="erLengths">Each type's parameter length in the template (see <see cref="Layout"/>).</param>
+    /// <param name="ds3Lengths">Each type's usual length in the DS3 character. With it, a DS3 event comes along when
+    /// its type's usual length is the template's, written at that length (padding cut or added); without it, only an
+    /// event whose own length is the template's.</param>
     public static List<TAE.Event> Merge(List<TAE.Event> ds3Events, TAE.Animation anim, IReadOnlyDictionary<int, int> erLengths,
         IReadOnlyDictionary<int, TAE.EventGroup> templateGroups, float ds3Duration, float erDuration, ChrEffects.Session? fx = null,
-        IReadOnlyDictionary<int, TAE.EventGroup>? otherGroups = null, Dictionary<int, int>? kept = null, Dictionary<int, int>? dropped = null)
+        IReadOnlyDictionary<int, TAE.EventGroup>? otherGroups = null, Dictionary<int, int>? kept = null, Dictionary<int, int>? dropped = null,
+        IReadOnlyDictionary<int, int>? ds3Lengths = null)
     {
         float scale = ds3Duration > 0 && erDuration > 0 ? ds3Duration / erDuration : 1;
         var merged = new List<TAE.Event>();
@@ -85,6 +108,13 @@ public static class ChrTae
                 known = true;
                 if (length == bytes.Length && kept is not null)
                     kept[e.Type] = kept.GetValueOrDefault(e.Type) + 1;
+            }
+            // The odd-length events are the same layout with the reader's padding guess off by 8 (see Layout).
+            if (known && ds3Lengths is not null && ds3Lengths.TryGetValue(e.Type, out var usual) && usual == length && bytes.Length != length
+                && Math.Abs(bytes.Length - length) <= 8 && bytes.Skip(length).All(b => b == 0))
+            {
+                bytes = (byte[])bytes.Clone();
+                Array.Resize(ref bytes, length);
             }
             if (!known || length != bytes.Length || Group(e.Type) is not { } group)
             {

@@ -26,7 +26,7 @@ public static class SaveRescue
     /// m50-m52 IDs builds up to 1.0.238 used, so an older build's leftovers are hidden too.
     /// </summary>
     public static readonly string[] MapIds =
-        ["m45_00_00_00", "m45_01_00_00", "m45_02_00_00", "m11_70_00_00", "m11_72_00_00", "m19_70_00_00", "m50_00_00_00", "m51_00_00_00", "m52_00_00_00"];
+        ["m45_00_00_00", "m45_01_00_00", "m45_02_00_00", "m45_03_00_00", "m45_04_00_00", "m45_05_00_00", "m38_10_00_00", "m38_11_00_00", "m38_12_00_00", "m38_13_00_00", "m38_14_00_00", "m38_15_00_00", "m11_70_00_00", "m11_72_00_00", "m19_70_00_00", "m50_00_00_00", "m51_00_00_00", "m52_00_00_00"];
 
     /// <summary>Where the hidden files wait: TheDarkSign\Work\rescue-hidden-maps, mirroring the mod folder.</summary>
     public static string HiddenDir(string root) => Path.Combine(root, "TheDarkSign", "Work", HiddenFolderName);

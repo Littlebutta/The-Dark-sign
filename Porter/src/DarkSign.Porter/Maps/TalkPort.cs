@@ -36,8 +36,21 @@ public sealed class TalkPort
 {
     public static bool Enabled => Environment.GetEnvironmentVariable("DARKSIGN_PEOPLE_TALK") != "0";
 
-    /// <summary>DARKSIGN_TALK_ENGINE_FLAGS=0 (fallback map-people H) keeps waiting on the flags only DS3's characters set.</summary>
+    /// <summary>DARKSIGN_TALK_ENGINE_FLAGS=0 (fallback map-people K) keeps waiting on the flags only DS3's characters set.</summary>
     public static bool EngineFlagsOn => Environment.GetEnvironmentVariable("DARKSIGN_TALK_ENGINE_FLAGS") != "0";
+
+    /// <summary>Off (fallback map-people J, DARKSIGN_PEOPLE_VOICES=0): no voice banks; lines are subtitles only, as
+    /// up to 1.0.501, where Elden Ring moved on from each line at once.</summary>
+    public static bool Voices => Environment.GetEnvironmentVariable("DARKSIGN_PEOPLE_VOICES") != "0";
+
+    /// <summary>
+    /// Elden Ring finds an NPC's spoken lines in the voice bank named after the first three digits of its talk script
+    /// (t204101000 speaks from vc204: every voiceId of Elden Ring's TalkParam starts with its bank's number, measured
+    /// on soundbanksinfo, 2026-11-19), the line being Play_v&lt;voiceId, nine digits&gt;. So each converted script gets
+    /// a prefix of its own from 900 up (t9PP + DS3's six-digit number), and its lines a voice bank vc9PP. Elden Ring
+    /// has a bank vc999, so 999 is never used; past 99 scripts the prefixes are shared (their banks hold both).
+    /// </summary>
+    public const int FirstPrefix = 900, PrefixCount = 99;
 
     /// <summary>Elden Ring's talk scripts are 9 digits from 1xxxxxxxx to 8xxxxxxxx; DS3's are 6 digits.</summary>
     public const int TalkIdBase = 900_000_000;
@@ -648,6 +661,16 @@ public sealed class TalkPort
     private readonly Dictionary<MapId, HashSet<int>> _readable = [];
     /// <summary>DS3 map -> the talk scripts placed people name.</summary>
     private readonly Dictionary<MapId, SortedSet<int>> _used = [];
+    /// <summary>DS3 talk script -> its prefix (<see cref="FirstPrefix"/>), in the order people are placed.</summary>
+    private readonly Dictionary<int, int> _prefix = [];
+
+    /// <summary>The Elden Ring script number for a DS3 script: t + prefix (900-998) + DS3's six digits.</summary>
+    public int IdFor(int ds3Talk)
+    {
+        if (!_prefix.TryGetValue(ds3Talk, out var prefix))
+            _prefix[ds3Talk] = prefix = FirstPrefix + _prefix.Count % PrefixCount;
+        return prefix * 1_000_000 + ds3Talk % 1_000_000;
+    }
     public List<string> Notes { get; } = [];
     public int UsedCount => _used.Values.Sum(u => u.Count);
 
@@ -704,7 +727,7 @@ public sealed class TalkPort
         if (ds3Talk <= 0 || !_readable.TryGetValue(ds3Map, out var ok) || !ok.Contains(ds3Talk))
             return 0;
         (_used.TryGetValue(ds3Map, out var used) ? used : _used[ds3Map] = []).Add(ds3Talk);
-        return TalkIdBase + ds3Talk;
+        return IdFor(ds3Talk);
     }
 
     /// <summary>
@@ -719,6 +742,8 @@ public sealed class TalkPort
         lines.Add($"people talk: Elden Ring's {vocabulary.Scripts} talk scripts use {vocabulary.CommandCount} commands and {vocabulary.FunctionCount} functions");
         var buttons = regulation.Get("ActionButtonParam")?.Rows.Select(r => r.ID).ToHashSet() ?? [];
         var needs = new Needs();
+        // Which voice bank (talk script prefix) speaks each line: the first script that says it.
+        var lineBank = new Dictionary<int, int>();
         var report = new StringBuilder("DS3 map\tDS3 talk script\tElden Ring map\tElden Ring talk script\tstate groups\tflags moved\tlines\tmenu texts\tshops\tcommands left out\tcommands reshaped\tfunctions read as 0\n");
         int written = 0, failed = 0;
         var leftOut = new SortedDictionary<string, int>(StringComparer.Ordinal);
@@ -755,11 +780,14 @@ public sealed class TalkPort
             bnd.Files.RemoveAll(f => ScriptId(f.Name) is int id && IsOurs(id));
             foreach (var file in source.OrderBy(f => ScriptId(f.Name)))
             {
-                int ds3Id = ScriptId(file.Name)!.Value, id = TalkIdBase + ds3Id;
+                int ds3Id = ScriptId(file.Name)!.Value, id = IdFor(ds3Id);
                 try
                 {
                     var esd = ESD.Read(file.Bytes);
+                    var before = needs.Lines.ToHashSet();
                     var stats = Convert(esd, vocabulary, moveFlag, buttons.Contains, needs, engine.Contains);
+                    foreach (var line in needs.Lines.Where(l => !before.Contains(l)))
+                        lineBank.TryAdd(line, id / 1_000_000);
                     esd.Name = $"t{id}";
                     bnd.Files.Add(new BinderFile(flags, 0, $@"N:\GR\data\INTERROOT_win64\script\talk\{slot.Er}\t{id}.esd", esd.Write()));
                     written++;
@@ -785,7 +813,7 @@ public sealed class TalkPort
         lines.Insert(1, $"people talk: {written} DS3 talk scripts converted for {_used.Count(u => u.Value.Count > 0)} maps{(failed > 0 ? $", {failed} failed" : "")}"
                         + (leftOut.Count > 0 ? $"; commands left out: {string.Join(", ", leftOut.Select(kv => $"{kv.Key} x{kv.Value}"))}" : "")
                         + (zeroed.Count > 0 ? $"; functions Elden Ring lacks read as 0: {string.Join(", ", zeroed.Select(kv => $"{kv.Key} x{kv.Value}"))}" : ""));
-        lines.Add(WriteLines(ctx, ds3, er, regulation, ds3Params, needs));
+        lines.AddRange(WriteLines(ctx, ds3, er, regulation, ds3Params, needs, lineBank));
         lines.Add(WriteShops(regulation, ds3Params, needs, items));
         regulation.Save(ctx.ModPath("regulation.bin"));
         Directory.CreateDirectory(ctx.WorkPath("reports"));
@@ -811,8 +839,10 @@ public sealed class TalkPort
         return all;
     }
 
-    private static string WriteLines(PorterContext ctx, GameArchives ds3, GameArchives er, ParamStore regulation, ParamStore? ds3Params, Needs needs)
+    private static IEnumerable<string> WriteLines(PorterContext ctx, GameArchives ds3, GameArchives er, ParamStore regulation, ParamStore? ds3Params, Needs needs,
+        IReadOnlyDictionary<int, int> lineBank)
     {
+        var voiceLog = new List<string>();
         var modMenuPath = ctx.ModPath(MapPorter.ModParts(ActionButtons.ModMenu));
         var (vanillaMenu, compression) = er.ReadWithCompression(ActionButtons.ModMenu);
         var menu = BND4.Read(File.Exists(modMenuPath) ? DCX.Decompress(File.ReadAllBytes(modMenuPath)) : vanillaMenu);
@@ -846,6 +876,8 @@ public sealed class TalkPort
         var template = talkParam.Rows.Where(r => PeopleArmour.Cell(r, "msgId") > 0).OrderBy(r => PeopleArmour.Cell(r, "voiceId") > 0 ? 1 : 0).ThenBy(r => r.ID).FirstOrDefault()
                        ?? throw new InvalidDataException("Elden Ring's TalkParam has no row with a line");
         int rows = 0, noRow = 0, noWords = 0;
+        // Each bank's lines: (row, voiceId, DS3 line number, reading time).
+        var banks = new SortedDictionary<int, List<(PARAM.Row Row, int Voice, int Ds3Line, float Seconds)>>();
         foreach (var id in needs.Lines)
         {
             // DS3's row names the text; without DS3's params the line's number is the text's (as DS3's rows have it).
@@ -881,15 +913,78 @@ public sealed class TalkPort
             talkParam.Rows.Add(row);
             talkMsg.Entries.Add(new FMG.Entry(TextBase + id, words));
             rows++;
+            if (Voices && lineBank.TryGetValue(id, out var prefix))
+            {
+                var list = banks.TryGetValue(prefix, out var l) ? l : banks[prefix] = [];
+                list.Add((row, prefix * 1_000_000 + list.Count + 1, id, ReadingTime(words)));
+            }
         }
+        voiceLog.AddRange(WriteVoices(ctx, ds3, er, banks));
         talkParam.Rows.Sort((a, b) => a.ID.CompareTo(b.ID));
         talkFile.Bytes = talkMsg.Write();
         eventFile.Bytes = eventText.Write();
         Directory.CreateDirectory(Path.GetDirectoryName(modMenuPath)!);
         File.WriteAllBytes(modMenuPath, DCX.Compress(menu.Write(), compression));
-        return $"people talk: {rows} dialogue lines (TalkParam {TextBase}+, subtitles only, no voice){(noRow > 0 ? $", {noRow} without a DS3 row" : "")}"
+        yield return $"people talk: {rows} dialogue lines (TalkParam {TextBase}+){(noRow > 0 ? $", {noRow} without a DS3 row" : "")}"
                + $"{(noWords > 0 ? $", {noWords} without DS3 text" : "")}{(ds3TalkParam is null ? " (DS3's TalkParam unreadable: line numbers used as text numbers)" : "")}; "
                + $"{texts} menu and dialog texts{(noText > 0 ? $", {noText} without DS3 text" : "")}";
+        foreach (var v in voiceLog)
+            yield return v;
+    }
+
+    /// <summary>
+    /// Builds each talk script prefix's voice bank (vc9PP, <see cref="FirstPrefix"/>) and points the lines' rows at it.
+    /// A line DS3 has no voice for, or whose voice doesn't decode, gets silence of its reading time: Elden Ring ends a
+    /// line when its voice ends, and at once when there is none (1.0.501). A bank that can't be built leaves its lines
+    /// voiceless (subtitles for their timeout, as before).
+    /// </summary>
+    private static List<string> WriteVoices(PorterContext ctx, GameArchives ds3, GameArchives er,
+        SortedDictionary<int, List<(PARAM.Row Row, int Voice, int Ds3Line, float Seconds)>> banks)
+    {
+        var log = new List<string>();
+        // Banks of an earlier run with more prefixes are taken away first.
+        for (int p = FirstPrefix; p < FirstPrefix + PrefixCount; p++)
+            foreach (var path in CutsceneSound.VoiceBankPaths(ctx, $"vc{p}"))
+                if (!banks.ContainsKey(p) && File.Exists(path))
+                    File.Delete(path);
+        if (!Voices)
+            return ["people talk: voices off (DARKSIGN_PEOPLE_VOICES=0): subtitles only"];
+        if (banks.Count == 0)
+            return log;
+        var notes = new List<string>();
+        CutsceneSound? sound = null;
+        try { sound = CutsceneSound.Create(ctx, ds3, er, notes); }
+        catch (Exception ex) when (ex is not OutOfMemoryException) { notes.Add($"{ex.GetType().Name}: {ex.Message}"); }
+        if (sound is null)
+            return [$"people talk: no voice banks ({string.Join("; ", notes)}); lines are subtitles only"];
+        int spokenBanks = 0, voiced = 0;
+        var built = new List<string>();
+        foreach (var (prefix, lines) in banks)
+        {
+            try
+            {
+                var voiceLines = lines.Select(l => new CutsceneSound.VoiceLine(l.Voice, sound.Voice(l.Ds3Line) is int v ? $"v{v:D9}" : null, l.Seconds)).ToList();
+                var (summary, done) = sound.BuildVoiceBank($"vc{prefix}", voiceLines);
+                foreach (var l in lines.Where(l => done.Contains(l.Voice)))
+                {
+                    PeopleArmour.SetCell(l.Row, "voiceId", l.Voice);
+                    PeopleArmour.SetCell(l.Row, "voiceId_female", l.Voice);
+                    voiced++;
+                }
+                spokenBanks++;
+                built.Add(summary);
+            }
+            catch (Exception ex) when (ex is not OutOfMemoryException)
+            {
+                built.Add($"vc{prefix} FAILED ({ex.GetType().Name}: {ex.Message}): its lines are subtitles only");
+            }
+        }
+        string index;
+        try { index = sound.WriteIndex(er); }
+        catch (Exception ex) when (ex is not OutOfMemoryException) { index = $"index FAILED ({ex.Message})"; }
+        log.Add($"people talk: voices: {voiced} lines in {spokenBanks} voice banks (sd\\vc9PP.bnk, Play_v<voiceId>; a line DS3 has no voice for is silence of its reading time); {index}");
+        log.AddRange(built.Select(b => "  people talk: voice bank " + b));
+        return log;
     }
 
     /// <summary>Seconds a voiceless line stays up (TalkParam timeout): about 15 characters a second, 3 to 14 seconds.</summary>
