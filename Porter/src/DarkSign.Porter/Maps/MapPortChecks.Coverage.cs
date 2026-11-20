@@ -6,9 +6,105 @@ public static partial class MapPortChecks
 {
     private static IEnumerable<(string Name, Action Test)> CoverageChecks()
     {
+        yield return ("maps side by side: the steps that share state run in port order, so the numbers given are those of one map at a time", MapsSideBySide);
         yield return ("coverage: a map that loses a share of its pieces, or fails where the others don't, is warned about by name", Coverage);
         yield return ("collision: an empty DS3 collision file (no root object) is reported as empty, not as a failed conversion", EmptyCollision);
         yield return ("collision: a part whose DS3 h file is empty keeps its l collision (Painted World enemies died on load), --drop-empty-collisions leaves it out", EmptySideParts);
+    }
+
+    /// <summary>
+    /// A stand-in for port-maps' map loop: every map numbers things from two shared counters, one in each turn, the
+    /// way real maps number people's armour and object models. Returns what each map was given and the most maps
+    /// that were in flight at once.
+    /// </summary>
+    private static (string Given, int MostAtOnce) TurnsRun(int maps, int atOnce, int failing, (int Map, int After) copy)
+    {
+        var turns = new MapTurns(maps);
+        var given = new string[maps];
+        int people = 0, objects = 0, inFlight = 0, most = 0;
+        var finished = new bool[maps];
+        var random = new Random(7);
+        var pauses = Enumerable.Range(0, maps * 3).Select(_ => random.Next(1, 25)).ToArray();
+        var run = Task.Run(() => turns.Run(atOnce, map => map == copy.Map ? [copy.After] : [], map =>
+        {
+            int now = Interlocked.Increment(ref inFlight);
+            lock (finished)
+                most = Math.Max(most, now);
+            try
+            {
+                if (map == copy.Map && !Volatile.Read(ref finished[copy.After]))
+                    throw new InvalidOperationException("a copying map started before the map it copies was finished");
+                // Later maps get the shorter pauses, so without the turns they would overtake the earlier ones.
+                turns.Take(MapTurns.Prepare, map);
+                int firstPerson = people;
+                Thread.Sleep(pauses[map * 3] / (map + 1));
+                people = firstPerson + map + 1;
+                turns.Give(MapTurns.Prepare, map);
+                Thread.Sleep(pauses[map * 3 + 1] * (maps - map));
+                if (map == failing)
+                {
+                    given[map] = $"{firstPerson}/failed";
+                    return;   // a failed map never takes its second turn; MapTurns.Run gives it back
+                }
+                turns.Take(MapTurns.Shared, map);
+                int firstObject = objects;
+                Thread.Sleep(pauses[map * 3 + 2] / (map + 1));
+                objects = firstObject + 2 * map + 1;
+                turns.Give(MapTurns.Shared, map);
+                Thread.Sleep(pauses[map * 3 + 2]);
+                given[map] = $"{firstPerson}/{firstObject}";
+            }
+            finally
+            {
+                Volatile.Write(ref finished[map], true);
+                Interlocked.Decrement(ref inFlight);
+            }
+        }));
+        if (!run.Wait(TimeSpan.FromSeconds(60)))
+            throw new InvalidOperationException($"{maps} maps, {atOnce} at once: the maps are waiting on each other");
+        return (string.Join(" ", given), most);
+    }
+
+    private static void MapsSideBySide()
+    {
+        var serial = TurnsRun(7, 1, failing: 2, copy: (5, 1));
+        Expect(serial.MostAtOnce == 1, $"one at a time: {serial.MostAtOnce} in flight");
+        Expect(serial.Given == "0/0 1/1 3/failed 6/4 10/11 15/20 21/31", $"one at a time gives the numbers in port order: {serial.Given}");
+        foreach (var atOnce in new[] { 2, 3, 4, 7, 12 })
+            for (int round = 0; round < 3; round++)
+            {
+                var side = TurnsRun(7, atOnce, failing: 2, copy: (5, 1));
+                Expect(side.Given == serial.Given, $"{atOnce} at once gives the same numbers as one at a time: {side.Given} vs {serial.Given}");
+                Expect(side.MostAtOnce <= atOnce, $"{atOnce} at once: {side.MostAtOnce} in flight");
+                Expect(side.MostAtOnce > 1, $"{atOnce} at once: maps really run side by side ({side.MostAtOnce} in flight)");
+            }
+        // A port step that throws past its own handling still gives the turns back, and the run reports it.
+        var turns = new MapTurns(3);
+        var seen = new List<int>();
+        try
+        {
+            turns.Run(3, _ => [], map =>
+            {
+                turns.Take(MapTurns.Prepare, map);
+                if (map == 0)
+                    throw new InvalidDataException("test");
+                lock (seen)
+                    seen.Add(map);
+                turns.Give(MapTurns.Prepare, map);
+            });
+            Expect(false, "a map that throws is reported");
+        }
+        catch (AggregateException ex)
+        {
+            Expect(ex.InnerExceptions.Count == 1 && ex.InnerExceptions[0] is InvalidDataException, "the map's own exception is carried");
+        }
+        Expect(seen.SequenceEqual([1, 2]), $"the maps after a failed one still port, in order: {string.Join(", ", seen)}");
+
+        Expect(Parallelism.DefaultMapsAtOnce(16, 64L << 30) == 4, "16 threads, 64 GB: 4 maps at once");
+        Expect(Parallelism.DefaultMapsAtOnce(32, 128L << 30) == 4, "never more than 4");
+        Expect(Parallelism.DefaultMapsAtOnce(8, 32L << 30) == 2, "8 threads, 32 GB: 2");
+        Expect(Parallelism.DefaultMapsAtOnce(16, 16L << 30) == 1, "16 GB: one map at a time");
+        Expect(Parallelism.DefaultMapsAtOnce(2, 64L << 30) == 1, "2 threads: one map at a time");
     }
 
     private static void Coverage()

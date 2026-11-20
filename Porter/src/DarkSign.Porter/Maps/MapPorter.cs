@@ -168,6 +168,14 @@ public static class MapPorter
         /// <summary>--no-regions (launcher Fallbacks "map-regions" B): no DS3 regions, patrol routes or generators (<see cref="RegionPort"/>).</summary>
         public bool NoRegions { get; set; }
 
+        /// <summary>
+        /// --stop-after-maps (diagnostic, not a launcher fallback): the run ends once the maps, their textures and
+        /// their materials are written, before the steps that need port-weapons' regulation, and lists every file in
+        /// the mod folder with its SHA-256 in Work\reports\map-files.tsv. Two runs into two empty --root folders, one
+        /// with DARKSIGN_MAPS_AT_ONCE=1, show whether porting maps side by side writes the same files.
+        /// </summary>
+        public bool StopAfterMaps { get; set; }
+
         public static Options Parse(IEnumerable<string> args)
         {
             var o = new Options();
@@ -230,6 +238,7 @@ public static class MapPorter
                     case "--no-people": o.NoPeople = true; break;
                     case "--er-people": o.ErPeople = true; break;
                     case "--all-layers": o.AllLayers = true; break;
+                    case "--stop-after-maps": o.StopAfterMaps = true; break;
                     case "--after-pid" when i + 1 < list.Count && int.TryParse(list[i + 1], out var pid): o.AfterPid = pid; i++; break;
                     default: o.Only.Add(MapId.Parse(list[i]).ToString()); break;
                 }
@@ -388,24 +397,55 @@ public static class MapPorter
             slots.Remove(slot);
         }
         // Probe slots last: they copy their main slot's converted map pieces.
-        foreach (var slot in slots.OrderBy(s => s.Probe))
+        var order = slots.OrderBy(s => s.Probe).ToList();
+        // Several maps port side by side (MapTurns keeps what they share in this order, so the files are the ones a
+        // one-at-a-time run writes). Each map has its own part of the report, joined in this order afterwards.
+        foreach (var slot in order)
+            if (!textures.ContainsKey(slot.Er.AreaFolder))
+                textures[slot.Er.AreaFolder] = new MapTextures(slot.Er, options.TextureDetail);
+        var turns = new MapTurns(order.Count);
+        var mapReports = order.Select(_ => new StringBuilder()).ToArray();
+        var starts = new int[order.Count];
+        int atOnce = Math.Min(Parallelism.MapsAtOnce, Math.Max(1, order.Count));
+        var mapsClock = System.Diagnostics.Stopwatch.StartNew();
+        try
         {
-            Console.WriteLine($"map {slot.Ds3} ({slot.Name}) -> Elden Ring {slot.Er}");
-            var mapClock = System.Diagnostics.Stopwatch.StartNew();
-            try
+            turns.Run(atOnce,
+                // A slot whose DS3 map an earlier slot converts copies that slot's files, so it waits for it.
+                map => Enumerable.Range(0, map).Where(earlier => order[earlier].Ds3 == order[map].Ds3),
+                map =>
+                {
+                    var slot = order[map];
+                    var mapReport = mapReports[map];
+                    Console.WriteLine($"map {slot.Ds3} ({slot.Name}) -> Elden Ring {slot.Er}");
+                    var mapClock = System.Diagnostics.Stopwatch.StartNew();
+                    try
+                    {
+                        starts[map] = PortMap(ctx, ds3, er, slot, options, textures[slot.Er.AreaFolder], materials, mapReport, turns, map);
+                    }
+                    catch (Exception ex)
+                    {
+                        mapReport.AppendLine($"{slot.Ds3}: FAILED: {ex.Message}");
+                        Console.Error.WriteLine($"  {slot.Ds3} failed: {ex.Message}");
+                    }
+                    Time(mapReport, $"map {slot.Ds3} -> {slot.Er}", mapClock);
+                });
+        }
+        finally
+        {
+            for (int map = 0; map < order.Count; map++)
             {
-                if (!textures.TryGetValue(slot.Er.AreaFolder, out var areaTextures))
-                    textures[slot.Er.AreaFolder] = areaTextures = new MapTextures(slot.Er, options.TextureDetail);
-                var start = PortMap(ctx, ds3, er, slot, options, areaTextures, materials, report);
-                if (start > 0)
-                    ported.Add((slot, start));
+                report.Append(mapReports[map]);
+                if (starts[map] > 0)
+                    ported.Add((order[map], starts[map]));
             }
-            catch (Exception ex)
-            {
-                report.AppendLine($"{slot.Ds3}: FAILED: {ex.Message}");
-                Console.Error.WriteLine($"  failed: {ex.Message}");
-            }
-            Time(report, $"map {slot.Ds3} -> {slot.Er}", mapClock);
+        }
+        if (order.Count > 0)
+        {
+            report.AppendLine(atOnce > 1
+                ? $"maps: {order.Count} ported, up to {atOnce} side by side (DARKSIGN_MAPS_AT_ONCE=1, fallback build-threads D, ports one at a time)"
+                : $"maps: {order.Count} ported, one at a time");
+            Time(report, "all maps", mapsClock);
         }
         // The objects' materials and textures: shared by every map, so they are added once, to every area's binder.
         if (_objects is not null && ported.Count > 0)
@@ -420,6 +460,17 @@ public static class MapPorter
             Step(report, "textures", () => areaTextures.Write(ctx, ds3, er));
         if (materials.Count > 0)
             Step(report, "materials", () => WriteMaterials(ctx, er, materials, keepExisting: options.Only.Count > 0));
+
+        if (options.StopAfterMaps)
+        {
+            Step(report, "map files", () => ListModFiles(ctx));
+            report.AppendLine("port-maps: stopped after the maps (--stop-after-maps): no events, effects, params or validation; not a build to play");
+            var early = ctx.WorkPath("logs", $"port-maps-{DateTime.Now:yyyyMMdd-HHmmss}.txt");
+            File.WriteAllText(early, report.ToString());
+            Console.WriteLine(report.ToString());
+            Console.WriteLine($"port-maps: {ported.Count} map(s) written in {(DateTime.Now - started).TotalSeconds:F0} s, stopped after the maps; report {early}");
+            return ported.Count > 0 ? 0 : 1;
+        }
 
         // Event scripts last: they need every ported map, to send warps and IDs to the right slot. A failure leaves
         // the empty scripts written with each map.
@@ -554,7 +605,8 @@ public static class MapPorter
             report.AppendLine("run events: not added (Firelink Shrine / Cemetery of Ash was not ported)");
 
         // Every ported map side by side, so a step that works on one map and loses pieces on another is seen (RULE 4).
-        var coverage = _coverage.Where(r => ported.Any(p => p.Slot.Er == r.Er)).ToList();
+        // In the maps' port order, whichever finished first.
+        var coverage = _coverage.Where(r => ported.Any(p => p.Slot.Er == r.Er)).OrderBy(r => order.FindIndex(s => s.Er == r.Er)).ToList();
         var coverageWarnings = MapCoverage.Warnings(coverage);
         try
         {
@@ -588,6 +640,27 @@ public static class MapPorter
         Console.WriteLine(report.ToString());
         Console.WriteLine($"port-maps: {ported.Count} map(s) ported in {(DateTime.Now - started).TotalSeconds:F0} s; report {log}");
         return ported.Count > 0 ? 0 : 1;
+    }
+
+    public const string ModFilesReport = "map-files.tsv";
+
+    /// <summary>Every file in the mod folder with its size and SHA-256, sorted by path (--stop-after-maps).</summary>
+    private static string ListModFiles(PorterContext ctx)
+    {
+        var root = Path.GetDirectoryName(ctx.ModPath("x"))!;
+        var files = Directory.GetFiles(root, "*", SearchOption.AllDirectories).Order(StringComparer.OrdinalIgnoreCase).ToList();
+        var lines = new string[files.Count];
+        long bytes = 0;
+        Parallel.For(0, files.Count, Parallelism.Options, i =>
+        {
+            using var stream = File.OpenRead(files[i]);
+            Interlocked.Add(ref bytes, stream.Length);
+            lines[i] = $"{Path.GetRelativePath(root, files[i]).Replace('\\', '/')}\t{stream.Length}\t{Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(stream))}";
+        });
+        var report = ctx.WorkPath("reports", ModFilesReport);
+        File.WriteAllLines(report, lines);
+        var all = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(Encoding.UTF8.GetBytes(string.Join('\n', lines))));
+        return $"map files: {files.Count} files, {bytes / (1 << 20)} MB in the mod folder; SHA-256 of the whole list {all} (Work\\reports\\{ModFilesReport})";
     }
 
     /// <summary>The music plan of the ported maps: their DS3 layouts and scripts (DS3's common_func included).</summary>
@@ -852,9 +925,15 @@ public static class MapPorter
 
     /// <summary>Ports one map; returns the run's start entity ID, or 0 when the map couldn't be ported.</summary>
     private static int PortMap(PorterContext ctx, GameArchives ds3, GameArchives er, MapSlots.Slot slot, Options options,
-        MapTextures textures, List<BinderFile> materials, StringBuilder report)
+        MapTextures textures, List<BinderFile> materials, StringBuilder report, MapTurns turns, int turn)
     {
         var (ds3Id, erId) = (slot.Ds3, slot.Er);
+        // What every map shares is touched only inside a turn (MapTurns): this one covers the layout, the enemies and
+        // people placed, and the material templates. A map that fails gives its turns back in MapTurns.Run.
+        var stepClock = System.Diagnostics.Stopwatch.StartNew();
+        turns.Take(MapTurns.Prepare, turn);
+        double waited = stepClock.Elapsed.TotalSeconds;
+        stepClock.Restart();
         int reportStart = report.Length;   // this map's part of the port log, for its coverage row (MapCoverage)
         EnemyPort.Result? enemiesPlaced = null;
         ObjectPort.Result? objectsPlaced = null;
@@ -951,6 +1030,13 @@ public static class MapPorter
         report.AppendLine($"  material templates: {models.TemplateSummary} (binder layout from {binderMap})");
         lock (_layouts)
             _layouts.UnionWith(models.TemplateLayouts());
+        // The main slot this DS3 map's pieces were converted into, if this slot copies them (it waited for that slot).
+        (MapId Er, HashSet<string> Textures) main;
+        lock (_converted)
+            _converted.TryGetValue(ds3Id, out main);
+        turns.Give(MapTurns.Prepare, turn);
+        report.AppendLine($"  time: layout, enemies and material templates {stepClock.Elapsed.TotalSeconds:F0} s"
+                          + (waited >= 1 ? $" (after waiting {waited:F0} s for the maps before it)" : ""));
 
         // Where faded overlay triangles have a surface behind them, over the whole map (see MapOverlayBacking). Each
         // model's faded triangles are collected as it is first read; a model that has any is converted only after
@@ -958,7 +1044,7 @@ public static class MapPorter
         // surfaces.
         MapOverlayBacking? backing = null;
         if (models.Ds3Alpha && models.FadeOverlays && !options.CutFadedOverlays && test == PieceTest.None
-            && !(_converted.TryGetValue(ds3Id, out var done) && done.Er != erId && done.Er != default))
+            && !(main.Er != erId && main.Er != default))
         {
             try
             {
@@ -977,7 +1063,6 @@ public static class MapPorter
         var clock = System.Diagnostics.Stopwatch.StartNew();
         var mapPieces = layout.Msb.Models.MapPieces.ToList();
         var failures = new string?[mapPieces.Count];
-        _converted.TryGetValue(ds3Id, out var main);
         int copied = 0;
         Parallel.For(0, mapPieces.Count, Parallelism.Options, i =>
         {
@@ -1161,6 +1246,11 @@ public static class MapPorter
                 report.AppendLine($"  texture distance by size: FAILED ({ex.Message}); every piece keeps row {MapDrawParams.FirstRow}");
             }
         }
+        // From here to the boss arenas the map changes what the run shares (the area's textures, the materials, HKLib's
+        // caches under the collision and navmesh, the object port, the arena list): one map at a time, in port order.
+        stepClock.Restart();
+        turns.Take(MapTurns.Shared, turn);
+        waited = stepClock.Elapsed.TotalSeconds;
         if (options.TintMaterials)
         {
             foreach (var (name, marks, rgb) in MapModelPort.Tints)
@@ -1190,9 +1280,11 @@ public static class MapPorter
         if (copied > 0)
             textures.Need(main.Textures, ds3Id);
         else if (!slot.Probe && test == PieceTest.None)
-            _converted[ds3Id] = (erId, models.Textures);
-        report.AppendLine($"  time: {mapPieces.Count} map piece binders in {clock.Elapsed.TotalSeconds:F0} s"
-                          + (copied > 0 ? $" ({copied} copied from {main.Er})" : "") + $" on {Parallelism.Threads} threads");
+            lock (_converted)
+                _converted[ds3Id] = (erId, models.Textures);
+        report.AppendLine($"  time: {mapPieces.Count} map piece binders in {clock.Elapsed.TotalSeconds - waited:F0} s"
+                          + (copied > 0 ? $" ({copied} copied from {main.Er})" : "") + $" on {Parallelism.Threads} threads"
+                          + (waited >= 1 ? $" (then waited {waited:F0} s for the maps before it)" : ""));
 
         // Collision.
         var missingCollisions = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -1321,6 +1413,8 @@ public static class MapPorter
             layout.Msb.Parts.Players.RemoveAll(p => p.EntityID % 10_000 >= BossArenas.FirstPointNumber && p.EntityID % 10_000 < BossArenas.FirstPointNumber + 30);
             report.AppendLine($"  boss arenas: FAILED ({ex.Message}); no boss warps for this map");
         }
+        turns.Give(MapTurns.Shared, turn);
+        stepClock.Restart();
 
         // Drop what has no model, then write the layout.
         var msb = layout.Msb;
@@ -1402,6 +1496,7 @@ public static class MapPorter
             report.AppendLine($"  atmosphere: FAILED: {ex.Message}; the host's colours stay");
         }
         File.WriteAllBytes(ctx.ModPath(ModParts(MsbPath(erId))), DCX.Compress(msb.Write(), msbCompression));
+        report.AppendLine($"  time: lighting, sky, atmosphere and layout {stepClock.Elapsed.TotalSeconds:F0} s");
         report.AppendLine($"  written: {msb.Parts.MapPieces.Count} map pieces, {msb.Parts.Collisions.Count} collisions, {msb.Parts.Players.Count} player points, {msb.Parts.Enemies.Count} enemies, "
                           + $"{msb.Parts.Assets.Count} objects, {msb.Regions.GetEntries().Count} regions, {msb.Events.GetEntries().Count} map-file events");
         if (!slot.Probe)

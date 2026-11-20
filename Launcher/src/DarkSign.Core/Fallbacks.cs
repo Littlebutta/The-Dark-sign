@@ -90,11 +90,13 @@ public static class Fallbacks
         new("build-threads", "Starting the game", "Content build speed", Stage.Build,
             "The content build fails or gives different results from one run to the next.",
         [
-            new("A", "Every core (default)", "port-weapons and port-maps run side by side, each on every core."),
+            new("A", "Every core (default)", "port-weapons and port-maps run side by side, each on every core, and port-maps ports several DS3 maps side by side."),
             new("B", "One core", "Everything one step at a time (DARKSIGN_THREADS=1), as builds were before 1.0.12x. Slower, but rules out a threading bug.")
                 { PorterEnv = Env("DARKSIGN_THREADS", "1") },
             new("C", "Collision one file at a time", "Every core, but map collision files are serialized one at a time under a lock (DARKSIGN_COLLISION_LOCK=1), as builds before 1.0.23x did. Minutes slower per map; rules the lock-free Havok serialization out if a map's collision misbehaves.")
                 { PorterEnv = Env("DARKSIGN_COLLISION_LOCK", "1") },
+            new("D", "One map at a time", "Every core, but port-maps ports the DS3 maps one after another (DARKSIGN_MAPS_AT_ONCE=1), as builds up to 1.0.50x did, instead of several side by side. A few minutes slower; rules porting maps side by side out if a map looks different from one build to the next.")
+                { PorterEnv = Env("DARKSIGN_MAPS_AT_ONCE", "1") },
         ]),
 
         // ---- Weapon movesets ----
@@ -635,6 +637,16 @@ public static class Fallbacks
                 { PorterEnv = Env("DARKSIGN_BONFIRES", "sword") },
             new("C", "Scenery", "DS3's bonfires can't be used (DARKSIGN_BONFIRES=0), as every build up to 1.0.46x had them: you respawn at your last Elden Ring grace.")
                 { PorterEnv = Env("DARKSIGN_BONFIRES", "0") },
+        ]),
+
+        new("map-text", "DS3 maps", "DS3's event messages and area names", Stage.Build,
+            "A message in a DS3 map shows no words, a placeholder or the wrong words (a locked door, a lever that won't move, a map event), an area's name shows wrongly or keeps popping up, or a DS3 map crashes or hangs since its text was added.",
+        [
+            new("A", "DS3's own words (default)", "Every message a DS3 script, door or lever shows (\"Locked by some contraption\", \"Does not open from this side\", \"Used Tower Key\") is DS3's own text, copied into Elden Ring's event text at 1,000,000,000 + the DS3 number, and each DS3 area shows its name when you enter it (\"High Wall of Lothric\"). Report: the map text lines of the port-maps log."),
+            new("B", "No area names", "Messages as in A, but no area name shows on entering a DS3 area (DARKSIGN_MAP_TEXT=noplaces), as every build up to 1.0.50x had it.")
+                { PorterEnv = Env("DARKSIGN_MAP_TEXT", "noplaces") },
+            new("C", "DS3's text numbers, as up to 1.0.50x", "Scripts, doors and levers keep DS3's text numbers (DARKSIGN_MAP_TEXT=0), which Elden Ring looks up in its own text: messages show no words or the wrong ones, and no area name shows.")
+                { PorterEnv = Env("DARKSIGN_MAP_TEXT", "0") },
         ]),
 
         new("map-water", "DS3 maps", "Water in the DS3 maps", Stage.Build,
