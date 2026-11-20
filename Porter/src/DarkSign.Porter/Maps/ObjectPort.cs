@@ -114,6 +114,12 @@ public sealed class ObjectPort
         public bool MoveObj;
         public string MovingNote = "";
         public int Animations, MovingBodies;
+        /// <summary>Its sound bank's number (aegGGG_NNN = GGGNNN, <see cref="ObjectSounds"/>), and its sounds: DS3 ID -> new g ID.</summary>
+        public int SoundBank = -1;
+        public IReadOnlyDictionary<int, int> Sounds = new Dictionary<int, int>();
+        /// <summary>The bank was written (the row names it only then), and what became of it.</summary>
+        public bool SoundBankWritten;
+        public string SoundNote = "";
         public string Contents = "";
         public List<string> Textures = [];
     }
@@ -144,6 +150,8 @@ public sealed class ObjectPort
     public MapModelPort Models => _models;
     public IReadOnlyCollection<Asset> Assets => _assets.Values;
     public int FirstGroup { get; }
+    /// <summary>The first sound group the objects' banks are named in (<see cref="ObjectSounds.SoundGroup"/>).</summary>
+    public int FirstSoundGroup { get; }
     public List<string> Notes { get; } = [];
 
     /// <param name="models">A fresh model port with the run's material templates; objects get their own materials.</param>
@@ -171,6 +179,18 @@ public sealed class ObjectPort
         // Posed copies (corpses, ObjectPoses) after the plain models, so the plain models keep their numbers.
         var poses = ObjectPoses.Enabled ? PlanPoses(maps.SelectMany(m => m.Parts.Objects)) : [];
         FirstGroup = FreeGroup(er.Entries.Select(e => e.Path), (names.Count + poses.Count + 999) / 1000);
+        int groups = (names.Count + poses.Count + 999) / 1000;
+        FirstSoundGroup = ObjectSounds.FirstGroupWanted;
+        if (ObjectSounds.Enabled)
+            try
+            {
+                var index = er.Contains(SoundIndex.ArchivePath) ? SoundIndex.Read(er.Read(SoundIndex.ArchivePath)) : null;
+                FirstSoundGroup = ObjectSounds.SoundGroup(index is null ? null : index.HasBank, groups);
+            }
+            catch (Exception ex) when (ex is not OutOfMemoryException)
+            {
+                Notes.Add($"object sounds: the game's sound index is unreadable ({ex.Message}); banks named from group {FirstSoundGroup}");
+            }
         foreach (var (model, index) in names)
             _assets[model] = new Asset { Ds3Model = model, Index = index, Name = AssetName(FirstGroup, index) };
         for (int i = 0; i < poses.Count; i++)
@@ -688,7 +708,15 @@ public sealed class ObjectPort
                     catch (Exception ex) when (ex is not OutOfMemoryException) { Notes.Add($"moving objects: the effect table is unreadable ({ex.Message}); animations play no effects"); }
                     _effectsTried = true;
                 }
-        var anims = ObjectAnims.Build(bnd, asset.Name, template, rename, _effects);
+        var bank = ObjectSounds.BankOf(FirstSoundGroup, asset.Index);
+        var anims = ObjectAnims.Build(bnd, asset.Name, template, rename, _effects, ObjectSounds.Enabled
+            ? played => played.Take(ObjectSounds.MaxPerAsset).Select((id, n) => (id, n)).ToDictionary(x => x.id, x => ObjectSounds.SoundId(bank, x.n))
+            : null);
+        if (anims.Sounds.Count > 0)
+        {
+            asset.SoundBank = bank;
+            asset.Sounds = anims.Sounds;
+        }
         var result = ConvertBinder(bnd, asset.Ds3Model, asset.Name, _models, _binderTemplate, _fileFlags, rename, out var nodeNote);
         var nodeNames = result.Flver.Nodes.Select(n => n.Name).ToHashSet(StringComparer.OrdinalIgnoreCase);
         var unmatched = anims.Bones.Skip(1).Where(b => !nodeNames.Contains(b)).ToList();
@@ -883,6 +911,10 @@ public sealed class ObjectPort
             // DS3's scripts register each ladder by its entity (Register Ladder, converted to Elden Ring's); the
             // asset row says the asset is one, as DS3's ObjectParam row did.
             Set(row, "isLadder", (byte)(asset.Ladder ? 1 : 0));
+            // Its own sound bank (aegGGG_NNN), loaded with it as Elden Ring's door and lift load theirs; the others
+            // keep the template's.
+            if (asset.SoundBankWritten)
+                Set(row, "soundBankId", asset.SoundBank);
             assetParam.Rows.Add(row);
             added++;
         }
@@ -967,6 +999,59 @@ public sealed class ObjectPort
             cell.Value = System.Convert.ChangeType(value, cell.Value.GetType());
     }
 
+    public const string SoundReportFile = "object-sounds.tsv";
+
+    /// <summary>
+    /// Builds every sounding object's bank (<see cref="ObjectSoundBanks"/>) and lists them in the game's sound index,
+    /// before <see cref="WriteParams"/> (which names a bank in an asset's row only when it was written). After
+    /// port-weapons, whose sound index this adds to. Writes Work\reports\object-sounds.tsv: one line per object.
+    /// </summary>
+    public string WriteSounds()
+    {
+        var sounding = _assets.Values.Where(a => a.Converted && a.Moving && a.Sounds.Count > 0).OrderBy(a => a.Index).ToList();
+        if (!ObjectSounds.Enabled)
+            return "object sounds: off (DARKSIGN_OBJECT_SOUNDS=0, fallback map-doors C): objects move silently";
+        if (sounding.Count == 0)
+            return "object sounds: no moving object plays a DS3 sound";
+        var notes = new List<string>();
+        var banks = ObjectSoundBanks.Create(_ctx, _ds3, _er, notes);
+        if (banks is null)
+            return string.Join("; ", notes);
+        int written = 0, sounds = 0, looping = 0;
+        var report = new StringBuilder("DS3 object\tasset\tbank\tsounds wanted\tsounds ported\tlooping\tresult\tDS3 sound -> Elden Ring sound\n");
+        foreach (var asset in sounding)
+        {
+            var list = asset.Sounds.OrderBy(kv => kv.Value).Select(kv => (kv.Key, kv.Value)).ToList();
+            ObjectSoundBanks.BankResult result;
+            try
+            {
+                result = banks.Build(asset.SoundBank, list);
+            }
+            catch (Exception ex) when (ex is not OutOfMemoryException)
+            {
+                result = new ObjectSoundBanks.BankResult($"FAILED: {ex.Message}", [], [], null);
+            }
+            asset.SoundBankWritten = result.File is not null;
+            asset.SoundNote = result.Log;
+            if (asset.SoundBankWritten)
+            {
+                written++;
+                sounds += result.Ported.Count;
+                looping += result.Looping.Count;
+            }
+            report.Append(string.Join('\t', asset.Ds3Model, asset.Name, ObjectSounds.BankName(asset.SoundBank), list.Count, result.Ported.Count, result.Looping.Count,
+                Clean(result.Log), string.Join(" ", list.Select(s => $"{ObjectSounds.Ds3Name(s.Key)}->{ObjectSounds.ErName(s.Value)}{(result.Ported.Contains(s.Key) ? "" : "(silent)")}")))).Append('\n');
+        }
+        File.WriteAllText(_ctx.WorkPath("reports", SoundReportFile), report.ToString());
+        string index;
+        try { index = banks.Finish(_er); }
+        catch (Exception ex) when (ex is not OutOfMemoryException) { index = $"index: FAILED ({ex.Message})"; }
+        var silent = sounding.Where(a => !a.SoundBankWritten).Select(a => a.Ds3Model).ToList();
+        return $"object sounds: {written} of {sounding.Count} sounding objects got a bank ({sounds} DS3 sounds, {looping} looping, copied from {banks.TemplateName}, " +
+               $"groups from aeg{FirstSoundGroup:D3}), {index}" + (silent.Count > 0 ? $"; silent: {string.Join(" ", silent.Take(8))}" : "") +
+               $" (Work\\reports\\{SoundReportFile})";
+    }
+
     /// <summary>Writes the rows into the mod's regulation. Throws when it can't: the caller then takes the assets out of the maps.</summary>
     public string WriteParams()
     {
@@ -1027,6 +1112,7 @@ public sealed class ObjectPort
     /// <summary>Deletes the asset files an earlier run wrote (listed in <see cref="ManifestFile"/>).</summary>
     public static void CleanOutputs(PorterContext ctx)
     {
+        ObjectSoundBanks.Clean(ctx);
         var manifest = ctx.ModPath(ManifestFile);
         if (!File.Exists(manifest))
             return;

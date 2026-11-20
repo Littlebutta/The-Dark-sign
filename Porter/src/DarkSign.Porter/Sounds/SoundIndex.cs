@@ -100,9 +100,10 @@ public sealed class SoundIndex
     /// <summary>
     /// Lists these events under the bank (flag 0: one-shot sounds). A bank the index doesn't have yet is added to the
     /// section holding <paramref name="sectionOf"/> (the bank whose Wwise project it shares, e.g. cs_main), else to
-    /// the first section. Returns how many events were new.
+    /// the first section. Returns how many events were new. Events in <paramref name="looping"/> get bit 32, as the
+    /// game flags its own sounds that loop until they are stopped (Play_g920001101, the lift's motor).
     /// </summary>
-    public int Register(uint bankId, IEnumerable<uint> eventIds, uint? sectionOf = null)
+    public int Register(uint bankId, IEnumerable<uint> eventIds, uint? sectionOf = null, IReadOnlySet<uint>? looping = null)
     {
         var bank = _sections.SelectMany(s => s.Banks).FirstOrDefault(b => b.Id == bankId);
         if (bank is null)
@@ -121,7 +122,7 @@ public sealed class SoundIndex
         foreach (var id in eventIds.Distinct())
             if (known.Add(id))
             {
-                bank.Events.Add(id);
+                bank.Events.Add(looping?.Contains(id) == true ? (1UL << 32) | id : id);
                 added++;
             }
         if (added > 0)

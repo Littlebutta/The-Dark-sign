@@ -457,9 +457,13 @@ public static partial class MapPortChecks
             new ObjectPort.Asset { Ds3Model = "o000100", Index = 0, Name = "AEG920_000", Converted = true, Radius = 0.6f, Ladder = true },
             new ObjectPort.Asset { Ds3Model = "o302590", Index = 1, Name = "AEG920_001", Converted = true, Collision = true, Radius = 9f },
             new ObjectPort.Asset { Ds3Model = "o999999", Index = 2, Name = "AEG920_002", Failure = "no model" },
+            new ObjectPort.Asset { Ds3Model = "o311500", Index = 3, Name = "AEG920_003", Converted = true, Moving = true, SoundBank = 990003, SoundBankWritten = true },
+            new ObjectPort.Asset { Ds3Model = "o304822", Index = 4, Name = "AEG920_004", Converted = true, Moving = true, SoundBank = 990004 },
         ]);
-        Expect(port.AddRows(assetParam, drawParam) == 2, "one row per converted object");
-        Expect(assetParam.Rows.Select(r => r.ID).SequenceEqual([ObjectPort.TemplateRow, 920000, 920001]), "rows in ID order, the stale one replaced, none for a failed model");
+        Expect(port.AddRows(assetParam, drawParam) == 4, "one row per converted object");
+        Expect(assetParam.Rows.Select(r => r.ID).SequenceEqual([ObjectPort.TemplateRow, 920000, 920001, 920003, 920004]), "rows in ID order, the stale one replaced, none for a failed model");
+        Expect((int)assetParam[920003]["soundBankId"].Value == 990003 && (int)assetParam[920004]["soundBankId"].Value == 42,
+            "a moving object names its sound bank (aeg990_003) once it was written; one whose bank wasn't keeps the template's");
         var small = assetParam[920000];
         var big = assetParam[920001];
         Expect(small.Name == "[DS3] o000100" && (int)small["soundBankId"].Value == 42, "a copy of the template row, named after the DS3 object");
@@ -471,7 +475,7 @@ public static partial class MapPortChecks
         Expect(!MapDrawParams.IsOurs(ObjectPort.FirstDrawRow) || ObjectPort.FirstDrawRow > MapDrawParams.FirstRow, "they don't collide with the map pieces' row");
         // Again: nothing doubles.
         port.AddRows(assetParam, drawParam);
-        Expect(assetParam.Rows.Count == 3 && drawParam.Rows.Count == 1 + ObjectPort.DrawBySize.Length, "a second pass replaces the rows");
+        Expect(assetParam.Rows.Count == 5 && drawParam.Rows.Count == 1 + ObjectPort.DrawBySize.Length, "a second pass replaces the rows");
         // Without PartsDrawParam the objects keep the template's row.
         var alone = new PARAM { ParamType = assetDef.ParamType, Rows = [new PARAM.Row(template)] };
         port.AddRows(alone, null);

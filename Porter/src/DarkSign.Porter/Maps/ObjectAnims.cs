@@ -30,7 +30,8 @@ namespace DarkSign.Porter.Maps;
 /// table): a door's dust, and the fire of a bonfire, which is nothing but its object's animations (0 hidden, 1
 /// unlit with effect 1010, 10-103 lit with 1011 on dummy poly 201; Elden Ring's grace AEG099_060 has the same
 /// animations with the same events).
-/// Not ported yet: DS3's sound events (Elden Ring's banks don't have the sounds), so the objects move silently.
+/// DS3's sound events (TAE types 128/129/131, sound type 3) become Elden Ring's asset sound events (129, type 14) under
+/// the asset's own sound IDs (<see cref="ObjectSounds"/>), whose bank the object port builds after the maps.
 ///
 /// Collision: Elden Ring's door collision (AEG219_000_L.hkx) has one body per part, named after the bone it follows
 /// (the leaf is "Model_AEG219_000_01", a box that turns with the bone of that name); the frame stays put. A moving
@@ -49,6 +50,8 @@ public static partial class ObjectAnims
         public required Binder.FileFlags Flags;
         public required byte[] Skeleton, Tae, Animation;
         public byte[]? Compendium;
+        /// <summary>The door's sound event (129, type 14) to lay ported sound events out like; null when it has none.</summary>
+        public (byte[] Bytes, int Unk04)? SoundLayout;
         /// <summary>The door leaf's body and motion properties in the vanilla collision; null when it couldn't be read.</summary>
         public hknpPhysicsSystemData.bodyCinfoWithAttachment? MovingBody;
         public hknpMotionProperties? MovingMotion;
@@ -80,6 +83,10 @@ public static partial class ObjectAnims
             Animation = Get(f => AnimLeaf().IsMatch(ItemText.Leaf(f.Name)), "animation"),
             Compendium = anibnd.Files.FirstOrDefault(f => f.Name.EndsWith(".compendium", StringComparison.OrdinalIgnoreCase))?.Bytes.ToArray(),
         };
+        try { t.SoundLayout = ObjectSounds.Layout(TAE.Read(t.Tae)); }
+        catch (Exception ex) when (ex is not OutOfMemoryException) { t.Notes.Add($"the template TAE's sound events unreadable ({ex.Message}); objects move silently"); }
+        if (t.SoundLayout is null)
+            t.Notes.Add("the template TAE has no sound event (129) to copy; objects move silently");
         try
         {
             if (hkxbndBytes is not null)
@@ -119,6 +126,9 @@ public static partial class ObjectAnims
     public sealed record Result(byte[] Anibnd, int Animations, int Failed, IReadOnlyList<string> Bones, string Summary)
     {
         public int EffectEvents { get; init; }
+        public int SoundEvents { get; init; }
+        /// <summary>The object's sounds: DS3 ID -> its new g ID (empty when it plays none or sounds are off).</summary>
+        public IReadOnlyDictionary<int, int> Sounds { get; init; } = new Dictionary<int, int>();
     }
 
     /// <summary>
@@ -218,8 +228,9 @@ public static partial class ObjectAnims
         return (events, dropped);
     }
 
+    /// <param name="soundIds">Gives the object's DS3 sounds (in ID order) their new IDs; null: the sounds are left out.</param>
     public static Result Build(BND4 objbnd, string assetName, Template t, IReadOnlyDictionary<string, string> rename,
-        IReadOnlyDictionary<int, int>? effects = null)
+        IReadOnlyDictionary<int, int>? effects = null, Func<IReadOnlyList<int>, IReadOnlyDictionary<int, int>>? soundIds = null)
     {
         var anibndFile = objbnd.Files.FirstOrDefault(f => ItemText.Leaf(f.Name).EndsWith(".anibnd", StringComparison.OrdinalIgnoreCase))
                          ?? throw new InvalidDataException("the objbnd has no animation binder");
@@ -294,35 +305,54 @@ public static partial class ObjectAnims
         if (converted == 0)
             throw new InvalidDataException(failed == 0 ? "the animation binder has no animations" : $"no animation converted ({string.Join("; ", errors.Take(2))})");
 
-        // One TAE entry per animation, in the template's format, with DS3's effect events; its sounds are left out.
+        // One TAE entry per animation, in the template's format, with DS3's effect and sound events.
         var tae = TAE.Read(t.Tae);
         tae.SibName = $"{upper}.sib";
         tae.Animations = ids.Order().Select(id => new TAE.Animation(id, new TAE.Animation.AnimMiniHeader.Standard(), $"a{id / 1_000_000:D3}_{id % 1_000_000:D6}.hkt")).ToList();
-        int effectEvents = 0, effectsDropped = 0;
-        if (effects is not null)
+        int effectEvents = 0, effectsDropped = 0, soundEvents = 0, soundsDropped = 0;
+        IReadOnlyDictionary<int, int> sounds = new Dictionary<int, int>();
+        bool wantSounds = soundIds is not null && t.SoundLayout is not null;
+        if (effects is not null || wantSounds)
             try
             {
                 var ds3TaeFile = ds3Bnd.Files.FirstOrDefault(f => ItemText.Leaf(f.Name).EndsWith(".tae", StringComparison.OrdinalIgnoreCase));
                 if (ds3TaeFile is not null)
                 {
                     var ds3Tae = TAE.Read(ds3TaeFile.Bytes);
+                    if (wantSounds && ObjectSounds.Ds3Sounds(ds3Tae) is { Count: > 0 } played)
+                        sounds = soundIds!([.. played]);
                     foreach (var anim in tae.Animations)
                     {
                         if (ds3Tae.Animations.FirstOrDefault(a => a.ID == anim.ID) is not { } source)
                             continue;
-                        var (events, dropped) = EffectEvents(source, ds3Tae.BigEndian, effects);
-                        effectsDropped += dropped;
-                        if (events.Count == 0)
-                            continue;
-                        anim.EventGroups.Add(events[0].Group);
-                        anim.Events.AddRange(events);
-                        effectEvents += events.Count;
+                        if (effects is not null)
+                        {
+                            var (events, dropped) = EffectEvents(source, ds3Tae.BigEndian, effects);
+                            effectsDropped += dropped;
+                            if (events.Count > 0)
+                            {
+                                anim.EventGroups.Add(events[0].Group);
+                                anim.Events.AddRange(events);
+                                effectEvents += events.Count;
+                            }
+                        }
+                        if (sounds.Count > 0)
+                        {
+                            var (events, dropped) = ObjectSounds.Events(source, ds3Tae.BigEndian, t.SoundLayout!.Value, sounds);
+                            soundsDropped += dropped;
+                            if (events.Count > 0)
+                            {
+                                anim.EventGroups.Add(events[0].Group);
+                                anim.Events.AddRange(events);
+                                soundEvents += events.Count;
+                            }
+                        }
                     }
                 }
             }
             catch (Exception ex) when (ex is not OutOfMemoryException)
             {
-                errors.Add($"effect events not read ({ex.Message})");
+                errors.Add($"effect or sound events not read ({ex.Message})");
             }
         bnd.Files.Add(new BinderFile(flags, 3000000, folder + $@"tae\{upper}.tae", tae.Write()));
         if (t.Compendium is not null)
@@ -330,8 +360,9 @@ public static partial class ObjectAnims
         bnd.Files.Sort((a, b) => a.ID.CompareTo(b.ID));
 
         var summary = $"{converted} animations ({string.Join(" ", ids.Order())}), {count} bones" + (failed > 0 ? $", {failed} failed ({errors[0]})" : "")
-                      + (effectEvents + effectsDropped > 0 ? $", {effectEvents} effect events" + (effectsDropped > 0 ? $" ({effectsDropped} more name effects that aren't converted)" : "") : "");
-        return new Result(bnd.Write(), converted, failed, ds3Skeleton.Names, summary) { EffectEvents = effectEvents };
+                      + (effectEvents + effectsDropped > 0 ? $", {effectEvents} effect events" + (effectsDropped > 0 ? $" ({effectsDropped} more name effects that aren't converted)" : "") : "")
+                      + (soundEvents + soundsDropped > 0 ? $", {soundEvents} sound events of {sounds.Count} sounds" + (soundsDropped > 0 ? $" ({soundsDropped} more past the bank's {ObjectSounds.MaxPerAsset})" : "") : "");
+        return new Result(bnd.Write(), converted, failed, ds3Skeleton.Names, summary) { EffectEvents = effectEvents, SoundEvents = soundEvents, Sounds = sounds };
     }
 
     /// <summary>The path the asset binder names its animation binder by (file ID 400).</summary>

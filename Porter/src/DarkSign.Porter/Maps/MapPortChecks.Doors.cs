@@ -13,6 +13,8 @@ public static partial class MapPortChecks
     {
         yield return ("doors: a moving object keeps its meshes on their nodes (each part follows its bone) and names a node after the asset", MovingModel);
         yield return ("lifts: a skinned mesh of a moving object (the Undead Settlement tower lift's platform) follows the bone each vertex is weighted to most", SkinnedPlatform);
+        yield return ("lifts: DS3's object sound events (128/129/131, type o) become Elden Ring asset sound events (129, type g) on the same dummy polys, held motors end with the event", ObjectSoundEvents);
+        yield return ("lifts: each sounding object gets a bank aegGGG_NNN in a sound group no Elden Ring bank uses, and sound IDs GGGNNNkkk", ObjectSoundBanksNamed);
         yield return ("doors: a DS3 convex hull (door leaf, lever) becomes an Elden Ring convex polytope with one plane per face", ConvexHull);
         yield return ("doors: a written convex hull lists its vertices, planes, faces and indices in the patch list (the game resolves only those; 1.0.410 crashed without)", ConvexHullPatches);
         yield return ("lifts: solid blocks inside a DS3 mesh (a lift's platform, a gate's frame) are read and rebuilt as faces, not left out as a placeholder", MeshHulls);
@@ -128,6 +130,59 @@ public static partial class MapPortChecks
             m_faces = quads.Select((q, i) => new Ds3.hknpConvexPolytopeShapeFace { m_firstIndex = (ushort)(i * 4), m_numIndices = 4, m_minHalfAngle = 128 }).ToList(),
             m_indices = quads.SelectMany(q => q).ToList(),
         };
+    }
+
+    // The Undead Settlement lift's DS3 events (o311500.tae, anim 12) and Elden Ring's door sound layout (AEG219_000.tae).
+    private static void ObjectSoundEvents()
+    {
+        static byte[] Ints(params int[] v) => v.SelectMany(BitConverter.GetBytes).ToArray();
+        var door = new byte[32];
+        Ints(14, 900010000, -1, -1).CopyTo(door, 0);
+        door[19] = 1;                       // UseChrSoundEmitter
+        BitConverter.GetBytes(1).CopyTo(door, 20);
+        var anim = new TAE.Animation(12, new TAE.Animation.AnimMiniHeader.Standard(), "a000_000012.hkt");
+        void Add(float start, float end, int type, params int[] values) => anim.Events.Add(new TAE.Event(start, end, type, 0, Ints(values), false));
+        Add(0.033f, 0.133f, 131, 3, 9009010, 120, 0);          // the start clunk, once
+        Add(0.467f, 10.8f, 129, 3, 311500001, 120, 1, 0, 0);   // the motor, held for the ride
+        Add(6.867f, 6.967f, 129, 3, 350002002, 120, -1, 0, 0); // a short 129: plays out
+        Add(1f, 1.1f, 128, 3, 9009016, 0, 0);                  // centre of the object
+        Add(2f, 2.1f, 129, 1, 1234, 120, 0, 0, 0);             // a character sound: not an object's
+        Add(0.4f, 0.8f, 96, 800120, 800, -1, 65792);           // an effect: not a sound
+        var ds3 = new TAE { BigEndian = false, Animations = [anim] };
+
+        var played = ObjectSounds.Ds3Sounds(ds3);
+        Expect(played.SequenceEqual([9009010, 9009016, 311500001, 350002002]), $"the object's sounds, type o only ({string.Join(" ", played)})");
+        var ids = played.Take(3).Select((id, n) => (id, n)).ToDictionary(x => x.id, x => ObjectSounds.SoundId(990196, x.n));
+        var (events, dropped) = ObjectSounds.Events(anim, false, (door, 7), ids);
+        Expect(events.Count == 3 && dropped == 1, $"three events, the one without an ID left out ({events.Count}, {dropped})");
+        Expect(events.All(e => e.Type == 129 && e.Unk04 == 7 && e.Group?.GroupType == 129), "Wwise_PlaySound_BySlot, in a 129 group, as the door's");
+        int I(TAE.Event e, int at) => BitConverter.ToInt32(e.GetParameterBytes(false), at);
+        var clunk = events.Single(e => I(e, 4) == 990196000);
+        var motor = events.Single(e => I(e, 4) == 990196002);
+        var centre = events.Single(e => I(e, 4) == 990196001);
+        Expect(events.All(e => I(e, 0) == ObjectSounds.AssetKind), "sound type 14 (g), as Elden Ring's assets play theirs");
+        Expect(I(clunk, 8) == 120 && I(motor, 8) == 120 && I(centre, 8) == -1, "the DS3 dummy poly; the centre event has none");
+        Expect(events.All(e => I(e, 12) == -1 && BitConverter.ToInt16(e.GetParameterBytes(false), 16) == 0), "no slot, no state");
+        Expect(motor.GetParameterBytes(false)[18] == 1 && clunk.GetParameterBytes(false)[18] == 0 && centre.GetParameterBytes(false)[18] == 0,
+            "the held motor ends with its event (PlaybackBehaviorType 1, as the lift AEG219_020's motor); the clunks play out");
+        Expect(events.All(e => e.GetParameterBytes(false)[19] == 1 && I(e, 20) == 1 && e.GetParameterBytes(false).Length == 32), "the rest of the door's layout kept");
+        Expect(motor.StartTime == 0.467f && motor.EndTime == 10.8f, "DS3's timing kept");
+        Expect(ObjectSounds.Layout(new TAE { Animations = [new TAE.Animation(0, new TAE.Animation.AnimMiniHeader.Standard(), "a") { Events = { new TAE.Event(0, 0.1f, 129, 3, door, false) } }] })
+            is { Unk04: 3 } layout && layout.Bytes.SequenceEqual(door), "the layout is the template's 129");
+    }
+
+    private static void ObjectSoundBanksNamed()
+    {
+        Expect(ObjectSounds.BankName(990196) == "aeg990_196" && ObjectSounds.BankOf(990, 196) == 990196 && ObjectSounds.BankOf(990, 1007) == 991007,
+            "aegGGG_NNN after the asset's number, in the sound groups");
+        Expect(ObjectSounds.SoundId(990196, 2) == 990196002 && ObjectSounds.ErName(990196002) == "g990196002" && ObjectSounds.Ds3Name(9009010) == "o009009010",
+            "g sounds GGGNNNkkk, DS3's oNNNNNNNNN");
+        // Elden Ring's lift bank is aeg920_001 (bank ID 1608839793 in its sound index, read on Devin's PC).
+        Expect(FxSoundExplore.Fnv1("aeg920_001") == 1608839793u && FxSoundExplore.Fnv1("aeg900_010") == 2798611113u, "bank IDs are FNV-1 of the bank names");
+        var taken = new HashSet<uint> { FxSoundExplore.Fnv1("aeg990_005") };
+        Expect(ObjectSounds.SoundGroup(null, 1) == 990 && ObjectSounds.SoundGroup(_ => false, 1) == 990 && ObjectSounds.SoundGroup(_ => false, 2) == 989,
+            "group 990 down when nothing is listed (two groups: 989-990)");
+        Expect(ObjectSounds.SoundGroup(taken.Contains, 1) == 989 && ObjectSounds.SoundGroup(taken.Contains, 2) == 988, "a group with any Elden Ring bank is skipped");
     }
 
     private static void ConvexHull()

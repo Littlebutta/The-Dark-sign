@@ -275,6 +275,10 @@ public static class SoundSelfTest
         Check(back.Lists(20, 4) && back.Lists(20, 12) && back.Lists(20, 3) && back.Lists(20, 1) && back.Lists(15, 8) && back.Lists(10, 7) && back.Lists(30, 1), "sbi round trip");
         Check(SbiEvents(sbi2, 0, 20).SequenceEqual(new ulong[] { 3, 4, 9, 12, 0x1_0000_0001 }), "sbi list sorted, flags kept: " + string.Join(",", SbiEvents(sbi2, 0, 20)));
         Check(SbiBanks(sbi2, 0).SequenceEqual(new uint[] { 10, 15, 20 }), "sbi banks sorted");
+        var loopIdx = SoundIndex.Read(sbi);
+        Check(loopIdx.Register(10, [6, 8], looping: new HashSet<uint> { 8 }) == 2
+              && SbiEvents(loopIdx.Write(), 0, 10).SequenceEqual(new ulong[] { 5, 6, 7, 0x1_0000_0008 }),
+            "sbi: a looping sound is listed with bit 32, as the game flags its own (Play_g920001101)");
         Check(sbi2.AsSpan(0, 0x18).SequenceEqual(sbi.AsSpan(0, 0x18)) && SbiBanks(sbi2, 1).SequenceEqual([30u]), "sbi rest untouched");
         Check(new SoundIndex[] { SoundIndex.Read(SoundIndex.Read(sbi).Write()) }.All(i => !i.Changed) && SoundIndex.Read(sbi).Write().SequenceEqual(sbi), "sbi unchanged writes the original");
 
