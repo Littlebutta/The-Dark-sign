@@ -585,7 +585,8 @@ public sealed class MapModelPort
     /// way: their meshes hang off several nodes (a chandelier's arms, a door's leaves). A DS3 mesh that isn't
     /// skinned keeps each vertex in the space of the node its NormalW names, so every vertex is first moved into
     /// model space (<see cref="BakeNodes"/>) and the mesh then sits on the root like a map piece's. Skinned meshes
-    /// (cloth, chains) are already in model space and are drawn in their rest pose. Nodes and dummy points stay, so
+    /// (cloth, chains) are already in model space; on a still object they are drawn in their rest pose, on a moving
+    /// one each vertex follows its heaviest bone (<see cref="KeepNodes"/>). Nodes and dummy points stay, so
     /// effects, prompts and ladders still find their dummy polys.
     /// </summary>
     /// <param name="keepNodes">For an object that moves (a door, a lift, a lever, see <see cref="ObjectPort"/>): its
@@ -594,7 +595,8 @@ public sealed class MapModelPort
     /// <returns>A note when <paramref name="keepNodes"/> could not keep every vertex on its node, else null.</returns>
     public string? ConvertObject(FLVER2 flver, MapId ds3Id, bool keepNodes = false)
     {
-        Dictionary<FLVER.Vertex, int>? nodes = keepNodes ? KeepNodes(flver) : null;
+        int riding = 0;
+        Dictionary<FLVER.Vertex, int>? nodes = keepNodes ? KeepNodes(flver, out riding) : null;
         if (!keepNodes)
             BakeNodes(flver);
         ConvertFlver(flver, ds3Id);
@@ -602,7 +604,12 @@ public sealed class MapModelPort
             throw new InvalidDataException("only effect, decal, water or shadow meshes, which have no Elden Ring material yet");
         for (int i = 0; i < flver.Materials.Count; i++)
             flver.Materials[i].Index = i;
-        return nodes is null ? null : RestoreNodes(flver, nodes);
+        if (nodes is null)
+            return null;
+        var note = RestoreNodes(flver, nodes);
+        if (riding > 0)
+            note = (note is null ? "" : note + "; ") + $"{riding} skinned vertices follow the bone they are weighted to most";
+        return note;
     }
 
     /// <summary>
@@ -611,15 +618,30 @@ public sealed class MapModelPort
     /// it has one), and Elden Ring's own moving assets do the same: the door AEG219_000 is one mesh with no bone list
     /// whose leaf's 5,600 vertices carry NormalW 1, its node "Model_AEG219_000_01", the skeleton bone the open/close
     /// animation turns. So every mesh becomes a plain one on node 0 with NormalW = the vertex's node, which
-    /// <see cref="RestoreNodes"/> writes back after the vertex layouts are rebuilt. A skinned mesh (cloth, chains) is
-    /// in model space; it is moved into the root's space and stays on the root, drawn in its rest pose.
+    /// <see cref="RestoreNodes"/> writes back after the vertex layouts are rebuilt.
+    /// <para>A skinned mesh is in model space, its vertices weighted to bones. Until 2026-11-20 it stayed on the root
+    /// in its rest pose, so a lift whose platform is skinned (the Undead Settlement tower's) had its floor rise while
+    /// the platform stayed on screen where it started. Now each skinned vertex rides the bone it is weighted to most:
+    /// it is moved into that node's rest space and named by it, like an unskinned vertex. A platform, a cage or a
+    /// counterweight weighted wholly to one bone moves exactly; a vertex shared between bones (a chain link) follows
+    /// its heaviest one. <paramref name="riding"/> counts the skinned vertices that now follow a bone.</para>
     /// </summary>
-    public static Dictionary<FLVER.Vertex, int> KeepNodes(FLVER2 flver)
+    public static Dictionary<FLVER.Vertex, int> KeepNodes(FLVER2 flver) => KeepNodes(flver, out _);
+
+    public static Dictionary<FLVER.Vertex, int> KeepNodes(FLVER2 flver, out int riding)
     {
+        riding = 0;
         var result = new Dictionary<FLVER.Vertex, int>(ReferenceEqualityComparer.Instance);
-        var root = flver.Nodes.Count > 0 ? WorldTransforms(flver)[0] : Matrix4x4.Identity;
-        if (root.IsIdentity || !Matrix4x4.Invert(root, out var rootInverse))
-            rootInverse = Matrix4x4.Identity;
+        var world = WorldTransforms(flver);
+        var inverse = new Matrix4x4?[world.Length];
+        Matrix4x4 Inverse(int node)
+        {
+            if (inverse[node] is { } known)
+                return known;
+            var m = Matrix4x4.Invert(world[node], out var inv) ? inv : Matrix4x4.Identity;
+            inverse[node] = m;
+            return m;
+        }
         foreach (var mesh in flver.Meshes)
         {
             foreach (var v in mesh.Vertices)
@@ -627,10 +649,28 @@ public sealed class MapModelPort
                 int node = 0;
                 if (mesh.UseBoneWeights)
                 {
-                    if (!rootInverse.IsIdentity)
+                    node = HeaviestNode(mesh, v, flver.Nodes.Count);
+                    if (node < 0)
+                        node = 0;
+                    else
+                        riding++;
+                    var m = node < world.Length ? Inverse(node) : Matrix4x4.Identity;
+                    if (!m.IsIdentity)
                     {
-                        v.Position = Vector3.Transform(v.Position, rootInverse);
-                        v.Normal = SafeNormal(Vector3.TransformNormal(v.Normal, rootInverse), v.Normal);
+                        v.Position = Vector3.Transform(v.Position, m);
+                        v.Normal = SafeNormal(Vector3.TransformNormal(v.Normal, m), v.Normal);
+                        for (int t = 0; t < v.Tangents.Count; t++)
+                        {
+                            var tangent = v.Tangents[t];
+                            var xyz = new Vector3(tangent.X, tangent.Y, tangent.Z);
+                            v.Tangents[t] = new Vector4(SafeNormal(Vector3.TransformNormal(xyz, m), xyz), tangent.W);
+                        }
+                    }
+                    // The weights are spent: the vertex now hangs off one node, as an unskinned one does.
+                    for (int i = 0; i < 4; i++)
+                    {
+                        v.BoneIndices[i] = 0;
+                        v.BoneWeights[i] = 0;
                     }
                 }
                 else
@@ -647,6 +687,28 @@ public sealed class MapModelPort
             mesh.BoneIndices = [];
         }
         return result;
+    }
+
+    /// <summary>
+    /// The node a skinned vertex is weighted to most: its bone slot through the mesh's bone list when it has one, else
+    /// the node itself (DS3 FLVERs, 0x20014). -1 when no weight names a node of the model.
+    /// </summary>
+    public static int HeaviestNode(FLVER2.Mesh mesh, FLVER.Vertex v, int nodeCount)
+    {
+        int best = -1;
+        float weight = 0;
+        for (int i = 0; i < 4; i++)
+        {
+            float w = v.BoneWeights[i];
+            int slot = v.BoneIndices[i];
+            int node = mesh.BoneIndices.Count > 0 ? (slot >= 0 && slot < mesh.BoneIndices.Count ? mesh.BoneIndices[slot] : -1) : slot;
+            if (w > weight && node >= 0 && node < nodeCount)
+            {
+                weight = w;
+                best = node;
+            }
+        }
+        return best;
     }
 
     /// <summary>

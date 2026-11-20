@@ -12,6 +12,7 @@ public static partial class MapPortChecks
     private static IEnumerable<(string Name, Action Test)> DoorChecks()
     {
         yield return ("doors: a moving object keeps its meshes on their nodes (each part follows its bone) and names a node after the asset", MovingModel);
+        yield return ("lifts: a skinned mesh of a moving object (the Undead Settlement tower lift's platform) follows the bone each vertex is weighted to most", SkinnedPlatform);
         yield return ("doors: a DS3 convex hull (door leaf, lever) becomes an Elden Ring convex polytope with one plane per face", ConvexHull);
         yield return ("doors: a written convex hull lists its vertices, planes, faces and indices in the patch list (the game resolves only those; 1.0.410 crashed without)", ConvexHullPatches);
         yield return ("lifts: solid blocks inside a DS3 mesh (a lift's platform, a gate's frame) are read and rebuilt as faces, not left out as a placeholder", MeshHulls);
@@ -54,6 +55,56 @@ public static partial class MapPortChecks
                && MapPorter.Options.Parse(["--moving-objects", "nocollision"]).MovingObjects == ObjectPort.MovingMethod.NoCollision
                && new MapPorter.Options().MovingObjects == ObjectPort.MovingMethod.Full, "--moving-objects is read");
         Expect(ObjectAnims.AnibndName("AEG920_007") == @"N:\GR\data\INTERROOT_win64\asset\aeg\AEG920\AEG920_007\anibnd\AEG920_007.anibnd", "the animation binder's name, as Elden Ring's door has it");
+    }
+
+    private static void SkinnedPlatform()
+    {
+        var (port, _) = VisualPort();
+        // A lift: root, a platform bone 4 m up, a counterweight bone 6 m up turned a quarter round Y. The mesh is skinned
+        // in model space: the first half of its vertices weighted wholly to the platform, the rest 70/30 to the
+        // counterweight and the platform.
+        var source = SyntheticObject();
+        source.Nodes[0].Name = "o311500";
+        source.Nodes[1].Name = "EV1";
+        source.Nodes[1].Translation = new Vector3(0, 4, 0);
+        source.Nodes.Add(new FLVER.Node { Name = "weight", ParentIndex = 0, FirstChildIndex = -1, NextSiblingIndex = -1, PreviousSiblingIndex = 1,
+            Translation = new Vector3(0, 6, 0), Rotation = new Vector3(0, MathF.PI / 2, 0), Scale = Vector3.One });
+        var mesh = source.Meshes[0];
+        mesh.UseBoneWeights = true;
+        mesh.NodeIndex = 0;
+        mesh.BoneIndices = [];
+        int half = mesh.Vertices.Count / 2;
+        for (int i = 0; i < mesh.Vertices.Count; i++)
+        {
+            var v = mesh.Vertices[i];
+            v.NormalWs[0] = 0;
+            v.BoneIndices = i < half ? new FLVER.VertexBoneIndices { [0] = 1, [1] = 0, [2] = 0, [3] = 0 } : new FLVER.VertexBoneIndices { [0] = 1, [1] = 2, [2] = 0, [3] = 0 };
+            v.BoneWeights = i < half ? new FLVER.VertexBoneWeights { [0] = 1 } : new FLVER.VertexBoneWeights { [0] = 0.3f, [1] = 0.7f };
+        }
+        var modelSpace = mesh.Vertices.Select(v => v.Position).ToList();
+        // A skinned DS3 layout carries bone indices and weights after the normal.
+        var layout = source.BufferLayouts[mesh.VertexBuffers[0].LayoutIndex];
+        layout.Insert(2, new FLVER.LayoutMember(FLVER.LayoutType.UByte4, FLVER.LayoutSemantic.BoneIndices));
+        layout.Insert(3, new FLVER.LayoutMember(FLVER.LayoutType.UByte4Norm, FLVER.LayoutSemantic.BoneWeights));
+        var objbnd = new BND4();
+        objbnd.Files.Add(new BinderFile(Binder.FileFlags.Flag1, 200, @"N:\FDP\data\INTERROOT_win64\obj\o311500\o311500.flver", source.Write()));
+        var rename = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase) { ["o311500"] = "AEG920_196" };
+        var result = ObjectPort.ConvertBinder(objbnd, "o311500", "AEG920_196", port, new BND4 { Version = "07D7R6" }, Binder.FileFlags.Flag1, rename, out var note);
+        Expect(note is not null && note.Contains($"{mesh.Vertices.Count} skinned vertices follow"), $"the report says so ({note})");
+        var flver = FLVER2.Read(BND4.Read(result.Binder.Write()).Files.Single().Bytes);
+        var m = flver.Meshes.Single();
+        Expect(!m.UseBoneWeights && m.NodeIndex == 0 && m.BoneIndices.Count == 0, "a plain mesh, as Elden Ring's door is");
+        Expect(m.Vertices.Take(half).All(v => v.NormalWs[0] == 1) && m.Vertices.Skip(half).All(v => v.NormalWs[0] == 2), "each vertex names its heaviest bone");
+        // Put back on their nodes in the rest pose, the vertices are where DS3 drew them.
+        var world = MapModelPort.WorldTransforms(flver);
+        var placed = m.Vertices.Select(v => Vector3.Transform(v.Positions[0], world[v.NormalWs[0]])).ToList();
+        Expect(placed.Zip(modelSpace).All(p => Vector3.Distance(p.First, p.Second) < 2e-3f), "in its bone's rest space: drawn in place until the bone moves");
+        Expect(m.Vertices.Take(half).All(v => Vector3.Distance(v.Positions[0] + new Vector3(0, 4, 0), modelSpace[m.Vertices.IndexOf(v)]) < 2e-3f), "a platform vertex sits 4 m below its model-space place, in the platform bone's space");
+
+        // A still object keeps drawing a skinned mesh where it rests (no node to follow).
+        var still = ObjectPort.ConvertBinder(objbnd, "o311500", "AEG920_196", port, new BND4 { Version = "07D7R6" }, Binder.FileFlags.Flag1);
+        var sm = FLVER2.Read(BND4.Read(still.Binder.Write()).Files.Single().Bytes).Meshes.Single();
+        Expect(sm.Vertices.All(v => v.NormalWs[0] == 0), "on a still object the skinned mesh stays on the root");
     }
 
     private static Ds3.hknpConvexPolytopeShape Ds3Box(Vector3 min, Vector3 max)
