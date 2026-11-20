@@ -95,7 +95,8 @@ public static class MapAtmosphere
         var gparam = GPARAM.Read(hostBytes);
         var ds3Draw = GPARAM.Read(ds3.Read(source));
         var wanted = layout is null || oneLightSet ? null : MapLightSets.Wanted(layout);
-        var changes = Apply(gparam, ds3Draw, GroundHeight(ds3Msb), unturnedSun ? 0 : MapLighting.OffsetDegrees(ds3Msb), hostFillLights, wanted, Layer(ds3Msb));
+        var characters = wanted is null ? null : MapLightSets.CharacterOnly(layout!);
+        var changes = Apply(gparam, ds3Draw, GroundHeight(ds3Msb), unturnedSun ? 0 : MapLighting.OffsetDegrees(ds3Msb), hostFillLights, wanted, Layer(ds3Msb), characters);
         if (unturnedSun && MapLighting.OffsetDegrees(ds3Msb) != 0)
             changes.Add("sun direction as DS3's file writes it, not turned with the map (--unturned-sun)");
         var target = ctx.ModPath(MapPorter.ModParts(GparamPath(erId)));
@@ -203,8 +204,9 @@ public static class MapAtmosphere
     /// <summary>Changes the host's draw params in place. Returns what changed, for the log.</summary>
     /// <param name="lightSets">The light sets the layout's parts name: DS3's sets among them that the host lacks are
     /// added (<see cref="MapLightSets.Add"/>).</param>
+    /// <param name="characterSets">The sets only characters name (<see cref="MapLightSets.CharacterOnly"/>).</param>
     public static List<string> Apply(GPARAM gparam, GPARAM ds3, float ground, float sunTurnDegrees = 0, bool hostFillLights = false,
-        IEnumerable<int>? lightSets = null, FogLayer? layer = null)
+        IEnumerable<int>? lightSets = null, FogLayer? layer = null, IReadOnlySet<int>? characterSets = null)
     {
         var inv = CultureInfo.InvariantCulture;
         string C(Vector4 v) => string.Create(inv, $"{v.X:F2} {v.Y:F2} {v.Z:F2}");
@@ -235,7 +237,7 @@ public static class MapAtmosphere
             else if (sunStrengths && FillLights(light, ds3Light, sunScale) is { } fill)
                 changes.Add(fill);
             // After set 0 is done: the other sets start from it.
-            if (lightSets is not null && MapLightSets.Add(gparam, ds3, lightSets, sunScale, sunTurnDegrees).Note is { } sets)
+            if (lightSets is not null && MapLightSets.Add(gparam, ds3, lightSets, sunScale, sunTurnDegrees, characterSets).Note is { } sets)
                 changes.Add(sets);
         }
         else

@@ -264,6 +264,15 @@ public static class EffectSelfTest
             $"lights: fallback DARKSIGN_FXR_LIGHTS=ds3 keeps the light as converted: {string.Join(" ", asRead.Select(x => x.ToString()))}");
         var glowOnly = js.LightsOfConverted(js.Convert(js.FlameSample(839011, 5, 1, 0.6f, 0.3f, false), 900839011, $"{{{noSounds},\"lights\":{{\"all\":1}}}}"));
         Check(glowOnly.Length == 0, "lights: an effect without a light gets none");
+        // Spot lights (Friede's hall windows, f845210/f845211): the same strength, dimming and glow in the air, which
+        // draws the light shaft inside the cone.
+        var window = js.SpotSample(845210);
+        var spotLit = js.LightsOfConverted(js.Convert(window, 900845210, $"{{{noSounds},\"lights\":{{\"all\":1}}}}"));
+        var spotRead = js.LightsOfConverted(js.Convert(window, 900845210, $"{{{noSounds},\"lights\":{{}}}}"));
+        Check(spotLit is [{ Kind: "spot" } sl] && Near(sl.Strength, 25.5f) && Near(sl.Adaptation, 1) && Near(sl.Volume, 0.5f) && Near(sl.Radius, 48),
+            $"lights: a DS3 spot light takes Elden Ring's settings (x10 strength, adaptation 1, volume 0.5, reach kept): {string.Join(" ", spotLit.Select(x => x.ToString()))}");
+        Check(spotRead is [{ Kind: "spot" } sr] && Near(sr.Strength, 2.55f) && Near(sr.Volume, 0),
+            $"lights: fallback DARKSIGN_FXR_LIGHTS=ds3 keeps the spot light as converted: {string.Join(" ", spotRead.Select(x => x.ToString()))}");
 
         Console.WriteLine(failures == 0 ? "effects-selftest: all checks passed" : $"effects-selftest: {failures} FAILED");
         return failures == 0 ? 0 : 1;
