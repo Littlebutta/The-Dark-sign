@@ -984,6 +984,7 @@ public sealed class TalkPort
         catch (Exception ex) when (ex is not OutOfMemoryException) { index = $"index FAILED ({ex.Message})"; }
         log.Add($"people talk: voices: {voiced} lines in {spokenBanks} voice banks (sd\\vc9PP.bnk, Play_v<voiceId>; a line DS3 has no voice for is silence of its reading time); {index}");
         log.Add("  people talk: voice banks " + sound.VoiceTemplateNote);
+        log.AddRange(sound.VoiceTemplateTrace.Take(8).Select(t => "  people talk: voice template not used: " + t));
         log.AddRange(built.Select(b => "  people talk: voice bank " + b));
         return log;
     }
