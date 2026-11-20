@@ -276,8 +276,18 @@ DS3's sky domes (`m009000` of m31 and m40, `M[A]_2m_NoLight_scroll`) cross-fade 
 and splitting one drew blue sky shards over map 3 in 1.0.366, so they stay whole. `MapTerrainBlends.ApplySky` gives
 each dome mesh the layer that covers most of its vertices (layer 2 where c0 >= 0.5 on more than half): m31 and m40
 keep their first layer, the Painted World's `m090000` (clouds `kumo_30` first, sky `sky_01` second, c0 0.64 on
-average) shows its sky; up to 1.0.50x its cloud picture stood over the map as huge grey shapes. Port log line
-`sky domes:`; fallback `map-sky-layer` B (`--first-sky-layer`) shows the first layer again.
+average) shows its sky; up to 1.0.50x its cloud picture stood over the map as huge grey shapes. The second layer is
+drawn on DS3's UV 2 (the panorama's own coordinates: v 1.00 at the horizon to 0.18 at the top of m090000, where UV 1
+is the cloud tile with v fixed at 0.50); 1.0.51x-1.0.52x drew it on UV 1, a smeared cyan band (fallback
+`map-sky-layer` C, `DARKSIGN_SKY_LAYER_UV=first`). Port log line `sky domes:`; fallback `map-sky-layer` B
+(`--first-sky-layer`) shows the first layer again.
+
+**See-through sky layers.** `M[A]_al_NoLight` meshes (unlit, faded by vertex alpha: m40's horizon cloud band in
+`m009000` and far mountain ring `m900300`, m30's `sky_02` rings, m31's cloud layer `m008501`, kumo cloud seas) were
+left out of every map up to 1.0.52x. They are kind `nolight-blend`: the unlit template with vanilla m15_00_865's blend
+switches (`g_BlendMode` 2, no depth write, alpha cut 1), DS3's vertex alpha kept, triangles under 0.5 on all corners
+left out (`MapUnlitBlends`). Opacity-masked cloud cards (`M[A]_al_m_NoLight_Opacity`) and additive layers stay out.
+Port log line `see-through sky layers:`; fallback `map-sky-clouds` B (`DARKSIGN_SKY_CLOUDS=0`).
 
 **Atmosphere.** A slot used to keep its colosseum's gparam: Caelid's red volumetric fog lit at 1.6 on map 2,
 Leyndell's golden colour grading (LUT 101) and fog out to 2 km on map 1. `MapAtmosphere` writes the slot's

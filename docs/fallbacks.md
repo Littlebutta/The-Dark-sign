@@ -413,8 +413,16 @@ Try the next option if: A DS3 map's ground or walls show the wrong texture in pa
 
 Try the next option if: A DS3 map's sky shows a plain colour, a flat cloud picture, or huge grey shapes since this option.
 
-- **A: The picture that covers most of the sky (default).** Some DS3 skies cross-fade two pictures (a sky and its clouds) by a weight on each point of the dome, a blend Elden Ring has no shader for, so the port shows one picture over the whole dome: the one DS3 shows over most of it. The Painted World's sky shows its sky picture; the other maps' skies are as before. The port log's "sky domes:" line names the domes that show their second picture.
-- **B: First picture.** Every two-picture sky shows its first picture (port-maps --first-sky-layer), as in every build up to 1.0.50x: the Painted World's sky is its cloud picture, whose shapes stand over the map as huge grey blurs. (`port-maps --first-sky-layer`)
+- **A: The picture that covers most of the sky (default).** Some DS3 skies cross-fade two pictures (a sky and its clouds) by a weight on each point of the dome, a blend Elden Ring has no shader for, so the port shows one picture over the whole dome: the one DS3 shows over most of it, laid on that picture's own texture coordinates. The Painted World's sky shows its mountain panorama under a starry top; the other maps' skies are as before. The port log's "sky domes:" line names the domes that show their second picture.
+- **B: First picture.** Every two-picture sky shows its first picture (port-maps --first-sky-layer), as in every build up to 1.0.50x: the Painted World's sky is its pale cloud picture all over. (`port-maps --first-sky-layer`)
+- **C: Second picture on the first's coordinates.** As A, but a dome that shows its second picture lays it on the first picture's texture coordinates (DARKSIGN_SKY_LAYER_UV=first), as 1.0.51x to 1.0.52x had it: the Painted World's panorama is smeared into streaks of cyan under a starry cap. (`DARKSIGN_SKY_LAYER_UV=first`)
+
+### Cloud bands, haze and far mountains around DS3's skies (`map-sky-clouds`, rebuilds the content)
+
+Try the next option if: Since this option came in, a DS3 map's sky has solid grey or white bands, hard-edged clouds or a ring of mountains that looks wrong, or a map crashes or hangs while loading.
+
+- **A: DS3's see-through sky layers (default).** The see-through layers DS3 stands around its sky (its unlit, faded cloud bands, haze and far mountain rings: the cloud band that hides the foot of the distant castle from Firelink, the mountain range below the horizon there, High Wall's ring of distant mountains and clouds, the cloud layer under the Undead Settlement) are drawn unlit and blended, as Elden Ring's own see-through unlit pieces are, keeping DS3's fade. The parts DS3 shows less than half of are left out. Cloud cards DS3 cuts out with scrolling masks (the Painted World's) are not part of this. The port log's "see-through sky layers:" line counts them.
+- **B: Left out.** The see-through sky layers are left out (DARKSIGN_SKY_CLOUDS=0), as every build up to 1.0.52x: the far view shows only the dome itself, with no mountains below its skyline and a hard line where the scenery meets it. (`DARKSIGN_SKY_CLOUDS=0`)
 
 ### Colours of light and fog in the DS3 maps (`map-atmosphere`, rebuilds the content)
 
