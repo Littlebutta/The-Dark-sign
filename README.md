@@ -109,6 +109,9 @@ port-maps ports several DS3 maps side by side (one per 4 cores and per 12 GB of 
 change what the maps share (enemy and people placement; textures, materials, collision, navmesh, objects, regions and
 boss arenas) take turns in the maps' port order (`MapTurns`), so the files are the ones a one-at-a-time run writes;
 `DARKSIGN_MAPS_AT_ONCE=1` (Fallbacks: build-threads D) ports one map at a time again.
+A launcher update rebuilds the content only when the porter's own files, the build methods or the launcher's build
+recipe changed (`EldenRingSetup.ContentId`, written beside the build stamp as `darksign_build_id.txt`): the release
+workflow reuses the previous porter when nothing it is built from changed, and the content is then kept.
 
 ```
 git submodule update --init      # SoulsFormatsNEXT, pinned

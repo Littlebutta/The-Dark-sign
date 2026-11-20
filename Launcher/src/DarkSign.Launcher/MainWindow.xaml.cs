@@ -363,7 +363,15 @@ public partial class MainWindow : Window
             var porterVersion = await EnsurePorterAsync(setup);
             // The stamp holds the build methods (Fallbacks window), so switching one rebuilds the content.
             var stamp = Fallbacks.BuildStamp(porterVersion, _settings.Methods);
-            if (rebuild || setup.NeedsContentBuild(stamp))
+            // What the build depends on (the porter's files, methods, recipe): an update that didn't change the porter
+            // keeps the content already built instead of rebuilding the same thing.
+            var contentId = setup.ContentId(_settings.Methods);
+            if (!rebuild && setup.ContentVersion is { } builtWith && builtWith != stamp && !setup.NeedsContentBuild(stamp, contentId))
+            {
+                _log.Write($"Content kept: the porter of {porterVersion} is the one that built it ({builtWith}); same build methods, nothing to rebuild.");
+                setup.MarkContentBuilt(stamp, contentId);
+            }
+            if (rebuild || setup.NeedsContentBuild(stamp, contentId))
             {
                 if (!File.Exists(_settings.GameExePaths.GetValueOrDefault(GameId.DarkSouls3, "")) && !rebuild && launch
                     && File.Exists(Path.Combine(setup.ModDir, "regulation.bin")) && File.Exists(setup.ItemsFile))
@@ -382,7 +390,7 @@ public partial class MainWindow : Window
                 {
                     if (!await BuildContentAsync(setup))
                         return;
-                    setup.MarkContentBuilt(stamp);
+                    setup.MarkContentBuilt(stamp, contentId);
                 }
             }
             RefreshContentText();

@@ -131,10 +131,12 @@ public static class Preflight
         var stamp = c.PorterVersion is null ? null : Fallbacks.BuildStamp(c.PorterVersion, s.Methods);
         if (!File.Exists(Path.Combine(setup.ModDir, "regulation.bin")))
             Add(Level.Info, "Content", "not built yet; PLAY builds it (takes a few minutes)");
-        else if (stamp is not null && setup.NeedsContentBuild(stamp))
+        else if (stamp is not null && setup.NeedsContentBuild(stamp, setup.ContentId(s.Methods)))
             Add(Level.Info, "Content", $"built with {setup.ContentVersion ?? "an unknown porter"}; PLAY rebuilds it for {stamp}");
         else
-            Add(Level.Ok, "Content", $"built ({setup.ContentVersion})");
+            Add(Level.Ok, "Content", stamp is not null && setup.ContentVersion != stamp
+                ? $"built ({setup.ContentVersion}); {c.PorterVersion}'s porter is the same, so PLAY keeps it"
+                : $"built ({setup.ContentVersion})");
         if (setup.IconFilesProblem() is { } icons)
             Add(Level.Fail, "Icons", $"{icons}: the game would mix its own menus with the mod's and DS3 icons go missing; PLAY rebuilds the content (close Elden Ring first)");
         var methods = Fallbacks.Summary(s.Methods);

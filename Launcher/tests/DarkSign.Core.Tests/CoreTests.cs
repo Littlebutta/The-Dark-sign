@@ -284,6 +284,31 @@ public sealed class CoreTests : IDisposable
         Assert.False(setup.NeedsContentBuild("1.0.9"));
         Assert.True(setup.NeedsContentBuild("1.0.10"));
 
+        // A launcher update that reused the porter (2026-11-20: 10 of 59 releases) keeps the content.
+        Assert.Null(setup.ContentId(null));
+        Touch("TheDarkSign", "Tools", "Porter", "DarkSignPorter.dll");
+        File.WriteAllText(Path.Combine(setup.PorterDir, "version.txt"), "1.0.9");
+        var id = setup.ContentId(null);
+        Assert.NotNull(id);
+        Assert.True(setup.NeedsContentBuild("1.0.10", id), "content built before content IDs: rebuilt once");
+        setup.MarkContentBuilt("1.0.9", id);
+        Assert.False(setup.NeedsContentBuild("1.0.10", id), "same porter files and methods: kept");
+        File.WriteAllText(Path.Combine(setup.PorterDir, "version.txt"), "1.0.10");
+        Assert.Equal(id, setup.ContentId(null));
+        Assert.True(setup.NeedsContentBuild("1.0.10"), "without an ID the version decides, as before");
+        File.WriteAllBytes(Path.Combine(setup.PorterDir, "DarkSignPorter.dll"), [1]);
+        Assert.NotEqual(id, setup.ContentId(null));
+        Assert.True(setup.NeedsContentBuild("1.0.10", setup.ContentId(null)), "a changed porter file: rebuilt");
+        File.WriteAllBytes(Path.Combine(setup.PorterDir, "DarkSignPorter.dll"), []);
+        Assert.Equal(id, setup.ContentId(null));
+        var methods = new Dictionary<string, string> { ["build-threads"] = "D" };
+        Assert.NotEqual(id, setup.ContentId(methods));
+        Assert.True(setup.NeedsContentBuild("1.0.10", setup.ContentId(methods)), "a changed build method: rebuilt");
+        setup.MarkContentBuilt("1.0.9");
+        Assert.Null(setup.BuiltContentId);
+        Assert.True(setup.NeedsContentBuild("1.0.10", id), "a stamp written without an ID drops the old one");
+        setup.MarkContentBuilt("1.0.9", id);
+
         // Icon menu files only work as a whole set in both qualities (2026-11-07: hi kept only 00_solo.tpfbdt).
         foreach (var file in EldenRingSetup.IconFiles)
             Touch("TheDarkSign", "Mods", "ER", "menu", "low", file);
