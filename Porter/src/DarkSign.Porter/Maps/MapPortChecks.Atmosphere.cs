@@ -12,7 +12,7 @@ public static partial class MapPortChecks
     private static IEnumerable<(string Name, Action Test)> AtmosphereChecks()
     {
         yield return ("stand-ins: a low-detail piece over detailed pieces it is never drawn with is left out; one with nothing under it stays", StandIns);
-        yield return ("world stand-ins: a kept stand-in over a neighbouring map's real pieces is left out; one over nothing stays", WorldStandIns);
+        yield return ("world stand-ins: a kept stand-in over a neighbouring map's real pieces draws only while that map is not loaded; one over nothing stays", WorldStandIns);
         yield return ("far views: a low-detail copy of an area with ordinary textures, drawn only from a lookout, is left out; the sky dome, a building shell and a piece drawn with most of what it covers stay", FarViews);
         yield return ("atmosphere: the slot's gparam takes DS3's sun and fog colours, Stormveil's fog amounts, no colour grading", Atmosphere);
         yield return ("atmosphere: the sun's direction turns with DS3's map offset, like the map's lamps and baked light", SunTurned);
@@ -135,6 +135,39 @@ public static partial class MapPortChecks
         Expect(!verdicts.Single(v => v.Part == "m900070_9000").LeftOut, "only the neighbour's own stand-in there: kept");
         var few = MapStandIns.AcrossMaps(own, new HashSet<string> { "m900065_9000" }, neighbour.Take(2));
         Expect(!few.Single().LeftOut, "two pieces are too few");
+        // Draw groups: the stand-in is matched to the neighbour with its detail there, even one big piece whose box
+        // only meets the stand-in's.
+        var castle = MapId.Parse("m45_03_00_00");
+        var archives = MapId.Parse("m38_13_00_00");
+        var big = new List<MapStandIns.PieceBox> { new("m002000_0000", new Vector3(90, 0, 90), new Vector3(300, 50, 300), 800, false) };
+        var matched = MapStandIns.ForNeighbours(own, new HashSet<string> { "m900065_9000", "m900070_9000" },
+            new Dictionary<MapId, IEnumerable<MapStandIns.PieceBox>> { [castle] = big, [archives] = neighbour.Take(1) });
+        Expect(matched.Count == 1 && matched[0].Key == "m900065_9000" && matched[0].Value == castle,
+            "the stand-in goes with the map holding most detail there: " + string.Join(", ", matched));
+
+        var highWall = MapId.Parse("m45_01_00_00");
+        var bits = MapNeighbourGroups.Assign([castle, highWall, archives]);
+        Expect(bits[archives] == 0 && bits[highWall] == 1 && bits[castle] == 2, "bits by map ID");
+        var msb = new MSBE();
+        var standIn = new MSBE.Part.MapPiece { Name = "m900065_9000", ModelName = "m900065" };
+        var plain = new MSBE.Part.MapPiece { Name = "m000100_0000", ModelName = "m000100" };
+        MapDrawGroups.Clear(standIn.Unk1);
+        MapDrawGroups.Clear(plain.Unk1);
+        msb.Parts.MapPieces.AddRange([standIn, plain]);
+        var near = new MSBE.Part.Collision { Name = "h000100", ModelName = "h000100" };
+        var far = new MSBE.Part.Collision { Name = "h000200", ModelName = "h000200" };
+        msb.Parts.Collisions.AddRange([near, far]);
+        msb.Parts.ConnectCollisions.Add(new MSBE.Part.ConnectCollision { Name = "h000100_0000", ModelName = "h000100", CollisionName = "h000100", MapID = [45, 3, 0, 255] });
+        int written = MapNeighbourGroups.Apply(msb, highWall, new Dictionary<string, MapId> { ["m900065_9000"] = castle }, bits);
+        Expect(written == 2, "both collisions written");
+        Expect(MapDrawGroups.Draw(standIn.Unk1)[MapNeighbourGroups.Word] == 1u << bits[castle], "the stand-in draws with the castle's group");
+        Expect(MapDrawGroups.IsEmpty(MapDrawGroups.Draw(plain.Unk1)), "an ordinary piece keeps no groups (drawn from everywhere)");
+        uint farShows = MapDrawGroups.Display(far.Unk1)[MapNeighbourGroups.Word], nearShows = MapDrawGroups.Display(near.Unk1)[MapNeighbourGroups.Word];
+        Expect(MapNeighbourGroups.Shows(bits[castle], farShows), "away from the castle's connect, the castle's stand-ins show");
+        Expect(!MapNeighbourGroups.Shows(bits[castle], nearShows), "on the collision that loads the castle, they don't");
+        Expect(!MapNeighbourGroups.Shows(bits[highWall], farShows), "the High Wall's own group is never shown in the High Wall");
+        Expect(MapDrawGroups.Display(far.Unk1)[0] == 0xFFFFFFFF && MapDrawGroups.Draw(far.Unk1)[0] == 0xFFFFFFFF, "collisions keep every other group and every draw group");
+        Expect(MapDrawGroups.Display(msb.Parts.ConnectCollisions[0].Unk1)[MapNeighbourGroups.Word] == nearShows, "the connect collision shows what its collision shows");
     }
 
     private static void StandIns()
@@ -333,6 +366,67 @@ public static partial class MapPortChecks
         var farSun = farHost.Groups[0].Params[0];
         float W(int id) => ((Vector4)farSun.Values[farSun.ValueIDs.IndexOf(id)]).W;
         Expect(W(8) == 3 && W(11) == 0.6f * MapLightSets.MaxOverSun, $"a far view keeps DS3's 6 x 0.5 = 3 (within {MapLightSets.MaxFarOverSun} x the sun); another set is capped at {MapLightSets.MaxOverSun} x ({W(8)}, {W(11)})");
+
+        // Character-only sets (Ariandel's 120 on m45_00) light no more in all than the slot's set 100 (the painted
+        // world host: sun 0.6, second light 0.05, local light 2 0.015 = 0.665), DS3's proportions kept.
+        GPARAM CharHost()
+        {
+            var h = new GPARAM();
+            h.Groups.Add(G("LightSet",
+                P("Directional Light DiffColor0", GPARAM.ParamType.Float4, new Vector4(0.81f, 0.9f, 1, 0.6f), new Vector4(0.81f, 0.9f, 1, 0.6f)),
+                P("Directional Light SpecColor0", GPARAM.ParamType.Float4, new Vector4(0.68f, 0.82f, 0.98f, 0.6f), new Vector4(0.68f, 0.82f, 0.98f, 0.6f)),
+                P("Directional Light DiffColor1", GPARAM.ParamType.Float4, new Vector4(0.62f, 0.77f, 1, 0.1f), new Vector4(0.62f, 0.77f, 1, 0.05f)),
+                P("Directional Light SpecColor1", GPARAM.ParamType.Float4, new Vector4(0.57f, 0.75f, 0.98f, 0.2f), new Vector4(0.57f, 0.75f, 0.98f, 0.05f)),
+                P("Directional Light LocalLight DiffColor1", GPARAM.ParamType.Float4, new Vector4(0.76f, 0.82f, 1, 0.1f), new Vector4(0.76f, 0.82f, 1, 0.1f)),
+                P("Directional Light LocalLight DiffColor2", GPARAM.ParamType.Float4, new Vector4(0, 0, 0, 0), new Vector4(1, 1, 1, 0.015f)),
+                P("Directional Light LocalLight SpecColor2", GPARAM.ParamType.Float4, new Vector4(0.96f, 0.98f, 1, 0), new Vector4(1, 1, 1, 0.015f)),
+                P("Directional Enable LocalLight1", GPARAM.ParamType.BoolA, true, false),
+                P("Directional Enable LocalLight2", GPARAM.ParamType.BoolA, true, true)));
+            foreach (var p in h.Groups[0].Params)
+                p.TimeOfDay = [.. p.Values.Select(_ => 0f)];
+            return h;
+        }
+        var charDs3 = new GPARAM { Game = GPARAM.GPGame.DarkSouls3 };
+        charDs3.Groups.Add(G("LightSet",
+            D("Directional Light DiffColor0", GPARAM.ParamType.Float4, (0, new Vector4(0.81f, 0.9f, 1, 0.8f)), (111, new Vector4(0.69f, 0.85f, 1, 0)), (120, new Vector4(0.69f, 0.85f, 1, 0))),
+            D("Directional Light SpecColor0", GPARAM.ParamType.Float4, (0, new Vector4(0.68f, 0.82f, 0.98f, 1.5f)), (111, new Vector4(1, 1, 1, 0)), (120, new Vector4(0.57f, 0.78f, 0.98f, 0))),
+            D("Directional Light DiffColor1", GPARAM.ParamType.Float4, (0, new Vector4(0.62f, 0.77f, 1, 0.3f)), (111, new Vector4(0.91f, 0.96f, 1, 0.8f)), (120, new Vector4(0.89f, 0.95f, 1, 1.6f))),
+            D("Directional Light SpecColor1", GPARAM.ParamType.Float4, (0, new Vector4(0.57f, 0.75f, 0.98f, 0.5f)), (111, new Vector4(0.79f, 0.89f, 1, 2)), (120, new Vector4(1, 1, 1, 1))),
+            D("Directional Light LocalLight DiffColor1", GPARAM.ParamType.Float4, (0, new Vector4(1, 1, 1, 0)), (111, new Vector4(0.93f, 0.95f, 1, 0.4f)), (120, new Vector4(1, 0.79f, 0.59f, 0.466f))),
+            D("Directional Light LocalLight DiffColor2", GPARAM.ParamType.Float4, (0, new Vector4(0, 0, 0, 1)), (111, new Vector4(0, 0, 0, 1)), (120, new Vector4(1, 1, 1, 1.586f))),
+            D("Directional Light LocalLight SpecColor2", GPARAM.ParamType.Float4, (0, new Vector4(0, 0, 0, 1)), (111, new Vector4(0.64f, 0.78f, 1, 1.5f)), (120, new Vector4(0.63f, 0.83f, 1, 1.493f))),
+            D("Directional Enable LocalLight1", GPARAM.ParamType.BoolA, (0, true), (111, true), (120, true)),
+            D("Directional Enable LocalLight2", GPARAM.ParamType.BoolA, (0, false), (111, true), (120, true))));
+        charDs3.Groups[0].Comments.AddRange(["", "ボス_娘　戦闘", "ボス_父"]);
+        var toned = CharHost();
+        var charNote = MapLightSets.Add(toned, charDs3, [111, 120], 0.75f, 0, new HashSet<int> { 120 }).Note ?? "";
+        var plain = CharHost();
+        MapLightSets.Add(plain, charDs3, [111, 120], 0.75f, 0);
+        var tonedLight = MapAtmosphere.Group(toned, "LightSet")!;
+        var plainLight = MapAtmosphere.Group(plain, "LightSet")!;
+        var hostTotal = MapLightSets.Total(tonedLight, 100);
+        var ariandel = MapLightSets.Total(tonedLight, 120);
+        var ariandelDs3 = MapLightSets.Total(plainLight, 120);
+        Vector4 At(GPARAM.Group g, string name, int id) { var p = g.Params.Single(x => x.Name1 == name); return (Vector4)p.Values[p.ValueIDs.IndexOf(id)]; }
+        Expect(Math.Abs(hostTotal.Diffuse - 0.665f) < 1e-3f && Math.Abs(hostTotal.Specular - 0.665f) < 1e-3f, $"the slot's character set lights 0.665 in all ({hostTotal})");
+        Expect(Math.Abs(ariandel.Diffuse - hostTotal.Diffuse) < 1e-3f && Math.Abs(ariandel.Specular - hostTotal.Specular) < 1e-3f && ariandelDs3.Diffuse > 2.5f,
+            $"Ariandel's set is toned down to the slot's character light ({ariandel} from {ariandelDs3})");
+        float second = At(tonedLight, "Directional Light DiffColor1", 120).W, local2 = At(tonedLight, "Directional Light LocalLight DiffColor2", 120).W;
+        Expect(Math.Abs(second / local2 - 1.6f / 1.586f) < 1e-3f && At(tonedLight, "Directional Light LocalLight DiffColor1", 120) is { X: 1, Y: 0.79f, Z: 0.59f },
+            "its lights keep DS3's colours and proportions");
+        Expect(At(tonedLight, "Directional Light DiffColor1", 111) == At(plainLight, "Directional Light DiffColor1", 111) && At(tonedLight, "Directional Light DiffColor1", 111).W == 0.8f * 0.75f,
+            "a set a map piece also names (not character-only) keeps DS3's strengths");
+        Expect(charNote.Contains("character sets toned down") && charNote.Contains("120 ("), charNote);
+        var mixed = new MSBE();
+        var hallPiece = new MSBE.Part.MapPiece();
+        hallPiece.Gparam.LightSetID = 111;
+        var friede = new MSBE.Part.Enemy();
+        friede.Gparam.LightSetID = 111;
+        var father = new MSBE.Part.Enemy();
+        father.Gparam.LightSetID = 120;
+        mixed.Parts.MapPieces.Add(hallPiece);
+        mixed.Parts.Enemies.AddRange([friede, father]);
+        Expect(MapLightSets.CharacterOnly(mixed).SetEquals([120]), "only sets no map piece names count as character sets");
 
         // Parts: a DS3 part's set is carried; one the draw params lack, and every one with the fallback, goes to -1.
         var piece = new MSB3.Part.MapPiece { Name = "m010701_5000", ModelName = "m010701" };

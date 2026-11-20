@@ -49,10 +49,24 @@ public static class MapLinks
     public static IEnumerable<MapId> ConnectTargets(MSB3 msb, IReadOnlyList<MapId> maps) =>
         msb.Parts.ConnectCollisions.Select(c => MsbPort.ConnectTarget(c.MapID, maps)).OfType<MapId>().Distinct();
 
-    /// <summary>Replaces the port's rows in the param with two rows per pair. Returns the number of rows written.</summary>
-    public static int WriteRows(PARAM param, IReadOnlyList<(MapSlots.Slot A, MapSlots.Slot B)> pairs)
+    /// <summary>
+    /// Replaces the port's rows in the param with two rows per pair. Returns the number of rows written.
+    /// <para>
+    /// Elden Ring's own rows that name a map the port fills (<paramref name="ported"/>) are taken out too
+    /// (<see cref="VanillaRowsLeftOut"/> counts them): they describe what the game shipped under that ID, not the
+    /// DS3 map now there. Vanilla has two such rows, 234 (m38_10 at 0,0,-416 = m38_11 at 0,0,256) and 235 (m38_11 at
+    /// 0,0,-160 = m38_12 at 0,0,256), for its test maps, the IDs the Catacombs, Irithyll and Irithyll Dungeon now use.
+    /// They sit before the port's rows (9000 and up) and say the maps are 672 and 416 m apart, where DS3 has them
+    /// in one space; with both the game had two answers for where Irithyll lies against the Catacombs (1.0.53x
+    /// playtest: Irithyll "totally broken", cave rock and stray geometry over the city after walking in from the
+    /// Catacombs). Read from the mod's regulation on 2026-11-20.
+    /// </para>
+    /// </summary>
+    public static int WriteRows(PARAM param, IReadOnlyList<(MapSlots.Slot A, MapSlots.Slot B)> pairs, IEnumerable<MapId>? ported = null)
     {
         param.Rows.RemoveAll(r => IsOurs(r.ID));
+        var taken = (ported ?? pairs.SelectMany(p => new[] { p.A.Er, p.B.Er })).Select(m => (m.Area, m.Block, m.Region)).ToHashSet();
+        VanillaRowsLeftOut = param.Rows.RemoveAll(r => r.ID != TemplateRow && (Names(r, "src", taken) || Names(r, "dst", taken)));
         var template = param[TemplateRow] ?? param.Rows.FirstOrDefault()
                        ?? throw new InvalidDataException($"{ParamName} has no rows to copy");
         int id = FirstRow;
@@ -89,10 +103,20 @@ public static class MapLinks
         var pairs = Pairs(slots, m => targets.GetValueOrDefault(m) ?? []);
         var regulation = ActionButtons.LoadRegulation(ctx);
         var param = regulation.Get(ParamName) ?? throw new InvalidDataException($"Elden Ring has no {ParamName}");
-        int rows = WriteRows(param, pairs);
+        int rows = WriteRows(param, pairs, slots.Where(s => !s.Probe).Select(s => s.Er));
         regulation.Save(ctx.ModPath("regulation.bin"));
-        return $"map links: {pairs.Count} pairs of ported maps DS3 joins, {rows} {ParamName} rows "
+        return $"map links: {pairs.Count} pairs of ported maps DS3 joins, {rows} {ParamName} rows, {VanillaRowsLeftOut} of Elden Ring's own rows for those map IDs taken out "
                + $"({string.Join(", ", pairs.Select(p => $"{p.A.Ds3.Area:D2}_{p.A.Ds3.Block:D2} {p.A.Name} <-> {p.B.Name}"))})";
+    }
+
+    /// <summary>Elden Ring's own rows <see cref="WriteRows"/> took out on its last call.</summary>
+    public static int VanillaRowsLeftOut { get; private set; }
+
+    private static bool Names(PARAM.Row row, string side, HashSet<(int, int, int)> maps)
+    {
+        int Get(string field) => row.Cells.FirstOrDefault(c => string.Equals(c.Def.InternalName, side + field, StringComparison.OrdinalIgnoreCase))?.Value is { } v
+            ? Convert.ToInt32(v) : -1;
+        return maps.Contains((Get("AreaNo"), Get("GridXNo"), Get("GridZNo")));
     }
 
     private static void Set(PARAM.Row row, string field, object value)

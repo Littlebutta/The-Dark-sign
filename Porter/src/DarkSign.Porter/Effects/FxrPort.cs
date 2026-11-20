@@ -100,7 +100,8 @@ public static partial class FxrPort
     /// -2): see fxr-port.js. Fallback "map-effects" D: DARKSIGN_FXR_LIT=0 leaves them unlit, as up to 1.0.44x.</summary>
     internal static readonly bool LitSmoke = Environment.GetEnvironmentVariable("DARKSIGN_FXR_LIT") != "0";
 
-    /// <summary>Gives the point lights DS3's effects carry (a weapon's glow, a spell, a candle) Elden Ring's light
+    /// <summary>Gives the point and spot lights DS3's effects carry (a weapon's glow, a spell, a candle, the windows of
+    /// Friede's hall) Elden Ring's light
     /// settings: 10 times DS3's strength with Elden Ring's daylight dimming, a falloff of a quarter of the radius and
     /// a faint glow in the air (see fxr-port.js erLight for the measurements). As converted before, they hardly lit
     /// anything (2026-11-20 playtest: "effects like the twin princes sword don't create light"). Fallback
@@ -319,7 +320,7 @@ public static partial class FxrPort
         DropDependents(effects, failed, result.Reasons);
         var lit = effects.Where(e => e.Value.Info.Lights > 0).OrderBy(e => e.Key).ToList();
         if (lit.Count > 0)
-            Console.WriteLine($"effects: {lit.Count} DS3 effects carry {lit.Sum(e => e.Value.Info.Lights)} point lights ({string.Join(" ", lit.Take(12).Select(e => $"f{e.Key}"))}{(lit.Count > 12 ? " ..." : "")}); " +
+            Console.WriteLine($"effects: {lit.Count} DS3 effects carry {lit.Sum(e => e.Value.Info.Lights)} point and spot lights ({string.Join(" ", lit.Take(12).Select(e => $"f{e.Key}"))}{(lit.Count > 12 ? " ..." : "")}); " +
                               (ErLights ? "set up as Elden Ring's own (strength x10, dimmed in daylight, falloff a quarter of the radius)"
                                         : "kept as converted (DARKSIGN_FXR_LIGHTS=ds3)"));
 
@@ -558,7 +559,7 @@ public static partial class FxrPort
     internal sealed class FxrScript
     {
         /// <summary>A point light of a converted effect (<see cref="LightsOfConverted"/>); null where not read.</summary>
-        public sealed record ConvertedLight(float? Strength, float? Adaptation, float? Falloff, float? Radius, float? Volume);
+        public sealed record ConvertedLight(float? Strength, float? Adaptation, float? Falloff, float? Radius, float? Volume, string? Kind = null);
 
         public sealed record Info(int[] Sfx, int[] Textures, int[] Models, int[] Anibnds, int[] Sounds, int[]? HeldSounds = null, int[]? UnheldSounds = null,
             int Lights = 0, int Glow = 0, float[]? GlowColour = null);
@@ -590,7 +591,12 @@ public static partial class FxrPort
         public byte[] FlameSample(int id, int texture, float r, float g, float b, bool light, float falloff = 1) =>
             (byte[])_engine.Invoke(_engine.Modules.Import("./fxr-port.js").Get("flameSample"), id, texture, r, g, b, light, falloff).ToObject()!;
 
-        /// <summary>For the self-tests: the point lights of a converted (Elden Ring) effect, each value at its largest.</summary>
+        /// <summary>For the self-tests: a small DS3 effect that carries one spot light, as Friede's hall windows do.</summary>
+        public byte[] SpotSample(int id) =>
+            (byte[])_engine.Invoke(_engine.Modules.Import("./fxr-port.js").Get("spotSample"), id).ToObject()!;
+
+        /// <summary>For the self-tests: the point and spot lights of a converted (Elden Ring) effect, each value at its
+        /// largest (a spot light's radius is its reach).</summary>
         public ConvertedLight[] LightsOfConverted(byte[] bytes) =>
             JsonSerializer.Deserialize<ConvertedLight[]>(_engine.Invoke(_engine.Modules.Import("./fxr-port.js").Get("lightsOfConverted"), _engine.Intrinsics.Uint8Array.Construct(bytes)).AsString(),
                 new JsonSerializerOptions { PropertyNameCaseInsensitive = true })!;

@@ -15,6 +15,7 @@ public static partial class MapPortChecks
         yield return ("people: people without body armour stay out of the pools; DS3 summons and invaders aren't placed", PeopleLooks);
         yield return ("enemies, objects, map effects: another state of the map (off DS3's layer bit 0, m40's Untended Graves, the High Wall's eclipse fog) is left out, with a switch to keep it", OtherStateLeftOut);
         yield return ("people: those DS3 parks at a holding spot stand where its scripts warp them, parameterised events included", PeopleSeated);
+        yield return ("people: one version of each DS3 person stands (the first quest state), as DS3's scripts show one", PeopleOneVersion);
         yield return ("people: DS3 humans with a DS3 look stand as an Elden Ring person wearing it; the rest stay out without --er-people", PeopleArmourPlacement);
                 yield return ("enemies: placed at DS3's spot with the DS3 entity moved to the slot, on its collision, and read back", EnemyPlacement);
     }
@@ -287,14 +288,34 @@ public static partial class MapPortChecks
         Expect(MapSfx.Convert(ds3, other.Msb, Ds3Id, ErId, fog) is { Added: 2, OtherState: 0 }, "map effects too: layers are only read where bit 0 marks the base state");
     }
 
+    private static void PeopleOneVersion()
+    {
+        // DS3 m40_00_00_00 (Firelink Shrine), measured 2026-11-20.
+        MSB3.Part.Enemy P(string name, int npc, int talk, string model = "c0000") => new() { Name = name, ModelName = model, NPCParamID = npc, TalkID = talk };
+        var parts = new[]
+        {
+            P("c0000_0021", 25701, 400260), P("c0000_0003", 25702, 400261), P("c0000_0004", 25703, 400262), // Irina x3
+            P("c0000_0027", 25801, 400270), P("c0000_0005", 25802, 400271),                                // Eygon, Eygon "Enemy"
+            P("c0000_0006", 25200, 400180), P("c0000_0014", 25204, 0),                                     // Sirris, her hostile version
+            P("c0000_0033", 25100, 400170), P("c0000_0034", 25100, 400171),                                // Hawkwood x2
+            P("c0000_0012", 27300, 0),                                                                    // Sword Master: one version, no talk
+            P("c0000_0040", 27350, 0), P("c0000_0041", 27360, 0),                                          // a family nobody in talks: kept
+            P("c1400_0000", 140000, 400120, "c1400"),                                                      // Fire Keeper: own body
+        };
+        var later = EnemyPort.LaterVersions(parts, e => new(e.ModelName, e.NPCParamID, e.Name, false, true));
+        Expect(later.SetEquals(["c0000_0003", "c0000_0004", "c0000_0005", "c0000_0014", "c0000_0034"]),
+            $"Irina's 2nd/3rd, Eygon's enemy, Sirris's hostile and Hawkwood's 2nd are later versions ({string.Join(", ", later.Order())})");
+    }
+
     private static void PeopleSeated()
     {
         var ds3 = SyntheticDs3();
         var collision = ds3.Parts.Collisions[0].Name;
         var hold = new Vector3(273, -98, 603);
         ds3.Models.Enemies.Add(new MSB3.Model.Enemy { Name = "c0000" });
-        foreach (var (name, entity) in new[] { ("c0000_0025", 4000750), ("c0000_0024", 4000745), ("c0000_0018", 4000735) })
-            ds3.Parts.Enemies.Add(new MSB3.Part.Enemy { Name = name, ModelName = "c0000", EntityID = entity, NPCParamID = 25000, TalkID = 400140, CollisionName = "h006100_0000", Position = hold });
+        // Three different people (DS3: Yuria 25000, Orbeck 25401, Cornyx 25501) at the holding spot.
+        foreach (var (name, entity, npc, talk) in new[] { ("c0000_0025", 4000750, 25000, 400140), ("c0000_0024", 4000745, 25401, 400230), ("c0000_0018", 4000735, 25501, 400240) })
+            ds3.Parts.Enemies.Add(new MSB3.Part.Enemy { Name = name, ModelName = "c0000", EntityID = entity, NPCParamID = npc, TalkID = talk, CollisionName = "h006100_0000", Position = hold });
         ds3.Parts.Enemies.Add(new MSB3.Part.Enemy { Name = "c0000_0030", ModelName = "c0000", EntityID = 4000785, NPCParamID = 25300, TalkID = 400190, CollisionName = collision, Position = new Vector3(286, -48, 607) });
         ds3.Regions.Events.Add(new MSB3.Region.Event { Name = "handmaid seat", EntityID = 4004750, Position = new Vector3(270, -56, 600), Rotation = new Vector3(0, 45, 0) });
         ds3.Regions.Events.Add(new MSB3.Region.Event { Name = "seat 745", EntityID = 4004745, Position = new Vector3(260, -56, 605) });
@@ -331,7 +352,8 @@ public static partial class MapPortChecks
         var handmaid = layout.Msb.Parts.Enemies.Single(e => e.EntityID == 45000750);
         Expect(handmaid.Position == new Vector3(270, -56, 600) && handmaid.CollisionPartName == collision, $"seated at {handmaid.Position}");
         Expect(layout.Msb.Parts.Enemies.Single(e => e.EntityID == 45000735).Position == hold, "a held person with no warp stays where DS3 put them");
-        Expect(result.Notes.Any(n => n.Contains("2 moved from DS3's holding spot") && n.Contains("1 other versions")), $"the report counts the seated people: {string.Join(" | ", result.Notes)}");
+        Expect(result.Notes.Any(n => n.Contains("2 moved from DS3's holding spot")), $"the report counts the seated people: {string.Join(" | ", result.Notes)}");
+        Expect(!EnemyPort.OneVersion || result.Notes.Any(n => n.Contains("1 later quest versions")), $"the report counts the later versions: {string.Join(" | ", result.Notes)}");
         Expect(layout.Msb.Parts.Enemies.All(e => e.EntityID != 45000751), "the second version of a seated person is left out");
         Expect(MSBE.Read(layout.Msb.Write()).Parts.Enemies.Count == layout.Msb.Parts.Enemies.Count, "reads back");
     }

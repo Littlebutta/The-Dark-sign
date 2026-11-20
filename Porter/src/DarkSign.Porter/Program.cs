@@ -161,6 +161,7 @@ try
         "cutscene-diag" => DarkSign.Porter.Maps.CutsceneDiag.Run(ctx, argList[1..]),
         "map-validate" => DarkSign.Porter.Maps.MapValidate.Run(ctx),
         "map-diag" => DarkSign.Porter.Maps.MapDiag.Run(ctx, argList[1..]),
+        "voice-template-check" => DarkSign.Porter.Maps.CutsceneSound.CheckVoiceTemplate(ctx),
         "randomize" => DarkSign.Porter.Rando.RandomizeCommand.Run(ctx, argList[1..]),
         "rando-survey" => DarkSign.Porter.Rando.RandomizeCommand.Survey(ctx),
         "item-list" => Commands.ItemListOnly(ctx),

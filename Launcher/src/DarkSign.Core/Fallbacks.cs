@@ -371,8 +371,10 @@ public static class Fallbacks
                 { PorterEnv = Env("DARKSIGN_MAP_WORLD", "0") },
             new("C", "Every map, no map link rows", "As A, but without the WorldMapLegacyConvParam rows that tell the game two neighbouring maps share one space. Try it if walking into the next map crashes or puts it in the wrong place. (DARKSIGN_MAP_LINKS=0)")
                 { PorterEnv = Env("DARKSIGN_MAP_LINKS", "0") },
-            new("D", "Every map, keep stand-ins for neighbours", "As A, but a map's low-detail stand-ins for a neighbouring map stay even where that map's real pieces stand (builds up to 1.0.52x). Try it if a far view (a castle on the skyline) went missing since the build that left them out; you may see low-resolution slabs over the real pieces again. (DARKSIGN_WORLD_STAND_INS=0)")
+            new("D", "Every map, stand-ins for neighbours always drawn", "As A, but a map's low-detail stand-ins for a neighbouring map are drawn all the time, also while that map's real pieces are loaded there (builds up to 1.0.52x). Try it if a far view (a castle on the skyline) blinks or goes missing; you may see low-resolution slabs over the real pieces again. (DARKSIGN_WORLD_STAND_INS=0)")
                 { PorterEnv = Env("DARKSIGN_WORLD_STAND_INS", "0") },
+            new("E", "Every map, stand-ins for neighbours left out", "As A, but a map's low-detail stand-ins for a neighbouring map are left out where that map's real pieces stand, as builds 1.0.53x did (no draw groups at all). Try it if map pieces vanish or flicker as you walk between maps; far views of the next map are missing until it loads. (DARKSIGN_WORLD_STAND_INS=remove)")
+                { PorterEnv = Env("DARKSIGN_WORLD_STAND_INS", "remove") },
         ]),
         new("map-painted-world", "DS3 maps", "Where the Painted World of Ariandel goes", Stage.Build,
             "Warping to the Painted World (or the F1 menu's Friede fight) fails: nothing happens, endless loading, or a crash.",
@@ -509,9 +511,18 @@ public static class Fallbacks
         new("map-sky-layer", "DS3 maps", "Which of its two pictures a DS3 sky shows", Stage.Build,
             "A DS3 map's sky shows a plain colour, a flat cloud picture, or huge grey shapes since this option.",
         [
-            new("A", "The picture that covers most of the sky (default)", "Some DS3 skies cross-fade two pictures (a sky and its clouds) by a weight on each point of the dome, a blend Elden Ring has no shader for, so the port shows one picture over the whole dome: the one DS3 shows over most of it. The Painted World's sky shows its sky picture; the other maps' skies are as before. The port log's \"sky domes:\" line names the domes that show their second picture."),
-            new("B", "First picture", "Every two-picture sky shows its first picture (port-maps --first-sky-layer), as in every build up to 1.0.50x: the Painted World's sky is its cloud picture, whose shapes stand over the map as huge grey blurs.")
+            new("A", "The picture that covers most of the sky (default)", "Some DS3 skies cross-fade two pictures (a sky and its clouds) by a weight on each point of the dome, a blend Elden Ring has no shader for, so the port shows one picture over the whole dome: the one DS3 shows over most of it, laid on that picture's own texture coordinates. The Painted World's sky shows its mountain panorama under a starry top; the other maps' skies are as before. The port log's \"sky domes:\" line names the domes that show their second picture."),
+            new("B", "First picture", "Every two-picture sky shows its first picture (port-maps --first-sky-layer), as in every build up to 1.0.50x: the Painted World's sky is its pale cloud picture all over.")
                 { MapsArgs = ["--first-sky-layer"] },
+            new("C", "Second picture on the first's coordinates", "As A, but a dome that shows its second picture lays it on the first picture's texture coordinates (DARKSIGN_SKY_LAYER_UV=first), as 1.0.51x to 1.0.52x had it: the Painted World's panorama is smeared into streaks of cyan under a starry cap.")
+                { PorterEnv = Env("DARKSIGN_SKY_LAYER_UV", "first") },
+        ]),
+        new("map-sky-clouds", "DS3 maps", "Cloud bands, haze and far mountains around DS3's skies", Stage.Build,
+            "Since this option came in, a DS3 map's sky has solid grey or white bands, hard-edged clouds or a ring of mountains that looks wrong, or a map crashes or hangs while loading.",
+        [
+            new("A", "DS3's see-through sky layers (default)", "The see-through layers DS3 stands around its sky (its unlit, faded cloud bands, haze and far mountain rings: the cloud band that hides the foot of the distant castle from Firelink, the mountain range below the horizon there, High Wall's ring of distant mountains and clouds, the cloud layer under the Undead Settlement) are drawn unlit and blended, as Elden Ring's own see-through unlit pieces are, keeping DS3's fade. The parts DS3 shows less than half of are left out. Cloud cards DS3 cuts out with scrolling masks (the Painted World's) are not part of this. The port log's \"see-through sky layers:\" line counts them."),
+            new("B", "Left out", "The see-through sky layers are left out (DARKSIGN_SKY_CLOUDS=0), as every build up to 1.0.52x: the far view shows only the dome itself, with no mountains below its skyline and a hard line where the scenery meets it.")
+                { PorterEnv = Env("DARKSIGN_SKY_CLOUDS", "0") },
         ]),
         new("map-atmosphere", "DS3 maps", "Colours of light and fog in the DS3 maps", Stage.Build,
             "A DS3 map looks washed out, too foggy, too clear, or wrongly coloured since the maps took DS3's colours.",
@@ -534,11 +545,13 @@ public static class Fallbacks
         new("map-light-sets", "DS3 maps", "Which light each DS3 map piece, object and character is lit with", Stage.Build,
             "Since this option came in, parts of a DS3 map are black or far too bright, a room flickers between light and dark, or a boss or enemy is lit oddly.",
         [
-            new("A", "DS3's light set per part (default)", "Each map piece, object, floor and character names the light set DS3 gives it, and the map's draw params get DS3's sets: Friede's hall and other rooms DS3 lights only with their candles, windows and baked light have no sun, and the bosses get their own light (Ariandel's warm fire). No light of these sets is stronger than twice the map's sun, except DS3's far-view and sky sets, which may reach eight times it so far scenery stays bright through the haze."),
+            new("A", "DS3's light set per part (default)", "Each map piece, object, floor and character names the light set DS3 gives it, and the map's draw params get DS3's sets: Friede's hall and other rooms DS3 lights only with their candles, windows and baked light have no sun, and the bosses get their own light (Ariandel's warm fire), toned down so a set only characters use lights them no more in all than Elden Ring lights its own characters. No light of these sets is stronger than twice the map's sun, except DS3's far-view and sky sets, which may reach eight times it so far scenery stays bright through the haze."),
             new("B", "One light for everything", "Every part is lit with the map's outdoor light (port-maps --one-light-set), as up to 1.0.499: rooms lit by the sun through their roofs.")
                 { MapsArgs = ["--one-light-set"] },
             new("C", "Far views as dim as the rest", "As A, but DS3's light sets for far scenery and the sky are kept within twice the map's sun like every other set (DARKSIGN_FAR_LIGHT_CAP=1), as builds up to 1.0.52x had them: far buildings and mountains stand black against the sky.")
                 { PorterEnv = Env("DARKSIGN_FAR_LIGHT_CAP", "1") },
+            new("D", "Characters in DS3's full light", "As A, but the sets only characters use keep DS3's strengths (DARKSIGN_CHARACTER_LIGHT=ds3), as builds up to 1.0.53x had them: bosses and people DS3 gives a light of their own (Father Ariandel, the Fire Keeper) stand out brightly lit in dark rooms.")
+                { PorterEnv = Env("DARKSIGN_CHARACTER_LIGHT", "ds3") },
         ]),
         new("map-env-light", "DS3 maps", "Light the DS3 map pieces get from around them", Stage.Build,
             "A DS3 map's walls and ground look flat, too dark or too grey, or shine oddly since the colosseum's colour was taken out of their light.",
@@ -664,14 +677,14 @@ public static class Fallbacks
         new("map-effects", "DS3 maps", "DS3's map effects (candles, fog, light shafts)", Stage.Build,
             "A DS3 map crashes, hangs while loading or hitches since its effects were added, or a fog bank, light shaft or flame looks wrong or floats in the air.",
         [
-            new("A", "DS3's map effects (default)", "The effects DS3 places in its maps (fog banks, light shafts, crows, flies and fires) are converted with the weapons' effects and stand where DS3 has them (their smoke and fog take the light around them, as Elden Ring's do), and the objects DS3 shows lit (candles, torches, braziers) carry their flames: DS3's object effect rows become Elden Ring asset effect rows. The lights DS3's effects carry (weapon glows, spells, candles; weapon and enemy effects too) are set up as Elden Ring sets up its own: ten times DS3's strength, dimmed where it is already bright, fading out at the edge of their reach. Report: Work\\map-sfx.tsv lists any effect that couldn't be converted, the object effects line of the port-maps log counts the lit objects, and the effects line about point lights in the build log counts the effects that carry lights."),
+            new("A", "DS3's map effects (default)", "The effects DS3 places in its maps (fog banks, light shafts, crows, flies and fires) are converted with the weapons' effects and stand where DS3 has them (their smoke and fog take the light around them, as Elden Ring's do), and the objects DS3 shows lit (candles, torches, braziers) carry their flames: DS3's object effect rows become Elden Ring asset effect rows. The lights DS3's effects carry (weapon glows, spells, candles, the window light of Friede's hall; weapon and enemy effects too) are set up as Elden Ring sets up its own: ten times DS3's strength, dimmed where it is already bright, fading out at the edge of their reach, lighting the air a little (the shafts from a window). Report: Work\\map-sfx.tsv lists any effect that couldn't be converted, the object effects line of the port-maps log counts the lit objects, and the effects line about point and spot lights in the build log counts the effects that carry lights."),
             new("B", "None", "The DS3 maps have none of DS3's map effects (DARKSIGN_MAP_SFX=0), as every build up to 1.0.366 was.")
                 { PorterEnv = Env("DARKSIGN_MAP_SFX", "0") },
             new("C", "Region effects only", "DS3's fog, light shafts and other placed effects as in A, but no flames on objects (DARKSIGN_OBJECT_SFX=0): candles and torches stand unlit, as builds up to 1.0.44x had them.")
                 { PorterEnv = Env("DARKSIGN_OBJECT_SFX", "0") },
             new("D", "Smoke and fog effects unlit", "DS3's effects as in A, but their smoke, fog and dust are drawn unlit, at full colour whatever light they stand in (DARKSIGN_FXR_LIT=0), as builds up to 1.0.44x had them: in dark places they glow white. This goes for weapon and enemy effects too.")
                 { PorterEnv = Env("DARKSIGN_FXR_LIT", "0") },
-            new("E", "Effect lights as DS3 wrote them", "DS3's effects as in A, but the lights they carry (a weapon's glow, a spell, a candle's flame) keep DS3's settings as converted (DARKSIGN_FXR_LIGHTS=ds3), as builds before 2026-11-20 had them: in Elden Ring they are a tenth as strong as its own in the dark and half of them fade out a hand's width from the flame, so effects hardly light anything. This goes for weapon and enemy effects too.")
+            new("E", "Effect lights as DS3 wrote them", "DS3's effects as in A, but the lights they carry (a weapon's glow, a spell, a candle's flame) keep DS3's settings as converted (DARKSIGN_FXR_LIGHTS=ds3), as builds before 2026-11-20 had them (spot lights, the window light of Friede's hall, up to 1.0.53x): in Elden Ring they are a tenth as strong as its own in the dark and half of them fade out a hand's width from the flame, so effects hardly light anything. This goes for weapon and enemy effects too.")
                 { PorterEnv = Env("DARKSIGN_FXR_LIGHTS", "ds3") },
         ]),
 
@@ -767,6 +780,8 @@ public static class Fallbacks
                 { PorterEnv = Env("DARKSIGN_TALK_ENGINE_FLAGS", "0") },
             new("L", "Flat voices", "As A, but DS3's people speak through the cutscene sound setup, flat and dry from everywhere (DARKSIGN_PEOPLE_VOICE_BUS=0), as up to 1.0.50x, instead of Elden Ring's own NPC voice setup (room reverb, fading with distance, from the speaker). Try it if DS3 voices went silent, too quiet or cut off.")
                 { PorterEnv = Env("DARKSIGN_PEOPLE_VOICE_BUS", "0") },
+            new("M", "Every version of a person", "As A, but every quest version of a DS3 person is placed (DARKSIGN_PEOPLE_ONE_VERSION=0), as up to 1.0.5xx: DS3 places each state of a person (Irina three times, Eygon friendly and hostile, Sirris's hostile version) and its scripts show one, so all of them stood at once, some by Gundyr's arena. Try it if a DS3 person you expect is missing.")
+                { PorterEnv = Env("DARKSIGN_PEOPLE_ONE_VERSION", "0") },
         ]),
 
         new("enemy-port", "DS3 maps", "How DS3's enemies and bosses are ported", Stage.Build,
@@ -814,6 +829,8 @@ public static class Fallbacks
                 { PorterEnv = Env("DARKSIGN_ENEMY_VARIANTS", "0") },
             new("M", "The template's limb IK", "As A, but a ported enemy keeps the limb IK of the Elden Ring enemy it is built on (DARKSIGN_ENEMY_IK=template), as up to 1.0.460, when Father Ariandel's arms were stretched towards where Dragonlord Placidusax's front feet rest. Use when a ported enemy's hands or feet slide, sink into the floor or float with A.")
                 { PorterEnv = Env("DARKSIGN_ENEMY_IK", "template") },
+            new("N", "The template's cloth", "As A, but a ported enemy keeps the cloth simulation of the Elden Ring enemy it is built on (DARKSIGN_ENEMY_CLOTH=template), as up to 1.0.5xx, when Pontiff Sulyvahn's right-hand cape hung stuck to his left. Without it DS3 capes and skirts follow the bones they are skinned to and don't sway. Use when a ported enemy crashes the game, T-poses or stretches since its cloth was left out.")
+                { PorterEnv = Env("DARKSIGN_ENEMY_CLOTH", "template") },
         ]),
         new("enemy-drops", "DS3 maps", "What ported DS3 enemies drop", Stage.Build,
             "A ported DS3 enemy drops nothing where DS3 drops something, drops the wrong item or far too often, the game crashes or hangs when a ported enemy dies, or the build's enemy params step says the drops were not ported.",

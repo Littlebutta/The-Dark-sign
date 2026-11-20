@@ -489,6 +489,22 @@ public static partial class ChrPort
     }
 
     /// <summary>The fewest animations a template needs to carry a DS3 character that fits no template's skeleton.</summary>
+    /// <summary>
+    /// Whether the template's cloth files (cNNNN_c.hkx, the hclClothContainer, and cNNNN_c.clm2) are left out of a
+    /// chrbnd that carries a DS3 model. They simulate the template's own meshes and bones (c3570's L_Fat_Sub*, Tail_*,
+    /// *_Skirt), which a DS3 model doesn't have: Pontiff Sulyvahn's right-hand cape hung stuck to his left in 1.0.5xx.
+    /// DS3's cloth is Havok 2014 and is not ported, so the cape follows the bones it is skinned to.
+    /// Fallback enemy-model N: DARKSIGN_ENEMY_CLOTH=template keeps the template's cloth (as up to 1.0.5xx).
+    /// </summary>
+    public static bool DropTemplateCloth => Environment.GetEnvironmentVariable("DARKSIGN_ENEMY_CLOTH")?.Trim().ToLowerInvariant() != "template";
+
+    /// <summary>A character binder file that holds the character's cloth simulation (cNNNN_c.hkx / cNNNN_c.clm2).</summary>
+    public static bool IsClothFile(string binderName)
+    {
+        var leaf = ItemText.Leaf(binderName);
+        return leaf.EndsWith("_c.hkx", StringComparison.OrdinalIgnoreCase) || leaf.EndsWith("_c.clm2", StringComparison.OrdinalIgnoreCase);
+    }
+
     public const int CarryMinMoves = 30;
 
     /// <summary>
@@ -1586,6 +1602,8 @@ public static partial class ChrPort
         if (FlverMaterialNumbers.Apply(flver) is > 0 and var numbered)
             notes.Add($"{numbered} materials numbered as Elden Ring numbers them ({flver.Materials.Select(m => m.Index).Distinct().Count()} distinct)");
         templateFlverFile.Bytes = flver.Write();
+        if (DropTemplateCloth && chrbnd.Files.RemoveAll(f => IsClothFile(f.Name)) is > 0 and var cloth)
+            notes.Add($"the template's cloth left out ({cloth} files): it simulates the template's own meshes and bones");
         var texbnd = binders.Keys.Where(k => k.EndsWith(".texbnd.dcx", StringComparison.OrdinalIgnoreCase))
             .OrderBy(k => k.Contains("_h", StringComparison.OrdinalIgnoreCase) ? 0 : 1).FirstOrDefault();
         (int W, int H) templateLargest = (0, 0);
@@ -1875,7 +1893,8 @@ public static partial class ChrPort
             // group from those characters, see ChrTae.Merge): the Hollow Manservant's 114 type-795 events.
             if (fx is not null)
                 foreach (var (type, length) in ds3Lengths)
-                    if (!pooledLengths.ContainsKey(type) && fx.Lengths.TryGetValue(type, out var erLengths) && erLengths.Contains(length))
+                    if (!pooledLengths.ContainsKey(type) && !ChrTae.ReadDifferently.Contains(type)
+                        && fx.Lengths.TryGetValue(type, out var erLengths) && erLengths.Contains(length))
                         pooledLengths[type] = length;
         }
         foreach (var (_, (bnd, _)) in anibnds)

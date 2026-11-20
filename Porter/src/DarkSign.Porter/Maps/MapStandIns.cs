@@ -195,6 +195,41 @@ public static class MapStandIns
         return verdicts;
     }
 
+    /// <summary>
+    /// The neighbour each kept stand-in stands for, for <see cref="MapNeighbourGroups"/>: the joined map with the most
+    /// detailed vertices in pieces whose box meets the stand-in's (1 m slack), when those pieces hold at least a
+    /// quarter of its vertices. Looser than <see cref="AcrossMaps"/> (boxes that meet, not centres inside, and no
+    /// minimum count), because a stand-in found here is only hidden while that neighbour is loaded, never left out:
+    /// AcrossMaps' test missed 27 of Lothric Castle's 60 kept stand-ins (1.0.53x port log), and some sat in Dancer's
+    /// arena once the castle loaded next to the High Wall.
+    /// </summary>
+    public static List<KeyValuePair<string, MapId>> ForNeighbours(IReadOnlyList<PieceBox> own, IReadOnlySet<string> keptStandIns,
+        IReadOnlyDictionary<MapId, IEnumerable<PieceBox>> neighbours)
+    {
+        var detail = neighbours.ToDictionary(n => n.Key, n => n.Value.Where(d => !d.Low).ToList());
+        var found = new List<KeyValuePair<string, MapId>>();
+        foreach (var s in own.Where(p => keptStandIns.Contains(p.Name)))
+        {
+            MapId? best = null;
+            long bestVertices = 0;
+            foreach (var (map, pieces) in detail.OrderBy(d => d.Key.ToString()))
+            {
+                long vertices = 0;
+                foreach (var d in pieces)
+                    if (Meets(s.Min - Vector3.One, s.Max + Vector3.One, d.Min, d.Max))
+                        vertices += d.Vertices;
+                if (vertices > bestVertices)
+                    (best, bestVertices) = (map, vertices);
+            }
+            if (best is { } b && bestVertices * 4 >= s.Vertices)
+                found.Add(new(s.Name, b));
+        }
+        return found;
+    }
+
+    private static bool Meets(Vector3 aMin, Vector3 aMax, Vector3 bMin, Vector3 bMax) =>
+        aMin.X <= bMax.X && bMin.X <= aMax.X && aMin.Y <= bMax.Y && bMin.Y <= aMax.Y && aMin.Z <= bMax.Z && bMin.Z <= aMax.Z;
+
     private static bool IsLowPiece(int vertices, int lowVertices) => lowVertices > 0 && lowVertices * 2 >= vertices;
 
     /// <summary>

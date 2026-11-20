@@ -467,7 +467,7 @@ public static class MapPorter
             Time(report, "all maps", mapsClock);
         }
         if (_standInWorld.Count > 1 && Environment.GetEnvironmentVariable("DARKSIGN_WORLD_STAND_INS") is not "0")
-            Step(report, "world stand-ins", () => WorldStandIns(ctx));
+            Step(report, "world stand-ins", () => WorldStandIns(ctx, !options.Ds3Culling && !options.NoGroups));
         // The objects' materials and textures: shared by every map, so they are added once, to every area's binder.
         if (_objects is not null && ported.Count > 0)
         {
@@ -1320,7 +1320,7 @@ public static class MapPorter
         foreach (var note in models.Notes.Skip(notesSoFar).Distinct().Take(5))
             report.AppendLine($"  note: {note}");
         if (!options.HostLighting)
-            report.AppendLine($"  sunlight: {models.Materials.Count(m => m.Template.Kind == "nolight")} unlit materials (sky domes) cast no shadow");
+            report.AppendLine($"  sunlight: {models.Materials.Count(m => m.Template.Kind is "nolight" or "nolight-blend")} unlit materials (sky domes and the layers around them) cast no shadow");
         if (test != PieceTest.VanillaModel && copied == 0)
         {
             report.AppendLine($"  load: {models.LoadSummary}");
@@ -1331,6 +1331,8 @@ public static class MapPorter
             report.AppendLine("  " + (options.SolidOverlays ? "vertex alpha: every vertex solid, two-layer materials show their first layer (--solid-overlays)" : models.Overlays.Summary));
             report.AppendLine("  " + (options.FirstBlendLayer ? "terrain blends: every mesh shows its first layer (--first-blend-layer)" : models.Blends.Summary));
             report.AppendLine("  " + (options.FirstSkyLayer ? "sky domes: every mesh shows its first layer (--first-sky-layer)" : models.Skies.Summary));
+            report.AppendLine("  " + (MapModelPort.UnlitBlendEnabled ? models.UnlitBlends.Summary
+                : "see-through sky layers: left out (DARKSIGN_SKY_CLOUDS=0)"));
             report.AppendLine("  " + (options.RawHalfNormals ? "half-float normals: kept as SoulsFormats reads them (--raw-half-normals)" : models.HalfNormalStats.Summary));
         }
         if (copied > 0)
@@ -1669,12 +1671,32 @@ public static class MapPorter
     private static readonly System.Collections.Concurrent.ConcurrentDictionary<MapId, (MapId Er, MapStandIns.Result Judged, List<byte[]> Connects)> _standInWorld = new();
 
     /// <summary>
-    /// "world stand-ins" step: leaves out each map's low-detail stand-ins that a neighbouring ported map's real pieces
-    /// stand in (<see cref="MapStandIns.AcrossMaps"/>), from the layouts already written. Neighbours are the maps DS3
-    /// joins with connect collisions, either way. Off: DARKSIGN_WORLD_STAND_INS=0 (fallback "map-world" D).
+    /// "world stand-ins" step: what to do with each map's low-detail stand-ins for a neighbouring ported map, from the
+    /// layouts already written. Neighbours are the maps DS3 joins with connect collisions, either way.
+    /// <para>
+    /// DS3 swaps a stand-in for the real thing with its draw groups: the castle's stand-ins in the High Wall are drawn
+    /// from the collisions where Lothric Castle isn't loaded and hidden from the ones that load it. The port drew every
+    /// piece from everywhere, so up to 1.0.52x a stand-in sat on its neighbour's real pieces once those loaded, and
+    /// from #237 such stand-ins were left out, which left a void where the neighbour wasn't loaded yet (the castle
+    /// seen from the High Wall, "the castle did not load", 1.0.53x playtest) while the stand-ins its test missed still
+    /// sat in the neighbour (Lothric Castle's stand-ins of the High Wall inside Dancer's arena, which the game loads
+    /// as Lothric Castle's neighbour there: the playtest's game file log has m45_03 loaded without a warp).
+    /// </para>
+    /// <para>
+    /// Now each such stand-in is drawn only while its neighbour is not loaded (<see cref="MapNeighbourGroups"/>): it
+    /// gets one draw group, its neighbour's, and every collision shows every group except those of the maps standing
+    /// on it keeps loaded (its own map and the maps its connect collisions name). Only these stand-ins carry a group;
+    /// every other part stays drawn from everywhere, so nothing else can disappear. With DS3's culling on
+    /// (--ds3-culling) the step does nothing (DS3's own groups already swap them).
+    /// DARKSIGN_WORLD_STAND_INS=0 keeps them drawn everywhere (fallback "map-world" D); =remove leaves them out as
+    /// #237 did (fallback "map-world" E).
+    /// </para>
     /// </summary>
-    private static string WorldStandIns(PorterContext ctx)
+    private static string WorldStandIns(PorterContext ctx, bool groups)
     {
+        bool remove = Environment.GetEnvironmentVariable("DARKSIGN_WORLD_STAND_INS") is "remove";
+        if (!groups && !remove)
+            return "world stand-ins: draw groups are DS3's (--ds3-culling) or none (--no-groups); nothing changed";
         var maps = _standInWorld.Keys.ToList();
         var joined = maps.ToDictionary(m => m, _ => new HashSet<MapId>());
         foreach (var (map, entry) in _standInWorld)
@@ -1686,29 +1708,47 @@ public static class MapPorter
                 }
         var lines = new List<string>();
         int total = 0;
+        var erMaps = _standInWorld.Values.Select(v => v.Er).Distinct().OrderBy(m => m.ToString()).ToList();
+        var bits = MapNeighbourGroups.Assign(erMaps);
+        var standIns = new Dictionary<MapId, Dictionary<string, MapId>>();
         foreach (var map in maps.OrderBy(m => m.ToString()))
         {
             var (er, judged, _) = _standInWorld[map];
             var kept = judged.KeptStandIns.ToHashSet(StringComparer.Ordinal);
             if (kept.Count == 0 || joined[map].Count == 0)
                 continue;
-            var verdicts = MapStandIns.AcrossMaps(judged.Pieces, kept, joined[map].SelectMany(n => _standInWorld[n].Judged.Pieces));
-            var leftOut = verdicts.Where(v => v.LeftOut).Select(v => v.Part).ToHashSet(StringComparer.Ordinal);
-            lines.Add($"  {map} -> {er}: {leftOut.Count} of {kept.Count} kept stand-ins left out for {string.Join(", ", joined[map].OrderBy(n => n.ToString()))}"
-                      + (leftOut.Count > 0 ? $" ({string.Join(", ", leftOut.Take(20))}{(leftOut.Count > 20 ? ", ..." : "")})" : ""));
-            if (leftOut.Count == 0)
-                continue;
+            var found = remove
+                ? MapStandIns.AcrossMaps(judged.Pieces, kept, joined[map].SelectMany(n => _standInWorld[n].Judged.Pieces))
+                    .Where(v => v.LeftOut).ToDictionary(v => v.Part, _ => er, StringComparer.Ordinal)
+                : MapStandIns.ForNeighbours(judged.Pieces, kept, joined[map].ToDictionary(n => _standInWorld[n].Er, n => (IEnumerable<MapStandIns.PieceBox>)_standInWorld[n].Judged.Pieces))
+                    .ToDictionary(StringComparer.Ordinal);
+            standIns[er] = found;
+            total += found.Count;
+            lines.Add($"  {map} -> {er}: {found.Count} of {kept.Count} kept stand-ins {(remove ? "left out" : "drawn only while their neighbour isn't loaded")} for {string.Join(", ", joined[map].OrderBy(n => n.ToString()))}"
+                      + (found.Count > 0 ? $" ({string.Join(", ", found.Take(20).Select(f => remove ? f.Key : $"{f.Key} -> {f.Value}"))}{(found.Count > 20 ? ", ..." : "")})" : ""));
+        }
+        int collisions = 0;
+        foreach (var er in remove ? standIns.Keys.ToList() : erMaps)
+        {
             var path = ctx.ModPath(ModParts(MsbPath(er)));
             if (!File.Exists(path))
                 continue;
             var msb = MSBE.Read(DCX.Decompress(File.ReadAllBytes(path), out var compression));
-            int removed = msb.Parts.MapPieces.RemoveAll(p => leftOut.Contains(p.Name));
-            var used = msb.Parts.MapPieces.Select(p => p.ModelName).ToHashSet(StringComparer.Ordinal);
-            msb.Models.MapPieces.RemoveAll(m => !used.Contains(m.Name));
+            var mine = standIns.GetValueOrDefault(er) ?? [];
+            if (remove)
+            {
+                msb.Parts.MapPieces.RemoveAll(p => mine.ContainsKey(p.Name));
+                var used = msb.Parts.MapPieces.Select(p => p.ModelName).ToHashSet(StringComparer.Ordinal);
+                msb.Models.MapPieces.RemoveAll(m => !used.Contains(m.Name));
+            }
+            else
+                collisions += MapNeighbourGroups.Apply(msb, er, mine, bits);
             File.WriteAllBytes(path, DCX.Compress(msb.Write(), compression));
-            total += removed;
         }
-        return $"world stand-ins: {total} low-detail stand-ins left out where a neighbouring ported map's real pieces stand"
+        return $"world stand-ins: {total} low-detail stand-ins for a neighbouring ported map "
+               + (remove ? "left out (DARKSIGN_WORLD_STAND_INS=remove)"
+                   : $"drawn only while that map isn't loaded; {collisions} collisions show every map's group but their own and their connects' "
+                     + $"(draw group bits {string.Join(", ", bits.Select(b => $"{b.Key}={b.Value}"))})")
                + (lines.Count > 0 ? Environment.NewLine + string.Join(Environment.NewLine, lines) : "");
     }
 
