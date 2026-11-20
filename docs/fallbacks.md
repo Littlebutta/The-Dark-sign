@@ -445,6 +445,15 @@ Try the next option if: A DS3 map's rooms, tunnels or courtyards are lit in the 
 - **C: Baked light mirrored east-west.** The same baked light with the volume mirrored along x (port-maps --baked-light-flip x). Try it if dark patches sit across the map from where the rooms are. (`port-maps --baked-light-flip x`)
 - **D: Baked light mirrored north-south.** The same baked light with the volume mirrored along z (port-maps --baked-light-flip z). Try it if C didn't line the dark patches up with the rooms. (`port-maps --baked-light-flip z`)
 
+### How bright the sky's light is in the DS3 maps (`map-sky-level`, rebuilds the content)
+
+Try the next option if: Since this option came in, a DS3 map looks too dark (outside, in shade or in rooms), or it still looks too light.
+
+- **A: DS3's sky against DS3's sun (default).** The light from the sky (the map's light volumes, its rooms' light and its reflections) keeps the strength DS3 gives it against its sun, on the scale the port's sun has. Up to 1.0.50x every map's open sky was as bright as the colosseum's whatever DS3's sun, which made the High Wall (map 2) about 3.4 times as bright as DS3 has it and the Undead Settlement (map 3) about 7 times, inside and outside.
+- **B: As bright as the colosseum.** The sky light is as bright as the host colosseum's on every map (port-maps --colosseum-sky-light), as up to 1.0.50x. (`port-maps --colosseum-sky-light`)
+- **C: DS3's balance, a little brighter.** As A with the sky light 1.6 times as strong (port-maps --brighter-sky-light). Try it if A is too dark to see in. (`port-maps --brighter-sky-light`)
+- **D: DS3's balance, darker.** As A with the sky light at 0.6 of it (port-maps --darker-sky-light). Try it if A is still too light. (`port-maps --darker-sky-light`)
+
 ### Light of their own for DS3's rooms (`map-light-areas`, rebuilds the content)
 
 Try the next option if: Since this option came in, a DS3 map's rooms are lit in patches with hard edges, a room is far too dark or too bright against the rest, a map hangs or crashes while loading, or a room's light seems to belong to the room next door.

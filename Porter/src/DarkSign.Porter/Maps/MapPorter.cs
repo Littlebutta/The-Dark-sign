@@ -86,7 +86,8 @@ public static class MapPorter
         /// which light every DS3 map piece in the colosseum's colour (fallback "map-env-light" B; see <see cref="MapEnvironment"/>).</summary>
         public bool HostEnvLight { get; set; }
         /// <summary>--flat-env-light / --baked-light-flip x|y|z: the DS3 map's own baked light volume off, or mirrored
-        /// (fallback "map-baked-light"; see <see cref="MapBakedLight"/>).</summary>
+        /// (fallback "map-baked-light"; see <see cref="MapBakedLight"/>). --colosseum-sky-light / --baked-light-level x: how
+        /// bright its open sky is (fallback "map-sky-level"; see <see cref="MapBakedLight.SkyAlpha"/>).</summary>
         public MapBakedLight.Options BakedLight { get; set; } = MapBakedLight.Options.Default;
         /// <summary>--no-light-offset: DS3's lamps and light probes stay in the map's own space instead of being moved
         /// by DS3's map offset, as in earlier builds (fallback "map-light-place" B; see <see cref="MapLighting.PortLights"/>).</summary>
@@ -212,6 +213,14 @@ public static class MapPorter
                     case "--host-atmosphere": o.HostAtmosphere = true; break;
                     case "--host-env-light": o.HostEnvLight = true; break;
                     case "--flat-env-light": o.BakedLight = o.BakedLight with { Flat = true }; break;
+                    case "--colosseum-sky-light": o.BakedLight = o.BakedLight with { ColosseumSky = true }; break;
+                    case "--brighter-sky-light": o.BakedLight = o.BakedLight with { Level = 1.6f }; break;
+                    case "--darker-sky-light": o.BakedLight = o.BakedLight with { Level = 0.6f }; break;
+                    case "--baked-light-level" when i + 1 < list.Count:
+                        // A level that isn't a positive number is skipped (the map keeps DS3's balance).
+                        if (float.TryParse(list[++i], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var level) && level > 0)
+                            o.BakedLight = o.BakedLight with { Level = level };
+                        break;
                     case "--no-light-areas": o.BakedLight = o.BakedLight with { NoAreas = true }; break;
                     case "--no-light-offset": o.NoLightOffset = true; o.UnturnedSun = true; o.BakedLight = o.BakedLight with { NoOffset = true }; break;
                     case "--unturned-sun": o.UnturnedSun = true; break;

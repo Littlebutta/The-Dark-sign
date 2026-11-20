@@ -22,8 +22,8 @@ namespace DarkSign.Porter.Maps;
 /// texture holds one spherical harmonic coefficient, its colour as 128 + 127 * c / |c| and its size in alpha
 /// (W = order 0, X/Y/Z = the x, y and z terms of order 1).</item>
 /// </list>
-/// So this spreads DS3's probes over a light volume of the map's own, in Elden Ring's encoding, scaled so DS3's open
-/// sky is as bright as the host colosseum's: a new environment point and box (number <see cref="PointNumber"/>) over
+/// So this spreads DS3's probes over a light volume of the map's own, in Elden Ring's encoding, with DS3's open
+/// sky as bright against the sun as DS3 has it (<see cref="SkyAlpha"/>): a new environment point and box (number <see cref="PointNumber"/>) over
 /// the area the probes cover, inside the catch-all box <see cref="MapLighting.AddAmbient"/> keeps for the far
 /// scenery. Indoors and under roofs the volume is as dark as DS3 baked it; Elden Ring's sun and its shadows do the rest.
 /// <para>Assumptions not yet seen in game (fallback "map-baked-light"): texture columns run along +x and slices
@@ -49,7 +49,12 @@ public static class MapBakedLight
     /// per DS3 room (<see cref="MapLightAreas"/>), only the map-wide volume, as in builds before it.</param>
     /// <param name="GuessAxes">"--guess-probe-axes" (fallback "map-sun" C): which first-order term of DS3's probes
     /// is up is guessed from the open sky, as in builds up to 1.0.44x, instead of DS3's fixed order (<see cref="ReadProbes"/>).</param>
-    public sealed record Options(bool Flat, bool FlipX, bool FlipY, bool FlipZ, bool NoOffset = false, bool NoAreas = false, bool GuessAxes = false)
+    /// <param name="ColosseumSky">"--colosseum-sky-light" (fallback "map-sky-level" B): DS3's open sky is made as bright as the
+    /// host colosseum's, whatever DS3's sun, as up to 1.0.50x (<see cref="SkyAlpha"/>).</param>
+    /// <param name="Level">"--baked-light-level x" (any factor), "--brighter-sky-light" 1.6 / "--darker-sky-light" 0.6
+    /// (fallback "map-sky-level" C/D): the sky light times this.</param>
+    public sealed record Options(bool Flat, bool FlipX, bool FlipY, bool FlipZ, bool NoOffset = false, bool NoAreas = false, bool GuessAxes = false,
+        bool ColosseumSky = false, float Level = 1)
     {
         public static Options Default { get; } = new(false, false, false, false);
     }
@@ -68,6 +73,10 @@ public static class MapBakedLight
         public required Dictionary<string, Level> Levels { get; init; }
         /// <summary>How bright the reflection cube is made, against the host's even grey (the probes' median).</summary>
         public float CubeScale { get; init; } = 1;
+        /// <summary>The map-wide volume only: its open sky against the host colosseum's (<see cref="SkyAlpha"/> over
+        /// the host's alpha). <see cref="MapEnvironment.Write"/> dims the host's even light for the far scenery and its
+        /// reflection cube by it, so the map is lit on one scale inside and outside the probed area.</summary>
+        public float HostDim { get; init; } = 1;
         public string Summary { get; init; } = "";
     }
 
@@ -212,14 +221,57 @@ public static class MapBakedLight
         return v.Length == 0 ? 1 : MathF.Max(1, v[(int)(v.Length * 0.75)]);
     }
 
+    /// <summary>
+    /// Light volume alpha per unit of DS3 probe brightness at equal sun strength. Read off the one map whose light
+    /// was judged right in play (Firelink Shrine on m45_00, "lighting on map 1 seems good", and no complaint since):
+    /// its open sky 877 stands at alpha 56 beside a sun scaled by 0.75 (0.6 over DS3's 0.8): 56 / (877 * 0.75).
+    /// </summary>
+    public const float AlphaPerDs3Sky = 0.085f;
+
+    /// <summary>The open-sky alpha is kept inside this range (alpha is a byte, and light above open sky needs room).</summary>
+    public const float MinSkyAlpha = 2, MaxSkyAlpha = 200;
+
+    /// <summary>
+    /// The alpha DS3's open sky gets in the map's light volumes (Devin, 2026-11-19: "map 2 shouldn't be as light as
+    /// it is, both outside and inside"). Up to 1.0.50x DS3's open sky was made as bright as the host colosseum's own,
+    /// while the sun, lamps and fill lights are DS3's times the host's sun strength over DS3's
+    /// (<see cref="MapLampStrength.SunScale"/>). That threw DS3's balance of sky light to sunlight away. Measured on
+    /// DS3's files, open-sky probe brightness per unit of sun strength: Firelink 1096 (877 beside a sun of 0.8), High
+    /// Wall 508 (625 beside 1.23), Undead Settlement 381 (571 beside 1.5), Painted World 384. In the port, alpha per
+    /// unit of sun: map 1 93 (56 beside 0.6), map 2 146 (73 beside 0.5), map 3 222 (89 beside 0.4). So against map 1
+    /// the High Wall's sky light, and every room's baked from it, was 3.4 times as strong as DS3 has it and the Undead
+    /// Settlement's 7 times, which also filled the sun's shadows back in. Now the sky takes the scale everything else
+    /// in the map has: DS3's brightness times the sun scale times <see cref="AlphaPerDs3Sky"/>, on every map.
+    /// </summary>
+    public static float SkyAlpha(float ds3Sky, float sunScale, float hostAlpha, Options options) =>
+        options.ColosseumSky ? hostAlpha : Math.Clamp(ds3Sky * sunScale * AlphaPerDs3Sky * Math.Max(0.01f, options.Level), MinSkyAlpha, MaxSkyAlpha);
+
+    /// <summary>The host's sun strength over DS3's from the two maps' draw params (1 when either is missing).</summary>
+    public static float SunScale(GameArchives ds3, GameArchives er, MapId ds3Id, MapId hostId)
+    {
+        try
+        {
+            var hostPath = MapAtmosphere.GparamPath(hostId);
+            var source = MapAtmosphere.Ds3GparamPaths(ds3Id).FirstOrDefault(ds3.Contains);
+            if (source is null || !er.Contains(hostPath))
+                return 1;
+            return MapLampStrength.SunScale(GPARAM.Read(er.Read(hostPath)), GPARAM.Read(ds3.Read(source)));
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            return 1;
+        }
+    }
+
     /// <summary>A texel count per axis that is a multiple of 4 (BC7 blocks) for width and height.</summary>
     private static int Round4(float v) => Math.Max(4, (int)MathF.Round(v / 4) * 4);
 
     /// <summary>
     /// Bakes the probes into the three detail levels of a volume over the area they cover. <paramref name="hostAlpha"/>
-    /// is the host volume's open-sky alpha (its W alpha at the 95th percentile): DS3's open sky is made that bright.
+    /// is the alpha DS3's open sky gets (<see cref="SkyAlpha"/>); <paramref name="hostDim"/> is that over the host
+    /// volume's own open-sky alpha, kept on the volume for <see cref="MapEnvironment.Write"/>.
     /// </summary>
-    public static Volume Bake(IReadOnlyList<Probe> probes, float hostAlpha, Options options)
+    public static Volume Bake(IReadOnlyList<Probe> probes, float hostAlpha, Options options, float hostDim = 1)
     {
         var (min, max) = MapLighting.Bounds(probes.Select(p => p.Position).ToList());
         min -= new Vector3(Margin);
@@ -253,6 +305,7 @@ public static class MapBakedLight
             Size = size,
             Levels = levels,
             CubeScale = Math.Clamp(median / sky, 0.1f, 1f),
+            HostDim = hostDim,
             Summary = FormattableString.Invariant(
                 $"{probes.Count:N0} DS3 probes ({probes.Count(p => p.SunMask == 0):N0} without sun) baked into a {size.X:0} x {size.Y:0} x {size.Z:0} m volume at {min.X:0},{min.Y:0},{min.Z:0}, ")
                 + FormattableString.Invariant($"{high.W} x {high.H} x {high.D} texels ({size.X / high.W:0.0} m); DS3 open sky {sky:0} = alpha {hostAlpha:0}, median probe at {median / sky:0.00} of it")
@@ -357,8 +410,14 @@ public static class MapBakedLight
             notes.Add(FormattableString.Invariant($"DS3's baked sunlight leans towards yaw {sun.Yaw * 180 / MathF.PI:0} degrees (strength {sun.Strength:0.00}; the sun line of 'atmosphere:' should be near it when the strength is 0.2 or more)"));
         if (probes.Count < 8)
             return ([], $"baked light: {ItemText.Leaf(path)} has {probes.Count} probes; the map keeps one even light volume");
-        float hostAlpha = HostAlpha(er, hostId);
-        var volume = Bake(probes, hostAlpha, options);
+        // DS3's sky against DS3's sun, on the scale the port's sun has (SkyAlpha).
+        float colosseumAlpha = HostAlpha(er, hostId);
+        float sunScale = SunScale(ds3, er, ds3Id, hostId);
+        float hostAlpha = SkyAlpha(OpenSky(probes), sunScale, colosseumAlpha, options);
+        notes.Insert(0, options.ColosseumSky
+            ? FormattableString.Invariant($"open sky as bright as the colosseum's (alpha {colosseumAlpha:0}), whatever DS3's sun (--colosseum-sky-light)")
+            : FormattableString.Invariant($"open sky at DS3's share of the sun: DS3's {OpenSky(probes):0} x sun scale {sunScale:0.##} x {AlphaPerDs3Sky}{(options.Level != 1 ? FormattableString.Invariant($" x {options.Level:0.##} (--baked-light-level)") : "")} = alpha {hostAlpha:0.#} (the colosseum's own is {colosseumAlpha:0}; the even light past the probes and the reflections are dimmed to {hostAlpha / colosseumAlpha:0.00} of the colosseum's)"));
+        var volume = Bake(probes, hostAlpha, options, hostAlpha / colosseumAlpha);
         var templatePoint = (MSBE.Region.EnvironmentMapPoint)hostPoint.DeepCopy();
         var templateBox = (MSBE.Region.EnvironmentMapEffectBox)hostBox.DeepCopy();
 
