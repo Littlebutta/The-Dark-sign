@@ -52,8 +52,30 @@ public sealed class ChrEffects
 
     public static bool IsSoundType(int type) => type is >= 128 and <= 131;
 
-    /// <summary>Sound kinds that belong to a creature: its own sounds (1 c), effect sounds (5 s) and voice (7 v).</summary>
-    public static bool IsOwnSoundKind(int kind) => kind is 1 or 5 or 7;
+    /// <summary>Sound kinds that belong to a creature: its own sounds (1 c), effect sounds (5 s), voice (7 v) and
+    /// floor-material sounds (8, see <see cref="FloorSoundKind"/>).</summary>
+    public static bool IsOwnSoundKind(int kind) => kind is 1 or 5 or 7 or FloorSoundKind;
+
+    /// <summary>
+    /// DS3's floor-material sound kind (TAE sound type 8): a step, landing or body slam that DS3 plays as the
+    /// character's own c-sound of that ID, or a variant of it chosen by the floor under it (Corrupted Gundyr's
+    /// 511001001 has c511001001 with c511001020/021 beside it in fdp_c5110.fev; 344 of his 1,013 sound events are
+    /// this kind). Elden Ring's characters never use kind 8 in their moves (their steps are c-sounds whose floor
+    /// variants Wwise picks), so these events were left with their DS3 IDs and played nothing. They are ported as
+    /// the c-sound of the same ID (the variant DS3 itself has under that exact name).
+    /// </summary>
+    public const int FloorSoundKind = 8;
+
+    /// <summary>The sound a DS3 sound event plays, as the port builds it: floor-material sounds as c-sounds
+    /// (<see cref="ChrSounds.FloorVariant"/>).</summary>
+    internal (int Kind, int Id)? PortedSound(TAE.Event e) =>
+        SoundPort.Sound(e) is not { } s ? null
+        : s.Kind == FloorSoundKind && FloorSounds ? (1, _sounds?.FloorVariant(s.Id) ?? s.Id)
+        : s;
+
+    /// <summary>DARKSIGN_FLOOR_SOUNDS=0 (launcher fallback enemy-effects D): floor-material sound events stay as
+    /// DS3 had them (silent in Elden Ring), as before.</summary>
+    public static readonly bool FloorSounds = Environment.GetEnvironmentVariable("DARKSIGN_FLOOR_SOUNDS") != "0";
 
     private readonly PorterContext _ctx;
     private readonly GameArchives? _er;
@@ -302,7 +324,7 @@ public sealed class ChrEffects
                     return (Fate.Drop, e.Type, null);
                 return (Fate.Add, e.Type, BulletPort.ConvertEvent(bytes));
             }
-            if (IsSoundType(e.Type) && SoundPort.Sound(e) is { } s && IsOwnSoundKind(s.Kind))
+            if (IsSoundType(e.Type) && _fx.PortedSound(e) is { } s && IsOwnSoundKind(SoundPort.Sound(e)!.Value.Kind))
             {
                 if (!HasSounds)
                     return (Fate.Other, e.Type, null); // the template's sound events stay as they are
@@ -412,7 +434,7 @@ public sealed class ChrEffects
         ChrSounds.Result? sounds = null;
         if (_sounds is not null)
         {
-            var wantedSounds = ds3Events.Where(e => IsSoundType(e.Type)).Select(SoundPort.Sound).OfType<(int Kind, int Id)>()
+            var wantedSounds = ds3Events.Where(e => IsSoundType(e.Type)).Select(PortedSound).OfType<(int Kind, int Id)>()
                 .Concat(effects.Sounds.Select(id => (5, id))).Where(s => SoundPort.Letter(s.Item1) is not null).Distinct().ToList();
             try
             {
