@@ -467,7 +467,7 @@ public static class MapPorter
             Time(report, "all maps", mapsClock);
         }
         if (_standInWorld.Count > 1 && Environment.GetEnvironmentVariable("DARKSIGN_WORLD_STAND_INS") is not "0")
-            Step(report, "world stand-ins", () => WorldStandIns(ctx, !options.Ds3Culling && !options.NoGroups));
+            Step(report, "world stand-ins", () => WorldStandIns(ctx, ds3, !options.Ds3Culling && !options.NoGroups));
         // The objects' materials and textures: shared by every map, so they are added once, to every area's binder.
         if (_objects is not null && ported.Count > 0)
         {
@@ -1277,7 +1277,7 @@ public static class MapPorter
                     .Where(p => missingModels.Contains(p.ModelName) || (!options.HelperPieces && MsbPort.HelperKind(p, layerOk) is not null))
                     .Select(p => p.Name).ToHashSet(StringComparer.Ordinal);
                 var judged = MapStandIns.Find(ds3Msb, models.ModelMeshes, skip);
-                _standInWorld[ds3Id] = (erId, judged, ds3Msb.Parts.ConnectCollisions.Select(c => c.MapID.ToArray()).ToList());
+                _standInWorld[ds3Id] = (erId, judged, ds3Msb.Parts.ConnectCollisions.Select(c => c.MapID.ToArray()).ToList(), ds3Msb);
                 standIns = judged.LeftOut;
                 farViews = judged.FarViews;
                 report.AppendLine("  " + judged.Summary);
@@ -1704,7 +1704,69 @@ public static class MapPorter
     private static readonly List<MapCoverage.Row> _coverage = [];
 
     // Each ported DS3 map's judged pieces and its connect collisions' map numbers, for "world stand-ins".
-    private static readonly System.Collections.Concurrent.ConcurrentDictionary<MapId, (MapId Er, MapStandIns.Result Judged, List<byte[]> Connects)> _standInWorld = new();
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<MapId, (MapId Er, MapStandIns.Result Judged, List<byte[]> Connects, MSB3 Msb)> _standInWorld = new();
+
+    /// <summary>
+    /// The "world stand-ins" step's default (fallback "map-world" A): DS3's doorway display lists
+    /// (<see cref="MapConnectDisplay"/>) written into every ported layout, so a loaded neighbour shows from each doorway
+    /// only what DS3 shows there and nothing from collisions with no doorway to it. Report:
+    /// Work\reports\map-world-display.tsv (every piece standing over a neighbour's floor where DS3 never shows it, and
+    /// where the port now hides it).
+    /// </summary>
+    private static string WorldDoorways(PorterContext ctx, GameArchives ds3)
+    {
+        var clock = System.Diagnostics.Stopwatch.StartNew();
+        var entries = _standInWorld.OrderBy(e => e.Key.ToString()).ToList();
+        var floors = new System.Collections.Concurrent.ConcurrentDictionary<MapId, List<MapWorldFloor.Cell>>();
+        var failed = new System.Collections.Concurrent.ConcurrentBag<string>();
+        Parallel.ForEach(entries, new ParallelOptions { MaxDegreeOfParallelism = Math.Max(1, Math.Min(4, Environment.ProcessorCount / 2)) }, e =>
+        {
+            try { floors[e.Key] = MapWorldFloor.Sample(ds3, e.Key, e.Value.Msb); }
+            catch (Exception ex) when (ex is not OutOfMemoryException)
+            {
+                floors[e.Key] = [];
+                failed.Add($"{e.Key}: {ex.Message}");
+            }
+        });
+        var data = entries.Select(e => new MapConnectDisplay.MapData(e.Key, e.Value.Er, e.Value.Msb, e.Value.Judged.Pieces, floors[e.Key])).ToList();
+        var plan = MapConnectDisplay.Build(data);
+        var check = MapConnectDisplay.Verify(data, plan);
+        var lines = new List<string>
+        {
+            $"  check (walkable floor of each map and its neighbours, DS3's groups against the ones written): a neighbour's pieces drawn over floor where DS3 hides them "
+            + $"{check.NeighbourBefore:N0} cells before, {check.NeighbourAfter:N0} after; own stand-ins for a neighbour on its doorways {check.OwnBefore:N0} before, {check.OwnAfter:N0} after; "
+            + $"cells where a piece DS3 shows is now hidden: {check.HiddenButShown:N0}"
+            + (check.Leftovers.Count > 0 ? $"; still drawn: {string.Join(", ", check.Leftovers.Take(8))}" : "")
+            + (check.WronglyHidden.Count > 0 ? $"; wrongly hidden: {string.Join(", ", check.WronglyHidden.Take(8))}" : ""),
+        };
+        var tsv = new StringBuilder("DS3 map\tElden Ring slot\tpiece\tstands over the floor of\thidden on the doorways into them\n");
+        int written = 0;
+        foreach (var d in data)
+        {
+            if (!plan.Maps.TryGetValue(d.Er, out var mp))
+                continue;
+            var path = ctx.ModPath(ModParts(MsbPath(d.Er)));
+            if (!File.Exists(path))
+                continue;
+            var msb = MSBE.Read(DCX.Decompress(File.ReadAllBytes(path), out var compression));
+            var (pieces, collisions, connects) = MapConnectDisplay.Apply(msb, mp);
+            File.WriteAllBytes(path, DCX.Compress(msb.Write(), compression));
+            written++;
+            lines.Add($"  {d.Ds3} -> {d.Er}: {pieces} pieces, {collisions} collisions, {connects} doorways written; {mp.DoorwayLists} DS3 doorway lists into it; "
+                      + $"{d.Floor.Count:N0} floor cells; {mp.BorderHidden.Count} own pieces over a neighbour hidden on its doorways"
+                      + (mp.BorderHidden.Count > 0 ? $" ({string.Join(", ", mp.BorderHidden.Keys.Take(12))}{(mp.BorderHidden.Count > 12 ? ", ..." : "")})" : ""));
+            foreach (var (piece, over) in mp.BorderHidden.OrderBy(b => b.Key, StringComparer.Ordinal))
+                tsv.Append($"{d.Ds3}\t{d.Er}\t{piece}\t{string.Join(",", over)}\tyes\n");
+        }
+        var report = ctx.WorkPath("reports", "map-world-display.tsv");
+        Directory.CreateDirectory(Path.GetDirectoryName(report)!);
+        File.WriteAllText(report, tsv.ToString());
+        return $"world stand-ins: DS3's doorway display lists written into {written} maps (fallback map-world A; F = #243's groups): own pieces drawn from all of their own map's collisions, "
+               + $"a neighbour's pieces only through a doorway that shows them in DS3 ({clock.Elapsed.TotalSeconds:F0} s); {string.Join("; ", plan.Notes)}"
+               + (failed.IsEmpty ? "" : $"; floor not read for {string.Join(", ", failed)}")
+               + $"; report {report}"
+               + (lines.Count > 0 ? Environment.NewLine + string.Join(Environment.NewLine, lines) : "");
+    }
 
     /// <summary>
     /// "world stand-ins" step: what to do with each map's low-detail stand-ins for a neighbouring ported map, from the
@@ -1719,7 +1781,8 @@ public static class MapPorter
     /// as Lothric Castle's neighbour there: the playtest's game file log has m45_03 loaded without a warp).
     /// </para>
     /// <para>
-    /// Now each such stand-in is drawn only while its neighbour is not loaded (<see cref="MapNeighbourGroups"/>): it
+    /// The default since then is <see cref="WorldDoorways"/> (DS3's own doorway lists, fallback A). With
+    /// DARKSIGN_WORLD_STAND_INS=neighbour-groups (fallback F, PR #243) each such stand-in is drawn only while its neighbour is not loaded (<see cref="MapNeighbourGroups"/>): it
     /// gets one draw group, its neighbour's, and every collision shows every group except those of the maps standing
     /// on it keeps loaded (its own map and the maps its connect collisions name). Only these stand-ins carry a group;
     /// every other part stays drawn from everywhere, so nothing else can disappear. With DS3's culling on
@@ -1728,11 +1791,13 @@ public static class MapPorter
     /// #237 did (fallback "map-world" E).
     /// </para>
     /// </summary>
-    private static string WorldStandIns(PorterContext ctx, bool groups)
+    private static string WorldStandIns(PorterContext ctx, GameArchives ds3, bool groups)
     {
         bool remove = Environment.GetEnvironmentVariable("DARKSIGN_WORLD_STAND_INS") is "remove";
         if (!groups && !remove)
             return "world stand-ins: draw groups are DS3's (--ds3-culling) or none (--no-groups); nothing changed";
+        if (!remove && Environment.GetEnvironmentVariable("DARKSIGN_WORLD_STAND_INS") is not "neighbour-groups")
+            return WorldDoorways(ctx, ds3);
         var maps = _standInWorld.Keys.ToList();
         var joined = maps.ToDictionary(m => m, _ => new HashSet<MapId>());
         foreach (var (map, entry) in _standInWorld)
@@ -1749,7 +1814,7 @@ public static class MapPorter
         var standIns = new Dictionary<MapId, Dictionary<string, MapId>>();
         foreach (var map in maps.OrderBy(m => m.ToString()))
         {
-            var (er, judged, _) = _standInWorld[map];
+            var (er, judged, _, _) = _standInWorld[map];
             var kept = judged.KeptStandIns.ToHashSet(StringComparer.Ordinal);
             if (kept.Count == 0 || joined[map].Count == 0)
                 continue;
