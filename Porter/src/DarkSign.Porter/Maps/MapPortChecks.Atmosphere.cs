@@ -16,6 +16,7 @@ public static partial class MapPortChecks
         yield return ("atmosphere: the slot's gparam takes DS3's sun and fog colours, Stormveil's fog amounts, no colour grading", Atmosphere);
         yield return ("atmosphere: the sun's direction turns with DS3's map offset, like the map's lamps and baked light", SunTurned);
         yield return ("atmosphere: the lights without shadows (second directional light, local lights) take DS3's share of the sun, not the colosseum's", FillLights);
+        yield return ("light sets: each part keeps DS3's light set and the slot's draw params get DS3's sets (Friede's dark hall, the bosses' own light)", LightSets);
     }
 
     /// <summary>
@@ -241,6 +242,82 @@ public static partial class MapPortChecks
                && Near((Vector4)keptLight.Params.Single(p => p.Name1 == "Directional Light LocalLight DiffColor1").Values[0], new Vector4(0.761f, 0.816f, 1, 0.1f))
                && keptChanges.Any(c => c.Contains("--host-fill-lights")), "--host-fill-lights keeps the host's strengths and weights");
         Expect(MapPorter.Options.Parse(["--host-fill-lights"]).HostFillLights && !MapPorter.Options.Parse([]).HostFillLights, "--host-fill-lights (fallback map-fill-light B) is read");
+    }
+
+    private static void LightSets()
+    {
+        // The Painted World: host m45_00 sets 0 and 100 (sun 0.6); DS3 m45_00 set 0 (sun 0.8), set 1 "for darkness"
+        // (no light at all: Friede's hall), set 111 (Friede's own light) and a made-up set 4 with a sun far past set 0's.
+        // Elden Ring's draw params read as the Sekiro format.
+        var host = new GPARAM { Game = GPARAM.GPGame.Sekiro, Unk0D = true, Unk40 = 6.5f, Unk50 = 24 };
+        host.Groups.Add(G("LightSet",
+            P("Directional Light Angle0", GPARAM.ParamType.Float2, new Vector2(-0.52f, 1.57f), new Vector2(-0.52f, 1.57f)),
+            P("Directional Light DiffColor0", GPARAM.ParamType.Float4, new Vector4(1, 0.94f, 0.9f, 0.6f), new Vector4(1, 0.94f, 0.9f, 0.6f)),
+            P("Directional Light DiffColor1", GPARAM.ParamType.Float4, new Vector4(0.67f, 0.78f, 1, 0.1f), new Vector4(1, 1, 1, 0.05f)),
+            P("Directional Light Sharpness0", GPARAM.ParamType.Float, 0.3f, 0.3f),
+            P("Directional Enable LocalLight1", GPARAM.ParamType.BoolA, true, false)));
+        host.Groups[0].Comments.AddRange(["", ""]);
+        foreach (var p in host.Groups[0].Params)
+            p.TimeOfDay = [.. p.Values.Select(_ => 0f)];
+        host.Unk3s.Add(new GPARAM.Unk3(0) { ValueIDs = [0, 100] });
+        var ds3 = new GPARAM { Game = GPARAM.GPGame.DarkSouls3 };
+        GPARAM.Param D(string name, GPARAM.ParamType type, params (int Id, object Value)[] values)
+        {
+            var p = new GPARAM.Param(name, name, type);
+            foreach (var (id, v) in values)
+            {
+                p.Values.Add(v);
+                p.ValueIDs.Add(id);
+            }
+            return p;
+        }
+        ds3.Groups.Add(G("LightSet",
+            D("Directional Light Angle0", GPARAM.ParamType.Float2, (0, new Vector2(-0.79f, -1.22f)), (1, new Vector2(-0.51f, 0.66f)), (4, new Vector2(-0.3f, 0)), (111, new Vector2(-0.79f, -1.57f))),
+            D("Directional Light DiffColor0", GPARAM.ParamType.Float4, (0, new Vector4(0.81f, 0.9f, 1, 0.8f)), (1, new Vector4(1, 1, 1, 0)), (4, new Vector4(1, 0.86f, 0.66f, 13.4f)), (111, new Vector4(1, 1, 1, 0))),
+            D("Directional Light DiffColor1", GPARAM.ParamType.Float4, (0, new Vector4(0.62f, 0.77f, 1, 0.3f)), (1, new Vector4(0.6f, 0.71f, 1, 0)), (4, new Vector4(0, 0, 0, 5)), (111, new Vector4(0.91f, 0.96f, 1, 0.8f))),
+            D("Directional Enable LocalLight1", GPARAM.ParamType.BoolA, (0, true), (1, true), (4, false), (111, true))));
+        ds3.Groups[0].Comments.AddRange(["MAP_メイン:Outside", "暗闇用", "", "ボス_娘　戦闘"]);
+
+        var changes = MapAtmosphere.Apply(host, ds3, 0, 0, false, [0, 1, 4, 100, 111, 999]);
+        var light = MapAtmosphere.Group(host, "LightSet")!;
+        Vector4 Colour(string name, int id) { var p = light.Params.Single(x => x.Name1 == name); return (Vector4)p.Values[p.ValueIDs.IndexOf(id)]; }
+        float scale = 0.6f / 0.8f;
+        Expect(light.Params.All(p => p.ValueIDs.SequenceEqual([0, 1, 4, 100, 111])), $"sets 1, 4 and 111 added in ID order; 100 stays the host's; 999 (not in DS3) left out ({string.Join(",", light.Params[0].ValueIDs)})");
+        Expect(host.Unk3s[0].ValueIDs.SequenceEqual([0, 1, 4, 100, 111]) && light.Comments.Count == 5 && light.Comments[1].Contains("暗闇用"), "the group's ID list and comments follow");
+        Expect(Colour("Directional Light DiffColor0", 1).W == 0 && Colour("Directional Light DiffColor1", 1).W == 0, "set 1 (Friede's hall) has no sun and no second light, as in DS3");
+        Expect(Vector4.Distance(Colour("Directional Light DiffColor1", 111), new Vector4(0.91f, 0.96f, 1, 0.8f * scale)) < 1e-4f, $"Friede's light at DS3's strength on the slot's scale ({Colour("Directional Light DiffColor1", 111)})");
+        Expect(Colour("Directional Light DiffColor0", 4).W == 0.6f * MapLightSets.MaxOverSun, $"a sun far past DS3's set 0 is kept within {MapLightSets.MaxOverSun} times the slot's ({Colour("Directional Light DiffColor0", 4).W})");
+        Expect(Colour("Directional Light DiffColor1", 4) == new Vector4(0, 0, 0, 5 * scale), "a black (switched off) light is left as DS3 writes it");
+        Expect(Colour("Directional Light DiffColor0", 100) == new Vector4(0.81f, 0.9f, 1, 0.6f), "the host's set 100 keeps the host's sun strength with DS3's colour, as set 0");
+        var sharp = light.Params.Single(p => p.Name1 == "Directional Light Sharpness0");
+        Expect(sharp.Values.All(v => (float)v == 0.3f), "what DS3 doesn't set comes from the slot's set 0");
+        var angle = light.Params.Single(p => p.Name1 == "Directional Light Angle0");
+        Expect((Vector2)angle.Values[angle.ValueIDs.IndexOf(1)] == new Vector2(-0.51f, 0.66f), "each set's own sun direction");
+        Expect(changes.Any(c => c.Contains("DS3 light sets 1 (暗闇用), 4, 111 (ボス_娘　戦闘) added") && c.Contains("turned down in sets 4")), string.Join(" | ", changes));
+        var back = GPARAM.Read(host.Write());
+        Expect(MapAtmosphere.Group(back, "LightSet")!.Params.All(p => p.Values.Count == 5), "the file reads back");
+
+        // Parts: a DS3 part's set is carried; one the draw params lack, and every one with the fallback, goes to -1.
+        var piece = new MSB3.Part.MapPiece { Name = "m010701_5000", ModelName = "m010701" };
+        piece.Gparam.LightSetID = 1;
+        var ported = new MSBE.Part.MapPiece();
+        ported.Gparam.LightSetID = -1;
+        MapLightSets.Carry(piece, ported);
+        var enemy = new MSB3.Part.Enemy { Name = "c6020_0000", ModelName = "c6020" };
+        enemy.Gparam.LightSetID = 111;
+        var portedEnemy = new MSBE.Part.Enemy();
+        MapLightSets.Carry(enemy, portedEnemy);
+        var stray = new MSBE.Part.MapPiece();
+        stray.Gparam.LightSetID = 999;
+        var msb = new MSBE();
+        msb.Parts.MapPieces.AddRange([ported, stray]);
+        msb.Parts.Enemies.Add(portedEnemy);
+        Expect(ported.Gparam.LightSetID == 1 && portedEnemy.Gparam.LightSetID == 111 && MapLightSets.Wanted(msb).SetEquals([1, 111, 999]), "DS3's sets carried to the ported parts");
+        var line = MapLightSets.Finish(msb, new HashSet<int> { 0, 1, 100, 111 }, off: false);
+        Expect(ported.Gparam.LightSetID == 1 && portedEnemy.Gparam.LightSetID == 111 && stray.Gparam.LightSetID == -1 && line.Contains("1 x1") && line.Contains("1 on sets the draw params lack"), line);
+        MapLightSets.Finish(msb, new HashSet<int> { 0, 1, 100, 111 }, off: true);
+        Expect(ported.Gparam.LightSetID == -1 && portedEnemy.Gparam.LightSetID == -1, "--one-light-set leaves every part on the default");
+        Expect(MapPorter.Options.Parse(["--one-light-set"]).OneLightSet && !MapPorter.Options.Parse([]).OneLightSet, "--one-light-set (fallback map-light-sets B) is read");
     }
 
     private static void Atmosphere()

@@ -414,6 +414,13 @@ Try the next option if: Since this option came in, a DS3 map's shade is too dark
 - **A: DS3's share of the sun (default).** The second directional light (a blue light straight down from the sky, which casts no shadow) and the two local directional lights take DS3's strength in DS3's proportion to its sun: 8 to 13% of the sun, where the colosseums the maps stand on have 17% (map 1), 50% (map 2) and 100% (map 3), which filled every shadow back in and lit rooms through their roofs. The shade in corners (SSAO) dims the sun and that light as on Stormveil Castle.
 - **B: The colosseum's fill lights.** These lights keep the host colosseum's strengths and occlusion weights (port-maps --host-fill-lights), as up to 1.0.491. (`port-maps --host-fill-lights`)
 
+### Which light each DS3 map piece, object and character is lit with (`map-light-sets`, rebuilds the content)
+
+Try the next option if: Since this option came in, parts of a DS3 map are black or far too bright, a room flickers between light and dark, or a boss or enemy is lit oddly.
+
+- **A: DS3's light set per part (default).** Each map piece, object, floor and character names the light set DS3 gives it, and the map's draw params get DS3's sets: Friede's hall and other rooms DS3 lights only with their candles, windows and baked light have no sun, and the bosses get their own light (Ariandel's warm fire). No light of these sets is stronger than twice the map's sun.
+- **B: One light for everything.** Every part is lit with the map's outdoor light (port-maps --one-light-set), as up to 1.0.499: rooms lit by the sun through their roofs. (`port-maps --one-light-set`)
+
 ### Light the DS3 map pieces get from around them (`map-env-light`, rebuilds the content)
 
 Try the next option if: A DS3 map's walls and ground look flat, too dark or too grey, or shine oddly since the colosseum's colour was taken out of their light.

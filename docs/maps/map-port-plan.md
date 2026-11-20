@@ -343,6 +343,22 @@ second light to Stormveil's 1 (m45_00 had 0.5 and 0, m45_01 1 and 0). The atmosp
 change. Not done: DS3's other light sets (m40's pieces inside Firelink name sets 30 to 32, with no sun and a strong
 local light; every ported piece uses set 0). Fallback `map-fill-light` B (`--host-fill-lights`).
 
+### Light sets per part (1.0.499 playtest: Friede's boss room "isn't lit like the original")
+
+Every DS3 part names a light set (an ID in the LightSet group of the map's draw params). Most of a map is on set 0,
+which the slot's draw params take from DS3, but DS3 lights its rooms with sets of their own. Friede's hall (the
+Painted World, box -262..-195, 15..60, -255..-205) is 132 map pieces and 135 objects on set 1, which DS3's file calls
+暗闇用 ("for darkness"): no sun, no second light, no local light, so only candles, window shafts and baked light
+reach it. The bosses have sets too (Friede 111, Ariandel 120 with a warm light from the fire bowl). The port copied
+every part from a colosseum part on set -1, so each room was lit by the outdoor sun through its roof.
+
+`MapLightSets` carries DS3's set onto each ported map piece, asset, collision and enemy; `MapAtmosphere` adds to the
+slot's draw params every DS3 set the layout names that the host lacks (DS3's colours and directions, strengths times
+the host's sun over DS3's, no light above twice the slot's sun; the rest copied from set 0), keeping the values and
+the group's ID list in ID order; a part whose set is still missing goes back to -1. The host's sets 0, 100, 1000 and
+1100 stay (Elden Ring's floors name 100, as DS3's outdoor floors and characters do). Unproven: Elden Ring's own map
+pieces name only 0 and -1. Fallback `map-light-sets` B (`--one-light-set`). Log line: `light sets:`.
+
 ### Lamps and flames (2026-11-19 playtest: large white lights on map 2, candles that light nothing)
 
 DS3's lamps kept DS3's strengths while the sun took Elden Ring's (host 0.6 / 0.5 / 0.4 against DS3's 0.8 / 1.23 /

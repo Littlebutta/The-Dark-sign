@@ -80,7 +80,7 @@ public static class MapAtmosphere
 
     /// <summary>port-maps step: writes the slot's gparam. Returns a line for the log.</summary>
     public static string Write(PorterContext ctx, GameArchives ds3, GameArchives er, MapId ds3Id, MapId erId, MapId hostId, MSB3 ds3Msb, bool hostAtmosphere,
-        bool unturnedSun = false, bool hostFillLights = false)
+        bool unturnedSun = false, bool hostFillLights = false, MSBE? layout = null, ISet<int>? lightSets = null, bool oneLightSet = false)
     {
         if (hostAtmosphere)
             return "atmosphere: the host's own colours, fog and colour grading (--host-atmosphere)";
@@ -93,12 +93,15 @@ public static class MapAtmosphere
         var (hostBytes, compression) = er.ReadWithCompression(hostPath);
         var gparam = GPARAM.Read(hostBytes);
         var ds3Draw = GPARAM.Read(ds3.Read(source));
-        var changes = Apply(gparam, ds3Draw, GroundHeight(ds3Msb), unturnedSun ? 0 : MapLighting.OffsetDegrees(ds3Msb), hostFillLights);
+        var wanted = layout is null || oneLightSet ? null : MapLightSets.Wanted(layout);
+        var changes = Apply(gparam, ds3Draw, GroundHeight(ds3Msb), unturnedSun ? 0 : MapLighting.OffsetDegrees(ds3Msb), hostFillLights, wanted);
         if (unturnedSun && MapLighting.OffsetDegrees(ds3Msb) != 0)
             changes.Add("sun direction as DS3's file writes it, not turned with the map (--unturned-sun)");
         var target = ctx.ModPath(MapPorter.ModParts(GparamPath(erId)));
         Directory.CreateDirectory(Path.GetDirectoryName(target)!);
         File.WriteAllBytes(target, DCX.Compress(gparam.Write(), compression));
+        if (lightSets is not null && Group(gparam, "LightSet") is { } written)
+            lightSets.UnionWith(MapLightSets.Ids(written));
         return "atmosphere: " + string.Join("; ", changes);
     }
 
@@ -197,7 +200,10 @@ public static class MapAtmosphere
     }
 
     /// <summary>Changes the host's draw params in place. Returns what changed, for the log.</summary>
-    public static List<string> Apply(GPARAM gparam, GPARAM ds3, float ground, float sunTurnDegrees = 0, bool hostFillLights = false)
+    /// <param name="lightSets">The light sets the layout's parts name: DS3's sets among them that the host lacks are
+    /// added (<see cref="MapLightSets.Add"/>).</param>
+    public static List<string> Apply(GPARAM gparam, GPARAM ds3, float ground, float sunTurnDegrees = 0, bool hostFillLights = false,
+        IEnumerable<int>? lightSets = null)
     {
         var inv = CultureInfo.InvariantCulture;
         string C(Vector4 v) => string.Create(inv, $"{v.X:F2} {v.Y:F2} {v.Z:F2}");
@@ -227,6 +233,9 @@ public static class MapAtmosphere
                 changes.Add("lights without shadows keep the host's strengths (--host-fill-lights)");
             else if (sunStrengths && FillLights(light, ds3Light, sunScale) is { } fill)
                 changes.Add(fill);
+            // After set 0 is done: the other sets start from it.
+            if (lightSets is not null && MapLightSets.Add(gparam, ds3, lightSets, sunScale, sunTurnDegrees).Note is { } sets)
+                changes.Add(sets);
         }
         else
             changes.Add("light set: none in " + (light is null ? "the host" : "DS3") + "; kept");
