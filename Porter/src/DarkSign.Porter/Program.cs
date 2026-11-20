@@ -41,6 +41,7 @@ const string Usage = """
       texture-selftest             offline checks of the DS3 reflectance -> Elden Ring metallic texture conversion and hidden weapon parts
       timing-selftest              offline checks that ported moves' combo/cancel windows don't cut DS3 swings short
       enemy-diag survey|unpack <file>...  enemy port diagnostics: every character's skeleton and animation IDs; decompress files
+      object-diag model <binder>...  a DS3 objbnd's or ported asset binder's models (how meshes hang on nodes), skeleton and TAE events
       object-diag collision <objbnd>...  each collision body of DS3 object binders: its shape, its mesh sections, and what it converts to (no game folder needed)
       enemy-diag tae <anibnd> [from-to...]  a decompressed animation binder's TAE entries and events, and each file's length and blend hint
       enemy-diag bones <DS3 chr> [template] [built] | bones all  how a DS3 model hangs on its skeleton (rigid meshes, model vs skeleton rest, how far clips turn item bones)
@@ -115,6 +116,8 @@ try
         return DarkSign.Porter.Enemies.EnemyDiag.Tae(argList[2], argList.Skip(3).ToList());
     if (argList[0].Equals("enemy-diag", StringComparison.OrdinalIgnoreCase) && argList.Count >= 4 && argList[1].Equals("bones-files", StringComparison.OrdinalIgnoreCase))
         return DarkSign.Porter.Enemies.EnemyBonesDiag.RunFiles(argList.Skip(2).ToList());
+    if (argList[0].Equals("object-diag", StringComparison.OrdinalIgnoreCase) && argList.Count >= 3 && argList[1].Equals("model", StringComparison.OrdinalIgnoreCase))
+        return DarkSign.Porter.Maps.ObjectCollisionDiag.Model(argList.Skip(2).ToList());
     if (argList[0].Equals("object-diag", StringComparison.OrdinalIgnoreCase) && argList.Count >= 3 && argList[1].Equals("collision", StringComparison.OrdinalIgnoreCase))
         return DarkSign.Porter.Maps.ObjectCollisionDiag.Run(argList.Skip(2).ToList());
     if (argList[0].Equals("moveset-selftest", StringComparison.OrdinalIgnoreCase))
