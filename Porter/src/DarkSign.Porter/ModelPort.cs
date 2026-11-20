@@ -113,7 +113,7 @@ public static class ModelPort
     /// shape is then laid on the template's (ShieldShape), or turned by <paramref name="shapeTurn"/> when the main model
     /// already decided it (the LOD).</summary>
     public static ConvertedModel? Convert(GameArchives ds3, GameArchives er, int ds3Model, int templateModel, int newModel, bool lod,
-        WeaponHold.Hold? hold = null, System.Numerics.Matrix4x4? shapeTurn = null)
+        WeaponHold.Hold? hold = null, System.Numerics.Matrix4x4? shapeTurn = null, IReadOnlyCollection<string>? mainMatbins = null)
     {
         var shape = hold is { MatchShape: true } ? new ShapeState { Turn = shapeTurn } : null;
         var ds3Path = PartsPath(ds3Model, lod);
@@ -163,7 +163,8 @@ public static class ModelPort
                 if (WeaponHiddenParts.Collapse(flver, hiddenBones, hiddenMeshes) is > 0 and var moved)
                     Console.WriteLine($"models: {oldTag} -> {newTag}{(lod ? " LOD" : "")} {ItemText.Leaf(file.Name)}: hid {moved} vertices in meshes " +
                                       $"{string.Join(", ", hiddenMeshes)} on bones DS3's idle animation hides ({string.Join(", ", hiddenBones.Order())})");
-                ConvertFlver(flver, templateFlver, stem, oldTag, newTag, materials, Emissive(er), hold?.TurnFor(WeaponHiddenParts.PartOf(file.Name)), shape);
+                ConvertFlver(flver, templateFlver, stem, oldTag, newTag, materials, Emissive(er), hold?.TurnFor(WeaponHiddenParts.PartOf(file.Name)), shape,
+                    lod && LodSharesMaterials ? mainMatbins ?? [] : null);
                 FlverMaterialNumbers.Apply(flver);
                 files.Add(new BinderFile(file.Flags, file.ID, folder + leaf, flver.Write()));
             }
@@ -179,7 +180,8 @@ public static class ModelPort
     }
 
     private static void ConvertFlver(FLVER2 flver, FLVER2 template, string stem, string oldTag, string newTag,
-        List<NewMaterial> materials, EmissiveTemplate? emissive, System.Numerics.Matrix4x4? holdTurn = null, ShapeState? shape = null)
+        List<NewMaterial> materials, EmissiveTemplate? emissive, System.Numerics.Matrix4x4? holdTurn = null, ShapeState? shape = null,
+        IReadOnlyCollection<string>? lodOfMain = null)
     {
         var bboxMin = flver.Header.BoundingBoxMin;
         var bboxMax = flver.Header.BoundingBoxMax;
@@ -274,6 +276,13 @@ public static class ModelPort
             m.Textures = source.Textures
                 .Select(t => new FLVER2.Texture(t.ParamName, "", t.TilingScale, t.TilingTypeU, t.TilingTypeV, t.Unk14, t.Unk18, t.Unk1C))
                 .ToList();
+            // A LOD model draws with its main model's MATBIN, as Elden Ring's own do (see LodSharesMaterials).
+            if (lodOfMain is not null && LodMatbin(newMatbin, stem, suffix, lodOfMain) is { } shared)
+            {
+                m.Name = TagIn(shared) + suffix;
+                m.MTD = m.MTD.Replace(MatbinName(m.MTD), shared);
+                continue;
+            }
             materials.Add(new NewMaterial(sourceMatbin, newMatbin, albedo, normal, metallic,
                 glow is null ? null : TextureName(glow, oldTag, newTag)));
         }
@@ -381,15 +390,48 @@ public static class ModelPort
     }
 
     /// <summary>
-    /// A DS3 texture name under the new model: "WP_A_0201_a" -> "WP_A_9020_a". DS3 LOD textures end in the LOD mark
-    /// ("WP_A_0201_a_l"); it moves in front of the map letter ("WP_A_9020_L_a") to match the LOD model's stem.
+    /// A DS3 texture name under the new model: "WP_A_0201_a" -> "WP_A_9020_a". A LOD texture keeps the LOD mark at
+    /// the end ("WP_A_0201_a_l" -> "WP_A_9020_a_l"), as Elden Ring's and DS3's own LOD binders name them (wp_a_0100_l:
+    /// WP_A_0100_a_l, WP_A_0100_1_n_l). With <see cref="LodSharesMaterials"/> off it moves in front of the map letter
+    /// ("WP_A_9020_L_a"), the layout of builds up to 1.0.50x, to match the LOD model's own MATBIN.
     /// </summary>
     public static string TextureName(string ds3Name, string oldTag, string newTag)
     {
         var name = ds3Name.Replace(oldTag, newTag, StringComparison.OrdinalIgnoreCase);
-        if (name.Length > 4 && name.EndsWith("_l", StringComparison.OrdinalIgnoreCase) && name[^4] == '_')
+        if (!LodSharesMaterials && name.Length > 4 && name.EndsWith("_l", StringComparison.OrdinalIgnoreCase) && name[^4] == '_')
             name = name[..^4] + "_L" + name[^4..^2];
         return name;
+    }
+
+    /// <summary>
+    /// DARKSIGN_WEAPON_LOD_LAYOUT=0 goes back to LOD models with MATBINs of their own (launcher fallback weapon-materials H).
+    /// <para>FACTS (measured on Devin's PC, 2026-11-20, Work\reports\diag\weapon-lod-dump.txt): Elden Ring's
+    /// wp_a_0100_l / wp_a_0400_l binders hold the same mesh as the main model and a TPF of half-size copies named with
+    /// _l at the very end (WP_A_0100_a_l, WP_A_0100_1_n_l); their FLVER materials name the main model's MATBIN
+    /// (P[WP_A_0100]_metal, P[WP_A_0100_1]_Leather), whose samplers name only the main textures; there is no _L MATBIN
+    /// in allmaterial, _dlc01 or _dlc02. DS3's wp_a_0201_l is laid out the same way (WP_A_0201_a_l). So the game finds a
+    /// LOD texture by adding _l to the sampler's name. The port wrote P[WP_A_9250_L]_Metal with textures
+    /// WP_A_9250_L_a: the game then looked for WP_A_9250_L_a_l, found nothing, and drew the LOD untextured (white and
+    /// shiny). The LOD binder is the one other characters' weapons load: DS3's people held ported weapons that way in
+    /// 1.0.50x while the player's own looked right (Devin, 2026-11-20).</para>
+    /// </summary>
+    public static readonly bool LodSharesMaterials = Environment.GetEnvironmentVariable("DARKSIGN_WEAPON_LOD_LAYOUT") != "0";
+
+    /// <summary>The main model's MATBIN a LOD material draws with: its own name without the LOD mark
+    /// ("P[WP_A_9250_L]_Metal" -> "P[WP_A_9250]_Metal") when the main model made it, else the main MATBIN of the same
+    /// part and suffix, else the main model's first of the same part; null (a MATBIN of its own) when the main model
+    /// made none of that part.</summary>
+    public static string? LodMatbin(string lodMatbin, string lodStem, string suffix, IReadOnlyCollection<string> mainMatbins)
+    {
+        if (!lodStem.EndsWith("_L", StringComparison.OrdinalIgnoreCase))
+            return null;
+        string mainStem = lodStem[..^2];
+        var wanted = lodMatbin.Replace("[" + lodStem + suffix + "]", "[" + mainStem + suffix + "]", StringComparison.OrdinalIgnoreCase);
+        if (mainMatbins.Contains(wanted, StringComparer.OrdinalIgnoreCase))
+            return mainMatbins.First(n => n.Equals(wanted, StringComparison.OrdinalIgnoreCase));
+        return mainMatbins.FirstOrDefault(n => TagIn(n).Equals(mainStem + suffix, StringComparison.OrdinalIgnoreCase))
+               ?? mainMatbins.FirstOrDefault(n => TagIn(n).Equals(mainStem, StringComparison.OrdinalIgnoreCase)
+                                                 || TagIn(n).StartsWith(mainStem + "_mat", StringComparison.OrdinalIgnoreCase));
     }
 
     /// <summary>A 4x4, single-mip BC4 DDS that decodes to all zero (black).</summary>

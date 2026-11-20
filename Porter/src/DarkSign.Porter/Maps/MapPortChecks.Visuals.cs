@@ -745,7 +745,7 @@ public static partial class MapPortChecks
         Add("m10_00_003", "M[A]_NoLight", "M_A__NoLight_snp_Texture2D_0_AlbedoMap_0");
         Add("m10_00_185", "M[AMSN_V]_Grass", "M_AMSN_V__Grass_snp_Texture2D_0_AlbedoMap_0", "M_AMSN_V__Grass_snp_Texture2D_1_NormalMap_0");
         if (water)
-            Add("m22_00_110", "M_MuddyWater", "M_MuddyWater__snp_Texture2D_0_NormalMap_0", "M_MuddyWater__snp_Texture2D_2_NormalMap_0");
+            Add("m22_00_110", "M[MuddyWater]", "M_MuddyWater__snp_Texture2D_0_NormalMap_0", "M_MuddyWater__snp_Texture2D_2_NormalMap_0");
         var hostBnd = new BND4();
         hostBnd.Files.Add(new BinderFile(Binder.FileFlags.Flag1, 200, @"N:\GR\data\Model\map\m45_00_00_00\m45_00_00_00_001000\sib\m45_00_00_00_001000.flver", flvers[0].Write()));
         return (MapModelPort.Create(flvers, matbins, flvers[0], plain), hostBnd);

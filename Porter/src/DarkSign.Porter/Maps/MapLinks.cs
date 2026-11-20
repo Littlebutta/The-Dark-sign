@@ -35,7 +35,7 @@ public static class MapLinks
         foreach (var a in slots.Where(s => !s.Probe))
             foreach (var target in connectsOf(a.Ds3))
             {
-                var b = slots.FirstOrDefault(s => !s.Probe && s.Ds3.Area == target.Area && s.Ds3.Block == target.Block);
+                var b = slots.FirstOrDefault(s => !s.Probe && s.Ds3 == target);
                 if (b is null || b.Er == a.Er)
                     continue;
                 var key = string.CompareOrdinal(a.Er.ToString(), b.Er.ToString()) < 0 ? (a.Er, b.Er) : (b.Er, a.Er);
@@ -45,9 +45,9 @@ public static class MapLinks
         return pairs;
     }
 
-    /// <summary>The maps a DS3 layout's connect collisions name.</summary>
-    public static IEnumerable<MapId> ConnectTargets(MSB3 msb) =>
-        msb.Parts.ConnectCollisions.Select(c => new MapId(c.MapID[0], c.MapID[1], 0, 0)).Distinct();
+    /// <summary>The maps among <paramref name="maps"/> a DS3 layout's connect collisions name (see <see cref="MsbPort.ConnectTarget"/>).</summary>
+    public static IEnumerable<MapId> ConnectTargets(MSB3 msb, IReadOnlyList<MapId> maps) =>
+        msb.Parts.ConnectCollisions.Select(c => MsbPort.ConnectTarget(c.MapID, maps)).OfType<MapId>().Distinct();
 
     /// <summary>Replaces the port's rows in the param with two rows per pair. Returns the number of rows written.</summary>
     public static int WriteRows(PARAM param, IReadOnlyList<(MapSlots.Slot A, MapSlots.Slot B)> pairs)
@@ -81,9 +81,10 @@ public static class MapLinks
     public static string Write(PorterContext ctx, GameArchives ds3, IReadOnlyList<MapSlots.Slot> slots)
     {
         var targets = new Dictionary<MapId, List<MapId>>();
+        var maps = slots.Where(s => !s.Probe).Select(s => s.Ds3).Distinct().ToList();
         foreach (var slot in slots.Where(s => !s.Probe).DistinctBy(s => s.Ds3))
             targets[slot.Ds3] = ds3.Contains(MapPorter.MsbPath(slot.Ds3))
-                ? ConnectTargets(MSB3.Read(ds3.Read(MapPorter.MsbPath(slot.Ds3)))).ToList()
+                ? ConnectTargets(MSB3.Read(ds3.Read(MapPorter.MsbPath(slot.Ds3))), maps).ToList()
                 : [];
         var pairs = Pairs(slots, m => targets.GetValueOrDefault(m) ?? []);
         var regulation = ActionButtons.LoadRegulation(ctx);

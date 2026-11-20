@@ -14,6 +14,7 @@ public static partial class MapPortChecks
         yield return ("music: the region port carries music regions and their children as script regions with the zone entity IDs", MusicRegions);
         yield return ("music: layers mix into one track, the DLL's list names flag, file and loop points", MusicMixAndList);
         yield return ("music: ported enemies get the threat level most Elden Ring enemies have (no Elden Ring battle music)", MusicThreat);
+        yield return ("music: stand-ins and plain fallback rows get the quiet threat level too, on copies of Elden Ring's rows", MusicQuietStandIns);
     }
 
     // DarkScript3's ds3-common layouts of the music instructions (bank 2010).
@@ -141,15 +142,17 @@ public static partial class MapPortChecks
         Expect(direct.Sound == "m000400300" && direct.OnLines == 1 && !direct.StartsOn && !direct.Boss, direct.ToString());
         var flags = plan.Sources.SelectMany(s => new[] { s.SwitchFlag, s.PlayFlag }).Where(f => f != 0).ToList();
         Expect(flags.Distinct().Count() == flags.Count && flags.All(f => f >= MapMusic.FirstFlag && f < MapMusic.Plan.SpareFlag),
-            "every flag its own, in the reset-on-load range 1039292000-2098 (2099 is the spare)");
+            "every flag its own, in the reset-on-load range 1039295000-5997 (5998 is the spare, 5999 the block's probe)");
         Expect(plan.FirstBossSwitch == MapMusic.FirstFlag && plan.LastBossSwitch == MapMusic.FirstFlag + 1
                && gundyr1.SwitchFlag == plan.FirstBossSwitch && gundyr2.SwitchFlag == plan.LastBossSwitch,
             $"the boss tracks' switch flags come first, in one run ({plan.FirstBossSwitch}-{plan.LastBossSwitch})");
         Expect(song.SwitchFlag > plan.LastBossSwitch && direct.SwitchFlag > plan.LastBossSwitch, "the other tracks' switch flags are outside that run");
         Expect(plan.SwitchFor(4004800) == gundyr1.SwitchFlag && plan.SwitchFor(4003700) == MapMusic.Plan.SpareFlag && plan.SwitchFor(0) == MapMusic.Plan.SpareFlag
                && plan.SwitchFor(-1) == MapMusic.Plan.SpareFlag, "a passed region that isn't a music track gets the spare flag");
-        Expect(MapMusic.FirstFlag == 1039292000 && MapMusic.FirstFlag % 10000 is >= 2000 and < 2100, "music flags sit in JortPob's reset-on-load range");
-        Expect(MapMusic.FirstFlag + MapMusic.MaxFlags <= RunEvents.StartDs3Request, "music flags stop before the run's request flags");
+        Expect(MapMusic.FirstFlag == 1039295000 && DarkSign.Core.Preflight.JortPobLayout(MapMusic.FirstFlag) == "temporary"
+               && DarkSign.Core.Preflight.JortPobLayout(MapMusic.Plan.SpareFlag) == "temporary" && MapMusic.Plan.SpareFlag % 1000 != 999, "music flags sit in JortPob's reset-on-load range 5000-5999");
+        Expect(MapMusic.FirstFlag > BossKits.FirstFlag + BossKits.FlagCount, "music flags are clear of the boss kits' 2500-2999");
+        Expect(MapMusic.MaxFlags >= 2 * MapMusic.MaxEvents, "room for every track the events allow, each switched one taking two flags");
         Expect(MapMusic.FirstEvent + MapMusic.MaxEvents <= RunEvents.StartEventId, "music events stop before the run events");
         Expect(plan.Sources.Select(s => s.EventId).Distinct().Count() == 6, "one event each");
         // The same input gives the same numbers (every PC builds the same flags: co-op).
@@ -342,6 +345,51 @@ public static partial class MapPortChecks
         var cols = list[0].Split('\t');
         Expect(cols.Length == 7 && uint.Parse(cols[0]) == plan.ByEntity[4004800].PlayFlag && cols[1] == "m000400000.wav" && cols[2] == "4800" && cols[3] == "96000"
                && cols[4] == "2000" && cols[5] == "m45_00_00_00" && cols[6] == "gundyr 1", list[0]);
+    }
+
+    private static PARAM ThreatParam(params (int Id, uint Threat)[] rows)
+    {
+        var def = new PARAMDEF { ParamType = "NPC_PARAM_ST", DataVersion = 1, FormatVersion = 203, Unicode = true, Fields = [] };
+        def.Fields.Add(new PARAMDEF.Field(def, PARAMDEF.DefType.u32, "threatLv"));
+        var param = new PARAM { ParamType = def.ParamType, Rows = [] };
+        param.ApplyParamdef(def);
+        foreach (var (id, threat) in rows)
+        {
+            var row = new PARAM.Row(id, $"row {id}", def);
+            row["threatLv"].Value = threat;
+            param.Rows.Add(row);
+        }
+        return param;
+    }
+
+    private static void MusicQuietStandIns()
+    {
+        // Elden Ring's rows: three ordinary enemies, a strong one (3) and a field boss (6).
+        var er = ThreatParam((1, 1u), (2, 1u), (3, 1u), (4, 3u), (5, 6u));
+        var quiet = QuietStandIns.Create(er);
+        Expect(quiet is not null && quiet.QuietLevel == 1, "made from Elden Ring's rows, quiet level 1");
+        Expect(quiet!.For(1) == 1 && quiet.For(77) == 77 && quiet.For(-1) == -1, "an ordinary or unknown row is kept");
+        Expect(quiet.For(5) == QuietStandIns.RowBase + 5 && quiet.For(5) == QuietStandIns.RowBase + 5 && quiet.For(4) == QuietStandIns.RowBase + 4,
+            "a louder row is placed on its copy, the same ID every time");
+        Expect(quiet.Copies.Count == 2, "two copies: " + string.Join(",", quiet.Copies));
+        // The mod's regulation: the same rows; the copies go in with the quiet level, the originals unchanged.
+        var mod = ThreatParam((1, 1u), (2, 1u), (3, 1u), (4, 3u), (5, 6u));
+        var line = quiet.Write(mod);
+        Expect(mod[QuietStandIns.RowBase + 5] is { } boss && Convert.ToInt64(boss["threatLv"].Value) == 1 && boss.Name!.Contains("row 5")
+               && mod[QuietStandIns.RowBase + 4] is { } strong && Convert.ToInt64(strong["threatLv"].Value) == 1, line);
+        Expect(Convert.ToInt64(mod[5]!["threatLv"].Value) == 6 && Convert.ToInt64(mod[4]!["threatLv"].Value) == 3, "Elden Ring's own rows keep their levels");
+        Expect(line.Contains("2 quiet NpcParam copies"), line);
+        Expect(quiet.Write(mod).Contains("0 quiet NpcParam copies") , "written once");
+        // A copy that can't be written: the parts go back on Elden Ring's rows.
+        var msb = new MSBE();
+        msb.Parts.Enemies.Add(new MSBE.Part.Enemy { Name = "c1000_9000", NPCParamID = QuietStandIns.RowBase + 5 });
+        msb.Parts.Enemies.Add(new MSBE.Part.Enemy { Name = "c1000_9001", NPCParamID = 2 });
+        Expect(QuietStandIns.Revert(msb, quiet.Copies.ToDictionary(c => c.Value, c => c.Key)) == 1 && msb.Parts.Enemies[0].NPCParamID == 5
+               && msb.Parts.Enemies[1].NPCParamID == 2, "revert puts the stand-in back on row 5");
+        // The enemy port's last safety net (plain copies of a template's row) gets the quiet level as well.
+        var npc = ThreatParam((1, 1u), (2, 1u), (3, 1u), (5, 6u));
+        Expect(Enemies.ChrPort.EnsureNpcRows(npc, [(5, 50010000)]) == 1 && Convert.ToInt64(npc[50010000]!["threatLv"].Value) == 1,
+            "a plain copy of a field boss's row is quiet");
     }
 
     private static void MusicThreat()

@@ -62,6 +62,7 @@ public static partial class MapPortChecks
         yield return ("flags: the allocation lists parse, blocks map to their maps, and a new map ID gets a line", FlagAllocProbe);
         yield return ("map registry: worldmsblist parses; new blocks of dungeon areas are added within the game's arrays, open-world area IDs skipped", MapRegistryList);
         yield return ("map links: a pair of WorldMapLegacyConvParam rows for every two ported maps DS3 joins", MapLinkRows);
+        yield return ("connect collisions: DS3's area-only map numbers ([31, 255, 255, 255]) name that area's map", ConnectTargets);
         yield return ("new map IDs: the template's per-map files are found, renamed and the port's own outputs skipped", NewIdFileSet);
         yield return ("flags: in-game probe flags are each block's last number, and map-flags B uses JortPob's saved ranges", FlagProbesAndLocalFlags);
     }
@@ -119,7 +120,7 @@ public static partial class MapPortChecks
         Expect(again.Count == 5 && FlagAlloc.Find([("legacy", again)], 50000)?.Entry.Index == 74, "reads back");
         Expect(FlagAlloc.WithMaps(data, [open], [(probe, ErId)]).Added.Count == 0, "nothing added twice");
         var blocks = FlagAlloc.UsedBlocks([ErId, ErId], [1030290005, 1030290006, 1038291000]);
-        Expect(blocks.Keys.SequenceEqual(new long[] { 45000, 1030290, 1038291, 1039290, 1039291, 1039292 }),
+        Expect(blocks.Keys.SequenceEqual(new long[] { 45000, 1030290, 1038291, 1039290, 1039291, 1039292, 1039295 }),
             "blocks: " + string.Join(",", blocks.Keys));
     }
 
@@ -198,7 +199,7 @@ public static partial class MapPortChecks
         var probes = lines.Select(l => long.Parse(l.Split('\t')[0])).ToList();
         Expect(probes.All(p => p % 1000 == 999), "probe flags are a block's last number");
         Expect(probes.Contains(1039290999) && probes.Contains(1039292999) && probes.Contains(45000999) && probes.Contains(45009999)
-               && probes.Contains(1030290999) && probes.Contains(1031290999), "probes: " + string.Join(",", probes));
+               && probes.Contains(1030290999) && probes.Contains(1031290999) && probes.Contains(MapMusic.FirstFlag / 1000 * 1000 + 999), "probes: " + string.Join(",", probes));
         Expect(!probes.Contains(1039291999), "event IDs need no flag block");
         Expect(!FlagAlloc.ProbeLines([ErId], [], slotFlags: false).Any(l => l.StartsWith("4500")), "map-flags B drops the slot blocks");
 
@@ -294,7 +295,14 @@ public static partial class MapPortChecks
         ds3.Models.Collisions.Add(new MSB3.Model.Collision { Name = "h009000" });
         ds3.Parts.Collisions.Add(new MSB3.Part.Collision { Name = "h000105_0000", ModelName = "h000105", HitFilterID = 24 });
         ds3.Parts.Collisions.Add(new MSB3.Part.Collision { Name = "h009000_0000", ModelName = "h009000", HitFilterID = 15 });
+        // DS3's filter 14 (one h900001 in Irithyll and three other newer maps) is not in Elden Ring's list: left out,
+        // so the layout reads back (1.0.521: it didn't, and the bonfire step failed for every map).
+        ds3.Models.Collisions.Add(new MSB3.Model.Collision { Name = "h900001" });
+        ds3.Parts.Collisions.Add(new MSB3.Part.Collision { Name = "h900001_0000", ModelName = "h900001", HitFilterID = 14 });
         var result = MsbPort.Convert(ds3, SyntheticHost(), Ds3Id, ErId);
+        Expect(result.Msb.Parts.Collisions.All(c => c.Name != "h900001_0000"), "a filter Elden Ring never uses is left out");
+        Expect(result.Notes.Any(n => n.StartsWith("hit filters: 1 DS3 collisions left out") && n.Contains("h900001_0000 (filter 14)")), "the port log names it");
+        Expect(MsbPort.ErKnowsFilter(8) && MsbPort.ErKnowsFilter(24) && !MsbPort.ErKnowsFilter(14), "filters Elden Ring names");
         var filters = MSBE.Read(result.Msb.Write()).Parts.Collisions.ToDictionary(c => c.Name, c => (int)c.HitFilterID);
         Expect(filters["h000100_0000"] == 8 && filters["h000105_0000"] == 8 && filters["h009000_0000"] == 15, $"filters {string.Join(" ", filters)}");
         Expect(result.Notes.Any(n => n.StartsWith("hit filters: 1 DS3 filter-24")), "the port log counts the floor copies");
@@ -746,6 +754,31 @@ public static partial class MapPortChecks
         Expect(newLines <= MapRegistry.MaxBaseDungeonLines - 90, $"new base-list lines fit the 6 free ones of 2.7.2: {newLines}");
         Expect(MapSlots.Choose(true, null, world: true).Count == 4, "map-slots B keeps its own four slots");
         Expect(MapSlots.Ds3Maps.Count(m => world.All(s => s.Ds3.ToString() != m.Id)) == 1, "only Filianore's Rest is left without a slot");
+    }
+
+    private static void ConnectTargets()
+    {
+        var maps = new[] { MapId.Parse("m30_00_00_00"), MapId.Parse("m30_01_00_00"), MapId.Parse("m31_00_00_00"), MapId.Parse("m34_01_00_00") };
+        Expect(MsbPort.ConnectTarget([31, 255, 255, 255], maps) == maps[2], "area only: the area's one map");
+        Expect(MsbPort.ConnectTarget([30, 255, 255, 255], maps) == maps[0], "area only, several maps: block 0");
+        Expect(MsbPort.ConnectTarget([34, 255, 255, 255], maps) == maps[3], "area only, one map that isn't block 0");
+        Expect(MsbPort.ConnectTarget([30, 1, 0, 0], maps) == maps[1], "full number");
+        Expect(MsbPort.ConnectTarget([255, 255, 255, 255], maps) is null && MsbPort.ConnectTarget([33, 255, 255, 255], maps) is null
+               && MsbPort.ConnectTarget([30, 2, 0, 0], maps) is null, "no map / map not ported");
+
+        // A layout: the connect is ported and points at the neighbour's Elden Ring slot.
+        var ds3 = SyntheticDs3();
+        ds3.Models.Collisions.Add(new MSB3.Model.Collision { Name = "h007100" });
+        ds3.Parts.Collisions.Add(new MSB3.Part.Collision { Name = "h007100", ModelName = "h007100", HitFilterID = 8 });
+        var connect = new MSB3.Part.ConnectCollision { Name = "h007100_0000", ModelName = "h007100", CollisionName = "h007100" };
+        connect.MapID[0] = 31; connect.MapID[1] = 255; connect.MapID[2] = 255; connect.MapID[3] = 255;
+        ds3.Parts.ConnectCollisions.Add(connect);
+        var template = new MSBE.Part.ConnectCollision { Name = "h000000_0000", ModelName = "h000000", CollisionName = "h000000_0000" };
+        var result = MsbPort.Convert(ds3, SyntheticHost(), Ds3Id, ErId, new MsbPort.Options(),
+            [(MapId.Parse("m31_00_00_00"), MapId.Parse("m45_02_00_00")), (Ds3Id, ErId)], template);
+        var ported = result.Msb.Parts.ConnectCollisions.SingleOrDefault();
+        Expect(ported is not null && ported.MapID.SequenceEqual(new byte[] { 45, 2, 0, 0 }),
+            $"the connect points at m45_02 ({(ported is null ? "none" : string.Join(",", ported.MapID))}; {string.Join(" | ", result.Notes.Where(n => n.StartsWith("connect")))})");
     }
 
     private static void MapLinkRows()

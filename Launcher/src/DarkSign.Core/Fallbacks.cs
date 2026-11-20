@@ -250,6 +250,8 @@ public static class Fallbacks
                 { PorterEnv = Env("DARKSIGN_SHIELD_HOLD", "0") },
             new("G", "Shields skip the template shape check", "As A, but ported shields are only turned by the hold frames (DARKSIGN_SHIELD_SHAPE=0), as in 1.0.420, and their face is not laid on the face of the Elden Ring shield they are built on. Use it if a shield that looked right in 1.0.420 sits worse now.")
                 { PorterEnv = Env("DARKSIGN_SHIELD_SHAPE", "0") },
+            new("H", "Low detail models with their own materials", "As A, but each ported weapon's low detail model (the one other characters' weapons and far-away weapons use) gets materials of its own with textures named WP_A_9xxx_L_a (DARKSIGN_WEAPON_LOD_LAYOUT=0), as up to 1.0.50x, when the weapons DS3's people held looked white, shiny and untextured. Use it if a ported weapon's low detail look got worse.")
+                { PorterEnv = Env("DARKSIGN_WEAPON_LOD_LAYOUT", "0") },
         ]),
 
         // ---- Weapon sounds and effects ----
@@ -369,6 +371,8 @@ public static class Fallbacks
                 { PorterEnv = Env("DARKSIGN_MAP_WORLD", "0") },
             new("C", "Every map, no map link rows", "As A, but without the WorldMapLegacyConvParam rows that tell the game two neighbouring maps share one space. Try it if walking into the next map crashes or puts it in the wrong place. (DARKSIGN_MAP_LINKS=0)")
                 { PorterEnv = Env("DARKSIGN_MAP_LINKS", "0") },
+            new("D", "Every map, keep stand-ins for neighbours", "As A, but a map's low-detail stand-ins for a neighbouring map stay even where that map's real pieces stand (builds up to 1.0.52x). Try it if a far view (a castle on the skyline) went missing since the build that left them out; you may see low-resolution slabs over the real pieces again. (DARKSIGN_WORLD_STAND_INS=0)")
+                { PorterEnv = Env("DARKSIGN_WORLD_STAND_INS", "0") },
         ]),
         new("map-painted-world", "DS3 maps", "Where the Painted World of Ariandel goes", Stage.Build,
             "Warping to the Painted World (or the F1 menu's Friede fight) fails: nothing happens, endless loading, or a crash.",
@@ -462,8 +466,8 @@ public static class Fallbacks
         new("map-hit-filters", "DS3 maps", "Floor copies in DS3 collision", Stage.Build,
             "Enemies stand in mid-air or on surfaces they shouldn't since 1.0.354, or anything about the ground changed since then.",
         [
-            new("A", "Written as normal floor (default)", "DS3 lays copies of its floors in collision with hit filter 24, which Elden Ring reads differently: enemies that landed on one fell through the map (1.0.347, map 3). They are written as normal floor (hit filter 8). The port log's layout notes count them."),
-            new("B", "DS3's hit filters", "Every collision keeps DS3's hit filter number (port-maps --ds3-hit-filters), as in every build up to 1.0.353: enemies fall through the floor where a filter-24 copy is the top surface.")
+            new("A", "Written as normal floor (default)", "DS3 lays copies of its floors in collision with hit filter 24, which Elden Ring reads differently: enemies that landed on one fell through the map (1.0.347, map 3). They are written as normal floor (hit filter 8). The port log's layout notes count them. A collision with a filter Elden Ring never uses (14 in four of the newer maps) is left out, so the layout reads back."),
+            new("B", "DS3's hit filters", "Every collision keeps DS3's hit filter number (port-maps --ds3-hit-filters), as in every build up to 1.0.353: enemies fall through the floor where a filter-24 copy is the top surface. Collisions with a filter Elden Ring never uses are kept too, and the steps that read those layouts back (bonfires, map and object effects) fail.")
                 { MapsArgs = ["--ds3-hit-filters"] },
         ]),
         new("map-empty-collision", "DS3 maps", "Collision DS3 keeps on one side only", Stage.Build,
@@ -656,13 +660,15 @@ public static class Fallbacks
         new("map-effects", "DS3 maps", "DS3's map effects (candles, fog, light shafts)", Stage.Build,
             "A DS3 map crashes, hangs while loading or hitches since its effects were added, or a fog bank, light shaft or flame looks wrong or floats in the air.",
         [
-            new("A", "DS3's map effects (default)", "The effects DS3 places in its maps (fog banks, light shafts, crows, flies and fires) are converted with the weapons' effects and stand where DS3 has them (their smoke and fog take the light around them, as Elden Ring's do), and the objects DS3 shows lit (candles, torches, braziers) carry their flames: DS3's object effect rows become Elden Ring asset effect rows. Report: Work\\map-sfx.tsv lists any effect that couldn't be converted, and the object effects line of the port-maps log counts the lit objects."),
+            new("A", "DS3's map effects (default)", "The effects DS3 places in its maps (fog banks, light shafts, crows, flies and fires) are converted with the weapons' effects and stand where DS3 has them (their smoke and fog take the light around them, as Elden Ring's do), and the objects DS3 shows lit (candles, torches, braziers) carry their flames: DS3's object effect rows become Elden Ring asset effect rows. The lights DS3's effects carry (weapon glows, spells, candles; weapon and enemy effects too) are set up as Elden Ring sets up its own: ten times DS3's strength, dimmed where it is already bright, fading out at the edge of their reach. Report: Work\\map-sfx.tsv lists any effect that couldn't be converted, the object effects line of the port-maps log counts the lit objects, and the effects line about point lights in the build log counts the effects that carry lights."),
             new("B", "None", "The DS3 maps have none of DS3's map effects (DARKSIGN_MAP_SFX=0), as every build up to 1.0.366 was.")
                 { PorterEnv = Env("DARKSIGN_MAP_SFX", "0") },
             new("C", "Region effects only", "DS3's fog, light shafts and other placed effects as in A, but no flames on objects (DARKSIGN_OBJECT_SFX=0): candles and torches stand unlit, as builds up to 1.0.44x had them.")
                 { PorterEnv = Env("DARKSIGN_OBJECT_SFX", "0") },
             new("D", "Smoke and fog effects unlit", "DS3's effects as in A, but their smoke, fog and dust are drawn unlit, at full colour whatever light they stand in (DARKSIGN_FXR_LIT=0), as builds up to 1.0.44x had them: in dark places they glow white. This goes for weapon and enemy effects too.")
                 { PorterEnv = Env("DARKSIGN_FXR_LIT", "0") },
+            new("E", "Effect lights as DS3 wrote them", "DS3's effects as in A, but the lights they carry (a weapon's glow, a spell, a candle's flame) keep DS3's settings as converted (DARKSIGN_FXR_LIGHTS=ds3), as builds before 2026-11-20 had them: in Elden Ring they are a tenth as strong as its own in the dark and half of them fade out a hand's width from the flame, so effects hardly light anything. This goes for weapon and enemy effects too.")
+                { PorterEnv = Env("DARKSIGN_FXR_LIGHTS", "ds3") },
         ]),
 
         new("map-bonfires", "DS3 maps", "DS3's bonfires as sites of grace", Stage.Build,
@@ -717,7 +723,7 @@ public static class Fallbacks
             new("A", "DS3's music (default)", "Every music region of the ported DS3 maps plays its DS3 track when DS3's own scripts turn it on: Firelink Shrine's music while you stand in the shrine, a boss's track when its fight starts (not when you walk into the arena), the next track when the boss changes phase, and silence when the boss dies, you die or leave. The tracks are decoded from your DS3 files to Mods\\ER\\darksign_music and the test menu DLL plays them on its own audio stream (it is loaded for this even with the F1 test menu unticked). Ported enemies no longer start Elden Ring's battle music. Report: the music lines of the port-maps log, \"music:\" lines in dksign_testmenu.log."),
             new("B", "No DS3 music", "No DS3 music is built or played (DARKSIGN_MAP_MUSIC=0): the DS3 maps are quiet apart from Elden Ring's own music, as up to 1.0.45x.")
                 { PorterEnv = Env("DARKSIGN_MAP_MUSIC", "0"), GameEnv = Env(NoMapMusicVariable, "1") },
-            new("C", "DS3's music, Elden Ring battle music kept", "As A, but ported enemies keep their Elden Ring template's threat level (DARKSIGN_ENEMY_THREAT=template), as up to 1.0.45x: an enemy built on an Elden Ring field boss starts that boss's battle music.")
+            new("C", "DS3's music, Elden Ring battle music kept", "As A, but ported enemies keep their Elden Ring template's threat level and Elden Ring stand-ins their own rows (DARKSIGN_ENEMY_THREAT=template), as up to 1.0.45x: an enemy built on, or standing in as, an Elden Ring field boss starts that boss's battle music.")
                 { PorterEnv = Env("DARKSIGN_ENEMY_THREAT", "template") },
             new("D", "DS3's music, a boss's music from the arena's door", "As A, but a boss's tracks are not switched by its fight (DARKSIGN_MAP_MUSIC=arena): they play whenever you stand in the boss's arena, the last phase's track over the others, as in 1.0.479. For when a boss fight stays silent with A.")
                 { PorterEnv = Env("DARKSIGN_MAP_MUSIC", "arena") },
@@ -755,6 +761,8 @@ public static class Fallbacks
                 { PorterEnv = Env("DARKSIGN_PEOPLE_VOICES", "0") },
             new("K", "Menus wait for DS3's characters", "As A, but a talk menu that waits for a signal only DS3's own character sends (the Fire Keeper's level up, which waits for her bow) keeps waiting for it (DARKSIGN_TALK_ENGINE_FLAGS=0), as up to 1.0.479, where the Fire Keeper's Level Up did nothing. Try it if a DS3 person's menu opens something before they have finished speaking or bowing, or opens it twice.")
                 { PorterEnv = Env("DARKSIGN_TALK_ENGINE_FLAGS", "0") },
+            new("L", "Flat voices", "As A, but DS3's people speak through the cutscene sound setup, flat and dry from everywhere (DARKSIGN_PEOPLE_VOICE_BUS=0), as up to 1.0.50x, instead of Elden Ring's own NPC voice setup (room reverb, fading with distance, from the speaker). Try it if DS3 voices went silent, too quiet or cut off.")
+                { PorterEnv = Env("DARKSIGN_PEOPLE_VOICE_BUS", "0") },
         ]),
 
         new("enemy-port", "DS3 maps", "How DS3's enemies and bosses are ported", Stage.Build,

@@ -364,6 +364,7 @@ public static class MapPorter
         _arenas.Clear();
         _partNames.Clear();
         _coverage.Clear();
+        _standInWorld.Clear();
         _templates.Clear();
         _converted.Clear();
         _objects = null;
@@ -465,6 +466,8 @@ public static class MapPorter
                 : $"maps: {order.Count} ported, one at a time");
             Time(report, "all maps", mapsClock);
         }
+        if (_standInWorld.Count > 1 && Environment.GetEnvironmentVariable("DARKSIGN_WORLD_STAND_INS") is not "0")
+            Step(report, "world stand-ins", () => WorldStandIns(ctx));
         // The objects' materials and textures: shared by every map, so they are added once, to every area's binder.
         if (_objects is not null && ported.Count > 0)
         {
@@ -554,6 +557,9 @@ public static class MapPorter
         // DS3's humans in their DS3 armour: models, materials and the rows the placed people name.
         if (_armour is { StandIns.Count: > 0 } armour && ported.Count > 0)
             Step(report, "people armour", () => PortArmour(ctx, ds3, er, armour, ported.Select(p => p.Slot).ToList()));
+        // Quiet copies of the stand-ins' Elden Ring rows (no Elden Ring battle music on DS3 maps).
+        if (_quiet is { Copies.Count: > 0 } quiet && ported.Count > 0)
+            Step(report, "stand-in battle music", () => PortQuietRows(ctx, quiet, ported.Select(p => p.Slot).ToList()));
         // DS3's cutscenes (boss intros...) converted first, so the events step can play the ones that made it.
         Dictionary<int, int>? cutscenes = null;
         Dictionary<int, CutscenePort.Info> cutsceneInfo = [];
@@ -797,6 +803,25 @@ public static class MapPorter
     }
 
     /// <summary>
+    /// Writes the quiet copies of the stand-ins' rows; if they can't be written, the stand-ins go back on Elden Ring's
+    /// own rows so no part names a row that doesn't exist.
+    /// </summary>
+    private static string PortQuietRows(PorterContext ctx, QuietStandIns quiet, List<MapSlots.Slot> slots)
+    {
+        try
+        {
+            var regulation = ActionButtons.LoadRegulation(ctx);
+            var line = quiet.WriteParams(regulation);
+            regulation.Save(ctx.ModPath("regulation.bin"));
+            return line;
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            return $"stand-in battle music: FAILED ({ex.Message}); {quiet.Revert(ctx, slots)} stand-ins put back on their Elden Ring rows (Elden Ring battle music possible)";
+        }
+    }
+
+    /// <summary>
     /// Writes the converted DS3 talk scripts, lines and shops; if that fails, the placed people lose their talk
     /// scripts again so no part names a script that isn't there.
     /// </summary>
@@ -1005,7 +1030,7 @@ public static class MapPorter
                 var seats = EnemyPort.Seats(ds3Msb, EnemyPort.EventWarps(scripts));
                 var placed = EnemyPort.Place(ds3Msb, layout.Msb, ds3Id, erId, new MsbPort.Options { Ds3Culling = options.Ds3Culling, NoGroups = options.NoGroups, AllLayers = options.AllLayers },
                     enemies.Chooser, e => enemies.Describe(e, bosses), EnemyPort.AnyEnemyPart(enemies.Catalog), _placedEnemies, partNames,
-                    enemies.People, seats, placePeople: !options.NoPeople, armour: options.ErPeople ? null : _armour, erStandIns: options.ErPeople, talk: _talk);
+                    enemies.People, seats, placePeople: !options.NoPeople, armour: options.ErPeople ? null : _armour, erStandIns: options.ErPeople, talk: _talk, quiet: _quiet);
                 enemiesPlaced = placed;
                 report.AppendLine($"  enemies: {placed.Placed} placed ({placed.Ported} ported DS3 characters, {placed.StandIns} Elden Ring stand-ins, "
                                   + $"{placed.People} people{(options.NoPeople ? ", people off (--no-people)" : options.ErPeople ? ", Elden Ring people stand in (--er-people)" : _armour is null ? ", DS3's own people only" : ", DS3's own people and DS3 humans in their DS3 armour")}), {placed.Npcs} people left out, {placed.Skipped} with nothing to stand in; {bosses.Count} DS3 boss entities");
@@ -1237,6 +1262,7 @@ public static class MapPorter
                     .Where(p => missingModels.Contains(p.ModelName) || (!options.HelperPieces && MsbPort.HelperKind(p, layerOk) is not null))
                     .Select(p => p.Name).ToHashSet(StringComparer.Ordinal);
                 var judged = MapStandIns.Find(ds3Msb, models.ModelMeshes, skip);
+                _standInWorld[ds3Id] = (erId, judged, ds3Msb.Parts.ConnectCollisions.Select(c => c.MapID.ToArray()).ToList());
                 standIns = judged.LeftOut;
                 farViews = judged.FarViews;
                 report.AppendLine("  " + judged.Summary);
@@ -1627,6 +1653,7 @@ public static class MapPorter
     private static EnemyContext? _enemies;
     /// <summary>DS3's humans in their DS3 armour (null: off, or not planned).</summary>
     private static PeopleArmour? _armour;
+    private static QuietStandIns? _quiet;
     private static TalkPort? _talk;
     /// <summary>darksign_enemies.tsv rows for this run: every DS3 enemy placed, for the randomizer.</summary>
     private static readonly List<string> _placedEnemies = [];
@@ -1637,6 +1664,53 @@ public static class MapPorter
     private static readonly Dictionary<MapId, Dictionary<string, string>> _partNames = [];
     /// <summary>Each ported map's coverage row, for the side-by-side summary at the end of the run (<see cref="MapCoverage"/>).</summary>
     private static readonly List<MapCoverage.Row> _coverage = [];
+
+    // Each ported DS3 map's judged pieces and its connect collisions' map numbers, for "world stand-ins".
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<MapId, (MapId Er, MapStandIns.Result Judged, List<byte[]> Connects)> _standInWorld = new();
+
+    /// <summary>
+    /// "world stand-ins" step: leaves out each map's low-detail stand-ins that a neighbouring ported map's real pieces
+    /// stand in (<see cref="MapStandIns.AcrossMaps"/>), from the layouts already written. Neighbours are the maps DS3
+    /// joins with connect collisions, either way. Off: DARKSIGN_WORLD_STAND_INS=0 (fallback "map-world" D).
+    /// </summary>
+    private static string WorldStandIns(PorterContext ctx)
+    {
+        var maps = _standInWorld.Keys.ToList();
+        var joined = maps.ToDictionary(m => m, _ => new HashSet<MapId>());
+        foreach (var (map, entry) in _standInWorld)
+            foreach (var id in entry.Connects)
+                if (MsbPort.ConnectTarget(id, maps) is { } to && to != map)
+                {
+                    joined[map].Add(to);
+                    joined[to].Add(map);
+                }
+        var lines = new List<string>();
+        int total = 0;
+        foreach (var map in maps.OrderBy(m => m.ToString()))
+        {
+            var (er, judged, _) = _standInWorld[map];
+            var kept = judged.KeptStandIns.ToHashSet(StringComparer.Ordinal);
+            if (kept.Count == 0 || joined[map].Count == 0)
+                continue;
+            var verdicts = MapStandIns.AcrossMaps(judged.Pieces, kept, joined[map].SelectMany(n => _standInWorld[n].Judged.Pieces));
+            var leftOut = verdicts.Where(v => v.LeftOut).Select(v => v.Part).ToHashSet(StringComparer.Ordinal);
+            lines.Add($"  {map} -> {er}: {leftOut.Count} of {kept.Count} kept stand-ins left out for {string.Join(", ", joined[map].OrderBy(n => n.ToString()))}"
+                      + (leftOut.Count > 0 ? $" ({string.Join(", ", leftOut.Take(20))}{(leftOut.Count > 20 ? ", ..." : "")})" : ""));
+            if (leftOut.Count == 0)
+                continue;
+            var path = ctx.ModPath(ModParts(MsbPath(er)));
+            if (!File.Exists(path))
+                continue;
+            var msb = MSBE.Read(DCX.Decompress(File.ReadAllBytes(path), out var compression));
+            int removed = msb.Parts.MapPieces.RemoveAll(p => leftOut.Contains(p.Name));
+            var used = msb.Parts.MapPieces.Select(p => p.ModelName).ToHashSet(StringComparer.Ordinal);
+            msb.Models.MapPieces.RemoveAll(m => !used.Contains(m.Name));
+            File.WriteAllBytes(path, DCX.Compress(msb.Write(), compression));
+            total += removed;
+        }
+        return $"world stand-ins: {total} low-detail stand-ins left out where a neighbouring ported map's real pieces stand"
+               + (lines.Count > 0 ? Environment.NewLine + string.Join(Environment.NewLine, lines) : "");
+    }
 
     private static EnemyContext Enemies(PorterContext ctx, GameArchives ds3, GameArchives er, Options options, StringBuilder report)
     {
@@ -1654,6 +1728,10 @@ public static class MapPorter
         try { ds3Npc = ctx.LoadParams(PorterGame.DarkSouls3).Get("NpcParam"); }
         catch (Exception ex) { notes.Add($"DS3 NpcParam names unavailable ({ex.Message}); every DS3 enemy gets the most common stand-in"); }
         var catalog = EnemyPort.BuildCatalog(er, erNpc, notes, out var people, erCharaInit);
+        _quiet = QuietStandIns.Create(erNpc);
+        notes.Add(_quiet is not null ? $"stand-in battle music: stand-ins whose Elden Ring row has a threat level other than {_quiet.QuietLevel} get a quiet copy of it"
+            : QuietStandIns.Enabled ? "stand-in battle music: Elden Ring's NpcParam threat levels unreadable; stand-ins keep their own (Elden Ring battle music possible)"
+            : "stand-in battle music: off (DARKSIGN_ENEMY_THREAT=template, fallback map-music C); stand-ins keep their own threat levels");
         _armour = null;
         if (PeopleArmour.Enabled && !options.NoPeople && !options.ErPeople)
             try
