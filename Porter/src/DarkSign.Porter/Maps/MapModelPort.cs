@@ -35,17 +35,20 @@ public sealed class MapModelPort
 
     /// <summary>
     /// Elden Ring map binders holding a plain water surface, tried in order for the "water" template. Elden Ring's
-    /// small still water (M_MuddyWater: m22_00_110 in Volcano Manor's 900004, m35_00_400 in the Shunning-Grounds'
-    /// 000007) takes the same vertex layout as the port's other materials (position, normal, tangent, colour, UV0
+    /// small still water (M[MuddyWater]: m35_00_400 in the Shunning-Grounds' 000007, a base game material, then
+    /// m22_00_110 in 900004, whose MATBIN is in the DLC's allmaterial_dlc02) takes the same vertex layout as the port's other materials (position, normal, tangent, colour, UV0
     /// short, UV1) and no textures of its own (JortPob's MaterialInfo.xml); M_Water_Cheap (m12_03's 000004) is the
     /// fallback. The sea shaders (Field_sea_05, JortPob's choice for Morrowind's ocean) need eight UV channels laid
     /// out as a shoreline ring, which DS3's pools don't have.
     /// </summary>
     public static readonly (MapId Map, string Model)[] WaterBinders =
-        [(new MapId(22, 0, 0, 0), "900004"), (new MapId(35, 0, 0, 0), "000007"), (new MapId(12, 3, 0, 0), "000004")];
+        [(new MapId(35, 0, 0, 0), "000007"), (new MapId(22, 0, 0, 0), "900004"), (new MapId(12, 3, 0, 0), "000004")];
 
     /// <summary>Elden Ring water shaders a DS3 water surface can be drawn with (the MATBIN's shader file name).</summary>
-    private static readonly Regex WaterShader = new(@"^M_(MuddyWater|Water_Cheap)$", RegexOptions.IgnoreCase);
+    /// Elden Ring writes them in brackets, as its other shaders ("M[MuddyWater]", "M[Water_Cheap]", read from the
+    /// vanilla m35_00_400 and m12_00_932 MATBINs 2026-11-20). Up to the 1.0.52x build the porter looked for
+    /// "M_MuddyWater", found no water template, and left every DS3 water surface out (the swamp in Farron Keep).
+    private static readonly Regex WaterShader = new(@"^M(?:_|\[)(MuddyWater|Water_Cheap)\]?$", RegexOptions.IgnoreCase);
 
     /// <summary>Fallback "map-water" B: DARKSIGN_MAP_WATER=0 leaves DS3's water out again (builds up to 1.0.42x).</summary>
     public static bool WaterEnabled => Environment.GetEnvironmentVariable("DARKSIGN_MAP_WATER") != "0";

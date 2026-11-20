@@ -62,6 +62,7 @@ public static partial class MapPortChecks
         yield return ("flags: the allocation lists parse, blocks map to their maps, and a new map ID gets a line", FlagAllocProbe);
         yield return ("map registry: worldmsblist parses; new blocks of dungeon areas are added within the game's arrays, open-world area IDs skipped", MapRegistryList);
         yield return ("map links: a pair of WorldMapLegacyConvParam rows for every two ported maps DS3 joins", MapLinkRows);
+        yield return ("connect collisions: DS3's area-only map numbers ([31, 255, 255, 255]) name that area's map", ConnectTargets);
         yield return ("new map IDs: the template's per-map files are found, renamed and the port's own outputs skipped", NewIdFileSet);
         yield return ("flags: in-game probe flags are each block's last number, and map-flags B uses JortPob's saved ranges", FlagProbesAndLocalFlags);
     }
@@ -753,6 +754,31 @@ public static partial class MapPortChecks
         Expect(newLines <= MapRegistry.MaxBaseDungeonLines - 90, $"new base-list lines fit the 6 free ones of 2.7.2: {newLines}");
         Expect(MapSlots.Choose(true, null, world: true).Count == 4, "map-slots B keeps its own four slots");
         Expect(MapSlots.Ds3Maps.Count(m => world.All(s => s.Ds3.ToString() != m.Id)) == 1, "only Filianore's Rest is left without a slot");
+    }
+
+    private static void ConnectTargets()
+    {
+        var maps = new[] { MapId.Parse("m30_00_00_00"), MapId.Parse("m30_01_00_00"), MapId.Parse("m31_00_00_00"), MapId.Parse("m34_01_00_00") };
+        Expect(MsbPort.ConnectTarget([31, 255, 255, 255], maps) == maps[2], "area only: the area's one map");
+        Expect(MsbPort.ConnectTarget([30, 255, 255, 255], maps) == maps[0], "area only, several maps: block 0");
+        Expect(MsbPort.ConnectTarget([34, 255, 255, 255], maps) == maps[3], "area only, one map that isn't block 0");
+        Expect(MsbPort.ConnectTarget([30, 1, 0, 0], maps) == maps[1], "full number");
+        Expect(MsbPort.ConnectTarget([255, 255, 255, 255], maps) is null && MsbPort.ConnectTarget([33, 255, 255, 255], maps) is null
+               && MsbPort.ConnectTarget([30, 2, 0, 0], maps) is null, "no map / map not ported");
+
+        // A layout: the connect is ported and points at the neighbour's Elden Ring slot.
+        var ds3 = SyntheticDs3();
+        ds3.Models.Collisions.Add(new MSB3.Model.Collision { Name = "h007100" });
+        ds3.Parts.Collisions.Add(new MSB3.Part.Collision { Name = "h007100", ModelName = "h007100", HitFilterID = 8 });
+        var connect = new MSB3.Part.ConnectCollision { Name = "h007100_0000", ModelName = "h007100", CollisionName = "h007100" };
+        connect.MapID[0] = 31; connect.MapID[1] = 255; connect.MapID[2] = 255; connect.MapID[3] = 255;
+        ds3.Parts.ConnectCollisions.Add(connect);
+        var template = new MSBE.Part.ConnectCollision { Name = "h000000_0000", ModelName = "h000000", CollisionName = "h000000_0000" };
+        var result = MsbPort.Convert(ds3, SyntheticHost(), Ds3Id, ErId, new MsbPort.Options(),
+            [(MapId.Parse("m31_00_00_00"), MapId.Parse("m45_02_00_00")), (Ds3Id, ErId)], template);
+        var ported = result.Msb.Parts.ConnectCollisions.SingleOrDefault();
+        Expect(ported is not null && ported.MapID.SequenceEqual(new byte[] { 45, 2, 0, 0 }),
+            $"the connect points at m45_02 ({(ported is null ? "none" : string.Join(",", ported.MapID))}; {string.Join(" | ", result.Notes.Where(n => n.StartsWith("connect")))})");
     }
 
     private static void MapLinkRows()
