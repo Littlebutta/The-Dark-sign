@@ -28,13 +28,29 @@ public static class ObjectCollisionDiag
         var files = inputs.SelectMany(i => Directory.Exists(i)
             ? Directory.EnumerateFiles(i, "*.objbnd*", SearchOption.TopDirectoryOnly)
             : [i]).OrderBy(f => f, StringComparer.OrdinalIgnoreCase).ToList();
+        return AnimTypes(files.Select(f => (Path.GetFileName(f), (Func<byte[]>)(() => File.ReadAllBytes(f)))).ToList());
+    }
+
+    /// <summary>"map-diag anim-types [oNNNNNN...]": the same, read from DS3's game archives (default: every objbnd).</summary>
+    public static int AnimTypes(PorterContext ctx, IReadOnlyList<string> models)
+    {
+        using var ds3 = ctx.OpenArchives(PorterGame.DarkSouls3);
+        var paths = models.Count > 0
+            ? models.Select(m => $"/obj/{m.ToLowerInvariant()}.objbnd.dcx").Where(ds3.Contains).ToList()
+            : ds3.Entries.Select(e => e.Path).Where(p => p is not null && p.StartsWith("/obj/", StringComparison.OrdinalIgnoreCase)
+                && p.EndsWith(".objbnd.dcx", StringComparison.OrdinalIgnoreCase)).Select(p => p!).Order(StringComparer.OrdinalIgnoreCase).ToList();
+        return AnimTypes(paths.Select(p => (Path.GetFileName(p), (Func<byte[]>)(() => ds3.Read(p)))).ToList());
+    }
+
+    private static int AnimTypes(IReadOnlyList<(string Name, Func<byte[]> Read)> files)
+    {
         var totals = new SortedDictionary<string, int>(StringComparer.Ordinal);
         var notSpline = new List<string>();
-        foreach (var path in files)
+        foreach (var (path, load) in files)
         {
             try
             {
-                var bytes = File.ReadAllBytes(path);
+                var bytes = load();
                 var bnd = BND4.Read(DCX.Is(bytes) ? DCX.Decompress(bytes) : bytes);
                 var anibnd = bnd.Files.FirstOrDefault(f => ItemText.Leaf(f.Name).EndsWith(".anibnd", StringComparison.OrdinalIgnoreCase) || f.ID == 400);
                 if (anibnd is null)

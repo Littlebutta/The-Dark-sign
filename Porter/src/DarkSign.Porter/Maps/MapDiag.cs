@@ -33,6 +33,8 @@ public static class MapDiag
             return MapStandInsDiag.Run(ctx, args.Skip(1).ToList());
         if (args.Count > 0 && args[0].Equals("music", StringComparison.OrdinalIgnoreCase))
             return MapMusicDiag.Run(ctx, args.Skip(1).ToList());
+        if (args.Count > 0 && args[0].Equals("anim-types", StringComparison.OrdinalIgnoreCase))
+            return ObjectCollisionDiag.AnimTypes(ctx, args.Skip(1).ToList());
         if (args.Count > 0 && args[0].Equals("object-events", StringComparison.OrdinalIgnoreCase))
             return MapObjectEventsDiag.Run(ctx, args.Skip(1).ToList());
         if (args.Count == 0 || !args[0].Equals("colours", StringComparison.OrdinalIgnoreCase))
