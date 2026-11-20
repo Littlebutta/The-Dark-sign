@@ -475,11 +475,113 @@ public sealed class CutsceneSound
                (silent.Count > 0 ? $"; not decoded: {string.Join(" ", silent.Take(8))}" : "");
     }
 
+    // ---------------------------------------------------------------- spoken lines (TalkPort)
+
+    /// <summary>A spoken line for a voice bank: the number Elden Ring's TalkParam names (voiceId: the game plays
+    /// Play_v&lt;number, nine digits&gt;), DS3's sound name (v&lt;DS3 voice&gt;) or null, and how long a silent stand-in lasts.</summary>
+    public sealed record VoiceLine(int VoiceId, string? Ds3Name, float Seconds);
+
+    private readonly List<(uint BankId, List<uint> Events)> _voiceBanks = [];
+
+    /// <summary>Halves the sample rate of 44.1 kHz and up (speech loses nothing it needs; a bank is held in memory whole).</summary>
+    public static (short[] Pcm, int Rate) Halve(short[] pcm, int channels, int rate)
+    {
+        if (rate < 44100 || channels < 1)
+            return (pcm, rate);
+        int frames = pcm.Length / channels / 2;
+        var half = new short[frames * channels];
+        for (int f = 0; f < frames; f++)
+            for (int c = 0; c < channels; c++)
+                half[f * channels + c] = (short)((pcm[2 * f * channels + c] + pcm[(2 * f + 1) * channels + c]) / 2);
+        return (half, rate / 2);
+    }
+
+    /// <summary>
+    /// Builds a bank of spoken lines named as Elden Ring names an NPC's voice bank (vcNNN: NNN is the first three
+    /// digits of the NPC's talk script number) and writes it to sd\ and sd\enus\ (Elden Ring's own voice banks are
+    /// localized; ours is built on a bank that is not, so it is put where either lookup finds it). Each line is
+    /// Play_v/Stop_v&lt;voiceId&gt;: DS3's voice decoded, or silence of the line's reading time when DS3 has no sound for
+    /// it or it doesn't decode: Elden Ring ends a line when its voice ends, and at once when it has none (1.0.501:
+    /// "the game doesn't wait for their dialogue to finish"). Returns the log and the voice IDs the bank plays.
+    /// </summary>
+    public (string Log, HashSet<int> Done) BuildVoiceBank(string bankName, IReadOnlyList<VoiceLine> lines)
+    {
+        var done = new HashSet<int>();
+        if (lines.Count == 0)
+            return ("no lines", done);
+        var bank = WwiseBank.Read(_template);
+        var template = bank.Chain(_templatePlay)!.Value;
+        var stopTemplate = bank.StopTemplate(_templateStop);
+        HashSet<uint> taken = [];
+        var events = new List<uint>();
+        int spoken = 0, silent = 0;
+        long bytes = 0;
+        foreach (var line in lines.DistinctBy(l => l.VoiceId))
+        {
+            byte[]? wem = null;
+            int fade = 0;
+            if (line.Ds3Name is { } name && _events.TryGetValue(name, out var found))
+            {
+                var (ev, fsb) = found;
+                fade = ev.FadeOutMs;
+                var samples = Samples(fsb);
+                var wanted = ev.Layers.SelectMany(l => l.Waves).Select(Fev.SampleName).Concat(Suffixes.Select(x => name + x)).Distinct();
+                foreach (var s in wanted.Select(w => samples?.GetValueOrDefault(w)).OfType<Fsb5.Sample>())
+                {
+                    try
+                    {
+                        var pcm = Fsb5.DecodePcm(s);
+                        if (pcm.Length == 0 || ClippedShare(pcm) > MaxClippedShare)
+                            continue;
+                        var (half, rate) = Halve(pcm, s.Channels, s.Rate);
+                        wem = WwiseBank.PcmWem(half, s.Channels, rate);
+                        break;
+                    }
+                    catch (Exception e) when (e is not OutOfMemoryException)
+                    {
+                    }
+                }
+            }
+            if (wem is not null)
+                spoken++;
+            else
+            {
+                // Silence the length of the reading time, so the line still stays up.
+                wem = WwiseBank.PcmWem(new short[(int)(8000 * Math.Clamp(line.Seconds, 1f, 20f))], 1, 8000);
+                silent++;
+            }
+            bytes += wem.Length;
+            string tag = $"darksign_{bankName}_{line.VoiceId}";
+            var layer = new WwiseBank.Layer(SoundPort.UnusedId(bank, tag + "_action", taken), SoundPort.UnusedId(bank, tag + "_container", taken),
+                [(SoundPort.UnusedId(bank, tag + "_sound", taken), SoundPort.UnusedId(bank, tag + "_media", taken), wem)])
+            {
+                StopActionId = SoundPort.UnusedId(bank, tag + "_stop", taken),
+            };
+            uint play = FxSoundExplore.Fnv1($"Play_v{line.VoiceId:D9}"), stop = FxSoundExplore.Fnv1($"Stop_v{line.VoiceId:D9}");
+            bank.AddSound(template, play, [layer], streamed: false, new WwiseBank.StopEvent(stop, fade, stopTemplate));
+            events.Add(play);
+            events.Add(stop);
+            done.Add(line.VoiceId);
+        }
+        uint bankId = FxSoundExplore.Fnv1(bankName);
+        var written = bank.WriteOwnBank(bankId) ?? throw new InvalidDataException($"the template bank {_templateName}'s sounds don't hang under an actor-mixer this port can copy");
+        foreach (var path in VoiceBankPaths(_ctx, bankName))
+        {
+            Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+            File.WriteAllBytes(path, written);
+        }
+        _voiceBanks.Add((bankId, events));
+        return ($"{bankName}.bnk {written.Length / 1024} KB, {spoken} spoken, {silent} silent", done);
+    }
+
+    public static string[] VoiceBankPaths(PorterContext ctx, string bankName) =>
+        [ctx.ModPath("sd", bankName + ".bnk"), ctx.ModPath("sd", "enus", bankName + ".bnk")];
+
     /// <summary>Lists every bank written in the game's sound index (the mod's, which port-weapons wrote, else the game's),
     /// in the section that holds the template cutscene bank.</summary>
     public string WriteIndex(GameArchives er)
     {
-        if (_written.Count == 0)
+        if (_written.Count == 0 && _voiceBanks.Count == 0)
             return "index: nothing to list";
         var path = SoundPort.IndexPath(_ctx);
         byte[]? bytes = File.Exists(path) ? File.ReadAllBytes(path) : er.Contains(SoundIndex.ArchivePath) ? er.Read(SoundIndex.ArchivePath) : null;
@@ -487,9 +589,13 @@ public sealed class CutsceneSound
             return "index: the game has none";
         var index = SoundIndex.Read(bytes);
         int added = _written.Sum(w => index.Register(w.BankId, w.Events, sectionOf: _templateBankId));
+        // Voice banks go where Elden Ring lists its own (vc101, vc102...), else beside the template.
+        uint? voiceSection = Enumerable.Range(100, 900).Select(n => FxSoundExplore.Fnv1($"vc{n}")).Where(index.HasBank).Select(id => (uint?)id).FirstOrDefault();
+        int voices = _voiceBanks.Sum(w => index.Register(w.BankId, w.Events, sectionOf: voiceSection ?? _templateBankId));
         Directory.CreateDirectory(Path.GetDirectoryName(path)!);
         File.WriteAllBytes(path, index.Write());
-        return $"index: {added} events of {_written.Count} cutscene banks listed (beside {_templateName})";
+        return $"index: {added} events of {_written.Count} cutscene banks listed (beside {_templateName})"
+               + (_voiceBanks.Count > 0 ? $", {voices} events of {_voiceBanks.Count} voice banks listed ({(voiceSection is null ? "beside the template: the index has no voice bank" : "with Elden Ring's voice banks")})" : "");
     }
 }
 

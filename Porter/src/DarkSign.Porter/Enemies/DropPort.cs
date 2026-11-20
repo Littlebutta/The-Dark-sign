@@ -272,6 +272,21 @@ public sealed class DropPort
     public static Dictionary<int, string> RowNames(PARAM? param) =>
         param?.Rows.Where(r => !string.IsNullOrWhiteSpace(r.Name)).GroupBy(r => r.ID).ToDictionary(g => g.Key, g => g.First().Name!) ?? [];
 
+    /// <summary>DS3 weapon ID to its look-only Elden Ring copy (<see cref="WeaponPort.Look"/>: Elden Ring's weapon of
+    /// the same name with DS3's model), which only DS3's people hold. Empty when the plan can't be read.</summary>
+    public static Dictionary<int, int> LookWeapons(PorterContext ctx)
+    {
+        try
+        {
+            var plans = JsonSerializer.Deserialize<List<WeaponPlan>>(File.ReadAllText(ctx.WorkPath("reports", "weapons-plan.json"))) ?? [];
+            return plans.Where(p => p.Status == WeaponPort.Look && p.NewId is not null).GroupBy(p => p.Ds3Id).ToDictionary(g => g.Key, g => g.First().NewId!.Value);
+        }
+        catch (Exception ex) when (ex is IOException or JsonException or UnauthorizedAccessException)
+        {
+            return [];
+        }
+    }
+
     /// <summary>DS3 weapon ID to ported Elden Ring weapon ID, from the plan port-weapons wrote before the regulation.</summary>
     public static Dictionary<int, int> PortedWeapons(PorterContext ctx, List<string> notes)
     {

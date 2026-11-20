@@ -699,6 +699,10 @@ public static class Fallbacks
                 { PorterEnv = Env("DARKSIGN_PEOPLE_TALK", "0") },
             new("H", "No people with their own bodies", "As A, but DS3's people with a body of their own (Fire Keeper, Andre, the Shrine Handmaid, Ludleth, Yoel, Emma, the Painting Woman, the Corvian settlers) are not ported and are left out of the maps, as up to 1.0.47x (DARKSIGN_PEOPLE_BODIES=0). Try it if one of them crashes the game, attacks you, T-poses or is a mess of stretched polygons.")
                 { PorterEnv = Env("DARKSIGN_PEOPLE_BODIES", "0") },
+            new("I", "Elden Ring's weapon models for people", "As A, but DS3's people hold Elden Ring's model of a weapon Elden Ring has by name (Hawkwood's Bastard Sword, Sirris's Estoc, Siegward's Zweihander), as up to 1.0.501, instead of a copy with DS3's model (DARKSIGN_PEOPLE_WEAPON_LOOKS=0). Try it if a person's weapon is invisible, crashes the game or sits wrongly in the hand.")
+                { PorterEnv = Env("DARKSIGN_PEOPLE_WEAPON_LOOKS", "0") },
+            new("J", "No voices", "As A, but DS3's people have no voice banks: their lines are subtitles only, as up to 1.0.501, where the game moved on from each line at once (DARKSIGN_PEOPLE_VOICES=0). Try it if the game crashes, hangs or goes silent when a DS3 person speaks, or a voice is noise.")
+                { PorterEnv = Env("DARKSIGN_PEOPLE_VOICES", "0") },
         ]),
 
         new("enemy-port", "DS3 maps", "How DS3's enemies and bosses are ported", Stage.Build,
