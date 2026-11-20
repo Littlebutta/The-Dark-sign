@@ -513,9 +513,38 @@ public sealed class CutsceneSound
         }
     }
 
+    /// <summary>An Elden Ring NPC voice bank's archive path. Measured on Devin's PC (Work\\index\\ER.tsv, 2026-11-20): they sit
+    /// at "/enus/vc101.bnk" in the sd archive (no /sd/ folder in the path); #236 looked for "/sd/..." and so found none
+    /// (port log: "no Elden Ring voice bank to copy (0 found)") and still built on the cutscene template.</summary>
+    public static bool IsVoiceBank(string path) =>
+        Regex.IsMatch(path, @"^/(sd/)?([a-z]{2,6}/)?vc\d{3}\.bnk$", RegexOptions.IgnoreCase);
+
     /// <summary>The smallest Elden Ring NPC voice bank (/sd/[enus/]vcNNN.bnk) with an event whose Sound hangs under
     /// actor-mixers a bank of our own can copy (<see cref="Builds"/>); null (cutscene template) when none or when
     /// <see cref="VoiceBus"/> is off.</summary>
+    /// <summary>voice-template-check: which Elden Ring voice bank the voice banks would be built on, and why the others
+    /// weren't (needs both games; no files written).</summary>
+    public static int CheckVoiceTemplate(PorterContext ctx)
+    {
+        using var ds3 = ctx.OpenArchives(PorterGame.DarkSouls3);
+        using var er = ctx.OpenArchives(PorterGame.EldenRing);
+        var notes = new List<string>();
+        var sound = Create(ctx, ds3, er, notes);
+        if (sound is null)
+        {
+            Console.WriteLine($"voice-template-check: no cutscene template ({string.Join("; ", notes)})");
+            return 1;
+        }
+        Console.WriteLine($"voice-template-check: {er.Entries.Count(e => e.Path is not null && IsVoiceBank(e.Path))} Elden Ring voice banks in the archives");
+        Console.WriteLine("voice-template-check: voice banks " + sound.VoiceTemplateNote);
+        foreach (var line in sound.VoiceTemplateTrace)
+            Console.WriteLine("  " + line);
+        return sound._voiceTemplate is null ? 1 : 0;
+    }
+
+    /// <summary>Why each Elden Ring voice bank looked at was not used (for voice-template-check and the log).</summary>
+    public List<string> VoiceTemplateTrace { get; } = [];
+
     private VoiceTemplate? VoiceTemplateOf()
     {
         if (_voiceTemplateLooked)
@@ -526,7 +555,7 @@ public sealed class CutsceneSound
             _voiceTemplateNote = $"built on the cutscene template {_templateName} (DARKSIGN_PEOPLE_VOICE_BUS=0)";
             return null;
         }
-        var candidates = _er.Entries.Where(e => e.Path is not null && Regex.IsMatch(e.Path, @"^/sd/(enus/)?vc\d{3}\.bnk$", RegexOptions.IgnoreCase))
+        var candidates = _er.Entries.Where(e => e.Path is not null && IsVoiceBank(e.Path))
             .Select(e => (Path: e.Path!, Size: e.Header.PaddedFileSize)).OrderBy(c => c.Size).ThenBy(c => c.Path, StringComparer.Ordinal).ToList();
         int looked = 0;
         foreach (var (path, _) in candidates.Take(40))
@@ -538,18 +567,34 @@ public sealed class CutsceneSound
                 var bank = WwiseBank.Read(bytes);
                 uint stop = bank.Objects.Where(o => o.Type == WwiseBank.EventType).Select(o => o.Id)
                     .FirstOrDefault(id => bank.StopTemplate(id) is not null);
+                int events = 0, chains = 0, readable = 0;
+                string parentNote = "";
                 foreach (var ev in bank.Objects.Where(o => o.Type == WwiseBank.EventType).Take(64))
                 {
-                    if (bank.Chain(ev.Id) is not { } chain || WwiseNode.Read(chain.Sound) is null || !Builds(bytes, ev.Id))
+                    events++;
+                    if (bank.Chain(ev.Id) is not { } chain)
+                        continue;
+                    chains++;
+                    if (WwiseNode.Read(chain.Sound) is not { } node)
+                        continue;
+                    readable++;
+                    if (parentNote.Length == 0)
+                    {
+                        uint parent = node.Parent(chain.Sound.Data);
+                        parentNote = $", first Sound's parent {parent} " + (bank.Get(parent) is { } up ? $"(type {up.Type} in the bank)" : "(not in the bank)");
+                    }
+                    if (!Builds(bytes, ev.Id))
                         continue;
                     _voiceTemplate = new VoiceTemplate(bytes, Path.GetFileNameWithoutExtension(path), ev.Id, stop, bank.BankId);
                     _voiceTemplateNote = $"built on Elden Ring's NPC voice bank {path} (its voice actor-mixers: room reverb, distance, position; " +
                                          $"{(stop != 0 ? "its Stop action" : "the cutscene Stop action")}) [DARKSIGN_PEOPLE_VOICE_BUS=0 off]";
                     return _voiceTemplate;
                 }
+                VoiceTemplateTrace.Add($"{path}: {events} events, {chains} with a Play chain, {readable} with a readable Sound, none builds{parentNote}");
             }
             catch (Exception e) when (e is InvalidDataException or ArgumentException or IndexOutOfRangeException or InvalidOperationException)
             {
+                VoiceTemplateTrace.Add($"{path}: unreadable ({e.GetType().Name}: {e.Message})");
             }
         }
         _voiceTemplateNote = $"built on the cutscene template {_templateName}: no Elden Ring voice bank to copy ({candidates.Count} found, {looked} looked at)";
