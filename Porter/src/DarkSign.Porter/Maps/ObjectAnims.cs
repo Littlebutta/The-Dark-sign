@@ -440,4 +440,60 @@ public static partial class ObjectAnims
             notes.Add($"bodies that stay put: {string.Join(" ", still.Take(6))}");
         return moving;
     }
+
+    /// <summary>
+    /// "object-anim-test &lt;o304822&gt;...": converts DS3 objects' animations as port-maps would (into
+    /// Work\scratch\object-anims, not the mod) and reads every converted animation back: its class, length and
+    /// track count. Written for the lifts whose DS3 animations are interleaved, which the port refused up to 1.0.53x.
+    /// </summary>
+    public static int Test(PorterContext ctx, IReadOnlyList<string> objects)
+    {
+        using var ds3 = ctx.OpenArchives(PorterGame.DarkSouls3);
+        using var er = ctx.OpenArchives(PorterGame.EldenRing);
+        var t = LoadTemplate(er);
+        var folder = ctx.WorkPath("scratch", "object-anims");
+        Directory.CreateDirectory(folder);
+        int failures = 0;
+        foreach (var o in objects)
+        {
+            var model = o.StartsWith('o') ? o : "o" + o;
+            var path = $"/obj/{model}.objbnd.dcx";
+            if (!ds3.Contains(path))
+            {
+                Console.WriteLine($"{model}: not in DS3's archives");
+                failures++;
+                continue;
+            }
+            var assetName = "AEG999_" + (900 + objects.ToList().IndexOf(o)).ToString("D3");
+            try
+            {
+                var result = Build(BND4.Read(ds3.Read(path)), assetName, t,
+                    new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase) { [model] = assetName });
+                Console.WriteLine($"{model}: {result.Summary}");
+                File.WriteAllBytes(Path.Combine(folder, $"{model}.anibnd"), result.Anibnd);
+                var bnd = BND4.Read(result.Anibnd);
+                foreach (var f in bnd.Files.Where(f => f.ID >= 1_000_000_000))
+                {
+                    lock (AnimPort.HavokLock)
+                    {
+                        var root = (hkRootLevelContainer)AnimPort.ReadEr(f.Bytes, t.Compendium);
+                        var anim = AnimPort.Container(root).m_animations.First()!;
+                        var binding = AnimPort.Container(root).m_bindings.First()!;
+                        Console.WriteLine($"  {ItemText.Leaf(f.Name)}: {anim.GetType().Name}, {anim.m_duration:0.###}s, {anim.m_numberOfTransformTracks} tracks, binding {binding.m_transformTrackToBoneIndices.Count} bones, skeleton {binding.m_originalSkeletonName}");
+                        if (anim.m_duration <= 0 || anim.m_numberOfTransformTracks == 0)
+                            failures++;
+                    }
+                }
+                if (result.Failed > 0)
+                    failures++;
+            }
+            catch (Exception ex) when (ex is not OutOfMemoryException)
+            {
+                Console.WriteLine($"{model}: FAILED {ex.GetType().Name}: {ex.Message}");
+                failures++;
+            }
+        }
+        Console.WriteLine($"object-anim-test: {failures} problem(s); binders in {folder}");
+        return failures == 0 ? 0 : 1;
+    }
 }
