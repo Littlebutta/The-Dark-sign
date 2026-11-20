@@ -252,6 +252,19 @@ public static class EffectSelfTest
         Check(FxrPort.LookOf(1, family) is { Lights: 0, Glow: 1, IsFlame: true, Why: "flame" } && FxrPort.LookOf(3, family) is { IsFlame: false, Why: "carries its own light" },
             "looks: an effect takes the look of the effects it plays; one with its own light is not a flame");
 
+        // Point lights: DS3's are a tenth of Elden Ring's in the dark and half fade out within centimetres (falloff
+        // 0.01); with map.lights they take Elden Ring's settings (fxr-port.js erLight), without it they stay as converted.
+        var candle = js.FlameSample(839010, 5, 1, 0.6f, 0.3f, true, 0.01f);
+        var erLit = js.LightsOfConverted(js.Convert(candle, 900839010, $"{{{noSounds},\"lights\":{{\"all\":1}}}}"));
+        var asRead = js.LightsOfConverted(js.Convert(candle, 900839010, $"{{{noSounds},\"lights\":{{}}}}"));
+        static bool Near(float? v, float want) => v is { } x && Math.Abs(x - want) < 0.01f * Math.Max(1, want);
+        Check(erLit is [{ } l] && Near(l.Strength, 100) && Near(l.Adaptation, 1) && Near(l.Falloff, 0.75f) && Near(l.Radius, 3) && Near(l.Volume, 0.5f),
+            $"lights: a DS3 point light takes Elden Ring's settings (x10 strength, adaptation 1, falloff radius/4, volume 0.5): {string.Join(" ", erLit.Select(x => x.ToString()))}");
+        Check(asRead is [{ } r] && Near(r.Strength, 10) && Near(r.Adaptation, 0) && Near(r.Falloff, 0.01f) && Near(r.Volume, 0),
+            $"lights: fallback DARKSIGN_FXR_LIGHTS=ds3 keeps the light as converted: {string.Join(" ", asRead.Select(x => x.ToString()))}");
+        var glowOnly = js.LightsOfConverted(js.Convert(js.FlameSample(839011, 5, 1, 0.6f, 0.3f, false), 900839011, $"{{{noSounds},\"lights\":{{\"all\":1}}}}"));
+        Check(glowOnly.Length == 0, "lights: an effect without a light gets none");
+
         Console.WriteLine(failures == 0 ? "effects-selftest: all checks passed" : $"effects-selftest: {failures} FAILED");
         return failures == 0 ? 0 : 1;
     }
