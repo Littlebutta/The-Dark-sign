@@ -725,6 +725,8 @@ public static class Fallbacks
                 { PorterEnv = Env("DARKSIGN_ENEMY_MIN_BONES", "0.25") },
             new("E", "Enemies without moves of their own keep the template's", "As A, but a DS3 character whose animation file holds no moves of its own (Undead Clerics, the Devout of the Deep, Sage's Prentices, the Irithyll Dog) keeps every animation of its Elden Ring template (DARKSIGN_ENEMY_SHARED_MOVES=0), as up to 1.0.479, instead of the moves of the DS3 character with the same skeleton (Hollow Soldier, Undead Dog). Try it if those enemies crash the game, T-pose or stretch.")
                 { PorterEnv = Env("DARKSIGN_ENEMY_SHARED_MOVES", "0") },
+            new("F", "DS3 events checked one file at a time", "As A, but a DS3 move's events are compared with the first event of each type in one of the template's TAE files, as up to 1.0.501 (DARKSIGN_ENEMY_EVENT_LAYOUT=0), where the Hollow Manservant lost 174 behaviour events and the Boreal Outrider Knight 11 of its attack hits. Try it if ported enemies crash, freeze or misbehave mid-attack after 1.0.501.")
+                { PorterEnv = Env("DARKSIGN_ENEMY_EVENT_LAYOUT", "0") },
             new("off", "Off (plain stand-ins)", "No enemy port: the DS3 maps use Elden Ring enemies of the same kind as stand-ins (DARKSIGN_ENEMY_PORT=0).")
                 { PorterEnv = Env("DARKSIGN_ENEMY_PORT", "0") },
         ]),
