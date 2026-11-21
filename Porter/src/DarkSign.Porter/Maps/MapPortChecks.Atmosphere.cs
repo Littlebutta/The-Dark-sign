@@ -497,7 +497,24 @@ public static partial class MapPortChecks
         var (raw, rawRest) = MapAtmosphere.FogColours(new Vector4(1, 0.932f, 0.814f, 0.12f), new Vector4(0.899f, 0.885f, 1, 0), strengths: false);
         Expect(raw == new Vector4(1, 0.932f, 0.814f, 0.12f) && rawRest == new Vector4(0.899f, 0.885f, 1, 0), "fallback map-atmosphere C: DS3's colours as they are");
         Expect(MapAtmosphere.Value<float>(fog, "VolumetricFog FarDepth") == MapAtmosphere.FogFarDepth && MapAtmosphere.Value<float>(fog, "VolumetricFog Global HeightFogOffset") == -44f,
-            "Stormveil's reach, height fog from the DS3 ground");
+            "Stormveil's reach when DS3 writes no fog distances, height fog from the DS3 ground");
+        // DS3's reach: Fog-DistOffset + Fog-Dist (Painted World 10 + 60 = 70 m at 0.5), clamped.
+        var pwFog = G("Fog", P("Fog-Color", GPARAM.ParamType.Float4, new Vector4(0.455f, 0.537f, 0.627f, 0.5f)),
+            P("Fog-Dist", GPARAM.ParamType.Float, 60f), P("Fog-DistOffset", GPARAM.ParamType.Float, 10f));
+        Expect(MapAtmosphere.Reach(pwFog) == 70f, $"Painted World reach {MapAtmosphere.Reach(pwFog)}");
+        Expect(MapAtmosphere.Reach(G("Fog", P("Fog-Dist", GPARAM.ParamType.Float, 5f))) == MapAtmosphere.MinReach
+               && MapAtmosphere.Reach(G("Fog", P("Fog-Dist", GPARAM.ParamType.Float, 2000f), P("Fog-DistOffset", GPARAM.ParamType.Float, 1600f))) == MapAtmosphere.MaxReach,
+            "the reach is clamped");
+        var (pwDensity, _, _) = MapAtmosphere.DepthFog(0.5f, new MapAtmosphere.FogLayer(0, 100), 70);
+        Expect(MathF.Abs(1 - MathF.Exp(-pwDensity * 70) - 0.5f) < 1e-4f, $"half the view hidden at 70 m: density {pwDensity}");
+        var pwDs3 = new GPARAM();
+        pwDs3.Groups.Add(pwFog);
+        var pwHost = new GPARAM();
+        pwHost.Groups.Add(G("VolumetricFog", P("VolumetricFog FarDepth", GPARAM.ParamType.Float, 300f), P("VolumetricFog FogEndDepth", GPARAM.ParamType.Float, 300f)));
+        MapAtmosphere.Apply(pwHost, pwDs3, 0, layer: new MapAtmosphere.FogLayer(0, 100));
+        var pwVolume = MapAtmosphere.Group(pwHost, "VolumetricFog");
+        Expect(MapAtmosphere.Value<float>(pwVolume, "VolumetricFog FarDepth") == 70f && MapAtmosphere.Value<float>(pwVolume, "VolumetricFog FogEndDepth") == 70f,
+            "the fog's depth and end depth take DS3's reach");
         Expect(MapAtmosphere.Value<int>(MapAtmosphere.Group(host, "ColorGrading"), "Yebis-ColorGrading-Enable") == 0, "colour grading off");
         Expect(changes.Count == 3 && changes[2] == "colour grading off", string.Join(" | ", changes));
         // Writing is not checked here: a hand-built GPARAM lacks the sections a real one has. Checked on the real files
@@ -522,6 +539,33 @@ public static partial class MapPortChecks
         depthHost.Groups.Add(G("VolumetricFog", P("VolumetricFog Global HeightFogOffset", GPARAM.ParamType.Float, 0f), P("VolumetricFog Global HeightFogDensity Scale", GPARAM.ParamType.Float, 0.004f)));
         MapAtmosphere.Apply(depthHost, ds3, -278, layer: new MapAtmosphere.FogLayer(-150, 200));
         Expect(MapAtmosphere.Value<float>(MapAtmosphere.Group(depthHost, "VolumetricFog"), "VolumetricFog Global HeightFogOffset") == -150f, "the fog sits at the play height, not the lowest ground");
+
+        // DS3's per-place draw params: a collision's scene sub IDs carry over when the variant was written.
+        var sceneDs3 = new MSB3();
+        var foggy = new MSB3.Part.Collision { Name = "h004500", ModelName = "h004500" };
+        foggy.SceneGparam.EventIDs[0] = 0;
+        foggy.SceneGparam.EventIDs[1] = 3;
+        foggy.SceneGparam.EventIDs[2] = -1;
+        foggy.SceneGparam.EventIDs[3] = 0;
+        foggy.SceneGparam.Unk40 = 2;
+        var lacking = new MSB3.Part.Collision { Name = "h004600", ModelName = "h004600" };
+        lacking.SceneGparam.EventIDs[1] = 9;
+        sceneDs3.Parts.Collisions.AddRange([foggy, lacking, new MSB3.Part.Collision { Name = "h004700", ModelName = "h004700" }]);
+        var sceneEr = new MSBE();
+        foreach (var name in new[] { "h004500", "h004600", "h004700" })
+        {
+            var c = new MSBE.Part.Collision { Name = name, ModelName = name };
+            c.SceneGparam.GparamSubID_Base = 5; // the host colosseum's own setting
+            sceneEr.Parts.Collisions.Add(c);
+        }
+        Expect(MapAtmosphere.SceneSubs(foggy).SequenceEqual([3]), "sub IDs past none");
+        Expect(MapAtmosphere.Name(sceneDs3, sceneEr, new HashSet<int> { 3 }) == 1, "one collision names a written variant");
+        var sc = sceneEr.Parts.Collisions[0].SceneGparam;
+        Expect(sc.GparamSubID_Base == 0 && sc.GparamSubID_Override1 == 3 && sc.GparamSubID_Override2 == -1 && sc.GparamSubID_Override3 == -1 && sc.TransitionTime == 2,
+            $"DS3's [0,3,-1,0] -> base 0, override 3, nothing else ({sc.GparamSubID_Base},{sc.GparamSubID_Override1},{sc.GparamSubID_Override2},{sc.GparamSubID_Override3})");
+        Expect(sceneEr.Parts.Collisions.Skip(1).All(c => c.SceneGparam.GparamSubID_Base == -1 && c.SceneGparam.GparamSubID_Override1 == -1),
+            "a variant DS3 lacks and a collision with none name nothing (not the host's)");
+        Expect(MapAtmosphere.GparamPath(new MapId(19, 70, 0, 0), 3) == "/param/drawparam/m19_70_0300.gparam.dcx", "variant file name");
 
         // Nothing to take from DS3: the host's values stay. Fallback map-atmosphere B keeps the file.
         var plain = new GPARAM();

@@ -273,6 +273,14 @@ public static partial class MapPortChecks
         Expect(effects is { Added: 1, OtherState: 1, Missing: 0 } && layout.Msb.Regions.SFX.Single().EffectID == FxrPort.IdBase + 830050,
             $"map effects: the eclipse sky's copy of the fog is left out ({effects})");
 
+        // DS3's WindSFX regions (the Painted World's blowing snow, 845010) are placed as SFX regions too.
+        var windMsb = new MSB3();
+        windMsb.Regions.WindSFX.Add(new MSB3.Region.WindSFX { Name = "wind_snowfield", EffectID = 845010, MapStudioLayer = 0xFFFFFFFF, Shape = new MSB.Shape.Box(80, 20, 190) });
+        var windLayout = MsbPort.Convert(windMsb, SyntheticHost(), Ds3Id, ErId);
+        var wind = MapSfx.Convert(windMsb, windLayout.Msb, Ds3Id, ErId, new Dictionary<int, int> { [845010] = FxrPort.IdBase + 845010 });
+        Expect(wind.Added == 1 && windLayout.Msb.Regions.SFX.Single(r => r.Name.StartsWith(MapSfx.NamePrefix)).EffectID == FxrPort.IdBase + 845010
+               && MapSfx.Sources(windMsb).Single().EffectID == 845010, $"map effects: a WindSFX region is placed ({wind})");
+
         var all = MsbPort.Convert(ds3, SyntheticHost(), Ds3Id, ErId);
         var keepAll = new MsbPort.Options { AllLayers = true };
         Expect(MapSfx.Convert(ds3, all.Msb, Ds3Id, ErId, fog, allLayers: true) is { Added: 2, OtherState: 0 }, "--all-layers keeps both sets of map effects");

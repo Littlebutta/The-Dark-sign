@@ -43,7 +43,7 @@ public static class MapSfx
                 continue;
             }
             var msb = MSB3.Read(ds3.Read(path));
-            var mine = msb.Regions.SFX.Select(r => r.EffectID).Where(id => id > 0).ToList();
+            var mine = Sources(msb).Select(r => r.EffectID).Where(id => id > 0).ToList();
             ids.UnionWith(mine);
             notes?.Add($"map effects: {ds3Id} has {mine.Count} SFX regions naming {mine.Distinct().Count()} effects");
         }
@@ -122,6 +122,33 @@ public static class MapSfx
         return looks;
     }
 
+    /// <summary>One DS3 region that places an effect: an SFX region, or a WindSFX region (an effect blown by a wind
+    /// area).</summary>
+    public sealed record Source(string Name, MSB.Shape Shape, System.Numerics.Vector3 Position, System.Numerics.Vector3 Rotation,
+        int EntityID, int EffectID, bool StartDisabled, uint MapStudioLayer);
+
+    /// <summary>
+    /// Fallback "map-effects" F: DARKSIGN_WIND_SFX=0 leaves DS3's WindSFX regions out again, as builds up to 1.0.55x.
+    /// </summary>
+    public static bool WindEnabled => Environment.GetEnvironmentVariable("DARKSIGN_WIND_SFX") != "0";
+
+    /// <summary>
+    /// The DS3 regions whose effects the port places: every SFX region, and every WindSFX region. DS3 places part of
+    /// its weather as WindSFX (an effect plus the wind area that blows it): the Painted World's snow blowing across
+    /// its snowfield (845010 "wind_snowfield", 8 boxes 80 to 190 m) is one, read 2026-11-21. Up to 1.0.55x only the
+    /// SFX regions were read, so every map's WindSFX effects were left out ("WindSFX x8 left out" in the port log) and
+    /// the Painted World looked clear where DS3 has snow drifting. A WindSFX is placed as a plain Elden Ring SFX
+    /// region at DS3's spot (its effect still moves the way the effect itself is made; DS3's wind area is not ported).
+    /// </summary>
+    public static IEnumerable<Source> Sources(MSB3 ds3)
+    {
+        foreach (var r in ds3.Regions.SFX)
+            yield return new Source(r.Name, r.Shape, r.Position, r.Rotation, r.EntityID, r.EffectID, r.StartDisabled, r.MapStudioLayer);
+        if (WindEnabled)
+            foreach (var r in ds3.Regions.WindSFX)
+                yield return new Source(r.Name, r.Shape, r.Position, r.Rotation, r.EntityID, r.EffectID, false, r.MapStudioLayer);
+    }
+
     public sealed record Result(int Added, int Missing, IReadOnlyDictionary<int, int> MissingByEffect, int OtherState = 0);
 
     /// <summary>
@@ -145,7 +172,7 @@ public static class MapSfx
         int nextRegionId = msb.Regions.GetEntries().Select(r => r.RegionID).DefaultIfEmpty(-1).Max() + 1;
         var missing = new Dictionary<int, int>();
         int added = 0;
-        foreach (var src in ds3.Regions.SFX)
+        foreach (var src in Sources(ds3))
         {
             if (layerOk && (src.MapStudioLayer & 1) == 0)
             {

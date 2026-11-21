@@ -536,13 +536,17 @@ public static class Fallbacks
         new("map-atmosphere", "DS3 maps", "Colours of light and fog in the DS3 maps", Stage.Build,
             "A DS3 map looks washed out, too foggy, too clear, or wrongly coloured since the maps took DS3's colours.",
         [
-            new("A", "DS3's colours (default)", "Each map's sun and fog take DS3's colours and sun angle (each fog colour at DS3's own strength for it), the fog hides as much of the distance as DS3's does at the height the map is played at, and the colosseum's colour grading is off. How bright the sun is stays Elden Ring's."),
+            new("A", "DS3's colours (default)", "Each map's sun and fog take DS3's colours and sun angle (each fog colour at DS3's own strength for it), the fog hides as much of the distance as DS3's does, reaching full strength as near as DS3's does, at the height the map is played at, the places DS3 gives their own fog and light (a collision's scene draw params) get them, and the colosseum's colour grading is off. How bright the sun is stays Elden Ring's."),
             new("B", "The colosseum's own", "The map keeps the Elden Ring colosseum's colour, fog and sun settings (port-maps --host-atmosphere), as in every build before this option: a red tint on map 2 and thick golden fog on map 1.")
                 { MapsArgs = ["--host-atmosphere"] },
             new("C", "DS3's fog colours at full strength", "As A, but each fog colour is used as DS3 writes it, without DS3's own strength for it (DARKSIGN_FOG_STRENGTH=0), as builds up to 1.0.44x had it: map 2's haze is a bright cream.")
                 { PorterEnv = Env("DARKSIGN_FOG_STRENGTH", "0") },
             new("D", "Stormveil's fog thickness", "As A, but the fog is Stormveil Castle's thickness from the map's lowest ground up (DARKSIGN_FOG_DEPTH=stormveil), as builds up to 1.0.52x had it: maps played high above their lowest point, such as Irithyll, have almost no haze.")
                 { PorterEnv = Env("DARKSIGN_FOG_DEPTH", "stormveil") },
+            new("E", "Stormveil's fog reach", "As A, but the fog reaches its full strength 300 m out on every map, as Stormveil Castle's does (DARKSIGN_FOG_REACH=stormveil), as builds up to 1.0.55x had it, instead of at DS3's own distance (70 m in the Painted World): the maps look clearer than DS3.")
+                { PorterEnv = Env("DARKSIGN_FOG_REACH", "stormveil") },
+            new("F", "One set of colours per map", "As A, but each map has only its base draw params everywhere (DARKSIGN_SCENE_GPARAMS=0), as builds up to 1.0.55x had it: the places DS3 gives their own fog and light (the Painted World's snowfields, valleys and church) look like the rest of the map. Try it if a map flickers or changes colour when you walk from one place to another.")
+                { PorterEnv = Env("DARKSIGN_SCENE_GPARAMS", "0") },
         ]),
         new("map-fill-light", "DS3 maps", "How strong the lights without shadows are in the DS3 maps", Stage.Build,
             "Since this option came in, a DS3 map's shade is too dark to see in, the maps look too dark overall, or corners and the ground under things are darker than they should be.",
@@ -697,6 +701,8 @@ public static class Fallbacks
                 { PorterEnv = Env("DARKSIGN_FXR_LIT", "0") },
             new("E", "Effect lights as DS3 wrote them", "DS3's effects as in A, but the lights they carry (a weapon's glow, a spell, a candle's flame) keep DS3's settings as converted (DARKSIGN_FXR_LIGHTS=ds3), as builds before 2026-11-20 had them (spot lights, the window light of Friede's hall, up to 1.0.53x): in Elden Ring they are a tenth as strong as its own in the dark and half of them fade out a hand's width from the flame, so effects hardly light anything. This goes for weapon and enemy effects too.")
                 { PorterEnv = Env("DARKSIGN_FXR_LIGHTS", "ds3") },
+            new("F", "No wind-blown effects", "DS3's effects as in A, but DS3's wind-blown effects (WindSFX: the Painted World's snow blowing across its snowfield) are left out (DARKSIGN_WIND_SFX=0), as builds up to 1.0.55x had them.")
+                { PorterEnv = Env("DARKSIGN_WIND_SFX", "0") },
         ]),
 
         new("map-bonfires", "DS3 maps", "DS3's bonfires as sites of grace", Stage.Build,
