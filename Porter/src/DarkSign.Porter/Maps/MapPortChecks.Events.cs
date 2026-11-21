@@ -498,14 +498,16 @@ public static partial class MapPortChecks
             Ins(1003, 13, (byte)0, (byte)1),                   // END IF in another world
             Ins(4, 1, (sbyte)2, 4000800, 10000),               // IF the boss is damaged by the player
             Ins(1003, 14, (byte)3, (byte)0, (byte)3, (byte)0), // SKIP 3 IF co-op clients > 0
-            Ins(1003, 15, (byte)1, (byte)1, (byte)0, (byte)0), // GOTO 1 IF invaders == 0: DS3's host check
-            Ins(1003, 16, (byte)0, (byte)2, (byte)3, (byte)0), // END IF invaders > 0: never
+            Ins(1003, 15, (byte)1, (byte)2, (byte)0, (byte)0), // GOTO 1 IF type 2 == 0: always, with none
+            Ins(1003, 16, (byte)0, (byte)2, (byte)3, (byte)0), // END IF type 2 > 0: never
             Ins(1000, 9, 3f),                                  // WAIT For Network Approval
+            Ins(1003, 14, (byte)1, (byte)1, (byte)0, (byte)0), // SKIP 1 IF hosts == 0 (Gundyr's sword pull, m40 14005811): never
+            Ins(2003, 2, 14000802u, (byte)1),                  // the flag the fight waits on
             Ins(2003, 2, 14000500u, (byte)1));
         var result = NewEventPort().Convert(script, EMEVD.Game.Sekiro, MoveToSlot);
         Expect(result.Events.Count == 1, "the event must survive: its online checks have single-player forms");
         var ins = result.Events[0].Instructions;
-        Expect(ins.Count == 9, $"{ins.Count} instructions, want one per DS3 line");
+        Expect(ins.Count == 11, $"{ins.Count} instructions, want one per DS3 line");
         Expect(ins[0].Bank == 3 && ins[0].ID == 26 && Arg(ins[0], "World Type", er) == 0, "own world -> IF Player Is In World Type 0 (own world)");
         Expect(ins[1].Bank == 1003 && ins[1].ID == 13 && Arg(ins[1], "World Type", er) == 1 && Arg(ins[1], "Label", er) == 2, "GOTO IF in another world keeps its label and world type 1");
         Expect(ins[2].Bank == 1003 && ins[2].ID == 14 && Arg(ins[2], "World Type", er) == 1, "END IF in another world");
@@ -514,22 +516,22 @@ public static partial class MapPortChecks
             "Damaged By -> IF Damage Type (any type), the boss moved to the slot");
         Expect(ins[4].Bank == 1003 && ins[4].ID == 9 && Arg(ins[4], "Number Of Skipped Lines", er) == 3 && Arg(ins[4], "Comparison Type", er) == 3,
             "co-op client count -> SKIP IF Number of Co-op Clients");
-        Expect(ins[5].Bank == 1003 && ins[5].ID == 204 && ins[5].ArgData.Length == 8 && ins[5].ArgData[0] == 1 && ins[5].ArgData.Skip(1).All(b => b == 0),
-            "GOTO IF invaders == 0 (DS3's host check) -> GOTO IF Map Has Permission To Update(0), as Elden Ring's own lever lift (not an unconditional jump)");
-        Expect(IsNoOp(ins[6]), "END IF invaders > 0 -> no-op (never true)");
+        Expect(ins[5].Bank == 1000 && ins[5].ID == 103 && ins[5].ArgData[0] == 1, "GOTO IF no type-2 clients -> GOTO unconditionally (there are none)");
+        Expect(IsNoOp(ins[6]), "END IF type-2 clients > 0 -> no-op (never true)");
         Expect(IsNoOp(ins[7]), "WAIT For Network Approval -> no-op");
-
-        // DS3's lever lift (common_func 20005621) arms its levers and sets "the lift is up" behind this check: it
-        // must run in single player. Up to 1.0.567 it became SKIP Unconditionally and the High Wall lift came back
-        // down by itself.
-        var lift = OneEvent(14000801,
-            Ins(1003, 14, (byte)2, (byte)1, (byte)0, (byte)0), // SKIP 2 IF invaders == 0
-            Ins(2003, 2, 14000500u, (byte)1),
-            Ins(2003, 2, 14000501u, (byte)1));
-        var liftIns = NewEventPort().Convert(lift, EMEVD.Game.Sekiro, MoveToSlot).Events.Single().Instructions;
-        Expect(liftIns[0].Bank == 1003 && liftIns[0].ID == 203 && liftIns[0].ArgData.Length == 8 && liftIns[0].ArgData[0] == 2
-               && liftIns[0].ArgData.Skip(1).All(b => b == 0),
-            $"host-only lines -> SKIP IF Map Has Permission To Update(2, 0), not 1000[{liftIns[0].ID}] SKIP Unconditionally");
+        Expect(ins[8].Bank == 1003 && ins[8].ID == 203 && ins[8].ArgData.Length == 8 && ins[8].ArgData[0] == 1 && ins[8].ArgData.Skip(1).All(b => b == 0),
+            $"SKIP IF no host -> SKIP IF Map Has Permission To Update(1, 0), as Elden Ring's own lever lift (90005500): the owner runs the flag set behind it, joined players don't (got {ins[8].Bank}[{ins[8].ID}])");
+        Expect(ins[9].Bank == 2003, "the flag set behind the host check stays");
+        Environment.SetEnvironmentVariable("DARKSIGN_HOST_CHECKS", "invaders");
+        try
+        {
+            var old = NewEventPort().Convert(script, EMEVD.Game.Sekiro, MoveToSlot).Events[0].Instructions;
+            Expect(old[8].Bank == 1000 && old[8].ID == 3, "fallback map-enemies C: SKIP IF no host -> SKIP unconditionally, as up to 1.0.567");
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("DARKSIGN_HOST_CHECKS", null);
+        }
     }
 
     // EventPort's no-op: WAIT 0 seconds.

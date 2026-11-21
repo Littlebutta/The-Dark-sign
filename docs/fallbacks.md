@@ -437,10 +437,12 @@ Try the next option if: Since this option came in, a DS3 map's far forest shows 
 
 Try the next option if: A DS3 map looks washed out, too foggy, too clear, or wrongly coloured since the maps took DS3's colours.
 
-- **A: DS3's colours (default).** Each map's sun and fog take DS3's colours and sun angle (each fog colour at DS3's own strength for it), the fog hides as much of the distance as DS3's does at the height the map is played at, and the colosseum's colour grading is off. How bright the sun is stays Elden Ring's.
+- **A: DS3's colours (default).** Each map's sun and fog take DS3's colours and sun angle (each fog colour at DS3's own strength for it), the fog hides as much of the distance as DS3's does, reaching full strength as near as DS3's does, at the height the map is played at, the places DS3 gives their own fog and light (a collision's scene draw params) get them, and the colosseum's colour grading is off. How bright the sun is stays Elden Ring's.
 - **B: The colosseum's own.** The map keeps the Elden Ring colosseum's colour, fog and sun settings (port-maps --host-atmosphere), as in every build before this option: a red tint on map 2 and thick golden fog on map 1. (`port-maps --host-atmosphere`)
 - **C: DS3's fog colours at full strength.** As A, but each fog colour is used as DS3 writes it, without DS3's own strength for it (DARKSIGN_FOG_STRENGTH=0), as builds up to 1.0.44x had it: map 2's haze is a bright cream. (`DARKSIGN_FOG_STRENGTH=0`)
 - **D: Stormveil's fog thickness.** As A, but the fog is Stormveil Castle's thickness from the map's lowest ground up (DARKSIGN_FOG_DEPTH=stormveil), as builds up to 1.0.52x had it: maps played high above their lowest point, such as Irithyll, have almost no haze. (`DARKSIGN_FOG_DEPTH=stormveil`)
+- **E: Stormveil's fog reach.** As A, but the fog reaches its full strength 300 m out on every map, as Stormveil Castle's does (DARKSIGN_FOG_REACH=stormveil), as builds up to 1.0.55x had it, instead of at DS3's own distance (70 m in the Painted World): the maps look clearer than DS3. (`DARKSIGN_FOG_REACH=stormveil`)
+- **F: One set of colours per map.** As A, but each map has only its base draw params everywhere (DARKSIGN_SCENE_GPARAMS=0), as builds up to 1.0.55x had it: the places DS3 gives their own fog and light (the Painted World's snowfields, valleys and church) look like the rest of the map. Try it if a map flickers or changes colour when you walk from one place to another. (`DARKSIGN_SCENE_GPARAMS=0`)
 
 ### How strong the lights without shadows are in the DS3 maps (`map-fill-light`, rebuilds the content)
 
@@ -531,6 +533,7 @@ Try the next option if: A DS3 map crashes or hangs while loading, enemies stand 
 - **A: DS3 characters where ported, stand-ins elsewhere (default).** Every DS3 enemy and boss stands where it did in DS3, with its DS3 entity ID so the converted boss and trap events find it. Characters the enemy porter has ported (darksign_chr_map.tsv) are the real DS3 ones; the rest are Elden Ring enemies of the same kind (knight, soldier, dog, dragon...), bosses get Elden Ring bosses.
 - **B: Elden Ring stand-ins only.** The same placements, but always the Elden Ring stand-ins, even for ported DS3 characters (port-maps --enemies standin). Tells whether a ported character is what breaks. (`port-maps --enemies standin`)
 - **off: Off (no enemies).** The DS3 maps are empty of enemies (port-maps --enemies none), to explore them or to find out whether enemies are what breaks a map. (`port-maps --enemies none`)
+- **C: DS3 host checks always skip.** As A, but DS3's host checks ("skip unless this world's owner", in front of network flag sets such as Iudex Gundyr's sword pull) always skip (DARKSIGN_HOST_CHECKS=invaders), as up to 1.0.567, when pulling the sword out of Gundyr never started his fight. Use when a boss fight, cutscene or lever misbehaves only since 1.0.568. (`DARKSIGN_HOST_CHECKS=invaders`)
 
 ### DS3 objects in the DS3 maps (`map-objects`, rebuilds the content)
 
@@ -573,6 +576,7 @@ Try the next option if: A DS3 map crashes, hangs while loading or hitches since 
 - **C: Region effects only.** DS3's fog, light shafts and other placed effects as in A, but no flames on objects (DARKSIGN_OBJECT_SFX=0): candles and torches stand unlit, as builds up to 1.0.44x had them. (`DARKSIGN_OBJECT_SFX=0`)
 - **D: Smoke and fog effects unlit.** DS3's effects as in A, but their smoke, fog and dust are drawn unlit, at full colour whatever light they stand in (DARKSIGN_FXR_LIT=0), as builds up to 1.0.44x had them: in dark places they glow white. This goes for weapon and enemy effects too. (`DARKSIGN_FXR_LIT=0`)
 - **E: Effect lights as DS3 wrote them.** DS3's effects as in A, but the lights they carry (a weapon's glow, a spell, a candle's flame) keep DS3's settings as converted (DARKSIGN_FXR_LIGHTS=ds3), as builds before 2026-11-20 had them (spot lights, the window light of Friede's hall, up to 1.0.53x): in Elden Ring they are a tenth as strong as its own in the dark and half of them fade out a hand's width from the flame, so effects hardly light anything. This goes for weapon and enemy effects too. (`DARKSIGN_FXR_LIGHTS=ds3`)
+- **F: No wind-blown effects.** DS3's effects as in A, but DS3's wind-blown effects (WindSFX: the Painted World's snow blowing across its snowfield) are left out (DARKSIGN_WIND_SFX=0), as builds up to 1.0.55x had them. (`DARKSIGN_WIND_SFX=0`)
 
 ### DS3's bonfires as sites of grace (`map-bonfires`, rebuilds the content)
 
@@ -690,6 +694,7 @@ Try the next option if: A ported DS3 enemy is invisible, black, shiny or wears t
 - **L: One move set per enemy.** As A, but every variant of a ported enemy plays the base move set (DARKSIGN_ENEMY_VARIANTS=0), as up to 1.0.443, when the High Wall's spear Lothric Knights played the sword knights' moves and held their shield sideways. Use when ported enemies freeze, T-pose or crash the game when they spawn or start a move with A. (`DARKSIGN_ENEMY_VARIANTS=0`)
 - **M: The template's limb IK.** As A, but a ported enemy keeps the limb IK of the Elden Ring enemy it is built on (DARKSIGN_ENEMY_IK=template), as up to 1.0.460, when Father Ariandel's arms were stretched towards where Dragonlord Placidusax's front feet rest. Use when a ported enemy's hands or feet slide, sink into the floor or float with A. (`DARKSIGN_ENEMY_IK=template`)
 - **N: The template's cloth.** As A, but a ported enemy keeps the cloth simulation of the Elden Ring enemy it is built on (DARKSIGN_ENEMY_CLOTH=template), as up to 1.0.5xx, when Pontiff Sulyvahn's right-hand cape hung stuck to his left. Without it DS3 capes and skirts follow the bones they are skinned to and don't sway. Use when a ported enemy crashes the game, T-poses or stretches since its cloth was left out. (`DARKSIGN_ENEMY_CLOTH=template`)
+- **O: DS3 see-through materials drawn solid.** As A, but DS3 character materials that DS3 blends (the Dancer's veil, ghosts, wings, C[ARSN]_al / _Add) are drawn solid (DARKSIGN_ENEMY_BLEND=0), as up to 1.0.567, when the Dancer of the Boreal Valley wore a solid white sheet. Use when a ported enemy's veil, cape or wings vanish, flicker or sort wrongly with A. (`DARKSIGN_ENEMY_BLEND=0`)
 
 ### What ported DS3 enemies drop (`enemy-drops`, rebuilds the content)
 

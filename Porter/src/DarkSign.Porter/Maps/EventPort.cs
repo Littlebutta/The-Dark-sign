@@ -200,8 +200,9 @@ public sealed class EventPort
     };
 
     // DS3 "Number of Clients of Type" (SKIP 1003[14], GOTO 1003[15], END 1003[16]): Elden Ring only counts co-op
-    // clients (1003[09], [109], [10]). Client type 0 (Co-op) becomes that. Types 1 and 2 compared equal to 0 are
-    // DS3's host check (HostChecks); any other type 1/2 form (DS3 has none) is decided with a count of 0.
+    // clients (1003[09], [109], [10]). Client type 0 (Co-op) becomes that. Type 1 is the host (see HostCount), always
+    // one in a world the player owns; type 2 is never in a ported world. Type 1 compared equal to 0 (DS3's only form) becomes
+    // Elden Ring's host check (HostChecks); anything else is decided here: an unconditional skip, goto or end, or a no-op.
     private static readonly Dictionary<int, (int CoopId, int AlwaysId)> ClientChecks = new()
     {
         [14] = (9, 3), [15] = (109, 103), [16] = (10, 4),
@@ -885,6 +886,22 @@ public sealed class EventPort
     }
 
     /// <summary>
+    /// How many clients of DS3's client type 1 a ported world has: 1, the player who owns it (the host).
+    /// <para>
+    /// darkscript3's DS3 definitions call type 1 "Invader", and up to 1.0.567 it was read that way (never present, so
+    /// "SKIP IF type 1 == 0" always skipped). DS3's own scripts show it is the host: every one of DS3's 219 checks is
+    /// "SKIP IF type 1 == 0" in front of what only the world's owner should do (Set Network-Connected Event Flag, Set
+    /// Network Update Authority, Send Invading Phantoms Home, the warping form of a boss cutscene), and Iudex Gundyr's
+    /// sword-pull flag 14000802, which 14005810 waits on before the fight starts, is set in exactly one place in all of
+    /// DS3: m40 14005811 line 20, right behind such a check. DS3's solo Gundyr works, so the check can't skip for a solo
+    /// player. Read as invaders, 157 of the 219 skipped lines and 99 network flag sets never ran: the sword pull never
+    /// started Gundyr's fight, and boss, door and lever flags across every ported map were never set.
+    /// </para>
+    /// Fallback map-enemies C: DARKSIGN_HOST_CHECKS=invaders reads type 1 as invaders again (always skip), as up to 1.0.567.
+    /// </summary>
+    public static int HostCount => Environment.GetEnvironmentVariable("DARKSIGN_HOST_CHECKS")?.Trim().ToLowerInvariant() == "invaders" ? 0 : 1;
+
+    /// <summary>
     /// DS3 "SKIP/GOTO/END IF Number of Clients of Type" (first argument: lines, label or end type; then Client Type,
     /// Comparison Type, Target Number of Clients). See <see cref="ClientChecks"/>.
     /// </summary>
@@ -900,21 +917,24 @@ public sealed class EventPort
             return (RunEvents.Make(1003, coopId, first, comparison, count), null);
         // DS3's host-only lines: "SKIP IF Number of Clients of Type(n, Invader, Equal, 0)" guards every line that
         // sets a network-connected flag, an ObjAct state or update authority (219 uses in all 31 DS3 scripts, the
-        // only form of type 1 or 2 DS3 has; GOTO/END forms are unused). Read as "no invaders" it skipped always,
+        // only form of type 1 or 2 DS3 has; GOTO/END forms are unused; type 1 is the host, see HostCount). Read as
+        // "no invaders" it skipped always,
         // and DS3's lever lifts never armed their levers or set "the lift is up", so High Wall's lift went back down
         // as soon as the player stepped off and its levers did nothing (2026-11-21). Elden Ring's own lever lift
         // (common_func 90005500, made from DS3's 20005621) puts "SKIP IF Map Has Permission To Update(0)" at the
         // same lines: skip unless this world is the host's. That form is used here, so single player and the host
         // of a co-op session run them and joined players don't (Seamless Co-op keeps the host in charge of the map).
-        if (comparison == 0 && count == 0 && HostChecks.TryGetValue(ins.ID, out var hostId) && _er.Get(1003, hostId) is { } hostCheck)
+        if (clientType == 1 && HostCount == 1 && comparison == 0 && count == 0 && HostChecks.TryGetValue(ins.ID, out var hostId) && _er.Get(1003, hostId) is { } hostCheck)
         {
             var data = new byte[hostCheck.Length]; // Elden Ring's own: Has Permission 0, Unknown 0, map bytes 0
             Emedf.Write(data, hostCheck.Args[0], first);
             return (new EMEVD.Instruction(1003, hostId, data), null);
         }
+        int present = clientType == 1 ? HostCount : 0;
         bool holds = comparison switch
         {
-            0 => count == 0, 1 => count != 0, 2 => false, 3 => count > 0, 4 => count == 0, 5 => true, _ => false,
+            0 => present == count, 1 => present != count, 2 => present > count, 3 => present < count,
+            4 => present >= count, 5 => present <= count, _ => false,
         };
         return (holds ? RunEvents.Make(1000, alwaysId, first) : NoOp(), null);
     }

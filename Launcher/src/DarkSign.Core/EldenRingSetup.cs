@@ -146,6 +146,20 @@ public sealed class EldenRingSetup(string root)
             File.Delete(Guard(ContentIdFile));
     }
 
+    /// <summary>
+    /// Removes the build stamp and <see cref="ContentId"/> before the porter starts writing into the mod folder. A build
+    /// that is cancelled, killed or fails halfway leaves a mix of old and new files; with no stamp the mod counts as
+    /// not built (<see cref="NeedsContentBuild"/>), so the next PLAY builds it whole again instead of launching the mix.
+    /// <see cref="MarkContentBuilt"/> puts the stamp back when the build finishes.
+    /// </summary>
+    public void MarkContentIncomplete()
+    {
+        if (File.Exists(BuildStampFile))
+            File.Delete(Guard(BuildStampFile));
+        if (File.Exists(ContentIdFile))
+            File.Delete(Guard(ContentIdFile));
+    }
+
     /// <summary>Unpacks ModEngine2's release zip into TheDarkSign\Tools\ModEngine2 after checking its hash.</summary>
     public void InstallModEngine(string zipPath)
     {

@@ -38,19 +38,25 @@ public static class ChrModel
     [ThreadStatic] public static int SecondLayers;
 
     public static List<ChrMaterial> Convert(FLVER2 flver, FLVER2 template, int ds3Chr, int newChr, Func<string, long>? textureArea = null,
-        ChrGlow.Template? glow = null, Func<string, string>? rename = null) =>
-        Convert(flver, template, ds3Chr, newChr, PlainMaterials, ErNodes, textureArea, ErVertexColours, glow, rename);
+        ChrGlow.Template? glow = null, Func<string, string>? rename = null, IReadOnlyDictionary<string, ChrBlend.Ds3Draw>? ds3Mtds = null,
+        ChrGlow.Template? seeThrough = null) =>
+        Convert(flver, template, ds3Chr, newChr, PlainMaterials, ErNodes, textureArea, ErVertexColours, glow, rename, ds3Mtds, seeThrough);
 
     /// <summary>From the last Convert on this thread: DS3 materials drawn on the glowing material.</summary>
     [ThreadStatic] public static int Glowing;
 
+    /// <summary>From the last Convert on this thread: DS3 materials drawn see-through (<see cref="ChrBlend"/>), and those DS3 blends that stayed solid.</summary>
+    [ThreadStatic] public static int SeeThrough;
+    [ThreadStatic] public static int SeeThroughSolid;
+
     /// <param name="textureArea">Pixels of a texture by its new name (0 when unknown); picks the layer a two-layer material shows.</param>
     public static List<ChrMaterial> Convert(FLVER2 flver, FLVER2 template, int ds3Chr, int newChr, bool plainMaterials, bool erNodes,
-        Func<string, long>? textureArea = null, bool erColours = true, ChrGlow.Template? glow = null, Func<string, string>? rename = null)
+        Func<string, long>? textureArea = null, bool erColours = true, ChrGlow.Template? glow = null, Func<string, string>? rename = null,
+        IReadOnlyDictionary<string, ChrBlend.Ds3Draw>? ds3Mtds = null, ChrGlow.Template? seeThrough = null)
     {
         string oldTag = $"c{ds3Chr:D4}", newTag = $"c{newChr:D4}";
         return Convert(flver, template, newTag, rename ?? (n => TextureName(n, oldTag, newTag)), $@"N:\GR\data\Model\chr\{newTag}\tex\",
-            plainMaterials, erNodes, textureArea, erColours, glow);
+            plainMaterials, erNodes, textureArea, erColours, glow, ds3Mtds, seeThrough);
     }
 
     /// <summary>
@@ -59,7 +65,8 @@ public static class ChrModel
     /// in <paramref name="textureFolder"/>.
     /// </summary>
     public static List<ChrMaterial> Convert(FLVER2 flver, FLVER2 template, string newTag, Func<string, string> rename, string textureFolder,
-        bool plainMaterials, bool erNodes, Func<string, long>? textureArea = null, bool erColours = true, ChrGlow.Template? glow = null)
+        bool plainMaterials, bool erNodes, Func<string, long>? textureArea = null, bool erColours = true, ChrGlow.Template? glow = null,
+        IReadOnlyDictionary<string, ChrBlend.Ds3Draw>? ds3Mtds = null, ChrGlow.Template? seeThrough = null)
     {
         if (!ChrPort.HasBody(template) || flver.Materials.Count == 0)
             throw new InvalidDataException("the template or the DS3 model has nothing to draw");
@@ -81,8 +88,8 @@ public static class ChrModel
 
         var materials = new List<ChrMaterial>();
         int secondLayers = 0;
-        var plain = new Dictionary<(string?, string?, string?, bool, string?, System.Numerics.Vector2), string>();
-        int glowing = 0, glowGx = -1;
+        var plain = new Dictionary<(string?, string?, string?, bool, string?, System.Numerics.Vector2, int, int), string>();
+        int glowing = 0, glowGx = -1, seeThroughGx = -1, blended = 0, blendedSolid = 0;
         for (int i = 0; i < flver.Materials.Count; i++)
         {
             var m = flver.Materials[i];
@@ -129,21 +136,46 @@ public static class ChrModel
                 .FirstOrDefault(e => !e.StartsWith("SYSTEX", StringComparison.OrdinalIgnoreCase) && (textureArea is null || textureArea(e) > 0));
             if (glow is null)
                 emissive = null;
-            bool alphaTest = IsAlphaTested(m.MTD) || fur;
+            // How DS3 draws it, from its own MTD (ChrBlend): see-through, cut out, or solid.
+            ChrBlend.Ds3Draw? draw = ds3Mtds is not null && ds3Mtds.TryGetValue(ChrBlend.Key(m.MTD), out var d) ? d : null;
+            bool blend = draw is { Blended: true } && !fur && emissive is null;
+            if (blend && (seeThrough is null || !plainMaterials))
+            {
+                blendedSolid++;
+                blend = false;
+            }
+            bool alphaTest = IsAlphaTested(m.MTD) || fur || draw is { AlphaTested: true };
+            int blendMode = blend ? draw!.Value.ErBlendMode : 0;
+            int alphaRef = blend ? Math.Max(1, draw!.Value.AlphaRef) : 0;
+            if (blend)
+                alphaTest = false;
             // "#01#": the display mask the mesh belongs to (NpcParam modelDispMask1), the same in both games.
             m.Name = $"{MaskPrefix(m.Name)}{newTag}_{i}";
             m.GXIndex = 0;
             if (plainMaterials)
             {
                 // Meshes with the same textures share one material file.
-                var key = (albedo, normal, metallic, alphaTest, emissive, uvScale);
+                var key = (albedo, normal, metallic, alphaTest, emissive, uvScale, blendMode, alphaRef);
                 if (!plain.TryGetValue(key, out var name))
                 {
                     plain[key] = name = $"C[{newTag}]_ds3_{plain.Count}";
-                    materials.Add(new ChrMaterial(emissive is null ? ChrMaterial.PlainSource : glow!.Matbin, name, albedo, normal, metallic)
-                        { Plain = true, AlphaTest = alphaTest, TextureFolder = textureFolder, Emissive = emissive, UvScale = uvScale });
+                    materials.Add(new ChrMaterial(emissive is not null ? glow!.Matbin : blend ? seeThrough!.Matbin : ChrMaterial.PlainSource, name, albedo, normal, metallic)
+                        { Plain = true, AlphaTest = alphaTest, TextureFolder = textureFolder, Emissive = emissive, UvScale = uvScale, BlendMode = blendMode, AlphaRef = alphaRef });
                 }
                 m.MTD = $@"N:\GR\data\Material\mtd\Chr\matxml\{name}.matxml";
+                if (blend)
+                {
+                    // The see-through material is drawn with the GX list its own character uses for it.
+                    if (seeThroughGx < 0)
+                    {
+                        seeThroughGx = flver.GXLists.Count;
+                        flver.GXLists.Add(seeThrough!.GX);
+                    }
+                    m.GXIndex = seeThroughGx;
+                    m.Textures = seeThrough!.Samplers.Select(n => new FLVER2.Texture(n, "", uvScale, 0, 0, 0, 0, 0)).ToList();
+                    blended++;
+                    continue;
+                }
                 if (emissive is not null)
                 {
                     // The glowing material is drawn with the GX list its own character uses for it.
@@ -214,6 +246,8 @@ public static class ChrModel
                 }
         SecondLayers = secondLayers;
         Glowing = glowing;
+        SeeThrough = blended;
+        SeeThroughSolid = blendedSolid;
         return materials;
     }
 
@@ -480,6 +514,9 @@ public sealed record ChrMaterial(string TemplateMatbin, string NewMatbin, string
 
     public bool Plain { get; init; }
     public bool AlphaTest { get; init; }
+    /// <summary>DS3 draws it see-through: the Elden Ring blend mode (2 alpha, 4 additive) and alpha cut its copy gets (<see cref="ChrBlend"/>); 0 = solid.</summary>
+    public int BlendMode { get; init; }
+    public int AlphaRef { get; init; }
     /// <summary>DS3's glow map: the material is a copy of Elden Ring's glowing character material (<see cref="ChrGlow"/>).</summary>
     public string? Emissive { get; init; }
     /// <summary>Where a plain material's samplers say its textures are (the game finds them by file name).</summary>
@@ -512,14 +549,14 @@ public sealed record ChrMaterial(string TemplateMatbin, string NewMatbin, string
             sampler.Path = sampler.Path[..^leaf.Length] + texture + Path.GetExtension(leaf);
             swapped++;
         }
-        if (Plain && Emissive is not null)
+        if (Plain && (Emissive is not null || BlendMode > 0))
             ChrGlow.Whiten(matbin);
         if (Plain)
             foreach (var p in matbin.Params)
                 switch (p.Name)
                 {
-                    case "g_AlphaRef": p.Value = new[] { AlphaTest ? 50 : 0, 0 }; break;
-                    case "g_BlendMode": p.Value = 0; break;
+                    case "g_AlphaRef": p.Value = new[] { BlendMode > 0 ? AlphaRef : AlphaTest ? 50 : 0, 0 }; break;
+                    case "g_BlendMode": p.Value = BlendMode; break;
                     case "C_AMSN__snp_0_color_0": p.Value = new[] { 1f, 1f, 1f, 1f, 1f }; break;
                     case "C_AMSN__snp_0_float_0" or "C_AMSN__snp_0_float_1": p.Value = 0f; break;
                     case "group_1_CommonUV-UVParam": p.Value = new[] { UvScale.X, UvScale.Y }; break;

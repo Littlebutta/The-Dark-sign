@@ -142,6 +142,9 @@ public static class AiSelfTest
             Constants = spConstants,
             Instructions = [Op(11, 2, 0, K + 5), Get(3, 4), LoadK(5, 6), Op(25, 2, 4, 1), Op(11, 3, 0, K + 7), LoadK(5, 8), Op(25, 3, 3, 2), Op(21, 0, 3, K + 6), HksChunk.Return],
         });
+        Check("AI: effects checked on the team leader (Pontiff's clone checking Pontiff) count as the script's own side; the player's don't",
+            AiPort.OwnSide("TARGET_TEAM_LEADER") && AiPort.OwnSide("TARGET_SELF") && AiPort.OwnSide("TARGET_FRI_0")
+            && !AiPort.OwnSide("TARGET_ENE_0") && !AiPort.OwnSide("TARGET_LOCALPLAYER"));
         Check("AI: an interrupt compared with an effect observed on the player keeps DS3's number",
             AiPort.RenumberSpEffectIds(keptChunk, _ => true, null, out _) == 0);
 

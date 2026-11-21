@@ -309,6 +309,15 @@ public sealed class CoreTests : IDisposable
         Assert.True(setup.NeedsContentBuild("1.0.10", id), "a stamp written without an ID drops the old one");
         setup.MarkContentBuilt("1.0.9", id);
 
+        // A rebuild drops the stamp before the porter writes: cancelled or failed halfway, the next PLAY builds again.
+        setup.MarkContentIncomplete();
+        Assert.Null(setup.ContentVersion);
+        Assert.Null(setup.BuiltContentId);
+        Assert.True(setup.NeedsContentBuild("1.0.9", id), "a build that never finished is not kept");
+        setup.MarkContentIncomplete(); // nothing left to remove: no error
+        setup.MarkContentBuilt("1.0.9", id);
+        Assert.False(setup.NeedsContentBuild("1.0.9", id));
+
         // Icon menu files only work as a whole set in both qualities (2026-11-07: hi kept only 00_solo.tpfbdt).
         foreach (var file in EldenRingSetup.IconFiles)
             Touch("TheDarkSign", "Mods", "ER", "menu", "low", file);

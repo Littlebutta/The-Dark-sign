@@ -521,6 +521,38 @@ public static class EnemySelfTest
         Check("DS3 fur draws its strand layer, cut out, not the larger body texture over the strand UVs",
             furMaterials.Count == 1 && furMaterials[0] is { AlphaTest: true, Albedo: "c7128_Hair_01_a", Normal: "c7128_Hair_01_n" } && ChrModel.SecondLayers == 0
             && ChrModel.IsFur("C[Fur].mtd") && !ChrModel.IsFur("C[ARSN].mtd"));
+        // 1.0.567: the Dancer's veil (c5270[Veil].mtd, DS3 g_BlendMode 2) drew as a solid white sheet: every plain
+        // material was written solid. DS3's MTD now decides (ChrBlend), and a blended one goes on the see-through template.
+        var veilModel = Model(@"N:\FDP\data\Material\mtd\character\c5270[Veil].mtd");
+        var seeThrough = new ChrGlow.Template("C[c2100]_BD_MeshDecal", ChrBlend.AlphaShader,
+            ["C_AMSN__Alpha_snp_Texture2D_2_AlbedoMap_0", "C_AMSN__Alpha_snp_Texture2D_0_MetallicMap_0", "C_AMSN__Alpha_snp_Texture2D_7_NormalMap_4"],
+            new FLVER2.Material(), new FLVER2.GXList());
+        var mtds = new Dictionary<string, ChrBlend.Ds3Draw>
+        {
+            [ChrBlend.Key("c5270[Veil].mtd")] = new(2, 0), [ChrBlend.Key(@"x\c2170[Veil] .mtd")] = new(3, 0),
+            [ChrBlend.Key("C[ARSN]_Add.mtd")] = new(4, 0), [ChrBlend.Key("C[ARSN]_e_Decal.mtd")] = new(0, 128), [ChrBlend.Key("Plain.mtd")] = new(0, 0),
+        };
+        var veilMade = ChrModel.Convert(veilModel, erTemplate, 5270, 7130, plainMaterials: true, erNodes: true, ds3Mtds: mtds, seeThrough: seeThrough);
+        Check("a DS3 blended material (Dancer's veil) is a see-through copy: alpha blend, alpha cut 1, its own GX list and the template's samplers",
+            veilMade.Count == 1 && veilMade[0] is { TemplateMatbin: "C[c2100]_BD_MeshDecal", BlendMode: 2, AlphaRef: 1, AlphaTest: false, Plain: true }
+            && ChrModel.SeeThrough == 2 && veilModel.Materials.All(m => m.GXIndex == 1 && m.Textures[0].ParamName == seeThrough.Samplers[0])
+            && veilModel.GXLists.Count == 2);
+        var veilSolid = ChrModel.Convert(Model(@"N:\FDP\data\Material\mtd\character\c5270[Veil].mtd"), erTemplate, 5270, 7130, plainMaterials: true, erNodes: true, ds3Mtds: mtds);
+        Check("without a see-through template it stays solid, and says so",
+            veilSolid[0] is { BlendMode: 0, TemplateMatbin: ChrMaterial.PlainSource } && ChrModel.SeeThroughSolid == 2 && ChrModel.SeeThrough == 0);
+        Check("DS3 blend modes: modulate becomes alpha, additive stays additive, an alpha cut with blend 0 cuts out, MTD keys ignore spaces and folders",
+            mtds[ChrBlend.Key("c2170[Veil].mtd")] is { Blended: true, ErBlendMode: 2 } && mtds[ChrBlend.Key("C[ARSN]_Add.mtd")] is { ErBlendMode: 4 }
+            && mtds[ChrBlend.Key("C[ARSN]_e_Decal.mtd")] is { Blended: false, AlphaTested: true } && mtds[ChrBlend.Key("plain.MTD")] is { Blended: false, AlphaTested: false });
+        var blendBin = new MATBIN { ShaderPath = @"N:\GR\data\Material\mtd\Chr\Shader\C[AMSN]_Alpha.spx", SourcePath = @"N:\x\C[c2100]_BD_MeshDecal.matxml" };
+        blendBin.Params.Add(new MATBIN.Param { Name = "g_BlendMode", Type = MATBIN.ParamType.Int, Value = 2 });
+        blendBin.Params.Add(new MATBIN.Param { Name = "g_AlphaRef", Type = MATBIN.ParamType.Int2, Value = new[] { 40, 0 } });
+        foreach (var smp in seeThrough.Samplers)
+            blendBin.Samplers.Add(new MATBIN.Sampler { Type = smp, Path = "" });
+        Check("the see-through template is found by shader with albedo, normal and metallic samplers", ChrBlend.Score(blendBin) == 3);
+        new ChrMaterial("C[c2100]_BD_MeshDecal", "C[c7130]_ds3_0", "c7130_veil_a", "c7130_veil_n", null) { Plain = true, BlendMode = 4, AlphaRef = 1, TextureFolder = @"N:\t\" }.Apply(blendBin);
+        Check("the copy takes DS3's blend mode and the alpha cut, and names DS3's textures",
+            blendBin.Params.First(p => p.Name == "g_BlendMode").Value is 4 && blendBin.Params.First(p => p.Name == "g_AlphaRef").Value is int[] { Length: 2 } r && r[0] == 1
+            && blendBin.Samplers[0].Path == @"N:\t\c7130_veil_a.tif" && blendBin.Samplers[2].Path == @"N:\t\c7130_veil_n.tif");
         Check("a one-layer material keeps its textures", firstLayer.Count == 1 && firstLayer[0].Albedo == "c7031_a" && ChrModel.SecondLayers == 0);
 
         Check("display mask prefixes stay on material names", ChrModel.MaskPrefix("#01# spear") == "#01#" && ChrModel.MaskPrefix("c1280_body_mat") == ""
