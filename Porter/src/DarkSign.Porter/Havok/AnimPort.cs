@@ -217,6 +217,16 @@ public static class AnimPort
     /// <summary>Writes spline-compressed animations (see <see cref="SplineTranscode"/>); DARKSIGN_ANIM_INTERLEAVED=1 writes the old uncompressed ones.</summary>
     public static bool Spline = Environment.GetEnvironmentVariable("DARKSIGN_ANIM_INTERLEAVED") != "1";
 
+    /// <summary>
+    /// Whether a converted animation carries DS3's blend hint rather than the Elden Ring template file's. DS3's additive
+    /// clips (enemy flinches 9000-9499) are ADDITIVE_CHILD_SPACE deltas; Elden Ring's templates (c4770's 27 flinch
+    /// files) are ADDITIVE_PARENT_SPACE. Up to 1.0.567 the template's hint stayed, so every DS3 flinch turned bones
+    /// about their parent's axes instead of their own: on bones whose rest isn't near identity (the Dancer's knees,
+    /// Calf00 and Thigh00 rest turned 180° about X) a hit bent the leg the wrong way. Measured 2026-11-21 on c5270 -> c7130:
+    /// all 27 built additive clips hint 1, all DS3 sources hint 2. Fallback enemy-model P: DARKSIGN_ANIM_BLEND_HINT=template.
+    /// </summary>
+    public static bool DS3BlendHint => Environment.GetEnvironmentVariable("DARKSIGN_ANIM_BLEND_HINT")?.Trim().ToLowerInvariant() != "template";
+
     /// <summary>Held around every use of HKLib's serializer (see <see cref="Convert(byte[], Ds3Skeleton, ErSkeleton, byte[], byte[], bool)"/>).</summary>
     public static readonly object HavokLock = new();
 
@@ -313,6 +323,9 @@ public static class AnimPort
             erBinding.m_transformTrackToBoneIndices = bound.Select(b => (short)b).ToList();
             erBinding.m_floatTrackToFloatSlotIndices = [];
             erBinding.m_partitionIndices = [];
+            // The data is DS3's, so the blend hint is too (DS3BlendHint): DS3's additive clips are child-space deltas.
+            if (DS3BlendHint && binding is not null && Enum.IsDefined(typeof(hkaAnimationBinding.BlendHint), (int)binding.BlendHint))
+                erBinding.m_blendHint = (hkaAnimationBinding.BlendHint)(int)binding.BlendHint;
             if (skeletonName is not null)
                 erBinding.m_originalSkeletonName = skeletonName;
             new HavokBinarySerializer().Write(root, output);
