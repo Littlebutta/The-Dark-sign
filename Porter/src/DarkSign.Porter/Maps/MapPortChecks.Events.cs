@@ -18,7 +18,7 @@ public static partial class MapPortChecks
         yield return ("layout: connect collisions point at the neighbouring map's slot; ones to unported maps are left out", ConnectCollisions);
         yield return ("event port: SpEffect IDs go to the enemy port's rows (700,000,000 + DS3 ID) where they exist, written or passed in", EventSpEffects);
         yield return ("event port: DS3 action buttons become IF Action Button in Area with one ActionButtonParam row per prompt", EventActionButtons);
-        yield return ("event port: DS3's online checks become Elden Ring's single-player forms (world type, co-op clients, invaders = none)", EventOnlineChecks);
+        yield return ("event port: DS3's online checks become Elden Ring's single-player forms (world type, co-op clients, the host check as Elden Ring's own)", EventOnlineChecks);
     }
 
     private static void EventCommonMapFlags()
@@ -163,6 +163,14 @@ public static partial class MapPortChecks
           { "name": "Execution End Type", "type": 0 }, { "name": "World Type", "type": 0, "default": 1 } ] },
         { "name": "GOTO IF Number of Co-op Clients", "index": 109, "args": [
           { "name": "Label", "type": 0 }, { "name": "Comparison Type", "type": 0 }, { "name": "Target Number of Clients", "type": 0 } ] },
+        { "name": "SKIP IF Map Has Permission To Update", "index": 203, "args": [
+          { "name": "Number Of Skipped Lines", "type": 0, "default": 1 }, { "name": "Has Permission", "type": 0, "default": 1 },
+          { "name": "Unknown", "type": 0 }, { "name": "Area ID", "type": 3, "default": -1 }, { "name": "Block ID", "type": 3, "default": -1 },
+          { "name": "Region ID", "type": 3, "default": -1 }, { "name": "Index ID", "type": 3, "default": -1 } ] },
+        { "name": "GOTO IF Map Has Permission To Update", "index": 204, "args": [
+          { "name": "Label", "type": 0 }, { "name": "Has Permission", "type": 0, "default": 1 },
+          { "name": "Unknown", "type": 0 }, { "name": "Area ID", "type": 3, "default": -1 }, { "name": "Block ID", "type": 3, "default": -1 },
+          { "name": "Region ID", "type": 3, "default": -1 }, { "name": "Index ID", "type": 3, "default": -1 } ] },
       ] },
       { "index": 2003, "instrs": [
         { "name": "Set Event Flag", "index": 66, "args": [
@@ -511,7 +519,8 @@ public static partial class MapPortChecks
         Expect(ins[5].Bank == 1000 && ins[5].ID == 103 && ins[5].ArgData[0] == 1, "GOTO IF no type-2 clients -> GOTO unconditionally (there are none)");
         Expect(IsNoOp(ins[6]), "END IF type-2 clients > 0 -> no-op (never true)");
         Expect(IsNoOp(ins[7]), "WAIT For Network Approval -> no-op");
-        Expect(IsNoOp(ins[8]), "SKIP IF no host -> no-op: the world's owner is the host, so the network flag set behind it runs");
+        Expect(ins[8].Bank == 1003 && ins[8].ID == 203 && ins[8].ArgData.Length == 8 && ins[8].ArgData[0] == 1 && ins[8].ArgData.Skip(1).All(b => b == 0),
+            $"SKIP IF no host -> SKIP IF Map Has Permission To Update(1, 0), as Elden Ring's own lever lift (90005500): the owner runs the flag set behind it, joined players don't (got {ins[8].Bank}[{ins[8].ID}])");
         Expect(ins[9].Bank == 2003, "the flag set behind the host check stays");
         Environment.SetEnvironmentVariable("DARKSIGN_HOST_CHECKS", "invaders");
         try

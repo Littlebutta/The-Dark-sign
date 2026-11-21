@@ -201,12 +201,16 @@ public sealed class EventPort
 
     // DS3 "Number of Clients of Type" (SKIP 1003[14], GOTO 1003[15], END 1003[16]): Elden Ring only counts co-op
     // clients (1003[09], [109], [10]). Client type 0 (Co-op) becomes that. Type 1 is the host (see HostCount), always
-    // one in a world the player owns; type 2 is never in a ported world. Those are decided here: an unconditional
-    // skip, goto or end, or a no-op.
+    // one in a world the player owns; type 2 is never in a ported world. Type 1 compared equal to 0 (DS3's only form) becomes
+    // Elden Ring's host check (HostChecks); anything else is decided here: an unconditional skip, goto or end, or a no-op.
     private static readonly Dictionary<int, (int CoopId, int AlwaysId)> ClientChecks = new()
     {
         [14] = (9, 3), [15] = (109, 103), [16] = (10, 4),
     };
+
+    // DS3 SKIP/GOTO/END IF Number of Clients of Type (14/15/16) -> Elden Ring SKIP/GOTO/END IF Map Has Permission
+    // To Update (203/204/205), for DS3's host-only lines (see ClientCheck).
+    private static readonly Dictionary<int, int> HostChecks = new() { [14] = 203, [15] = 204, [16] = 205 };
 
     // DS3 cutscene instructions that also warp the player: ported as the warp alone until cutscenes are.
     private static readonly HashSet<string> CutsceneWarps = new(StringComparer.OrdinalIgnoreCase)
@@ -911,6 +915,21 @@ public sealed class EventPort
             return (null, null); // a value passed in decides it: can't be settled here
         if (clientType == 0)
             return (RunEvents.Make(1003, coopId, first, comparison, count), null);
+        // DS3's host-only lines: "SKIP IF Number of Clients of Type(n, Invader, Equal, 0)" guards every line that
+        // sets a network-connected flag, an ObjAct state or update authority (219 uses in all 31 DS3 scripts, the
+        // only form of type 1 or 2 DS3 has; GOTO/END forms are unused; type 1 is the host, see HostCount). Read as
+        // "no invaders" it skipped always,
+        // and DS3's lever lifts never armed their levers or set "the lift is up", so High Wall's lift went back down
+        // as soon as the player stepped off and its levers did nothing (2026-11-21). Elden Ring's own lever lift
+        // (common_func 90005500, made from DS3's 20005621) puts "SKIP IF Map Has Permission To Update(0)" at the
+        // same lines: skip unless this world is the host's. That form is used here, so single player and the host
+        // of a co-op session run them and joined players don't (Seamless Co-op keeps the host in charge of the map).
+        if (clientType == 1 && HostCount == 1 && comparison == 0 && count == 0 && HostChecks.TryGetValue(ins.ID, out var hostId) && _er.Get(1003, hostId) is { } hostCheck)
+        {
+            var data = new byte[hostCheck.Length]; // Elden Ring's own: Has Permission 0, Unknown 0, map bytes 0
+            Emedf.Write(data, hostCheck.Args[0], first);
+            return (new EMEVD.Instruction(1003, hostId, data), null);
+        }
         int present = clientType == 1 ? HostCount : 0;
         bool holds = comparison switch
         {

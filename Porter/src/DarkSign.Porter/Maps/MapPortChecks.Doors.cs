@@ -471,6 +471,12 @@ public static partial class MapPortChecks
         Expect(notes.Single().Contains("1 key requirements dropped") && notes[0].Contains("2 prompts"), notes[0]);
         ObjectPort.AddObjActRows(er, ds3, buttons);
         Expect(er.Rows.Count == 4, "a second pass replaces its rows");
+        // The one-way door's SpEffect check follows the scripts: DS3's door event sets 4150, which they move to 700004150.
+        Func<long, long?> scriptSpEffects = id => Enemies.ChrEffects.SpEffectId((int)id) is > 0 and var n ? n : null;
+        Expect(ObjectPort.RepointObjActSpEffects(er, scriptSpEffects) == 1, "one SpEffect check (the one-way door's) moved");
+        Expect((int)er[70300310]["spQualifiedId"].Value == Enemies.ChrEffects.SpEffectId(4150) && (byte)er[70300310]["spQualifiedType"].Value == 2,
+            "the door asks for the SpEffect the converted door event gives the player");
+        Expect((int)template["spQualifiedId"].Value == 0 && ObjectPort.RepointObjActSpEffects(er, scriptSpEffects) == 0, "Elden Ring's own rows stay; a second pass changes nothing");
         Expect(ObjectPort.ObjActRow(300310) == 70300310 && ObjectPort.ObjActRow(-1) == -1 && ObjectPort.ObjActRow(0) == 0, "row IDs move, 'none' stays");
         Expect(EventPort.KindOf("ObjAct Param ID") == EventPort.Kind.ObjAct && EventPort.KindOf("Object Parameter ID") == EventPort.Kind.ObjAct,
             "the scripts' ObjActParam arguments (Set ObjAct State) are moved the same way");
