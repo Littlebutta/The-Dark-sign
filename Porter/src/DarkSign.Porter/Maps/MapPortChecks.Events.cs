@@ -18,7 +18,7 @@ public static partial class MapPortChecks
         yield return ("layout: connect collisions point at the neighbouring map's slot; ones to unported maps are left out", ConnectCollisions);
         yield return ("event port: SpEffect IDs go to the enemy port's rows (700,000,000 + DS3 ID) where they exist, written or passed in", EventSpEffects);
         yield return ("event port: DS3 action buttons become IF Action Button in Area with one ActionButtonParam row per prompt", EventActionButtons);
-        yield return ("event port: DS3's online checks become Elden Ring's single-player forms (world type, co-op clients, invaders = none)", EventOnlineChecks);
+        yield return ("event port: DS3's online checks become Elden Ring's single-player forms (world type, co-op clients, the host check as Elden Ring's own)", EventOnlineChecks);
     }
 
     private static void EventCommonMapFlags()
@@ -163,6 +163,14 @@ public static partial class MapPortChecks
           { "name": "Execution End Type", "type": 0 }, { "name": "World Type", "type": 0, "default": 1 } ] },
         { "name": "GOTO IF Number of Co-op Clients", "index": 109, "args": [
           { "name": "Label", "type": 0 }, { "name": "Comparison Type", "type": 0 }, { "name": "Target Number of Clients", "type": 0 } ] },
+        { "name": "SKIP IF Map Has Permission To Update", "index": 203, "args": [
+          { "name": "Number Of Skipped Lines", "type": 0, "default": 1 }, { "name": "Has Permission", "type": 0, "default": 1 },
+          { "name": "Unknown", "type": 0 }, { "name": "Area ID", "type": 3, "default": -1 }, { "name": "Block ID", "type": 3, "default": -1 },
+          { "name": "Region ID", "type": 3, "default": -1 }, { "name": "Index ID", "type": 3, "default": -1 } ] },
+        { "name": "GOTO IF Map Has Permission To Update", "index": 204, "args": [
+          { "name": "Label", "type": 0 }, { "name": "Has Permission", "type": 0, "default": 1 },
+          { "name": "Unknown", "type": 0 }, { "name": "Area ID", "type": 3, "default": -1 }, { "name": "Block ID", "type": 3, "default": -1 },
+          { "name": "Region ID", "type": 3, "default": -1 }, { "name": "Index ID", "type": 3, "default": -1 } ] },
       ] },
       { "index": 2003, "instrs": [
         { "name": "Set Event Flag", "index": 66, "args": [
@@ -490,7 +498,7 @@ public static partial class MapPortChecks
             Ins(1003, 13, (byte)0, (byte)1),                   // END IF in another world
             Ins(4, 1, (sbyte)2, 4000800, 10000),               // IF the boss is damaged by the player
             Ins(1003, 14, (byte)3, (byte)0, (byte)3, (byte)0), // SKIP 3 IF co-op clients > 0
-            Ins(1003, 15, (byte)1, (byte)1, (byte)0, (byte)0), // GOTO 1 IF invaders == 0: always, with none
+            Ins(1003, 15, (byte)1, (byte)1, (byte)0, (byte)0), // GOTO 1 IF invaders == 0: DS3's host check
             Ins(1003, 16, (byte)0, (byte)2, (byte)3, (byte)0), // END IF invaders > 0: never
             Ins(1000, 9, 3f),                                  // WAIT For Network Approval
             Ins(2003, 2, 14000500u, (byte)1));
@@ -506,9 +514,22 @@ public static partial class MapPortChecks
             "Damaged By -> IF Damage Type (any type), the boss moved to the slot");
         Expect(ins[4].Bank == 1003 && ins[4].ID == 9 && Arg(ins[4], "Number Of Skipped Lines", er) == 3 && Arg(ins[4], "Comparison Type", er) == 3,
             "co-op client count -> SKIP IF Number of Co-op Clients");
-        Expect(ins[5].Bank == 1000 && ins[5].ID == 103 && ins[5].ArgData[0] == 1, "GOTO IF no invaders -> GOTO unconditionally (there are none)");
+        Expect(ins[5].Bank == 1003 && ins[5].ID == 204 && ins[5].ArgData.Length == 8 && ins[5].ArgData[0] == 1 && ins[5].ArgData.Skip(1).All(b => b == 0),
+            "GOTO IF invaders == 0 (DS3's host check) -> GOTO IF Map Has Permission To Update(0), as Elden Ring's own lever lift (not an unconditional jump)");
         Expect(IsNoOp(ins[6]), "END IF invaders > 0 -> no-op (never true)");
         Expect(IsNoOp(ins[7]), "WAIT For Network Approval -> no-op");
+
+        // DS3's lever lift (common_func 20005621) arms its levers and sets "the lift is up" behind this check: it
+        // must run in single player. Up to 1.0.567 it became SKIP Unconditionally and the High Wall lift came back
+        // down by itself.
+        var lift = OneEvent(14000801,
+            Ins(1003, 14, (byte)2, (byte)1, (byte)0, (byte)0), // SKIP 2 IF invaders == 0
+            Ins(2003, 2, 14000500u, (byte)1),
+            Ins(2003, 2, 14000501u, (byte)1));
+        var liftIns = NewEventPort().Convert(lift, EMEVD.Game.Sekiro, MoveToSlot).Events.Single().Instructions;
+        Expect(liftIns[0].Bank == 1003 && liftIns[0].ID == 203 && liftIns[0].ArgData.Length == 8 && liftIns[0].ArgData[0] == 2
+               && liftIns[0].ArgData.Skip(1).All(b => b == 0),
+            $"host-only lines -> SKIP IF Map Has Permission To Update(2, 0), not 1000[{liftIns[0].ID}] SKIP Unconditionally");
     }
 
     // EventPort's no-op: WAIT 0 seconds.

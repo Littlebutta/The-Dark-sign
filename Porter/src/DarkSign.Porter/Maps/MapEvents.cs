@@ -213,6 +213,22 @@ public static class MapEvents
                 }
             }
         }
+        // The ported doors' SpEffect requirements (one-way doors' 4150) follow the scripts' SpEffects.
+        string objActSpNote = "";
+        if (spEffects is not null)
+            try
+            {
+                var reg = ActionButtons.LoadRegulation(ctx);
+                if (reg.Get("ObjActParam") is { } objActParam && ObjectPort.RepointObjActSpEffects(objActParam, spEffects) is var moved and > 0)
+                {
+                    reg.Save(ctx.ModPath("regulation.bin"));
+                    objActSpNote = $"ObjAct SpEffect checks: {moved} pointed at the scripts' SpEffects (one-way doors)";
+                }
+            }
+            catch (Exception ex) when (ex is not OutOfMemoryException)
+            {
+                objActSpNote = $"ObjAct SpEffect checks: NOT moved ({ex.Message}); one-way doors keep DS3's SpEffect and won't open";
+            }
         if (kits is { } k)
         {
             File.WriteAllBytes(ctx.ModPath(MapPorter.ModParts("/event/common.emevd.dcx")), DCX.Compress(k.Common.Write(), k.Compression));
@@ -246,6 +262,7 @@ public static class MapEvents
         return "events:\n  " + result.Summary + (buttonNote.Length > 0 ? "\n  " + buttonNote : "") + (spNote.Length > 0 ? "\n  " + spNote : "")
                + (kitNote.Length > 0 ? "\n  " + kitNote : "")
                + (objActNote.Length > 0 ? "\n  " + objActNote : "")
+               + (objActSpNote.Length > 0 ? "\n  " + objActSpNote : "")
                + "\n  " + textNote.Replace("\n", "\n  ")
                + (playedNote.Length > 0 ? "\n  " + playedNote : "");
     }

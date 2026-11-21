@@ -995,6 +995,37 @@ public sealed class ObjectPort
         return added;
     }
 
+    /// <summary>
+    /// Points the ported ObjAct rows' SpEffect requirements (spQualifiedType 2: "the player must have this SpEffect",
+    /// DS3's one-way doors' 4150 "inside of the door") at the SpEffect the converted scripts give the player. The
+    /// scripts move every DS3 SpEffect the enemy port gave a row to 700,000,000 + the ID (EventPort Kind.SpEffect),
+    /// so DS3's door event (20005610) now sets 700004150 while the row still asked for 4150: no one-way door opened,
+    /// from either side (High Wall's door at the top of the lift, 2026-11-21). The same function the events step
+    /// moves the scripts' SpEffects with is used here, so the two always agree. Returns how many fields changed.
+    /// </summary>
+    public static int RepointObjActSpEffects(PARAM objAct, Func<long, long?> spEffects)
+    {
+        int changed = 0;
+        foreach (var row in objAct.Rows.Where(r => r.ID >= ObjActBase && r.ID < ObjActBase + 5_000_000))
+            foreach (var (type, id) in new[] { ("spQualifiedType", "spQualifiedId"), ("spQualifiedType2", "spQualifiedId2") })
+            {
+                if (Number(row, type) != SpEffectQualified)
+                    continue;
+                var current = (long)Number(row, id);
+                if (current <= 0)
+                    continue; // a row already moved (a second run) gives null below and stays
+                if (spEffects(current) is { } moved && moved != current)
+                {
+                    Set(row, id, (int)moved);
+                    changed++;
+                }
+            }
+        return changed;
+    }
+
+    /// <summary>ObjActParam spQualifiedType 2: the action needs the player to have the SpEffect in spQualifiedId.</summary>
+    public const int SpEffectQualified = 2;
+
     private static void Set(PARAM.Row row, string field, object value)
     {
         var cell = row.Cells.FirstOrDefault(c => c.Def.InternalName == field);
