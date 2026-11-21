@@ -771,11 +771,15 @@ public static class MapPorter
         // MapRegistry.ListPath: rewritten by every full run that adds maps (MapRegistry.Write).
         foreach (var path in new[] { "/event/common.emevd.dcx", MapEvents.CommonFunc, MaterialBinder, OldMaterialBinder, ActionButtons.ModMenu, FlagAlloc.LegacyList, MapRegistry.ListPath })
             Delete(Local(path));
-        var musicFolder = Path.Combine(root, MapMusic.Folder);
+        var pictureFolder = Path.Combine(root, BonfireImages.Folder);
+        if (Directory.Exists(pictureFolder))
+            foreach (var file in Directory.GetFiles(pictureFolder, "*" + BonfireImages.Extension))
+                Delete(file);
+                var musicFolder = Path.Combine(root, MapMusic.Folder);
         if (Directory.Exists(musicFolder))
             foreach (var file in Directory.GetFiles(musicFolder))
                 Delete(file);
-        foreach (var file in new[] { MapEvents.FlagFile, "darksign_maps.tsv", BossArenas.ListFile, CutsceneMenu.ListFile, BossKits.FileName, "darksign_maps_check.txt", FlagAlloc.ProbeFile, MapMusic.ListFile,
+        foreach (var file in new[] { MapEvents.FlagFile, "darksign_maps.tsv", BossArenas.ListFile, CutsceneMenu.ListFile, BossKits.FileName, "darksign_maps_check.txt", FlagAlloc.ProbeFile, MapMusic.ListFile, BonfireTravel.ListFile,
                      DarkSign.Randomizer.Data.EnemyTables.PlacedFile, DarkSign.Randomizer.Data.EnemyTables.ErFile })
             Delete(Path.Combine(root, file));
     }

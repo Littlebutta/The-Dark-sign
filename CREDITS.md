@@ -25,7 +25,7 @@ install, and no game files are distributed.
 | [Microsoft.Toolkit.HighPerformance](https://github.com/CommunityToolkit/dotnet) | .NET Foundation | MIT | Buffer helpers bundled with the porter |
 | [HKX2](https://github.com/vawser/Smithbox) (Smithbox, after Katalash's HKX2) | vawser, Katalash and contributors | MIT | Reading and writing DS3 Havok 2014 collision packfiles for the map port (files copied at Smithbox commit e27134d, Porter/third_party/HKX2) |
 | [Smithbox](https://github.com/vawser/Smithbox) NVA reader and writer | vawser and the Smithbox contributors (after TKGP's SoulsFormats) | GPL-3.0 | Reading DS3's navmesh list (.nva) and writing Elden Ring's for the ported maps (`NVA.cs` copied at Smithbox commit 0a54d92, Porter/third_party/Smithbox-NVA; namespace changed) |
-| [BCnEncoder.NET](https://github.com/Nominom/BCnEncoder.NET) | Nominom | MIT/Unlicense | Encoding icon textures |
+| [BCnEncoder.NET](https://github.com/Nominom/BCnEncoder.NET) | Nominom | MIT/Unlicense | Encoding icon textures; decoding DS3's bonfire pictures for the travel menu (`Maps/BonfireImages.cs`) |
 | [FogMod](https://github.com/thefifthmatt/FogMod) (DS3 Fog Gate Randomizer) | thefifthmatt | Apache-2.0 | DS3 world data for the cross-game randomizer: areas, routes and locks, fog gates, warps, key items, item and enemy locations (`fog.txt`, `locations.txt` copied unchanged at commit 28711c3, Randomizer/data/ds3, see NOTICE.md) |
 | [YamlDotNet](https://github.com/aaubry/YamlDotNet) | Antoine Aubry and contributors | MIT | Reading the randomizer's world files |
 

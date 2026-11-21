@@ -91,7 +91,8 @@ public static class Bonfires
     /// <summary>A row of DS3's BonfireWarpParam: the registered object, the lit flag, the name text and the row's own name.</summary>
     /// <param name="Id">The row's number: DS3 lists a tab's bonfires in row order.</param>
     /// <param name="List">DS3's warp-menu tab (ListId: 0 Cemetery of Ash, 1 High Wall...; 99 = not listed).</param>
-    public sealed record Ds3Row(int Entity, long Flag, int NameId, string Name, int Id = 0, int List = 99);
+    /// <param name="Picture">PictureId: the bonfire's picture in DS3's warp menu (a texture of menu/mapimage).</param>
+    public sealed record Ds3Row(int Entity, long Flag, int NameId, string Name, int Id = 0, int List = 99, int Picture = -1);
 
     /// <summary>A DS3 bonfire of one map: n is its number (object 1950+n, talker 950+n, point 970+n).</summary>
     public sealed record Bonfire(int Number, int Ds3Entity, long Ds3Flag, int NameId, string Name, Vector3 Position, float Turn,
@@ -101,6 +102,8 @@ public static class Bonfires
         public int List { get; init; } = 99;
         public int Order { get; init; }
         public string Area { get; init; } = "";
+        /// <summary>The picture DS3's warp menu shows for it (BonfireWarpParam PictureId), -1 for none.</summary>
+        public int Picture { get; init; } = -1;
     }
 
     /// <summary>What a bonfire became in the slot's map file.</summary>
@@ -115,7 +118,8 @@ public static class Bonfires
             long Cell(string field) => row.Cells.FirstOrDefault(c => c.Def.InternalName.Equals(field, StringComparison.OrdinalIgnoreCase))
                 ?.Value is { } v and not byte[] ? System.Convert.ToInt64(v) : -1;
             long list = Cell("ListId");
-            rows.Add(new Ds3Row((int)Cell("WarpEventId"), Cell("LocationEventId"), (int)Cell("BonfireNameId"), row.Name ?? "", row.ID, list < 0 ? 99 : (int)list));
+            rows.Add(new Ds3Row((int)Cell("WarpEventId"), Cell("LocationEventId"), (int)Cell("BonfireNameId"), row.Name ?? "", row.ID, list < 0 ? 99 : (int)list,
+                (int)Cell("PictureId")));
         }
         return rows;
     }
@@ -161,6 +165,7 @@ public static class Bonfires
             {
                 // Its place in DS3's warp menu: the listed row of the same bonfire (Firelink has an unlisted row first).
                 List = listed(row).List, Order = listed(row).Id, Area = AreaOf(listed(row).Name),
+                Picture = listed(row).Picture > 0 ? listed(row).Picture : row.Picture,
             };
         }
         return [.. found.Values];
@@ -604,8 +609,9 @@ public static class Bonfires
             {
                 var destinations = work.SelectMany(w => w.Placed.Select(p => new BonfireTravel.Destination(w.Slot.Er, p.Source.Number,
                     ds3Names.GetValueOrDefault(p.Source.NameId) is { Length: > 0 } text ? text : p.Source.Name,
-                    p.Source.Area.Length > 0 ? p.Source.Area : w.Slot.Ds3.ToString(), p.Source.List, p.Source.Order, (uint)w.Flag(p.Source.Ds3Flag), p.Point)));
-                lines.Add(BonfireTravel.Write(ctx, er, destinations));
+                    p.Source.Area.Length > 0 ? p.Source.Area : w.Slot.Ds3.ToString(), p.Source.List, p.Source.Order, (uint)w.Flag(p.Source.Ds3Flag), p.Point)
+                    { Picture = p.Source.Picture }));
+                lines.Add(BonfireTravel.Write(ctx, er, destinations, ds3));
                 foreach (var w in work)
                     foreach (var p in w.Placed)
                         foreach (var talker in w.Msb.Parts.Enemies.Where(e => e.EntityID == p.Talker))
