@@ -531,6 +531,7 @@ Try the next option if: A DS3 map crashes or hangs while loading, enemies stand 
 - **A: DS3 characters where ported, stand-ins elsewhere (default).** Every DS3 enemy and boss stands where it did in DS3, with its DS3 entity ID so the converted boss and trap events find it. Characters the enemy porter has ported (darksign_chr_map.tsv) are the real DS3 ones; the rest are Elden Ring enemies of the same kind (knight, soldier, dog, dragon...), bosses get Elden Ring bosses.
 - **B: Elden Ring stand-ins only.** The same placements, but always the Elden Ring stand-ins, even for ported DS3 characters (port-maps --enemies standin). Tells whether a ported character is what breaks. (`port-maps --enemies standin`)
 - **off: Off (no enemies).** The DS3 maps are empty of enemies (port-maps --enemies none), to explore them or to find out whether enemies are what breaks a map. (`port-maps --enemies none`)
+- **C: DS3 host checks always skip.** As A, but DS3's host checks ("skip unless this world's owner", in front of network flag sets such as Iudex Gundyr's sword pull) always skip (DARKSIGN_HOST_CHECKS=invaders), as up to 1.0.567, when pulling the sword out of Gundyr never started his fight. Use when a boss fight, cutscene or lever misbehaves only since 1.0.568. (`DARKSIGN_HOST_CHECKS=invaders`)
 
 ### DS3 objects in the DS3 maps (`map-objects`, rebuilds the content)
 

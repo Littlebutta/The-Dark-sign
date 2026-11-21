@@ -490,14 +490,16 @@ public static partial class MapPortChecks
             Ins(1003, 13, (byte)0, (byte)1),                   // END IF in another world
             Ins(4, 1, (sbyte)2, 4000800, 10000),               // IF the boss is damaged by the player
             Ins(1003, 14, (byte)3, (byte)0, (byte)3, (byte)0), // SKIP 3 IF co-op clients > 0
-            Ins(1003, 15, (byte)1, (byte)1, (byte)0, (byte)0), // GOTO 1 IF invaders == 0: always, with none
-            Ins(1003, 16, (byte)0, (byte)2, (byte)3, (byte)0), // END IF invaders > 0: never
+            Ins(1003, 15, (byte)1, (byte)2, (byte)0, (byte)0), // GOTO 1 IF type 2 == 0: always, with none
+            Ins(1003, 16, (byte)0, (byte)2, (byte)3, (byte)0), // END IF type 2 > 0: never
             Ins(1000, 9, 3f),                                  // WAIT For Network Approval
+            Ins(1003, 14, (byte)1, (byte)1, (byte)0, (byte)0), // SKIP 1 IF hosts == 0 (Gundyr's sword pull, m40 14005811): never
+            Ins(2003, 2, 14000802u, (byte)1),                  // the flag the fight waits on
             Ins(2003, 2, 14000500u, (byte)1));
         var result = NewEventPort().Convert(script, EMEVD.Game.Sekiro, MoveToSlot);
         Expect(result.Events.Count == 1, "the event must survive: its online checks have single-player forms");
         var ins = result.Events[0].Instructions;
-        Expect(ins.Count == 9, $"{ins.Count} instructions, want one per DS3 line");
+        Expect(ins.Count == 11, $"{ins.Count} instructions, want one per DS3 line");
         Expect(ins[0].Bank == 3 && ins[0].ID == 26 && Arg(ins[0], "World Type", er) == 0, "own world -> IF Player Is In World Type 0 (own world)");
         Expect(ins[1].Bank == 1003 && ins[1].ID == 13 && Arg(ins[1], "World Type", er) == 1 && Arg(ins[1], "Label", er) == 2, "GOTO IF in another world keeps its label and world type 1");
         Expect(ins[2].Bank == 1003 && ins[2].ID == 14 && Arg(ins[2], "World Type", er) == 1, "END IF in another world");
@@ -506,9 +508,21 @@ public static partial class MapPortChecks
             "Damaged By -> IF Damage Type (any type), the boss moved to the slot");
         Expect(ins[4].Bank == 1003 && ins[4].ID == 9 && Arg(ins[4], "Number Of Skipped Lines", er) == 3 && Arg(ins[4], "Comparison Type", er) == 3,
             "co-op client count -> SKIP IF Number of Co-op Clients");
-        Expect(ins[5].Bank == 1000 && ins[5].ID == 103 && ins[5].ArgData[0] == 1, "GOTO IF no invaders -> GOTO unconditionally (there are none)");
-        Expect(IsNoOp(ins[6]), "END IF invaders > 0 -> no-op (never true)");
+        Expect(ins[5].Bank == 1000 && ins[5].ID == 103 && ins[5].ArgData[0] == 1, "GOTO IF no type-2 clients -> GOTO unconditionally (there are none)");
+        Expect(IsNoOp(ins[6]), "END IF type-2 clients > 0 -> no-op (never true)");
         Expect(IsNoOp(ins[7]), "WAIT For Network Approval -> no-op");
+        Expect(IsNoOp(ins[8]), "SKIP IF no host -> no-op: the world's owner is the host, so the network flag set behind it runs");
+        Expect(ins[9].Bank == 2003, "the flag set behind the host check stays");
+        Environment.SetEnvironmentVariable("DARKSIGN_HOST_CHECKS", "invaders");
+        try
+        {
+            var old = NewEventPort().Convert(script, EMEVD.Game.Sekiro, MoveToSlot).Events[0].Instructions;
+            Expect(old[8].Bank == 1000 && old[8].ID == 3, "fallback map-enemies C: SKIP IF no host -> SKIP unconditionally, as up to 1.0.567");
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("DARKSIGN_HOST_CHECKS", null);
+        }
     }
 
     // EventPort's no-op: WAIT 0 seconds.
