@@ -8,6 +8,7 @@ public static partial class MapPortChecks
     {
         yield return ("bonfire travel: DS3's order (tabs, then rows), areas grouped, request flags and events per bonfire", BonfireTravelOrder);
         yield return ("bonfire travel: the grace menu gets Travel and Return, and lists that only show lit bonfires", BonfireTravelMenu);
+        yield return ("bonfire travel: DS3's bonfire pictures (names ending in the PictureId, halved to fit, DKIM files) and the DLL's list", BonfireTravelPictures);
         yield return ("bonfires: DS3's bonfire fire comes over as the sword's own animation events (DS3's 16 bytes -> Elden Ring's 24)", BonfireFireEvents);
         yield return ("talk: a flag only DS3's character sets (the Fire Keeper's level-up handshake) reads as on; one-time signals and quest flags don't", TalkEngineFlags);
     }
@@ -41,8 +42,11 @@ public static partial class MapPortChecks
         Expect(travel.Count == 5 && common.Events[0].Instructions.Count == 5, $"{travel.Count} events, {common.Events[0].Instructions.Count} starts");
         var kr = travel.Single(e => e.ID == BonfireTravel.EventId(3)).Instructions;
         Expect(kr[0] is { Bank: 1003, ID: 0 } && BitConverter.ToUInt32(kr[0].ArgData, 4) == BonfireTravel.RequestFlag(3)
-               && kr[3] is { Bank: 2003, ID: 14 } && kr[3].ArgData[0] == 45 && kr[3].ArgData[1] == 1 && BitConverter.ToUInt32(kr[3].ArgData, 4) == 45010985,
-            "Knight's Rest's event waits for its flag and warps to its standing point");
+               && kr[2] is { Bank: 2003, ID: 66 } && BitConverter.ToUInt32(kr[2].ArgData, 4) == BonfireTravel.PreviewFlag(3)
+               && kr[4] is { Bank: 2003, ID: 14 } && kr[4].ArgData[0] == 45 && kr[4].ArgData[1] == 1 && BitConverter.ToUInt32(kr[4].ArgData, 4) == 45010985,
+            "Knight's Rest's event waits for its flag, turns its picture off and warps to its standing point");
+        Expect(BonfireTravel.PreviewFlag(0) == 1039292000 && BonfireTravel.PreviewFlag(BonfireTravel.MaxDestinations - 1) < RunEvents.StartDs3Request,
+            "preview flags in the reset-on-load range, clear of the run requests (2100+)");
         Expect(BonfireTravel.RequestFlag(0) == 1039292110 && BonfireTravel.RequestFlag(BonfireTravel.MaxDestinations - 1) < RunEvents.WarpRequestFlag(0)
                && BonfireTravel.EventId(0) == 1039291110 && BonfireTravel.EventId(BonfireTravel.MaxDestinations - 1) < RunEvents.WarpEventId(0),
             "flags in the reset-on-load range, events clear of the per-map warps");
@@ -80,11 +84,11 @@ public static partial class MapPortChecks
     {
         var sorted = BonfireTravel.Sort(TravelSample());
         var areas = BonfireTravel.Areas(sorted);
-        var texts = new BonfireTravel.Texts(1, 2, 3, [.. areas.Select((_, i) => 10 + i)], [.. sorted.Select(d => 100 + d.Index)]);
+        var texts = new BonfireTravel.Texts(1, 2, 3, [.. areas.Select((_, i) => 10 + i)], [.. sorted.Select(d => 100 + d.Index)], 4);
         var esd = GraceMenu();
         int added = BonfireTravel.AddTo(esd, sorted, texts, RunEvents.LeaveDs3Request);
         esd = ESD.Read(esd.Write());
-        Expect(added == areas.Count + 1 && esd.StateGroups.Count == 1 + added, $"{added} lists added, {esd.StateGroups.Count} groups");
+        Expect(added == areas.Count + 2 && esd.StateGroups.Count == 1 + added, $"{added} lists added, {esd.StateGroups.Count} groups");
         var main = esd.StateGroups[0x7FFFFFF0];
         var list = main[2].EntryCommands.Where(c => c.CommandBank == 1 && c.CommandID == 19).Select(c => TalkPort.Parse(c.Arguments[0])).ToList();
         Expect(list.Count == 4, $"main list has {list.Count} entries");
@@ -108,12 +112,51 @@ public static partial class MapPortChecks
         var high = esd.StateGroups.Values.First(g => g.Values.Any(s => s.EntryCommands.Any(c => c.CommandBank == 1 && c.CommandID == 11
             && c.Arguments[0].SequenceEqual(Num(BonfireTravel.RequestFlag(3))))));
         var adds = high.Values.SelectMany(s => s.EntryCommands).Where(c => c.CommandBank == 5 && c.CommandID == 19).ToList();
+        // Picking Knight's Rest turns its picture on and asks "Travel here" (the confirm group); yes turns it off and asks for the warp.
+        var confirm = esd.StateGroups.Single(g => g.Value.Values.Any(s => s.EntryCommands.Any(c => c.CommandBank == 1 && c.CommandID == 19
+            && c.Arguments[1].SequenceEqual(Num(4))))).Key;
+        var ask = high.Values.Single(s => s.EntryCommands.Any(c => c.CommandBank == 1 && c.CommandID == 11 && c.Arguments[0].SequenceEqual(Num(BonfireTravel.PreviewFlag(3)))
+            && c.Arguments[1].SequenceEqual(Num(1))));
+        Expect(ask.EntryCommands.Any(c => c.CommandBank == 6 && c.CommandID == confirm) && ask.Conditions.Count == 2, "the pick shows the picture and calls Travel here");
+        var go = high[ask.Conditions[0].Subconditions[0].TargetState!.Value];
+        Expect(go.EntryCommands.Any(c => c.CommandBank == 1 && c.CommandID == 11 && c.Arguments[0].SequenceEqual(Num(BonfireTravel.PreviewFlag(3))) && c.Arguments[1].SequenceEqual(Num(0)))
+               && go.EntryCommands.Any(c => c.CommandBank == 1 && c.CommandID == 11 && c.Arguments[0].SequenceEqual(Num(BonfireTravel.RequestFlag(3)))),
+            "Travel here turns the picture off and asks for the warp");
+        Expect(ask.Conditions[1].Subconditions[0].TargetState == 1, "Back rebuilds the area's list (which turns its pictures off)");
         Expect(adds.Count == 2 && TalkPort.Parse(adds[1].Arguments[0]).SelectMany(n => new[] { n }).Any()
                && System.Convert.ToHexString(adds[1].Arguments[0]).Contains(System.Convert.ToHexString(BitConverter.GetBytes(45010005))), "Knight's Rest shows once its lit flag is on");
         bool threw = false;
         try { BonfireTravel.AddTo(new ESD(true, 3) { StateGroups = new() { [1] = new() { [0] = new ESD.State() } } }, sorted, texts, 1); }
         catch (InvalidDataException) { threw = true; }
         Expect(threw, "a script laid out another way is refused (the bonfires keep the plain grace menu)");
+    }
+
+    private static void BonfireTravelPictures()
+    {
+        Expect(BonfireImages.PictureOf("MENU_MapImage_10011") == 10011 && BonfireImages.PictureOf("mapimage_10011.dds") == 10011
+               && BonfireImages.PictureOf("MENU_Frame") is null, "picture numbers from texture names");
+        var rgba = new byte[1300 * 4 * 2];
+        for (int i = 0; i < rgba.Length; i++)
+            rgba[i] = (byte)(i % 4 == 3 ? 255 : 100);
+        var (w, h, px) = BonfireImages.Shrink(1300, 2, rgba);
+        Expect(w == 650 && h == 1 && px.Length == 650 * 4 && px[0] == 100 && px[3] == 255, $"halved to {w}x{h}");
+        var back = BonfireImages.Unpack(BonfireImages.Pack(w, h, px));
+        Expect(back.Width == 650 && back.Height == 1 && back.Rgba.SequenceEqual(px), "DKIM round trip");
+        // A real DDS (BCnEncoder's own BC1) decodes to RGBA.
+        var encoder = new BCnEncoder.Encoder.BcEncoder(BCnEncoder.Shared.CompressionFormat.Bc1);
+        encoder.OutputOptions.GenerateMipMaps = false;
+        encoder.OutputOptions.FileFormat = BCnEncoder.Shared.OutputFileFormat.Dds;
+        var red = new byte[8 * 4 * 4];
+        for (int i = 0; i < red.Length; i += 4) { red[i] = 255; red[i + 3] = 255; }
+        var dds = encoder.EncodeToDds(red, 8, 4, BCnEncoder.Encoder.PixelFormat.Rgba32);
+        using var ms = new MemoryStream();
+        dds.Write(ms);
+        var decoded = BonfireImages.Decode(ms.ToArray());
+        Expect(decoded.Width == 8 && decoded.Height == 4 && decoded.Rgba[0] > 240 && decoded.Rgba[1] < 16, $"decoded {decoded.Width}x{decoded.Height} r{decoded.Rgba[0]} g{decoded.Rgba[1]}");
+        var sorted = BonfireTravel.Sort(TravelSample().Select(d => d.Name == "Knight's Rest" ? d with { Picture = 10011 } : d));
+        var lines = BonfireTravel.ListLines(sorted, new Dictionary<int, string> { [10011] = "darksign_bonfires/10011.dkimg" }).ToList();
+        Expect(lines.Count == 6 && lines[0].StartsWith('#') && lines[4] == $"{BonfireTravel.PreviewFlag(3)}\tHigh Wall of Lothric\tKnight's Rest\tdarksign_bonfires/10011.dkimg"
+               && lines[1].EndsWith('\t'), "list: " + string.Join(" | ", lines));
     }
 
     private static void BonfireFireEvents()

@@ -249,6 +249,18 @@ void request_flag(uint32_t flag, const char *done)
 
 void draw_pending();
 
+void draw_boss_fight(const BossArena &b)
+{
+    ImGui::BulletText("%s  (%s)", b.boss.c_str(), b.map.c_str());
+    ImGui::SameLine();
+    ImGui::PushID((int)b.warp_flag);
+    if (ImGui::SmallButton("Fight")) {
+        dks_log("bosses: warp to %s in %s (%s as %s), request flag %u", b.boss.c_str(), b.map.c_str(), b.ds3.c_str(), b.er.c_str(), b.warp_flag);
+        request_flag(b.warp_flag, "Warping to the boss arena...");
+    }
+    ImGui::PopID();
+}
+
 void draw_ds3_run()
 {
     if (!g_maps_loaded)
@@ -267,33 +279,48 @@ void draw_ds3_run()
     if (g_maps.empty())
         ImGui::TextWrapped("No Dark Souls III maps are ported yet. Press Rebuild content in the launcher, then restart the game.");
     else {
-        ImGui::TextUnformatted("Ported Dark Souls III maps:");
-        for (const PortedMap &m : g_maps)
-        {
-            ImGui::BulletText("%s  (%s, in Elden Ring's %s slot)", m.name.c_str(), m.ds3.c_str(), m.er.c_str());
-            if (m.warp_flag) {
-                ImGui::SameLine();
-                ImGui::PushID(m.er.c_str());
-                if (ImGui::SmallButton("Warp here"))
-                    request_flag(m.warp_flag, "Warping...");
-                ImGui::PopID();
-            }
-        }
-    }
-    if (!g_bosses.empty()) {
-        ImGui::Spacing();
-        ImGui::TextUnformatted("Boss fights (resets the fight and starts it from the first phase):");
-        for (const BossArena &b : g_bosses) {
-            ImGui::BulletText("%s  (%s)", b.boss.c_str(), b.map.c_str());
-            ImGui::SameLine();
-            ImGui::PushID((int)b.warp_flag);
-            if (ImGui::SmallButton("Fight")) {
-                dks_log("bosses: warp to %s in %s (%s as %s), request flag %u", b.boss.c_str(), b.map.c_str(), b.ds3.c_str(), b.er.c_str(), b.warp_flag);
-                request_flag(b.warp_flag, "Warping to the boss arena...");
+        // One heading per ported map (area), its warp and its boss fights inside, so the list stays short.
+        ImGui::TextUnformatted("Ported Dark Souls III maps (open an area for its warp and boss fights):");
+        for (const PortedMap &m : g_maps) {
+            ImGui::PushID(m.er.c_str());
+            int fights = 0;
+            for (const BossArena &b : g_bosses)
+                fights += b.er == m.er;
+            char heading[300];
+            snprintf(heading, sizeof heading, fights ? "%s  (%d boss fight%s)###area" : "%s###area", m.name.c_str(), fights, fights == 1 ? "" : "s");
+            if (ImGui::CollapsingHeader(heading)) {
+                ImGui::Indent();
+                ImGui::TextDisabled("%s, in Elden Ring's %s slot", m.ds3.c_str(), m.er.c_str());
+                if (m.warp_flag) {
+                    ImGui::SameLine();
+                    if (ImGui::SmallButton("Warp here"))
+                        request_flag(m.warp_flag, "Warping...");
+                }
+                for (const BossArena &b : g_bosses)
+                    if (b.er == m.er)
+                        draw_boss_fight(b);
+                ImGui::Unindent();
             }
             ImGui::PopID();
         }
     }
+    // Fights whose map isn't in the map list (lists from an older rebuild) keep a list of their own.
+    bool others = false;
+    for (const BossArena &b : g_bosses) {
+        bool listed = false;
+        for (const PortedMap &m : g_maps)
+            listed |= m.er == b.er;
+        if (!listed) {
+            if (!others) {
+                ImGui::Spacing();
+                ImGui::TextUnformatted("Other boss fights:");
+                others = true;
+            }
+            draw_boss_fight(b);
+        }
+    }
+    if (!g_bosses.empty())
+        ImGui::TextDisabled("A boss fight resets the fight and starts it from the first phase.");
     ImGui::Spacing();
     ImGui::BeginDisabled(!start);
     if (ImGui::Button("Start DS3 run at the Cemetery of Ash", ImVec2(-1, 0)))
@@ -946,6 +973,257 @@ bool create_targets(IDXGISwapChain3 *swap_chain)
     return true;
 }
 
+// ---- the bonfire picture: DS3's warp-menu picture beside the bonfire menu's "Travel here" ----
+// darksign_bonfires.tsv in the mod folder (BonfireTravel in the porter): "preview flag<TAB>area<TAB>bonfire<TAB>picture
+// file", the picture a DKIM file (BonfireImages: "DKIM", width, height, RGBA rows). The bonfire menu's talk script
+// turns a bonfire's preview flag on while its "Travel here" list is open; this draws the picture while the flag is on.
+// It takes no input, so the game's menu keeps the controls. A flag still on after two minutes (the talk was cut off
+// by a hit, say) is turned off here.
+struct BonfirePicture {
+    uint32_t flag;
+    std::string area, name;
+    std::wstring file; // empty: no picture, the card shows the names only
+};
+std::vector<BonfirePicture> g_pictures;
+bool g_pictures_loaded;
+int g_preview = -1;             // the bonfire whose picture shows, or -1
+ULONGLONG g_preview_since, g_preview_checked;
+ID3D12Resource *g_picture_tex;  // the picture in SRV slot 1 (slot 0 is ImGui's font)
+int g_picture_for = -1, g_picture_w, g_picture_h;
+ID3D12CommandAllocator *g_upload_allocator;
+ID3D12GraphicsCommandList *g_upload_list;
+const ULONGLONG PREVIEW_TIMEOUT_MS = 120000;
+
+void load_pictures()
+{
+    g_pictures_loaded = true;
+    wchar_t mod[MAX_PATH];
+    DWORD n = GetEnvironmentVariableW(L"DKSIGN_MOD_DIR", mod, MAX_PATH);
+    if (!n || n >= MAX_PATH - 40)
+        return;
+    std::wstring dir(mod);
+    FILE *f = _wfopen((dir + L"\\darksign_bonfires.tsv").c_str(), L"rb");
+    if (!f) {
+        dks_log("bonfires: no darksign_bonfires.tsv; no bonfire pictures");
+        return;
+    }
+    char line[1024];
+    int with_file = 0;
+    while (fgets(line, sizeof line, f)) {
+        line[strcspn(line, "\r\n")] = 0;
+        if (line[0] == '#')
+            continue;
+        char *cols[4] = {line, nullptr, nullptr, nullptr};
+        int c = 1;
+        for (char *p = line; *p && c < 4; ++p)
+            if (*p == '\t') {
+                *p = 0;
+                cols[c++] = p + 1;
+            }
+        if (c < 3)
+            continue;
+        BonfirePicture b{(uint32_t)strtoul(cols[0], nullptr, 10), cols[1], cols[2], L""};
+        if (c == 4 && cols[3][0]) {
+            wchar_t rel[MAX_PATH];
+            int len = MultiByteToWideChar(CP_UTF8, 0, cols[3], -1, rel, MAX_PATH);
+            if (len > 0) {
+                for (wchar_t *p = rel; *p; ++p)
+                    if (*p == L'/')
+                        *p = L'\\';
+                b.file = dir + L"\\" + rel;
+                with_file++;
+            }
+        }
+        if (b.flag)
+            g_pictures.push_back(b);
+    }
+    fclose(f);
+    dks_log("bonfires: %d bonfires in the travel menu, %d with a picture", (int)g_pictures.size(), with_file);
+}
+
+// Which bonfire's preview flag is on (checked a few times a second; the flags are read like the F1 menu reads them).
+void update_preview()
+{
+    if (!g_pictures_loaded)
+        load_pictures();
+    if (g_pictures.empty())
+        return;
+    ULONGLONG now = GetTickCount64();
+    if (now - g_preview_checked < 150)
+        return;
+    g_preview_checked = now;
+    if (g_preview >= 0) {
+        const BonfirePicture &b = g_pictures[g_preview];
+        if (dks_get_event_flag(b.flag) == 1) {
+            if (now - g_preview_since > PREVIEW_TIMEOUT_MS) {
+                dks_set_event_flag(b.flag, 0);
+                dks_log("bonfires: preview flag %u still on after %llu s; turned it off", b.flag, PREVIEW_TIMEOUT_MS / 1000);
+                g_preview = -1;
+            }
+            return;
+        }
+        g_preview = -1;
+    }
+    for (size_t i = 0; i < g_pictures.size(); i++)
+        if (dks_get_event_flag(g_pictures[i].flag) == 1) {
+            g_preview = (int)i;
+            g_preview_since = now;
+            dks_log("bonfires: showing %s (%s)", g_pictures[i].name.c_str(), g_pictures[i].area.c_str());
+            return;
+        }
+}
+
+void release_picture()
+{
+    if (g_picture_tex) {
+        wait_for(g_fence_value);
+        g_picture_tex->Release();
+        g_picture_tex = nullptr;
+    }
+    g_picture_for = -1;
+}
+
+// Reads a DKIM file and uploads it into SRV slot 1. False (logged once per bonfire) when it can't.
+bool upload_picture(int index)
+{
+    release_picture();
+    g_picture_for = index;
+    const std::wstring &path = g_pictures[index].file;
+    if (path.empty())
+        return false;
+    FILE *f = _wfopen(path.c_str(), L"rb");
+    if (!f) {
+        dks_log("bonfires: picture file for %s is missing", g_pictures[index].name.c_str());
+        return false;
+    }
+    char magic[4];
+    int32_t size[2];
+    std::vector<unsigned char> rgba;
+    bool ok = fread(magic, 1, 4, f) == 4 && memcmp(magic, "DKIM", 4) == 0 && fread(size, 4, 2, f) == 2 && size[0] > 0 && size[1] > 0 &&
+              size[0] <= 4096 && size[1] <= 4096;
+    if (ok) {
+        rgba.resize((size_t)size[0] * size[1] * 4);
+        ok = fread(rgba.data(), 1, rgba.size(), f) == rgba.size();
+    }
+    fclose(f);
+    if (!ok) {
+        dks_log("bonfires: picture file for %s is not a DKIM picture", g_pictures[index].name.c_str());
+        return false;
+    }
+    UINT w = (UINT)size[0], h = (UINT)size[1], pitch = (w * 4 + D3D12_TEXTURE_DATA_PITCH_ALIGNMENT - 1) & ~(D3D12_TEXTURE_DATA_PITCH_ALIGNMENT - 1);
+
+    if (!g_upload_allocator &&
+        (FAILED(g_device->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT, IID_PPV_ARGS(&g_upload_allocator))) ||
+         FAILED(g_device->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, g_upload_allocator, nullptr, IID_PPV_ARGS(&g_upload_list))) ||
+         FAILED(g_upload_list->Close()))) {
+        dks_log("bonfires: could not set up picture uploads");
+        return false;
+    }
+
+    D3D12_HEAP_PROPERTIES heap = {};
+    heap.Type = D3D12_HEAP_TYPE_DEFAULT;
+    D3D12_RESOURCE_DESC desc = {};
+    desc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
+    desc.Width = w;
+    desc.Height = h;
+    desc.DepthOrArraySize = 1;
+    desc.MipLevels = 1;
+    desc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+    desc.SampleDesc.Count = 1;
+    desc.Layout = D3D12_TEXTURE_LAYOUT_UNKNOWN;
+    ID3D12Resource *tex = nullptr, *upload = nullptr;
+    if (FAILED(g_device->CreateCommittedResource(&heap, D3D12_HEAP_FLAG_NONE, &desc, D3D12_RESOURCE_STATE_COPY_DEST, nullptr, IID_PPV_ARGS(&tex))))
+        return false;
+    heap.Type = D3D12_HEAP_TYPE_UPLOAD;
+    D3D12_RESOURCE_DESC buffer = {};
+    buffer.Dimension = D3D12_RESOURCE_DIMENSION_BUFFER;
+    buffer.Width = (UINT64)pitch * h;
+    buffer.Height = 1;
+    buffer.DepthOrArraySize = 1;
+    buffer.MipLevels = 1;
+    buffer.Format = DXGI_FORMAT_UNKNOWN;
+    buffer.SampleDesc.Count = 1;
+    buffer.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
+    void *mapped = nullptr;
+    D3D12_RANGE none = {0, 0};
+    if (FAILED(g_device->CreateCommittedResource(&heap, D3D12_HEAP_FLAG_NONE, &buffer, D3D12_RESOURCE_STATE_GENERIC_READ, nullptr, IID_PPV_ARGS(&upload))) ||
+        FAILED(upload->Map(0, &none, &mapped))) {
+        if (upload)
+            upload->Release();
+        tex->Release();
+        return false;
+    }
+    for (UINT y = 0; y < h; y++)
+        memcpy((unsigned char *)mapped + (size_t)y * pitch, rgba.data() + (size_t)y * w * 4, (size_t)w * 4);
+    upload->Unmap(0, nullptr);
+
+    g_upload_allocator->Reset();
+    g_upload_list->Reset(g_upload_allocator, nullptr);
+    D3D12_TEXTURE_COPY_LOCATION src = {}, dst = {};
+    src.pResource = upload;
+    src.Type = D3D12_TEXTURE_COPY_TYPE_PLACED_FOOTPRINT;
+    src.PlacedFootprint.Footprint.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+    src.PlacedFootprint.Footprint.Width = w;
+    src.PlacedFootprint.Footprint.Height = h;
+    src.PlacedFootprint.Footprint.Depth = 1;
+    src.PlacedFootprint.Footprint.RowPitch = pitch;
+    dst.pResource = tex;
+    dst.Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX;
+    dst.SubresourceIndex = 0;
+    g_upload_list->CopyTextureRegion(&dst, 0, 0, 0, &src, nullptr);
+    D3D12_RESOURCE_BARRIER barrier = {};
+    barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+    barrier.Transition.pResource = tex;
+    barrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
+    barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_COPY_DEST;
+    barrier.Transition.StateAfter = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
+    g_upload_list->ResourceBarrier(1, &barrier);
+    g_upload_list->Close();
+    ID3D12CommandList *lists[] = {g_upload_list};
+    o_execute(g_queue, 1, lists);
+    g_queue->Signal(g_fence, ++g_fence_value);
+    wait_for(g_fence_value);
+    upload->Release();
+
+    D3D12_SHADER_RESOURCE_VIEW_DESC view = {};
+    view.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+    view.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
+    view.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+    view.Texture2D.MipLevels = 1;
+    D3D12_CPU_DESCRIPTOR_HANDLE cpu = g_srv_heap->GetCPUDescriptorHandleForHeapStart();
+    cpu.ptr += g_device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+    g_device->CreateShaderResourceView(tex, &view, cpu);
+    g_picture_tex = tex;
+    g_picture_w = (int)w;
+    g_picture_h = (int)h;
+    dks_log("bonfires: picture for %s loaded (%ux%u)", g_pictures[index].name.c_str(), w, h);
+    return true;
+}
+
+// A card on the right of the screen, where DS3's warp menu shows its picture: area, bonfire, picture.
+void draw_preview()
+{
+    if (g_picture_for != g_preview)
+        upload_picture(g_preview);
+    const BonfirePicture &b = g_pictures[g_preview];
+    ImGuiIO &io = ImGui::GetIO();
+    float width = io.DisplaySize.x * 0.34f;
+    ImGui::SetNextWindowPos(ImVec2(io.DisplaySize.x * 0.95f, io.DisplaySize.y * 0.48f), ImGuiCond_Always, ImVec2(1.0f, 0.5f));
+    ImGui::SetNextWindowBgAlpha(0.82f);
+    ImGuiWindowFlags flags = ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoInputs | ImGuiWindowFlags_NoNav | ImGuiWindowFlags_NoSavedSettings |
+                             ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoFocusOnAppearing;
+    if (ImGui::Begin("##bonfire_picture", nullptr, flags)) {
+        ImGui::TextDisabled("%s", b.area.c_str());
+        ImGui::TextUnformatted(b.name.c_str());
+        if (g_picture_tex && g_picture_w > 0) {
+            D3D12_GPU_DESCRIPTOR_HANDLE gpu = g_srv_heap->GetGPUDescriptorHandleForHeapStart();
+            gpu.ptr += g_device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+            ImGui::Image((ImTextureID)gpu.ptr, ImVec2(width, width * g_picture_h / g_picture_w));
+        }
+    }
+    ImGui::End();
+}
+
 bool init(IDXGISwapChain3 *swap_chain)
 {
     if (FAILED(swap_chain->GetDevice(IID_PPV_ARGS(&g_device))))
@@ -954,7 +1232,8 @@ bool init(IDXGISwapChain3 *swap_chain)
     swap_chain->GetDesc(&desc);
     g_hwnd = desc.OutputWindow;
 
-    D3D12_DESCRIPTOR_HEAP_DESC srv = {D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV, 1, D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE, 0};
+    // Slot 0: ImGui's font. Slot 1: the bonfire picture.
+    D3D12_DESCRIPTOR_HEAP_DESC srv = {D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV, 2, D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE, 0};
     if (FAILED(g_device->CreateDescriptorHeap(&srv, IID_PPV_ARGS(&g_srv_heap))) ||
         FAILED(g_device->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&g_fence))) || !create_targets(swap_chain) ||
         FAILED(g_device->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, g_frames[0].allocator, nullptr, IID_PPV_ARGS(&g_list))))
@@ -1025,7 +1304,8 @@ void render(IDXGISwapChain3 *swap_chain)
     dks_god_update();   // god mode stays on while the menu is closed
     // Fly keys count while the game has focus and the menu isn't taking the keyboard (a text box, a list).
     dks_fly_update(GetForegroundWindow() == g_hwnd && (!g_open || !ImGui::GetIO().WantCaptureKeyboard));
-    if (!g_open) {
+    update_preview();
+    if (!g_open && g_preview < 0) {
         // Hold no back-buffer references while the menu is closed: a ResizeBuffers(1) the hooks miss (another overlay's
         // hook in front of ours, Alt+Enter) would otherwise fail with DXGI_ERROR_INVALID_CALL and take the game down.
         if (g_targets_ready)
@@ -1040,7 +1320,10 @@ void render(IDXGISwapChain3 *swap_chain)
     ImGui_ImplWin32_NewFrame();
     t_in_overlay = false;
     ImGui::NewFrame();
-    draw_menu();
+    if (g_open)
+        draw_menu();
+    if (g_preview >= 0)
+        draw_preview();
     ImGui::Render();
 
     Frame &frame = g_frames[swap_chain->GetCurrentBackBufferIndex()];

@@ -16,6 +16,11 @@ namespace DarkSign.Porter.Maps;
 /// bonfire once it is lit (the lit flag "Register Bonfire" sets), as in DS3.</item>
 /// <item>"Return to the Lands Between": sets the F1 menu's leave request (<see cref="RunEvents.LeaveDs3Request"/>).</item>
 /// </list>
+/// Picking a bonfire opens one more small list, "Travel here" / "Back", and turns on the bonfire's preview flag
+/// (<see cref="PreviewFlag"/>) while it is open: the test menu DLL (loaded in every run) draws DS3's own picture of
+/// that bonfire beside the list, the way DS3's warp menu shows one (<see cref="BonfireImages"/>, darksign_bonfires.tsv).
+/// A talk menu can't draw a picture or tell which entry is under the cursor, so the picture comes with the pick, not
+/// with the hover.
 /// A talk script can't warp, so picking a bonfire sets a request flag and an event in common.emevd warps to the
 /// bonfire's standing point, the way the F1 menu's warps work (<see cref="RunEvents"/>).
 /// <para>
@@ -39,6 +44,9 @@ public static class BonfireTravel
     public const int MaxDestinations = 90;
     public static uint RequestFlag(int index) => RunEvents.FlagBlock + 2110 + (uint)index;
     public static uint EventId(int index) => RunEvents.FlagBlock + 1110 + (uint)index;
+    /// <summary>On while a bonfire's "Travel here" list is open (2000-2999: reset on load). The DLL shows its picture.</summary>
+    public static uint PreviewFlag(int index) => RunEvents.FlagBlock + 2000 + (uint)index;
+    public const string ListFile = "darksign_bonfires.tsv";
     public static bool IsTravelEvent(long id) => id >= RunEvents.FlagBlock + 1110 && id < RunEvents.FlagBlock + 1110 + MaxDestinations;
 
     /// <summary>Entry numbers in the main list (Elden Ring's use 1-15, 32, 41, 50, 75 and 99).</summary>
@@ -50,10 +58,12 @@ public static class BonfireTravel
     public sealed record Destination(MapId Er, int Number, string Name, string Area, int List, int Order, uint LitFlag, uint Point)
     {
         public int Index { get; init; }
+        /// <summary>DS3's BonfireWarpParam PictureId, -1 for none.</summary>
+        public int Picture { get; init; } = -1;
     }
 
-    /// <summary>The text numbers of the menu: travel, return, back, then one per area and one per destination.</summary>
-    public sealed record Texts(int Travel, int Return, int Back, IReadOnlyList<int> Areas, IReadOnlyList<int> Bonfires);
+    /// <summary>The text numbers of the menu: travel, return, back, then one per area and one per destination, and "Travel here".</summary>
+    public sealed record Texts(int Travel, int Return, int Back, IReadOnlyList<int> Areas, IReadOnlyList<int> Bonfires, int Confirm);
 
     /// <summary>DS3's order: tabs by ListId, a tab's bonfires by row; unlisted ones (99) last, by map.</summary>
     public static List<Destination> Sort(IEnumerable<Destination> all) =>
@@ -91,6 +101,7 @@ public static class BonfireTravel
     private static ESD.CommandCall Add(int entry, int text) => new(1, 19, Number(entry), Number(text), Number(-1));
     private static ESD.CommandCall AddIf(Node condition, int entry, int text) => new(5, 19, End(condition), Number(entry), Number(text), Number(-1));
     private static ESD.CommandCall SetFlag(uint flag) => new(1, 11, Number(flag), Number(1));
+    private static ESD.CommandCall FlagOff(uint flag) => new(1, 11, Number(flag), Number(0));
     private static ESD.CommandCall Call(long group) => new(6, (int)group);
 
     private static ESD.State Goto(long target, params ESD.CommandCall[] entry)
@@ -137,7 +148,12 @@ public static class BonfireTravel
     /// state and returns what it says; anything else returns 0.
     /// </summary>
     private static Dictionary<long, ESD.State> Menu(SubMenu like, IReadOnlyList<ESD.CommandCall> entries, int back,
-        IReadOnlyList<(int Entry, Func<long, long, long, ESD.State> State)> onPick)
+        IReadOnlyList<(int Entry, Func<long, long, long, ESD.State> State)> onPick) =>
+        Menu(like, entries, back, [.. onPick.Select(p => (p.Entry, (Func<long, long, long, Func<ESD.State, long>, ESD.State>)((l, c, ch, _) => p.State(l, c, ch))))]);
+
+    /// <summary>As above; a pick's state can add states of its own (the last argument adds one and returns its number).</summary>
+    private static Dictionary<long, ESD.State> Menu(SubMenu like, IReadOnlyList<ESD.CommandCall> entries, int back,
+        IReadOnlyList<(int Entry, Func<long, long, long, Func<ESD.State, long>, ESD.State> State)> onPick)
     {
         // 0 start, 1 clear, 2 list, 3 show and wait, 4 pick, 5 return 0, 6 return 1, 7+ one per entry.
         const long Clear = 1, List = 2, Show = 3, Pick = 4, Cancelled = 5, Chosen = 6;
@@ -149,10 +165,12 @@ public static class BonfireTravel
         show.Conditions.Add(new ESD.Condition(Pick, (byte[])like.Wait.Clone()));
         g[Show] = show;
         var pick = new ESD.State();
+        long next = 7 + onPick.Count;
+        long AddState(ESD.State s) { g[next] = s; return next++; }
         for (int i = 0; i < onPick.Count; i++)
         {
             pick.Conditions.Add(new ESD.Condition(7 + i, i == 0 ? PickedFirst(onPick[i].Entry) : Picked(onPick[i].Entry)));
-            g[7 + i] = onPick[i].State(List, Cancelled, Chosen);
+            g[7 + i] = onPick[i].State(List, Cancelled, Chosen, AddState);
         }
         pick.Conditions.Add(new ESD.Condition(Cancelled, Always));
         g[Pick] = pick;
@@ -199,12 +217,29 @@ public static class BonfireTravel
         var areas = Areas(sorted);
         long nextGroup = esd.StateGroups.Keys.Where(k => k > 0x7000_0000).DefaultIfEmpty(0x7FFF_FFFF).Min() - 1;
 
-        // One list per area: its lit bonfires; picking one asks for the warp and says so (returns 1).
+        // "Travel here" / "Back": returns 1 for travel, 0 for back or a closed menu.
+        long confirmGroup = nextGroup--;
+        esd.StateGroups[confirmGroup] = Menu(like, [Add(1, texts.Confirm)], texts.Back,
+            [(1, (Func<long, long, long, ESD.State>)((_, _, chosen) => Goto(chosen)))]);
+
+        // One list per area: its lit bonfires. Picking one shows its picture (preview flag on) and asks "Travel here";
+        // yes asks for the warp and says so (returns 1), back comes back to this list. Showing the list turns every
+        // preview of the area off, so a picture never outlives its question.
         var areaGroups = new List<long>();
         foreach (var (_, bonfires) in areas)
         {
-            var entries = bonfires.Select((d, i) => AddIf(FlagOn(d.LitFlag), i + 1, texts.Bonfires[d.Index])).ToList();
-            var picks = bonfires.Select((d, i) => (i + 1, (Func<long, long, long, ESD.State>)((_, _, chosen) => Goto(chosen, SetFlag(RequestFlag(d.Index)))))).ToList();
+            var entries = bonfires.Select(d => FlagOff(PreviewFlag(d.Index)))
+                .Concat(bonfires.Select((d, i) => AddIf(FlagOn(d.LitFlag), i + 1, texts.Bonfires[d.Index]))).ToList();
+            var picks = bonfires.Select((d, i) => (i + 1, (Func<long, long, long, Func<ESD.State, long>, ESD.State>)((_, _, chosen, addState) =>
+            {
+                long go = addState(Goto(chosen, FlagOff(PreviewFlag(d.Index)), SetFlag(RequestFlag(d.Index))));
+                var s = new ESD.State();
+                s.EntryCommands.Add(SetFlag(PreviewFlag(d.Index)));
+                s.EntryCommands.Add(Call(confirmGroup));
+                s.Conditions.Add(After(Returned(1), go));
+                s.Conditions.Add(After(Returned(0), 1));   // back: this list, cleared and built again
+                return s;
+            }))).ToList();
             esd.StateGroups[nextGroup] = Menu(like, entries, texts.Back, picks);
             areaGroups.Add(nextGroup--);
         }
@@ -240,7 +275,7 @@ public static class BonfireTravel
         main[returnState] = Goto(away, SetFlag(leaveFlag));
         pick.Conditions.Insert(pick.Conditions.Count - 1, new ESD.Condition(travelState, Picked(TravelEntry)));
         pick.Conditions.Insert(pick.Conditions.Count - 1, new ESD.Condition(returnState, Picked(ReturnEntry)));
-        return areaGroups.Count + 1;
+        return areaGroups.Count + 2;
     }
 
     // ---- Events ----
@@ -261,6 +296,7 @@ public static class BonfireTravel
             var e = new EMEVD.Event(EventId(d.Index), EMEVD.Event.RestBehaviorType.Default);
             e.Instructions.Add(RunEvents.Make(1003, 0, (byte)1, (byte)0, RequestFlag(d.Index)));                 // wait for the flag
             e.Instructions.Add(RunEvents.Make(2003, 66, (byte)0, RequestFlag(d.Index), (byte)0));                // flag off
+            e.Instructions.Add(RunEvents.Make(2003, 66, (byte)0, PreviewFlag(d.Index), (byte)0));                // picture off
             e.Instructions.Add(RunEvents.Make(2003, 66, (byte)0, RunEvents.Ds3RunActive, (byte)1));
             e.Instructions.Add(RunEvents.Make(2003, 14, (byte)d.Er.Area, (byte)d.Er.Block, (byte)d.Er.Region, (byte)d.Er.Index, d.Point, 0));
             e.Instructions.Add(RunEvents.Make(1001, 0, 1f));
@@ -286,14 +322,14 @@ public static class BonfireTravel
         throw new InvalidDataException("no free run of text numbers for the travel menu");
     }
 
-    public const string TravelText = "Travel", ReturnText = "Return to the Lands Between", BackText = "Back";
+    public const string TravelText = "Travel", ReturnText = "Return to the Lands Between", BackText = "Back", ConfirmText = "Travel here";
 
     /// <summary>
     /// Writes the menu script into every slot's talk binder that has bonfires, its text, and the warp events.
     /// <paramref name="all"/>: every slot's bonfires (unsorted). Returns the report line; throws when Elden Ring's
     /// script can't be edited (the caller keeps the plain grace menu then).
     /// </summary>
-    public static string Write(PorterContext ctx, GameArchives er, IEnumerable<Destination> all)
+    public static string Write(PorterContext ctx, GameArchives er, IEnumerable<Destination> all, GameArchives? ds3 = null)
     {
         var sorted = Sort(all);
         var areas = Areas(sorted);
@@ -310,8 +346,9 @@ public static class BonfireTravel
         int textBase = TextBaseIn(eventText, TravelText);
         eventText.Entries.RemoveAll(e => e.ID >= textBase && e.ID < textBase + 1000);
         var texts = new Texts(textBase, textBase + 1, textBase + 2,
-            [.. areas.Select((_, i) => textBase + 10 + i)], [.. sorted.Select(d => textBase + 100 + d.Index)]);
+            [.. areas.Select((_, i) => textBase + 10 + i)], [.. sorted.Select(d => textBase + 100 + d.Index)], textBase + 3);
         eventText.Entries.Add(new FMG.Entry(texts.Travel, TravelText));
+        eventText.Entries.Add(new FMG.Entry(texts.Confirm, ConfirmText));
         eventText.Entries.Add(new FMG.Entry(texts.Return, ReturnText));
         eventText.Entries.Add(new FMG.Entry(texts.Back, BackText));
         for (int i = 0; i < areas.Count; i++)
@@ -358,9 +395,27 @@ public static class BonfireTravel
         Directory.CreateDirectory(Path.GetDirectoryName(modMenuPath)!);
         File.WriteAllBytes(modMenuPath, DCX.Compress(menu.Write(), menuCompression));
 
+        // The pictures and the list the DLL reads. A picture that can't be made leaves its bonfire without one.
+        string pictures;
+        Dictionary<int, string> images = [];
+        try { (images, pictures) = BonfireImages.Write(ctx, ds3, sorted.Select(d => d.Picture)); }
+        catch (Exception ex) when (ex is not OutOfMemoryException) { pictures = $"no pictures ({ex.GetType().Name}: {ex.Message})"; }
+        File.WriteAllLines(ctx.ModPath(ListFile), ListLines(sorted, images));
+
         return $"bonfire travel: the bonfire menu (t{TalkId}, in {binders} talk binders) lists {sorted.Count} bonfires in {areas.Count} areas ("
                + string.Join("; ", areas.Select(a => $"{a.Area}: {string.Join(", ", a.Bonfires.Select(d => d.Name))}"))
                + $"), {groups} lists added to Elden Ring's {GraceScript}; request flags {RequestFlag(0)}-{RequestFlag(Math.Max(0, sorted.Count - 1))}, "
-               + $"text {textBase}+; \"{ReturnText}\" sets the F1 menu's leave request {RunEvents.LeaveDs3Request}";
+               + $"text {textBase}+; \"{ReturnText}\" sets the F1 menu's leave request {RunEvents.LeaveDs3Request}; "
+               + $"\"{ConfirmText}\" previews {PreviewFlag(0)}-{PreviewFlag(Math.Max(0, sorted.Count - 1))}; {pictures} ({ListFile})";
     }
+
+    /// <summary>
+    /// darksign_bonfires.tsv, read by the DLL: "preview flag, area, bonfire, picture file (relative to the mod folder,
+    /// empty for none)", one line per bonfire in menu order.
+    /// </summary>
+    public static IEnumerable<string> ListLines(IReadOnlyList<Destination> sorted, IReadOnlyDictionary<int, string> images) =>
+        sorted.Select(d => string.Join('\t', PreviewFlag(d.Index).ToString(), Clean(d.Area), Clean(d.Name), images.GetValueOrDefault(d.Picture, "")))
+            .Prepend("# preview flag\tarea\tbonfire\tpicture (BonfireTravel / BonfireImages in the porter)");
+
+    private static string Clean(string text) => text.Replace('\t', ' ').Replace('\r', ' ').Replace('\n', ' ');
 }

@@ -687,6 +687,15 @@ Fallback `map-bonfires` (since 2026-11-20: A DS3's sword, B `DARKSIGN_BONFIRES=g
   (row order). Picking sets request flag 1039292110+i; common.emevd event 1039291110+i warps to the bonfire's 980+n
   point. Return sets the F1 leave request (Roundtable Hold: Elden Ring gives scripts no way to warp to the last grace
   rested at). Fallback D (`DARKSIGN_BONFIRE_TRAVEL=0`).
+- **Bonfire pictures** (`Maps/BonfireImages.cs`, 2026-11-21, not yet playtested): picking a bonfire opens "Travel
+  here" / "Back" and turns on preview flag 1039292000+i while it is open; the test menu DLL (loaded in every run)
+  draws DS3's own warp-menu picture of that bonfire on the right of the screen while the flag is on. The picture is
+  BonfireWarpParam PictureId, looked up as the texture of DS3's `menu/mapimage/NN.tpf.dcx` whose name ends in that
+  number, decoded with BCnEncoder.NET and written as `darksign_bonfires/<PictureId>.dkimg` (RGBA); the list is
+  `darksign_bonfires.tsv`. A talk menu can't show a picture or tell the DLL which entry is under the cursor, so the
+  picture comes with the pick, not the hover. Check the `bonfire travel:` port-log line ("pictures: N of M") and
+  "bonfires:" lines in dksign_testmenu.log. The F1 menu's DS3 run tab lists each ported map as its own heading with
+  its warp and boss fights inside.
 - **Fire Keeper level up** (`TalkPort.EngineFlags`): her level-up entry sets 74000135/136 and waits for 74000137/138,
   which only her DS3 character's behaviour sets; such handshake flags read as on (Firelink also has 74000391/392 and
   74000432/433). Fallback `map-people` K.
