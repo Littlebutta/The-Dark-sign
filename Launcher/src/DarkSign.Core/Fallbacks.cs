@@ -864,6 +864,8 @@ public static class Fallbacks
                 { PorterEnv = Env("DARKSIGN_ENEMY_IK", "template") },
             new("N", "The template's cloth", "As A, but a ported enemy keeps the cloth simulation of the Elden Ring enemy it is built on (DARKSIGN_ENEMY_CLOTH=template), as up to 1.0.5xx, when Pontiff Sulyvahn's right-hand cape hung stuck to his left. Without it DS3 capes and skirts follow the bones they are skinned to and don't sway. Use when a ported enemy crashes the game, T-poses or stretches since its cloth was left out.")
                 { PorterEnv = Env("DARKSIGN_ENEMY_CLOTH", "template") },
+            new("O", "DS3 see-through materials drawn solid", "As A, but DS3 character materials that DS3 blends (the Dancer's veil, ghosts, wings, C[ARSN]_al / _Add) are drawn solid (DARKSIGN_ENEMY_BLEND=0), as up to 1.0.567, when the Dancer of the Boreal Valley wore a solid white sheet. Use when a ported enemy's veil, cape or wings vanish, flicker or sort wrongly with A.")
+                { PorterEnv = Env("DARKSIGN_ENEMY_BLEND", "0") },
         ]),
         new("enemy-drops", "DS3 maps", "What ported DS3 enemies drop", Stage.Build,
             "A ported DS3 enemy drops nothing where DS3 drops something, drops the wrong item or far too often, the game crashes or hangs when a ported enemy dies, or the build's enemy params step says the drops were not ported.",
