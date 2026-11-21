@@ -38,6 +38,12 @@ public static class AnimSelfTest
             var a = RandomRotation();
             var b = RandomRotation();
             Check(Same(M(Quaternion.Concatenate(a, b)), M(a) * M(b)), "quaternions: Concatenate(a, b) is 'a then b' (M(a) * M(b))");
+            // 1.0.567: DS3's child-space flinches were written with the template's parent-space hint (the Dancer's knees).
+            Check(AnimPort.DS3BlendHint
+                  && (int)SoulsAssetPipeline.Animation.HKX.AnimationBlendHint.ADDITIVE_CHILD_SPACE == (int)HKLib.hk2018.hkaAnimationBinding.BlendHint.ADDITIVE_CHILD_SPACE
+                  && (int)SoulsAssetPipeline.Animation.HKX.AnimationBlendHint.ADDITIVE_PARENT_SPACE == (int)HKLib.hk2018.hkaAnimationBinding.BlendHint.ADDITIVE_PARENT_SPACE
+                  && (int)SoulsAssetPipeline.Animation.HKX.AnimationBlendHint.NORMAL == (int)HKLib.hk2018.hkaAnimationBinding.BlendHint.NORMAL,
+                "blend hint: converted animations take DS3's hint, and both games number the hints alike");
         }
 
         // 2. Skinning equality on a 3-bone chain whose every rest rotation differs between the two skeletons, with the
