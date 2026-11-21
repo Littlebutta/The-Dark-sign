@@ -650,6 +650,8 @@ public static class Fallbacks
                 { MapsArgs = ["--enemies", "standin"] },
             new("off", "Off (no enemies)", "The DS3 maps are empty of enemies (port-maps --enemies none), to explore them or to find out whether enemies are what breaks a map.")
                 { MapsArgs = ["--enemies", "none"] },
+            new("C", "DS3 host checks always skip", "As A, but DS3's host checks (\"skip unless this world's owner\", in front of network flag sets such as Iudex Gundyr's sword pull) always skip (DARKSIGN_HOST_CHECKS=invaders), as up to 1.0.567, when pulling the sword out of Gundyr never started his fight. Use when a boss fight, cutscene or lever misbehaves only since 1.0.568.")
+                { PorterEnv = Env("DARKSIGN_HOST_CHECKS", "invaders") },
         ]),
 
         new("map-objects", "DS3 maps", "DS3 objects in the DS3 maps", Stage.Build,

@@ -644,9 +644,14 @@ public sealed class AiPort
     private static int B(uint i) => (int)((i >> 15) & 0x1FF);
     private static int C(uint i) => (int)((i >> 6) & 0x1FF);
 
-    /// <summary>Whether a target global names the script's own side: itself, its event target or a friend (not the player).</summary>
+    /// <summary>
+    /// Whether a target global names the script's own side: itself, its event target, its team leader or a friend
+    /// (not the player). TARGET_TEAM_LEADER is the enemy a helper serves: Pontiff Sulyvahn's spirit clone
+    /// (514010, BlackOldKingPhantom_Act30-32) checks Pontiff's 5025/5026/5033/10634 that way. Up to 1.0.567 those checks
+    /// kept DS3's numbers while Pontiff's moves put on the ported rows (700,000,000 + ID), so they were never true.
+    /// </summary>
     public static bool OwnSide(string? target) =>
-        target is "TARGET_SELF" or "TARGET_EVENT" || (target?.StartsWith("TARGET_FRI", StringComparison.Ordinal) ?? false);
+        target is "TARGET_SELF" or "TARGET_EVENT" or "TARGET_TEAM_LEADER" || (target?.StartsWith("TARGET_FRI", StringComparison.Ordinal) ?? false);
 
     private enum Field { Bx, B, C }
 
@@ -654,7 +659,7 @@ public sealed class AiPort
     /// Renumbers the DS3 SpEffect IDs the chunk's scripts check on their own side to <see cref="ChrEffects.SpEffectId"/>:
     /// <list type="bullet">
     /// <item>the ID argument of <see cref="SpEffectCalls"/> (self:HasSpecialEffectId(TARGET_SELF, 5020)) when the target
-    /// is TARGET_SELF / TARGET_EVENT / TARGET_FRI*, both loaded inside the call (a global and a number constant);</item>
+    /// is TARGET_SELF / TARGET_EVENT / TARGET_TEAM_LEADER / TARGET_FRI*, both loaded inside the call (a global and a number constant);</item>
     /// <item>a number compared with <see cref="InterruptCall"/>'s result (== 13020) when the chunk observes that ID only
     /// on its own side.</item>
     /// </list>

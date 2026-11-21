@@ -200,8 +200,9 @@ public sealed class EventPort
     };
 
     // DS3 "Number of Clients of Type" (SKIP 1003[14], GOTO 1003[15], END 1003[16]): Elden Ring only counts co-op
-    // clients (1003[09], [109], [10]). Client type 0 (Co-op) becomes that; invaders (types 1 and 2) are never in a
-    // ported world, so the check is decided here with a count of 0: an unconditional skip, goto or end, or a no-op.
+    // clients (1003[09], [109], [10]). Client type 0 (Co-op) becomes that. Type 1 is the host (see HostCount), always
+    // one in a world the player owns; type 2 is never in a ported world. Those are decided here: an unconditional
+    // skip, goto or end, or a no-op.
     private static readonly Dictionary<int, (int CoopId, int AlwaysId)> ClientChecks = new()
     {
         [14] = (9, 3), [15] = (109, 103), [16] = (10, 4),
@@ -881,6 +882,22 @@ public sealed class EventPort
     }
 
     /// <summary>
+    /// How many clients of DS3's client type 1 a ported world has: 1, the player who owns it (the host).
+    /// <para>
+    /// darkscript3's DS3 definitions call type 1 "Invader", and up to 1.0.567 it was read that way (never present, so
+    /// "SKIP IF type 1 == 0" always skipped). DS3's own scripts show it is the host: every one of DS3's 219 checks is
+    /// "SKIP IF type 1 == 0" in front of what only the world's owner should do (Set Network-Connected Event Flag, Set
+    /// Network Update Authority, Send Invading Phantoms Home, the warping form of a boss cutscene), and Iudex Gundyr's
+    /// sword-pull flag 14000802, which 14005810 waits on before the fight starts, is set in exactly one place in all of
+    /// DS3: m40 14005811 line 20, right behind such a check. DS3's solo Gundyr works, so the check can't skip for a solo
+    /// player. Read as invaders, 157 of the 219 skipped lines and 99 network flag sets never ran: the sword pull never
+    /// started Gundyr's fight, and boss, door and lever flags across every ported map were never set.
+    /// </para>
+    /// Fallback map-enemies C: DARKSIGN_HOST_CHECKS=invaders reads type 1 as invaders again (always skip), as up to 1.0.567.
+    /// </summary>
+    public static int HostCount => Environment.GetEnvironmentVariable("DARKSIGN_HOST_CHECKS")?.Trim().ToLowerInvariant() == "invaders" ? 0 : 1;
+
+    /// <summary>
     /// DS3 "SKIP/GOTO/END IF Number of Clients of Type" (first argument: lines, label or end type; then Client Type,
     /// Comparison Type, Target Number of Clients). See <see cref="ClientChecks"/>.
     /// </summary>
@@ -894,9 +911,11 @@ public sealed class EventPort
             return (null, null); // a value passed in decides it: can't be settled here
         if (clientType == 0)
             return (RunEvents.Make(1003, coopId, first, comparison, count), null);
+        int present = clientType == 1 ? HostCount : 0;
         bool holds = comparison switch
         {
-            0 => count == 0, 1 => count != 0, 2 => false, 3 => count > 0, 4 => count == 0, 5 => true, _ => false,
+            0 => present == count, 1 => present != count, 2 => present > count, 3 => present < count,
+            4 => present >= count, 5 => present <= count, _ => false,
         };
         return (holds ? RunEvents.Make(1000, alwaysId, first) : NoOp(), null);
     }
