@@ -21,6 +21,10 @@ public partial class MainWindow : Window
     private readonly ActivityLog _log;
     private readonly LauncherSettings _settings;
     private bool _loadingProfile;
+    // Porter processes still running (StartPorter adds them, WaitForPorterAsync removes them): Cancel build kills these.
+    private readonly HashSet<Process> _porters = new();
+    private bool _buildRunning;
+    private bool _buildCancelled;
 
     public MainWindow()
     {
@@ -374,7 +378,7 @@ public partial class MainWindow : Window
             if (rebuild || setup.NeedsContentBuild(stamp, contentId))
             {
                 if (!File.Exists(_settings.GameExePaths.GetValueOrDefault(GameId.DarkSouls3, "")) && !rebuild && launch
-                    && File.Exists(Path.Combine(setup.ModDir, "regulation.bin")) && File.Exists(setup.ItemsFile))
+                    && setup.ContentVersion is not null && File.Exists(Path.Combine(setup.ModDir, "regulation.bin")) && File.Exists(setup.ItemsFile))
                 {
                     // Dark Souls III moved or was uninstalled after a build: play the content already built.
                     SetStatus("Dark Souls III wasn't found, so the content wasn't rebuilt; playing the last build.");
@@ -567,6 +571,25 @@ public partial class MainWindow : Window
             }
         }
         Directory.CreateDirectory(setup.LogDir);
+        // From here the mod folder is half old, half new until the build finishes: with no stamp, a build that is
+        // cancelled, killed or fails is built again on the next PLAY instead of launching the mix.
+        setup.MarkContentIncomplete();
+        _buildCancelled = false;
+        _buildRunning = true;
+        CancelBuildButton.IsEnabled = true;
+        CancelBuildButton.Content = "Cancel build";
+        try
+        {
+            return await RunContentBuildAsync(setup);
+        }
+        finally
+        {
+            _buildRunning = false;
+        }
+    }
+
+    private async Task<bool> RunContentBuildAsync(EldenRingSetup setup)
+    {
         var started = Stopwatch.StartNew();
         // Fallback "build-threads" B (one core): port-maps starts only after port-weapons, so nothing runs side by side.
         var serial = Fallbacks.SerialBuild(_settings.Methods);
@@ -583,7 +606,9 @@ public partial class MainWindow : Window
         PorterRun? maps = null;
         try
         {
-            if (!weaponsFailed)
+            if (_buildCancelled)
+                estimator.Skip("maps");
+            else if (!weaponsFailed)
             {
                 maps = StartPorter(setup, "port-maps", mapsArgs, line => progress.Update("maps", line));
                 estimator.Start("maps", DateTime.Now);
@@ -600,6 +625,15 @@ public partial class MainWindow : Window
 
         var weaponsResult = await weapons.Completion;
         var mapsResult = maps is null ? (Ok: false, Tail: "", Log: "") : await maps.Completion;
+        if (_buildCancelled)
+        {
+            // Killed porters stop wherever they were; nothing they wrote is kept as a build (no stamp, no estimate).
+            progress.Cancelled();
+            _log.Write($"Content build cancelled after {BuildEstimator.Format(started.Elapsed)}. The mod is marked unfinished: the next PLAY or Rebuild builds it again.");
+            SetStatus("Build cancelled. The content is marked unfinished, so the next PLAY builds it again from the start.");
+            RefreshContentText();
+            return false;
+        }
         // Only parts that worked are kept for the next estimate (a failed run stops early and would skew it).
         foreach (var (part, stat) in estimator.Results())
             if (part == "weapons" ? weaponsResult.Ok : mapsResult.Ok)
@@ -786,6 +820,15 @@ public partial class MainWindow : Window
             _window.BarFill.Width = Math.Max(0, track * fraction);
         }
 
+        /// <summary>Ends the animation for a build the player stopped with Cancel build.</summary>
+        public void Cancelled()
+        {
+            _timer.Stop();
+            _window.BuildTitle.Text = "Build cancelled";
+            _window.RemainingText.Text = "cancelled";
+            _window.ElapsedText.Text = BuildEstimator.Format(_started.Elapsed);
+        }
+
         /// <summary>Ends the animation: a full ring when the build worked. The panel stays up a moment, then the game list returns.</summary>
         public void Done(bool ok)
         {
@@ -850,11 +893,17 @@ public partial class MainWindow : Window
         foreach (var (key, value) in Fallbacks.PorterEnvironment(_settings.Methods))
             _log.Write($"  env {key}={value}");
         var process = Process.Start(start)!;
+        lock (_porters)
+            _porters.Add(process);
         var watch = Stopwatch.StartNew();
         var completion = WaitForPorterAsync(process, log, line =>
         {
             _log.Write($"[{command}] {line}");
             onLine(line);
+        }, () =>
+        {
+            lock (_porters)
+                _porters.Remove(process);
         });
         _ = completion.ContinueWith(t =>
         {
@@ -864,37 +913,50 @@ public partial class MainWindow : Window
         return new PorterRun(process.Id, completion);
     }
 
-    private static async Task<(bool Ok, string Tail, string Log)> WaitForPorterAsync(Process process, string log, Action<string> onLine)
+    private static async Task<(bool Ok, string Tail, string Log)> WaitForPorterAsync(Process process, string log, Action<string> onLine, Action untrack)
     {
         using (process)
         {
-            await using var writer = new StreamWriter(log);
-            var last = new Queue<string>();
-            void OnLine(string? line)
+            try
             {
-                if (line is null)
-                    return;
-                lock (last)
-                {
-                    writer.WriteLine(line);
-                    last.Enqueue(line);
-                    if (last.Count > 8)
-                        last.Dequeue();
-                }
-                onLine(line);
+                return await ReadPorterAsync(process, log, onLine);
             }
-            process.OutputDataReceived += (_, e) => OnLine(e.Data);
-            process.ErrorDataReceived += (_, e) => OnLine(e.Data);
-            process.BeginOutputReadLine();
-            process.BeginErrorReadLine();
-            await process.WaitForExitAsync();
-            process.WaitForExit(); // flushes the output events
-
-            string tail;
-            lock (last)
-                tail = string.Join("\n", last);
-            return (process.ExitCode == 0, tail, log);
+            finally
+            {
+                // Before the Process is disposed, so Cancel build never touches a disposed one.
+                untrack();
+            }
         }
+    }
+
+    private static async Task<(bool Ok, string Tail, string Log)> ReadPorterAsync(Process process, string log, Action<string> onLine)
+    {
+        await using var writer = new StreamWriter(log);
+        var last = new Queue<string>();
+        void OnLine(string? line)
+        {
+            if (line is null)
+                return;
+            lock (last)
+            {
+                writer.WriteLine(line);
+                last.Enqueue(line);
+                if (last.Count > 8)
+                    last.Dequeue();
+            }
+            onLine(line);
+        }
+        process.OutputDataReceived += (_, e) => OnLine(e.Data);
+        process.ErrorDataReceived += (_, e) => OnLine(e.Data);
+        process.BeginOutputReadLine();
+        process.BeginErrorReadLine();
+        await process.WaitForExitAsync();
+        process.WaitForExit(); // flushes the output events
+
+        string tail;
+        lock (last)
+            tail = string.Join("\n", last);
+        return (process.ExitCode == 0, tail, log);
     }
 
     /// <summary>Shows a message on the status line and writes it to the activity log.</summary>
@@ -1113,8 +1175,64 @@ public partial class MainWindow : Window
         Process.Start(new ProcessStartInfo("explorer.exe", $"\"{dir}\"") { UseShellExecute = true });
     }
 
+    private void OnCancelBuild(object sender, RoutedEventArgs e)
+    {
+        if (!_buildRunning || _buildCancelled)
+            return;
+        if (MessageBox.Show(this, "Stop the content build?\n\nThe porter is stopped straight away. The content is marked unfinished, " +
+                "so the next PLAY (or Rebuild content) builds it again from the start.",
+                "Cancel build", MessageBoxButton.YesNo, MessageBoxImage.Question, MessageBoxResult.No) != MessageBoxResult.Yes)
+            return;
+        if (!_buildRunning)
+            return; // finished while the question was up
+        _buildCancelled = true;
+        CancelBuildButton.IsEnabled = false;
+        CancelBuildButton.Content = "Cancelling…";
+        BuildTitle.Text = "Stopping the build…";
+        SetStatus("Cancelling the content build…");
+        StopPorters("Cancel build");
+    }
+
+    /// <summary>
+    /// Kills every running porter process with its whole process tree (port-weapons and port-maps run side by side).
+    /// Their output then ends, so the build's awaits finish and report the run as not OK.
+    /// </summary>
+    private void StopPorters(string why)
+    {
+        Process[] running;
+        lock (_porters)
+            running = _porters.ToArray();
+        foreach (var process in running)
+        {
+            try
+            {
+                if (process.HasExited)
+                    continue;
+                _log.Write($"{why}: stopping porter process {process.Id}.");
+                process.Kill(entireProcessTree: true);
+            }
+            catch (Exception ex) when (ex is InvalidOperationException or Win32Exception or NotSupportedException or ObjectDisposedException)
+            {
+                // It exited (or was disposed) between the snapshot and the kill: nothing left to stop.
+                _log.Write($"{why}: porter process already gone ({ex.GetType().Name}).");
+            }
+        }
+    }
+
     private void OnClosing(object? sender, System.ComponentModel.CancelEventArgs e)
     {
+        if (_buildRunning)
+        {
+            if (MessageBox.Show(this, "The content is still being built. Close the launcher and stop the build?\n\n" +
+                    "The content is marked unfinished, so the next PLAY builds it again from the start.",
+                    "Build running", MessageBoxButton.YesNo, MessageBoxImage.Warning, MessageBoxResult.No) != MessageBoxResult.Yes)
+            {
+                e.Cancel = true;
+                return;
+            }
+            _buildCancelled = true;
+            StopPorters("Launcher closed");
+        }
         GameGrid.CommitEdit(DataGridEditingUnit.Row, true);
         SaveSettings();
         _log.Write("Launcher closed.");
