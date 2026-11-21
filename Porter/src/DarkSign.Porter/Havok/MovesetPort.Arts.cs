@@ -999,7 +999,10 @@ public static partial class MovesetPort
             {
                 Directory.CreateDirectory(Path.GetDirectoryName(cache)!);
                 using var http = new HttpClient { Timeout = TimeSpan.FromMinutes(2) };
-                File.WriteAllBytes(cache, http.GetByteArrayAsync(HksUrl).GetAwaiter().GetResult());
+                // Written beside it and moved in whole: a build stopped mid-download (Cancel build) leaves no cut-off cache.
+                var part = $"{cache}.{Environment.ProcessId}.part";
+                File.WriteAllBytes(part, http.GetByteArrayAsync(HksUrl).GetAwaiter().GetResult());
+                File.Move(part, cache, overwrite: true);
             }
             var text = File.ReadAllText(cache);
             PatchHks(text, []); // refuses a file without IsStanceArts
