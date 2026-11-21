@@ -437,10 +437,12 @@ Try the next option if: Since this option came in, a DS3 map's far forest shows 
 
 Try the next option if: A DS3 map looks washed out, too foggy, too clear, or wrongly coloured since the maps took DS3's colours.
 
-- **A: DS3's colours (default).** Each map's sun and fog take DS3's colours and sun angle (each fog colour at DS3's own strength for it), the fog hides as much of the distance as DS3's does at the height the map is played at, and the colosseum's colour grading is off. How bright the sun is stays Elden Ring's.
+- **A: DS3's colours (default).** Each map's sun and fog take DS3's colours and sun angle (each fog colour at DS3's own strength for it), the fog hides as much of the distance as DS3's does, reaching full strength as near as DS3's does, at the height the map is played at, the places DS3 gives their own fog and light (a collision's scene draw params) get them, and the colosseum's colour grading is off. How bright the sun is stays Elden Ring's.
 - **B: The colosseum's own.** The map keeps the Elden Ring colosseum's colour, fog and sun settings (port-maps --host-atmosphere), as in every build before this option: a red tint on map 2 and thick golden fog on map 1. (`port-maps --host-atmosphere`)
 - **C: DS3's fog colours at full strength.** As A, but each fog colour is used as DS3 writes it, without DS3's own strength for it (DARKSIGN_FOG_STRENGTH=0), as builds up to 1.0.44x had it: map 2's haze is a bright cream. (`DARKSIGN_FOG_STRENGTH=0`)
 - **D: Stormveil's fog thickness.** As A, but the fog is Stormveil Castle's thickness from the map's lowest ground up (DARKSIGN_FOG_DEPTH=stormveil), as builds up to 1.0.52x had it: maps played high above their lowest point, such as Irithyll, have almost no haze. (`DARKSIGN_FOG_DEPTH=stormveil`)
+- **E: Stormveil's fog reach.** As A, but the fog reaches its full strength 300 m out on every map, as Stormveil Castle's does (DARKSIGN_FOG_REACH=stormveil), as builds up to 1.0.55x had it, instead of at DS3's own distance (70 m in the Painted World): the maps look clearer than DS3. (`DARKSIGN_FOG_REACH=stormveil`)
+- **F: One set of colours per map.** As A, but each map has only its base draw params everywhere (DARKSIGN_SCENE_GPARAMS=0), as builds up to 1.0.55x had it: the places DS3 gives their own fog and light (the Painted World's snowfields, valleys and church) look like the rest of the map. Try it if a map flickers or changes colour when you walk from one place to another. (`DARKSIGN_SCENE_GPARAMS=0`)
 
 ### How strong the lights without shadows are in the DS3 maps (`map-fill-light`, rebuilds the content)
 
@@ -573,6 +575,7 @@ Try the next option if: A DS3 map crashes, hangs while loading or hitches since 
 - **C: Region effects only.** DS3's fog, light shafts and other placed effects as in A, but no flames on objects (DARKSIGN_OBJECT_SFX=0): candles and torches stand unlit, as builds up to 1.0.44x had them. (`DARKSIGN_OBJECT_SFX=0`)
 - **D: Smoke and fog effects unlit.** DS3's effects as in A, but their smoke, fog and dust are drawn unlit, at full colour whatever light they stand in (DARKSIGN_FXR_LIT=0), as builds up to 1.0.44x had them: in dark places they glow white. This goes for weapon and enemy effects too. (`DARKSIGN_FXR_LIT=0`)
 - **E: Effect lights as DS3 wrote them.** DS3's effects as in A, but the lights they carry (a weapon's glow, a spell, a candle's flame) keep DS3's settings as converted (DARKSIGN_FXR_LIGHTS=ds3), as builds before 2026-11-20 had them (spot lights, the window light of Friede's hall, up to 1.0.53x): in Elden Ring they are a tenth as strong as its own in the dark and half of them fade out a hand's width from the flame, so effects hardly light anything. This goes for weapon and enemy effects too. (`DARKSIGN_FXR_LIGHTS=ds3`)
+- **F: No wind-blown effects.** DS3's effects as in A, but DS3's wind-blown effects (WindSFX: the Painted World's snow blowing across its snowfield) are left out (DARKSIGN_WIND_SFX=0), as builds up to 1.0.55x had them. (`DARKSIGN_WIND_SFX=0`)
 
 ### DS3's bonfires as sites of grace (`map-bonfires`, rebuilds the content)
 

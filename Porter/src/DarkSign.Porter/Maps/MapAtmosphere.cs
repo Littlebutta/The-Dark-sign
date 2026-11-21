@@ -104,7 +104,98 @@ public static class MapAtmosphere
         File.WriteAllBytes(target, DCX.Compress(gparam.Write(), compression));
         if (lightSets is not null && Group(gparam, "LightSet") is { } written)
             lightSets.UnionWith(MapLightSets.Ids(written));
+        if (layout is not null && ScenesEnabled)
+            changes.Add(WriteScenes(ctx, ds3, ds3Id, erId, ds3Msb, layout, hostBytes, compression,
+                (host, draw) => Apply(host, draw, GroundHeight(ds3Msb), unturnedSun ? 0 : MapLighting.OffsetDegrees(ds3Msb), hostFillLights, wanted, Layer(ds3Msb), characters)));
         return "atmosphere: " + string.Join("; ", changes);
+    }
+
+    /// <summary>Fallback "map-atmosphere" F: DARKSIGN_SCENE_GPARAMS=0 gives every place the map's one set of draw
+    /// params again (no DS3 per-place fog and light), as builds up to 1.0.55x.</summary>
+    public static bool ScenesEnabled => Environment.GetEnvironmentVariable("DARKSIGN_SCENE_GPARAMS") != "0";
+
+    /// <summary>The draw params file of a map's place variant <paramref name="sub"/> (1-99: mAA_BB_0N00), the one a
+    /// collision's scene setting switches to while the player stands on it.</summary>
+    public static string GparamPath(MapId id, int sub) => $"/param/drawparam/m{id.Area:D2}_{id.Block:D2}_{sub:D2}00.gparam.dcx";
+
+    /// <summary>DS3's own draw params of a map's place variant, by archive path (the .dcx form first).</summary>
+    public static IEnumerable<string> Ds3GparamPaths(MapId id, int sub)
+    {
+        yield return $"/param/drawparam/m{id.Area:D2}_{id.Block:D2}_{sub:D2}00.gparam.dcx";
+        yield return $"/param/drawparam/m{id.Area:D2}_{id.Block:D2}_{sub:D2}00.gparam";
+    }
+
+    /// <summary>The place variants a DS3 collision's scene setting names (the four slots, -1 or 0 for none past the first).</summary>
+    public static IEnumerable<int> SceneSubs(MSB3.Part.Collision c) =>
+        c.SceneGparam?.EventIDs?.Where(id => id > 0).Select(id => (int)id) ?? [];
+
+    /// <summary>
+    /// DS3's draw params per place (2026-11-21 playtest: "the painted world is too clear, it looks like it doesn't
+    /// have any of its weather effects"). DS3 changes a map's fog and light from place to place: a collision's scene
+    /// setting (MSB3 SceneGparam: four sub IDs, read 2026-11-21) names a variant file mAA_BB_0N00.gparam the game
+    /// switches to while the player stands on it. The Painted World ships eight (m45_00_0100 to 0800, fog reaching
+    /// 12 to 100 m at 0.25 to 1 of the view, far thicker than its base file's) and 77 of its 187 collisions name one.
+    /// The port read only the base file (mAA_BB_0000), so the whole map had its one, lightest fog. Elden Ring has the
+    /// same switch (MSBE collision SceneGparam: base and three overrides, the "hundredths place" of the gparam file),
+    /// so each variant DS3 names is written for the slot from the host's base file with the variant's colours and fog
+    /// (<paramref name="apply"/>, the same conversion as the base file), and each ported collision takes DS3's sub
+    /// IDs. A variant DS3 lacks is not named. Every other ported collision gets "none", so no collision keeps the host
+    /// colosseum's settings. Returns a line for the log.
+    /// </summary>
+    public static string WriteScenes(PorterContext ctx, GameArchives ds3, MapId ds3Id, MapId erId, MSB3 ds3Msb, MSBE layout,
+        byte[] hostBytes, DCX.CompressionInfo compression, Func<GPARAM, GPARAM, List<string>> apply)
+    {
+        var wanted = ds3Msb.Parts.Collisions.SelectMany(SceneSubs).Where(n => n <= 99).Distinct().Order().ToList();
+        var written = new SortedSet<int>();
+        var missing = new List<int>();
+        foreach (var sub in wanted)
+        {
+            var source = Ds3GparamPaths(ds3Id, sub).FirstOrDefault(ds3.Contains);
+            if (source is null)
+            {
+                missing.Add(sub);
+                continue;
+            }
+            var gparam = GPARAM.Read(hostBytes);
+            apply(gparam, GPARAM.Read(ds3.Read(source)));
+            var target = ctx.ModPath(MapPorter.ModParts(GparamPath(erId, sub)));
+            Directory.CreateDirectory(Path.GetDirectoryName(target)!);
+            File.WriteAllBytes(target, DCX.Compress(gparam.Write(), compression));
+            written.Add(sub);
+        }
+        int named = Name(ds3Msb, layout, written);
+        if (wanted.Count == 0)
+            return "places: DS3 changes no draw params by place on this map";
+        return $"places: {written.Count} of DS3's per-place draw params written (sub IDs {string.Join(", ", written)}), named by {named} collisions"
+               + (missing.Count > 0 ? $"; DS3 lacks {string.Join(", ", missing)}" : "");
+    }
+
+    /// <summary>
+    /// Sets each ported collision's scene setting from its DS3 collision (same name), keeping only the sub IDs in
+    /// <paramref name="available"/> (index 0 may be 0, the base file); every other collision gets none (-1).
+    /// Returns how many collisions name a variant.
+    /// </summary>
+    public static int Name(MSB3 ds3Msb, MSBE layout, IReadOnlySet<int> available)
+    {
+        var byName = ds3Msb.Parts.Collisions.GroupBy(c => c.Name, StringComparer.Ordinal).ToDictionary(g => g.Key, g => g.First(), StringComparer.Ordinal);
+        int named = 0;
+        foreach (var part in layout.Parts.Collisions)
+        {
+            var scene = new MSBE.Part.SceneGparamConfig();
+            if (byName.TryGetValue(part.Name, out var src) && src.SceneGparam?.EventIDs is { } ids
+                && ids.Any(id => id > 0 && available.Contains(id)))
+            {
+                sbyte Pick(int i, bool first) => i < ids.Length && (ids[i] > 0 && available.Contains(ids[i]) || first && ids[i] == 0) ? ids[i] : (sbyte)-1;
+                scene.GparamSubID_Base = Pick(0, true);
+                scene.GparamSubID_Override1 = Pick(1, false);
+                scene.GparamSubID_Override2 = Pick(2, false);
+                scene.GparamSubID_Override3 = Pick(3, false);
+                scene.TransitionTime = src.SceneGparam.Unk40;
+                named++;
+            }
+            part.SceneGparam = scene;
+        }
+        return named;
     }
 
     /// <summary>
@@ -253,9 +344,10 @@ public static class MapAtmosphere
             SetAll(fog, "VolumetricFog DirLight DirectColor", _ => new Vector4(direct.X, direct.Y, direct.Z, FogDirectStrength));
             SetAll(fog, "VolumetricFog DirLight OppositeColor", _ => new Vector4(rest.X, rest.Y, rest.Z, FogOppositeStrength));
             SetAll(fog, "VolumetricFog SkyLight SkyColor", _ => new Vector4(rest.X, rest.Y, rest.Z, FogSkyStrength));
-            SetAll(fog, "VolumetricFog FarDepth", _ => FogFarDepth);
-            SetAll(fog, "VolumetricFog FogEndDepth", _ => FogEndDepth);
-            var depth = layer is { } l && FogDepthEnabled ? DepthFog(ds3Colour.W, l) : ((float Density, float Distribution, float Offset)?)null;
+            var reach = Reach(ds3Fog);
+            SetAll(fog, "VolumetricFog FarDepth", _ => reach);
+            SetAll(fog, "VolumetricFog FogEndDepth", _ => reach);
+            var depth = layer is { } l && FogDepthEnabled ? DepthFog(ds3Colour.W, l, reach) : ((float Density, float Distribution, float Offset)?)null;
             var (density, distribution, offset) = depth ?? (FogDensity, FogDistribution, ground);
             SetAll(fog, "VolumetricFog Global HeightFogDistribution", _ => distribution);
             SetAll(fog, "VolumetricFog Global HeightFogDensity Scale", _ => density);
@@ -263,7 +355,7 @@ public static class MapAtmosphere
             SetAll(fog, "VolumetricFog Global HeightFogReferenceOffset", _ => offset);
             var thickness = depth is null
                 ? string.Create(inv, $"Stormveil's thickness (density {FogDensity}, out to {FogFarDepth} m) from height {ground:F0}")
-                : string.Create(inv, $"DS3's depth haze: {Math.Clamp(ds3Colour.W, MinHaze, MaxHaze):0.##} of the view hidden at {FogFarDepth} m (density {density:0.#####}) through the height the map is played at ({layer!.Value.Height:F0}, halving every {MathF.Log(2) / distribution:F0} m up)");
+                : string.Create(inv, $"DS3's depth haze: {Math.Clamp(ds3Colour.W, MinHaze, MaxHaze):0.##} of the view hidden at {reach:0} m (density {density:0.#####}) through the height the map is played at ({layer!.Value.Height:F0}, halving every {MathF.Log(2) / distribution:F0} m up)");
             changes.Add(string.Create(inv, $"fog colour {C(direct)} / {C(rest)} from DS3 fog 0 ({(FogStrengthEnabled ? $"its colours {C(ds3Colour)} at {ds3Colour.W:F2} and {C(heightColour ?? ds3Colour)} at {(heightColour ?? ds3Colour).W:F2}" : "colours without their strengths")}), ") + thickness);
         }
         else
@@ -309,12 +401,39 @@ public static class MapAtmosphere
     /// changes four times over the map's played heights (twice as thick at the lowest twentieth, half at the
     /// highest), so it thins out into the sky above. Returns the density, the height distribution and the offset.
     /// </summary>
-    public static (float Density, float Distribution, float Offset) DepthFog(float ds3Strength, FogLayer layer)
+    public static (float Density, float Distribution, float Offset) DepthFog(float ds3Strength, FogLayer layer, float reach = FogFarDepth)
     {
         float hidden = Math.Clamp(ds3Strength, MinHaze, MaxHaze);
-        float density = -MathF.Log(1 - hidden) / FogFarDepth;
+        float density = -MathF.Log(1 - hidden) / reach;
         float distribution = MathF.Log(4) / Math.Max(MinFogSpan, layer.Span);
         return (density, distribution, layer.Height);
+    }
+
+    /// <summary>The nearest and farthest the fog's reach may be set (<see cref="Reach"/>).</summary>
+    public const float MinReach = 40, MaxReach = 2000;
+
+    /// <summary>Fallback "map-atmosphere" E: DARKSIGN_FOG_REACH=stormveil gives every map Stormveil's 300 m fog reach,
+    /// as builds up to 1.0.55x did.</summary>
+    public static bool FogReachEnabled => !string.Equals(Environment.GetEnvironmentVariable("DARKSIGN_FOG_REACH"), "stormveil", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// How far DS3's fog 0 takes to reach its full strength: Fog-DistOffset (where it starts) plus Fog-Dist (how
+    /// far it then thickens), clamped to <see cref="MinReach"/>..<see cref="MaxReach"/>. DS3's distance fog reaches
+    /// its strength (the fourth value of Fog-Color) there and hides that share of everything farther, the sky
+    /// included. Read 2026-11-21: Painted World (m45_00) 10 + 60 = 70 m at 0.5, Firelink (m40_00) 15 + 60 = 75 m at
+    /// 0.26, High Wall (m30_00) 20 + 120 = 140 m at 0.12, Undead Settlement (m31_00) 15 + 50 = 65 m at 0.27. The port
+    /// gave every map Stormveil's 300 m (Elden Ring's fog keeps what it hides at its end depth for everything past
+    /// it, as DS3 does at its reach), so DS3's haze only arrived four times farther out than DS3 draws it: the
+    /// Painted World's snowy air hid half the view at 300 m instead of 70 m and the map looked clear (2026-11-21
+    /// playtest). Elden Ring's fog depth and end depth now take DS3's reach. Stormveil's 300 m when DS3 has no
+    /// distances or with fallback "map-atmosphere" E.
+    /// </summary>
+    public static float Reach(GPARAM.Group? ds3Fog)
+    {
+        if (!FogReachEnabled || Value<float>(ds3Fog, "Fog-Dist") is not { } dist || dist <= 0)
+            return FogFarDepth;
+        var offset = Math.Max(0, Value<float>(ds3Fog, "Fog-DistOffset") ?? 0);
+        return Math.Clamp(dist + offset, MinReach, MaxReach);
     }
 
     /// <summary>The group whose short name (Name2, trimmed) is <paramref name="name"/>.</summary>

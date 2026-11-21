@@ -42,7 +42,7 @@ public static class MapDiag
         if (args.Count == 0 || !args[0].Equals("colours", StringComparison.OrdinalIgnoreCase))
         {
             Console.Error.WriteLine("map-diag colours [DS3 map ID...]   (default: every slot's DS3 map)");
-            Console.Error.WriteLine("map-diag gparam [map ID...]        (default: the slots' hosts, Stormveil and the DS3 maps)");
+            Console.Error.WriteLine("map-diag gparam [[ds3:|er:]map ID...] (default: the slots' hosts, Stormveil and the DS3 maps)");
             Console.Error.WriteLine("map-diag envmap [ER map ID...]     (default: the slots' hosts and Stormveil)");
             Console.Error.WriteLine("map-diag lightvol [ER map ID...]   (light volumes, ivinfo, lightmap materials; DS3 light probes and lightmaps)");
             Console.Error.WriteLine("map-diag collision [DS3 map ID...] [--at x,y,z ...]   (h/l body settings, collision parts, ground under points)");
@@ -357,7 +357,15 @@ public static class MapDiag
         var ds3Maps = new List<MapId>();
         if (args.Count > 0)
             foreach (var a in args)
-                (MapId.Parse(a).Area >= 30 && MapId.Parse(a).Area <= 51 && MapId.Parse(a).Area != 45 ? ds3Maps : erMaps).Add(MapId.Parse(a));
+            {
+                // "ds3:m45_00_00_00" / "er:m45_00_00_00" name the game outright (the Painted World is m45 in both).
+                if (a.StartsWith("ds3:", StringComparison.OrdinalIgnoreCase))
+                    ds3Maps.Add(MapId.Parse(a[4..]));
+                else if (a.StartsWith("er:", StringComparison.OrdinalIgnoreCase))
+                    erMaps.Add(MapId.Parse(a[3..]));
+                else
+                    (MapId.Parse(a).Area >= 30 && MapId.Parse(a).Area <= 51 && MapId.Parse(a).Area != 45 ? ds3Maps : erMaps).Add(MapId.Parse(a));
+            }
         else
         {
             erMaps.AddRange(MapSlots.All.Select(s => s.Host).Distinct());
@@ -408,7 +416,7 @@ public static class MapDiag
                         r.AppendLine($"msb: {ex.Message}");
                     }
                 }
-                File.WriteAllText(Path.Combine(dir, $"gparam-{map}.txt"), r.ToString());
+                File.WriteAllText(Path.Combine(dir, game == "DS3" && map.Area == 45 ? $"gparam-ds3-{map}.txt" : $"gparam-{map}.txt"), r.ToString());
                 Console.WriteLine($"{game} {map}: {r.ToString().Count(c => c == '\n')} lines");
             }
         Console.WriteLine($"reports in {dir}");
