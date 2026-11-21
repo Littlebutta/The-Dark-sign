@@ -1591,7 +1591,13 @@ public static partial class ChrPort
         var areas = new Dictionary<string, long>(StringComparer.OrdinalIgnoreCase);
         foreach (var tx in tpfs.SelectMany(p => p.Textures).Where(tx => tx.Bytes.Length >= 20))
             areas.TryAdd(tx.Name, (long)BitConverter.ToInt32(tx.Bytes, 16) * BitConverter.ToInt32(tx.Bytes, 12));
-        var made = ChrModel.Convert(flver, templateFlver, x, n, name => areas.GetValueOrDefault(name), glowing > 0 ? ChrGlow.Find(er) : null, rename);
+        var ds3Mtds = ChrBlend.Ds3Mtds(ds3);
+        bool seeThroughWanted = flver.Materials.Any(m => ds3Mtds.TryGetValue(ChrBlend.Key(m.MTD), out var draw) && draw.Blended);
+        var made = ChrModel.Convert(flver, templateFlver, x, n, name => areas.GetValueOrDefault(name), glowing > 0 ? ChrGlow.Find(er) : null, rename,
+            ds3Mtds, seeThroughWanted ? ChrBlend.Find(er) : null);
+        if (ChrModel.SeeThrough > 0 || ChrModel.SeeThroughSolid > 0)
+            notes.Add($"{ChrModel.SeeThrough} see-through DS3 materials blended as DS3 blends them"
+                      + (ChrModel.SeeThroughSolid > 0 ? $", {ChrModel.SeeThroughSolid} drawn solid (no see-through Elden Ring material, or DARKSIGN_ENEMY_BLEND=0)" : ""));
         if (ChrModel.VertexColoursSet > 0 || ChrModel.SecondLayers > 0)
             notes.Add($"{ChrModel.VertexColoursSet} vertex colours set to Elden Ring's" + (ChrModel.SecondLayers > 0 ? $", {ChrModel.SecondLayers} two-layer materials show their larger layer" : ""));
         if (blank.Count > 0)
