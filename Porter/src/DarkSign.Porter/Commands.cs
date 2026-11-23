@@ -237,6 +237,9 @@ public static class Commands
         // DS3's weapon effects (status on hit, equipped effects): the moveset port below uses the same instance for
         // the effects DS3's weapon arts cast.
         SpEffectPort? spEffects = null;
+        // The effects the ported maps' scripts check: a weapon effect that is only such a marker names their row.
+        try { SpEffectPort.ScriptMarkers = Maps.MapEvents.ScriptSpEffects(ctx, ds3Archives, Maps.MapSlots.All.Where(s => !s.Probe).ToList()); }
+        catch (Exception e) when (e is not OutOfMemoryException) { Console.WriteLine($"weapon effects: the scripts' effects not read ({e.GetType().Name}: {e.Message})"); }
         try
         {
             using var _ = Timing.Stage("weapon effects");

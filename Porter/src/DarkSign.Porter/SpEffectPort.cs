@@ -27,6 +27,12 @@ public sealed class SpEffectPort
     private static readonly string[] Ds3VfxFields = [.. Enumerable.Range(0, 8).Select(k => $"EffectVfx{k}")];
     private static string ErVfxField(int k) => k == 0 ? "vfxId" : $"vfxId{k}";
 
+    /// <summary>
+    /// DS3 effects the ported maps' scripts set, clear or check (MapEvents.ScriptSpEffects), set by port-weapons before
+    /// the weapons are ported: a weapon effect that is only such a marker names the scripts' row (PortNew).
+    /// </summary>
+    public static IReadOnlySet<int> ScriptMarkers { get; set; } = new HashSet<int>();
+
     /// <summary>First ID of the ported effects; each takes a block of 100.</summary>
     public const int FirstNewId = 690_000_000;
 
@@ -214,6 +220,16 @@ public sealed class SpEffectPort
         }
         if (kind is null && !HasValues(source) && !HasVisuals(source) && ErBase(source.Name) < 0)
         {
+            // A marker the map scripts check (the Storm Ruler's Storm King hit puts 11421 on Yhorm, and his fight's
+            // script waits for it): the weapon names the row the enemy port writes for the scripts' effects
+            // (700,000,000 + the DS3 ID), so the hit and the script meet on one row. Up to 1.0.58x it was skipped and
+            // the Storm King never weakened Yhorm.
+            if (_idOf is null && ScriptMarkers.Contains(ds3Id))
+            {
+                int marker = Enemies.ChrEffects.SpEffectId(ds3Id);
+                Note(ds3Id, source.Name, marker, "script marker", "a state the map scripts check; its row is the enemy port's for the scripts");
+                return marker;
+            }
             Note(ds3Id, source.Name, -1, "skipped", "nothing Elden Ring can use (state, visuals or fields without an equivalent)");
             return -1;
         }
