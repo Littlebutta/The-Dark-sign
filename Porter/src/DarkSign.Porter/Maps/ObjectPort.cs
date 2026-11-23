@@ -102,6 +102,8 @@ public sealed class ObjectPort
         public int Row => int.Parse(Name[3..6]) * 1000 + int.Parse(Name[7..10]);
 
         public bool Tried, Converted;
+        /// <summary>Only DS3's cutscenes use it (an object no map places, or a map piece a cutscene animates).</summary>
+        public bool CutsceneOnly { get; init; }
         public string? Failure;
         public bool Collision;
         public string CollisionNote = "";
@@ -178,8 +180,15 @@ public sealed class ObjectPort
         var names = Plan(maps.SelectMany(m => m.Parts.Objects).Select(o => o.ModelName));
         // Posed copies (corpses, ObjectPoses) after the plain models, so the plain models keep their numbers.
         var poses = ObjectPoses.Enabled ? PlanPoses(maps.SelectMany(m => m.Parts.Objects)) : [];
-        FirstGroup = FreeGroup(er.Entries.Select(e => e.Path), (names.Count + poses.Count + 999) / 1000);
-        int groups = (names.Count + poses.Count + 999) / 1000;
+        // Models only DS3's cutscenes use (objects and map pieces, CutsceneCast.CastModels) after those, so every
+        // placed model keeps its number; built by ConvertCutsceneModels for the cutscene port to cast.
+        var placed = names.Select(n => n.Model).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var cutsceneOnly = method != Method.None && CutscenePort.Enabled && CutsceneCast.Enabled && CutsceneCast.ModelsEnabled
+            ? CutsceneCast.CastModels(ds3, MapSlots.All.Where(s => !s.Probe).Select(s => s.Ds3), Notes).Where(m => !placed.Contains(m)).ToList()
+            : [];
+        int total = names.Count + poses.Count + cutsceneOnly.Count;
+        FirstGroup = FreeGroup(er.Entries.Select(e => e.Path), (total + 999) / 1000);
+        int groups = (total + 999) / 1000;
         FirstSoundGroup = ObjectSounds.FirstGroupWanted;
         if (ObjectSounds.Enabled)
             try
@@ -197,6 +206,11 @@ public sealed class ObjectPort
         {
             int index = names.Count + i;
             _assets[ObjectPoses.Key(poses[i].Model, poses[i].Pose)] = new Asset { Ds3Model = poses[i].Model, Pose = poses[i].Pose, Index = index, Name = AssetName(FirstGroup, index) };
+        }
+        for (int i = 0; i < cutsceneOnly.Count; i++)
+        {
+            int index = names.Count + poses.Count + i;
+            _assets[cutsceneOnly[i]] = new Asset { Ds3Model = cutsceneOnly[i], Index = index, Name = AssetName(FirstGroup, index), CutsceneOnly = true };
         }
 
         // The binder settings and the FLVER entry's flags come from a vanilla asset when the game has it.
@@ -295,6 +309,35 @@ public sealed class ObjectPort
             .Concat(ds3.Parts.Objects.Where(o => ObjectPoses.PoseOf(o) >= 0).Select(o => ObjectPoses.Key(o.ModelName, ObjectPoses.PoseOf(o))))
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .Select(m => _assets.GetValueOrDefault(m)).Where(a => a is not null && !a.Tried).Select(a => a!).ToList();
+        ConvertAll(wanted);
+
+        var result = PlaceParts(ds3, msb, ds3Id, erId, options, m => _assets.GetValueOrDefault(m), objActs: Ds3ObjActParam is not null);
+        if (Ds3ObjActParam is null && Moving != MovingMethod.Off)
+            return result with { Notes = [.. result.Notes, "no ObjActs placed: DS3's ObjActParam could not be read, so doors and levers can't be used"] };
+        return result;
+    }
+
+    /// <summary>
+    /// Builds the assets of the models only DS3's cutscenes use (<see cref="CutsceneCast.CastModels"/>): objects no
+    /// map places and map pieces a cutscene animates. Run once after every map is placed, before
+    /// <see cref="WriteReports"/> (whose table the cutscene port reads) and <see cref="WriteParams"/>.
+    /// </summary>
+    public string ConvertCutsceneModels()
+    {
+        var wanted = _assets.Values.Where(a => a.CutsceneOnly && !a.Tried).OrderBy(a => a.Index).ToList();
+        if (wanted.Count == 0)
+            return "cutscene models: none to build"
+                   + (CutsceneCast.ModelsEnabled ? "" : " (DARKSIGN_CUTSCENE_MODELS=0, fallback map-cutscenes J)");
+        ConvertAll(wanted);
+        var failed = wanted.Where(a => !a.Converted).ToList();
+        return $"cutscene models: {wanted.Count - failed.Count} of {wanted.Count} models only DS3's cutscenes use built as assets "
+               + $"({wanted.Count(a => a.Converted && a.Ds3Model.StartsWith('o'))} objects, {wanted.Count(a => a.Converted && a.Ds3Model.StartsWith('m'))} map pieces)"
+               + (failed.Count == 0 ? "" : $"; FAILED {failed.Count}: "
+                   + string.Join("; ", failed.GroupBy(a => a.Failure ?? "?").OrderByDescending(g => g.Count()).Take(4).Select(g => $"{g.Count()} x {g.Key} (e.g. {g.First().Ds3Model})")));
+    }
+
+    private void ConvertAll(List<Asset> wanted)
+    {
         var moving = new System.Collections.Concurrent.ConcurrentBag<Asset>();
         Parallel.ForEach(wanted, Parallelism.Options, asset =>
         {
@@ -323,11 +366,6 @@ public sealed class ObjectPort
             {
                 asset.Failure = ex.Message;
             }
-
-        var result = PlaceParts(ds3, msb, ds3Id, erId, options, m => _assets.GetValueOrDefault(m), objActs: Ds3ObjActParam is not null);
-        if (Ds3ObjActParam is null && Moving != MovingMethod.Off)
-            return result with { Notes = [.. result.Notes, "no ObjActs placed: DS3's ObjActParam could not be read, so doors and levers can't be used"] };
-        return result;
     }
 
     /// <summary>
@@ -547,7 +585,7 @@ public sealed class ObjectPort
     /// </summary>
     private bool Convert(Asset asset, bool movingPass)
     {
-        var path = ObjBndPath(asset.Ds3Model);
+        var path = CutsceneCast.Ds3ModelPath(asset.Ds3Model);
         if (!_ds3.Contains(path))
             throw new FileNotFoundException($"DS3 has no {path}");
         var bnd = BND4.Read(_ds3.Read(path));
@@ -605,6 +643,8 @@ public sealed class ObjectPort
         // Collision, for objects that stay put.
         if (_method == Method.NoCollision)
             asset.CollisionNote = "off (--objects nocollision)";
+        else if (asset.CutsceneOnly)
+            asset.CollisionNote = "none: only DS3's cutscenes use it";
         else if (asset.Animated || asset.ObjActTarget)
             asset.CollisionNote = "none: the object doesn't move here (see moves); it would block the way";
         else if (asset.Breakable || asset.Ladder)
@@ -741,6 +781,8 @@ public sealed class ObjectPort
             asset.CollisionNote = "off (--objects nocollision)";
         else if (Moving == MovingMethod.NoCollision)
             asset.CollisionNote = "off (--moving-objects nocollision)";
+        else if (asset.CutsceneOnly)
+            asset.CollisionNote = "none: only DS3's cutscenes use it";
         else
         {
             var movingBones = anims.Bones.Skip(1).ToHashSet(StringComparer.OrdinalIgnoreCase);

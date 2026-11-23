@@ -615,6 +615,7 @@ Try the next option if: The game crashes, hangs or shows a black screen when a D
 - **G: No subtitles.** The cutscenes play as in A, but without subtitles (DARKSIGN_CUTSCENE_SUBTITLES=0): the spoken lines play as sounds of the cutscene, as up to 1.0.549. (`DARKSIGN_CUTSCENE_SUBTITLES=0`)
 - **H: Timeline links as up to 1.0.549.** The cutscenes play as in A, but each timeline keeps the link to the timeline it hangs on that DS3 gave it (DARKSIGN_CUTSCENE_PARENTS=0), as up to 1.0.549, where only the events' links were renumbered after the port took timelines out: Friede's intro and Cathedral of the Deep's cutscenes hung. (`DARKSIGN_CUTSCENE_PARENTS=0`)
 - **I: Unplaced parts kept, as up to 1.0.567.** The cutscenes play as in A, but a DS3 part the ported map doesn't place still goes into the cutscene under its model's name (DARKSIGN_CUTSCENE_UNPLACED=1), as up to 1.0.567: Friede's intro and second-phase cutscene, Cathedral of the Deep's and the Dancer's played to the end and then stayed black. (`DARKSIGN_CUTSCENE_UNPLACED=1`)
+- **J: No cutscene-only models.** The cutscenes play as in A, but objects and map pieces that only DS3's cutscenes use get no Elden Ring asset and are left out of the cutscenes (DARKSIGN_CUTSCENE_MODELS=0), as up to 1.0.57x: High Wall's opening lost 30 of its 40 parts. (`DARKSIGN_CUTSCENE_MODELS=0`)
 
 ### DS3's music (areas and boss fights) (`map-music`, rebuilds the content)
 

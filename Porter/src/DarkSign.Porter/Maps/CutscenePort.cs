@@ -1050,13 +1050,22 @@ public static partial class CutscenePort
             var archive = lower.StartsWith("aeg") ? ObjectPort.GeomBndPath(model) : $"/chr/{lower}.chrbnd.dcx";
             return modelExists[model] = er.Contains(archive) || File.Exists(ctx.ModPath(MapPorter.ModParts(archive)));
         }
+        // The object port's assets (darksign_objects.tsv): DS3 object and map-piece models, placed or cutscene-only.
+        var assets = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        if (CutsceneCast.Enabled && File.Exists(ctx.ModPath(ObjectPort.TableFile)))
+            foreach (var line in File.ReadAllLines(ctx.ModPath(ObjectPort.TableFile)).Where(l => !l.StartsWith('#')))
+                if (line.Split('\t') is { Length: >= 2 } cols)
+                    assets.TryAdd(cols[0], cols[1]);
         lines.Add(CutsceneCast.Enabled
-            ? $"cast: parts resolved to Elden Ring models (map part names, {(chrMap is null ? "no enemy model list" : "the enemy port's model list")}); DS3 draw settings and unplayed cut files left out"
+            ? $"cast: parts resolved to Elden Ring models (map part names, {(chrMap is null ? "no enemy model list" : "the enemy port's model list")}, "
+              + $"{assets.Count} object port assets); DS3 draw settings and unplayed cut files left out"
             : "cast: off (DARKSIGN_CUTSCENE_CAST=0, fallback map-cutscenes E); DS3 part names, draw settings and cut files kept");
         foreach (var map in maps.Where(m => !m.Slot.Probe))
         {
             var rename = Renamer(map.PartNames);
-            var cast = CutsceneCast.Enabled ? CutsceneCast.Resolver(map.PartNames, m => chrMap?.ModelOf(m), ModelExists) : null;
+            var cast = CutsceneCast.Enabled
+                ? CutsceneCast.Resolver(map.PartNames, m => chrMap?.ModelOf(m), ModelExists, m => assets.GetValueOrDefault(m))
+                : null;
             foreach (var name in CutscenesOf(ds3, map.Slot.Ds3))
             {
                 var ds3Id = IdOf(name)!.Value;

@@ -757,6 +757,8 @@ public static class Fallbacks
                 { PorterEnv = Env("DARKSIGN_CUTSCENE_PARENTS", "0") },
             new("I", "Unplaced parts kept, as up to 1.0.567", "The cutscenes play as in A, but a DS3 part the ported map doesn't place still goes into the cutscene under its model's name (DARKSIGN_CUTSCENE_UNPLACED=1), as up to 1.0.567: Friede's intro and second-phase cutscene, Cathedral of the Deep's and the Dancer's played to the end and then stayed black.")
                 { PorterEnv = Env("DARKSIGN_CUTSCENE_UNPLACED", "1") },
+            new("J", "No cutscene-only models", "The cutscenes play as in A, but objects and map pieces that only DS3's cutscenes use get no Elden Ring asset and are left out of the cutscenes (DARKSIGN_CUTSCENE_MODELS=0), as up to 1.0.57x: High Wall's opening lost 30 of its 40 parts.")
+                { PorterEnv = Env("DARKSIGN_CUTSCENE_MODELS", "0") },
         ]),
 
         new("map-music", "DS3 maps", "DS3's music (areas and boss fights)", Stage.Build,

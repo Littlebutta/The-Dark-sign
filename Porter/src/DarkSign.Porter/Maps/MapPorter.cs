@@ -471,6 +471,8 @@ public static class MapPorter
         // The objects' materials and textures: shared by every map, so they are added once, to every area's binder.
         if (_objects is not null && ported.Count > 0)
         {
+            // Objects and map pieces only DS3's cutscenes use, before the materials and the table the cutscenes read.
+            Step(report, "cutscene models", _objects.ConvertCutsceneModels);
             materials.AddRange(_objects.Models.MatbinFiles(0));
             foreach (var areaTextures in textures.Values)
                 _objects.GiveTextures(areaTextures, ported[0].Slot.Ds3);
