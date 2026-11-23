@@ -356,17 +356,21 @@ public sealed class DropPort
     /// <summary>
     /// The Elden Ring ItemLotParam_map row for a lot DS3's scripts award by number ("Award Item Lot", "Award Items
     /// (Including Clients)", "Spawn Snuggly Item", "Initialize Crow Trade": boss souls, gifts, the Ashen Estus Flask),
-    /// or -1 when none of its items has an Elden Ring item. The DS3 row and the rows whose IDs follow it (the game
-    /// awards them together, as it rolls an enemy's) are laid end to end like a one-time drop, their "got it" flags
+    /// or -1 when none of its items has an Elden Ring item. The DS3 row alone, like a one-time drop, its "got it" flag
     /// moved with the scripts'. Up to 1.0.57x the scripts named DS3's numbers, under which ItemLotParam_map has no
     /// row: none of the 58 lots the ported maps' scripts award gave anything (census 2026-11-22).
     /// </summary>
+    /// <remarks>
+    /// One row, not the rows after it: DS3 awards a lot's own row (its eight slots), as the crow's trades show, twelve
+    /// lots 4300-4311 numbered one after another, each a trade of its own. The first offline build laid out the
+    /// following rows too, which made 4301 and 4302 the same chain as 4300 (2026-11-23). In Elden Ring the new row is
+    /// placed with free rows around it (<see cref="Chain"/>), so the game reads it alone as well.
+    /// </remarks>
     public int PortLot(int ds3Lot)
     {
         var rows = new List<LotRow>();
-        for (int k = 0; ds3Lot > 0 && k < MaxChain && _ds3Lots.ContainsKey(ds3Lot + k); k++)
-            if (Row(ds3Lot + k) is { } row && !rows.Contains(row))
-                rows.Add(row);
+        if (ds3Lot > 0 && _ds3Lots.ContainsKey(ds3Lot) && Row(ds3Lot) is { } row)
+            rows.Add(row);
         var live = rows.Where(r => r.SlotList.Any(s => s?.Er is not null)).ToList();
         return Chain(live, _erMap, _usedMap, _mapDefaults, _mapChains, ref _nextMap, ref MapRows);
     }
