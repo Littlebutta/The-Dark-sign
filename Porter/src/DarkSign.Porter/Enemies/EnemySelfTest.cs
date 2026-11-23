@@ -776,6 +776,7 @@ public static class EnemySelfTest
             && leftOut[0].Contains("25292100", StringComparison.Ordinal) && written);
 
         DropPort.SelfTest(Check);
+        ThrowRows.SelfTest(Check);
         AiSelfTest.Run(Check);
         ChrVariantsSelfTest.Run(Check);
 
