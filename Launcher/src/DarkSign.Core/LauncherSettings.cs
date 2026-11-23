@@ -56,12 +56,6 @@ public sealed class LauncherSettings
     /// <summary>Full path of ersc.dll from the player's own Seamless Co-op download. Never copied or shipped.</summary>
     public string SeamlessCoopDll { get; set; } = "";
 
-    /// <summary>
-    /// The method chosen for each feature in the Fallbacks window, by feature key ("sounds" -> "B"). Missing keys use
-    /// option A, the default. See <see cref="Fallbacks"/>.
-    /// </summary>
-    public Dictionary<string, string> Methods { get; set; } = [];
-
     /// <summary>How long each part of the last content build took (port-weapons, port-maps), for the time-left estimate.</summary>
     public Dictionary<string, BuildStat> LastBuild { get; set; } = [];
 
@@ -97,7 +91,6 @@ public sealed class LauncherSettings
             // A hand-edited file may say "null" for these; the rest of the launcher expects them set.
             settings.GameExePaths ??= [];
             settings.Profiles ??= [];
-            settings.Methods ??= [];
             settings.LastBuild ??= [];
             settings.RootPath ??= "";
             settings.SeamlessCoopDll ??= "";

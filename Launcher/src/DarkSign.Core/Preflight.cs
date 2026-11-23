@@ -71,7 +71,6 @@ public static class Preflight
         void Add(Level level, string area, string text) => items.Add(new Item(level, area, text));
         var s = c.Settings;
         var setup = new EldenRingSetup(c.Root);
-        var tweaks = Fallbacks.Launch(s.Methods, s.SeamlessCoop);
 
         // ---- Games ----
         if (!Directory.Exists(c.Root))
@@ -95,23 +94,15 @@ public static class Preflight
             File.Exists(ds3) ? ds3 : "not found; it is needed to build the content" + (setup.ContentVersion is null ? "" : " (the last build can still be played)"));
 
         // ---- Tools ----
-        if (tweaks.ModEngine2)
-            Add(setup.FindModEngineLauncher() is not null ? Level.Ok : Level.Info, "Loader",
-                setup.FindModEngineLauncher() is { } me2 ? $"ModEngine2 (Fallbacks: loader C): {me2}" : "ModEngine2 is downloaded on the next PLAY");
-        else
-            Add(setup.FindMe3() is not null ? Level.Ok : Level.Info, "Loader",
-                setup.FindMe3() is { } me3 ? $"me3 v0.13.0: {me3}" : "me3 is downloaded on the next PLAY");
+        Add(setup.FindMe3() is not null ? Level.Ok : Level.Info, "Loader",
+            setup.FindMe3() is { } me3 ? $"me3 v0.13.0: {me3}" : "me3 is downloaded on the next PLAY");
         var profile = EldenRingSetup.Me3Profile(setup.ModDir,
-            [Path.Combine(setup.DllDir, SaveIsolation.RedirectDllName), Path.Combine(setup.DllDir, EldenRingSetup.TestMenuDllName)], tweaks);
+            [Path.Combine(setup.DllDir, SaveIsolation.RedirectDllName), Path.Combine(setup.DllDir, EldenRingSetup.TestMenuDllName)]);
         var me3Problems = CheckMe3Profile(profile);
         if (File.Exists(setup.ProfilePath))
             me3Problems.AddRange(CheckMe3Profile(File.ReadAllText(setup.ProfilePath)).Select(p => "last written profile: " + p));
         if (me3Problems.Count == 0)
-        {
-            var keys = new[] { tweaks.DisableArxan ? "disable_arxan" : null, tweaks.NoMemPatch ? "mem_patch" : null, tweaks.StartOnline ? "start_online" : null }
-                .OfType<string>().ToList();
-            Add(Level.Ok, "me3 profile", "every key is one me3 v0.13.0 reads" + (keys.Count > 0 ? $" (incl. {string.Join(", ", keys)})" : ""));
-        }
+            Add(Level.Ok, "me3 profile", "every key is one me3 v0.13.0 reads");
         foreach (var p in me3Problems.Distinct())
             Add(Level.Fail, "me3 profile", p);
         foreach (var log in Me3Logs(c.Root).Take(1))
@@ -128,10 +119,10 @@ public static class Preflight
                 SeamlessCoop.Problem(s.SeamlessCoopDll) ?? s.SeamlessCoopDll);
 
         // ---- Content ----
-        var stamp = c.PorterVersion is null ? null : Fallbacks.BuildStamp(c.PorterVersion, s.Methods);
+        var stamp = c.PorterVersion is null ? null : c.PorterVersion;
         if (!File.Exists(Path.Combine(setup.ModDir, "regulation.bin")))
             Add(Level.Info, "Content", "not built yet; PLAY builds it (takes a few minutes)");
-        else if (stamp is not null && setup.NeedsContentBuild(stamp, setup.ContentId(s.Methods)))
+        else if (stamp is not null && setup.NeedsContentBuild(stamp, setup.ContentId()))
             Add(Level.Info, "Content", $"built with {setup.ContentVersion ?? "an unknown porter"}; PLAY rebuilds it for {stamp}");
         else
             Add(Level.Ok, "Content", stamp is not null && setup.ContentVersion != stamp
@@ -139,26 +130,17 @@ public static class Preflight
                 : $"built ({setup.ContentVersion})");
         if (setup.IconFilesProblem() is { } icons)
             Add(Level.Fail, "Icons", $"{icons}: the game would mix its own menus with the mod's and DS3 icons go missing; PLAY rebuilds the content (close Elden Ring first)");
-        var methods = Fallbacks.Summary(s.Methods);
-        Add(Level.Info, "Fallbacks", methods.Length == 0 ? "every feature uses method A" : methods);
 
         // ---- Sounds ----
-        var sounds = Fallbacks.Chosen(s.Methods, Fallbacks.Get("sounds")!).Letter;
-        if (File.Exists(Path.Combine(setup.ModDir, "regulation.bin")) && sounds != "off")
+        if (File.Exists(Path.Combine(setup.ModDir, "regulation.bin")))
         {
-            if (tweaks.ModEngine2)
-                Add(Level.Warn, "Sounds", "ModEngine2 never loads modded sound banks (proven 2026-11-01): ported swings will be silent or Elden Ring's");
-            var bank = sounds == "E" ? Path.Combine("sd", "cs_c9990.bnk") : Path.Combine("sd", "enus", "cs_main.bnk");
-            if (sounds != "D")
-                Add(File.Exists(Path.Combine(setup.ModDir, bank)) ? Level.Ok : Level.Fail, "Sounds",
-                    File.Exists(Path.Combine(setup.ModDir, bank)) ? $"{bank} built (method {sounds})" : $"{bank} is missing (method {sounds}); ported swings will be silent");
-            if (sounds is "A" or "B" or "C" or "E")
-            {
-                var index = Path.Combine(setup.ModDir, "sound", "soundbanksinfo.mobnkinfo");
-                Add(File.Exists(index) ? Level.Ok : Level.Warn, "Sounds",
-                    File.Exists(index) ? "the game's sound index (sound\\soundbanksinfo.mobnkinfo) lists the new sounds"
-                        : "sound\\soundbanksinfo.mobnkinfo wasn't written, so the game's index doesn't list the new sounds (see the port-weapons log, \"sounds: index\")");
-            }
+            var bank = Path.Combine("sd", "enus", "cs_main.bnk");
+            Add(File.Exists(Path.Combine(setup.ModDir, bank)) ? Level.Ok : Level.Fail, "Sounds",
+                File.Exists(Path.Combine(setup.ModDir, bank)) ? $"{bank} built" : $"{bank} is missing; ported swings will be silent");
+            var index = Path.Combine(setup.ModDir, "sound", "soundbanksinfo.mobnkinfo");
+            Add(File.Exists(index) ? Level.Ok : Level.Warn, "Sounds",
+                File.Exists(index) ? "the game's sound index (sound\\soundbanksinfo.mobnkinfo) lists the new sounds"
+                    : "sound\\soundbanksinfo.mobnkinfo wasn't written, so the game's index doesn't list the new sounds (see the port-weapons log, \"sounds: index\")");
         }
         ReportVerdict(items, "Build checks", Path.Combine(c.Root, "TheDarkSign", "Work", "reports", "validate-mod.txt"),
             l => l.StartsWith("ERROR ", StringComparison.Ordinal), l => l.Contains("sound", StringComparison.OrdinalIgnoreCase) ? "Sounds" : "Build checks");
@@ -235,7 +217,7 @@ public static class Preflight
         }
         foreach (var line in checks.Where(l => l.Contains("MISSING", StringComparison.Ordinal)))
             items.Add(new Item(Level.Fail, "Event flags", "in game: " + line[(line.IndexOf("flagcheck:", StringComparison.Ordinal) + 10)..].Trim()
-                + (line.Contains("map flags", StringComparison.Ordinal) ? " → switch Fallbacks \"map-flags\" to B" : "")));
+               ));
         var summary = checks.LastOrDefault(l => l.Contains("blocks ok", StringComparison.Ordinal));
         if (summary is not null && !summary.Contains("MISSING", StringComparison.Ordinal))
             items.Add(new Item(summary.Contains(" 0 missing", StringComparison.Ordinal) ? Level.Ok : Level.Warn, "Event flags",
@@ -329,7 +311,7 @@ public static class Preflight
             $"{Count("skipped")} skipped (Work\\reports\\enemy-port.tsv)"));
         if (failures.Count > 0)
             items.Add(new Item(Level.Warn, "Enemies", $"enemy port: {failures.Count} failure note(s), first: {failures[0].TrimStart('#', ' ')}. " +
-                "Many failures: try Fallbacks enemy-port B or C."));
+                "Many failures: send the report with the pre-flight zip."));
     }
 
     public static string Format(IEnumerable<Item> items) =>
