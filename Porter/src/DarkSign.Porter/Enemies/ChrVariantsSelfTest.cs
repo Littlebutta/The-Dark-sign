@@ -41,6 +41,26 @@ public static class ChrVariantsSelfTest
             && e2?.MiniHeader is TAE.Animation.AnimMiniHeader.Standard { ImportsHKX: false }
             && after.Animations.Select(a => a.ID).SequenceEqual(after.Animations.Select(a => a.ID).Order()));
 
+        // The Valiant Gargoyle's (the Dancer's template) 1003021 borrows 1003027's clip: DS3's own phase-2 3021 takes it over.
+        var borrowPlan = ChrVariants.Plan([0, 3000], new HashSet<(int, int)> { (0, 0), (0, 3000), (1, 3000) }, ds3,
+            _ => false, _ => false, new HashSet<(int, int)> { (0, 0), (0, 3000) });
+        var aliasTae = new TAE { Format = TAE.TAEFormat.SDT, Animations = [], Flags = new byte[8], SkeletonName = "skeleton.hkt", SibName = "c7000.sib", ID = 200007000 };
+        aliasTae.Animations.Add(new TAE.Animation(3000, new TAE.Animation.AnimMiniHeader.Standard(), "a000_003000.hkt"));
+        aliasTae.Animations.Add(new TAE.Animation(1003000, new TAE.Animation.AnimMiniHeader.Standard { ImportsHKX = true, ImportHKXSourceAnimID = 1003001 }, "a001_003000.hkt"));
+        aliasTae.Animations[1].Events.Add(new TAE.Event(0, 1, 1, 0, new byte[16], false));
+        var aliasMain = new BND4();
+        aliasMain.Files.Add(new BinderFile(Binder.FileFlags.Flag1, 5000000, @"N:\GR\data\INTERROOT_win64\chr\c7000\tae\c7000.tae", aliasTae.Write()));
+        var aliasDiv = new BND4();
+        aliasDiv.Files.Add(new BinderFile(Binder.FileFlags.Flag1, 1000003000, @"N:\GR\data\INTERROOT_win64\chr\c7000\hkx_div00_compendium\a000_003000.hkx", [4]));
+        var aliasAdded = ChrVariants.AddSectionFiles([aliasMain, aliasDiv], borrowPlan);
+        var aliasAfter = TAE.Read(aliasMain.Files[0].Bytes);
+        var borrower = aliasAfter.Animations.Where(a => a.ID == 1003000).ToList();
+        check("variants: a template section entry that borrows another clip gets DS3's own file in its place (one entry, its own file, no import)",
+            borrowPlan.Contains((1, 3000)) && aliasAdded.Contains((1, 3000))
+            && aliasDiv.Files.Any(f => f.ID == 1001003000 && f.Name.EndsWith("a001_003000.hkx", StringComparison.Ordinal))
+            && borrower is [{ AnimFileName: "a001_003000.hkt", MiniHeader: TAE.Animation.AnimMiniHeader.Standard { ImportsHKX: false } }]
+            && ChrVariants.AddSectionFiles([aliasMain, aliasDiv], borrowPlan).Count == 0);
+
         var strings = new hkbBehaviorGraphStringData { m_animationNames = [@"..\Model\chr\c7000\hkx\a000_000000.hkx", @"..\Model\chr\c7000\hkx\a000_003000.hkx"] };
         var idle = new CustomManualSelectorGenerator
         {

@@ -1770,7 +1770,7 @@ public static partial class ChrPort
                     catch (Exception ex) when (ex is not OutOfMemoryException) { return false; }
                 })).Select(p => LeafKey(p.Leaf).Item2).ToHashSet();
                 var wanted = ChrVariants.Plan(baseMoves.Select(p => LeafKey(p.Leaf).Item2), templateHas, moves.ToDictionary(m => m.Key, m => m.Value.Hkx),
-                    baseAdditive.Contains, ds3Additive.Contains);
+                    baseAdditive.Contains, ds3Additive.Contains, leaves.Select(p => LeafKey(p.Leaf)).ToHashSet());
                 variants = ChrVariants.AddSectionFiles(anibnds.Select(b => b.Value.Bnd), wanted);
             }
             catch (Exception ex) when (ex is not OutOfMemoryException)
