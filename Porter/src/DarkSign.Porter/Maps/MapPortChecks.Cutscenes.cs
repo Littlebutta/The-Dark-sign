@@ -20,6 +20,7 @@ public static partial class MapPortChecks
         yield return ("cutscenes: each cut's Havok file becomes cutNNNN\\a0000.hkx at ID NNNN*10000; files no cut plays are left out", CutsceneCutFiles);
         yield return ("cutscenes: events keep their own and their parent's timeline numbers when timelines are taken out or added (1.0.460 Friede crash)", CutsceneTimelineRelink);
         yield return ("cutscenes: bones carry the Elden Ring part's name, effect events play converted DS3 effects, a solid model under the decal shader is drawn", CutsceneBonesAndEffects);
+        yield return ("cutscenes: a cutscene warp to a player part gets an Elden Ring warp region (Other sphere at the part) and the script points at it", CutsceneWarpRegions);
         yield return ("cutscenes: Clear played cutscenes lists each cutscene's seen flags (set and checked by its event, parameters followed) and its event's own flag", CutsceneReplayFlags);
     }
 
@@ -660,5 +661,37 @@ public static partial class MapPortChecks
         Expect(Show(19700010) == "19700811 19705820" && Show(19700030) == "19700831 19705821", $"parameters per start ({Show(19700010)} / {Show(19700030)})");
         Expect(Show(19700031) == "19700851", $"common event: no own flag ({Show(19700031)})");
         Expect(!played.ContainsKey(19700040), "the menu's own events are left out");
+    }
+
+    private static void CutsceneWarpRegions()
+    {
+        var map = new MapId(45, 1, 0, 0);
+        var msb = new MSBE();
+        msb.Parts.Players.Add(new MSBE.Part.Player { Name = "c0000_2810", ModelName = "c0000", EntityID = 45012810, Position = new Vector3(1, 2, 3), Rotation = new Vector3(0, 90, 0) });
+        msb.Parts.Players.Add(new MSBE.Part.Player { Name = "c0000_9990", ModelName = "c0000", EntityID = 45012950 });
+        msb.Regions.Others.Add(new MSBE.Region.Other { Name = "warp", EntityID = 45012800, RegionID = 7 });
+        static EMEVD.Instruction Warp(int cutscene, uint entity) => RunEvents.Make(2002, 11, cutscene, 0u, entity, 45010000, 10000u, 0, (byte)0);
+        var script = new EMEVD();
+        var e = new EMEVD.Event(45015810, EMEVD.Event.RestBehaviorType.Default);
+        e.Instructions.Add(Warp(45010030, 45012810));
+        e.Instructions.Add(Warp(45010030, 45012810));
+        e.Instructions.Add(Warp(45010020, 45012800));
+        e.Instructions.Add(Warp(45010010, 0));
+        script.Events.Add(e);
+        var param = new EMEVD.Event(45015811, EMEVD.Event.RestBehaviorType.Default);
+        param.Instructions.Add(Warp(45010040, 0));
+        param.Parameters.Add(new EMEVD.Parameter(0, 8, 0, 4));
+        script.Events.Add(param);
+        var layouts = new CutsceneWarpPoints.Layouts(id => id == map ? msb : null);
+        var counts = CutsceneWarpPoints.Fix([script], layouts);
+        uint Target(EMEVD.Event ev, int i) => BitConverter.ToUInt32(ev.Instructions[i].ArgData, 8);
+        var added = msb.Regions.Others.Where(r => r.Name.StartsWith("[DS3] cutscene warp point")).ToList();
+        Expect(counts is { Warps: 5, Added: 1, Reused: 1, AlreadyRegion: 1, NotFound: 1, Parameterized: 1 }, counts.ToString());
+        Expect(added.Count == 1 && added[0].EntityID == 45012951 && added[0].Position == new Vector3(1, 2, 3) && added[0].Rotation == new Vector3(0, 90, 0)
+               && added[0].Shape is MSB.Shape.Sphere { Radius: 1 } && added[0].RegionID == 8 && added[0].MapID == -1 && added[0].UnkS0C == -1,
+            "one Other sphere (radius 1) at the part, first free ID in the map's range (2950 taken)");
+        Expect(Target(e, 0) == 45012951 && Target(e, 1) == 45012951 && Target(e, 2) == 45012800 && Target(param, 0) == 0, "warps to the part now name the region; others unchanged");
+        Expect(msb.Parts.Players[0].EntityID == 45012810 && layouts.Changed.SetEquals([map]), "the part keeps its ID");
+        Expect(CutsceneWarpPoints.FromPacked(19700000) == new MapId(19, 70, 0, 0), "packed map ID");
     }
 }
