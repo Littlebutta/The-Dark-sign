@@ -662,6 +662,8 @@ public static class Fallbacks
             new("A", "DS3's objects as Elden Ring assets (default)", "Every DS3 object (statues, candles, crates, doors, ladders, the bonfire's sword) is converted to an Elden Ring asset and stands where DS3 has it, with its DS3 entity ID so the converted events find it. Objects that don't break also get DS3's collision; doors, lifts and levers move (see \"DS3 doors, lifts and levers\"); crates and barrels can be walked through until breaking is ported. Report: Work\\reports\\object-port.tsv."),
             new("B", "Objects without collision", "The same objects, but none of them is solid (port-maps --objects nocollision). Tells whether an object's collision is what blocks the way or breaks the map.")
                 { MapsArgs = ["--objects", "nocollision"] },
+            new("D", "No items lying in the maps", "Objects as in A, but DS3's items lying in the maps (corpses, chests, glowing spots) are not placed (DARKSIGN_MAP_TREASURE=0), as up to 1.0.57x. Use when a DS3 map crashes or an item pickup misbehaves with A.")
+                { PorterEnv = Env("DARKSIGN_MAP_TREASURE", "0") },
             new("off", "Off (no objects)", "The DS3 maps have no objects (port-maps --objects none), as every build up to 1.0.299 was.")
                 { MapsArgs = ["--objects", "none"] },
         ]),

@@ -567,7 +567,9 @@ public static class MapPorter
             if (ported.Count > 0)
                 try
                 {
-                    enemyPort.ScriptLots = MapEvents.ScriptIds(ctx, ds3, ported.Select(p => p.Slot).ToList(), EventPort.Kind.ItemLot);
+                    var lots = MapEvents.ScriptIds(ctx, ds3, ported.Select(p => p.Slot).ToList(), EventPort.Kind.ItemLot);
+                    lots.UnionWith(MapTreasure.Lots(ds3, ported.Select(p => p.Slot)));
+                    enemyPort.ScriptLots = lots;
                     enemyPort.ScriptBehaviors = MapEvents.ScriptIds(ctx, ds3, ported.Select(p => p.Slot).ToList(), EventPort.Kind.Behavior);
                 }
                 catch (Exception ex) when (ex is not OutOfMemoryException)
@@ -620,6 +622,8 @@ public static class MapPorter
                 lines.Insert(0, $"event IDs: {ids.Lots} ported item lots, {ids.Behaviors} behaviour rows, AI rows from the enemy port, items by the drops' rule");
                 return string.Join(Environment.NewLine, lines);
             });
+            Step(report, "map treasure", () => MapTreasure.Apply(ctx, ds3, ported.Select(p => p.Slot),
+                id => _partNames.GetValueOrDefault(id), lot => Ds3Ids.Current?.ItemLot(lot)));
             Step(report, "events", () => MapEvents.Port(ctx, ds3, er, ported.Select(p => p.Slot).ToList(), cutscenes, f => playedFlags = f, music));
         if (music is not null)
             Step(report, "music", () => MapMusic.WriteAudio(ctx, ds3, music));
