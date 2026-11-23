@@ -90,41 +90,23 @@ public static partial class FxrPort
 
     internal enum Kind { Texture = 0, Model = 1, Anibnd = 2, Sound = 3 }
 
-    /// <summary>Fallback "weapon-effects-files" C: DARKSIGN_FXR_HELD_SOUNDS=1 keeps the sounds DS3 effects hold while
-    /// they live as they are, as in builds up to 1.0.282 (the hum of Friede's ice blade never stopped).</summary>
-    private static readonly bool HeldSoundsOnce = Environment.GetEnvironmentVariable("DARKSIGN_FXR_HELD_SOUNDS") != "1";
-
-    private static readonly bool PortFxrSounds = Environment.GetEnvironmentVariable("DARKSIGN_FXR_SOUNDS") != "0";
-
-    /// <summary>Lights DS3's smoke-like billboards (Normal and Unk6 blend) the way Elden Ring lights its own (lighting
-    /// -2): see fxr-port.js. Fallback "map-effects" D: DARKSIGN_FXR_LIT=0 leaves them unlit, as up to 1.0.44x.</summary>
-    internal static readonly bool LitSmoke = Environment.GetEnvironmentVariable("DARKSIGN_FXR_LIT") != "0";
-
-    /// <summary>Gives the point and spot lights DS3's effects carry (a weapon's glow, a spell, a candle, the windows of
-    /// Friede's hall) Elden Ring's light
-    /// settings: 10 times DS3's strength with Elden Ring's daylight dimming, a falloff of a quarter of the radius and
-    /// a faint glow in the air (see fxr-port.js erLight for the measurements). As converted before, they hardly lit
-    /// anything (2026-11-20 playtest: "effects like the twin princes sword don't create light"). Fallback
-    /// "map-effects" E: DARKSIGN_FXR_LIGHTS=ds3 keeps them as the library converts them.</summary>
-    internal static readonly bool ErLights = Environment.GetEnvironmentVariable("DARKSIGN_FXR_LIGHTS") != "ds3";
-
     private static IEnumerable<int> FxrSounds(IEnumerable<int> ids) => ids.Where(id => id is > 0 and < 100_000_000).Distinct();
 
     /// <summary>
     /// The DS3 sounds (as the keys of fxr-port.js's map.held) an effect may keep holding: the ones it plays as ported
-    /// sounds, when those get Stop events (SoundPort.StopEvents: every ported sound does). Measured: Elden Ring's own
+    /// sounds, when those get Stop events (every ported sound does). Measured: Elden Ring's own
     /// effects hold 1,188 sounds, each with a Stop event, 814 of them looping. Inferred from that and from the game
     /// building "Stop_%s" names: it ends a held sound by posting its Stop event when the node ends (not observed in
     /// game). The effects are converted before the sounds are ported, so this goes by the port's rule, not its
     /// result: a sound that then doesn't port has no Play event either and stays silent.
     /// </summary>
     private static Dictionary<string, int> StoppableSounds(IEnumerable<int> heldSounds) =>
-        PortFxrSounds && SoundPort.StopEvents ? FxrSounds(heldSounds).ToDictionary(id => id.ToString(), _ => 1) : [];
+        FxrSounds(heldSounds).ToDictionary(id => id.ToString(), _ => 1);
 
     /// <summary>The sounds a converted effect plays without holding them: DS3's own unheld ones, and the held ones
     /// too when the conversion clears their flag (no Stop events, see <see cref="StoppableSounds"/>).</summary>
     private static IEnumerable<int> Unheld(FxrScript.Info info) =>
-        FxrSounds(HeldSoundsOnce && !SoundPort.StopEvents ? info.Sounds : info.UnheldSounds ?? info.Sounds);
+        FxrSounds(info.UnheldSounds ?? info.Sounds);
 
     internal sealed record Ds3File(BinderFile File, string Binder);
 
@@ -175,19 +157,13 @@ public static partial class FxrPort
             // Models are converted onto Elden Ring's effect materials (EffectModelPort), and a model's animations
             // (an anibnd with the model's own number) through EffectAnimPort; not a model whose material Elden Ring
             // has nothing like.
-            if (info.Anibnds.Any(m => m > 0) && (!EffectAnimPort.Enabled || !EffectModelPort.Enabled
-                    || info.Anibnds.Any(a => a > 0 && (!info.Models.Contains(a) || !ds3.Resources.ContainsKey((Kind.Anibnd, a))))))
+            if (info.Anibnds.Any(m => m > 0) && (info.Anibnds.Any(a => a > 0 && (!info.Models.Contains(a) || !ds3.Resources.ContainsKey((Kind.Anibnd, a))))))
             {
                 Fail(id, "uses animated models");
                 continue;
             }
             if (info.Models.Any(m => m > 0))
             {
-                if (!EffectModelPort.Enabled)
-                {
-                    Fail(id, "uses models");
-                    continue;
-                }
                 modelPort ??= new EffectModelPort(erBinders.SelectMany(b => b.Bnd.Files).Where(f => Ext(f.Name) == ".flver").Select(f => (f.Name, f.Bytes)));
                 string? why = null;
                 foreach (var m in info.Models.Where(m => m > 0).Distinct())
@@ -245,18 +221,17 @@ public static partial class FxrPort
         var stoppable = StoppableSounds(effects.Values.SelectMany(e => e.Info.HeldSounds ?? []));
         if (held.Count > 0)
         {
-            int kept = held.Count(e => !HeldSoundsOnce || e.Value.Info.HeldSounds!.Any(s => stoppable.ContainsKey(s.ToString())));
+            int kept = held.Count(e => e.Value.Info.HeldSounds!.Any(s => stoppable.ContainsKey(s.ToString())));
             Console.WriteLine($"effects: {held.Count} DS3 effects hold a sound while they live ({string.Join(" ", held.Take(12).Select(e => $"f{e.Key}:s{e.Value.Info.HeldSounds![0]}"))}{(held.Count > 12 ? " ..." : "")}); " +
-                              (!HeldSoundsOnce ? "kept held (DARKSIGN_FXR_HELD_SOUNDS=1)"
-                                  : kept == 0 ? "ported to play once, because Elden Ring could not end them (the ported sounds have no Stop events)"
+                              (kept == 0 ? "ported to play once, because Elden Ring could not end them (the ported sounds have no Stop events)"
                                   : $"{kept} keep it held: Elden Ring ends the ported sound with its Stop event when the effect ends" +
                                     (kept < held.Count ? $"; {held.Count - kept} play theirs once (not a ported sound)" : "")));
         }
         var mapJson = JsonSerializer.Serialize(new Dictionary<string, Dictionary<string, int>>
         {
-            ["once"] = HeldSoundsOnce ? new() { ["all"] = 1 } : [],
-            ["lit"] = LitSmoke ? new() { ["all"] = 1 } : [],
-            ["lights"] = ErLights ? new() { ["all"] = 1 } : [],
+            ["once"] = new() { ["all"] = 1 },
+            ["lit"] = new() { ["all"] = 1 },
+            ["lights"] = new() { ["all"] = 1 },
             ["held"] = stoppable,
             ["sfx"] = effects.Keys.ToDictionary(id => id.ToString(), id => IdBase + id),
             [((int)Kind.Texture).ToString()] = textures.ToDictionary(t => t.Key.ToString(), t => t.Value),
@@ -265,9 +240,9 @@ public static partial class FxrPort
             [((int)Kind.Anibnd).ToString()] = effects.Values.SelectMany(e => e.Info.Anibnds).Where(models.ContainsKey).Distinct()
                 .ToDictionary(a => a.ToString(), a => models[a]),
             // DS3 effect sounds are DS3 s-sounds: they play the ported copy (SoundPort, same ID base). Unmapped they
-            // played whatever Elden Ring sound has that number. DARKSIGN_FXR_SOUNDS=0 leaves them as they were.
-            [((int)Kind.Sound).ToString()] = PortFxrSounds ? FxrSounds(effects.Values.SelectMany(e => e.Info.Sounds))
-                .ToDictionary(id => id.ToString(), id => SoundPort.IdBase + id) : [],
+            // played whatever Elden Ring sound has that number.
+            [((int)Kind.Sound).ToString()] = FxrSounds(effects.Values.SelectMany(e => e.Info.Sounds))
+                .ToDictionary(id => id.ToString(), id => SoundPort.IdBase + id),
         });
 
         // 3. Convert every model and effect; a failed one takes the effects that reference it out too.
@@ -321,8 +296,7 @@ public static partial class FxrPort
         var lit = effects.Where(e => e.Value.Info.Lights > 0).OrderBy(e => e.Key).ToList();
         if (lit.Count > 0)
             Console.WriteLine($"effects: {lit.Count} DS3 effects carry {lit.Sum(e => e.Value.Info.Lights)} point and spot lights ({string.Join(" ", lit.Take(12).Select(e => $"f{e.Key}"))}{(lit.Count > 12 ? " ..." : "")}); " +
-                              (ErLights ? "set up as Elden Ring's own (strength x10, dimmed in daylight, falloff a quarter of the radius)"
-                                        : "kept as converted (DARKSIGN_FXR_LIGHTS=ds3)"));
+                              ("set up as Elden Ring's own (strength x10, dimmed in daylight, falloff a quarter of the radius)"));
 
         // 4. Add the effects, their resource lists and their textures to Elden Ring's common effect binder.
         var added = new Dictionary<string, int>();
@@ -330,11 +304,8 @@ public static partial class FxrPort
         {
             result.Effects[id] = IdBase + id;
             result.Looks[id] = LookOf(id, effects);
-            if (PortFxrSounds)
-            {
-                result.Sounds.UnionWith(FxrSounds(effects[id].Info.Sounds));
-                result.UnheldSounds.UnionWith(Unheld(effects[id].Info));
-            }
+            result.Sounds.UnionWith(FxrSounds(effects[id].Info.Sounds));
+            result.UnheldSounds.UnionWith(Unheld(effects[id].Info));
             Add(erBinders, ".fxr", $"f{IdBase + id:D9}.fxr", converted[id], added);
         }
         foreach (var (old, newId) in models.Where(m => effects.Values.Any(e => e.Info.Models.Contains(m.Key))).OrderBy(m => m.Value))

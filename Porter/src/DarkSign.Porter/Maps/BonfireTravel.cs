@@ -31,12 +31,9 @@ namespace DarkSign.Porter.Maps;
 /// 5:19 the same under a condition, 1:20 clears the list, 1:10 shows it, function 23 is the picked entry, 15 an
 /// event flag, command 1:11 sets a flag, 6:N calls state group N and 7:-1 returns from one.
 /// </para>
-/// DARKSIGN_BONFIRE_TRAVEL=0 (launcher fallback "map-bonfires" D) leaves the bonfires with Elden Ring's own menu.
 /// </summary>
 public static class BonfireTravel
 {
-    public static bool Enabled => Environment.GetEnvironmentVariable("DARKSIGN_BONFIRE_TRAVEL") != "0";
-
     /// <summary>The bonfire menu's script. Elden Ring's own are 1xxxxxxxx-8xxxxxxxx; the ported people's 9xxxxxxxx.</summary>
     public const int TalkId = 899_001_000;
     public const string GraceScript = "t000001000", CommonTalk = "/script/talk/m00_00_00_00.talkesdbnd.dcx";

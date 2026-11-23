@@ -1,4 +1,4 @@
-/* Fallback "sounds" D (launcher Fallbacks window): the DLL plays the ported DS3 sounds itself, on its own XAudio2
+/* DKSIGN_DLL_SOUNDS=1 (not set by the launcher since its fallbacks were removed): the DLL plays the ported DS3 sounds itself, on its own XAudio2
    stream, instead of through the game's Wwise bank. DOOM RING (stanleymov/DOOM-RING, MIT) plays its weapon sounds
    the same way, from a DLL on its own audio stream, and its erfps2 hooks the game's TAE event dispatch through the
    CSChrTaeAnimEvent vtable (RVA 0x2a392c0 in Elden Ring 2.7.2, entry 2 executes one event, the event's type comes

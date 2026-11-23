@@ -12,13 +12,10 @@ namespace DarkSign.Porter;
 /// ported ones for DS3's (Havel's X1.25 Y0.76, Knight Shield X0.82 Y0.51), so every ported shield was held turned 90°
 /// about its face. The guard pose is Elden Ring's own animation (the guard states play a000_0190xx), which shows it
 /// most. Each ported shield is turned by DS3's dummy frame times the inverse of Elden Ring's (both at the player
-/// model's bind pose), so it sits on Elden Ring's dummy as it sat on DS3's. DARKSIGN_SHIELD_HOLD=0 leaves the models
-/// as they are.
+/// model's bind pose), so it sits on Elden Ring's dummy as it sat on DS3's.
 /// </summary>
 public static class WeaponHold
 {
-    public static readonly bool Enabled = Environment.GetEnvironmentVariable("DARKSIGN_SHIELD_HOLD") != "0";
-
     /// <summary>Turns under this many degrees are left alone.</summary>
     public const float MinDegrees = 5f;
 
@@ -100,11 +97,6 @@ public static class WeaponHold
     public static Dictionary<WeaponPlan, Hold> Plan(GameArchives er, GameArchives ds3, ParamStore erParams, ParamStore ds3Params, IReadOnlyList<WeaponPlan> plans)
     {
         var result = new Dictionary<WeaponPlan, Hold>();
-        if (!Enabled)
-        {
-            Console.WriteLine("models: shield hold turn off (DARKSIGN_SHIELD_HOLD=0)");
-            return result;
-        }
         var erWeapons = erParams.Get("EquipParamWeapon");
         var ds3Weapons = ds3Params.Get("EquipParamWeapon");
         var erAbsorp = erParams.Get("WepAbsorpPosParam");
@@ -190,7 +182,7 @@ public static class WeaponHold
         {
             var turn = Turn(ds3Frames[d], erFrames[e])!.Value;
             Console.WriteLine($"models: shield hold: DS3 dummy {d} on {ds3Frames[d].Bone} (up {Fmt(ds3Frames[d].Up)}) -> Elden Ring dummy {e} on {erFrames[e].Bone} " +
-                              $"(up {Fmt(erFrames[e].Up)}): turned {Degrees(turn):0}° for {names.Count} weapons ({string.Join(", ", names.Take(6))}{(names.Count > 6 ? ", ..." : "")}) [DARKSIGN_SHIELD_HOLD=0 off]");
+                              $"(up {Fmt(erFrames[e].Up)}): turned {Degrees(turn):0}° for {names.Count} weapons ({string.Join(", ", names.Take(6))}{(names.Count > 6 ? ", ..." : "")})");
         }
         if (body.Count > 0)
             Console.WriteLine($"models: shield hold: {body.Count} single-model shields DS3 hangs on the body start from DS3's hand-held shield dummy {usualHand?.ToString() ?? "(none)"}: {string.Join(", ", body)}");

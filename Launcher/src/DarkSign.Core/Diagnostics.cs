@@ -32,7 +32,6 @@ public static class Diagnostics
             new(Path.Combine(dark, "Work"), "work", "*.txt", false, 50),
             new(setup.ModDir, "mod", "*", false, 100),
             new(setup.Me3Dir, "me3", "*.me3", false, 5),
-            new(setup.ModEngineDir, "modengine2", "*.toml", false, 5),
             new(Path.Combine(dark, "Randomizer"), "randomizer", "*", true, 50),
         };
         // This profile's save folders hold our DLLs' logs (never the saves: .dksign isn't a text extension).
@@ -112,8 +111,6 @@ public static class Diagnostics
         text.AppendLine($"The Dark Sign test report, {DateTime.Now:yyyy-MM-dd HH:mm:ss}");
         text.AppendLine($"launcher {launcherVersion}, porter {setup.PorterVersion ?? "not installed"}, content {setup.ContentVersion ?? "not built"}");
         text.AppendLine($"profile {settings.GetActiveProfile().Name}; test menu {(settings.TestMenu ? "on" : "off")}; Seamless Co-op {(settings.SeamlessCoop ? "on" : "off")}");
-        var methods = Fallbacks.Summary(settings.Methods);
-        text.AppendLine($"fallback methods: {(methods.Length == 0 ? "all A" : methods)}");
         foreach (var (game, exe) in settings.GameExePaths)
             text.AppendLine($"{game}: {exe}{(File.Exists(exe) ? "" : " (missing)")}");
         text.AppendLine($"OS: {Environment.OSVersion}, .NET {Environment.Version}");

@@ -30,8 +30,8 @@ public sealed class FlagMap
     public static long EventSlot(int n) => FirstTile + (Tiles - 1 - n / PerTile) * TileStep + 1000 + n % PerTile;
 
     /// <summary>
-    /// Fallback "map-flags" B: a ported map's own flags (normally moved into its slot's map flags, 4500xxxx) get
-    /// numbers here too, in the saved ranges JortPob uses that the global flags don't: 4000-4999 and 7000-9999 of the
+    /// Flags of a ported map's blocks the game doesn't keep (the rest move into its slot's map flags, 4500xxxx) get
+    /// numbers here, in the saved ranges JortPob uses that the global flags don't: 4000-4999 and 7000-9999 of the
     /// same tiles (4000 a tile, 36000 in all).
     /// </summary>
     public const int LocalPerTile = 4000;

@@ -20,12 +20,9 @@ namespace DarkSign.Porter.Enemies;
 /// (enemy parts: EntityID and entity groups -> NPCParamID); an entity that comes from the event's parameters is read
 /// from the calls that start the event (one level). DS3 EMEDF (DarkScript3's ds3-common.emedf.json): 2004[8] "Set
 /// SpEffect", 2004[21] "Clear SpEffect", 2000[0] "Initialize Event", 2000[6] "Initialize Common Event".
-/// Fallback enemy-glow B (DARKSIGN_ENEMY_SCRIPT_EFFECTS=0) keeps the rows as they are.
 /// </summary>
 public sealed class ScriptEffects
 {
-    public static bool Enabled => Environment.GetEnvironmentVariable("DARKSIGN_ENEMY_SCRIPT_EFFECTS")?.Trim() != "0";
-
     /// <summary>DS3 EMEDF: 2004[8] "Set SpEffect" (entity, SpEffect), 2004[21] "Clear SpEffect" (entity, SpEffect).</summary>
     public const int Bank = 2004, SetId = 8, ClearId = 21;
 
@@ -62,11 +59,6 @@ public sealed class ScriptEffects
     /// <summary>Reads every DS3 map file and event script. Null (with a note) when it can't.</summary>
     public static ScriptEffects? Read(GameArchives ds3, List<string> notes)
     {
-        if (!Enabled)
-        {
-            Console.WriteLine("enemies: DS3 event script SpEffects are not applied (DARKSIGN_ENEMY_SCRIPT_EFFECTS=0)");
-            return null;
-        }
         try
         {
             var entities = new Dictionary<int, HashSet<int>>();

@@ -55,33 +55,17 @@ public static partial class MapPortChecks
         uint Type(MQB.Event e) => (uint)e.Parameters.First(p => p.Name == "seType").Value;
         int? Voice(int t) => t == 45001000 ? 4005000 : null;
 
-        // As up to 1.0.549 (DARKSIGN_CUTSCENE_SUBTITLES=0): a subtitle becomes a sound event that plays its voice.
-        var old = Environment.GetEnvironmentVariable("DARKSIGN_CUTSCENE_SUBTITLES");
-        Environment.SetEnvironmentVariable("DARKSIGN_CUTSCENE_SUBTITLES", "0");
-        CutsceneSound.Plan plan;
-        MQB mqb;
-        MQB.Timeline main, fx, talk, armour;
-        try
-        {
-            (mqb, main, fx, talk, armour) = SoundSample();
-            plan = CutsceneSound.Prepare(mqb, "s19_70_0000", 2, known.Contains, Voice);
-        }
-        finally { Environment.SetEnvironmentVariable("DARKSIGN_CUTSCENE_SUBTITLES", old); }
+        var (mqb, main, fx, talk, armour) = SoundSample();
+        var plan = CutsceneSound.Prepare(mqb, "s19_70_0000", 2, known.Contains, Voice);
         Expect(mqb.Resources[1].Unk48 == 135, "cutscene SE resource becomes kind 135");
         Expect(Id(main.Events[0]) == 990_002_000 && main.Events[0].Parameters.Count == 5 && main.Events[0].Parameters[4].Name == "IsForceRefLocalPlayerEquipData",
             "main audio: first new ID of cutscene 2, Elden Ring's five parameters");
         Expect(fx.Events.Count == 2 && Id(fx.Events[0]) == 990_002_001 && Id(fx.Events[1]) == 990_002_001 && (int)fx.Events[0].Parameters[2].Value == 3,
             "an effect sound keeps its dummy poly; the same sound twice gets one ID; an unknown one is left out");
-        Expect(talk.Events.Count == 1 && talk.Events[0].ResourceIndex == 5 && mqb.Resources[5].Unk48 == 135 && Id(talk.Events[0]) == 990_002_002 && Type(talk.Events[0]) == 4,
-            "subtitles off: a talk with a voice plays it through a new sound resource; one without is left out");
         Expect(Type(armour.Events[0]) == 15 && Id(armour.Events[0]) == 100, "armour movement: DS3 seType 9 -> 15");
-        Expect(plan.Sounds.Count == 3 && plan.Main == 1 && plan.Effects == 2 && plan.Voices == 1 && plan.Armour == 1 && plan.Dropped == 2,
-            plan.ToString());
-        Expect(plan.Sounds["v004005000"] == 990_002_002 && plan.VoiceOfTalk.Count == 0, "voice name");
+        Expect(plan.Main == 1 && plan.Effects == 2 && plan.Armour == 1, plan.ToString());
 
-        // Subtitles on (the default): the subtitle stays a kind 27 event, its voice goes in the bank as Play_v<new ID>.
-        (mqb, main, fx, talk, armour) = SoundSample();
-        plan = CutsceneSound.Prepare(mqb, "s19_70_0000", 2, known.Contains, Voice);
+        // Subtitles: the subtitle stays a kind 27 event, its voice goes in the bank as Play_v<new ID>.
         Expect(talk.Events.Count == 2 && talk.Events.All(e => e.ResourceIndex == 3) && mqb.Resources.Count == 5,
             "subtitles stay on their kind 27 resource; no sound resource is added for them");
         Expect(plan.VoiceOfTalk.Count == 1 && plan.VoiceOfTalk[45001000] == 990_002_002 && plan.VoiceIds.SetEquals([990_002_002]) && plan.Voices == 1 && plan.Dropped == 1,

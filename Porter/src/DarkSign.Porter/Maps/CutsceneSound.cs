@@ -22,15 +22,11 @@ namespace DarkSign.Porter.Maps;
 /// file says which samples, level and pitch). Each sound gets a new seType 4 ID (<see cref="IdBase"/> + the cutscene's
 /// number * 1000 + n), its events are rewritten to Elden Ring's kind 135 form, armour movement goes to seType 15, and
 /// a subtitle event whose talk has a DS3 voice keeps its subtitle and speaks through its TalkParam row
-/// (<see cref="CutsceneSubtitles"/>; with DARKSIGN_CUTSCENE_SUBTITLES=0 it becomes a sound event, as up to 1.0.549). A DS3 sound
+/// (<see cref="CutsceneSubtitles"/>). A DS3 sound
 /// that can't be found or decoded leaves its event out, so the game never plays an Elden Ring sound of that number.
-/// Off with DARKSIGN_CUTSCENE_SOUND=0 (launcher fallback map-cutscenes C): the timelines keep their sound events as
-/// the cutscene port left them.
 /// </summary>
 public sealed class CutsceneSound
 {
-    public static readonly bool Enabled = Environment.GetEnvironmentVariable("DARKSIGN_CUTSCENE_SOUND") != "0";
-
     /// <summary>New cutscene sound IDs: IdBase + the cutscene's number in the port * 1000 + the sound's number. No Elden
     /// Ring sound is numbered this high (its cutscene sounds are p&lt;cutscene ID * 10&gt;, up to 619,000,000).</summary>
     public const int IdBase = 990_000_000;
@@ -117,7 +113,6 @@ public sealed class CutsceneSound
         var plan = new Plan(erName, index);
         foreach (var r in mqb.Resources.Where(r => r.Unk48 == KindCutsceneSe))
             r.Unk48 = KindSound;
-        int voiceResource = -1;
         foreach (var cut in mqb.Cuts)
             foreach (var tl in cut.Timelines)
                 tl.Events.RemoveAll(ev =>
@@ -131,35 +126,17 @@ public sealed class CutsceneSound
                         if (Number(Param(ev.Parameters, "talkParamId")) is not { } talk || talk <= 0)
                             return false;
                         var name = voice((int)talk) is { } v && v > 0 ? $"v{v:D9}" : null;
-                        if (CutsceneSubtitles.Enabled)
+                        // Elden Ring's way (s10_00_0010: subtitle talk 2003000 -> TalkParam voiceId 20030000, and
+                        // the cutscene's own bank lists Play_v020030000): the subtitle stays and its TalkParam row
+                        // names the voice, which the bank holds as Play_v<ID>. CutsceneSubtitles rewrites the event.
+                        if (name is not null && known(name) && plan.Assign(name) is var vid && vid >= 0)
                         {
-                            // Elden Ring's way (s10_00_0010: subtitle talk 2003000 -> TalkParam voiceId 20030000, and
-                            // the cutscene's own bank lists Play_v020030000): the subtitle stays and its TalkParam row
-                            // names the voice, which the bank holds as Play_v<ID>. CutsceneSubtitles rewrites the event.
-                            if (name is not null && known(name) && plan.Assign(name) is var vid && vid >= 0)
-                            {
-                                plan.VoiceOfTalk[(int)talk] = vid;
-                                plan.VoiceIds.Add(vid);
-                                plan.Voices++;
-                            }
-                            else
-                                plan.Missing.Add(name ?? $"talk {talk}");
-                            return false;
+                            plan.VoiceOfTalk[(int)talk] = vid;
+                            plan.VoiceIds.Add(vid);
+                            plan.Voices++;
                         }
-                        if (name is null || !known(name) || plan.Assign(name) is var id && id < 0)
-                        {
-                            plan.Dropped++;
+                        else
                             plan.Missing.Add(name ?? $"talk {talk}");
-                            return true;
-                        }
-                        if (voiceResource < 0)
-                        {
-                            voiceResource = mqb.Resources.Count;
-                            mqb.Resources.Add(new MQB.Resource { Name = "SE_voice", ParentIndex = -1, Unk48 = KindSound, Path = "", Parameters = [] });
-                        }
-                        ev.ResourceIndex = voiceResource;
-                        ev.Parameters = SoundParams(SeTypeCutscene, id);
-                        plan.Voices++;
                         return false;
                     }
                     if (res.Unk48 != KindSound || Number(Param(ev.Parameters, "seType")) is not { } type || Number(Param(ev.Parameters, "seId")) is not { } seId)
@@ -523,20 +500,6 @@ public sealed class CutsceneSound
     /// Play_v&lt;number, nine digits&gt;), DS3's sound name (v&lt;DS3 voice&gt;) or null, and how long a silent stand-in lasts.</summary>
     public sealed record VoiceLine(int VoiceId, string? Ds3Name, float Seconds);
 
-    /// <summary>
-    /// DARKSIGN_PEOPLE_VOICE_BUS=0 builds the voice banks on the cutscene template again (launcher fallback map-people L).
-    /// <para>Why voices aren't built on it by default: every DS3 voice event (5,962 in fdp_vm30-51.fev) is in FMOD
-    /// category "Voice" with user property mixerID_0=1, the same mixer DS3's world sounds use (621 of fdp_main's c
-    /// events, 437 g, 494 s, 728 z have mixerID_0=1); that mixer is fdp_mixer.fev's "fdp_rev" (the room reverb, set by
-    /// the "sd_reverb_size" parameter: SFX Reverb, FMOD Lowpass Simple, FMOD Echo), and 5,912 of the voice events also
-    /// carry their own "FMOD Lowpass Simple" envelope. So DS3 voices are heard in the room, from the speaker. The
-    /// cutscene template plays its sound flat and dry (a pre-mixed cutscene track), which is how ported lines sounded
-    /// in 1.0.50x (Devin, 2026-11-20: "no voice effects/modulations"). Elden Ring's own NPC voices (vcNNN.bnk) hang
-    /// under its voice actor-mixers, which carry Elden Ring's room reverb, distance and positioning; the voice banks
-    /// are now built on one of those.</para>
-    /// </summary>
-    public static readonly bool VoiceBus = Environment.GetEnvironmentVariable("DARKSIGN_PEOPLE_VOICE_BUS") != "0";
-
     // An Elden Ring NPC voice bank to build voice banks on: its bytes, name, a Play event and a Stop event of it.
     private sealed record VoiceTemplate(byte[] Bytes, string Name, uint Play, uint Stop, uint BankId);
     private VoiceTemplate? _voiceTemplate;
@@ -560,8 +523,7 @@ public sealed class CutsceneSound
         Regex.IsMatch(path, @"^/(sd/)?([a-z]{2,6}/)?vc\d{3}\.bnk$", RegexOptions.IgnoreCase);
 
     /// <summary>The smallest Elden Ring NPC voice bank (/sd/[enus/]vcNNN.bnk) with an event whose Sound hangs under
-    /// actor-mixers a bank of our own can copy (<see cref="Builds"/>); null (cutscene template) when none or when
-    /// <see cref="VoiceBus"/> is off.</summary>
+    /// actor-mixers a bank of our own can copy (<see cref="Builds"/>); null (cutscene template) when none.</summary>
     /// <summary>voice-template-check: which Elden Ring voice bank the voice banks would be built on, and why the others
     /// weren't (needs both games; no files written).</summary>
     public static int CheckVoiceTemplate(PorterContext ctx)
@@ -590,11 +552,6 @@ public sealed class CutsceneSound
         if (_voiceTemplateLooked)
             return _voiceTemplate;
         _voiceTemplateLooked = true;
-        if (!VoiceBus)
-        {
-            _voiceTemplateNote = $"built on the cutscene template {_templateName} (DARKSIGN_PEOPLE_VOICE_BUS=0)";
-            return null;
-        }
         var candidates = _er.Entries.Where(e => e.Path is not null && IsVoiceBank(e.Path))
             .Select(e => (Path: e.Path!, Size: e.Header.PaddedFileSize)).OrderBy(c => c.Size).ThenBy(c => c.Path, StringComparer.Ordinal).ToList();
         int looked = 0;
@@ -627,7 +584,7 @@ public sealed class CutsceneSound
                         continue;
                     _voiceTemplate = new VoiceTemplate(bytes, Path.GetFileNameWithoutExtension(path), ev.Id, stop, bank.BankId);
                     _voiceTemplateNote = $"built on Elden Ring's NPC voice bank {path} (its voice actor-mixers: room reverb, distance, position; " +
-                                         $"{(stop != 0 ? "its Stop action" : "the cutscene Stop action")}) [DARKSIGN_PEOPLE_VOICE_BUS=0 off]";
+                                         $"{(stop != 0 ? "its Stop action" : "the cutscene Stop action")})";
                     return _voiceTemplate;
                 }
                 VoiceTemplateTrace.Add($"{path}: {events} events, {chains} with a Play chain, {readable} with a readable Sound, none builds{parentNote}");

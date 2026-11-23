@@ -12,7 +12,7 @@ namespace DarkSign.Porter;
 /// them. Every vanilla Elden Ring weapon has identity nodes with the model along Y, so the ported shields came out
 /// turned by exactly their node rotation (greatshields most). <see cref="Bake"/> moves each rigid mesh's vertices, and
 /// the dummy polys, into model space through their node, and leaves every node at identity, so the model looks the
-/// same whether the game applies node transforms or not. DARKSIGN_BAKE_NODES=0 keeps DS3's nodes.</item>
+/// same whether the game applies node transforms or not.</item>
 /// <item>Five DS3 models (the Immolation Tinder's among them) hold two nodes whose names differ only in case
 /// (Dummy_SFX / Dummy_Sfx); no vanilla Elden Ring model does. <see cref="UniqueNames"/> renames the later one.</item>
 /// <item><see cref="SetBounds"/>: Elden Ring's mesh culling box (FLVER 0x2001A) is centre / half size / rotation, which the
@@ -21,8 +21,6 @@ namespace DarkSign.Porter;
 /// </summary>
 public static class WeaponNodes
 {
-    public static readonly bool BakeEnabled = Environment.GetEnvironmentVariable("DARKSIGN_BAKE_NODES") != "0";
-
     internal static Matrix4x4 World(IList<FLVER.Node> nodes, int i)
     {
         var m = Matrix4x4.Identity;
@@ -44,7 +42,7 @@ public static class WeaponNodes
     /// <summary>Bakes node transforms into rigid meshes and dummies; returns a note, or null when nothing changed.</summary>
     public static string? Bake(FLVER2 flver)
     {
-        if (!BakeEnabled || flver.Nodes.All(IsIdentity))
+        if (flver.Nodes.All(IsIdentity))
             return null;
         if (flver.Meshes.Any(m => m.UseBoneWeights))
             return "kept DS3's nodes (a skinned mesh)";

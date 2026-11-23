@@ -15,20 +15,15 @@ namespace DarkSign.Porter.Enemies;
 ///
 /// For each DS3 character it picks the Elden Ring enemy whose skeleton shares the most bone names (and, between
 /// equals, the same kind and boss-ness) as its template, gives it a new character ID (c7000-c7999, which Elden Ring
-/// doesn't ship) and builds it from the template's files, by method (launcher Fallbacks window, "enemy-port",
-/// DARKSIGN_ENEMY_PORT):
-/// <list type="bullet">
-/// <item>A (default): DS3's model and DS3's animations. The template's skeleton takes DS3's bone positions, DS3's
-/// animations replace the template's with the same IDs (so the behaviour graph, which asks for those IDs, plays DS3's
-/// moves), their attack events come from DS3 with DS3's attack data (BehaviorParam / AtkParam_Npc) under the
-/// character's own behaviour variation. The character thinks with DS3's own AI scripts and NpcThinkParam senses
-/// (<see cref="AiPort"/>), DS3 attacks the template has no slot for get new behaviour states (<see cref="ChrMoves"/>),
-/// and the template's own SpEffects (a skeleton's revival) are taken off (<see cref="TemplateEffects"/>). The
-/// behaviour graph's other states, ragdoll and anything DS3 doesn't have are the template's.</item>
-/// <item>B ("model"): DS3's model on the template, which keeps all its own animations, attacks and AI.</item>
-/// <item>C ("stats"): no new files: the template's own model with DS3's name and health, so the DS3 maps and the
-/// randomizer get the best-matching Elden Ring body instead of a stand-in picked by name.</item>
-/// <item>off ("0"): nothing ported; DS3 maps use stand-ins (port-maps' own choice).</item>
+/// doesn't ship) and builds it from the template's files: DS3's model and DS3's animations. The template's skeleton
+/// takes DS3's bone positions, DS3's animations replace the template's with the same IDs (so the behaviour graph,
+/// which asks for those IDs, plays DS3's moves), their attack events come from DS3 with DS3's attack data
+/// (BehaviorParam / AtkParam_Npc) under the character's own behaviour variation. The character thinks with DS3's own
+/// AI scripts and NpcThinkParam senses (<see cref="AiPort"/>), DS3 attacks the template has no slot for get new
+/// behaviour states (<see cref="ChrMoves"/>), and the template's own SpEffects (a skeleton's revival) are taken off
+/// (<see cref="TemplateEffects"/>). The behaviour graph's other states, ragdoll and anything DS3 doesn't have are the
+/// template's. A character whose files can't be built ("stats") keeps the template's own model with DS3's name and
+/// health.
 /// </list>
 /// The result is Mods\ER\darksign_chr_map.tsv (read by port-maps, which places the ported characters at DS3's spots
 /// and lists them for the randomizer) and Work\reports\enemy-port.tsv (one line per character). Every character is
@@ -39,17 +34,7 @@ namespace DarkSign.Porter.Enemies;
 /// </summary>
 public static partial class ChrPort
 {
-    public enum Method { Full, Model, Stats, Off }
-
-    public static Method CurrentMethod => ParseMethod(Environment.GetEnvironmentVariable("DARKSIGN_ENEMY_PORT"));
-
-    public static Method ParseMethod(string? text) => text?.Trim().ToLowerInvariant() switch
-    {
-        "model" or "b" => Method.Model,
-        "stats" or "c" => Method.Stats,
-        "0" or "off" or "none" => Method.Off,
-        _ => Method.Full,
-    };
+    public enum Method { Full, Stats }
 
     public const int FirstNewChr = 7000, LastNewChr = 7999;
     public const string ManifestFile = "darksign_chr_files.txt";
@@ -60,35 +45,13 @@ public static partial class ChrPort
     /// character no template fitted wasn't ported at all (C: an Elden Ring body with DS3's name and health), which
     /// left 19 of DS3's characters as Elden Ring enemies: the Dancer of the Boreal Valley a Red Wolf of Radagon,
     /// Aldrich an Ulcerated Tree Spirit, the High Wall's wyvern a Dragonkin Soldier, Ariandel's Tree Women foot
-    /// soldiers. See <see cref="CarryBoneMatch"/>.
+    /// soldiers. Since then every DS3 character is carried by the best template, however few bones they share.
     /// </summary>
     public const double MinBoneMatch = 0.25;
-
-    /// <summary>
-    /// Below this share of DS3's bones on the best template the DS3 model and animations aren't put on it (C is
-    /// used). 0 by default: every DS3 character is carried by a template, however few bones they share. The merged
-    /// skeleton holds all of DS3's bones next to the template's (<see cref="MergeSkeleton"/>), so the model, the
-    /// moves, their events, the AI, effects and sounds are DS3's as for any other character; what stays the
-    /// template's is what DS3's files have no Elden Ring form of: the behaviour graph and the ragdoll, whose hit
-    /// shapes sit on the template's bones (at rest where DS3 doesn't move them). Such a character's template is the
-    /// best by size, kind and boss-ness that has animations. Fallbacks "enemy-port": DARKSIGN_ENEMY_MIN_BONES=0.25
-    /// brings the Elden Ring bodies back (as up to 1.0.479).
-    /// </summary>
-    public static double CarryBoneMatch => ParseCarry(Environment.GetEnvironmentVariable("DARKSIGN_ENEMY_MIN_BONES"));
-
-    public static double ParseCarry(string? text) =>
-        text?.Trim() == "0.25" ? MinBoneMatch // the Fallbacks window's option
-        : double.TryParse(text?.Trim(), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var v) && v is >= 0 and <= 1 ? v : 0;
 
     /// <summary>A DS3 character as the maps use it: its model, the NpcParam rows placed with it, its name.</summary>
     /// <param name="People">The NpcParam rows DS3 places as people (someone to talk to who is not a boss): friendly in Elden Ring too.</param>
     public sealed record Ds3Chr(int Chr, string Name, bool Boss, SortedSet<int> NpcParams, SortedSet<int>? People = null);
-
-    /// <summary>
-    /// Off (fallback map-people H, DARKSIGN_PEOPLE_BODIES=0): DS3's people with a body of their own (Fire Keeper, Andre,
-    /// the Shrine Handmaid, Ludleth, Yoel, the Painting Woman...) are not ported, as up to 1.0.47x, where they were left out.
-    /// </summary>
-    public static bool PeopleBodies => Environment.GetEnvironmentVariable("DARKSIGN_PEOPLE_BODIES") != "0";
 
     /// <summary>
     /// The team Elden Ring's own people are on: the commonest teamType of its human NPC rows (523xxxxxx: 26 on 130 of
@@ -427,7 +390,7 @@ public static partial class ChrPort
 
     public sealed class Result
     {
-        public int Characters, Full, Model, Stats, Failed, Animations, NpcRows, Tests;
+        public int Characters, Full, Stats, Failed, Animations, NpcRows, Tests;
         public List<string> Lines = [];
         public List<string> Notes = [];
         /// <summary>What the params step adds once port-weapons has written regulation.bin.</summary>
@@ -447,9 +410,9 @@ public static partial class ChrPort
         /// by the build and by map-validate, so a build with no DS3 enemy models can't pass for a good one
         /// (1.0.234-1.0.242 did: 93 of 93 failed and the report still read "0 FAIL").
         /// </summary>
-        public string? Problem => FailureSummary(Failed, Full + Model, Notes);
+        public string? Problem => FailureSummary(Failed, Full, Notes);
 
-        public string Summary => $"{Characters} DS3 characters: {Full} with DS3 model and animations, {Model} with the DS3 model, " +
+        public string Summary => $"{Characters} DS3 characters: {Full} with DS3 model and animations, " +
                                  $"{Stats} on an Elden Ring body, {Failed} fell back; {Animations} DS3 animations, {NpcRows} NpcParam rows";
     }
 
@@ -487,16 +450,6 @@ public static partial class ChrPort
         }
         return FailureSummary(notes.Count, built, notes);
     }
-
-    /// <summary>The fewest animations a template needs to carry a DS3 character that fits no template's skeleton.</summary>
-    /// <summary>
-    /// Whether the template's cloth files (cNNNN_c.hkx, the hclClothContainer, and cNNNN_c.clm2) are left out of a
-    /// chrbnd that carries a DS3 model. They simulate the template's own meshes and bones (c3570's L_Fat_Sub*, Tail_*,
-    /// *_Skirt), which a DS3 model doesn't have: Pontiff Sulyvahn's right-hand cape hung stuck to his left in 1.0.5xx.
-    /// DS3's cloth is Havok 2014 and is not ported, so the cape follows the bones it is skinned to.
-    /// Fallback enemy-model N: DARKSIGN_ENEMY_CLOTH=template keeps the template's cloth (as up to 1.0.5xx).
-    /// </summary>
-    public static bool DropTemplateCloth => Environment.GetEnvironmentVariable("DARKSIGN_ENEMY_CLOTH")?.Trim().ToLowerInvariant() != "template";
 
     /// <summary>A character binder file that holds the character's cloth simulation (cNNNN_c.hkx / cNNNN_c.clm2).</summary>
     public static bool IsClothFile(string binderName)
@@ -538,20 +491,18 @@ public static partial class ChrPort
         Parallel.ForEach(characters, Parallelism.Options, c => ds3Shapes[c.Chr] = Ds3ShapeOf(ds3Archives, c.Chr));
         // Characters with no moves of their own play those of the character with their skeleton (PickAnimationDonors).
         AnimationDonors.Clear();
-        if (SharedMoves)
-            foreach (var (chr, donor) in PickAnimationDonors(ds3Shapes.Where(p => p.Value is not null).ToDictionary(p => p.Key, p => p.Value!)))
-            {
-                AnimationDonors[chr] = donor;
-                var name = characters.FirstOrDefault(c => c.Chr == chr)?.Name ?? "";
-                var donorName = characters.FirstOrDefault(c => c.Chr == donor)?.Name ?? "";
-                notes.Add($"c{chr:D4} {name}: DS3 gives it no animations of its own; it plays c{donor:D4} {donorName}'s (the same skeleton)");
-            }
+        foreach (var (chr, donor) in PickAnimationDonors(ds3Shapes.Where(p => p.Value is not null).ToDictionary(p => p.Key, p => p.Value!)))
+        {
+            AnimationDonors[chr] = donor;
+            var name = characters.FirstOrDefault(c => c.Chr == chr)?.Name ?? "";
+            var donorName = characters.FirstOrDefault(c => c.Chr == donor)?.Name ?? "";
+            notes.Add($"c{chr:D4} {name}: DS3 gives it no animations of its own; it plays c{donor:D4} {donorName}'s (the same skeleton)");
+        }
         var ids = AssignIds(characters.Select(c => c.Chr), n => erArchives.Contains($"/chr/c{n:D4}.chrbnd.dcx"));
 
         var plans = new List<Plan>();
         var fileChrs = new ConcurrentDictionary<int, int>();
         var moveCounts = new ConcurrentDictionary<int, int>();
-        double carry = CarryBoneMatch;
         foreach (var ds3Chr in characters)
         {
             if (ds3Shapes.GetValueOrDefault(ds3Chr.Chr) is { } known)
@@ -565,14 +516,14 @@ public static partial class ChrPort
             // animations of its own or its base's (Rykard's Corpse, the Ancient Wyvern's best by size, has none).
             // It must also have a move set to put DS3's moves in (CarryMinMoves): in 1.0.501 the Ancient Wyvern and the
             // Pilgrim Butterfly sat on Rykard's Corpse, whose base has one animation, and so had one move.
-            if (pick.Match < MinBoneMatch && pick.Match >= carry && method != Method.Stats)
+            if (pick.Match < MinBoneMatch && method != Method.Stats)
             {
                 int Files(EnemyPort.ErEnemy t) => fileChrs.GetOrAdd(ChrId(t.Model), c => FileChr(c, chr => AnimationCount(erArchives, chr)));
                 var order = RankTemplates(ds3Chr, shape, catalog, ErShape);
                 if (CarryPick(order.Select(r => r.Template).ToList(), t => Files(t) is >= 0 and var f ? moveCounts.GetOrAdd(f, c => AnimationCount(erArchives, c)) : 0) is { } at)
                     pick = (order[at].Template, order[at].Match);
             }
-            var chosen = pick.Match < carry && method != Method.Stats ? Method.Stats : method;
+            var chosen = method;
             double boneMatch = pick.Match;
             // The template's own body will be what stands there: pick it by kind (PickBody), not by bone names.
             if (chosen == Method.Stats && PickBody(ds3Chr, shape.Names, catalog, ErNames) is { } body)
@@ -608,21 +559,14 @@ public static partial class ChrPort
     {
         var result = new Result();
         CleanOutputs(ctx);
-        var method = CurrentMethod;
+        const Method method = Method.Full;
         var notes = result.Notes;
         var erNpc = ctx.LoadParams(PorterGame.EldenRing).Get("NpcParam") ?? throw new InvalidDataException("Elden Ring has no NpcParam");
         var catalog = EnemyPort.BuildCatalog(erArchives, erNpc, notes);
-        if (method == Method.Off)
-        {
-            Console.WriteLine("enemies: off (Fallbacks enemy-port); DS3 maps use stand-ins");
-            WriteSpawnList(ctx, [], catalog, new HashSet<string>(), new HashSet<string>());
-            return result;
-        }
         TAE.ValidateEventBank = false;
         var ds3Npc = ctx.LoadParams(PorterGame.DarkSouls3).Get("NpcParam");
         var characters = Ds3Characters(ds3Archives, ds3Npc);
-        if (DropPort.Enabled)
-            result.ItemNames = DropPort.Names.Load(erArchives, ds3Archives, notes);
+        result.ItemNames = DropPort.Names.Load(erArchives, ds3Archives, notes);
         Console.WriteLine($"enemies: {characters.Count} DS3 characters in DS3's maps, {catalog.Count} Elden Ring templates");
 
         var plans = MakePlans(erArchives, ds3Archives, characters, catalog, method, notes,
@@ -635,7 +579,7 @@ public static partial class ChrPort
         // DS3's AI (AiPort): every fully ported character thinks with DS3's goal scripts; null keeps the templates'.
         AiPort? ai = null;
         PARAM? ds3Think = null, erThink = null;
-        if (method == Method.Full && AiPort.Enabled)
+        if (method == Method.Full)
             try
             {
                 ds3Think = ctx.LoadParams(PorterGame.DarkSouls3).Get("NpcThinkParam") ?? throw new InvalidDataException("DS3 has no NpcThinkParam");
@@ -645,7 +589,7 @@ public static partial class ChrPort
                 var aiFamily = ChrMoves.Families.First(f => f.Name == ChrMoves.AiMoveFamily);
                 ChrMoves.AiNamed = ai.NamedNumbers(aiFamily.Min, aiFamily.Max);
                 // The scripts' SpEffect checks point at the rows the effect port adds (700,000,000 + DS3 ID).
-                if (fx is not null && SpEffectPort.Enabled && ctx.LoadParams(PorterGame.DarkSouls3).Get("SpEffectParam") is { } ds3Sp)
+                if (fx is not null && ctx.LoadParams(PorterGame.DarkSouls3).Get("SpEffectParam") is { } ds3Sp)
                     ai.SpEffectPorted = id => ds3Sp[id] is { } r && !(r.Name ?? "").TrimStart().StartsWith("[HKS]", StringComparison.OrdinalIgnoreCase);
             }
             catch (Exception ex) when (ex is not OutOfMemoryException)
@@ -732,14 +676,13 @@ public static partial class ChrPort
             switch (effective.Method)
             {
                 case Method.Full: result.Full++; break;
-                case Method.Model: result.Model++; break;
                 default: result.Stats++; break;
             }
             result.Lines.Add(Line(plan.Ds3, effective, effective.Method.ToString().ToLowerInvariant(),
                 (files is not null && effective.Method != Method.Stats && plan.BoneMatch < MinBoneMatch
                     ? $"carried by its template (bone match {plan.BoneMatch:0.00}): the model, moves, AI, effects and sounds are DS3's, the hit shapes the template's; "
                     : "")
-                + (files?.Note ?? (plan.Method == Method.Stats && method != Method.Stats ? $"bone match {plan.BoneMatch:0.00} below {CarryBoneMatch.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture)}" : ""))));
+                + (files?.Note ?? "")));
         }
 
         // The test set (RULE 4): one character built stage by stage, only in the F1 spawn list, never placed in a map.
@@ -833,9 +776,8 @@ public static partial class ChrPort
         // DS3's drops for every ported row (one port for all of them: rows that share DS3 lots share the new ones).
         var drops = DropPort.Create(ctx, regulation, ds3, result.ItemNames, result.Notes);
         TemplateEffects? templateFx = null;
-        if (TemplateEffects.Enabled)
-            try { templateFx = new TemplateEffects(regulation.Get("NpcParam")!, regulation.Get("SpEffectParam")); }
-            catch (Exception ex) when (ex is not OutOfMemoryException) { result.Notes.Add($"template effects: kept ({Describe(ex)})"); }
+        try { templateFx = new TemplateEffects(regulation.Get("NpcParam")!, regulation.Get("SpEffectParam")); }
+        catch (Exception ex) when (ex is not OutOfMemoryException) { result.Notes.Add($"template effects: kept ({Describe(ex)})"); }
         foreach (var (plan, npcRows) in result.Params)
         {
             try
@@ -1065,7 +1007,7 @@ public static partial class ChrPort
                 // friendly team; up to 1.0.47x they were skipped here, so the maps had nobody to place and left them out.
                 // DS3's invisible logic characters (talk dummy c1000, patrol leader c0100) have nothing to port.
                 bool person = e.TalkID > 0 && !bosses.Contains(e.EntityID);
-                if (person && (!PeopleBodies || EnemyPort.People.IsLogic(e.ModelName, name)))
+                if (person && EnemyPort.People.IsLogic(e.ModelName, name))
                     continue;
                 if (!byChr.TryGetValue(chr, out var known))
                     byChr[chr] = known = new Ds3Chr(chr, name, false, [], []);
@@ -1227,9 +1169,6 @@ public static partial class ChrPort
         }
     }
 
-    /// <summary>False with DARKSIGN_ENEMY_BONES=template: the skeleton keeps only the template's bones, as builds up to 1.0.263 did.</summary>
-    public static bool AddDs3Bones => Environment.GetEnvironmentVariable("DARKSIGN_ENEMY_BONES")?.Trim().ToLowerInvariant() != "template";
-
     public readonly record struct SkeletonMerge(int Shared, int Added, int Replaced, int Reparented = 0);
 
     /// <summary>
@@ -1244,7 +1183,7 @@ public static partial class ChrPort
     /// Until 1.0.271 every such bone was set aside, and so was everything below it: one different parent near the
     /// root (the Lothric Knight on the beast skeleton) left 7 bones shared and 79 set aside.
     /// </summary>
-    public static SkeletonMerge MergeSkeleton(hkaSkeleton skeleton, AnimPort.Ds3Skeleton ds3) => MergeSkeleton(skeleton, ds3, AddDs3Bones);
+    public static SkeletonMerge MergeSkeleton(hkaSkeleton skeleton, AnimPort.Ds3Skeleton ds3) => MergeSkeleton(skeleton, ds3, true);
 
     public static SkeletonMerge MergeSkeleton(hkaSkeleton skeleton, AnimPort.Ds3Skeleton ds3, bool addBones)
     {
@@ -1309,9 +1248,6 @@ public static partial class ChrPort
         return new SkeletonMerge(shared, added, replaced, reparented);
     }
 
-    /// <summary>False with DARKSIGN_ENEMY_ANIMS=template: a template move DS3 has no move of the same ID for keeps the template's animation, as builds up to 1.0.271 did.</summary>
-    public static bool FillMoves => Environment.GetEnvironmentVariable("DARKSIGN_ENEMY_ANIMS")?.Trim().ToLowerInvariant() != "template";
-
     /// <summary>The blocks of a thousand animation IDs looked in for a stand-in, in order: the move's own, then the one that plays alike.</summary>
     private static int[] MoveBands(int band) => band switch
     {
@@ -1325,20 +1261,18 @@ public static partial class ChrPort
 
     /// <summary>
     /// The DS3 move that plays where the template has move <paramref name="want"/> (section, ID): DS3's move of the same
-    /// ID (in that section, else the base section); else, when <paramref name="fill"/>, the nearest DS3 move of the
+    /// ID (in that section, else the base section); else the nearest DS3 move of the
     /// same block of a thousand (both games number enemy moves alike: 2xxx walking, 3xxx attacks, 5xxx/6xxx steps,
     /// 8xxx/9xxx being hit, 10xxx/11xxx dying), preferring the same last digit (the direction: 8031 -> 8021); else
     /// DS3's idle. A template animation left in place plays the template's bone lengths on the DS3 body: the Jailer
     /// backstepping as an Imp, with its legs pulled to an Imp's size (1.0.271). Null when DS3 has no moves.
     /// </summary>
-    public static (int Section, int Id)? ChooseMove((int Section, int Id) want, IReadOnlySet<(int Section, int Id)> have, bool fill = true)
+    public static (int Section, int Id)? ChooseMove((int Section, int Id) want, IReadOnlySet<(int Section, int Id)> have)
     {
         if (have.Contains(want))
             return want;
         if (have.Contains((0, want.Id)))
             return (0, want.Id);
-        if (!fill)
-            return null;
         var ids = have.Where(k => k.Section == 0).Select(k => k.Id).ToList();
         if (ids.Count == 0)
             return null;
@@ -1422,9 +1356,6 @@ public static partial class ChrPort
     /// (<see cref="PickAnimationDonors"/>), set while the plans are made.
     /// </summary>
     public static readonly ConcurrentDictionary<int, int> AnimationDonors = new();
-
-    /// <summary>Fallbacks "enemy-port": DARKSIGN_ENEMY_SHARED_MOVES=0 leaves a DS3 character with no animations of its own on its template's (as up to 1.0.479).</summary>
-    public static bool SharedMoves => Environment.GetEnvironmentVariable("DARKSIGN_ENEMY_SHARED_MOVES")?.Trim() != "0";
 
     /// <summary>An animation file that is a move: "a000_003000.hkx", not the "a999_999999.hkx" placeholder an empty DS3 binder holds.</summary>
     public static bool IsMoveFile(string leaf) => AnimLeaf().Match(leaf) is { Success: true } m && m.Groups[1].Value != "999";
@@ -1547,7 +1478,7 @@ public static partial class ChrPort
                                                                     && !ItemText.Leaf(tx.Path).StartsWith("SYSTEX", StringComparison.OrdinalIgnoreCase)));
 
         // DS3's textures, renamed to the new ID, in the new character's texture binders.
-        bool ownFile = ChrModel.OwnTextureFile;
+        bool ownFile = true;
         var ds3Textures = ds3.Entries.Where(e => e.Path is { } p && p.StartsWith($"/chr/c{x:D4}", StringComparison.OrdinalIgnoreCase)
                                                  && p.EndsWith(".texbnd.dcx", StringComparison.OrdinalIgnoreCase)).Select(e => e.Path!).ToList();
         var sources = new List<TPF>();
@@ -1597,13 +1528,13 @@ public static partial class ChrPort
             ds3Mtds, seeThroughWanted ? ChrBlend.Find(er) : null);
         if (ChrModel.SeeThrough > 0 || ChrModel.SeeThroughSolid > 0)
             notes.Add($"{ChrModel.SeeThrough} see-through DS3 materials blended as DS3 blends them"
-                      + (ChrModel.SeeThroughSolid > 0 ? $", {ChrModel.SeeThroughSolid} drawn solid (no see-through Elden Ring material, or DARKSIGN_ENEMY_BLEND=0)" : ""));
+                      + (ChrModel.SeeThroughSolid > 0 ? $", {ChrModel.SeeThroughSolid} drawn solid (no see-through Elden Ring material, or not convertible)" : ""));
         if (ChrModel.VertexColoursSet > 0 || ChrModel.SecondLayers > 0)
             notes.Add($"{ChrModel.VertexColoursSet} vertex colours set to Elden Ring's" + (ChrModel.SecondLayers > 0 ? $", {ChrModel.SecondLayers} two-layer materials show their larger layer" : ""));
         if (blank.Count > 0)
             notes.Add($"FAIL textures: {blank.Count} kinds of DS3 material name no colour texture the port reads ({string.Join("; ", blank.Take(6))}{(blank.Count > 6 ? "; ..." : "")})");
         files.Materials.AddRange(made);
-        notes.Add($"{flver.Meshes.Count} meshes, {flver.Materials.Count} DS3 materials on {made.Count} {(ChrModel.PlainMaterials ? "plain character" : "template")} materials"
+        notes.Add($"{flver.Meshes.Count} meshes, {flver.Materials.Count} DS3 materials on {made.Count} plain character materials"
                   + $" ({made.Count(m => m.AlphaTest)} cut-out, {flver.Materials.Count(m => ChrModel.MaskPrefix(m.Name).Length > 0)} with a display mask"
                   + (glowing > 0 ? ChrModel.Glowing > 0 ? $", {ChrModel.Glowing} glowing ones on Elden Ring's glowing material" + (glowing > ChrModel.Glowing ? $" ({glowing - ChrModel.Glowing} without their glow)" : "")
                       : $", {glowing} glowing ones drawn without their glow" : "") + ")"
@@ -1611,7 +1542,7 @@ public static partial class ChrPort
         if (FlverMaterialNumbers.Apply(flver) is > 0 and var numbered)
             notes.Add($"{numbered} materials numbered as Elden Ring numbers them ({flver.Materials.Select(m => m.Index).Distinct().Count()} distinct)");
         templateFlverFile.Bytes = flver.Write();
-        if (DropTemplateCloth && chrbnd.Files.RemoveAll(f => IsClothFile(f.Name)) is > 0 and var cloth)
+        if (chrbnd.Files.RemoveAll(f => IsClothFile(f.Name)) is > 0 and var cloth)
             notes.Add($"the template's cloth left out ({cloth} files): it simulates the template's own meshes and bones");
         var texbnd = binders.Keys.Where(k => k.EndsWith(".texbnd.dcx", StringComparison.OrdinalIgnoreCase))
             .OrderBy(k => k.Contains("_h", StringComparison.OrdinalIgnoreCase) ? 0 : 1).FirstOrDefault();
@@ -1636,7 +1567,7 @@ public static partial class ChrPort
                 // the high-quality binder, which the game never read: every ported enemy drew blank (silver). They
                 // now are that one file (the template's textures are of no use to a DS3 model), in both binders,
                 // with metal read from DS3's reflectance maps the way the weapon port does it.
-                WeaponTextures.AddMetallicMaps(merged, WeaponTextures.CurrentMode);
+                WeaponTextures.AddMetallicMaps(merged);
                 like.Bytes = merged.Write();
                 target.Files.RemoveAll(f => f != like && TPF.Is(f.Bytes));
                 where = "in the character's own texture file";
@@ -1710,7 +1641,6 @@ public static partial class ChrPort
         var ds3Keys = ds3Hkx.Keys.Select(LeafKey).ToHashSet();
         var moves = Ds3Moves(ds3Taes, ds3Keys);
         var moveKeys = moves.Keys.ToHashSet();
-        bool fill = FillMoves;
         // Additive clips (flinches played on top of the current move, 9000-9499 in both games) and whole poses only
         // stand in for their own kind. Builds 1.0.284-1.0.285 filled every template file with the nearest DS3 move by
         // ID alone, which could put a whole-body move in an additive slot: added to the pose the enemy already has
@@ -1755,7 +1685,7 @@ public static partial class ChrPort
 
         // The template's limb IK whose target bone DS3 never moves comes off (ChrIk): from here on every animation
         // is DS3's, and Father Ariandel's arms were pulled to where Placidusax's front feet rest.
-        if (ChrIk.Enabled && binders.TryGetValue($"/chr/c{n:D4}.behbnd.dcx", out var ikBehbnd))
+        if (binders.TryGetValue($"/chr/c{n:D4}.behbnd.dcx", out var ikBehbnd))
             try
             {
                 var ik = ChrIk.Fit(ikBehbnd.Bnd, erSkeleton.Names, ds3Skeleton.Names.ToHashSet(StringComparer.OrdinalIgnoreCase));
@@ -1773,7 +1703,7 @@ public static partial class ChrPort
         // each, filled below like any move, and a behaviour state once the events are in. Attacks only with DS3's AI,
         // which is what asks for them; the rest for DS3's map scripts, which force them.
         var extra = new List<ChrMoves.Added>();
-        if (stage == Stage.All && plan is not null && plan.Method == Method.Full && ChrMoves.Enabled)
+        if (stage == Stage.All && plan is not null && plan.Method == Method.Full)
             try
             {
                 var attackFiles = anibnds.SelectMany(b => b.Value.Bnd.Files.Select(f => (b.Value.Bnd, File: f)))
@@ -1788,7 +1718,7 @@ public static partial class ChrPort
                 var templateEntries = anibnds.SelectMany(b => b.Value.Bnd.Files)
                     .Where(f => f.Name.EndsWith(".tae", StringComparison.OrdinalIgnoreCase) && TaeSection(f.Name) == 0)
                     .SelectMany(f => TAE.Read(f.Bytes).Animations.Select(a => (int)a.ID)).ToHashSet();
-                var wanted = ChrMoves.Plan(wholeKeys.Where(k => k.Item1 == 0 && ChrMoves.Wanted(k.Item2, AiPort.Enabled)).Select(k => k.Item2),
+                var wanted = ChrMoves.Plan(wholeKeys.Where(k => k.Item1 == 0 && ChrMoves.Wanted(k.Item2, true)).Select(k => k.Item2),
                     templateEntries, templateFiles, templateAdditive);
                 // A new file copies one of the template's own whole clips of these families (the animation port
                 // then fills it with DS3's move), so a family whose entries all borrow another clip still gets files.
@@ -1803,7 +1733,7 @@ public static partial class ChrPort
         // DS3's variant move sets (TAE sections 1+: the spear Lothric Knight's a001), next to the template's base moves
         // (ChrVariants); the loops below fill them like any move.
         var variants = new List<(int Section, int Id)>();
-        if (stage == Stage.All && plan is not null && plan.Method == Method.Full && ChrVariants.Enabled)
+        if (stage == Stage.All && plan is not null && plan.Method == Method.Full)
             try
             {
                 var leaves = anibnds.SelectMany(b => b.Value.Bnd.Files.Select(f => (b.Value.Bnd, File: f, Leaf: ItemText.Leaf(f.Name).ToLowerInvariant())))
@@ -1847,7 +1777,7 @@ public static partial class ChrPort
                 });
                 if (isAdditive)
                     additive++;
-                if (ChooseMove(key, isAdditive ? additiveKeys : wholeKeys, fill) is not { } pick
+                if (ChooseMove(key, isAdditive ? additiveKeys : wholeKeys) is not { } pick
                     || !ds3Hkx.TryGetValue($"a{moves[pick].Hkx.Section:D3}_{moves[pick].Hkx.Id:D6}.hkx", out var ds3Bytes))
                 {
                     kept++;
@@ -1855,7 +1785,7 @@ public static partial class ChrPort
                 }
                 try
                 {
-                    var (hkx, _, templateDuration) = AnimPort.ConvertTimed(ds3Bytes, ds3Skeleton, erSkeleton, file.Bytes, bndCompendium, AnimPort.Spline);
+                    var (hkx, _, templateDuration) = AnimPort.ConvertTimed(ds3Bytes, ds3Skeleton, erSkeleton, file.Bytes, bndCompendium, true);
                     file.Bytes = hkx;
                     durations[key] = (AnimPort.Duration(ds3Bytes), templateDuration);
                     chosen[key] = pick;
@@ -1888,7 +1818,7 @@ public static partial class ChrPort
         // first event of a type is no measure of it.
         Dictionary<int, int>? pooledLengths = null, ds3Lengths = null;
         Dictionary<int, TAE.EventGroup>? pooledGroups = null;
-        if (ChrTae.PooledLayout && stage > Stage.Moves)
+        if (stage > Stage.Moves)
         {
             var templateEvents = new List<TAE.Event>();
             foreach (var (_, (bnd, _)) in anibnds)
@@ -1924,7 +1854,7 @@ public static partial class ChrPort
                     // that plays the same DS3 animation, else the DS3 move the file was filled with.
                     if (ErHkx(anim, section) is not { } hkxKey || !durations.TryGetValue(hkxKey, out var d) || !chosen.TryGetValue(hkxKey, out var content))
                         continue;
-                    var source = ChooseMove(AnimKey(anim.ID, section), ds3Additive.Contains(moves[content].Hkx) ? additiveKeys : wholeKeys, fill) is { } own
+                    var source = ChooseMove(AnimKey(anim.ID, section), ds3Additive.Contains(moves[content].Hkx) ? additiveKeys : wholeKeys) is { } own
                                  && moves[own].Hkx == moves[content].Hkx ? own : content;
                     anim.Events = ChrTae.Merge(moves[source].Events, anim, lengths, groups, d.Ds3, d.Er, session, fx?.Groups, signals, unlaid, ds3Lengths);
                     changed = true;
@@ -2032,7 +1962,7 @@ public static partial class ChrPort
                     notes.Add($"ChrModelParam: left out ({Describe(ex)}); the new models load with the defaults");
             }
         int added = 0;
-        long? quietThreat = KeepTemplateThreat ? null : MusicThreatLevel(npc);
+        long? quietThreat = MusicThreatLevel(npc);
         foreach (var (ds3Id, id) in npcRows.OrderBy(r => r.Key))
         {
             if (npc[id] is not null)
@@ -2060,7 +1990,7 @@ public static partial class ChrPort
             if (newModel && plan.Stage != Stage.Clone && ds3Npc?[ds3Id] is { } maskSource)
                 CopyDisplayMasks(maskSource, row);
             // DS3's variant (the section of moves its weapon set plays), not the template's (ChrVariants).
-            if (plan.Method == Method.Full && plan.Stage == Stage.All && ChrVariants.Enabled && ds3Npc?[ds3Id] is { } variantSource)
+            if (plan.Method == Method.Full && plan.Stage == Stage.All && ds3Npc?[ds3Id] is { } variantSource)
             {
                 var spEffects = er.Get("SpEffectParam");
                 var taken = spEffects is null ? [] : ChrVariants.StripTemplateOffsets(row, id => spEffects[id]);
@@ -2108,13 +2038,6 @@ public static partial class ChrPort
     }
 
     /// <summary>
-    /// DARKSIGN_ENEMY_THREAT=template (launcher fallback "map-music" C): ported enemies keep their Elden Ring template's
-    /// threat level, as up to 1.0.450, and the ones built on a field boss start Elden Ring's battle music.
-    /// </summary>
-    public static readonly bool KeepTemplateThreat =
-        string.Equals(Environment.GetEnvironmentVariable("DARKSIGN_ENEMY_THREAT"), "template", StringComparison.OrdinalIgnoreCase);
-
-    /// <summary>
     /// The threat level that starts no music: the one most of Elden Ring's NpcParam rows have (its ordinary enemies;
     /// Paramdex's default for threatLv is 1). Elden Ring starts its field battle music from a character's threatLv
     /// (the "NPC Threat Level" of its event instructions "IF Field Battle BGM Active" and "Set Field Battle BGM Heat
@@ -2146,18 +2069,14 @@ public static partial class ChrPort
     public static readonly IReadOnlyDictionary<int, (string Field, float Rate)[]> Ds3Weaknesses =
         new Dictionary<int, (string, float)[]> { [1090] = [("fireDamageCutRate", 1.5f)] };
 
-    public static bool DamageRatesEnabled => Environment.GetEnvironmentVariable("DARKSIGN_ENEMY_DAMAGE_RATES")?.Trim().ToLowerInvariant() != "template";
-
     /// <summary>
     /// A ported row takes damage as DS3's character did: Elden Ring's per-kind damage rates all 1 (DS3's rows have none;
     /// the template's were its own weaknesses, the Giant Beast Skeleton's 1.4 strike / 0.6 lightning on the Pus of Man),
     /// then <see cref="Ds3Weaknesses"/>. DS3's own damage-changing effects (a phantom's 0.5) come on with its effects
-    /// (ChrEffects.NpcEffectWanted). Fallback enemy-stats B: DARKSIGN_ENEMY_DAMAGE_RATES=template.
+    /// (ChrEffects.NpcEffectWanted).
     /// </summary>
     public static void SetDamageRates(int ds3Chr, PARAM.Row row)
     {
-        if (!DamageRatesEnabled)
-            return;
         foreach (var field in DamageRateFields)
             if (Cell(row, field) is { Value: float } cell)
                 Set(cell, 1f);
@@ -2167,18 +2086,14 @@ public static partial class ChrPort
                     Set(cell, rate);
     }
 
-    public static bool BodySizeEnabled => Environment.GetEnvironmentVariable("DARKSIGN_ENEMY_BODY_SIZE")?.Trim().ToLowerInvariant() != "template";
-
     /// <summary>
     /// DS3's capsule size on a ported row. Both games name the capsule against the map hitHeight / hitRadius; Elden Ring
     /// adds a second one against other characters (chrHitHeight / chrHitRadius), which DS3 doesn't have: it is scaled
     /// by the same ratio, so the template's relation between the two stays. Up to 1.0.410 the row kept the template's
-    /// capsule (Ariandel's wolf: 1.2 / 0.6 for DS3's 1.7 / 0.55). Fallback enemy-model I: DARKSIGN_ENEMY_BODY_SIZE=template.
+    /// capsule (Ariandel's wolf: 1.2 / 0.6 for DS3's 1.7 / 0.55).
     /// </summary>
     public static void CopyBodySize(PARAM.Row ds3, PARAM.Row row)
     {
-        if (!BodySizeEnabled)
-            return;
         foreach (var (field, chrField) in new[] { ("hitHeight", "chrHitHeight"), ("hitRadius", "chrHitRadius") })
         {
             if (Cell(ds3, field)?.Value is not float size || size <= 0 || Cell(row, field) is not { Value: float old } to)
@@ -2206,7 +2121,7 @@ public static partial class ChrPort
                 continue;
             if (!quietKnown)
             {
-                quiet = KeepTemplateThreat ? null : MusicThreatLevel(npc);
+                quiet = MusicThreatLevel(npc);
                 quietKnown = true;
             }
             var row = CopyRow(npc, template, id);

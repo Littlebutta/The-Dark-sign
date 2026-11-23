@@ -27,11 +27,8 @@ public static class RunEvents
     public const uint StartEventId = FlagBlock + 1100;
     public const uint LeaveEventId = FlagBlock + 1101;
 
-    /// <summary>Fallback "run-start" B: on every load outside a DS3 run, requests the start (no menu needed).</summary>
+    /// <summary>Older builds' auto-start event (a start request on every load); removed from common by every build.</summary>
     public const uint AutoStartEventId = FlagBlock + 1102;
-
-    /// <summary>DARKSIGN_AUTO_DS3_RUN=1 (launcher fallback "run-start" B) adds <see cref="AutoStartEventId"/>.</summary>
-    public static readonly bool AutoStart = Environment.GetEnvironmentVariable("DARKSIGN_AUTO_DS3_RUN") == "1";
 
     /// <summary>Per-map warps (F1 menu, one button per ported map): request flag 2200+i, event 1200+i.</summary>
     public const int MaxWarps = 100;
@@ -48,7 +45,6 @@ public static class RunEvents
     // as the layer mask and drop it from the arguments.
     public static EMEVD.Instruction Make(int bank, int id, params object[] args) => new(bank, id, args);
     private static EMEVD.Instruction WaitForFlag(uint flag) => Make(1003, 0, On, EventFlagType, flag);
-    private static EMEVD.Instruction EndIfFlagOn(uint flag) => Make(1003, 2, (byte)0, On, EventFlagType, flag);
     private static EMEVD.Instruction SetFlag(uint flag, byte state) => Make(2003, 66, EventFlagType, flag, state);
     // The last argument is the area-name popup's message ID: 0 (er-common.emedf's default, and what vanilla warps pass)
     // shows none; -1 would ask for message -1.
@@ -63,7 +59,7 @@ public static class RunEvents
     /// <summary>
     /// Adds (or replaces) the run events in common.emevd and starts them from its constructor (event 0).
     /// </summary>
-    public static void AddTo(EMEVD common, MapId host, uint startEntity, ReturnPoint back, bool autoStart = false)
+    public static void AddTo(EMEVD common, MapId host, uint startEntity, ReturnPoint back)
     {
         common.Events.RemoveAll(e => e.ID is StartEventId or LeaveEventId or AutoStartEventId);
         foreach (var e in common.Events.Where(e => e.ID == 0))
@@ -88,17 +84,6 @@ public static class RunEvents
         common.Events.Add(start);
         common.Events.Add(leave);
 
-        // Runs once per load: outside a DS3 run, wait for the world to settle and ask the start event to warp.
-        EMEVD.Event? auto = null;
-        if (autoStart)
-        {
-            auto = new EMEVD.Event(AutoStartEventId, EMEVD.Event.RestBehaviorType.Default);
-            auto.Instructions.Add(EndIfFlagOn(Ds3RunActive));
-            auto.Instructions.Add(WaitSeconds(3));
-            auto.Instructions.Add(SetFlag(StartDs3Request, On));
-            common.Events.Add(auto);
-        }
-
         var constructor = common.Events.FirstOrDefault(e => e.ID == 0);
         if (constructor is null)
         {
@@ -107,8 +92,6 @@ public static class RunEvents
         }
         constructor.Instructions.Add(InitializeEvent(0, StartEventId));
         constructor.Instructions.Add(InitializeEvent(0, LeaveEventId));
-        if (auto is not null)
-            constructor.Instructions.Add(InitializeEvent(0, AutoStartEventId));
     }
 
     private static bool IsOurInit(EMEVD.Instruction i) =>

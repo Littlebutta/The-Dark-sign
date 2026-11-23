@@ -12,7 +12,6 @@ public static partial class MapPortChecks
     private static IEnumerable<(string Name, Action Test)> AtmosphereChecks()
     {
         yield return ("stand-ins: a low-detail piece over detailed pieces it is never drawn with is left out; one with nothing under it stays", StandIns);
-        yield return ("world stand-ins: a kept stand-in over a neighbouring map's real pieces draws only while that map is not loaded; one over nothing stays", WorldStandIns);
         yield return ("far views: a low-detail copy of an area with ordinary textures, drawn only from a lookout, is left out; the sky dome, a building shell and a piece drawn with most of what it covers stay", FarViews);
         yield return ("atmosphere: the slot's gparam takes DS3's sun and fog colours, Stormveil's fog amounts, no colour grading", Atmosphere);
         yield return ("atmosphere: the sun's direction turns with DS3's map offset, like the map's lamps and baked light", SunTurned);
@@ -47,11 +46,6 @@ public static partial class MapPortChecks
         var angles = MapAtmosphere.Group(host, "LightSet")!.Params.Single(p => p.Name1 == "Directional Light Angle0").Values;
         Expect(angles.All(v => (Vector2)v == m31), "every sun angle value is the turned one");
         Expect(changes[0].Contains("turned -156 degrees with the map"), changes[0]);
-
-        var options = MapPorter.Options.Parse(["--unturned-sun"]);
-        Expect(options.UnturnedSun && !new MapPorter.Options().UnturnedSun, "--unturned-sun is read");
-        Expect(MapPorter.Options.Parse(["--no-light-offset"]).UnturnedSun, "--no-light-offset leaves the sun unturned too, like the lamps and probes");
-        Expect(MapPorter.Options.Parse(["--guess-probe-axes"]).BakedLight.GuessAxes, "--guess-probe-axes is read");
     }
 
     /// <summary>
@@ -110,64 +104,8 @@ public static partial class MapPortChecks
         Expect(result.Summary.EndsWith("far views: 1 left out (m903400_9500)"), result.Summary);
         Expect(MapStandIns.IsFarView(100, 9, 100000, 100000).FarView == false && MapStandIns.IsFarView(100, 10, 1000, 1000).FarView, "the thresholds");
 
-        var report = MapPorter.PieceReport(ds3, VisualPort().Port, new HashSet<string>(), false, result.LeftOut, result.FarViews);
+        var report = MapPorter.PieceReport(ds3, VisualPort().Port, new HashSet<string>(), result.LeftOut, result.FarViews);
         Expect(report.Split('\n').Any(l => l.StartsWith("m903400_9500\tm903400\tleft out: far view")), "the piece report names a far view");
-    }
-
-    private static void WorldStandIns()
-    {
-        var own = new List<MapStandIns.PieceBox>
-        {
-            new("m900065_9000", new Vector3(0, 0, 0), new Vector3(100, 50, 100), 1000, true),
-            new("m900070_9000", new Vector3(500, 0, 500), new Vector3(600, 50, 600), 1000, true),
-            new("m000100_0000", new Vector3(10, 0, 10), new Vector3(20, 10, 20), 5000, false),
-        };
-        var neighbour = new List<MapStandIns.PieceBox>
-        {
-            new("m001000_0000", new Vector3(10, 0, 10), new Vector3(20, 10, 20), 200, false),
-            new("m001001_0000", new Vector3(30, 0, 30), new Vector3(40, 10, 40), 200, false),
-            new("m001002_0000", new Vector3(50, 0, 50), new Vector3(60, 10, 60), 200, false),
-            new("m909000_0000", new Vector3(500, 0, 500), new Vector3(600, 50, 600), 5000, true), // the neighbour's own stand-in
-        };
-        var verdicts = MapStandIns.AcrossMaps(own, new HashSet<string> { "m900065_9000", "m900070_9000" }, neighbour);
-        Expect(verdicts.Count == 2, "only kept stand-ins are judged");
-        Expect(verdicts.Single(v => v.Part == "m900065_9000").LeftOut, "three detailed neighbour pieces with 600 of 1000 vertices: left out");
-        Expect(!verdicts.Single(v => v.Part == "m900070_9000").LeftOut, "only the neighbour's own stand-in there: kept");
-        var few = MapStandIns.AcrossMaps(own, new HashSet<string> { "m900065_9000" }, neighbour.Take(2));
-        Expect(!few.Single().LeftOut, "two pieces are too few");
-        // Draw groups: the stand-in is matched to the neighbour with its detail there, even one big piece whose box
-        // only meets the stand-in's.
-        var castle = MapId.Parse("m45_03_00_00");
-        var archives = MapId.Parse("m38_13_00_00");
-        var big = new List<MapStandIns.PieceBox> { new("m002000_0000", new Vector3(90, 0, 90), new Vector3(300, 50, 300), 800, false) };
-        var matched = MapStandIns.ForNeighbours(own, new HashSet<string> { "m900065_9000", "m900070_9000" },
-            new Dictionary<MapId, IEnumerable<MapStandIns.PieceBox>> { [castle] = big, [archives] = neighbour.Take(1) });
-        Expect(matched.Count == 1 && matched[0].Key == "m900065_9000" && matched[0].Value == castle,
-            "the stand-in goes with the map holding most detail there: " + string.Join(", ", matched));
-
-        var highWall = MapId.Parse("m45_01_00_00");
-        var bits = MapNeighbourGroups.Assign([castle, highWall, archives]);
-        Expect(bits[archives] == 0 && bits[highWall] == 1 && bits[castle] == 2, "bits by map ID");
-        var msb = new MSBE();
-        var standIn = new MSBE.Part.MapPiece { Name = "m900065_9000", ModelName = "m900065" };
-        var plain = new MSBE.Part.MapPiece { Name = "m000100_0000", ModelName = "m000100" };
-        MapDrawGroups.Clear(standIn.Unk1);
-        MapDrawGroups.Clear(plain.Unk1);
-        msb.Parts.MapPieces.AddRange([standIn, plain]);
-        var near = new MSBE.Part.Collision { Name = "h000100", ModelName = "h000100" };
-        var far = new MSBE.Part.Collision { Name = "h000200", ModelName = "h000200" };
-        msb.Parts.Collisions.AddRange([near, far]);
-        msb.Parts.ConnectCollisions.Add(new MSBE.Part.ConnectCollision { Name = "h000100_0000", ModelName = "h000100", CollisionName = "h000100", MapID = [45, 3, 0, 255] });
-        int written = MapNeighbourGroups.Apply(msb, highWall, new Dictionary<string, MapId> { ["m900065_9000"] = castle }, bits);
-        Expect(written == 2, "both collisions written");
-        Expect(MapDrawGroups.Draw(standIn.Unk1)[MapNeighbourGroups.Word] == 1u << bits[castle], "the stand-in draws with the castle's group");
-        Expect(MapDrawGroups.IsEmpty(MapDrawGroups.Draw(plain.Unk1)), "an ordinary piece keeps no groups (drawn from everywhere)");
-        uint farShows = MapDrawGroups.Display(far.Unk1)[MapNeighbourGroups.Word], nearShows = MapDrawGroups.Display(near.Unk1)[MapNeighbourGroups.Word];
-        Expect(MapNeighbourGroups.Shows(bits[castle], farShows), "away from the castle's connect, the castle's stand-ins show");
-        Expect(!MapNeighbourGroups.Shows(bits[castle], nearShows), "on the collision that loads the castle, they don't");
-        Expect(!MapNeighbourGroups.Shows(bits[highWall], farShows), "the High Wall's own group is never shown in the High Wall");
-        Expect(MapDrawGroups.Display(far.Unk1)[0] == 0xFFFFFFFF && MapDrawGroups.Draw(far.Unk1)[0] == 0xFFFFFFFF, "collisions keep every other group and every draw group");
-        Expect(MapDrawGroups.Display(msb.Parts.ConnectCollisions[0].Unk1)[MapNeighbourGroups.Word] == nearShows, "the connect collision shows what its collision shows");
     }
 
     private static void StandIns()
@@ -217,10 +155,9 @@ public static partial class MapPortChecks
         Expect(result.Verdicts.Count == 4 && result.Summary.StartsWith("low-detail stand-ins: 2 left out, 2 kept"), result.Summary);
         Expect(MapStandIns.Find(ds3, meshes, new HashSet<string> { "m900060_1000" }).Verdicts.All(v => v.Part != "m900060_1000"), "a piece already left out is not judged");
 
-        // The piece report says why, and the fallback keeps them.
-        var report = MapPorter.PieceReport(ds3, VisualPort().Port, new HashSet<string>(), false, left);
+        // The piece report says why.
+        var report = MapPorter.PieceReport(ds3, VisualPort().Port, new HashSet<string>(), left);
         Expect(report.Split('\n').Any(l => l.StartsWith("m900060_1000\tm900060\tleft out: low detail stand-in")), "the piece report names a stand-in");
-        Expect(MapPorter.Options.Parse(["--stand-ins"]).StandIns && !new MapPorter.Options().StandIns, "--stand-ins is read");
     }
 
     private static GPARAM.Param P(string name, GPARAM.ParamType type, params object[] values)
@@ -289,16 +226,6 @@ public static partial class MapPortChecks
             "corner shade dims the sun and the second light as on Stormveil; the third weight stays the host's");
         Expect((Vector4)Param("Directional Light Hemi Color Up").Values[0] == new Vector4(0.885f, 0.918f, 0.912f, 0.1f), "the hemisphere light stays the host's");
         Expect(changes.Any(c => c.Contains("second light 0.4 -> 0.053") && c.Contains("local light 1 0.1 -> 0 (DS3 has it dark)")), string.Join(" | ", changes));
-
-        // The fallback keeps the colosseum's strengths; the second light still takes DS3's colour, as before.
-        var kept = Host();
-        var keptChanges = MapAtmosphere.Apply(kept, ds3, -209, hostFillLights: true);
-        var keptLight = MapAtmosphere.Group(kept, "LightSet")!;
-        Expect(Near((Vector4)keptLight.Params.Single(p => p.Name1 == "Directional Light DiffColor1").Values[0], new Vector4(0.603f, 0.706f, 1, 0.4f))
-               && (float)keptLight.Params.Single(p => p.Name1 == "Directional Light SsaoWeight0").Values[0] == 0.5f
-               && Near((Vector4)keptLight.Params.Single(p => p.Name1 == "Directional Light LocalLight DiffColor1").Values[0], new Vector4(0.761f, 0.816f, 1, 0.1f))
-               && keptChanges.Any(c => c.Contains("--host-fill-lights")), "--host-fill-lights keeps the host's strengths and weights");
-        Expect(MapPorter.Options.Parse(["--host-fill-lights"]).HostFillLights && !MapPorter.Options.Parse([]).HostFillLights, "--host-fill-lights (fallback map-fill-light B) is read");
     }
 
     private static void LightSets()
@@ -335,7 +262,7 @@ public static partial class MapPortChecks
             D("Directional Enable LocalLight1", GPARAM.ParamType.BoolA, (0, true), (1, true), (4, false), (111, true))));
         ds3.Groups[0].Comments.AddRange(["MAP_メイン:Outside", "暗闇用", "", "ボス_娘　戦闘"]);
 
-        var changes = MapAtmosphere.Apply(host, ds3, 0, 0, false, [0, 1, 4, 100, 111, 999]);
+        var changes = MapAtmosphere.Apply(host, ds3, 0, 0, [0, 1, 4, 100, 111, 999]);
         var light = MapAtmosphere.Group(host, "LightSet")!;
         Vector4 Colour(string name, int id) { var p = light.Params.Single(x => x.Name1 == name); return (Vector4)p.Values[p.ValueIDs.IndexOf(id)]; }
         float scale = 0.6f / 0.8f;
@@ -428,7 +355,7 @@ public static partial class MapPortChecks
         mixed.Parts.Enemies.AddRange([friede, father]);
         Expect(MapLightSets.CharacterOnly(mixed).SetEquals([120]), "only sets no map piece names count as character sets");
 
-        // Parts: a DS3 part's set is carried; one the draw params lack, and every one with the fallback, goes to -1.
+        // Parts: a DS3 part's set is carried; one the draw params lack goes to -1.
         var piece = new MSB3.Part.MapPiece { Name = "m010701_5000", ModelName = "m010701" };
         piece.Gparam.LightSetID = 1;
         var ported = new MSBE.Part.MapPiece();
@@ -444,11 +371,8 @@ public static partial class MapPortChecks
         msb.Parts.MapPieces.AddRange([ported, stray]);
         msb.Parts.Enemies.Add(portedEnemy);
         Expect(ported.Gparam.LightSetID == 1 && portedEnemy.Gparam.LightSetID == 111 && MapLightSets.Wanted(msb).SetEquals([1, 111, 999]), "DS3's sets carried to the ported parts");
-        var line = MapLightSets.Finish(msb, new HashSet<int> { 0, 1, 100, 111 }, off: false);
+        var line = MapLightSets.Finish(msb, new HashSet<int> { 0, 1, 100, 111 });
         Expect(ported.Gparam.LightSetID == 1 && portedEnemy.Gparam.LightSetID == 111 && stray.Gparam.LightSetID == -1 && line.Contains("1 x1") && line.Contains("1 on sets the draw params lack"), line);
-        MapLightSets.Finish(msb, new HashSet<int> { 0, 1, 100, 111 }, off: true);
-        Expect(ported.Gparam.LightSetID == -1 && portedEnemy.Gparam.LightSetID == -1, "--one-light-set leaves every part on the default");
-        Expect(MapPorter.Options.Parse(["--one-light-set"]).OneLightSet && !MapPorter.Options.Parse([]).OneLightSet, "--one-light-set (fallback map-light-sets B) is read");
     }
 
     private static void Atmosphere()
@@ -494,8 +418,6 @@ public static partial class MapPortChecks
             && Near(m40Rest, new Vector4(0.572f, 0.623f, 0.71f, 1)), $"m40's fog keeps its colours: {m40Direct} / {m40Rest}");
         var (bright, _) = MapAtmosphere.FogColours(new Vector4(1, 0.5f, 0.25f, 1), null);
         Expect(Near(bright, new Vector4(1, 0.5f, 0.25f, 1)), $"a strong fog colour is capped at 1, keeping its hue: {bright}");
-        var (raw, rawRest) = MapAtmosphere.FogColours(new Vector4(1, 0.932f, 0.814f, 0.12f), new Vector4(0.899f, 0.885f, 1, 0), strengths: false);
-        Expect(raw == new Vector4(1, 0.932f, 0.814f, 0.12f) && rawRest == new Vector4(0.899f, 0.885f, 1, 0), "fallback map-atmosphere C: DS3's colours as they are");
         Expect(MapAtmosphere.Value<float>(fog, "VolumetricFog FarDepth") == MapAtmosphere.FogFarDepth && MapAtmosphere.Value<float>(fog, "VolumetricFog Global HeightFogOffset") == -44f,
             "Stormveil's reach when DS3 writes no fog distances, height fog from the DS3 ground");
         // DS3's reach: Fog-DistOffset + Fog-Dist (Painted World 10 + 60 = 70 m at 0.5), clamped.
@@ -567,12 +489,11 @@ public static partial class MapPortChecks
             "a variant DS3 lacks and a collision with none name nothing (not the host's)");
         Expect(MapAtmosphere.GparamPath(new MapId(19, 70, 0, 0), 3) == "/param/drawparam/m19_70_0300.gparam.dcx", "variant file name");
 
-        // Nothing to take from DS3: the host's values stay. Fallback map-atmosphere B keeps the file.
+        // Nothing to take from DS3: the host's values stay.
         var plain = new GPARAM();
         plain.Groups.Add(G("VolumetricFog", P("VolumetricFog FarDepth", GPARAM.ParamType.Float, 2000f)));
         MapAtmosphere.Apply(plain, new GPARAM(), 0);
         Expect(MapAtmosphere.Value<float>(MapAtmosphere.Group(plain, "VolumetricFog"), "VolumetricFog FarDepth") == 2000f, "no DS3 fog: the host's fog stays");
-        Expect(MapPorter.Options.Parse(["--host-atmosphere"]).HostAtmosphere && !new MapPorter.Options().HostAtmosphere, "--host-atmosphere is read");
         Expect(MapAtmosphere.GparamPath(MapId.Parse("m45_01_00_00")) == "/param/drawparam/m45_01_0000.gparam.dcx", "slot gparam path");
     }
 }

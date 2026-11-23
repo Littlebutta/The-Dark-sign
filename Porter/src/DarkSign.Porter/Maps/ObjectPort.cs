@@ -34,25 +34,12 @@ namespace DarkSign.Porter.Maps;
 /// <see cref="ObjActBase"/> + the DS3 ID (<see cref="AddObjActRows"/>). Lifts need nothing more: DS3's scripts drive
 /// them ("Force Animation Playback" on the lift's entity, converted by <see cref="EventPort"/>), and their asset rows
 /// say they carry the player (isMoveObj, from DS3's ObjectParam). Objects that break (hit points) still have no
-/// collision, so none of them can block the way. Fallback "map-doors" (<see cref="MovingMethod"/>) turns this off.
+/// collision, so none of them can block the way.
 /// </summary>
 public sealed class ObjectPort
 {
-    public enum Method { Full, NoCollision, None }
-
-    /// <summary>
-    /// --moving-objects (launcher Fallbacks "map-doors"): Full moves doors, lifts and levers with their collision;
-    /// NoCollision moves them but leaves them without collision (walk through them, as before); Off draws them
-    /// standing still with no collision and no ObjAct, as builds up to 1.0.37x did.
-    /// </summary>
-    public enum MovingMethod { Full, NoCollision, Off }
-
-    public static MovingMethod ParseMoving(string? text) => text?.ToLowerInvariant() switch
-    {
-        "nocollision" or "no-collision" or "b" => MovingMethod.NoCollision,
-        "off" or "none" or "c" => MovingMethod.Off,
-        _ => MovingMethod.Full,
-    };
+    /// <summary>Full: objects get their collision. NoCollision: DS3's ObjectParam couldn't be read, so none does.</summary>
+    public enum Method { Full, NoCollision }
 
     /// <summary>
     /// Ported ObjActParam rows are DS3's at this base + the DS3 ID: Elden Ring already has 49 of DS3's 118 IDs (its own
@@ -71,13 +58,6 @@ public sealed class ObjectPort
     /// there, <see cref="RemapObjActFlags"/>); their names start with this until then, and with "[DS3] " after.
     /// </summary>
     public const string PendingFlag = "[DS3 flag] ";
-
-    public static Method ParseMethod(string? text) => text?.ToLowerInvariant() switch
-    {
-        "nocollision" or "no-collision" or "b" => Method.NoCollision,
-        "none" or "off" or "c" => Method.None,
-        _ => Method.Full,
-    };
 
     /// <summary>The first asset group tried for ported objects; Elden Ring's own stop well below, JortPob uses 900-911.</summary>
     public const int FirstGroupWanted = 920;
@@ -130,7 +110,6 @@ public sealed class ObjectPort
     private readonly Method _method;
     private readonly PARAM? _objectParam;
     private readonly ErCollisionTemplate? _collisionTemplate;
-    private readonly bool _xmlCollision, _keepSimd;
     private readonly Dictionary<string, Asset> _assets = new(StringComparer.OrdinalIgnoreCase);
     private readonly HashSet<string> _objActTargets = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, TPF.Texture> _textures = new(StringComparer.OrdinalIgnoreCase);
@@ -141,7 +120,6 @@ public sealed class ObjectPort
 
     /// <summary>DS3's ObjActParam, for the rows ported ObjActs name (null: no ObjAct rows, so no ObjActs).</summary>
     public PARAM? Ds3ObjActParam { get; init; }
-    public MovingMethod Moving { get; init; } = MovingMethod.Full;
     private ObjectAnims.Template? _animTemplate;
     private bool _animTemplateTried, _effectsTried;
     /// <summary>DS3 effect -> converted effect (MapSfx's table), for the effect events of the animations.</summary>
@@ -158,7 +136,7 @@ public sealed class ObjectPort
     /// <param name="ds3Maps">Every DS3 map file of a map that has a slot (not only the ones being ported now), so
     /// asset numbers don't depend on which maps a run rebuilds.</param>
     public ObjectPort(PorterContext ctx, GameArchives ds3, GameArchives er, MapModelPort models, Method method,
-        IEnumerable<MSB3> ds3Maps, PARAM? ds3ObjectParam, ErCollisionTemplate? collisionTemplate, bool xmlCollision, bool keepSimd)
+        IEnumerable<MSB3> ds3Maps, PARAM? ds3ObjectParam, ErCollisionTemplate? collisionTemplate)
     {
         _ctx = ctx;
         _ds3 = ds3;
@@ -167,8 +145,6 @@ public sealed class ObjectPort
         _method = method;
         _objectParam = ds3ObjectParam;
         _collisionTemplate = collisionTemplate;
-        _xmlCollision = xmlCollision;
-        _keepSimd = keepSimd;
 
         var maps = ds3Maps.ToList();
         foreach (var msb in maps)
@@ -177,20 +153,19 @@ public sealed class ObjectPort
                     _objActTargets.Add(target.ModelName);
         var names = Plan(maps.SelectMany(m => m.Parts.Objects).Select(o => o.ModelName));
         // Posed copies (corpses, ObjectPoses) after the plain models, so the plain models keep their numbers.
-        var poses = ObjectPoses.Enabled ? PlanPoses(maps.SelectMany(m => m.Parts.Objects)) : [];
+        var poses = PlanPoses(maps.SelectMany(m => m.Parts.Objects));
         FirstGroup = FreeGroup(er.Entries.Select(e => e.Path), (names.Count + poses.Count + 999) / 1000);
         int groups = (names.Count + poses.Count + 999) / 1000;
         FirstSoundGroup = ObjectSounds.FirstGroupWanted;
-        if (ObjectSounds.Enabled)
-            try
-            {
-                var index = er.Contains(SoundIndex.ArchivePath) ? SoundIndex.Read(er.Read(SoundIndex.ArchivePath)) : null;
-                FirstSoundGroup = ObjectSounds.SoundGroup(index is null ? null : index.HasBank, groups);
-            }
-            catch (Exception ex) when (ex is not OutOfMemoryException)
-            {
-                Notes.Add($"object sounds: the game's sound index is unreadable ({ex.Message}); banks named from group {FirstSoundGroup}");
-            }
+        try
+        {
+            var index = er.Contains(SoundIndex.ArchivePath) ? SoundIndex.Read(er.Read(SoundIndex.ArchivePath)) : null;
+            FirstSoundGroup = ObjectSounds.SoundGroup(index is null ? null : index.HasBank, groups);
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            Notes.Add($"object sounds: the game's sound index is unreadable ({ex.Message}); banks named from group {FirstSoundGroup}");
+        }
         foreach (var (model, index) in names)
             _assets[model] = new Asset { Ds3Model = model, Index = index, Name = AssetName(FirstGroup, index) };
         for (int i = 0; i < poses.Count; i++)
@@ -284,12 +259,10 @@ public sealed class ObjectPort
     /// <summary>
     /// Converts the models this map's objects use (once per run) and adds an asset part for every DS3 object part.
     /// </summary>
-    public Result Place(MSB3 ds3, MSBE msb, MapId ds3Id, MapId erId, MsbPort.Options options)
+    public Result Place(MSB3 ds3, MSBE msb, MapId ds3Id, MapId erId)
     {
         var partNames = new Dictionary<string, string>(StringComparer.Ordinal);
         var notes = new List<string>();
-        if (_method == Method.None)
-            return new Result(0, 0, ds3.Parts.Objects.Count, 0, partNames, notes);
 
         var wanted = ds3.Parts.Objects.Select(o => o.ModelName)
             .Concat(ds3.Parts.Objects.Where(o => ObjectPoses.PoseOf(o) >= 0).Select(o => ObjectPoses.Key(o.ModelName, ObjectPoses.PoseOf(o))))
@@ -324,8 +297,8 @@ public sealed class ObjectPort
                 asset.Failure = ex.Message;
             }
 
-        var result = PlaceParts(ds3, msb, ds3Id, erId, options, m => _assets.GetValueOrDefault(m), objActs: Ds3ObjActParam is not null);
-        if (Ds3ObjActParam is null && Moving != MovingMethod.Off)
+        var result = PlaceParts(ds3, msb, ds3Id, erId, m => _assets.GetValueOrDefault(m), objActs: Ds3ObjActParam is not null);
+        if (Ds3ObjActParam is null)
             return result with { Notes = [.. result.Notes, "no ObjActs placed: DS3's ObjActParam could not be read, so doors and levers can't be used"] };
         return result;
     }
@@ -334,7 +307,7 @@ public sealed class ObjectPort
     /// Adds an asset part for every DS3 object part whose model <paramref name="lookup"/> has converted, and an ObjAct
     /// event for every DS3 ObjAct whose object moves (<paramref name="objActs"/>: off for the offline checks of parts).
     /// </summary>
-    public static Result PlaceParts(MSB3 ds3, MSBE msb, MapId ds3Id, MapId erId, MsbPort.Options options, Func<string, Asset?> lookup, bool objActs = true)
+    public static Result PlaceParts(MSB3 ds3, MSBE msb, MapId ds3Id, MapId erId, Func<string, Asset?> lookup, bool objActs = true)
     {
         var placedAssets = new Dictionary<string, Asset>(StringComparer.Ordinal);
         var partNames = new Dictionary<string, string>(StringComparer.Ordinal);
@@ -343,7 +316,7 @@ public sealed class ObjectPort
         var nextInstance = new Dictionary<string, int>();
         int placed = 0, leftOut = 0, withCollision = 0, otherState = 0;
         var failures = new Dictionary<string, int>();
-        var layerOk = !options.AllLayers && MsbPort.BaseLayerMeans(ds3);
+        var layerOk = MsbPort.BaseLayerMeans(ds3);
         foreach (var src in ds3.Parts.Objects)
         {
             if (MsbPort.OtherState(src, layerOk))
@@ -361,7 +334,7 @@ public sealed class ObjectPort
             }
             var part = NewPart();
             MsbPort.CopyCommon(src, part, ds3Id, erId);
-            MsbPort.ApplyPieceGroups(src, part.Unk1, options);
+            MsbPort.ApplyPieceGroups(part.Unk1);
             var instance = nextInstance.GetValueOrDefault(asset.Name, 9000);
             while (names.Contains($"{asset.Name}_{instance:D4}"))
                 instance++;
@@ -571,7 +544,7 @@ public sealed class ObjectPort
         // A ladder stays put too (Elden Ring climbs a still asset), unless DS3 marks it a moving object: Ariandel's
         // lever-lowered ladder (o459150, isMoveObj and isLadder) has to come down before it can be climbed, and
         // standing still it never did (2026-11-20).
-        bool moves = asset.Animated && !asset.Breakable && (!asset.Ladder || asset.MoveObj) && Moving != MovingMethod.Off;
+        bool moves = asset.Animated && !asset.Breakable && (!asset.Ladder || asset.MoveObj);
         if (moves && !movingPass)
             return false;
         if (moves)
@@ -590,7 +563,7 @@ public sealed class ObjectPort
             }
         }
         else if (asset.Animated)
-            asset.MovingNote = Moving == MovingMethod.Off ? "stands still (--moving-objects off)" : asset.Breakable ? "stands still: it breaks" : "stands still: a ladder";
+            asset.MovingNote = asset.Breakable ? "stands still: it breaks" : "stands still: a ladder";
 
         var result = ConvertBinder(bnd, asset.Ds3Model, asset.Name, _models, _binderTemplate, _fileFlags);
         asset.Meshes = result.Flver.Meshes.Count;
@@ -604,7 +577,7 @@ public sealed class ObjectPort
 
         // Collision, for objects that stay put.
         if (_method == Method.NoCollision)
-            asset.CollisionNote = "off (--objects nocollision)";
+            asset.CollisionNote = "off (DS3's ObjectParam unreadable)";
         else if (asset.Animated || asset.ObjActTarget)
             asset.CollisionNote = "none: the object doesn't move here (see moves); it would block the way";
         else if (asset.Breakable || asset.Ladder)
@@ -657,7 +630,7 @@ public sealed class ObjectPort
             try
             {
                 var hkx = DCX.Is(file.Bytes) ? DCX.Decompress(file.Bytes) : file.Bytes;
-                var converted = CollisionPort.Convert(hkx, _collisionTemplate, _xmlCollision, _keepSimd, adjust, dropBroken: true);
+                var converted = CollisionPort.Convert(hkx, _collisionTemplate, xml: false, keepSimdTree: false, adjust, dropBroken: true);
                 if (converted.Triangles == 0 && converted.Convex == 0)
                 {
                     errors.Add($"{ItemText.Leaf(file.Name)}: no mesh or convex shape" + (converted.Notes.Count > 0 ? $" ({string.Join("; ", converted.Notes.Distinct().Take(3))})" : ""));
@@ -707,14 +680,12 @@ public sealed class ObjectPort
             lock (_assets)
                 if (!_effectsTried)
                 {
-                    try { _effects = MapSfx.Enabled ? MapSfx.ReadTable(_ctx) : null; }
+                    try { _effects = MapSfx.ReadTable(_ctx); }
                     catch (Exception ex) when (ex is not OutOfMemoryException) { Notes.Add($"moving objects: the effect table is unreadable ({ex.Message}); animations play no effects"); }
                     _effectsTried = true;
                 }
         var bank = ObjectSounds.BankOf(FirstSoundGroup, asset.Index);
-        var anims = ObjectAnims.Build(bnd, asset.Name, template, rename, _effects, ObjectSounds.Enabled
-            ? played => played.Take(ObjectSounds.MaxPerAsset).Select((id, n) => (id, n)).ToDictionary(x => x.id, x => ObjectSounds.SoundId(bank, x.n))
-            : null);
+        var anims = ObjectAnims.Build(bnd, asset.Name, template, rename, _effects, played => played.Take(ObjectSounds.MaxPerAsset).Select((id, n) => (id, n)).ToDictionary(x => x.id, x => ObjectSounds.SoundId(bank, x.n)));
         if (anims.Sounds.Count > 0)
         {
             asset.SoundBank = bank;
@@ -738,9 +709,7 @@ public sealed class ObjectPort
         Write(GeomBndPath(asset.Name), DCX.Compress(result.Binder.Write(), _compression));
 
         if (_method == Method.NoCollision)
-            asset.CollisionNote = "off (--objects nocollision)";
-        else if (Moving == MovingMethod.NoCollision)
-            asset.CollisionNote = "off (--moving-objects nocollision)";
+            asset.CollisionNote = "off (DS3's ObjectParam unreadable)";
         else
         {
             var movingBones = anims.Bones.Skip(1).ToHashSet(StringComparer.OrdinalIgnoreCase);
@@ -939,9 +908,8 @@ public sealed class ObjectPort
     /// Returns how many rows were added.
     /// </summary>
     public static int AddObjActRows(PARAM erParam, PARAM ds3Param, PARAM? actionButtons, List<string>? notes = null,
-        MapText.Method? text = null, ISet<int>? used = null)
+        ISet<int>? used = null)
     {
-        var textMode = text ?? MapText.Mode;
         int messages = 0;
         var template = erParam[ObjActTemplateRow] ?? erParam.Rows.FirstOrDefault() ?? throw new InvalidDataException("ObjActParam has no rows to copy");
         erParam.Rows.RemoveAll(r => r.ID >= ObjActBase && r.ID < ObjActBase + 5_000_000);
@@ -973,13 +941,13 @@ public sealed class ObjectPort
             // "Locked") is DS3's event text: it names the copy of DS3's words. The prompt comes from the action
             // button row in Elden Ring, so DS3's "action enabled" message (10010400) gives way to the template's.
             var failed = (long)Number(row, "actionFailedMsgId");
-            if (MapText.Message(failed, textMode) is var failedText && failedText != failed)
+            if (MapText.Message(failed) is var failedText && failedText != failed)
             {
                 Set(row, "actionFailedMsgId", (int)failedText);
                 messages++;
                 used?.Add((int)failed);
             }
-            if (textMode != MapText.Method.Off && template.Cells.FirstOrDefault(c => c.Def.InternalName == "actionEnableMsgId")?.Value is { } enable)
+            if (template.Cells.FirstOrDefault(c => c.Def.InternalName == "actionEnableMsgId")?.Value is { } enable)
                 Set(row, "actionEnableMsgId", enable);
             var button = (int)Number(row, "actionButtonParamId");
             if (buttons is not null && button > 0 && !buttons.Contains(button))
@@ -1043,8 +1011,6 @@ public sealed class ObjectPort
     public string WriteSounds()
     {
         var sounding = _assets.Values.Where(a => a.Converted && a.Moving && a.Sounds.Count > 0).OrderBy(a => a.Index).ToList();
-        if (!ObjectSounds.Enabled)
-            return "object sounds: off (DARKSIGN_OBJECT_SOUNDS=0, fallback map-doors C): objects move silently";
         if (sounding.Count == 0)
             return "object sounds: no moving object plays a DS3 sound";
         var notes = new List<string>();

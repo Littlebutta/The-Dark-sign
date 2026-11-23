@@ -79,9 +79,6 @@ public sealed class EventPort
     /// </summary>
     public MapText.Used? Texts { get; init; }
 
-    /// <summary>How text numbers move (DARKSIGN_MAP_TEXT, read once per port).</summary>
-    public MapText.Method TextMode { get; init; } = MapText.Mode;
-
     // DS3's "IF Action Button" family (all start Result Condition Group, Target Entity Type, Target Entity ID, ...).
     private static readonly HashSet<int> ActionButtonIds = [5, 13, 18, 19];
 
@@ -166,12 +163,9 @@ public sealed class EventPort
     /// intro (the one boss intro DS3 plays with 8 for the host) left the screen black when it ended: DS3 fades back
     /// in by itself after the cutscene's warp, Elden Ring stays faded out until the script does something about it.
     /// Elden Ring's own scripts (14 read on 2026-11-19) use 16 only where the script then moves the player far away
-    /// or loads another map, never with a boss intro, which they all play with 0. DARKSIGN_CUTSCENE_FADE=1 (launcher
-    /// fallback map-cutscenes F) writes 16 again.
+    /// or loads another map, never with a boss intro, which they all play with 0.
     /// </summary>
-    public static long PlaybackMethod(long ds3) => (ds3 & 2) | ((ds3 & 8) != 0 && KeepFadeOut ? 16 : 0);
-
-    public static bool KeepFadeOut => Environment.GetEnvironmentVariable("DARKSIGN_CUTSCENE_FADE") == "1";
+    public static long PlaybackMethod(long ds3) => ds3 & 2;
 
     // DS3 instructions whose Elden Ring counterpart has another name (checked by hand against both definitions).
     private static readonly Dictionary<string, string> Renamed = new(StringComparer.OrdinalIgnoreCase)
@@ -498,7 +492,7 @@ public sealed class EventPort
             case Kind.Message:
             case Kind.PlaceName:
                 // DS3's text numbers name nothing (or other words) in Elden Ring: each names a copy of DS3's text.
-                var text = kind == Kind.Message ? MapText.Message(value, TextMode) : MapText.Place(value, TextMode);
+                var text = kind == Kind.Message ? MapText.Message(value) : MapText.Place(value);
                 if (text != value)
                 {
                     Stats.TextsMoved++;
@@ -897,9 +891,8 @@ public sealed class EventPort
     /// player. Read as invaders, 157 of the 219 skipped lines and 99 network flag sets never ran: the sword pull never
     /// started Gundyr's fight, and boss, door and lever flags across every ported map were never set.
     /// </para>
-    /// Fallback map-enemies C: DARKSIGN_HOST_CHECKS=invaders reads type 1 as invaders again (always skip), as up to 1.0.567.
     /// </summary>
-    public static int HostCount => Environment.GetEnvironmentVariable("DARKSIGN_HOST_CHECKS")?.Trim().ToLowerInvariant() == "invaders" ? 0 : 1;
+    public const int HostCount = 1;
 
     /// <summary>
     /// DS3 "SKIP/GOTO/END IF Number of Clients of Type" (first argument: lines, label or end type; then Client Type,
@@ -924,7 +917,7 @@ public sealed class EventPort
         // (common_func 90005500, made from DS3's 20005621) puts "SKIP IF Map Has Permission To Update(0)" at the
         // same lines: skip unless this world is the host's. That form is used here, so single player and the host
         // of a co-op session run them and joined players don't (Seamless Co-op keeps the host in charge of the map).
-        if (clientType == 1 && HostCount == 1 && comparison == 0 && count == 0 && HostChecks.TryGetValue(ins.ID, out var hostId) && _er.Get(1003, hostId) is { } hostCheck)
+        if (clientType == 1 && comparison == 0 && count == 0 && HostChecks.TryGetValue(ins.ID, out var hostId) && _er.Get(1003, hostId) is { } hostCheck)
         {
             var data = new byte[hostCheck.Length]; // Elden Ring's own: Has Permission 0, Unknown 0, map bytes 0
             Emedf.Write(data, hostCheck.Args[0], first);

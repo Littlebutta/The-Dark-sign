@@ -101,15 +101,12 @@ project root from there, or takes `--root`. Games are looked for in the root's s
 
 The build uses every core: the launcher runs `port-weapons` and `port-maps` side by side (port-maps waits for
 port-weapons, via `--after-pid`, only before its events step, which edits the regulation.bin port-weapons writes), and
-inside port-weapons the weapon models, icons and animation conversions run in parallel. `DARKSIGN_THREADS=1` runs
-every loop one item at a time, to rule threading out when a build looks wrong. Map collision files serialize on every
-core too, after `CollisionPort.WarmUp` has filled HKLib's type caches (the only shared state its serializers have);
-`DARKSIGN_COLLISION_LOCK=1` (Fallbacks: build-threads C) serializes them one at a time again, as builds before 1.0.23x did.
+inside port-weapons the weapon models, icons and animation conversions run in parallel. Map collision files serialize on every
+core too, after `CollisionPort.WarmUp` has filled HKLib's type caches (the only shared state its serializers have).
 port-maps ports several DS3 maps side by side (one per 4 cores and per 12 GB of memory, 4 at most). The steps that
 change what the maps share (enemy and people placement; textures, materials, collision, navmesh, objects, regions and
-boss arenas) take turns in the maps' port order (`MapTurns`), so the files are the ones a one-at-a-time run writes;
-`DARKSIGN_MAPS_AT_ONCE=1` (Fallbacks: build-threads D) ports one map at a time again.
-A launcher update rebuilds the content only when the porter's own files, the build methods or the launcher's build
+boss arenas) take turns in the maps' port order (`MapTurns`), so the files are the ones a one-at-a-time run writes.
+A launcher update rebuilds the content only when the porter's own files or the launcher's build
 recipe changed (`EldenRingSetup.ContentId`, written beside the build stamp as `darksign_build_id.txt`): the release
 workflow reuses the previous porter when nothing it is built from changed, and the content is then kept.
 

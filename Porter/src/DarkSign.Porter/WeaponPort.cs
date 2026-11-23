@@ -70,10 +70,6 @@ public static class WeaponPort
     /// <summary>The status of a plan that is only DS3's look: see <see cref="Plan"/>.</summary>
     public const string Look = "look";
 
-    /// <summary>DARKSIGN_PEOPLE_WEAPON_LOOKS=0 (fallback map-people I): no look-only weapons; DS3's people hold Elden
-    /// Ring's weapon where it has one of the same name, as up to 1.0.501.</summary>
-    public static readonly bool Looks = Environment.GetEnvironmentVariable("DARKSIGN_PEOPLE_WEAPON_LOOKS") != "0";
-
     /// <summary>The DS3 weapons (base IDs) DS3's people hold: every weapon slot of every CharaInitParam row.</summary>
     public static HashSet<int> HeldByPeople(PARAM? ds3CharaInit)
     {
@@ -146,7 +142,7 @@ public static class WeaponPort
                 FirstNewId + next * 10000, FirstNewModelId + next, "port"));
             next++;
         }
-        if (Looks && heldByPeople is { Count: > 0 })
+        if (heldByPeople is { Count: > 0 })
         {
             // Elden Ring's weapon of each name: the plain (base) row with the lowest ID.
             var erByName = new Dictionary<string, int>();
@@ -167,9 +163,6 @@ public static class WeaponPort
         }
         return plans;
     }
-
-    /// <summary>DARKSIGN_DS3_HOLD=0 (fallback "weapon-hold" B): ported weapons stand and walk in their template's hold.</summary>
-    public static readonly bool Ds3Hold = Environment.GetEnvironmentVariable("DARKSIGN_DS3_HOLD") != "0";
 
     /// <summary>The two-handed hold that means "two-handing doesn't change the grip" (shields, staffs, seals): Elden
     /// Ring's scripts read it to tell a weapon's guard from a shield's or a catalyst's, so it is never given or taken.</summary>
@@ -243,7 +236,7 @@ public static class WeaponPort
                         && Convert.ToInt32(effect.Value) == Convert.ToInt32(templateBase[slot].Value))
                         effect.Value = Convert.ChangeType(-1, effect.Value!.GetType());
 
-                if (Ds3Hold && row["wepmotionOneHandId"] is { } oneHand && row["wepmotionBothHandId"] is { } bothHands
+                if (row["wepmotionOneHandId"] is { } oneHand && row["wepmotionBothHandId"] is { } bothHands
                     && source["wepmotionOneHandId"] is { } ds3One && source["wepmotionBothHandId"] is { } ds3Both)
                 {
                     int templateOne = Convert.ToInt32(oneHand.Value), templateBoth = Convert.ToInt32(bothHands.Value);
@@ -282,11 +275,9 @@ public static class WeaponPort
             looks.Add(plan.Name);
         }
         if (looks.Count > 0)
-            Console.WriteLine($"weapons: {looks.Count} weapons Elden Ring has by name get a look-only copy with DS3's model for DS3's people: {string.Join(", ", looks)} [DARKSIGN_PEOPLE_WEAPON_LOOKS=0 off]");
+            Console.WriteLine($"weapons: {looks.Count} weapons Elden Ring has by name get a look-only copy with DS3's model for DS3's people: {string.Join(", ", looks)}");
         er.Rows.Sort((a, b) => a.ID.CompareTo(b.ID));
-        Console.WriteLine(Ds3Hold
-            ? $"weapons: {holdNotes.Count} weapons stand and walk in DS3's hold instead of their template's (one-handed/two-handed): {string.Join("; ", holdNotes)} [DARKSIGN_DS3_HOLD=0 keeps the template's]"
-            : "weapons: holds are the templates' (DARKSIGN_DS3_HOLD=0)");
+        Console.WriteLine($"weapons: {holdNotes.Count} weapons stand and walk in DS3's hold instead of their template's (one-handed/two-handed): {string.Join("; ", holdNotes)}");
         return added;
     }
 

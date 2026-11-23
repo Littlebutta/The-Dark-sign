@@ -30,7 +30,7 @@ namespace DarkSign.Porter.Maps;
 /// spanning the box (box-local axes, as Stormveil's volumes follow their boxes' width, height and depth) baked from
 /// the probes in it, and a reflection cube as bright as those probes against open sky. The map-wide volume
 /// (<see cref="MapBakedLight.PointNumber"/>) stays under them for the open ground between rooms.
-/// <para>Assumptions not yet seen in game (fallback "map-light-areas" B leaves the areas out): a box's volume runs
+/// <para>Assumptions not yet seen in game: a box's volume runs
 /// along the box's own turned axes; a larger UnkT34 wins; first-order terms stay in world directions; a box that
 /// names another's point in UnkT0A shares that point's volume and cube, as m45_02's Env_Box000 shares point 010.</para>
 /// </summary>
@@ -100,8 +100,7 @@ public static class MapLightAreas
     /// encoded like the map-wide volume (DS3's open sky <paramref name="sky"/> = <paramref name="hostAlpha"/>), and a
     /// cube as bright as the room's median probe against open sky. Null when the box holds too few probes.
     /// </summary>
-    public static MapBakedLight.Volume? Bake(Area area, IReadOnlyList<MapBakedLight.Probe> probes, float hostAlpha, float sky,
-        MapBakedLight.Options options)
+    public static MapBakedLight.Volume? Bake(Area area, IReadOnlyList<MapBakedLight.Probe> probes, float hostAlpha, float sky)
     {
         var toLocal = ToLocal(area.Position, area.Rotation);
         var near = new List<(Vector3 Position, float[] Sh)>();
@@ -135,7 +134,7 @@ public static class MapLightAreas
             var step = new Vector3(size.X / w, size.Y / h, size.Z / d);
             float radius = MathF.Max(3 * MathF.Max(step.X, MathF.Max(step.Y, step.Z)), 4);
             var field = LightVolumeMath.Spread(near, min, step, w, h, d, 12, radius);
-            levels[name] = new MapBakedLight.Level(w, h, d, MapBakedLight.Encode(field, w, h, d, scale, hostAlpha, options));
+            levels[name] = new MapBakedLight.Level(w, h, d, MapBakedLight.Encode(field, w, h, d, scale, hostAlpha));
         }
         inside.Sort();
         float median = inside[inside.Count / 2] / sky;
@@ -169,8 +168,7 @@ public static class MapLightAreas
     /// Numbers the layout already uses are skipped. Returns the rooms' volumes and a line for the log.
     /// </summary>
     public static (List<MapBakedLight.Volume> Volumes, string Line) Build(MSB3 ds3, IReadOnlyList<MapBakedLight.Probe> probes, MSBE msb,
-        MSBE.Region.EnvironmentMapPoint hostPoint, MSBE.Region.EnvironmentMapEffectBox hostBox, float hostAlpha, float sky,
-        MapBakedLight.Options options)
+        MSBE.Region.EnvironmentMapPoint hostPoint, MSBE.Region.EnvironmentMapEffectBox hostBox, float hostAlpha, float sky)
     {
         var areas = Read(ds3);
         if (areas.Count == 0)
@@ -187,7 +185,7 @@ public static class MapLightAreas
         // Rooms with points of their own first; a box that shares another's point is placed after.
         foreach (var area in areas.Where(a => a.SharesPoint < 0))
         {
-            if (Bake(area, probes, hostAlpha, sky, options) is { } v)
+            if (Bake(area, probes, hostAlpha, sky) is { } v)
             {
                 baked[area.Number] = v;
                 volumes.Add(v);
@@ -204,7 +202,7 @@ public static class MapLightAreas
                 if (area.SharesPoint >= 0)
                 {
                     // Its point's room had no light of its own: bake this one as a room.
-                    if (Bake(area with { SharesPoint = -1 }, probes, hostAlpha, sky, options) is { } v)
+                    if (Bake(area with { SharesPoint = -1 }, probes, hostAlpha, sky) is { } v)
                     {
                         baked[area.Number] = v;
                         volumes.Add(v);

@@ -4,7 +4,7 @@
 It builds its map table at boot from the map registry, in fixed-size arrays. The m50 probe crashed the boot because
 area numbers 50-88 are open-world areas and the game has room for exactly the six it ships, not because m50 is
 unknown. New blocks of dungeon areas the game already has fit, within the arrays' sizes, and the porter now adds them
-to port the rest of DS3 (`MapSlots.WorldSlots`, `MapRegistry.Write`, launcher fallback `map-world`). The sections
+to port the rest of DS3 (`MapSlots.WorldSlots`, `MapRegistry.Write`). The sections
 before "Third look" are the history.
 
 Devin's question (2026-11-08): would the ported maps load better as their own maps, instead of taking over the
@@ -13,12 +13,12 @@ before any rewrite; the decisive facts come from one in-game test described belo
 
 ## What is in place already
 
-The porter has had both methods since PR #46 and #56 (launcher fallback `map-slots`, `docs/fallbacks.md`):
+The porter has had both methods since PR #46 and #56:
 
 - **A (default): colosseum slots.** Cemetery of Ash -> m45_00, High Wall -> m45_01, Undead Settlement -> m45_02,
   plus a **probe**: the Cemetery again under **m50_00_00_00**, a map ID Elden Ring doesn't ship, built from m45_00's
   file formats. The F1 menu's fourth warp (Ctrl+Shift+4, request flag 1039292203) goes there.
-- **B: new map IDs.** Every DS3 map under its own new ID (m50_00, m51_00, m52_00), `DARKSIGN_MAP_SLOTS=new`.
+- **B: new map IDs.** Every DS3 map under its own new ID (m50_00, m51_00, m52_00), (no longer selectable: every option was removed on 2026-11-23).
 
 So "load them as their own maps" needs no rewrite: the code exists, and the probe is the test of whether the game
 accepts it. **The probe has never been warped to**: `dksign_testmenu.log` on Devin's PC (2026-11-08) shows the
@@ -134,7 +134,7 @@ never loads when not. The porter therefore:
   IDs and the sea tiles are the next candidates if it does.
 - (2026-11-12) The three are not file-less: the archive index lists a layout, map pieces, collision, navmesh, envmaps
   and lights for each. The Painted World of Ariandel now uses m19_70 by default (template m45_00), the first of these
-  IDs to be built for the default run; fallback `map-painted-world` B moves it into the colosseum m45_02.
+  IDs to be built for the default run.
 
 The second crash of the day was then not the map-load crash at all: the Cemetery and High Wall loads (PR #98's
 motion-properties fix) are untested on 1.0.238 and later, because the game never got that far.
@@ -196,7 +196,7 @@ So a new map needs an area number below 50 (or above 88), and the totals must st
 All of them are built from m45_00's formats and side files, like the Painted World in m19_70. `MapRegistry.Write`
 writes the base list with the added lines, compressed like the game's copy; `map-validate` fails a mod list that
 names a new open-world area or goes past an array. Untested in game. What `testmap=1` changes for m38_10-12 is not
-known. If the boot crashes with this build, take fallback `map-world` B (the four maps as before) and read the dump:
+known. If the boot crashes with this build, read the dump:
 a crash at +0xAED000 again means an array is fuller than counted here.
 
 **Joining the maps.** DS3 places every map in one world space: each map's parts carry its MSB MapOffset (m31 at
@@ -204,8 +204,7 @@ a crash at +0xAED000 again means an array is fuller than counted here.
 keeps every part's DS3 position, so ported neighbours are already in the same space, and connect collisions to any
 ported map are kept (`MsbPort`). Elden Ring lists linked legacy maps in WorldMapLegacyConvParam with one point in each
 map's coordinates; maps built in one space have the same point on both sides (Leyndell and the Shunning-Grounds, rows
-12 and 110). `MapLinks` adds such a pair of rows for every two ported maps a DS3 connect collision joins (rows 9000+;
-fallback `map-world` C leaves them out).
+12 and 110). `MapLinks` adds such a pair of rows for every two ported maps a DS3 connect collision joins (rows 9000+).
 
 ## Fourth look (2026-11-20): the game's own link rows for the test maps
 

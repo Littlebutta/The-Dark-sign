@@ -22,12 +22,9 @@ namespace DarkSign.Porter.Maps;
 /// weights from the bind pose into the posed one (linear blend skinning, as the game does it). The result is an
 /// ordinary rigid model, one asset per model and pose (<see cref="ObjectPort"/> numbers them after the plain ones).
 ///
-/// Off (fallback map-objects-poses B, DARKSIGN_OBJECT_POSES=0): corpses in their bind pose, as up to 1.0.42x.
 /// </summary>
 public static partial class ObjectPoses
 {
-    public static bool Enabled => Environment.GetEnvironmentVariable("DARKSIGN_OBJECT_POSES") != "0";
-
     /// <summary>The pose a DS3 object part asks for (its first auto-played animation), or -1.</summary>
     public static int PoseOf(MSB3.Part.Object part) => part.AnimIDs is { Length: > 0 } ids && ids[0] >= 0 ? ids[0] : -1;
 

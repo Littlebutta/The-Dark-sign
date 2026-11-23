@@ -19,12 +19,9 @@ namespace DarkSign.Porter;
 /// a shield's long axis says nothing about which way is up across two designs (2026-11-13: matching it turned the
 /// small shields on the near-round Buckler template onto their side). Shields with several models keep DS3's
 /// positions on a row of their own and are not checked here (see WeaponHold.Plan).</para>
-/// <para>DARKSIGN_SHIELD_SHAPE=0 turns the check off (the 1.0.420 hold: the dummy-frame turn alone).</para>
 /// </summary>
 public static class ShieldShape
 {
-    public static readonly bool Enabled = Environment.GetEnvironmentVariable("DARKSIGN_SHIELD_SHAPE") != "0";
-
     /// <summary>Turns smaller than this are measurement noise between two different shield designs: left alone.</summary>
     public const float MinDegrees = 15f;
 

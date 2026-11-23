@@ -16,15 +16,9 @@ namespace DarkSign.Porter;
 /// take the value most Elden Ring bullets have.</para>
 /// Method (RULE 3): which fields tie a bullet to its effects, attack and follow-up bullets follows sn0wsh00's
 /// Elden Ring bullet articles (Nexus Mods article 396) and Paramdex's defs for both games.
-/// Fallback "weapon-bullets": DARKSIGN_BULLETS=0 leaves bullet behaviours on the template's row, as before.
 /// </summary>
 public sealed class BulletPort
 {
-    public static bool Enabled => Environment.GetEnvironmentVariable("DARKSIGN_BULLETS") != "0";
-
-    /// <summary>Fallback "weapon-visuals" F: DS3 bullet events copied byte for byte, as in builds up to 1.0.271.</summary>
-    public static bool Ds3Events => Environment.GetEnvironmentVariable("DARKSIGN_BULLET_EVENTS") == "ds3";
-
     /// <summary>
     /// A DS3 bullet event (TAE type 2) in Elden Ring's layout. Both games start the same: dummy poly, an index, the
     /// behaviour judge, attachment type, enable, state info (DSAnimStudio's TAE templates for both games, RULE 3).
@@ -36,7 +30,7 @@ public sealed class BulletPort
     internal static byte[] ConvertEvent(byte[] ds3)
     {
         var er = (byte[])ds3.Clone();
-        if (Ds3Events || er.Length < 20)
+        if (er.Length < 20)
             return er;
         er[16] = 0;
         er[17] = 0;
@@ -112,7 +106,7 @@ public sealed class BulletPort
     public int Count => _ported.Count(p => p.Value > 0);
 
     public string Summary => $"{Count} DS3 bullets ported, {_bound} of their effects shown, {_unbound} left empty (effect not converted), " +
-        $"{_launchChanged} follow-up conditions DS3-only (254/255) made Elden Ring's 0{(Ds3LaunchConditions ? " (kept: DARKSIGN_BULLET_LAUNCH=ds3)" : "")}";
+        $"{_launchChanged} follow-up conditions DS3-only (254/255) made Elden Ring's 0";
 
     /// <summary>The Elden Ring ID for a DS3 bullet, porting it (and what it references) on first use; -1 when DS3 has none.</summary>
     public int Port(int ds3Id)
@@ -176,10 +170,6 @@ public sealed class BulletPort
         return row.ID;
     }
 
-    /// <summary>Fallback "weapon-visuals" J: DARKSIGN_BULLET_LAUNCH=ds3 keeps DS3's follow-up bullet conditions
-    /// 254/255 as they are, as in builds up to 1.0.420.</summary>
-    public static bool Ds3LaunchConditions => Environment.GetEnvironmentVariable("DARKSIGN_BULLET_LAUNCH") == "ds3";
-
     /// <summary>
     /// When a bullet's follow-up (HitBulletID) is made, in Elden Ring's terms. Both games' field holds the same small
     /// conditions (0 always, 1 hit water, 2 hit water or swamp, 3 didn't hit an enemy, 4 hit an enemy, ...), but DS3
@@ -190,7 +180,7 @@ public sealed class BulletPort
     /// ported trail never showed in game (Devin, 1.0.417); that 255 is why is an inference, not seen in game. Both become 0: the follow-up is made whenever the
     /// bullet ends, which for a bullet falling to the ground (the trails) is where it lands, as in DS3.
     /// </summary>
-    internal static int LaunchCondition(int ds3) => ds3 is 254 or 255 && !Ds3LaunchConditions ? 0 : ds3;
+    internal static int LaunchCondition(int ds3) => ds3 is 254 or 255 ? 0 : ds3;
 
     private int PortEffect(int ds3Id) => ds3Id > 0 && _spEffects?.Port(ds3Id) is > 0 and var id ? id : -1;
 

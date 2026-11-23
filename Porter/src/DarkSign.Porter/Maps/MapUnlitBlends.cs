@@ -23,8 +23,7 @@ namespace DarkSign.Porter.Maps;
 /// Elden Ring's shader reads that channel, triangles whose three corners are all under <see cref="Cut"/> (at most half
 /// visible in DS3) are left out, so a layer can't stand solid where DS3 has faded it away.
 /// Layers cut out by opacity masks (M[A]_al_m_NoLight_Opacity, the Painted World's and High Wall's cloud cards) and
-/// additive ones (M[A]_add) stay out (<see cref="MapModelPort.Ds3Kind"/>). Fallback "map-sky-clouds" B
-/// (DARKSIGN_SKY_CLOUDS=0) leaves all of them out again.
+/// additive ones (M[A]_add) stay out (<see cref="MapModelPort.Ds3Kind"/>).
 /// </summary>
 public static class MapUnlitBlends
 {

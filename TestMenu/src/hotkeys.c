@@ -1,5 +1,5 @@
 /* Keyboard shortcuts that work without the F1 overlay: the fallback when the overlay doesn't draw or crashes the
-   game (launcher Fallbacks window, "F1 test menu" B turns the overlay off and leaves these). They only act while
+   game (DKSIGN_NO_OVERLAY=1 turns the overlay off and leaves these). They only act while
    the game window has focus, and beep once when the game took the request (twice when it couldn't):
      Ctrl+Shift+F1        start the DS3 run (Cemetery of Ash)
      Ctrl+Shift+F2        leave the DS3 run (back to Roundtable Hold)

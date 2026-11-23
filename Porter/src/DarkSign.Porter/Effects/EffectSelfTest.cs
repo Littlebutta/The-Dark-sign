@@ -233,7 +233,7 @@ public static class EffectSelfTest
         Check(js.LightingOfConverted(js.Convert(smoke, 900830050, $"{{{noSounds},\"lit\":{{\"all\":1}}}}")) is [-2], "lighting: a DS3 smoke billboard (Normal blend) is lit as Elden Ring's are (-2)");
         Check(js.LightingOfConverted(js.Convert(unk6, 900830052, $"{{{noSounds},\"lit\":{{\"all\":1}}}}")) is [-2], "lighting: a DS3 Unk6 billboard (blends like Normal) is lit too");
         Check(js.LightingOfConverted(js.Convert(glow, 900830051, $"{{{noSounds},\"lit\":{{\"all\":1}}}}")) is [-1], "lighting: an additive DS3 billboard (a glow) stays unlit");
-        Check(js.LightingOfConverted(js.Convert(smoke, 900830050, $"{{{noSounds},\"lit\":{{}}}}")) is [-1], "lighting: fallback DARKSIGN_FXR_LIT=0 leaves every billboard unlit");
+        Check(js.LightingOfConverted(js.Convert(smoke, 900830050, $"{{{noSounds},\"lit\":{{}}}}")) is [-1], "lighting: a billboard not named in map.lit stays unlit");
 
         // What an effect does to the light around it, for the lamps the map port places at DS3's flames: a flame
         // glows (additive) warm without a light of its own; smoke doesn't glow; an effect it plays counts with it.
@@ -261,7 +261,7 @@ public static class EffectSelfTest
         Check(erLit is [{ } l] && Near(l.Strength, 100) && Near(l.Adaptation, 1) && Near(l.Falloff, 0.75f) && Near(l.Radius, 3) && Near(l.Volume, 0.5f),
             $"lights: a DS3 point light takes Elden Ring's settings (x10 strength, adaptation 1, falloff radius/4, volume 0.5): {string.Join(" ", erLit.Select(x => x.ToString()))}");
         Check(asRead is [{ } r] && Near(r.Strength, 10) && Near(r.Adaptation, 0) && Near(r.Falloff, 0.01f) && Near(r.Volume, 0),
-            $"lights: fallback DARKSIGN_FXR_LIGHTS=ds3 keeps the light as converted: {string.Join(" ", asRead.Select(x => x.ToString()))}");
+            $"lights: an effect not named in map.lights keeps the light as converted: {string.Join(" ", asRead.Select(x => x.ToString()))}");
         var glowOnly = js.LightsOfConverted(js.Convert(js.FlameSample(839011, 5, 1, 0.6f, 0.3f, false), 900839011, $"{{{noSounds},\"lights\":{{\"all\":1}}}}"));
         Check(glowOnly.Length == 0, "lights: an effect without a light gets none");
         // Spot lights (Friede's hall windows, f845210/f845211): the same strength, dimming and glow in the air, which
@@ -272,7 +272,7 @@ public static class EffectSelfTest
         Check(spotLit is [{ Kind: "spot" } sl] && Near(sl.Strength, 25.5f) && Near(sl.Adaptation, 1) && Near(sl.Volume, 0.5f) && Near(sl.Radius, 48),
             $"lights: a DS3 spot light takes Elden Ring's settings (x10 strength, adaptation 1, volume 0.5, reach kept): {string.Join(" ", spotLit.Select(x => x.ToString()))}");
         Check(spotRead is [{ Kind: "spot" } sr] && Near(sr.Strength, 2.55f) && Near(sr.Volume, 0),
-            $"lights: fallback DARKSIGN_FXR_LIGHTS=ds3 keeps the spot light as converted: {string.Join(" ", spotRead.Select(x => x.ToString()))}");
+            $"lights: an effect not named in map.lights keeps the spot light as converted: {string.Join(" ", spotRead.Select(x => x.ToString()))}");
 
         Console.WriteLine(failures == 0 ? "effects-selftest: all checks passed" : $"effects-selftest: {failures} FAILED");
         return failures == 0 ? 0 : 1;

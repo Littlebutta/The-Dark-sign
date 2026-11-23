@@ -235,7 +235,7 @@ public static class AiSelfTest
 
         // The chr map carries the think rows, by DS3 row and model; the map port gives a placement its own.
         var map = EnemyPort.ChrMap.Parse(["chr\tc2230\tc7071\t70710000\t70719000\tJailer", "think\t223005\tc7071\t70719005\tJailer"]);
-        var chooser = new EnemyPort.Chooser([], map, EnemyPort.Method.Auto);
+        var chooser = new EnemyPort.Chooser([], map);
         var jailer = map.Find(new EnemyPort.Ds3Enemy("c2230", 0, "Jailer", false, false))!;
         Check("chr map: a placement's own DS3 think row picks its ported row, others the character's",
             chooser.ThinkFor(jailer, 223005) == 70719005 && chooser.ThinkFor(jailer, 223000) == 70719000 && map.Think(223005, "c9999") is null);

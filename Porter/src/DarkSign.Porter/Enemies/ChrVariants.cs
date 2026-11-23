@@ -26,12 +26,9 @@ namespace DarkSign.Porter.Enemies;
 /// template's own offset effects come off the row (a ported Cathedral Evangelist kept the template's 5402 and played
 /// section 2), and DS3's NpcParam animIdOffset is copied (ChrPort.PortParams).</item>
 /// </list>
-/// Fallback enemy-model L: DARKSIGN_ENEMY_VARIANTS=0 (every variant plays the base moves, as up to 1.0.443).
 /// </summary>
 public static partial class ChrVariants
 {
-    public static bool Enabled => Environment.GetEnvironmentVariable("DARKSIGN_ENEMY_VARIANTS")?.Trim() != "0";
-
     public const int SectionStep = 1_000_000;
 
     [GeneratedRegex(@"^a(\d{3})_(\d{6})\.hkx$", RegexOptions.IgnoreCase)]

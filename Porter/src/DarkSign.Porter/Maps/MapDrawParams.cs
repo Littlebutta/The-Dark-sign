@@ -42,9 +42,6 @@ public static class MapDrawParams
     /// </summary>
     public const float TextureDistance = 128f, TextureBand = 16f;
 
-    /// <summary>JortPob's values, which every build up to 1.0.299 used ("--full-low-textures").</summary>
-    public const float LegacyTextureDistance = 256f, LegacyTextureBand = 32f;
-
     /// <summary>
     /// Pieces whose models carry DS3's lower detail lists name a twin of their row this far up (see <see cref="Lod"/>):
     /// map piece rows are FirstRow to FirstRow + 9 (texture distance by size), objects' FirstRow + 10 to + 19.
@@ -65,8 +62,6 @@ public static class MapDrawParams
     {
         /// <summary>Vanilla Elden Ring's distances for map pieces with lower detail lists (default).</summary>
         public static readonly Lod Vanilla = new(30f, 60f);
-        /// <summary>Twice as far ("--far-lod", fallback "map-lod" C): sharper far scenery, more to draw.</summary>
-        public static readonly Lod Far2 = new(60f, 120f);
         public override string ToString() => $"lower detail beyond {Near:F0} m, lowest beyond {Far:F0} m";
     }
 
@@ -120,13 +115,13 @@ public static class MapDrawParams
         return $"texture distance by size: pieces by radius, and how much further out they load full textures: {string.Join(", ", parts)}";
     }
 
-    /// <summary>Adds (or replaces) the rows (one per size of <see cref="TextureBySize"/>) and returns the first one's ID. With <paramref name="lod"/>, each gets an LOD twin (<see cref="AddLodTwins"/>).</summary>
-    public static short AddRow(PARAM param, bool legacyTextures = false, Lod? lod = null)
+    /// <summary>Adds (or replaces) the rows (one per size of <see cref="TextureBySize"/>) and returns the first one's ID. Each gets an LOD twin at <see cref="Lod.Vanilla"/>'s distances (<see cref="AddLodTwins"/>).</summary>
+    public static short AddRow(PARAM param)
     {
         param.Rows.RemoveAll(r => r.ID >= FirstRow && r.ID < FirstRow + TextureBySize.Length);
         var template = param[TemplateRow] ?? param[VanillaRow] ?? param.Rows.FirstOrDefault()
                        ?? throw new InvalidDataException("PartsDrawParam has no rows to copy");
-        float distance = legacyTextures ? LegacyTextureDistance : TextureDistance;
+        const float distance = TextureDistance;
         for (int i = 0; i < TextureBySize.Length; i++)
         {
             var row = new PARAM.Row(template) { ID = FirstRow + i, Name = i == 0 ? "DS3 map piece" : $"DS3 map piece, radius up to {TextureBySize[i].Radius:0} m" };
@@ -135,7 +130,7 @@ public static class MapDrawParams
             Set(row, "drawDist", None);
             Set(row, "drawFadeRange", 0f);
             Set(row, "tex_lv01_BorderDist", distance + TextureBySize[i].Extra);
-            Set(row, "tex_lv01_PlayDist", legacyTextures ? LegacyTextureBand : TextureBand);
+            Set(row, "tex_lv01_PlayDist", TextureBand);
             Set(row, "IncludeLodMapLv", (sbyte)0);
             Set(row, "lodType", (byte)1);
             Set(row, "DistantViewModel_BorderDist", None);
@@ -145,8 +140,7 @@ public static class MapDrawParams
             Set(row, "drawOnlyReflectCam", (sbyte)0);
             param.Rows.Add(row);
         }
-        if (lod is not null)
-            AddLodTwins(param, lod);
+        AddLodTwins(param, Lod.Vanilla);
         param.Rows.Sort((a, b) => a.ID.CompareTo(b.ID));
         return FirstRow;
     }
@@ -184,20 +178,19 @@ public static class MapDrawParams
     /// Writes the row into the mod's regulation and returns the ID map pieces should name. If that fails the pieces
     /// name a vanilla row instead, so they are never left pointing at a row that doesn't exist.
     /// </summary>
-    public static (short Row, string Note) Write(PorterContext ctx, bool legacyTextures = false, Lod? lod = null)
+    public static (short Row, string Note) Write(PorterContext ctx)
     {
         try
         {
             var regulation = ActionButtons.LoadRegulation(ctx);
             var param = regulation.Get(ParamName) ?? throw new InvalidDataException("Elden Ring has no PartsDrawParam");
             var template = param[TemplateRow] is not null ? TemplateRow : param[VanillaRow] is not null ? VanillaRow : param.Rows[0].ID;
-            // The LOD row is always written: a one-map rebuild with --no-lod must not take it from the other maps' pieces.
-            var id = AddRow(param, legacyTextures, lod ?? Lod.Vanilla);
+            var id = AddRow(param);
             regulation.Save(ctx.ModPath("regulation.bin"));
             return (id, $"map piece draw settings: PartsDrawParam row {id} (a copy of row {template}, unlimited draw distance, no LOD switching, "
-                        + $"full textures within {(legacyTextures ? LegacyTextureDistance : TextureDistance):F0} m, "
+                        + $"full textures within {TextureDistance:F0} m, "
                         + $"further for larger pieces: rows {id + 1} to {id + TextureBySize.Length - 1})"
-                        + (lod is null ? $"; LOD twins (row + {LodOffset}) written but unused by this run's pieces (--no-lod)" : $"; LOD twins (row + {LodOffset}) the same with DS3's {lod} for models that have them"));
+                        + $"; LOD twins (row + {LodOffset}) the same with DS3's {Lod.Vanilla} for models that have them");
         }
         catch (Exception ex) when (ex is not OutOfMemoryException)
         {

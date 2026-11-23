@@ -6,7 +6,7 @@ namespace DarkSign.Porter.Enemies;
 /// <summary>
 /// enemy-selftest: offline checks of the enemy porter's planning and conversion steps (no game files needed): template
 /// choice, character and NpcParam IDs, archive renames, skin indices, the chr map it writes (read back by the map
-/// port), TAE section keys, the TAE merge and the Fallbacks method switch.
+/// port), TAE section keys and the TAE merge.
 /// </summary>
 public static class EnemySelfTest
 {
@@ -73,8 +73,6 @@ public static class EnemySelfTest
             ranked[0].Template.Model == "c3500" && ranked[0].Match < ChrPort.MinBoneMatch && ranked[1].Match == 1);
         Check("a template with DS3's bones comes before a better-scoring one that cannot carry the DS3 model",
             ChrPort.PickTemplate(new ChrPort.Ds3Chr(1310, "Outrider Knight", false, [131000]), human with { Size = 4 }, [knight, skeletonEnemy], e => e.Model == "c4300" ? human : other with { Size = 4 })?.Template.Model == "c4300");
-        Check("carrying: by default every character is carried (0); DARKSIGN_ENEMY_MIN_BONES=0.25 is read, nonsense is 0",
-            ChrPort.ParseCarry(null) == 0 && ChrPort.ParseCarry("0.25") == 0.25 && ChrPort.ParseCarry("x") == 0 && ChrPort.ParseCarry("7") == 0);
         var hollow = new ChrPort.Shape(["Master", "RootPos", "Pelvis"], [-1, 0, 1], 2.7f, 1.6f, 323);
         var donors = ChrPort.PickAnimationDonors(new Dictionary<int, ChrPort.Shape>
         {
@@ -131,8 +129,6 @@ public static class EnemySelfTest
         Check("moves: being hit from a side keeps the side (8031 -> 8021), a dodge plays a step (6001 -> 5001), a second death the first (11010 -> 10000)",
             ChrPort.ChooseMove((0, 8031), have) == (0, 8021) && ChrPort.ChooseMove((0, 6001), have) == (0, 5001) && ChrPort.ChooseMove((0, 11010), have) == (0, 10000));
         Check("moves: a kind DS3 has nothing of plays its idle (13000 -> 0)", ChrPort.ChooseMove((0, 13000), have) == (0, 0));
-        Check("moves: fallback enemy-model E keeps the template's animation where DS3 has no move of that ID",
-            ChrPort.ChooseMove((0, 3016), have, fill: false) is null && ChrPort.ChooseMove((0, 3004), have, fill: false) == (0, 3004));
         var moveTae = new TAE { Format = TAE.TAEFormat.DS3, Animations = [] };
         var idleEvents = new List<TAE.Event> { new(0, 1, 16, 0, new byte[16], false) };
         moveTae.Animations.Add(new TAE.Animation(0, new TAE.Animation.AnimMiniHeader.Standard { ImportsHKX = true, ImportHKXSourceAnimID = 20 }, "a000_000000.hkt") { Events = idleEvents });
@@ -382,8 +378,7 @@ public static class EnemySelfTest
         // bones) kept in the chrbnd under DS3's model.
         Check("cloth: the template's cloth files are recognised and left out by default",
             ChrPort.IsClothFile(@"N:\GR\data\INTERROOT_win64\chr\c7113\c7113_c.hkx") && ChrPort.IsClothFile("c7113_c.clm2")
-            && !ChrPort.IsClothFile("c7113.hkx") && !ChrPort.IsClothFile("c7113_cloth.flver") && !ChrPort.IsClothFile("c7113.flver")
-            && (Environment.GetEnvironmentVariable("DARKSIGN_ENEMY_CLOTH") is not null || ChrPort.DropTemplateCloth));
+            && !ChrPort.IsClothFile("c7113.hkx") && !ChrPort.IsClothFile("c7113_cloth.flver") && !ChrPort.IsClothFile("c7113.flver"));
 
         // Every NpcParam row the maps and spawn list name exists, even when its params step failed (a missing row
         // crashed the game when a ported character loaded: 2026-11-07 test).
@@ -430,11 +425,6 @@ public static class EnemySelfTest
             && ChrPort.FileChr(5021, c => anims.GetValueOrDefault(c)) == -1);
         Check("DS3 animations come from the character, then its base (c2191 -> c2191, c2190)",
             ChrPort.Ds3AnimationSources(2191).SequenceEqual([2191, 2190]) && ChrPort.Ds3AnimationSources(2190).SequenceEqual([2190]));
-
-        // Fallbacks enemy-port switch.
-        Check("method switch: unset/A -> full, model -> B, stats -> C, 0 -> off",
-            ChrPort.ParseMethod(null) == ChrPort.Method.Full && ChrPort.ParseMethod("model") == ChrPort.Method.Model
-            && ChrPort.ParseMethod("stats") == ChrPort.Method.Stats && ChrPort.ParseMethod("0") == ChrPort.Method.Off);
 
         // The model: Elden Ring's node flags, culling boxes and a plain character material per set of DS3 textures.
         Check("DS3 cut-out materials are told by the words after the shader's name",
@@ -642,8 +632,6 @@ public static class EnemySelfTest
             && ((int[])horse.Params[0].Value).SequenceEqual([50, 0]) && ((float[])horse.Params[1].Value).SequenceEqual([1f, 1f, 1f, 1f, 1f])
             && horse.SourcePath == @"N:\GR\data\Material\mtd\Chr\matxml\C[c7031]_ds3_0.matxml");
 
-        // Fallback enemy-model B: the template's material, with its own textures swapped and shared detail maps kept
-        // (up to 1.0.255 nothing was swapped: every ported enemy wore its template's textures).
         var ds3Model2 = Model(@"N:\FDP\data\Material\mtd\character\C[ARSN]_Decal.mtd");
         var templateMaterials = ChrModel.Convert(ds3Model2, erTemplate, 1310, 7031, plainMaterials: false, erNodes: false);
         var beast = Matbin(@"N:\GR\data\Material\mtd\Chr\matxml\C[c3060]_Body.matxml",

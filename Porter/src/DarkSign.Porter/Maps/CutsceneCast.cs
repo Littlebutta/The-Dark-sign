@@ -15,7 +15,7 @@ namespace DarkSign.Porter.Maps;
 /// its own parts (c6020 Friede, o459020 objects, h45_00_00_00_008100 a collision), which the map port renamed or left
 /// out. So each part is resolved to the Elden Ring part the map port placed for it (the map port's new part names);
 /// cameras, the player and cutscene dummies (dNNNN_NNNN) keep their names; a part with no Elden Ring model, or one the
-/// map doesn't place (<see cref="OnlyPlaced"/>), is left out, with the parts under it and its timelines (and its Havok
+/// map doesn't place, is left out, with the parts under it and its timelines (and its Havok
 /// track, <see cref="CutscenePort.ConvertHkx"/>).</item>
 /// <item><b>Cut files.</b> Elden Ring keeps each cut's Havok file as cutNNNN\a0000.hkx with binder ID NNNN*10000 and
 /// nothing else (every Elden Ring cutscene read), while DS3 also numbers them a0001 (Dancer, IDs 110001...) and
@@ -25,12 +25,9 @@ namespace DarkSign.Porter.Maps;
 /// setting) only name DS3 light banks and gparam IDs (DS3's 239 names gparam 1002, which the slot's gparam doesn't
 /// hold), so they are left out and the cutscene keeps the map's look.</item>
 /// </list>
-/// DARKSIGN_CUTSCENE_CAST=0 (launcher fallback map-cutscenes E) turns all three off.
 /// </summary>
 public static partial class CutsceneCast
 {
-    public static bool Enabled => Environment.GetEnvironmentVariable("DARKSIGN_CUTSCENE_CAST") != "0";
-
     /// <summary>Resource kinds that only point at DS3 draw data (light banks, gparam IDs): left out.</summary>
     public static readonly IReadOnlySet<int> Ds3DrawKinds = new HashSet<int> { 187, 199, 239 };
 
@@ -105,25 +102,13 @@ public static partial class CutsceneCast
                     result = name;
             }
             // Elden Ring finds a cutscene's characters and assets among the parts its map places, by name; one the map
-            // doesn't place leaves the cutscene unable to hand back at its end (see OnlyPlaced).
-            if (result is not null && OnlyPlaced && !NeedsNoPart(result) && !placedNames.Contains(result))
+            // doesn't place leaves the cutscene unable to hand back at its end.
+            if (result is not null && !NeedsNoPart(result) && !placedNames.Contains(result))
                 result = null;
             cache[name] = result;
             return result;
         };
     }
-
-    /// <summary>
-    /// Whether the cast keeps only parts the ported map places. Elden Ring's cutscenes name parts of their map: all 11
-    /// characters and assets of s10_00_0010 are parts of m10_00_00_00 under the same name (AEG210_901_5003 among them,
-    /// Margit c2130_9000 by his map name), so a cast name is a map part, not a model to spawn. Up to 1.0.567 a DS3 part
-    /// the map doesn't place still went in under its model ("o459020_8000" -> AEG920_725_0000, Dancer c7130_0000,
-    /// Cathedral's c0000_0013): every cutscene that named one played to its end and stayed black there (Friede's intro
-    /// and second-phase cutscene, Cathedral of the Deep, the Dancer), and the one that named none (Oceiros) ended.
-    /// Such a part is now left out like a part with no model. DARKSIGN_CUTSCENE_UNPLACED=1 (launcher fallback
-    /// map-cutscenes I) keeps them, as up to 1.0.567.
-    /// </summary>
-    public static bool OnlyPlaced => Environment.GetEnvironmentVariable("DARKSIGN_CUTSCENE_UNPLACED") != "1";
 
     /// <summary>Names that are no map part in Elden Ring either: the player himself, cameras and cutscene dummies.</summary>
     public static bool NeedsNoPart(string name) =>

@@ -22,12 +22,9 @@ namespace DarkSign.Porter.Maps;
 /// whose effects didn't convert keeps -1, so no part names a row that isn't there.</item>
 /// </list>
 /// Dummy poly IDs are DS3's: the asset model keeps DS3's dummies (<see cref="ObjectPort.ConvertBinder(BND4, string, string, MapModelPort, BND4, Binder.FileFlags)"/>).
-/// DARKSIGN_OBJECT_SFX=0 (launcher fallback "map-effects" C) leaves them out again.
 /// </summary>
 public static class ObjectSfx
 {
-    public static bool Enabled => Environment.GetEnvironmentVariable("DARKSIGN_OBJECT_SFX") != "0";
-
     public const string Ds3ParamName = "ModelSfxParam", ErParamName = "AssetModelSfxParam";
 
     /// <summary>DS3 rows have ten effect slots (VfxId1..10 / DummyPolyId1..10), Elden Ring's eight (sfxId_0..7 / dmypolyId_0..7).</summary>
@@ -183,8 +180,6 @@ public static class ObjectSfx
     public static string Apply(PorterContext ctx, GameArchives ds3, IEnumerable<MapSlots.Slot> slots,
         IReadOnlyDictionary<int, int> converted, Func<MapId, IReadOnlyDictionary<string, string>?> partNames)
     {
-        if (!Enabled)
-            return "object effects: off (DARKSIGN_OBJECT_SFX=0)";
         if (converted.Count == 0)
             return "object effects: none (port-weapons converted no map effects)";
         var ds3Param = ctx.LoadParams(PorterGame.DarkSouls3).Get(Ds3ParamName)

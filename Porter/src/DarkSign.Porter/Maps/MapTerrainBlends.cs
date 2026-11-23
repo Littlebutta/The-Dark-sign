@@ -89,9 +89,7 @@ public static class MapTerrainBlends
     /// Splits every terrain blend mesh of a DS3 FLVER (still with DS3's vertex layouts and materials) into one mesh
     /// per layer it shows. Layer 0 stays in the mesh itself; the others are copies with their own material.
     /// </summary>
-    /// <param name="contours">True: a triangle a layer's boundary crosses is cut along it (<see cref="MapLayerContours"/>).
-    /// False: each triangle goes whole to the layer its corners show on average, as 1.0.354 to 1.0.46x.</param>
-    public static void Apply(FLVER2 flver, Stats stats, bool contours = true)
+    public static void Apply(FLVER2 flver, Stats stats)
     {
         var layerMaterials = new Dictionary<(int Material, int Layer), int>();
         foreach (var mesh in flver.Meshes.ToList())
@@ -111,7 +109,7 @@ public static class MapTerrainBlends
             // Layers with no albedo can't be drawn; their triangles go to the layer under them.
             var drawable = Enumerable.Range(0, layers).Select(k => k == 0 || Slot(material, "AlbedoMap", k) is not null).ToArray();
             // Each layer's share of the mesh, cut along the lines where a weight crosses half (MapLayerContours).
-            var split = MapLayerContours.Split(mesh, layers, (v, k) => Weight(v, entry, k - 1), k => drawable[k], LayerFrom, contours, out int cut);
+            var split = MapLayerContours.Split(mesh, layers, (v, k) => Weight(v, entry, k - 1), k => drawable[k], LayerFrom, true, out int cut);
             var copies = new List<FLVER2.Mesh>();
             for (int k = 1; k < layers; k++)
             {
@@ -145,12 +143,6 @@ public static class MapTerrainBlends
         var name = Path.GetFileNameWithoutExtension(ItemText.Leaf(mtd ?? ""));
         return BlendMtd.Match(name) is { Success: true } m && m.Groups[1].Value == "2" && NotGround.IsMatch(name);
     }
-
-    /// <summary>
-    /// True (the default): a dome mesh that shows its second picture draws it on that picture's own texture coordinates
-    /// (DS3's UV 2). False (fallback "map-sky-layer" C, DARKSIGN_SKY_LAYER_UV=first): on the first picture's, as 1.0.52x.
-    /// </summary>
-    public static bool SecondLayerOwnUv => Environment.GetEnvironmentVariable("DARKSIGN_SKY_LAYER_UV") != "first";
 
     /// <summary>What <see cref="ApplySky"/> did, for the port log.</summary>
     public sealed class SkyStats
@@ -188,8 +180,7 @@ public static class MapTerrainBlends
     /// (its v stays 0.50 from the bottom of the dome to the top), UV 2 runs the panorama sky_01 (4096 x 1024: the
     /// mountains at the bottom, the starry dark at the top) from v 1.00 at the horizon to 0.18 at 2.8 km up. 1.0.52x
     /// drew sky_01 on UV 1, so the whole dome showed one smeared middle row of it: the streaky cyan sky under a
-    /// starry cap in Devin's 2026-11-20 screenshot. <see cref="SecondLayerOwnUv"/> false (fallback "map-sky-layer" C,
-    /// DARKSIGN_SKY_LAYER_UV=first) draws it on UV 1 again.
+    /// starry cap in Devin's 2026-11-20 screenshot.
     /// </para>
     /// </summary>
     public static void ApplySky(FLVER2 flver, SkyStats stats)
@@ -216,7 +207,7 @@ public static class MapTerrainBlends
             }
             mesh.MaterialIndex = index;
             // The second picture's own texture coordinates (DS3's UV 2) take the first's place.
-            if (SecondLayerOwnUv && entry >= 2)
+            if (entry >= 2)
             {
                 foreach (var v in mesh.Vertices)
                     v.UVs[0] = v.UVs[1];

@@ -64,7 +64,7 @@ internal static class PreflightWindow
             int fails = items.Count(i => i.Level == Preflight.Level.Fail), warns = items.Count(i => i.Level == Preflight.Level.Warn);
             status.Text = fails == 0 && warns == 0 ? "Nothing wrong found. Ready to test."
                 : $"{fails} problem{(fails == 1 ? "" : "s")} and {warns} warning{(warns == 1 ? "" : "s")}. " +
-                  "FAIL lines will break the test; fix them (or switch the feature in Fallbacks…) before playing.";
+                  "FAIL lines will break the test; fix them before playing.";
         }
 
         var deepButton = new Button { Content = "Check the built mod too", Padding = new Thickness(12, 4, 12, 4) };

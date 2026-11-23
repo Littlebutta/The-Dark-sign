@@ -11,13 +11,13 @@
    goes off keeps playing for HOLD_POLLS before it fades, and a track that is wanted again while it fades out carries
    on from where it is instead of starting over.
 
-   The music plays on its own XAudio2 stream, as the DLL sounds of fallback "sounds" D (DOOM RING's approach,
+   The music plays on its own XAudio2 stream, as DLL sounds (DOOM RING's approach,
    stanleymov/DOOM-RING, MIT: a DLL's own audio stream instead of the game's Wwise), so no Wwise bank has to load.
    A line whose file is "-" names a flag that is only watched: the porter lists each track's switch flag that way, and
    every music flag's change is logged ("music: flag N on/off"), so a log tells a track switched off by its map's
    script from one whose player left its region.
 
-   On whenever port-maps wrote darksign_music.tsv; off with DKSIGN_NO_MAP_MUSIC=1 (launcher fallback "map-music" B). DKSIGN_MUSIC_VOLUME=0-100 sets the level (default 70). */
+   On whenever port-maps wrote darksign_music.tsv; off with DKSIGN_NO_MAP_MUSIC=1 (nothing sets it any more). DKSIGN_MUSIC_VOLUME=0-100 sets the level (default 70). */
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 #include <xaudio2.h>
@@ -354,7 +354,7 @@ extern "C" void dks_music_init(void)
     wchar_t flag[8];
     DWORD n = GetEnvironmentVariableW(L"DKSIGN_NO_MAP_MUSIC", flag, 8);
     if (n > 0 && n < 8 && flag[0] == L'1') {
-        dks_log("music: off (DKSIGN_NO_MAP_MUSIC=1, fallback map-music B)");
+        dks_log("music: off (DKSIGN_NO_MAP_MUSIC=1)");
         return;
     }
     wchar_t mod[MAX_PATH];

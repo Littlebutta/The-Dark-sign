@@ -16,14 +16,12 @@ namespace DarkSign.Porter.Maps;
 /// in one space get the same point on both sides: Leyndell (m11_00) and the Subterranean Shunning-Grounds (m35_00)
 /// are rows 12 and 110, both at -184, -88.5, -163, isBasePoint 1 (vanilla regulation, read 2026-11-19). The port adds
 /// a pair of such rows, at the origin on both sides, for every two ported maps a DS3 connect collision joins, copied
-/// from row 12. Rows 9000 and up (vanilla's last row is 1145). Off: DARKSIGN_MAP_LINKS=0 (fallback "map-world" C).
+/// from row 12. Rows 9000 and up (vanilla's last row is 1145).
 /// </summary>
 public static class MapLinks
 {
     public const string ParamName = "WorldMapLegacyConvParam";
     public const int FirstRow = 9000, LastRow = 9999, TemplateRow = 12;
-
-    public static bool Enabled => Environment.GetEnvironmentVariable("DARKSIGN_MAP_LINKS") is not "0";
 
     public static bool IsOurs(int id) => id >= FirstRow && id <= LastRow;
 

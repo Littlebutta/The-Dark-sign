@@ -19,12 +19,10 @@ namespace DarkSign.Porter.Maps;
 /// didn't convert leaves its regions out, counted in the report.</item>
 /// </list>
 /// The common binder is resident, so a map SFX region naming one of its effects should play it; this is unproven
-/// in game (2026-11-12). DARKSIGN_MAP_SFX=0 (launcher fallback "map-effects" B) leaves every map effect out again.
+/// in game (2026-11-12).
 /// </summary>
 public static class MapSfx
 {
-    public static bool Enabled => Environment.GetEnvironmentVariable("DARKSIGN_MAP_SFX") != "0";
-
     public const string TableFile = "map-sfx.tsv";
 
     /// <summary>Name prefix of the regions this step adds, so a rerun can find and replace them.</summary>
@@ -128,11 +126,6 @@ public static class MapSfx
         int EntityID, int EffectID, bool StartDisabled, uint MapStudioLayer);
 
     /// <summary>
-    /// Fallback "map-effects" F: DARKSIGN_WIND_SFX=0 leaves DS3's WindSFX regions out again, as builds up to 1.0.55x.
-    /// </summary>
-    public static bool WindEnabled => Environment.GetEnvironmentVariable("DARKSIGN_WIND_SFX") != "0";
-
-    /// <summary>
     /// The DS3 regions whose effects the port places: every SFX region, and every WindSFX region. DS3 places part of
     /// its weather as WindSFX (an effect plus the wind area that blows it): the Painted World's snow blowing across
     /// its snowfield (845010 "wind_snowfield", 8 boxes 80 to 190 m) is one, read 2026-11-21. Up to 1.0.55x only the
@@ -144,9 +137,8 @@ public static class MapSfx
     {
         foreach (var r in ds3.Regions.SFX)
             yield return new Source(r.Name, r.Shape, r.Position, r.Rotation, r.EntityID, r.EffectID, r.StartDisabled, r.MapStudioLayer);
-        if (WindEnabled)
-            foreach (var r in ds3.Regions.WindSFX)
-                yield return new Source(r.Name, r.Shape, r.Position, r.Rotation, r.EntityID, r.EffectID, false, r.MapStudioLayer);
+        foreach (var r in ds3.Regions.WindSFX)
+            yield return new Source(r.Name, r.Shape, r.Position, r.Rotation, r.EntityID, r.EffectID, false, r.MapStudioLayer);
     }
 
     public sealed record Result(int Added, int Missing, IReadOnlyDictionary<int, int> MissingByEffect, int OtherState = 0);
@@ -160,12 +152,11 @@ public static class MapSfx
     /// SFX regions, on layer bit 10 only, each at the same spot as one of the 103 on every layer but that one), and
     /// DS3 shows one set at a time. Up to 1.0.491 both were placed, so the High Wall's fog banks stood twice in each
     /// other, twice as thick and twice as bright under a lamp (the fog at Vordt's gate, 2026-11-19 playtest).
-    /// <paramref name="allLayers"/> ("--all-layers", fallback "map-layers" B) places every region again.
     /// </para>
     /// </summary>
-    public static Result Convert(MSB3 ds3, MSBE msb, MapId ds3Id, MapId erId, IReadOnlyDictionary<int, int> converted, bool allLayers = false)
+    public static Result Convert(MSB3 ds3, MSBE msb, MapId ds3Id, MapId erId, IReadOnlyDictionary<int, int> converted)
     {
-        bool layerOk = !allLayers && MsbPort.BaseLayerMeans(ds3);
+        bool layerOk = MsbPort.BaseLayerMeans(ds3);
         int otherState = 0;
         msb.Regions.SFX.RemoveAll(r => r.Name.StartsWith(NamePrefix, StringComparison.Ordinal));
         var taken = msb.Regions.GetEntries().Select(r => r.Name).ToHashSet(StringComparer.Ordinal);
@@ -210,10 +201,8 @@ public static class MapSfx
     }
 
     /// <summary>The port-maps step: rewrites each ported slot's map file with its DS3 map effects.</summary>
-    public static string Apply(PorterContext ctx, GameArchives ds3, IEnumerable<MapSlots.Slot> slots, bool allLayers = false)
+    public static string Apply(PorterContext ctx, GameArchives ds3, IEnumerable<MapSlots.Slot> slots)
     {
-        if (!Enabled)
-            return "map effects: off (DARKSIGN_MAP_SFX=0)";
         var converted = ReadTable(ctx);
         if (converted.Count == 0)
             return $"map effects: none added (port-weapons wrote no converted map effects to Work\\{TableFile})";
@@ -225,7 +214,7 @@ public static class MapSfx
                 continue;
             var ds3Msb = MSB3.Read(ds3.Read(MapPorter.MsbPath(slot.Ds3)));
             var msb = MSBE.Read(DCX.Decompress(File.ReadAllBytes(path), out var compression));
-            var result = Convert(ds3Msb, msb, slot.Ds3, slot.Er, converted, allLayers);
+            var result = Convert(ds3Msb, msb, slot.Ds3, slot.Er, converted);
             File.WriteAllBytes(path, DCX.Compress(msb.Write(), compression));
             lines.Add($"map effects: {slot.Ds3} -> {slot.Er}: {result.Added} SFX regions added" +
                       (result.OtherState == 0 ? "" : $", {result.OtherState} of another state of the map left out (off DS3's layer bit 0)") +

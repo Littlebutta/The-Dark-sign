@@ -17,19 +17,10 @@ namespace DarkSign.Porter;
 /// </list>
 /// Weapons build status up per upgrade level by adding ReinforceParamWeapon's spEffectId offsets to the row ID, so each
 /// ported effect gets a block of 100 IDs: base + offset holds DS3's row at the same offset (or its base row).
-/// Fallback "weapon-effects": DARKSIGN_WEAPON_EFFECTS=status (only status on hit) or 0 (none, as before).
 /// Report: Work\reports\weapon-effects.tsv.
 /// </summary>
 public sealed class SpEffectPort
 {
-    public static readonly string Mode = (Environment.GetEnvironmentVariable("DARKSIGN_WEAPON_EFFECTS") ?? "").ToLowerInvariant();
-    public static bool Enabled => Mode != "0";
-    /// <summary>Fallback: weapon effects without an Elden Ring row to start from begin blank (every field 0), as up to 1.0.353.</summary>
-    public static bool BlankRows => Environment.GetEnvironmentVariable("DARKSIGN_SPEFFECT_BLANK") == "1";
-    private static bool StatusOnly => Mode == "status";
-    /// <summary>Fallback "effect-visuals": DARKSIGN_EFFECT_VISUALS=0 ports effects without what they look like, as before.</summary>
-    public static bool VisualsEnabled => Environment.GetEnvironmentVariable("DARKSIGN_EFFECT_VISUALS") != "0";
-
     /// <summary>What ported effects look like (SpEffectVfxParam rows); null when off or a game lacks the param.</summary>
     public VfxPort? Visuals { get; }
 
@@ -155,13 +146,10 @@ public sealed class SpEffectPort
             _rows = 1;
             _full = full;
         }
-        if (VisualsEnabled)
-        {
-            if (erVfx is not null && ds3Vfx is not null)
-                Visuals = new VfxPort(erVfx, ds3Vfx);
-            else
-                Console.WriteLine($"weapon effects: visuals off ({(erVfx is null ? "Elden Ring" : "DS3")} has no SpEffectVfxParam)");
-        }
+        if (erVfx is not null && ds3Vfx is not null)
+            Visuals = new VfxPort(erVfx, ds3Vfx);
+        else
+            Console.WriteLine($"weapon effects: visuals off ({(erVfx is null ? "Elden Ring" : "DS3")} has no SpEffectVfxParam)");
         // The row Elden Ring's own weapons use most for each status (their base rows; upgrades add offsets to them).
         _statusTemplates = weapons.Rows.Where(r => r.ID < WeaponPort.FirstNewId)
             .SelectMany(r => new[] { "spEffectBehaviorId0", "spEffectBehaviorId1", "spEffectBehaviorId2" }.Select(f => Int(r, f)))
@@ -197,7 +185,7 @@ public sealed class SpEffectPort
             return -1; // a chain back to itself
         try
         {
-            int id = PortNew(ds3Id, statusOnly || StatusOnly);
+            int id = PortNew(ds3Id, statusOnly);
             if (id == NotStatus)
                 return -1; // may still be ported in full where full effects are wanted
             return _ported[ds3Id] = id;
@@ -218,11 +206,7 @@ public sealed class SpEffectPort
         var status = StatusFields.Where(f => Int(source, f.Ds3) > 0).ToList();
         string? kind = status.Count > 0 ? status[0].Er : null;
         if (kind is null && statusOnly)
-        {
-            if (StatusOnly)
-                Note(ds3Id, source.Name, -1, "skipped", "not a status effect (weapon-effects B ports status only)");
             return NotStatus;
-        }
         if (kind is not null && !_statusTemplates.ContainsKey(kind))
         {
             Note(ds3Id, source.Name, -1, "skipped", $"no Elden Ring weapon builds up {kind}");
@@ -328,16 +312,13 @@ public sealed class SpEffectPort
         // Every new row starts from the values most of Elden Ring's own rows have. A blank row has every damage,
         // defence, poise and sight multiplier at 0: 1.0.353, Friede's art (DS3 143021910 -> 690002800) made the
         // enemies it hit take and deal no damage. Weapon effects did this from #71 until 1.0.353 (only enemy effects
-        // started from the usual values). Fallback weapon-effects C (DARKSIGN_SPEFFECT_BLANK=1) keeps blank rows.
-        if (_full || !BlankRows)
-        {
-            _common ??= ParamDefaults.Common(_er, r => r.ID < FirstNewId);
-            for (int i = 0; i < row.Cells.Count; i++)
-                if (_common[i] is { } usual)
-                    row.Cells[i].Value = usual;
-            foreach (var (_, e) in ChainFields)
-                ParamDefaults.Set(row, e, -1);
-        }
+        // started from the usual values).
+        _common ??= ParamDefaults.Common(_er, r => r.ID < FirstNewId);
+        for (int i = 0; i < row.Cells.Count; i++)
+            if (_common[i] is { } usual)
+                row.Cells[i].Value = usual;
+        foreach (var (_, e) in ChainFields)
+            ParamDefaults.Set(row, e, -1);
         foreach (var field in SharedFields)
             CopyField(ds3, field, row, field);
         foreach (var (d, e) in RenamedFields)
@@ -399,7 +380,7 @@ public sealed class SpEffectPort
     public bool VisualsBound => Visuals is null || Visuals.IsBound;
 
     private bool HasValues(PARAM.Row ds3) =>
-        HasSharedValues(ds3) || (_full && ChrVariants.Enabled && Int(ds3, "animIdOffset") > 0) || (_full && (FullRenamedFields.Any(f => ParamDefaults.Cell(ds3, f.Ds3)?.Value is { } v and not byte[] && IsSet(f.Ds3, Convert.ToDouble(v)))
+        HasSharedValues(ds3) || (_full && Int(ds3, "animIdOffset") > 0) || (_full && (FullRenamedFields.Any(f => ParamDefaults.Cell(ds3, f.Ds3)?.Value is { } v and not byte[] && IsSet(f.Ds3, Convert.ToDouble(v)))
                                            || (ParamDefaults.Cell(ds3, "lifeReductionRate")?.Value is { } drain && Convert.ToDouble(drain) != 0)));
 
     private static bool HasSharedValues(PARAM.Row ds3)
@@ -513,7 +494,7 @@ public sealed class SpEffectPort
             var source = ds3Weapons[plan.Ds3Id]!;
             var onHit = Enumerable.Range(0, 3).Select(s => Int(source, $"spEffectBehaviorId{s}")).Where(id => id > 0)
                 .Select(id => (Ds3: id, Er: Port(id))).Where(t => t.Er > 0).ToList();
-            var equipped = StatusOnly ? [] : Enumerable.Range(0, 3).Select(s => Int(source, $"residentSpEffectId{s}")).Where(id => id > 0)
+            var equipped = Enumerable.Range(0, 3).Select(s => Int(source, $"residentSpEffectId{s}")).Where(id => id > 0)
                 .Select(id => (Ds3: id, Er: Port(id))).Where(t => t.Er > 0).ToList();
             if (onHit.Count + equipped.Count == 0)
                 continue;

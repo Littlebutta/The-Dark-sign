@@ -11,12 +11,12 @@ public static partial class MapPortChecks
         yield return ("enemies: DS3 names sort into kinds (knight, soldier, dog, dragon...)", EnemyKinds);
         yield return ("enemies: stand-ins by kind, bosses spread over bosses, ported characters first, NPCs and 'none' left out", EnemyChooser);
         yield return ("enemies: boss entities come from boss health bars, given directly or passed to the event", EnemyBosses);
-        yield return ("people: DS3 talkers get silent Elden Ring people, DS3 hostile humans get hostile ones, the same person every time", PeoplePlacement);
+        yield return ("people: the people pools: DS3 talkers get silent Elden Ring people, DS3 hostile humans get hostile ones, the same person every time; only DS3's own people stand", PeoplePlacement);
         yield return ("people: people without body armour stay out of the pools; DS3 summons and invaders aren't placed", PeopleLooks);
-        yield return ("enemies, objects, map effects: another state of the map (off DS3's layer bit 0, m40's Untended Graves, the High Wall's eclipse fog) is left out, with a switch to keep it", OtherStateLeftOut);
+        yield return ("enemies, objects, map effects: another state of the map (off DS3's layer bit 0, m40's Untended Graves, the High Wall's eclipse fog) is left out", OtherStateLeftOut);
         yield return ("people: those DS3 parks at a holding spot stand where its scripts warp them, parameterised events included", PeopleSeated);
         yield return ("people: one version of each DS3 person stands (the first quest state), as DS3's scripts show one", PeopleOneVersion);
-        yield return ("people: DS3 humans with a DS3 look stand as an Elden Ring person wearing it; the rest stay out without --er-people", PeopleArmourPlacement);
+        yield return ("people: DS3 humans with a DS3 look stand as an Elden Ring person wearing it; the rest stay out", PeopleArmourPlacement);
                 yield return ("enemies: placed at DS3's spot with the DS3 entity moved to the slot, on its collision, and read back", EnemyPlacement);
     }
 
@@ -44,7 +44,7 @@ public static partial class MapPortChecks
 
     private static void EnemyChooser()
     {
-        var chooser = new EnemyPort.Chooser(SyntheticCatalog(), null, EnemyPort.Method.Auto);
+        var chooser = new EnemyPort.Chooser(SyntheticCatalog(), null);
         Expect(chooser.Choose(new("c1240", 124000, "Lothric Knight", false, false))?.Model == "c3100", "a DS3 knight should get the Elden Ring knight");
         Expect(chooser.Choose(new("c1105", 110500, "Hollow Soldier", false, false))?.Model == "c4300", "a DS3 soldier should get the soldier");
         Expect(chooser.Choose(new("c2190", 219000, "Mimic", false, false))?.Model == "c4300", "an unknown kind should get the most common enemy");
@@ -60,7 +60,7 @@ public static partial class MapPortChecks
             "chr\tc1240\tc9124\t91240000\t91240000\tLothric Knight (DS3)",
             "npc\t110500\tc9110\t91105000\t91105000",
         ]);
-        var withPorted = new EnemyPort.Chooser(SyntheticCatalog(), ported, EnemyPort.Method.Auto);
+        var withPorted = new EnemyPort.Chooser(SyntheticCatalog(), ported);
         Expect(withPorted.Choose(new("c1240", 124001, "Lothric Knight", false, false))?.Model == "c9124", "a ported model should be used for any of its rows");
         Expect(withPorted.Choose(new("c1105", 110500, "Hollow Soldier", false, false))?.NpcParam == 91105000, "a ported NpcParam row should be used");
         // DS3 places the Cemetery of Ash hollows (c1430) with the Hollow Soldiers' AI rows (110005): ported with c1100.
@@ -69,17 +69,11 @@ public static partial class MapPortChecks
             "think\t143030\tc7042\t70429030\tHollow (Cemetery of Ash)",
             "think\t110005\tc7006\t70069005\tHollow Soldier",
         ]);
-        var thinkChooser = new EnemyPort.Chooser(SyntheticCatalog(), thinks, EnemyPort.Method.Auto);
+        var thinkChooser = new EnemyPort.Chooser(SyntheticCatalog(), thinks);
         var hollow = thinkChooser.Choose(new("c1430", 143000, "Hollow", false, false))!;
         Expect(thinkChooser.ThinkFor(hollow, 143030) == 70429030 && thinkChooser.ThinkFor(hollow, 110005) == 70069005
                && thinkChooser.ThinkFor(hollow, 999999) == 70429010 && thinkChooser.BorrowedThinks == 1,
             "a placement keeps its own model's ported think row, borrows one ported with another character, else gets the character's");
-        var standIns = new EnemyPort.Chooser(SyntheticCatalog(), ported, EnemyPort.Method.StandIn);
-        Expect(standIns.Choose(new("c1240", 124001, "Lothric Knight", false, false))?.Model == "c3100", "method B should ignore ported characters");
-        var none = new EnemyPort.Chooser(SyntheticCatalog(), ported, EnemyPort.Method.None);
-        Expect(none.Choose(new("c1240", 124001, "Lothric Knight", false, false)) is null, "method C places nothing");
-        Expect(EnemyPort.ParseMethod("standin") == EnemyPort.Method.StandIn && EnemyPort.ParseMethod("none") == EnemyPort.Method.None
-               && EnemyPort.ParseMethod(null) == EnemyPort.Method.Auto, "method names");
     }
 
     private static void EnemyBosses()
@@ -118,9 +112,9 @@ public static partial class MapPortChecks
         var layout = MsbPort.Convert(ds3, SyntheticHost(), Ds3Id, ErId);
         var names = new Dictionary<int, string> { [124000] = "Lothric Knight", [511000] = "Iudex Gundyr" };
         var bosses = new HashSet<long> { 4000800 };
-        var chooser = new EnemyPort.Chooser(SyntheticCatalog(), null, EnemyPort.Method.Auto);
+        var chooser = new EnemyPort.Chooser(SyntheticCatalog(), null);
 
-        var result = EnemyPort.Place(ds3, layout.Msb, Ds3Id, ErId, new MsbPort.Options(), chooser,
+        var result = EnemyPort.Place(ds3, layout.Msb, Ds3Id, ErId, chooser,
             e => new EnemyPort.Ds3Enemy(e.ModelName, e.NPCParamID, names.GetValueOrDefault(e.NPCParamID, e.ModelName), bosses.Contains(e.EntityID),
                 e.ModelName == "c0000" || e.TalkID > 0));
         var enemies = layout.Msb.Parts.Enemies;
@@ -184,51 +178,21 @@ public static partial class MapPortChecks
         ds3.Parts.Enemies.Add(new MSB3.Part.Enemy { Name = "c1400_0000", ModelName = "c1400", EntityID = 4000720, NPCParamID = 140000, TalkID = 14000, CollisionName = collision });
         ds3.Parts.Enemies.Add(new MSB3.Part.Enemy { Name = "c1240_0000", ModelName = "c1240", EntityID = 4000100, NPCParamID = 124000, CollisionName = collision });
         EnemyPort.Ds3Enemy Describe(MSB3.Part.Enemy e) => new(e.ModelName, e.NPCParamID, e.ModelName == "c1240" ? "Lothric Knight" : e.Name, false, e.ModelName == "c0000" || e.TalkID > 0);
-        var chooser = new EnemyPort.Chooser(SyntheticCatalog(), null, EnemyPort.Method.Auto);
+        var chooser = new EnemyPort.Chooser(SyntheticCatalog(), null);
 
-        var layout = MsbPort.Convert(ds3, SyntheticHost(), Ds3Id, ErId);
-        var table = new List<string>();
-        var result = EnemyPort.Place(ds3, layout.Msb, Ds3Id, ErId, new MsbPort.Options(), chooser, Describe, null, table, null, people);
-        var placed = layout.Msb.Parts.Enemies;
-        Expect(result.Placed == 4 && result.People == 3 && result.Npcs == 0, $"placed {result.Placed}, people {result.People}, left out {result.Npcs}; expected 4, 3 and 0 (the unported Fire Keeper gets a person)");
-        Expect(placed.First(e => e.EntityID == 45000720).ModelName == "c0000", "the unported Fire Keeper stands in as an Elden Ring person");
-        var talker = placed.First(e => e.EntityID == 45000700);
-        Expect(talker.ModelName == "c0000" && talker.TalkID == 0 && talker.CharaInitID is 23000 or 23010 && talker.BackupEventAnimID == -1,
-            $"the talker: model {talker.ModelName}, talk {talker.TalkID}, look {talker.CharaInitID}");
-        Expect(talker.Position == new Vector3(4, 5, 6) && talker.CollisionPartName == collision, "the talker isn't where DS3 had them");
-        var fighter = placed.First(e => e.EntityID == 45000710);
-        Expect(fighter.CharaInitID is 23020 or 23040 && fighter.NPCParamID is 300 or 500, $"the hostile human got look {fighter.CharaInitID}");
-        Expect(placed.First(e => e.EntityID == 45000100).CharaInitID == -1, "an ordinary enemy has no look");
-        Expect(placed.First(e => e.EntityID == 45000720).CharaInitID is 23000 or 23010, "a person standing in for an own-body talker keeps their look");
-        Expect(layout.Msb.Models.Enemies.Any(m => m.Name == "c0000"), "the human body needs a model entry");
-        Expect(table.Count == 1, "darksign_enemies.tsv is the randomizer's list of enemy spots: people must not be in it");
-        Expect(result.Notes.Any(n => n.StartsWith("people: ") && n.Contains("(silent)") && n.Contains("(hostile)")), "the report must name the people");
-        var back = MSBE.Read(layout.Msb.Write());
-        Expect(back.Parts.Enemies.Count == 4 && back.Parts.Enemies.Any(e => e.EntityID == 45000700 && e.CharaInitID == talker.CharaInitID), "people don't read back");
-
-        // Ported DS3 characters with a talk script stand where DS3 had them, silent.
         var ported = EnemyPort.ChrMap.Parse(["chr\tc1400\tc7001\t70010000\t70010000\tFire Keeper"]);
-        var layout2 = MsbPort.Convert(ds3, SyntheticHost(), Ds3Id, ErId);
-        var result2 = EnemyPort.Place(ds3, layout2.Msb, Ds3Id, ErId, new MsbPort.Options(), new EnemyPort.Chooser(SyntheticCatalog(), ported, EnemyPort.Method.Auto), Describe, null, null, null, people);
-        Expect(result2.People == 3 && result2.Npcs == 0 && layout2.Msb.Parts.Enemies.Any(e => e.EntityID == 45000720 && e.ModelName == "c7001" && e.TalkID == 0 && e.CharaInitID == -1),
-            "a ported talker (Fire Keeper) should be placed, silent");
 
         // Off: nobody.
         var layout3 = MsbPort.Convert(ds3, SyntheticHost(), Ds3Id, ErId);
-        var result3 = EnemyPort.Place(ds3, layout3.Msb, Ds3Id, ErId, new MsbPort.Options(), chooser, Describe);
+        var result3 = EnemyPort.Place(ds3, layout3.Msb, Ds3Id, ErId, chooser, Describe);
         Expect(result3.People == 0 && result3.Npcs == 3 && layout3.Msb.Parts.Enemies.Count == 1, "without people, DS3's people are left out as before");
 
         // The default (no Elden Ring stand-ins): DS3's own people only, the ported Fire Keeper stands, the humans don't.
         var layout4 = MsbPort.Convert(ds3, SyntheticHost(), Ds3Id, ErId);
-        var result4 = EnemyPort.Place(ds3, layout4.Msb, Ds3Id, ErId, new MsbPort.Options(), new EnemyPort.Chooser(SyntheticCatalog(), ported, EnemyPort.Method.Auto), Describe);
+        var result4 = EnemyPort.Place(ds3, layout4.Msb, Ds3Id, ErId, new EnemyPort.Chooser(SyntheticCatalog(), ported), Describe);
         Expect(result4.People == 1 && result4.Npcs == 2 && layout4.Msb.Parts.Enemies.All(e => e.ModelName != "c0000")
                && layout4.Msb.Parts.Enemies.Any(e => e.EntityID == 45000720 && e.ModelName == "c7001"),
             $"default: people {result4.People}, left out {result4.Npcs}; only the ported Fire Keeper should stand");
-        // --no-people: not even the ported Fire Keeper.
-        var layout5 = MsbPort.Convert(ds3, SyntheticHost(), Ds3Id, ErId);
-        var result5 = EnemyPort.Place(ds3, layout5.Msb, Ds3Id, ErId, new MsbPort.Options(), new EnemyPort.Chooser(SyntheticCatalog(), ported, EnemyPort.Method.Auto), Describe,
-            placePeople: false);
-        Expect(result5.People == 0 && result5.Npcs == 3, "--no-people leaves out ported people too");
 
         // DS3's logic characters (platoon leader c0100, target dummies) get no Elden Ring enemy.
         Expect(EnemyPort.People.IsLogic("c0100", "Patrol Leader - Collective Patrol") && EnemyPort.People.IsLogic("c1240", "City Map Sniper Platoon target dummy character")
@@ -236,7 +200,7 @@ public static partial class MapPortChecks
         ds3.Parts.Enemies.Add(new MSB3.Part.Enemy { Name = "c0100_0000", ModelName = "c0100", EntityID = 4000730, NPCParamID = 10000, CollisionName = collision });
         ds3.Models.Enemies.Add(new MSB3.Model.Enemy { Name = "c0100" });
         var layout6 = MsbPort.Convert(ds3, SyntheticHost(), Ds3Id, ErId);
-        var result6 = EnemyPort.Place(ds3, layout6.Msb, Ds3Id, ErId, new MsbPort.Options(), chooser, Describe);
+        var result6 = EnemyPort.Place(ds3, layout6.Msb, Ds3Id, ErId, chooser, Describe);
         Expect(layout6.Msb.Parts.Enemies.All(e => e.EntityID != 45000730) && result6.Notes.Any(n => n.Contains("logic characters left out")),
             "the invisible platoon leader must not become a visible enemy");
     }
@@ -258,8 +222,8 @@ public static partial class MapPortChecks
             { ["o302590"] = new() { Ds3Model = "o302590", Index = 7, Name = "AEG920_007", Converted = true } };
 
         var layout = MsbPort.Convert(ds3, SyntheticHost(), Ds3Id, ErId);
-        var enemies = EnemyPort.Place(ds3, layout.Msb, Ds3Id, ErId, new MsbPort.Options(), new EnemyPort.Chooser(SyntheticCatalog(), null, EnemyPort.Method.Auto), Describe);
-        var objects = ObjectPort.PlaceParts(ds3, layout.Msb, Ds3Id, ErId, new MsbPort.Options(), m => assets.GetValueOrDefault(m));
+        var enemies = EnemyPort.Place(ds3, layout.Msb, Ds3Id, ErId, new EnemyPort.Chooser(SyntheticCatalog(), null), Describe);
+        var objects = ObjectPort.PlaceParts(ds3, layout.Msb, Ds3Id, ErId, m => assets.GetValueOrDefault(m));
         Expect(enemies.Placed == 1 && layout.Msb.Parts.Enemies.Single().EntityID == 45000100, $"{enemies.Placed} enemies placed; the other state's Black Knight must be left out");
         Expect(enemies.Notes.Any(n => n.Contains("another state") && n.Contains("Black Knight x1")), "the report names what was left out");
         Expect(objects.Placed == 1 && layout.Msb.Parts.Assets.Single().EntityID == 45001500 && objects.Notes.Any(n => n.Contains("another state")), $"objects: {objects.Summary}");
@@ -281,17 +245,11 @@ public static partial class MapPortChecks
         Expect(wind.Added == 1 && windLayout.Msb.Regions.SFX.Single(r => r.Name.StartsWith(MapSfx.NamePrefix)).EffectID == FxrPort.IdBase + 845010
                && MapSfx.Sources(windMsb).Single().EffectID == 845010, $"map effects: a WindSFX region is placed ({wind})");
 
-        var all = MsbPort.Convert(ds3, SyntheticHost(), Ds3Id, ErId);
-        var keepAll = new MsbPort.Options { AllLayers = true };
-        Expect(MapSfx.Convert(ds3, all.Msb, Ds3Id, ErId, fog, allLayers: true) is { Added: 2, OtherState: 0 }, "--all-layers keeps both sets of map effects");
-        Expect(EnemyPort.Place(ds3, all.Msb, Ds3Id, ErId, keepAll, new EnemyPort.Chooser(SyntheticCatalog(), null, EnemyPort.Method.Auto), Describe).Placed == 2
-               && ObjectPort.PlaceParts(ds3, all.Msb, Ds3Id, ErId, keepAll, m => assets.GetValueOrDefault(m)).Placed == 2, "--all-layers keeps both states");
-
         // A map whose pieces don't use bit 0 for the base state keeps everything.
         foreach (var piece in ds3.Parts.MapPieces)
             piece.MapStudioLayer = 2;
         var other = MsbPort.Convert(ds3, SyntheticHost(), Ds3Id, ErId);
-        Expect(EnemyPort.Place(ds3, other.Msb, Ds3Id, ErId, new MsbPort.Options(), new EnemyPort.Chooser(SyntheticCatalog(), null, EnemyPort.Method.Auto), Describe).Placed == 2,
+        Expect(EnemyPort.Place(ds3, other.Msb, Ds3Id, ErId, new EnemyPort.Chooser(SyntheticCatalog(), null), Describe).Placed == 2,
             "layers are only read where bit 0 marks the base state");
         Expect(MapSfx.Convert(ds3, other.Msb, Ds3Id, ErId, fog) is { Added: 2, OtherState: 0 }, "map effects too: layers are only read where bit 0 marks the base state");
     }
@@ -323,13 +281,13 @@ public static partial class MapPortChecks
         ds3.Models.Enemies.Add(new MSB3.Model.Enemy { Name = "c0000" });
         // Three different people (DS3: Yuria 25000, Orbeck 25401, Cornyx 25501) at the holding spot.
         foreach (var (name, entity, npc, talk) in new[] { ("c0000_0025", 4000750, 25000, 400140), ("c0000_0024", 4000745, 25401, 400230), ("c0000_0018", 4000735, 25501, 400240) })
-            ds3.Parts.Enemies.Add(new MSB3.Part.Enemy { Name = name, ModelName = "c0000", EntityID = entity, NPCParamID = npc, TalkID = talk, CollisionName = "h006100_0000", Position = hold });
-        ds3.Parts.Enemies.Add(new MSB3.Part.Enemy { Name = "c0000_0030", ModelName = "c0000", EntityID = 4000785, NPCParamID = 25300, TalkID = 400190, CollisionName = collision, Position = new Vector3(286, -48, 607) });
+            ds3.Parts.Enemies.Add(new MSB3.Part.Enemy { Name = name, ModelName = "c0000", EntityID = entity, NPCParamID = npc, CharaInitID = npc, TalkID = talk, CollisionName = "h006100_0000", Position = hold });
+        ds3.Parts.Enemies.Add(new MSB3.Part.Enemy { Name = "c0000_0030", ModelName = "c0000", EntityID = 4000785, NPCParamID = 25300, CharaInitID = 25300, TalkID = 400190, CollisionName = collision, Position = new Vector3(286, -48, 607) });
         ds3.Regions.Events.Add(new MSB3.Region.Event { Name = "handmaid seat", EntityID = 4004750, Position = new Vector3(270, -56, 600), Rotation = new Vector3(0, 45, 0) });
         ds3.Regions.Events.Add(new MSB3.Region.Event { Name = "seat 745", EntityID = 4004745, Position = new Vector3(260, -56, 605) });
         ds3.Regions.Events.Add(new MSB3.Region.Event { Name = "seat 785", EntityID = 4004785, Position = new Vector3(0, 0, 0) });
         // A second version of the handmaid, warped to the same seat.
-        ds3.Parts.Enemies.Add(new MSB3.Part.Enemy { Name = "c0000_0026", ModelName = "c0000", EntityID = 4000751, NPCParamID = 25001, TalkID = 400141, CollisionName = "h006100_0000", Position = hold });
+        ds3.Parts.Enemies.Add(new MSB3.Part.Enemy { Name = "c0000_0026", ModelName = "c0000", EntityID = 4000751, NPCParamID = 25001, CharaInitID = 25001, TalkID = 400141, CollisionName = "h006100_0000", Position = hold });
 
         // Map script: one direct warp (handmaid), one parameterised event started for 4000745, one for the person not held.
         var script = new EMEVD { Format = EMEVD.Game.DarkSouls3 };
@@ -354,14 +312,18 @@ public static partial class MapPortChecks
         Expect(seats["c0000_0025"].Collision == collision, $"the seat stands on the collision of a character near it ({seats["c0000_0025"].Collision})");
 
         var people = new EnemyPort.People([new("c0000", 100, 101, "Merchant", false, "m10_00_00_00", new MSBE.Part.Enemy { ModelName = "c0000", CharaInitID = 23000 })], []);
+        // Each DS3 person wears their DS3 look (only those stand: no Elden Ring stand-ins).
+        var looks = PeopleArmour.WithModels();
+        foreach (var row in new[] { 25000, 25001, 25401, 25501, 25300 })
+            looks.AddLook(new PeopleArmour.Look(row, "person", 1, [null, null, null, null]));
         var layout = MsbPort.Convert(ds3, SyntheticHost(), Ds3Id, ErId);
-        var result = EnemyPort.Place(ds3, layout.Msb, Ds3Id, ErId, new MsbPort.Options(), new EnemyPort.Chooser(SyntheticCatalog(), null, EnemyPort.Method.Auto),
-            e => new(e.ModelName, e.NPCParamID, e.Name, false, true), null, null, null, people, seats);
+        var result = EnemyPort.Place(ds3, layout.Msb, Ds3Id, ErId, new EnemyPort.Chooser(SyntheticCatalog(), null),
+            e => new(e.ModelName, e.NPCParamID, e.Name, false, true), null, null, null, people, seats, looks);
         var handmaid = layout.Msb.Parts.Enemies.Single(e => e.EntityID == 45000750);
         Expect(handmaid.Position == new Vector3(270, -56, 600) && handmaid.CollisionPartName == collision, $"seated at {handmaid.Position}");
         Expect(layout.Msb.Parts.Enemies.Single(e => e.EntityID == 45000735).Position == hold, "a held person with no warp stays where DS3 put them");
         Expect(result.Notes.Any(n => n.Contains("2 moved from DS3's holding spot")), $"the report counts the seated people: {string.Join(" | ", result.Notes)}");
-        Expect(!EnemyPort.OneVersion || result.Notes.Any(n => n.Contains("1 later quest versions")), $"the report counts the later versions: {string.Join(" | ", result.Notes)}");
+        Expect(result.Notes.Any(n => n.Contains("1 later quest versions")), $"the report counts the later versions: {string.Join(" | ", result.Notes)}");
         Expect(layout.Msb.Parts.Enemies.All(e => e.EntityID != 45000751), "the second version of a seated person is left out");
         Expect(MSBE.Read(layout.Msb.Write()).Parts.Enemies.Count == layout.Msb.Parts.Enemies.Count, "reads back");
     }
@@ -384,8 +346,8 @@ public static partial class MapPortChecks
         var people = new EnemyPort.People([new("c0000", 100, 101, "Merchant", false, "m10_00_00_00", new MSBE.Part.Enemy { ModelName = "c0000", CharaInitID = 23000 })],
             [new("c0000", 200, 201, "Bandit", false, "m10_00_00_00", new MSBE.Part.Enemy { ModelName = "c0000", CharaInitID = 24000 })]);
         var layout = MsbPort.Convert(ds3, SyntheticHost(), Ds3Id, ErId);
-        var result = EnemyPort.Place(ds3, layout.Msb, Ds3Id, ErId, new MsbPort.Options(), new EnemyPort.Chooser(SyntheticCatalog(), null, EnemyPort.Method.Auto),
-            e => new(e.ModelName, e.NPCParamID, e.Name, false, true), null, null, null, people, null, armour: armour, erStandIns: false);
+        var result = EnemyPort.Place(ds3, layout.Msb, Ds3Id, ErId, new EnemyPort.Chooser(SyntheticCatalog(), null),
+            e => new(e.ModelName, e.NPCParamID, e.Name, false, true), null, null, null, people, null, armour: armour);
         var hawkwood = layout.Msb.Parts.Enemies.Single(e => e.EntityID == 45000760);
         Expect(hawkwood.CharaInitID == PeopleArmour.CharaInitBase + 25100 && hawkwood.NPCParamID == 100 && hawkwood.TalkID == 0,
             $"Hawkwood wears his DS3 look on the Elden Ring person (CharaInit {hawkwood.CharaInitID}, NpcParam {hawkwood.NPCParamID})");
@@ -463,10 +425,5 @@ public static partial class MapPortChecks
         erProt.Rows.Add(Prot(PeopleArmour.ProtectorBase + 1, "ours", 5, coif));
         Expect(PeopleArmour.ProtectorTemplate(erProt, 5, ds3Hides)?.ID == 1100000, "rows the port added are never a template");
 
-        // --er-people: the stand-ins' own looks, no DS3 armour.
-        var erLayout = MsbPort.Convert(ds3, SyntheticHost(), Ds3Id, ErId);
-        EnemyPort.Place(ds3, erLayout.Msb, Ds3Id, ErId, new MsbPort.Options(), new EnemyPort.Chooser(SyntheticCatalog(), null, EnemyPort.Method.Auto),
-            e => new(e.ModelName, e.NPCParamID, e.Name, false, true), null, null, null, people, null);
-        Expect(erLayout.Msb.Parts.Enemies.Count(e => e.CharaInitID is 23000 or 24000) == 2, "with Elden Ring stand-ins both people stand in their own looks");
     }
 }

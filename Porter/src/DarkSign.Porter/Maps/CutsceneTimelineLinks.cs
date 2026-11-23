@@ -27,10 +27,6 @@ namespace DarkSign.Porter.Maps;
 /// </summary>
 public static class CutsceneTimelineLinks
 {
-    /// <summary>DARKSIGN_CUTSCENE_PARENTS=0 (launcher fallback map-cutscenes H): timelines keep the Unk10 they had (as up
-    /// to 1.0.549, when only the events were renumbered).</summary>
-    public static bool ParentsOn => Environment.GetEnvironmentVariable("DARKSIGN_CUTSCENE_PARENTS") != "0";
-
     /// <summary>Each cut's timelines and events as they were before the port changed them.</summary>
     public sealed class Snapshot
     {
@@ -116,12 +112,9 @@ public static class CutsceneTimelineLinks
         for (int i = 0; i < cut.Timelines.Count; i++)
         {
             var tl = cut.Timelines[i];
-            if (ParentsOn)
-            {
-                if (tl.Unk10 != links[i])
-                    changed++;
-                tl.Unk10 = links[i];
-            }
+            if (tl.Unk10 != links[i])
+                changed++;
+            tl.Unk10 = links[i];
             foreach (var ev in tl.Events)
             {
                 if (ev.Unk08 != i || ev.Unk28 != links[i])

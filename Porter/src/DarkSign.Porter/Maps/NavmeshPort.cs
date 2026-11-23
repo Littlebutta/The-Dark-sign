@@ -44,9 +44,8 @@ public static class NavmeshPort
     public static Ds3.hkRootLevelContainer ReadDs3(byte[] hkx) => CollisionPort.ReadDs3(hkx);
 
     /// <param name="placement">Where the navmesh list puts the mesh in the ported map; null leaves it where it is.</param>
-    /// <param name="keepFaceData">Keep DS3's face data values instead of clearing them.</param>
     /// <param name="layout">The host map's face and edge data layout; null for the minimum.</param>
-    public static Result Convert(byte[] ds3Hkx, bool xml = true, Matrix4x4? placement = null, bool keepFaceData = false, Layout? layout = null)
+    public static Result Convert(byte[] ds3Hkx, bool xml = true, Matrix4x4? placement = null, Layout? layout = null)
     {
         var notes = new List<string>();
         var ds3 = ReadDs3(ds3Hkx);
@@ -61,7 +60,7 @@ public static class NavmeshPort
         }
         int links = ds3.m_namedVariants?.Select(v => v.m_variant).OfType<Ds3.hkaiUserEdgeSetupArray>().Sum(a => a.m_edgeSetups?.Count ?? 0) ?? 0;
 
-        var er = Convert(ds3, placement ?? Matrix4x4.Identity, keepFaceData, notes, layout);
+        var er = Convert(ds3, placement ?? Matrix4x4.Identity, notes, layout);
         var bytes = CollisionPort.Write(er, xml);
 
         // Read back and compare, so a serializer problem shows up in the porter and not in the game.
@@ -77,7 +76,7 @@ public static class NavmeshPort
         return new Result(bytes, after.Faces, after.Edges, after.Vertices, faceData, links, notes, mesh);
     }
 
-    public static hkRootLevelContainer Convert(Ds3.hkRootLevelContainer ds3, Matrix4x4 placement, bool keepFaceData, List<string> notes, Layout? layout = null)
+    public static hkRootLevelContainer Convert(Ds3.hkRootLevelContainer ds3, Matrix4x4 placement, List<string> notes, Layout? layout = null)
     {
         var source = ds3.m_namedVariants?.Select(v => v.m_variant).OfType<Ds3.hkaiNavMesh>().FirstOrDefault()
                      ?? throw new InvalidDataException("no hkaiNavMesh in the DS3 navmesh file");
@@ -87,9 +86,9 @@ public static class NavmeshPort
         if ((source.m_streamingSets?.Count ?? 0) > 0)
             notes.Add($"{source.m_streamingSets!.Count} streaming sets left out (the navmesh list holds the connections)");
         mesh.m_streamingSets.Clear();
-        if (!keepFaceData)
-            for (int i = 0; i < mesh.m_faceData.Count; i++)
-                mesh.m_faceData[i] = 0;
+        // DS3's face data values mean something else in Elden Ring: every face is plain ground.
+        for (int i = 0; i < mesh.m_faceData.Count; i++)
+            mesh.m_faceData[i] = 0;
         layout ??= Layout.Minimum;
         (mesh.m_faceData, mesh.m_faceDataStriding) = Restride(mesh.m_faceData, mesh.m_faceDataStriding, Math.Max(1, layout.FaceDataStriding), mesh.m_faces.Count);
         (mesh.m_edgeData, mesh.m_edgeDataStriding) = Restride(mesh.m_edgeData, mesh.m_edgeDataStriding, layout.EdgeDataStriding, mesh.m_edges.Count);

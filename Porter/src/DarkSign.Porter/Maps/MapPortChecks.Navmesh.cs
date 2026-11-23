@@ -24,7 +24,6 @@ public static partial class MapPortChecks
         yield return ("navmesh list: connections and gates that lead to a navmesh without faces are left out", NavmeshListMissing);
         yield return ("navmesh: the binder holds every listed navmesh as an n and an o file, named by ModelID, with the host's compendium", NavmeshBinder);
         yield return ("navmesh: without a DS3 list the files are converted as before and no list is made", NavmeshBinderNoList);
-        yield return ("navmesh: port-maps knows the fallback arguments", NavmeshArguments);
     }
 
     /// <summary>
@@ -155,11 +154,9 @@ public static partial class MapPortChecks
         var cleared = NavmeshPort.Convert(SyntheticDs3Navmesh());
         Expect(cleared.Mesh.m_faceData.SequenceEqual([0, 0]), "cleared: " + string.Join(",", cleared.Mesh.m_faceData));
         Expect(cleared.FaceData.Count == 2 && cleared.FaceData[7] == 1 && cleared.FaceData[0x10000] == 1, "DS3 values reported");
-        var kept = NavmeshPort.Convert(SyntheticDs3Navmesh(), true, null, keepFaceData: true);
-        Expect(kept.Mesh.m_faceData.SequenceEqual([7, 0x10000]), "kept: " + string.Join(",", kept.Mesh.m_faceData));
         // A host whose meshes carry two ints a face and one an edge: the ported mesh is widened with zeros.
-        var wide = NavmeshPort.Convert(SyntheticDs3Navmesh(), true, null, keepFaceData: true, new NavmeshPort.Layout(2, 1)).Mesh;
-        Expect(wide.m_faceDataStriding == 2 && wide.m_faceData.SequenceEqual([7, 0, 0x10000, 0]), "widened face data: " + string.Join(",", wide.m_faceData));
+        var wide = NavmeshPort.Convert(SyntheticDs3Navmesh(), true, null, new NavmeshPort.Layout(2, 1)).Mesh;
+        Expect(wide.m_faceDataStriding == 2 && wide.m_faceData.SequenceEqual([0, 0, 0, 0]), "widened face data: " + string.Join(",", wide.m_faceData));
         Expect(wide.m_edgeDataStriding == 1 && wide.m_edgeData.Count == 6 && wide.m_edgeData.All(v => v == 0), "widened edge data");
     }
 
@@ -348,11 +345,4 @@ public static partial class MapPortChecks
         Expect(names.Any(n => n.EndsWith(".compendium")) && !names.Any(n => n.EndsWith("000100.hkx")), "compendium kept, host navmesh left out");
     }
 
-    private static void NavmeshArguments()
-    {
-        var plain = MapPorter.Options.Parse([]);
-        Expect(!plain.HostNavmeshList && !plain.Ds3NavmeshFlags, "defaults");
-        var o = MapPorter.Options.Parse(["--host-navmesh-list", "--navmesh-flags", "ds3"]);
-        Expect(o.HostNavmeshList && o.Ds3NavmeshFlags, "arguments");
-    }
 }
