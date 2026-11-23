@@ -283,13 +283,13 @@ public sealed class WwiseBank
         BitConverter.GetBytes(mediaId).CopyTo(sound, 9);
         BitConverter.GetBytes(wem.Length).CopyTo(sound, 13);
         sound[17] &= unchecked((byte)~0x02); // not prefetched
-        if (OwnContainers && WwiseNode.Read(new HircObject(SoundType, soundId, sound)) is { } soundNode)
+        if (WwiseNode.Read(new HircObject(SoundType, soundId, sound)) is { } soundNode)
             sound = soundNode.WithoutProps(sound, Retuned);
 
         uint target = soundId;
         HircObject? insertBefore = null, newContainer = null;
         var allIds = new[] { soundId }.Concat(variants.Select(v => v.SoundId)).ToList();
-        if (OwnContainers && ContainerFor(template.Sound, sound, allIds, containerId) is { } own)
+        if (ContainerFor(template.Sound, sound, allIds, containerId) is { } own)
         {
             (newContainer, insertBefore, sound) = own;
             target = containerId;
@@ -378,9 +378,6 @@ public sealed class WwiseBank
         }
         return plays;
     }
-
-    /// <summary>DARKSIGN_SOUND_CONTAINERS=0 goes back to the older layout (the Sound under Elden Ring's own container).</summary>
-    public static readonly bool OwnContainers = Environment.GetEnvironmentVariable("DARKSIGN_SOUND_CONTAINERS") != "0";
 
     private static readonly byte[] Retuned = [WwiseNode.PropPitch, WwiseNode.PropLowPass, WwiseNode.PropHighPass];
 
@@ -558,7 +555,7 @@ public sealed class WwiseBank
     private const uint LanguageSfx = 393239870; // FNV-1 of "SFX": banks that aren't localized
 
     /// <summary>
-    /// The sounds added so far as a bank of their own (launcher fallback "sounds" E), the way the community's custom
+    /// The sounds added so far as a bank of their own, the way the community's custom
     /// banks are made (ndahn's empty soundbank template, Yonder's "Custom Soundbanks" guide): this bank's header with
     /// a new ID, not localized; the new media; attenuations first, then the new Sounds and containers, then unchanged
     /// copies of every actor-mixer above them (Wwise keeps the first loaded copy of an ID, so these are the same

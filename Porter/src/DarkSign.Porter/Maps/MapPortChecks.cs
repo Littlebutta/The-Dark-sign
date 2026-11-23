@@ -17,14 +17,14 @@ public static partial class MapPortChecks
         yield return ("layout: the run start is the DS3 arrival point (entity x990-x999) with entity 45000990", LayoutStart);
         yield return ("layout: the run start is never beside an enemy (m30's Dancer point), people and dummies don't count", LayoutStartClear);
         yield return ("layout: DS3 draw groups land in Elden Ring's real group fields (culling)", LayoutGroups);
-        yield return ("layout: DS3's filter-24 floor copies become normal floor, --ds3-hit-filters keeps DS3's numbers", LayoutHitFilters);
+        yield return ("layout: DS3's filter-24 floor copies become normal floor", LayoutHitFilters);
         yield return ("events: run events have DarkScript3's Elden Ring layouts and survive a write", RunEventLayout);
         yield return ("events: adding the run events twice leaves one copy", RunEventsIdempotent);
         yield return ("events: one warp event per ported map, started from the constructor, replaced on a rerun", PerMapWarps);
-        yield return ("slots: the colosseums plus the Painted World in m19_70, with the colosseum and off fallbacks", DefaultSlots);
+        yield return ("slots: the colosseums plus the Painted World in m19_70", DefaultSlots);
         yield return ("events: the return point prefers a Roundtable Hold warp", ReturnPoint);
-        yield return ("fallbacks: auto-start adds one start request per load outside a run, and a rerun without it removes it", AutoStartRun);
-        yield return ("fallbacks: the new-map-ID slots give each DS3 map a registered, never-visited ID, built from a colosseum", NewIdSlots);
+        yield return ("run events: an older build's auto-start event is removed with its constructor init", AutoStartRun);
+        yield return ("slots: the new-map-ID slots give each DS3 map a registered, never-visited ID, built from a colosseum", NewIdSlots);
         yield return ("names: collision and texture binder entries", Names);
         foreach (var check in NavmeshChecks())
             yield return check;
@@ -37,7 +37,7 @@ public static partial class MapPortChecks
             yield return check;
         foreach (var check in AtmosphereChecks())
             yield return check;
-        yield return ("sky: the host's distant view (Elden Ring's sky and Erdtree) is replaced with an empty layout, --host-sky keeps it", DistantView);
+        yield return ("sky: the host's distant view (Elden Ring's sky and Erdtree) is replaced with an empty layout", DistantView);
         foreach (var check in LoadChecks())
             yield return check;
         foreach (var check in ObjectChecks())
@@ -287,7 +287,7 @@ public static partial class MapPortChecks
         Expect(piece.EntityID == 45000100, $"map piece entity {piece.EntityID}");
         Expect(piece.Unk1.DisplayGroups.Concat(piece.Unk1.DrawGroups).Concat(piece.Unk1.CollisionMask).All(g => g == 0),
             "map pieces carry no groups by default (everything visible; DS3 culling went wrong in 1.0.417)");
-        Expect(piece.isUsePartsDrawParamID == 1 && piece.PartsDrawParamID == MapDrawParams.VanillaRow, "map pieces name a PartsDrawParam row");
+        Expect(piece.isUsePartsDrawParamID == 1 && piece.PartsDrawParamID == MapDrawParams.FirstRow, "map pieces name a PartsDrawParam row");
         var collision = msb.Parts.Collisions.Single();
         Expect((int)collision.HitFilterID == 8 && collision.Rotation == new Vector3(0, 90, 0), "collision fields");
         Expect(msb.Models.MapPieces.Single().SibPath.Contains("m000100") && !msb.Models.MapPieces.Single().SibPath.Contains("m001000"),
@@ -312,9 +312,6 @@ public static partial class MapPortChecks
         var filters = MSBE.Read(result.Msb.Write()).Parts.Collisions.ToDictionary(c => c.Name, c => (int)c.HitFilterID);
         Expect(filters["h000100_0000"] == 8 && filters["h000105_0000"] == 8 && filters["h009000_0000"] == 15, $"filters {string.Join(" ", filters)}");
         Expect(result.Notes.Any(n => n.StartsWith("hit filters: 1 DS3 filter-24")), "the port log counts the floor copies");
-        Expect(MapPorter.Options.Parse(["--ds3-hit-filters"]).Ds3HitFilters && !new MapPorter.Options().Ds3HitFilters, "--ds3-hit-filters is read");
-        var kept = MsbPort.Convert(ds3, SyntheticHost(), Ds3Id, ErId, new MsbPort.Options { Ds3HitFilters = true });
-        Expect((int)kept.Msb.Parts.Collisions.Single(c => c.Name == "h000105_0000").HitFilterID == 24, "--ds3-hit-filters keeps 24");
     }
 
     private static void LayoutStart()
@@ -352,41 +349,12 @@ public static partial class MapPortChecks
         // DrawGroups are its draw groups (CollisionMask words 8-15), its DispGroups its display groups; the alternate
         // groups are copies and their masks keep every bit, so a swap or a merge changes nothing. DS3's load groups
         // (BackreadGroups) have no Elden Ring field and are not written.
-        var culling = new MsbPort.Options { Ds3Culling = true };
-        var result = MsbPort.Convert(SyntheticDs3(), SyntheticHost(), Ds3Id, ErId, culling);
-        var msb = MSBE.Read(result.Msb.Write());
-        var u = msb.Parts.MapPieces.Single().Unk1;
-        Expect(MapDrawGroups.Draw(u)[0] == 0x11 && MapDrawGroups.AltDraw(u)[0] == 0x11, $"draw groups {MapDrawGroups.Draw(u)[0]:X}");
-        Expect(MapDrawGroups.Display(u)[0] == 0x22 && MapDrawGroups.AltDisplay(u)[0] == 0x22, $"display groups {MapDrawGroups.Display(u)[0]:X}");
-        Expect(MapDrawGroups.AltDisplayMask(u).ToArray().All(g => g == 0xFFFFFFFF) && MapDrawGroups.AltDrawMask(u).ToArray().All(g => g == 0xFFFFFFFF),
-            "alternate masks keep every bit");
-        Expect(u.Condition1 == 0 && u.Condition2 == 1 && !u.CollisionMask.Contains(0x33u), "UseAltGroups on, no load groups written");
-        // A collision shows what DS3's DispGroups name, in both the group struct and the collision's own Unk2; it is
-        // never culled itself (no draw groups, as 104 of Stormveil's 111 collisions).
-        var collisionSrc = SyntheticDs3();
-        collisionSrc.Parts.Collisions[0].DispGroups[0] = 0x10;
-        collisionSrc.Parts.Collisions[0].DrawGroups[0] = 0x4;
-        var c = MsbPort.Convert(collisionSrc, SyntheticHost(), Ds3Id, ErId, culling).Msb.Parts.Collisions.Single();
-        Expect(MapDrawGroups.Display(c.Unk1)[0] == 0x10 && MapDrawGroups.IsEmpty(MapDrawGroups.Draw(c.Unk1)) && MapDrawGroups.IsEmpty(MapDrawGroups.AltDraw(c.Unk1)),
-            "collision display groups, no draw groups");
-        Expect(c.Unk2 is null || c.Unk2.DispGroups[0] == 0x10, "collision Unk2 groups");
-        Expect(MapDrawGroups.DrawnFrom(MapDrawGroups.Draw(u), MapDrawGroups.Display(c.Unk1)), "the piece is drawn from the collision that shows group 0x10");
-        // A piece with no DS3 groups carries none, and is drawn from everywhere.
-        var bare = SyntheticDs3();
-        Array.Clear(bare.Parts.MapPieces[0].DrawGroups);
-        Array.Clear(bare.Parts.MapPieces[0].DispGroups);
-        var b = MsbPort.Convert(bare, SyntheticHost(), Ds3Id, ErId, culling).Msb.Parts.MapPieces.Single().Unk1;
-        Expect(b.DisplayGroups.Concat(b.DrawGroups).Concat(b.CollisionMask).All(g => g == 0) && b.Condition2 == 0, "no groups, no masks");
-        // map-groups A (default): nothing culled, pieces without masks, collisions and enemies with every group on.
+        // Nothing culled: pieces without masks, collisions and enemies with every group on.
         var all = MsbPort.Convert(SyntheticDs3(), SyntheticHost(), Ds3Id, ErId).Msb;
         var a = all.Parts.MapPieces.Single().Unk1;
-        Expect(a.DisplayGroups.Concat(a.DrawGroups).Concat(a.CollisionMask).All(g => g == 0) && a.Condition2 == 0, "map-groups A: pieces carry no masks");
-        Expect(all.Parts.Collisions.Single().Unk1.CollisionMask.All(g => g == 0xFFFFFFFF), "map-groups A: collisions show everything");
-        Expect(!MapPorter.Options.Parse([]).Ds3Culling && MapPorter.Options.Parse(["--ds3-culling"]).Ds3Culling
-               && !MapPorter.Options.Parse(["--all-visible"]).Ds3Culling && !MapPorter.Options.Parse(["--ds3-groups"]).Ds3Culling,
-            "culling only with --ds3-culling; older launchers' --all-visible / --ds3-groups mean the default");
+        Expect(a.DisplayGroups.Concat(a.DrawGroups).Concat(a.CollisionMask).All(g => g == 0) && a.Condition2 == 0, "pieces carry no masks");
+        Expect(all.Parts.Collisions.Single().Unk1.CollisionMask.All(g => g == 0xFFFFFFFF), "collisions show everything");
         Expect(all.Parts.Players.All(pl => pl.Unk1.CollisionMask.All(g => g == 0xFFFFFFFF)), "player points drawn from everywhere");
-        Expect(result.Msb.Parts.Players.All(pl => pl.Unk1.CollisionMask.All(g => g == 0xFFFFFFFF)), "player points drawn from everywhere with culling too");
     }
 
     private static EMEVD SyntheticCommon()
@@ -619,7 +587,6 @@ public static partial class MapPortChecks
             MapEnvironment.TestDds(MapEnvironment.DxgiBc6hUf16, MapEnvironment.Bc6hBlock(0.05f)), SoulsFormats.TPF.TPFPlatform.PC);
         Expect(!MapEnvironment.NeutraliseCube(cube).StartsWith('!') && Math.Abs(MapEnvironment.DecodeGrey(cube.Bytes) - 0.05f) < 0.002f, "a reflection cube stays at its brightness");
         Expect(MapEnvironment.NeutraliseVolume(cube).StartsWith('!'), "a BC6H texture is not taken for a light volume");
-        Expect(MapPorter.Options.Parse(["--host-env-light"]).HostEnvLight && !new MapPorter.Options().HostEnvLight, "--host-env-light is read");
 
         // Elden Ring's sampler names, from real MATBINs.
         Expect(MapModelPort.Role("M_A__snp_Texture2D_0_AlbedoMap_0") == ("albedo", 0), "plain albedo");
@@ -694,16 +661,18 @@ public static partial class MapPortChecks
     private static void AutoStartRun()
     {
         var common = SyntheticCommon();
-        RunEvents.AddTo(common, ErId, 45000990, Back, autoStart: true);
-        common = EMEVD.Read(common.Write());
-        var auto = common.Events.Single(e => e.ID == RunEvents.AutoStartEventId);
-        Expect(auto.Instructions.Count == 3, $"{auto.Instructions.Count} instructions");
-        var end = auto.Instructions[0];
-        Expect(end.Bank == 1003 && end.ID == 2 && BitConverter.ToUInt32(end.ArgData, 4) == RunEvents.Ds3RunActive, "ends when the run is active");
-        var set = auto.Instructions[2];
-        Expect(set.Bank == 2003 && set.ID == 66 && BitConverter.ToUInt32(set.ArgData, 4) == RunEvents.StartDs3Request, "requests the start");
+        common.Events.Add(new EMEVD.Event(RunEvents.AutoStartEventId, EMEVD.Event.RestBehaviorType.Default));
+        var init = new EMEVD.Instruction(2000, 0, new byte[12]);
+        BitConverter.GetBytes(RunEvents.AutoStartEventId).CopyTo(init.ArgData, 4);
+        var ctor = common.Events.FirstOrDefault(e => e.ID == 0);
+        if (ctor is null)
+        {
+            ctor = new EMEVD.Event(0, EMEVD.Event.RestBehaviorType.Default);
+            common.Events.Insert(0, ctor);
+        }
+        ctor.Instructions.Add(init);
         int Inits(EMEVD c) => c.Events.Single(e => e.ID == 0).Instructions.Count(i => i.Bank == 2000 && BitConverter.ToUInt32(i.ArgData, 4) == RunEvents.AutoStartEventId);
-        Expect(Inits(common) == 1, "started once from the constructor");
+        Expect(Inits(common) == 1, "the older build's init is in place");
         RunEvents.AddTo(common, ErId, 45000990, Back);
         Expect(common.Events.All(e => e.ID != RunEvents.AutoStartEventId) && Inits(common) == 0, "a build without it removes it");
         Expect(MapValidate.CheckRunEvents(common, ErId).Count() == 0, "run events still valid");
@@ -727,7 +696,7 @@ public static partial class MapPortChecks
 
     private static void DefaultSlots()
     {
-        var all = MapSlots.Choose(false, null);
+        var all = MapSlots.PaintedWorldSlots();
         var colosseums = all.Where(s => s.Ds3 != MapSlots.PaintedWorld).ToList();
         Expect(colosseums.SequenceEqual(MapSlots.Colosseums), "the colosseum slots come first and unchanged: " + string.Join(" ", all.Select(s => s.Er)));
         var painted = all.Single(s => s.Ds3 == MapSlots.PaintedWorld);
@@ -739,18 +708,8 @@ public static partial class MapPortChecks
         Expect(MapSlots.ForDs3(Ds3Id)?.Er == ErId, "ForDs3 must return the real slot");
         Expect(MapSlots.All.Select(s => s.Er).Distinct().Count() == MapSlots.All.Count, "slots in use must not share an Elden Ring map");
 
-        var off = MapSlots.Choose(false, "0");
-        Expect(off.SequenceEqual(MapSlots.Colosseums), "DARKSIGN_PAINTED_WORLD=0 leaves the Painted World out");
-        var inColosseum = MapSlots.Choose(false, "colosseum");
-        Expect(inColosseum.Count == 3 && inColosseum.All(s => s.Er.Area == 45 && s.Template is null), "colosseum mode stays in the three colosseums");
-        Expect(inColosseum.Single(s => s.Ds3 == MapSlots.PaintedWorld).Er.ToString() == "m45_02_00_00", "colosseum mode takes the Undead Settlement's slot");
-        Expect(inColosseum.All(s => s.Ds3.ToString() != "m31_00_00_00"), "colosseum mode leaves the Undead Settlement out");
-        var newIds = MapSlots.Choose(true, null);
-        Expect(newIds.Count == 4 && newIds.Select(s => s.Er).Distinct().Count() == 4, "method B: three new IDs and the Painted World");
-        Expect(newIds.Single(s => s.Ds3 == MapSlots.PaintedWorld).Er.ToString() == "m45_00_00_00", "method B puts the Painted World in the first colosseum");
-
-        // The rest of DS3's world (map-world A): every ID a dungeon area, inside the game's arrays, no ID shared.
-        var world = MapSlots.Choose(false, null, world: true);
+        // The rest of DS3's world: every ID a dungeon area, inside the game's arrays, no ID shared.
+        var world = MapSlots.All;
         Expect(world.Count == 15, "Firelink, High Wall, Undead Settlement, the Painted World and 11 more: " + world.Count);
         Expect(world.Select(s => s.Er).Distinct().Count() == world.Count && world.Select(s => s.Ds3).Distinct().Count() == world.Count, "one slot per map");
         Expect(world.All(s => !MapRegistry.IsGridArea(s.Er)), "no open-world area numbers");
@@ -758,7 +717,6 @@ public static partial class MapPortChecks
         var registeredNow = RegisteredUnvisited.Concat(["m38_10_00_00", "m38_11_00_00", "m38_12_00_00"]).ToHashSet();
         var newLines = world.Where(s => s.Er.Area != 45 || s.Er.Block > 2).Count(s => !registeredNow.Contains(s.Er.ToString()));
         Expect(newLines <= MapRegistry.MaxBaseDungeonLines - 90, $"new base-list lines fit the 6 free ones of 2.7.2: {newLines}");
-        Expect(MapSlots.Choose(true, null, world: true).Count == 4, "map-slots B keeps its own four slots");
         Expect(MapSlots.Ds3Maps.Count(m => world.All(s => s.Ds3.ToString() != m.Id)) == 1, "only Filianore's Rest is left without a slot");
     }
 
@@ -780,7 +738,7 @@ public static partial class MapPortChecks
         connect.MapID[0] = 31; connect.MapID[1] = 255; connect.MapID[2] = 255; connect.MapID[3] = 255;
         ds3.Parts.ConnectCollisions.Add(connect);
         var template = new MSBE.Part.ConnectCollision { Name = "h000000_0000", ModelName = "h000000", CollisionName = "h000000_0000" };
-        var result = MsbPort.Convert(ds3, SyntheticHost(), Ds3Id, ErId, new MsbPort.Options(),
+        var result = MsbPort.Convert(ds3, SyntheticHost(), Ds3Id, ErId,
             [(MapId.Parse("m31_00_00_00"), MapId.Parse("m45_02_00_00")), (Ds3Id, ErId)], template);
         var ported = result.Msb.Parts.ConnectCollisions.SingleOrDefault();
         Expect(ported is not null && ported.MapID.SequenceEqual(new byte[] { 45, 2, 0, 0 }),
@@ -789,7 +747,7 @@ public static partial class MapPortChecks
 
     private static void MapLinkRows()
     {
-        var slots = MapSlots.Choose(false, null, world: true);
+        var slots = MapSlots.All;
         var connects = new Dictionary<string, MapId[]>
         {
             ["m30_00_00_00"] = [MapId.Parse("m30_01_00_00"), MapId.Parse("m31_00_00_00"), MapId.Parse("m34_01_00_00"), MapId.Parse("m40_00_00_00")],

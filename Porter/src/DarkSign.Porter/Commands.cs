@@ -238,8 +238,6 @@ public static class Commands
             using var _ = Timing.Stage("icons (side by side)");
             IconPort.Write(ctx, erArchives, ds3Archives, iconEntries);
         });
-        if (Parallelism.Serial)
-            icons.GetAwaiter().GetResult();
         using (Timing.Stage("models"))
             PortWeaponModels(ctx, erArchives, ds3Archives, plans, ds3, erWeapons,
                 WeaponHold.Plan(erArchives, ds3Archives, erStore, ds3Store, plans));
@@ -255,18 +253,17 @@ public static class Commands
         // DS3's weapon effects (status on hit, equipped effects): the moveset port below uses the same instance for
         // the effects DS3's weapon arts cast.
         SpEffectPort? spEffects = null;
-        if (SpEffectPort.Enabled)
-            try
-            {
-                using var _ = Timing.Stage("weapon effects");
-                spEffects = new SpEffectPort(erStore, ds3Store);
-                spEffects.ApplyWeapons(plans, ds3, erWeapons);
-            }
-            catch (Exception e) when (e is not OutOfMemoryException)
-            {
-                Console.WriteLine($"weapon effects: failed, ported weapons have no DS3 status or equipped effects ({e.GetType().Name}: {e.Message})");
-                spEffects = null;
-            }
+        try
+        {
+            using var _ = Timing.Stage("weapon effects");
+            spEffects = new SpEffectPort(erStore, ds3Store);
+            spEffects.ApplyWeapons(plans, ds3, erWeapons);
+        }
+        catch (Exception e) when (e is not OutOfMemoryException)
+        {
+            Console.WriteLine($"weapon effects: failed, ported weapons have no DS3 status or equipped effects ({e.GetType().Name}: {e.Message})");
+            spEffects = null;
+        }
         try
         {
             using var _ = Timing.Stage("movesets, effects and sounds");

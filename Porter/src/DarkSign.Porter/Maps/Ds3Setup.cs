@@ -14,13 +14,10 @@ namespace DarkSign.Porter.Maps;
 /// in) is converted with the maps' flag table and added to Elden Ring's common.emevd at <see cref="FirstEventId"/>+,
 /// started from event 0. An event that runs once per save in DS3 (an "END IF this event's flag is on" guard) gets a
 /// saved flag of its own instead (<see cref="FirstDoneFlag"/>+, JortPob's saved range), set as it starts, because the
-/// event-ID flag of a ported event isn't known to be saved. Off with DARKSIGN_DS3_SETUP=0 (launcher fallback
-/// "map-setup" B).</para>
+/// event-ID flag of a ported event isn't known to be saved.</para>
 /// </summary>
 public static class Ds3Setup
 {
-    public static readonly bool Enabled = Environment.GetEnvironmentVariable("DARKSIGN_DS3_SETUP") != "0";
-
     public const string Ds3Common = "/event/common.emevd.dcx";
     /// <summary>DS3's common event that starts the setup events on every load.</summary>
     public const long LoadEvent = 50;

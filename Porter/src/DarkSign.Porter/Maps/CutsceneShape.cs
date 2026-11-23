@@ -11,13 +11,11 @@ namespace DarkSign.Porter.Maps;
 /// Learned from every Elden Ring cutscene, so what it says is what the game's own files always do.
 /// <para><see cref="Check"/> lists where a converted timeline differs (cutscene-diag); <see cref="Conform"/> makes it
 /// match: fields that Elden Ring fills the same way in at least <see cref="RuleShare"/> of its events are set that
-/// way, and parameter lists get Elden Ring's order, with any parameter DS3 lacks at Elden Ring's most used value.
-/// DARKSIGN_CUTSCENE_CONFORM=0 turns the conforming off.</para>
+/// way, and parameter lists get Elden Ring's order, with any parameter DS3 lacks at Elden Ring's most used
+/// value.</para>
 /// </summary>
 public sealed class CutsceneShape
 {
-    public static bool ConformEnabled => Environment.GetEnvironmentVariable("DARKSIGN_CUTSCENE_CONFORM") != "0";
-
     /// <summary>A field rule counts when Elden Ring's events follow it this often (and there are enough of them).</summary>
     public const double RuleShare = 0.97;
     public const int RuleMinimum = 5;
@@ -365,13 +363,7 @@ public sealed class CutsceneShape
                         changed++;
                     }
                 var tk = CutscenePort.TimelineKind(mqb, tl);
-                // Unk10 is left alone: it names the timeline this one hangs on, set by CutsceneTimelineLinks.Relink
-                // (with DARKSIGN_CUTSCENE_PARENTS=0, Elden Ring's most common value per kind, as up to 1.0.549).
-                if (!CutsceneTimelineLinks.ParentsOn && TimelineUnk10.TryGetValue(tk, out var u) && u.Holds && tl.Unk10 != u.Value)
-                {
-                    tl.Unk10 = u.Value;
-                    changed++;
-                }
+                // Unk10 is left alone: it names the timeline this one hangs on, set by CutsceneTimelineLinks.Relink.
                 if (TimelineParams.TryGetValue(tk, out var ts) && SigHolds(ts) && Differs(tl.Parameters, ts))
                 {
                     // The player's parameters take the values Elden Ring gives the player, where its lists match.

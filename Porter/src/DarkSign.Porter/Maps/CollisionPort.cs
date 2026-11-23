@@ -96,22 +96,19 @@ public static class CollisionPort
     /// <summary>
     /// True once <see cref="WarmUp"/> has filled HKLib's caches for collision files: serializing then needs no lock.
     /// Only valid while nothing else uses HKLib on another thread (AnimPort and the enemy port keep the lock and run
-    /// before the maps). DARKSIGN_COLLISION_LOCK=1 keeps the lock for every file, as builds before 1.0.23x did.
+    /// before the maps).
     /// </summary>
     public static bool LockFree { get; private set; }
-
-    private static readonly bool KeepLock = Environment.GetEnvironmentVariable("DARKSIGN_COLLISION_LOCK") == "1";
 
     /// <summary>
     /// Serializes, under the lock, one collision file that holds every kind of object <see cref="Convert(byte[], ErCollisionTemplate?, bool, bool)"/>
     /// can produce (a material, motion properties, a body with hit materials and a mesh tree with every array filled),
-    /// so HKLib has cached every type before the real files convert in parallel. Returns a line for the report; null
-    /// when the lock has to stay (the caches can't be seen, or DARKSIGN_COLLISION_LOCK=1).
+    /// so HKLib has cached every type before the real files convert in parallel.
     /// </summary>
     public static string? WarmUp(ErCollisionTemplate? template, bool xml, bool keepSimdTree)
     {
         LockFree = false;
-        if (KeepLock || !HavokCaches.Available)
+        if (!HavokCaches.Available)
             return null;
         var ds3 = ReadDs3(MapSelfTest.SyntheticDs3Collision(everything: true));
         lock (AnimPort.HavokLock)
@@ -480,7 +477,8 @@ public static class CollisionPort
             });
         foreach (var d in p.m_primitiveDataArray ?? [])
         {
-            var data = new fsnpCustomMeshParameter.PrimitiveData { m_materialNameData = d.m_materialNameData };
+            // The floor material, numbered as Elden Ring's HitMtrlParam means it (HitMaterials).
+            var data = new fsnpCustomMeshParameter.PrimitiveData { m_materialNameData = HitMaterials.Map(d.m_materialNameData) };
             data.m_vertexData.AddRange(d.m_vertexData ?? []);
             data.m_triangleData.AddRange(d.m_triangleData ?? []);
             data.m_primitiveData.AddRange(d.m_primitiveData ?? []);

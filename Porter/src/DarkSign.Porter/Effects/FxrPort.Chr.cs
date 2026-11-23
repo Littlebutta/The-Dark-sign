@@ -102,8 +102,6 @@ public static partial class FxrPort
             if (info.Anibnds.Any(m => m > 0))
                 return Fail(id, "uses animated models");
             var models = info.Models.Where(m => m > 0).Distinct().ToArray();
-            if (models.Length > 0 && !EffectModelPort.Enabled)
-                return Fail(id, "uses models");
             var textures = info.Textures.Where(t => t > 0).Distinct().ToList();
             if (textures.FirstOrDefault(t => !_textureIds.ContainsKey(t)) is var missing and > 0)
                 return Fail(id, $"texture s{missing} missing");
@@ -117,10 +115,10 @@ public static partial class FxrPort
             foreach (var child in children)
                 if (Get(child) is null)
                     return Fail(id, $"plays f{child} ({Reasons.GetValueOrDefault(child, "left out")})");
-            var sounds = PortFxrSounds ? FxrSounds(info.Sounds).ToArray() : [];
+            var sounds = FxrSounds(info.Sounds).ToArray();
             var map = JsonSerializer.Serialize(new Dictionary<string, Dictionary<string, int>>
             {
-                ["once"] = HeldSoundsOnce ? new() { ["all"] = 1 } : [],
+                ["once"] = new() { ["all"] = 1 },
                 ["held"] = StoppableSounds(info.HeldSounds ?? []),
                 ["sfx"] = children.ToDictionary(c => c.ToString(), c => ChrIdBase + c),
                 [((int)Kind.Texture).ToString()] = info.Textures.Where(t => t > 0).Distinct().ToDictionary(t => t.ToString(), t => _textureIds[t]),
@@ -128,7 +126,7 @@ public static partial class FxrPort
                 [((int)Kind.Sound).ToString()] = sounds.ToDictionary(s => s.ToString(), s => SoundPort.IdBase + s),
             });
             return new ChrEffect(_js.Convert(file.File.Bytes, ChrIdBase + id, map), children, [.. textures.Distinct()], models, sounds,
-                PortFxrSounds ? [.. Unheld(info)] : []);
+                [.. Unheld(info)]);
         }
 
         // A DS3 effect model on Elden Ring's effect materials (EffectModelPort), once; returns why it can't be.

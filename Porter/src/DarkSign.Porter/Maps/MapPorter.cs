@@ -19,134 +19,11 @@ public static class MapPorter
     public sealed class Options
     {
         public HashSet<string> Only { get; } = new(StringComparer.OrdinalIgnoreCase);
-        /// <summary>
-        /// --ds3-culling (fallback "map-groups" B): DS3's draw groups cull pieces, collisions and objects
-        /// (<see cref="MapDrawGroups"/>), the default of 1.0.414-1.0.417, which hid the wrong things in game. Default:
-        /// every map part is drawn from everywhere, as up to 1.0.410; DS3's own lower detail models and draw distances
-        /// keep far scenery cheap instead (<see cref="MapDrawParams"/>). "--all-visible" and "--ds3-groups" (older
-        /// launchers' B) are accepted and mean the default.
-        /// </summary>
-        public bool Ds3Culling { get; set; }
-        /// <summary>
-        /// When pieces switch to DS3's own lower detail lists (<see cref="MapLod"/>, <see cref="MapDrawParams.LodRow"/>).
-        /// Default: vanilla Elden Ring's 30 / 60 m. "--no-lod" (fallback "map-lod" B): never, as up to 1.0.417;
-        /// "--far-lod" (C): 60 / 120 m.
-        /// </summary>
-        public MapDrawParams.Lod? Lod { get; set; } = MapDrawParams.Lod.Vanilla;
-        /// <summary>--no-groups (fallback "map-groups" C): no group masks at all.</summary>
-        public bool NoGroups { get; set; }
-        /// <summary>Only the albedo-only material JortPob uses (fallback "map-materials" B).</summary>
-        public bool PlainMaterials { get; set; }
-        /// <summary>--no-piece-test: accepted for older launchers; every slot is built normally anyway (see <see cref="PieceTest"/>).</summary>
-        public bool NoPieceTest { get; set; }
         /// <summary>--piece-test &lt;Elden Ring map id&gt;=&lt;vanilla-model|vanilla-material|ported-material|none&gt;: a slot's test, instead of the default.</summary>
         public Dictionary<string, PieceTest> PieceTests { get; } = new(StringComparer.OrdinalIgnoreCase);
-        /// <summary>Map pieces name vanilla PartsDrawParam row 2046 instead of the port's own (fallback "map-draw" B).</summary>
-        public bool VanillaDrawParam { get; set; }
-        /// <summary>
-        /// --host-lighting: no ambient light region, no DS3 lamps, and the unlit sky dome casts shadows again: a map
-        /// lit exactly as before 1.0.285 (fallback "map-lighting" B; see <see cref="MapLighting"/>).
-        /// </summary>
-        public bool HostLighting { get; set; }
-        /// <summary>--helper-pieces: DS3's reflection proxies, shadow casters and off-layer pieces stay in the map as
-        /// ordinary pieces (fallback "map-helper-pieces" B; see <see cref="MsbPort.HelperKind"/>).</summary>
-        public bool HelperPieces { get; set; }
-        /// <summary>--ds3-hit-filters: collisions keep DS3's hit filter numbers, filter 24 included, as up to 1.0.353
-        /// (fallback "map-hit-filters" B; see <see cref="MsbPort.HitFilter"/>).</summary>
-        public bool Ds3HitFilters { get; set; }
-        /// <summary>--solid-overlays: every ported vertex is solid and a two-layer material shows its first layer, as
-        /// up to 1.0.340 (fallback "map-overlays" B; see <see cref="MapOverlays"/>).</summary>
-        public bool SolidOverlays { get; set; }
-        /// <summary>--cut-faded-overlays: every overlay triangle under half alpha is left out, whatever lies behind it, as
-        /// 1.0.353 to 1.0.383 (fallback "map-overlays" D; implies --fade-overlays; see <see cref="MapOverlayBacking"/>).</summary>
-        public bool CutFadedOverlays { get; set; }
-        /// <summary>--fade-overlays: one-layer DS3 meshes keep their vertex alpha as a fade and faded triangles with a
-        /// surface behind them are left out (PR #165; fallback "map-overlays" C; see <see cref="MapModelPort.FadeOverlays"/>).</summary>
-        public bool FadeOverlays { get; set; }
-        /// <summary>--first-blend-layer: a DS3 terrain blend (2m/3m/4m) shows only its first layer, as up to 1.0.353
-        /// (fallback "map-blend-layers" B; see <see cref="MapTerrainBlends"/>).</summary>
-        public bool FirstBlendLayer { get; set; }
-        /// <summary>--first-sky-layer: a two-layer DS3 sky dome shows its first layer, as up to 1.0.50x (fallback
-        /// "map-sky-layer" B; see <see cref="MapTerrainBlends.ApplySky"/>).</summary>
-        public bool FirstSkyLayer { get; set; }
-        /// <summary>--whole-blend-triangles: a terrain blend or two-layer triangle goes whole to the layer its corners
-        /// show on average instead of being cut along the layer's edge, as 1.0.354 to 1.0.46x (fallback
-        /// "map-blend-layers" C; see <see cref="MapLayerContours"/>).</summary>
-        public bool WholeBlendTriangles { get; set; }
-        /// <summary>--raw-half-normals: DS3 normals stored as half floats keep what SoulsFormats reads, as every build
-        /// before 2026-11-19 (fallback "map-materials" C; see <see cref="Ds3HalfNormals"/>).</summary>
-        public bool RawHalfNormals { get; set; }
-        /// <summary>--tint-materials (diagnostic, not a fallback): DS3 material families that keep something in vertex
+        /// <summary>--tint-materials (diagnostic): DS3 material families that keep something in vertex
         /// alpha are drawn in solid colours (see <see cref="MapModelPort.Tints"/>).</summary>
         public bool TintMaterials { get; set; }
-        /// <summary>--stand-ins: DS3's low-detail stand-ins stay in the map on top of the detailed pieces they stand
-        /// for (fallback "map-stand-ins" B; see <see cref="MapStandIns"/>).</summary>
-        public bool StandIns { get; set; }
-        /// <summary>--host-atmosphere: the slot keeps its Elden Ring colosseum's colour, fog and sun settings untouched
-        /// (fallback "map-atmosphere" B; see <see cref="MapAtmosphere"/>).</summary>
-        public bool HostAtmosphere { get; set; }
-        /// <summary>--host-env-light: the slot keeps its Elden Ring colosseum's baked light volumes and reflection cubes,
-        /// which light every DS3 map piece in the colosseum's colour (fallback "map-env-light" B; see <see cref="MapEnvironment"/>).</summary>
-        public bool HostEnvLight { get; set; }
-        /// <summary>--flat-env-light / --baked-light-flip x|y|z: the DS3 map's own baked light volume off, or mirrored
-        /// (fallback "map-baked-light"; see <see cref="MapBakedLight"/>). --colosseum-sky-light / --baked-light-level x: how
-        /// bright its open sky is (fallback "map-sky-level"; see <see cref="MapBakedLight.SkyAlpha"/>).</summary>
-        public MapBakedLight.Options BakedLight { get; set; } = MapBakedLight.Options.Default;
-        /// <summary>--no-light-offset: DS3's lamps and light probes stay in the map's own space instead of being moved
-        /// by DS3's map offset, as in earlier builds (fallback "map-light-place" B; see <see cref="MapLighting.PortLights"/>).</summary>
-        public bool NoLightOffset { get; set; }
-        /// <summary>--host-fill-lights: the lights without shadows (second directional light, local lights, occlusion
-        /// weights) keep the host colosseum's strengths, as up to 1.0.491 (fallback "map-fill-light" B; see
-        /// <see cref="MapAtmosphere.FillLights"/>).</summary>
-        public bool HostFillLights { get; set; }
-        /// <summary>--one-light-set: every ported part names the default light set (-1), as up to 1.0.499, instead of
-        /// DS3's own per part (fallback "map-light-sets" B; see <see cref="MapLightSets"/>).</summary>
-        public bool OneLightSet { get; set; }
-        /// <summary>--ds3-lamp-strength: DS3's lamps keep the strengths DS3's light file writes instead of being brought
-        /// to Elden Ring's scale, as up to 1.0.491 (fallback "map-lamps" B; see <see cref="MapLampStrength"/>).</summary>
-        public bool Ds3LampStrength { get; set; }
-        /// <summary>--no-new-light-file: a slot whose host has no light file gets none, as up to 1.0.491 (map 3 without
-        /// lamps; fallback "map-lamps" E; see <see cref="MapLighting.PortLights"/>).</summary>
-        public bool NoNewLightFile { get; set; }
-        /// <summary>--no-flame-lights: no lamps are added at DS3's candles, torches and braziers, as up to 1.0.491
-        /// (fallback "map-lamps" C; see <see cref="FlameLights"/>).</summary>
-        public bool NoFlameLights { get; set; }
-        /// <summary>--unturned-sun: the sun keeps the angle DS3's draw params write, in the map's own space, instead of
-        /// being turned with the map offset like the lamps and probes (fallback "map-sun" B; implied by --no-light-offset;
-        /// see <see cref="MapAtmosphere.SunTurn"/>).</summary>
-        public bool UnturnedSun { get; set; }
-        /// <summary>
-        /// --host-sky: the host's distant view (its sky, the Erdtree) is left in place over the DS3 map, as in every
-        /// build up to 1.0.299 (fallback "map-sky" B; see <see cref="MapDistantView"/>).
-        /// </summary>
-        public bool HostSky { get; set; }
-        /// <summary>
-        /// --half-textures / --full-low-textures: how much of each DS3 texture the game is given (launcher Fallbacks
-        /// "map-texture-detail"; see <see cref="MapTextures.Detail"/>).
-        /// </summary>
-        public MapTextures.Detail TextureDetail { get; set; } = MapTextures.Detail.Standard;
-        /// <summary>
-        /// --host-navmesh-list: the map's navmesh list (.nva) stays the host's, which names no DS3 navmesh, so the game
-        /// loads none: enemies as every build up to 1.0.299 had them (fallback "map-navmesh" off; see <see cref="MapNavmesh"/>).
-        /// </summary>
-        public bool HostNavmeshList { get; set; }
-        /// <summary>--navmesh-flags ds3: DS3's face data values are kept instead of cleared (fallback "map-navmesh" B).</summary>
-        public bool Ds3NavmeshFlags { get; set; }
-        /// <summary>
-        /// Collision and navmesh files are written as binary Havok tagfiles, the form Elden Ring ships its own in, unless
-        /// "--xml-collision" asks for XML tagfiles (fallback "map-collision" B). Up to 1.0.30x XML was the default: an
-        /// XML tagfile is some 55 times its DS3 file (a 4.7 MB file is 258 MB of text), and the game read 3.4 to 7.5 GB
-        /// of it per DS3 map, a 100 to 300 MB file each time the player walked into a new area (1.0.304 playtest:
-        /// hitches on every map, the Undead Settlement close to unplayable). A binary file is the size of DS3's.
-        /// </summary>
-        public bool BinaryCollision { get; set; } = true;
-        public bool KeepSimdTree { get; set; }
-        /// <summary>
-        /// A collision part whose DS3 file is an empty placeholder in one binder and real in the other: the empty side gets
-        /// the other's collision (default), stays empty (--empty-collision-alone, fallback "map-empty-collision" B) or the
-        /// part is left out (--drop-empty-collisions, C, as up to 1.0.460). See <see cref="MapCollisions.EmptySideMethod"/>.
-        /// </summary>
-        public MapCollisions.EmptySideMethod EmptyCollision { get; set; } = MapCollisions.EmptySideMethod.Copy;
 
         /// <summary>
         /// --after-pid: the port-weapons process started alongside this one. The events step edits the regulation.bin
@@ -154,32 +31,10 @@ public static class MapPorter
         /// </summary>
         public int AfterPid { get; set; }
 
-        /// <summary>--enemies auto|standin|none (launcher Fallbacks "map-enemies"): who stands where DS3's enemies stood.</summary>
-        public EnemyPort.Method Enemies { get; set; } = EnemyPort.Method.Auto;
-
-        /// <summary>--objects full|nocollision|none (launcher Fallbacks "map-objects"): DS3's objects as Elden Ring assets (<see cref="ObjectPort"/>).</summary>
-        public ObjectPort.Method Objects { get; set; } = ObjectPort.Method.Full;
-        /// <summary>--moving-objects full|nocollision|off (launcher Fallbacks "map-doors"): doors, lifts and levers that move (<see cref="ObjectPort.MovingMethod"/>).</summary>
-        public ObjectPort.MovingMethod MovingObjects { get; set; } = ObjectPort.MovingMethod.Full;
-
-        /// <summary>--all-layers (launcher Fallbacks "map-layers" B): every DS3 map state's enemies and objects (m40's Untended Graves too).</summary>
-        public bool AllLayers { get; set; }
-        /// <summary>--no-people (launcher Fallbacks "map-people" C): DS3's people (NPCs, hostile humans) are left out, as before.</summary>
-        public bool NoPeople { get; set; }
-
         /// <summary>
-        /// --er-people (launcher Fallbacks "map-people" B): Elden Ring people stand in for DS3 people that have no
-        /// ported body (every c0000 human), in their own Elden Ring looks. Off by default: DS3 bodies, and DS3 humans in their DS3 armour (PeopleArmour).
-        /// </summary>
-        public bool ErPeople { get; set; }
-        /// <summary>--no-regions (launcher Fallbacks "map-regions" B): no DS3 regions, patrol routes or generators (<see cref="RegionPort"/>).</summary>
-        public bool NoRegions { get; set; }
-
-        /// <summary>
-        /// --stop-after-maps (diagnostic, not a launcher fallback): the run ends once the maps, their textures and
-        /// their materials are written, before the steps that need port-weapons' regulation, and lists every file in
-        /// the mod folder with its SHA-256 in Work\reports\map-files.tsv. Two runs into two empty --root folders, one
-        /// with DARKSIGN_MAPS_AT_ONCE=1, show whether porting maps side by side writes the same files.
+        /// --stop-after-maps (diagnostic): the run ends once the maps, their textures and their materials are written,
+        /// before the steps that need port-weapons' regulation, and lists every file in the mod folder with its SHA-256
+        /// in Work\reports\map-files.tsv, to compare two runs into two empty --root folders.
         /// </summary>
         public bool StopAfterMaps { get; set; }
 
@@ -190,71 +45,9 @@ public static class MapPorter
             for (int i = 0; i < list.Count; i++)
                 switch (list[i].ToLowerInvariant())
                 {
-                    case "--ds3-groups": break;
-                    case "--all-visible": break;
-                    case "--ds3-culling": o.Ds3Culling = true; break;
-                    case "--no-lod": o.Lod = null; break;
-                    case "--far-lod": o.Lod = MapDrawParams.Lod.Far2; break;
-                    case "--no-groups": o.NoGroups = true; break;
-                    case "--plain-materials": o.PlainMaterials = true; break;
-                    case "--no-piece-test": o.NoPieceTest = true; break;
                     case "--piece-test" when i + 1 < list.Count && list[i + 1].Split('=') is [var map, var test]:
                         o.PieceTests[MapId.Parse(map).ToString()] = ParsePieceTest(test); i++; break;
-                    case "--vanilla-draw-param": o.VanillaDrawParam = true; break;
-                    case "--host-lighting": o.HostLighting = true; break;
-                    case "--host-sky": o.HostSky = true; break;
-                    case "--helper-pieces": o.HelperPieces = true; break;
-                    case "--ds3-hit-filters": o.Ds3HitFilters = true; break;
-                    case "--stand-ins": o.StandIns = true; break;
-                    case "--solid-overlays": o.SolidOverlays = true; break;
-                    case "--first-blend-layer": o.FirstBlendLayer = true; break;
-                    case "--first-sky-layer": o.FirstSkyLayer = true; break;
-                    case "--whole-blend-triangles": o.WholeBlendTriangles = true; break;
-                    case "--raw-half-normals": o.RawHalfNormals = true; break;
-                    case "--cut-faded-overlays": o.CutFadedOverlays = true; o.FadeOverlays = true; break;
-                    case "--fade-overlays": o.FadeOverlays = true; break;
                     case "--tint-materials": o.TintMaterials = true; break;
-                    case "--host-atmosphere": o.HostAtmosphere = true; break;
-                    case "--host-env-light": o.HostEnvLight = true; break;
-                    case "--flat-env-light": o.BakedLight = o.BakedLight with { Flat = true }; break;
-                    case "--colosseum-sky-light": o.BakedLight = o.BakedLight with { ColosseumSky = true }; break;
-                    case "--brighter-sky-light": o.BakedLight = o.BakedLight with { Level = 1.6f }; break;
-                    case "--darker-sky-light": o.BakedLight = o.BakedLight with { Level = 0.6f }; break;
-                    case "--baked-light-level" when i + 1 < list.Count:
-                        // A level that isn't a positive number is skipped (the map keeps DS3's balance).
-                        if (float.TryParse(list[++i], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var level) && level > 0)
-                            o.BakedLight = o.BakedLight with { Level = level };
-                        break;
-                    case "--no-light-areas": o.BakedLight = o.BakedLight with { NoAreas = true }; break;
-                    case "--no-light-offset": o.NoLightOffset = true; o.UnturnedSun = true; o.BakedLight = o.BakedLight with { NoOffset = true }; break;
-                    case "--unturned-sun": o.UnturnedSun = true; break;
-                    case "--host-fill-lights": o.HostFillLights = true; break;
-                    case "--one-light-set": o.OneLightSet = true; break;
-                    case "--ds3-lamp-strength": o.Ds3LampStrength = true; break;
-                    case "--no-flame-lights": o.NoFlameLights = true; break;
-                    case "--no-new-light-file": o.NoNewLightFile = true; break;
-                    case "--guess-probe-axes": o.BakedLight = o.BakedLight with { GuessAxes = true }; break;
-                    case "--baked-light-flip" when i + 1 < list.Count:
-                        var axes = list[++i].ToLowerInvariant();
-                        o.BakedLight = o.BakedLight with { FlipX = axes.Contains('x'), FlipY = axes.Contains('y'), FlipZ = axes.Contains('z') };
-                        break;
-                    case "--half-textures": o.TextureDetail = MapTextures.Detail.Half; break;
-                    case "--full-low-textures": o.TextureDetail = MapTextures.Detail.FullLow; break;
-                    case "--host-navmesh-list": o.HostNavmeshList = true; break;
-                    case "--navmesh-flags" when i + 1 < list.Count: o.Ds3NavmeshFlags = list[i + 1].Equals("ds3", StringComparison.OrdinalIgnoreCase); i++; break;
-                    // Accepted from older launcher profiles: binary is the default now.
-                    case "--binary-collision": o.BinaryCollision = true; break;
-                    case "--xml-collision": o.BinaryCollision = false; break;
-                    case "--simd": o.KeepSimdTree = true; break;
-                    case "--empty-collision-alone": o.EmptyCollision = MapCollisions.EmptySideMethod.Alone; break;
-                    case "--drop-empty-collisions": o.EmptyCollision = MapCollisions.EmptySideMethod.Drop; break;
-                    case "--enemies" when i + 1 < list.Count: o.Enemies = EnemyPort.ParseMethod(list[i + 1]); i++; break;
-                    case "--objects" when i + 1 < list.Count: o.Objects = ObjectPort.ParseMethod(list[i + 1]); i++; break;
-                    case "--moving-objects" when i + 1 < list.Count: o.MovingObjects = ObjectPort.ParseMoving(list[i + 1]); i++; break;
-                    case "--no-regions": o.NoRegions = true; break;
-                    case "--no-people": o.NoPeople = true; break;
-                    case "--er-people": o.ErPeople = true; break;
-                    case "--all-layers": o.AllLayers = true; break;
                     case "--stop-after-maps": o.StopAfterMaps = true; break;
                     case "--after-pid" when i + 1 < list.Count && int.TryParse(list[i + 1], out var pid): o.AfterPid = pid; i++; break;
                     default: o.Only.Add(MapId.Parse(list[i]).ToString()); break;
@@ -269,19 +62,7 @@ public static class MapPorter
     /// count, size in metres, albedo texture). Sorted so the largest odd pieces (unlit, left out, few vertices)
     /// are easy to find with a filter.
     /// </summary>
-    private static MapModelPort WithAlpha(MapModelPort port, Options options)
-    {
-        port.Ds3Alpha = !options.SolidOverlays;
-        port.TerrainLayers = !options.FirstBlendLayer;
-        port.SkyLayers = !options.FirstSkyLayer;
-        port.LayerContours = !options.WholeBlendTriangles;
-        port.HalfNormals = !options.RawHalfNormals;
-        port.CutFadedOverlays = options.CutFadedOverlays;
-        port.FadeOverlays = options.FadeOverlays;
-        return port;
-    }
-
-    public static string PieceReport(MSB3 ds3, MapModelPort models, IReadOnlySet<string> missingModels, bool helperPieces,
+    public static string PieceReport(MSB3 ds3, MapModelPort models, IReadOnlySet<string> missingModels,
         IReadOnlySet<string>? standIns = null, IReadOnlySet<string>? farViews = null)
     {
         var inv = System.Globalization.CultureInfo.InvariantCulture;
@@ -293,7 +74,7 @@ public static class MapPorter
         {
             var number = ModelNumber(p.ModelName);
             models.ModelMeshes.TryGetValue(number, out var meshes);
-            var status = !helperPieces && MsbPort.HelperKind(p, layerOk) is { } helper ? "left out: " + helper
+            var status = MsbPort.HelperKind(p, layerOk) is { } helper ? "left out: " + helper
                 : missingModels.Contains(p.ModelName) ? "left out: no mesh the port can draw"
                 : farViews?.Contains(p.Name) == true ? "left out: far view (DS3 draws it only where the detail it covers is hidden)"
                 : standIns?.Contains(p.Name) == true ? "left out: low detail stand-in"
@@ -421,7 +202,7 @@ public static class MapPorter
         // one-at-a-time run writes). Each map has its own part of the report, joined in this order afterwards.
         foreach (var slot in order)
             if (!textures.ContainsKey(slot.Er.AreaFolder))
-                textures[slot.Er.AreaFolder] = new MapTextures(slot.Er, options.TextureDetail);
+                textures[slot.Er.AreaFolder] = new MapTextures(slot.Er);
         var turns = new MapTurns(order.Count);
         var mapReports = order.Select(_ => new StringBuilder()).ToArray();
         var starts = new int[order.Count];
@@ -462,15 +243,17 @@ public static class MapPorter
         if (order.Count > 0)
         {
             report.AppendLine(atOnce > 1
-                ? $"maps: {order.Count} ported, up to {atOnce} side by side (DARKSIGN_MAPS_AT_ONCE=1, fallback build-threads D, ports one at a time)"
+                ? $"maps: {order.Count} ported, up to {atOnce} side by side"
                 : $"maps: {order.Count} ported, one at a time");
             Time(report, "all maps", mapsClock);
         }
-        if (_standInWorld.Count > 1 && Environment.GetEnvironmentVariable("DARKSIGN_WORLD_STAND_INS") is not "0")
-            Step(report, "world stand-ins", () => WorldStandIns(ctx, ds3, !options.Ds3Culling && !options.NoGroups));
+        if (_standInWorld.Count > 1)
+            Step(report, "world stand-ins", () => WorldDoorways(ctx, ds3));
         // The objects' materials and textures: shared by every map, so they are added once, to every area's binder.
         if (_objects is not null && ported.Count > 0)
         {
+            // Objects and map pieces only DS3's cutscenes use, before the materials and the table the cutscenes read.
+            Step(report, "cutscene models", _objects.ConvertCutsceneModels);
             materials.AddRange(_objects.Models.MatbinFiles(0));
             foreach (var areaTextures in textures.Values)
                 _objects.GiveTextures(areaTextures, ported[0].Slot.Ds3);
@@ -498,10 +281,10 @@ public static class MapPorter
         WaitForWeapons(options.AfterPid);
         // The PartsDrawParam row the map pieces name goes into the regulation port-weapons wrote. If it can't be
         // added, the pieces are pointed at a vanilla row, so they never name a row that doesn't exist.
-        if (ported.Count > 0 && !options.VanillaDrawParam)
+        if (ported.Count > 0)
             Step(report, "map piece draw settings", () =>
             {
-                var (row, note) = MapDrawParams.Write(ctx, options.TextureDetail == MapTextures.Detail.FullLow, options.Lod);
+                var (row, note) = MapDrawParams.Write(ctx);
                 if (row != MapDrawParams.FirstRow)
                     foreach (var p in ported)
                         Repoint(ctx, p.Slot.Er, row);
@@ -527,10 +310,21 @@ public static class MapPorter
             }
             Time(report, "object params", objectClock);
         }
+        // The floor materials of our own the converted collisions name (HitMaterials).
+        if (ported.Count > 0)
+        {
+            Step(report, "hit materials", () =>
+            {
+                var regulation = ActionButtons.LoadRegulation(ctx);
+                var line = HitMaterials.AddRows(regulation.Get("HitMtrlParam") ?? throw new InvalidDataException("Elden Ring has no HitMtrlParam"));
+                regulation.Save(ctx.ModPath("regulation.bin"));
+                return line;
+            });
+        }
         // DS3's map effects (Firelink's candles, fog, light shafts), converted by port-weapons into the common binder.
         if (ported.Count > 0)
         {
-            Step(report, "map effects", () => MapSfx.Apply(ctx, ds3, ported.Select(p => p.Slot), options.AllLayers));
+            Step(report, "map effects", () => MapSfx.Apply(ctx, ds3, ported.Select(p => p.Slot)));
             // The effects DS3's objects carry (candle flames), on the asset rows written above.
             if (_objects is not null)
                 Step(report, "object effects", () => ObjectSfx.Apply(ctx, ds3, ported.Select(p => p.Slot), MapSfx.ReadTable(ctx),
@@ -538,7 +332,7 @@ public static class MapPorter
             // Lamps at the flames those objects burn with: DS3 baked their light, Elden Ring lights them with lamps.
             if (_objects is not null)
                 Step(report, "flame lights", () => FlameLights.Apply(ctx, ds3, ported.Select(p => p.Slot),
-                    id => _partNames.GetValueOrDefault(id), options.NoFlameLights, options.NoNewLightFile));
+                    id => _partNames.GetValueOrDefault(id)));
         }
         if (enemyPort is not null)
         {
@@ -551,6 +345,19 @@ public static class MapPorter
                 catch (Exception ex) when (ex is not OutOfMemoryException)
                 {
                     report.AppendLine($"enemy params: script SpEffects not read ({ex.Message}); scripts keep DS3 IDs where no move casts them");
+                }
+            // The lots the maps' scripts award get ItemLotParam_map rows with the drops (Ds3Ids, DropPort.PortScriptLots).
+            if (ported.Count > 0)
+                try
+                {
+                    var lots = MapEvents.ScriptIds(ctx, ds3, ported.Select(p => p.Slot).ToList(), EventPort.Kind.ItemLot);
+                    lots.UnionWith(MapTreasure.Lots(ds3, ported.Select(p => p.Slot)));
+                    enemyPort.ScriptLots = lots;
+                    enemyPort.ScriptBehaviors = MapEvents.ScriptIds(ctx, ds3, ported.Select(p => p.Slot).ToList(), EventPort.Kind.Behavior);
+                }
+                catch (Exception ex) when (ex is not OutOfMemoryException)
+                {
+                    report.AppendLine($"enemy params: script item lots and behaviours not read ({ex.Message}); the scripts keep DS3's numbers");
                 }
             Step(report, "enemy params", () => ChrPort.ApplyParams(ctx, er, enemyPort));
         }
@@ -577,23 +384,34 @@ public static class MapPorter
             });
         // DS3's music (MapMusic): which regions and script lines play each map's tracks, then the events, then the tracks.
         MapMusic.Plan? music = null;
-        if (ported.Count > 0 && MapMusic.Enabled)
+        if (ported.Count > 0)
             Step(report, "music plan", () =>
             {
                 music = MusicPlan(ctx, ds3, ported.Select(p => p.Slot).ToList());
                 return music.Summary;
             });
-        else if (!MapMusic.Enabled)
-            report.AppendLine("music: off (DARKSIGN_MAP_MUSIC=0, fallback map-music B)");
         Dictionary<int, SortedSet<uint>> playedFlags = [];
         if (ported.Count > 0)
+            Step(report, "event IDs", () =>
+            {
+                // What the scripts' item lots, AI rows and items become (Ds3Ids), from the steps above.
+                var lines = new List<string>();
+                var regulation = ActionButtons.LoadRegulation(ctx);
+                ParamStore? ds3Params = null;
+                try { ds3Params = ctx.LoadParams(PorterGame.DarkSouls3); } catch (Exception ex) when (ex is not OutOfMemoryException) { lines.Add($"  DS3 params unreadable ({ex.Message})"); }
+                var ids = Ds3Ids.Load(ctx, TalkItems(ctx, ds3, er, regulation, ds3Params, lines));
+                lines.Insert(0, $"event IDs: {ids.Lots} ported item lots, {ids.Behaviors} behaviour rows, AI rows from the enemy port, items by the drops' rule");
+                return string.Join(Environment.NewLine, lines);
+            });
+            Step(report, "map treasure", () => MapTreasure.Apply(ctx, ds3, ported.Select(p => p.Slot),
+                id => _partNames.GetValueOrDefault(id), lot => Ds3Ids.Current?.ItemLot(lot)));
             Step(report, "events", () => MapEvents.Port(ctx, ds3, er, ported.Select(p => p.Slot).ToList(), cutscenes, f => playedFlags = f, music));
         if (music is not null)
             Step(report, "music", () => MapMusic.WriteAudio(ctx, ds3, music));
         // DS3's bonfires as sites of grace (Bonfires): after the events, whose scripts register them.
         if (ported.Count > 0)
             Step(report, "bonfires", () => Bonfires.Apply(ctx, ds3, er, ported.Select(p => p.Slot).ToList(),
-                id => _partNames.GetValueOrDefault(id), options.AllLayers));
+                id => _partNames.GetValueOrDefault(id)));
 
         // A slot under a registered ID that ships no map (map-slots B) gets what the game's own maps have: the
         // template's per-map files under the new ID, and a flag allocation line where the template has one. The map
@@ -603,7 +421,7 @@ public static class MapPorter
         if (ported.Count > 0)
             Step(report, "map registry", () => MapRegistry.Write(ctx, er, ported.Select(p => p.Slot).ToList()));
         // DS3's neighbouring maps share one world space; the rows tell Elden Ring so (MapLinks).
-        if (ported.Count > 1 && MapLinks.Enabled)
+        if (ported.Count > 1)
             Step(report, "map links", () => MapLinks.Write(ctx, ds3, ported.Select(p => p.Slot).ToList()));
         if (ported.Any(p => p.Slot.Host != p.Slot.Er))
         {
@@ -735,7 +553,7 @@ public static class MapPorter
             }
         }
 
-        var every = MapSlots.PaintedWorldSlots(null).Concat(MapSlots.WorldSlots()).Concat(MapSlots.NewIdSlots()).Concat(MapSlots.LegacyNewIdSlots()).ToList();
+        var every = MapSlots.PaintedWorldSlots().Concat(MapSlots.WorldSlots()).Concat(MapSlots.NewIdSlots()).Concat(MapSlots.LegacyNewIdSlots()).ToList();
         var ids = every.Select(s => s.Er).Distinct().ToList();
         foreach (var id in ids)
         {
@@ -801,7 +619,7 @@ public static class MapPorter
             if (materials.Count > 0)
                 DarkSign.Porter.Enemies.ChrMaterial.Write(ctx, er, materials);
             var regulation = ActionButtons.LoadRegulation(ctx);
-            lines.Add(armour.WriteParams(regulation, PeopleArmour.WeaponsEnabled ? PeopleWeapons(ctx, regulation, lines) : null));
+            lines.Add(armour.WriteParams(regulation, PeopleWeapons(ctx, regulation, lines)));
             regulation.Save(ctx.ModPath("regulation.bin"));
         }
         catch (Exception ex) when (ex is not OutOfMemoryException)
@@ -834,8 +652,6 @@ public static class MapPorter
     /// <summary>Gives each ported map its template's field music and ambience area in MapDefaultInfoParam.</summary>
     private static string PortSoundPlaces(PorterContext ctx, List<MapSlots.Slot> slots)
     {
-        if (!MapSoundPlace.Enabled)
-            return "map music areas: off (DARKSIGN_MAP_SOUND_PLACE=0, fallback map-music E); a map with no MapDefaultInfoParam row of its own plays Elden Ring's row-0 field music (Limgrave's)";
         var regulation = ActionButtons.LoadRegulation(ctx);
         var param = regulation.Get(MapSoundPlace.ParamName) ?? throw new InvalidDataException($"Elden Ring has no {MapSoundPlace.ParamName}");
         var line = MapSoundPlace.Apply(param, slots);
@@ -1028,13 +844,7 @@ public static class MapPorter
 
         var slots = MapSlots.All.Where(s => !s.Probe && (options.Only.Count == 0 || options.Only.Contains(s.Ds3.ToString())))
             .Select(s => (s.Ds3, s.Er)).ToList();
-        var layout = MsbPort.Convert(ds3Msb, host, ds3Id, erId, new MsbPort.Options
-            {
-                Ds3Culling = options.Ds3Culling, NoGroups = options.NoGroups, HelperPieces = options.HelperPieces,
-                Ds3HitFilters = options.Ds3HitFilters,
-                DrawParamId = options.VanillaDrawParam ? MapDrawParams.VanillaRow : MapDrawParams.FirstRow,
-            },
-            slots, ConnectTemplate(er));
+        var layout = MsbPort.Convert(ds3Msb, host, ds3Id, erId, slots, ConnectTemplate(er));
         report.AppendLine($"{ds3Id} -> {erId}: {layout.MapPieces} map pieces, {layout.Collisions} collisions, {layout.Players} player points");
         foreach (var note in layout.Notes)
             report.AppendLine($"  note: {note}");
@@ -1042,7 +852,6 @@ public static class MapPorter
         // DS3 part name -> ported part name, for the regions and map-file events that name parts.
         var partNames = new Dictionary<string, string>(StringComparer.Ordinal);
         // Enemies and bosses where DS3 had them. A failure here leaves the map empty of enemies, not broken.
-        if (options.Enemies != EnemyPort.Method.None)
         {
             try
             {
@@ -1050,12 +859,12 @@ public static class MapPorter
                 var scripts = Ds3Scripts(ds3, ds3Id).ToList();
                 var bosses = EnemyPort.BossEncounter(ds3Msb, EnemyPort.BossEntities(scripts, ds3Layout: true));
                 var seats = EnemyPort.Seats(ds3Msb, EnemyPort.EventWarps(scripts));
-                var placed = EnemyPort.Place(ds3Msb, layout.Msb, ds3Id, erId, new MsbPort.Options { Ds3Culling = options.Ds3Culling, NoGroups = options.NoGroups, AllLayers = options.AllLayers },
+                var placed = EnemyPort.Place(ds3Msb, layout.Msb, ds3Id, erId,
                     enemies.Chooser, e => enemies.Describe(e, bosses), EnemyPort.AnyEnemyPart(enemies.Catalog), _placedEnemies, partNames,
-                    enemies.People, seats, placePeople: !options.NoPeople, armour: options.ErPeople ? null : _armour, erStandIns: options.ErPeople, talk: _talk, quiet: _quiet);
+                    enemies.People, seats, armour: _armour, talk: _talk, quiet: _quiet);
                 enemiesPlaced = placed;
                 report.AppendLine($"  enemies: {placed.Placed} placed ({placed.Ported} ported DS3 characters, {placed.StandIns} Elden Ring stand-ins, "
-                                  + $"{placed.People} people{(options.NoPeople ? ", people off (--no-people)" : options.ErPeople ? ", Elden Ring people stand in (--er-people)" : _armour is null ? ", DS3's own people only" : ", DS3's own people and DS3 humans in their DS3 armour")}), {placed.Npcs} people left out, {placed.Skipped} with nothing to stand in; {bosses.Count} DS3 boss entities");
+                                  + $"{placed.People} people{(_armour is null ? ", DS3's own people only" : ", DS3's own people and DS3 humans in their DS3 armour")}), {placed.Npcs} people left out, {placed.Skipped} with nothing to stand in; {bosses.Count} DS3 boss entities");
                 foreach (var note in placed.Notes)
                     report.AppendLine($"  enemies: {note}");
             }
@@ -1069,7 +878,7 @@ public static class MapPorter
         }
 
         // Models. The material templates and binder layout come from vanilla map pieces (see MaterialTemplates).
-        var (models, hostBnd, bndCompression, binderMap) = MaterialTemplates(er, hostId, host, options.PlainMaterials);
+        var (models, hostBnd, bndCompression, binderMap) = MaterialTemplates(er, hostId, host);
         // A test slot (see PieceTest) swaps the models' materials, or the models themselves, for the host's own.
         var test = PieceTestFor(slot, options);
         if (test == PieceTest.VanillaMaterial)
@@ -1087,15 +896,7 @@ public static class MapPorter
         }
         if (test == PieceTest.PortedMaterial)
             models = models.WithTemplateTextures();
-        models.UnlitCastShadows = options.HostLighting;
-        models.Ds3Alpha = !options.SolidOverlays;
-        models.TerrainLayers = !options.FirstBlendLayer;
-        models.SkyLayers = !options.FirstSkyLayer;
-        models.LayerContours = !options.WholeBlendTriangles;
-        models.HalfNormals = !options.RawHalfNormals;
         models.TintMaterials = options.TintMaterials;
-        models.CutFadedOverlays = options.CutFadedOverlays;
-        models.FadeOverlays = options.FadeOverlays;
         if (test != PieceTest.None)
             report.AppendLine(test switch
             {
@@ -1113,26 +914,6 @@ public static class MapPorter
         turns.Give(MapTurns.Prepare, turn);
         report.AppendLine($"  time: layout, enemies and material templates {stepClock.Elapsed.TotalSeconds:F0} s"
                           + (waited >= 1 ? $" (after waiting {waited:F0} s for the maps before it)" : ""));
-
-        // Where faded overlay triangles have a surface behind them, over the whole map (see MapOverlayBacking). Each
-        // model's faded triangles are collected as it is first read; a model that has any is converted only after
-        // every model's surfaces have been checked against them. A failure leaves each model tested against its own
-        // surfaces.
-        MapOverlayBacking? backing = null;
-        if (models.Ds3Alpha && models.FadeOverlays && !options.CutFadedOverlays && test == PieceTest.None
-            && !(main.Er != erId && main.Er != default))
-        {
-            try
-            {
-                backing = new MapOverlayBacking(OverlayPlacements(ds3Msb, options));
-            }
-            catch (Exception ex) when (ex is not OutOfMemoryException)
-            {
-                report.AppendLine($"  overlay backing: FAILED ({ex.Message}); each model is tested against its own surfaces");
-            }
-        }
-        var deferred = new System.Collections.Concurrent.ConcurrentBag<int>();
-        bool collectFailed = false;
 
         // Every map piece binder converts in parallel (thousands per map). A probe slot copies what its main slot
         // already converted from the same DS3 map, renamed to its own map ID, instead of converting it again.
@@ -1164,26 +945,7 @@ public static class MapPorter
                 if (!ds3.Contains(source))
                     throw new FileNotFoundException(source);
                 var ds3Bnd = BND4.Read(ds3.Read(source));
-                List<FLVER2>? flvers = null;
-                if (backing is not null && !Volatile.Read(ref collectFailed))
-                {
-                    flvers = ds3Bnd.Files.Where(f => FLVER2.Is(f.Bytes)).Select(f => FLVER2.Read(f.Bytes)).ToList();
-                    try
-                    {
-                        if (backing.Collect(number, flvers))
-                        {
-                            deferred.Add(i);
-                            return;
-                        }
-                    }
-                    catch (Exception ex) when (ex is not OutOfMemoryException)
-                    {
-                        Volatile.Write(ref collectFailed, true);
-                        lock (report)
-                            report.AppendLine($"  overlay backing: FAILED collecting {number} ({ex.Message}); each model is tested against its own surfaces");
-                    }
-                }
-                var binder = models.ConvertBinder(ds3Bnd, hostBnd, ds3Id, erId, number, binderMap, flvers);
+                var binder = models.ConvertBinder(ds3Bnd, hostBnd, ds3Id, erId, number, binderMap);
                 File.WriteAllBytes(target, DCX.Compress(binder.Write(), bndCompression));
             }
             catch (Exception ex)
@@ -1191,45 +953,6 @@ public static class MapPorter
                 failures[i] = ex.Message;
             }
         });
-        if (!deferred.IsEmpty)
-        {
-            // Pass 2 over the whole map: every placed model's surfaces against the collected faded triangles. Then the
-            // models with faded triangles convert, cutting only the ones with a surface behind them.
-            var backingClock = System.Diagnostics.Stopwatch.StartNew();
-            if (!collectFailed)
-            {
-                try
-                {
-                    backing!.Seal();
-                    Parallel.ForEach(backing.Models, Parallelism.Options, number =>
-                    {
-                        var source = Ds3MapBndPath(ds3Id, number);
-                        if (ds3.Contains(source))
-                            backing.File(number, BND4.Read(ds3.Read(source)).Files.Where(f => FLVER2.Is(f.Bytes)).Select(f => FLVER2.Read(f.Bytes)));
-                    });
-                    models.OverlayBacking = backing;
-                    report.AppendLine($"  {backing.Summary} ({backingClock.Elapsed.TotalSeconds:F0} s)");
-                }
-                catch (Exception ex) when (ex is not OutOfMemoryException)
-                {
-                    report.AppendLine($"  overlay backing: FAILED ({ex.Message}); each model is tested against its own surfaces");
-                }
-            }
-            Parallel.ForEach(deferred, Parallelism.Options, i =>
-            {
-                var number = ModelNumber(mapPieces[i].Name);
-                try
-                {
-                    var binder = models.ConvertBinder(BND4.Read(ds3.Read(Ds3MapBndPath(ds3Id, number))), hostBnd, ds3Id, erId, number, binderMap);
-                    File.WriteAllBytes(ctx.ModPath(ModParts(ErMapBndPath(erId, number))), DCX.Compress(binder.Write(), bndCompression));
-                }
-                catch (Exception ex)
-                {
-                    failures[i] = ex.Message;
-                }
-            });
-            models.OverlayBacking = null;
-        }
         var missingModels = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         for (int i = 0; i < mapPieces.Count; i++)
             if (failures[i] is { } failure)
@@ -1249,31 +972,7 @@ public static class MapPorter
         // DS3's low-detail stand-ins, judged now that every model's meshes are known. A failure keeps them all.
         var standIns = new HashSet<string>(StringComparer.Ordinal);
         var farViews = new HashSet<string>(StringComparer.Ordinal);
-        bool culled = options.Ds3Culling && !options.NoGroups;
-        if (culled && copied == 0 && test == PieceTest.None)
-        {
-            // How much less the game draws with DS3's culling, weighted by vertices (RULE 4: the port log says it).
-            try
-            {
-                bool layerOk = MsbPort.BaseLayerMeans(ds3Msb);
-                var drawn = ds3Msb.Parts.MapPieces
-                    .Where(p => !missingModels.Contains(p.ModelName) && (options.HelperPieces || MsbPort.HelperKind(p, layerOk) is null)).ToList();
-                long Vertices(string model) => models.ModelMeshes.TryGetValue(model, out var meshes) ? meshes.Sum(m => (long)m.Vertices) : 0;
-                report.AppendLine("  " + MapDrawGroups.Summary(ds3Msb, drawn, Vertices));
-            }
-            catch (Exception ex) when (ex is not OutOfMemoryException)
-            {
-                report.AppendLine($"  draw groups: could not measure ({ex.Message})");
-            }
-        }
-        if (options.StandIns)
-            report.AppendLine("  low-detail stand-ins and far views: kept (--stand-ins)");
-        else if (culled)
-            // DS3 draws a stand-in only from where the detail it stands for is culled. With DS3's culling the game does the
-            // same, so leaving it out (needed while everything was drawn from everywhere, PRs #143 and #161) would leave a
-            // hole in the distance wherever the detail is hidden.
-            report.AppendLine("  low-detail stand-ins and far views: kept (DS3's draw groups show each only where DS3 does)");
-        else if (copied > 0 || test != PieceTest.None)
+        if (copied > 0 || test != PieceTest.None)
             report.AppendLine("  low-detail stand-ins: not judged in a copied or test map");
         else
         {
@@ -1281,7 +980,7 @@ public static class MapPorter
             {
                 bool layerOk = MsbPort.BaseLayerMeans(ds3Msb);
                 var skip = ds3Msb.Parts.MapPieces
-                    .Where(p => missingModels.Contains(p.ModelName) || (!options.HelperPieces && MsbPort.HelperKind(p, layerOk) is not null))
+                    .Where(p => missingModels.Contains(p.ModelName) || MsbPort.HelperKind(p, layerOk) is not null)
                     .Select(p => p.Name).ToHashSet(StringComparer.Ordinal);
                 var judged = MapStandIns.Find(ds3Msb, models.ModelMeshes, skip);
                 _standInWorld[ds3Id] = (erId, judged, ds3Msb.Parts.ConnectCollisions.Select(c => c.MapID.ToArray()).ToList(), ds3Msb);
@@ -1300,7 +999,7 @@ public static class MapPorter
         {
             var piecesReport = ctx.WorkPath("reports", $"map-pieces-{erId}.tsv");
             Directory.CreateDirectory(Path.GetDirectoryName(piecesReport)!);
-            File.WriteAllText(piecesReport, PieceReport(ds3Msb, models, missingModels, options.HelperPieces, standIns, farViews));
+            File.WriteAllText(piecesReport, PieceReport(ds3Msb, models, missingModels, standIns, farViews));
             report.AppendLine($"  piece report: Work\\reports\\{Path.GetFileName(piecesReport)} (every DS3 map piece: where it is, how big, its materials, and why it was left out)");
         }
         catch (Exception ex)
@@ -1308,7 +1007,6 @@ public static class MapPorter
             report.AppendLine($"  piece report: FAILED: {ex.Message}");
         }
         // Large pieces load their full textures from further out (MapDrawParams.TextureBySize).
-        if (!options.VanillaDrawParam)
         {
             try
             {
@@ -1341,21 +1039,19 @@ public static class MapPorter
         materials.AddRange(models.MatbinFiles(0));
         foreach (var note in models.Notes.Skip(notesSoFar).Distinct().Take(5))
             report.AppendLine($"  note: {note}");
-        if (!options.HostLighting)
-            report.AppendLine($"  sunlight: {models.Materials.Count(m => m.Template.Kind is "nolight" or "nolight-blend" or "nolight-edge")} unlit materials (sky domes and the layers around them) cast no shadow");
+        report.AppendLine($"  sunlight: {models.Materials.Count(m => m.Template.Kind is "nolight" or "nolight-blend" or "nolight-edge")} unlit materials (sky domes and the layers around them) cast no shadow");
         if (test != PieceTest.VanillaModel && copied == 0)
         {
             report.AppendLine($"  load: {models.LoadSummary}");
-            report.AppendLine($"  {models.Lods.Summary(options.VanillaDrawParam ? null : options.Lod)}");
+            report.AppendLine($"  {models.Lods.Summary(MapDrawParams.Lod.Vanilla)}");
         }
         if (copied == 0)
         {
-            report.AppendLine("  " + (options.SolidOverlays ? "vertex alpha: every vertex solid, two-layer materials show their first layer (--solid-overlays)" : models.Overlays.Summary));
-            report.AppendLine("  " + (options.FirstBlendLayer ? "terrain blends: every mesh shows its first layer (--first-blend-layer)" : models.Blends.Summary));
-            report.AppendLine("  " + (options.FirstSkyLayer ? "sky domes: every mesh shows its first layer (--first-sky-layer)" : models.Skies.Summary));
-            report.AppendLine("  " + (MapModelPort.UnlitBlendEnabled ? models.UnlitBlends.Summary
-                : "see-through sky layers: left out (DARKSIGN_SKY_CLOUDS=0)"));
-            report.AppendLine("  " + (options.RawHalfNormals ? "half-float normals: kept as SoulsFormats reads them (--raw-half-normals)" : models.HalfNormalStats.Summary));
+            report.AppendLine("  " + models.Overlays.Summary);
+            report.AppendLine("  " + models.Blends.Summary);
+            report.AppendLine("  " + models.Skies.Summary);
+            report.AppendLine("  " + models.UnlitBlends.Summary);
+            report.AppendLine("  " + models.HalfNormalStats.Summary);
         }
         if (copied > 0)
             textures.Need(main.Textures, ds3Id);
@@ -1374,13 +1070,13 @@ public static class MapPorter
         var collisionResults = new Dictionary<string, MapCollisions.Result>();
         foreach (var kind in new[] { "h", "l" })
         {
-            var result = MapCollisions.Port(ctx, ds3, er, ds3Id, erId, kind, options, hostId);
+            var result = MapCollisions.Port(ctx, ds3, er, ds3Id, erId, kind, hostId);
             collisionResults[kind] = result;
             report.AppendLine($"  collision {kind}: {result.Summary}");
             collisionFilesEmpty += result.Empty?.Count ?? 0;
             collisionFilesFailed += result.Failed;
         }
-        foreach (var (name, isEmpty) in CollisionModelsLeftOut(collisionModels, collisionResults, options.EmptyCollision))
+        foreach (var (name, isEmpty) in CollisionModelsLeftOut(collisionModels, collisionResults))
         {
             missingCollisions.Add(name);
             if (isEmpty)
@@ -1388,7 +1084,7 @@ public static class MapPorter
         }
         foreach (var name in missingCollisions)
             report.AppendLine($"  collision {name}: left out ({(emptyCollisions.Contains(name) ? "its DS3 file is empty: no collision to convert" : "no converted file")})");
-        foreach (var line in EmptySideNotes(ds3Msb, collisionResults, options.EmptyCollision))
+        foreach (var line in EmptySideNotes(ds3Msb, collisionResults))
             report.AppendLine("  " + line);
         report.AppendLine($"  time: collision {clock.Elapsed.TotalSeconds:F0} s");
         clock.Restart();
@@ -1396,7 +1092,7 @@ public static class MapPorter
         // Navmesh, so enemies placed in the map can find their way. A failure leaves them running straight at the player.
         try
         {
-            foreach (var line in MapNavmesh.Port(ctx, ds3, er, ds3Id, erId, options, hostId, ds3Msb))
+            foreach (var line in MapNavmesh.Port(ctx, ds3, er, ds3Id, erId, hostId, ds3Msb))
                 report.AppendLine("  " + line);
         }
         catch (Exception ex)
@@ -1409,17 +1105,14 @@ public static class MapPorter
         // checked by writing the layout and reading it back; one that fails is taken out again, so the map is never
         // worse off than without it.
         clock.Restart();
-        var groupOptions = new MsbPort.Options { Ds3Culling = options.Ds3Culling, NoGroups = options.NoGroups, AllLayers = options.AllLayers };
-        if (options.Objects == ObjectPort.Method.None)
-            report.AppendLine($"  objects: off (--objects none); {ds3Msb.Parts.Objects.Count} DS3 objects not placed");
-        else if (test != PieceTest.None)
+        if (test != PieceTest.None)
             report.AppendLine("  objects: not placed in a test map");
         else
         {
             try
             {
                 var objects = Objects(ctx, ds3, er, options, models, report);
-                var placed = objects.Place(ds3Msb, layout.Msb, ds3Id, erId, groupOptions);
+                var placed = objects.Place(ds3Msb, layout.Msb, ds3Id, erId);
                 MSBE.Read(layout.Msb.Write());
                 objectsPlaced = placed;
                 foreach (var (from, to) in placed.PartNames)
@@ -1437,9 +1130,6 @@ public static class MapPorter
             report.AppendLine($"  time: objects {clock.Elapsed.TotalSeconds:F0} s");
         }
         IReadOnlySet<int> warpPoints = new HashSet<int>();
-        if (options.NoRegions)
-            report.AppendLine("  regions: off (--no-regions)");
-        else
         {
             var playersBefore = layout.Msb.Parts.Players.Count;
             try
@@ -1469,23 +1159,18 @@ public static class MapPorter
 
         // DS3's room reverb per piece of ground as Elden Ring reverb regions (MapReverb): without them Elden Ring's
         // automatic reverb echoes everywhere in DS3's walled-in maps. A failure leaves the automatic reverb.
-        if (!MapReverb.Enabled)
-            report.AppendLine("  reverb: off (DARKSIGN_MAP_REVERB=0), Elden Ring's automatic reverb");
-        else
+        try
         {
-            try
-            {
-                var reverb = MapReverb.Port(ds3, ds3Msb, ds3Id, layout.Msb);
-                MSBE.Read(layout.Msb.Write());
-                report.AppendLine("  " + reverb.Summary);
-                foreach (var note in reverb.Notes)
-                    report.AppendLine($"  reverb: {note}");
-            }
-            catch (Exception ex) when (ex is not OutOfMemoryException)
-            {
-                MapReverb.Strip(layout.Msb);
-                report.AppendLine($"  reverb: FAILED ({ex.Message}); Elden Ring's automatic reverb");
-            }
+            var reverb = MapReverb.Port(ds3, ds3Msb, ds3Id, layout.Msb);
+            MSBE.Read(layout.Msb.Write());
+            report.AppendLine("  " + reverb.Summary);
+            foreach (var note in reverb.Notes)
+                report.AppendLine($"  reverb: {note}");
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            MapReverb.Strip(layout.Msb);
+            report.AppendLine($"  reverb: FAILED ({ex.Message}); Elden Ring's automatic reverb");
         }
 
         _partNames[erId] = new Dictionary<string, string>(partNames, StringComparer.Ordinal);
@@ -1525,7 +1210,6 @@ public static class MapPorter
         var usedModels = msb.Parts.MapPieces.Select(p => p.ModelName).ToHashSet(StringComparer.OrdinalIgnoreCase);
         msb.Models.MapPieces.RemoveAll(m => missingModels.Contains(m.Name) || (standIns.Count > 0 && !usedModels.Contains(m.Name)));
         // Pieces whose model carries DS3's lower detail lists switch to them by distance (MapDrawParams.LodRow).
-        if (options.Lod is not null && !options.VanillaDrawParam)
         {
             int switching = 0;
             lock (models.LodModels)
@@ -1534,7 +1218,7 @@ public static class MapPorter
                     piece.PartsDrawParamID += MapDrawParams.LodOffset;
                     switching++;
                 }
-            report.AppendLine($"  lower detail by distance: {switching} of {msb.Parts.MapPieces.Count} map pieces (their PartsDrawParam row + {MapDrawParams.LodOffset}: {options.Lod})");
+            report.AppendLine($"  lower detail by distance: {switching} of {msb.Parts.MapPieces.Count} map pieces (their PartsDrawParam row + {MapDrawParams.LodOffset}: {MapDrawParams.Lod.Vanilla})");
         }
         msb.Parts.Collisions.RemoveAll(p => missingCollisions.Contains(p.ModelName));
         msb.Parts.ConnectCollisions.RemoveAll(p => missingCollisions.Contains(p.ModelName)
@@ -1546,25 +1230,19 @@ public static class MapPorter
         // Light: ambient from the host's environment map, lamps from DS3's light file. A failure leaves the map
         // as dark as it was before, not broken.
         List<MapBakedLight.Volume> baked = [];
-        if (options.HostLighting)
-        {
-            report.AppendLine("  lighting: the host's own (--host-lighting): no ambient light region, no DS3 lamps");
-            MapBakedLight.WriteIvInfo(ctx, er, hostId, erId, (MapBakedLight.Volume?)null);
-        }
-        else
         {
             foreach (var (name, step) in new (string, Func<string>)[]
                      {
                          ("ambient light", () => MapLighting.AddAmbient(msb, host, ds3Msb)),
                          ("baked light", () =>
                          {
-                             var (volumes, line) = MapBakedLight.Build(ds3, er, ds3Id, hostId, msb, ds3Msb, options.HostEnvLight ? MapBakedLight.Options.Default with { Flat = true } : options.BakedLight);
+                             var (volumes, line) = MapBakedLight.Build(ds3, er, ds3Id, hostId, msb, ds3Msb);
                              baked = volumes;
                              return line;
                          }),
-                         ("environment light", () => MapEnvironment.Write(ctx, er, erId, hostId, options.HostEnvLight, baked)),
+                         ("environment light", () => MapEnvironment.Write(ctx, er, erId, hostId, baked)),
                          ("light volume info", () => MapBakedLight.WriteIvInfo(ctx, er, hostId, erId, baked)),
-                         ("lamps", () => MapLighting.PortLights(ctx, ds3, er, ds3Id, erId, hostId, ds3Msb, options.NoLightOffset, options.Ds3LampStrength, options.NoNewLightFile)),
+                         ("lamps", () => MapLighting.PortLights(ctx, ds3, er, ds3Id, erId, hostId, ds3Msb)),
                      })
             {
                 try
@@ -1580,7 +1258,7 @@ public static class MapPorter
         // Sky: the host's distant view (Elden Ring's sky and the Erdtree) is emptied. A failure leaves it as it was.
         try
         {
-            report.AppendLine("  " + MapDistantView.Write(ctx, er, erId, options.HostSky));
+            report.AppendLine("  " + MapDistantView.Write(ctx, er, erId));
         }
         catch (Exception ex)
         {
@@ -1590,8 +1268,7 @@ public static class MapPorter
         var lightSets = new HashSet<int>();
         try
         {
-            report.AppendLine("  " + MapAtmosphere.Write(ctx, ds3, er, ds3Id, erId, hostId, ds3Msb, options.HostAtmosphere, options.UnturnedSun, options.HostFillLights,
-                msb, lightSets, options.OneLightSet));
+            report.AppendLine("  " + MapAtmosphere.Write(ctx, ds3, er, ds3Id, erId, hostId, ds3Msb, msb, lightSets));
         }
         catch (Exception ex) when (ex is not OutOfMemoryException)
         {
@@ -1601,7 +1278,7 @@ public static class MapPorter
         }
         // Parts on a light set the slot's draw params lack go back to the default (all of them when the atmosphere
         // wasn't written: the host's file has none of DS3's sets).
-        report.AppendLine("  " + MapLightSets.Finish(msb, lightSets, options.OneLightSet));
+        report.AppendLine("  " + MapLightSets.Finish(msb, lightSets));
         File.WriteAllBytes(ctx.ModPath(ModParts(MsbPath(erId))), DCX.Compress(msb.Write(), msbCompression));
         report.AppendLine($"  time: lighting, sky, atmosphere and layout {stepClock.Elapsed.TotalSeconds:F0} s");
         report.AppendLine($"  written: {msb.Parts.MapPieces.Count} map pieces, {msb.Parts.Collisions.Count} collisions, {msb.Parts.Players.Count} player points, {msb.Parts.Enemies.Count} enemies, "
@@ -1614,7 +1291,6 @@ public static class MapPorter
                 {
                     PiecesDs3 = ds3Msb.Parts.MapPieces.Count, PiecesWritten = msb.Parts.MapPieces.Count, PiecesNoModel = piecesNoModel,
                     Models = mapPieces.Count, ModelsLeftOut = missingModels.Count, MeshesLeftOut = models.LeftOut.Values.Sum(),
-                    FadedCut = models.Overlays.OverlayTrianglesCut, FadedTotal = models.Overlays.OverlayTriangles,
                     CollisionsDs3 = ds3Msb.Parts.Collisions.Count, CollisionsWritten = msb.Parts.Collisions.Count,
                     CollisionFilesEmpty = collisionFilesEmpty, CollisionFilesFailed = collisionFilesFailed,
                     ObjectsDs3 = ds3Msb.Parts.Objects.Count, ObjectsPlaced = objectsPlaced?.Placed ?? 0,
@@ -1676,15 +1352,12 @@ public static class MapPorter
             PARAM? objectParam = null;
             try { objectParam = ctx.LoadParams(PorterGame.DarkSouls3).Get("ObjectParam"); }
             catch (Exception ex) when (ex is not OutOfMemoryException) { report.AppendLine($"  note: DS3 ObjectParam unavailable ({ex.Message}); no object gets collision"); }
-            var method = objectParam is null && options.Objects == ObjectPort.Method.Full ? ObjectPort.Method.NoCollision : options.Objects;
+            var method = objectParam is null ? ObjectPort.Method.NoCollision : ObjectPort.Method.Full;
             PARAM? objActParam = null;
-            if (options.MovingObjects != ObjectPort.MovingMethod.Off)
-                try { objActParam = ctx.LoadParams(PorterGame.DarkSouls3).Get("ObjActParam"); }
-                catch (Exception ex) when (ex is not OutOfMemoryException) { report.AppendLine($"  note: DS3 ObjActParam unavailable ({ex.Message}); doors and levers move only by script"); }
-            return _objects = new ObjectPort(ctx, ds3, er, WithAlpha(models.Fresh(), options), method, maps, objectParam, MapCollisions.LastTemplate,
-                !options.BinaryCollision, options.KeepSimdTree)
+            try { objActParam = ctx.LoadParams(PorterGame.DarkSouls3).Get("ObjActParam"); }
+            catch (Exception ex) when (ex is not OutOfMemoryException) { report.AppendLine($"  note: DS3 ObjActParam unavailable ({ex.Message}); doors and levers move only by script"); }
+            return _objects = new ObjectPort(ctx, ds3, er, models.Fresh(), method, maps, objectParam, MapCollisions.LastTemplate)
             {
-                Moving = options.MovingObjects,
                 Ds3ObjActParam = objActParam,
             };
         }
@@ -1714,7 +1387,7 @@ public static class MapPorter
     private static readonly System.Collections.Concurrent.ConcurrentDictionary<MapId, (MapId Er, MapStandIns.Result Judged, List<byte[]> Connects, MSB3 Msb)> _standInWorld = new();
 
     /// <summary>
-    /// The "world stand-ins" step's default (fallback "map-world" A): DS3's doorway display lists
+    /// The "world stand-ins" step: DS3's doorway display lists
     /// (<see cref="MapConnectDisplay"/>) written into every ported layout, so a loaded neighbour shows from each doorway
     /// only what DS3 shows there and nothing from collisions with no doorway to it. Report:
     /// Work\reports\map-world-display.tsv (every piece standing over a neighbour's floor where DS3 never shows it, and
@@ -1768,95 +1441,10 @@ public static class MapPorter
         var report = ctx.WorkPath("reports", "map-world-display.tsv");
         Directory.CreateDirectory(Path.GetDirectoryName(report)!);
         File.WriteAllText(report, tsv.ToString());
-        return $"world stand-ins: DS3's doorway display lists written into {written} maps (fallback map-world A; F = #243's groups): own pieces drawn from all of their own map's collisions, "
+        return $"world stand-ins: DS3's doorway display lists written into {written} maps own pieces drawn from all of their own map's collisions, "
                + $"a neighbour's pieces only through a doorway that shows them in DS3 ({clock.Elapsed.TotalSeconds:F0} s); {string.Join("; ", plan.Notes)}"
                + (failed.IsEmpty ? "" : $"; floor not read for {string.Join(", ", failed)}")
                + $"; report {report}"
-               + (lines.Count > 0 ? Environment.NewLine + string.Join(Environment.NewLine, lines) : "");
-    }
-
-    /// <summary>
-    /// "world stand-ins" step: what to do with each map's low-detail stand-ins for a neighbouring ported map, from the
-    /// layouts already written. Neighbours are the maps DS3 joins with connect collisions, either way.
-    /// <para>
-    /// DS3 swaps a stand-in for the real thing with its draw groups: the castle's stand-ins in the High Wall are drawn
-    /// from the collisions where Lothric Castle isn't loaded and hidden from the ones that load it. The port drew every
-    /// piece from everywhere, so up to 1.0.52x a stand-in sat on its neighbour's real pieces once those loaded, and
-    /// from #237 such stand-ins were left out, which left a void where the neighbour wasn't loaded yet (the castle
-    /// seen from the High Wall, "the castle did not load", 1.0.53x playtest) while the stand-ins its test missed still
-    /// sat in the neighbour (Lothric Castle's stand-ins of the High Wall inside Dancer's arena, which the game loads
-    /// as Lothric Castle's neighbour there: the playtest's game file log has m45_03 loaded without a warp).
-    /// </para>
-    /// <para>
-    /// The default since then is <see cref="WorldDoorways"/> (DS3's own doorway lists, fallback A). With
-    /// DARKSIGN_WORLD_STAND_INS=neighbour-groups (fallback F, PR #243) each such stand-in is drawn only while its neighbour is not loaded (<see cref="MapNeighbourGroups"/>): it
-    /// gets one draw group, its neighbour's, and every collision shows every group except those of the maps standing
-    /// on it keeps loaded (its own map and the maps its connect collisions name). Only these stand-ins carry a group;
-    /// every other part stays drawn from everywhere, so nothing else can disappear. With DS3's culling on
-    /// (--ds3-culling) the step does nothing (DS3's own groups already swap them).
-    /// DARKSIGN_WORLD_STAND_INS=0 keeps them drawn everywhere (fallback "map-world" D); =remove leaves them out as
-    /// #237 did (fallback "map-world" E).
-    /// </para>
-    /// </summary>
-    private static string WorldStandIns(PorterContext ctx, GameArchives ds3, bool groups)
-    {
-        bool remove = Environment.GetEnvironmentVariable("DARKSIGN_WORLD_STAND_INS") is "remove";
-        if (!groups && !remove)
-            return "world stand-ins: draw groups are DS3's (--ds3-culling) or none (--no-groups); nothing changed";
-        if (!remove && Environment.GetEnvironmentVariable("DARKSIGN_WORLD_STAND_INS") is not "neighbour-groups")
-            return WorldDoorways(ctx, ds3);
-        var maps = _standInWorld.Keys.ToList();
-        var joined = maps.ToDictionary(m => m, _ => new HashSet<MapId>());
-        foreach (var (map, entry) in _standInWorld)
-            foreach (var id in entry.Connects)
-                if (MsbPort.ConnectTarget(id, maps) is { } to && to != map)
-                {
-                    joined[map].Add(to);
-                    joined[to].Add(map);
-                }
-        var lines = new List<string>();
-        int total = 0;
-        var erMaps = _standInWorld.Values.Select(v => v.Er).Distinct().OrderBy(m => m.ToString()).ToList();
-        var bits = MapNeighbourGroups.Assign(erMaps);
-        var standIns = new Dictionary<MapId, Dictionary<string, MapId>>();
-        foreach (var map in maps.OrderBy(m => m.ToString()))
-        {
-            var (er, judged, _, _) = _standInWorld[map];
-            var kept = judged.KeptStandIns.ToHashSet(StringComparer.Ordinal);
-            if (kept.Count == 0 || joined[map].Count == 0)
-                continue;
-            var found = remove
-                ? MapStandIns.AcrossMaps(judged.Pieces, kept, joined[map].SelectMany(n => _standInWorld[n].Judged.Pieces))
-                    .Where(v => v.LeftOut).ToDictionary(v => v.Part, _ => er, StringComparer.Ordinal)
-                : MapStandIns.ForNeighbours(judged.Pieces, kept, joined[map].ToDictionary(n => _standInWorld[n].Er, n => (IEnumerable<MapStandIns.PieceBox>)_standInWorld[n].Judged.Pieces))
-                    .ToDictionary(StringComparer.Ordinal);
-            standIns[er] = found;
-            total += found.Count;
-            lines.Add($"  {map} -> {er}: {found.Count} of {kept.Count} kept stand-ins {(remove ? "left out" : "drawn only while their neighbour isn't loaded")} for {string.Join(", ", joined[map].OrderBy(n => n.ToString()))}"
-                      + (found.Count > 0 ? $" ({string.Join(", ", found.Take(20).Select(f => remove ? f.Key : $"{f.Key} -> {f.Value}"))}{(found.Count > 20 ? ", ..." : "")})" : ""));
-        }
-        int collisions = 0;
-        foreach (var er in remove ? standIns.Keys.ToList() : erMaps)
-        {
-            var path = ctx.ModPath(ModParts(MsbPath(er)));
-            if (!File.Exists(path))
-                continue;
-            var msb = MSBE.Read(DCX.Decompress(File.ReadAllBytes(path), out var compression));
-            var mine = standIns.GetValueOrDefault(er) ?? [];
-            if (remove)
-            {
-                msb.Parts.MapPieces.RemoveAll(p => mine.ContainsKey(p.Name));
-                var used = msb.Parts.MapPieces.Select(p => p.ModelName).ToHashSet(StringComparer.Ordinal);
-                msb.Models.MapPieces.RemoveAll(m => !used.Contains(m.Name));
-            }
-            else
-                collisions += MapNeighbourGroups.Apply(msb, er, mine, bits);
-            File.WriteAllBytes(path, DCX.Compress(msb.Write(), compression));
-        }
-        return $"world stand-ins: {total} low-detail stand-ins for a neighbouring ported map "
-               + (remove ? "left out (DARKSIGN_WORLD_STAND_INS=remove)"
-                   : $"drawn only while that map isn't loaded; {collisions} collisions show every map's group but their own and their connects' "
-                     + $"(draw group bits {string.Join(", ", bits.Select(b => $"{b.Key}={b.Value}"))})")
                + (lines.Count > 0 ? Environment.NewLine + string.Join(Environment.NewLine, lines) : "");
     }
 
@@ -1878,39 +1466,34 @@ public static class MapPorter
         var catalog = EnemyPort.BuildCatalog(er, erNpc, notes, out var people, erCharaInit);
         _quiet = QuietStandIns.Create(erNpc);
         notes.Add(_quiet is not null ? $"stand-in battle music: stand-ins whose Elden Ring row has a threat level other than {_quiet.QuietLevel} get a quiet copy of it"
-            : QuietStandIns.Enabled ? "stand-in battle music: Elden Ring's NpcParam threat levels unreadable; stand-ins keep their own (Elden Ring battle music possible)"
-            : "stand-in battle music: off (DARKSIGN_ENEMY_THREAT=template, fallback map-music C); stand-ins keep their own threat levels");
+            : "stand-in battle music: Elden Ring's NpcParam threat levels unreadable; stand-ins keep their own (Elden Ring battle music possible)");
         _armour = null;
-        if (PeopleArmour.Enabled && !options.NoPeople && !options.ErPeople)
-            try
-            {
-                var ds3Params = ctx.LoadParams(PorterGame.DarkSouls3);
-                var maps = MapSlots.All.Select(s => s.Ds3).Distinct().Where(id => ds3.Contains(MsbPath(id))).Select(id => MSB3.Read(ds3.Read(MsbPath(id))));
-                _armour = PeopleArmour.Plan(ds3Params.Get("CharaInitParam")!, ds3Params.Get("EquipParamProtector")!, PeopleArmour.PeopleIn(maps),
-                    n => PeopleArmour.Slots.Any(slot => er.Contains(PeopleArmour.PartsPath(slot.Prefix, 'm', n, false))));
-                notes.Add($"people armour: {_armour.Looks.Count} DS3 people's looks planned, {_armour.Models.Count} DS3 armour sets to convert");
-                notes.AddRange(_armour.Notes);
-            }
-            catch (Exception ex) when (ex is not OutOfMemoryException)
-            {
-                notes.Add($"people armour: not planned ({ex.Message}); DS3's humans are left out");
-            }
+        try
+        {
+            var ds3Params = ctx.LoadParams(PorterGame.DarkSouls3);
+            var maps = MapSlots.All.Select(s => s.Ds3).Distinct().Where(id => ds3.Contains(MsbPath(id))).Select(id => MSB3.Read(ds3.Read(MsbPath(id))));
+            _armour = PeopleArmour.Plan(ds3Params.Get("CharaInitParam")!, ds3Params.Get("EquipParamProtector")!, PeopleArmour.PeopleIn(maps),
+                n => PeopleArmour.Slots.Any(slot => er.Contains(PeopleArmour.PartsPath(slot.Prefix, 'm', n, false))));
+            notes.Add($"people armour: {_armour.Looks.Count} DS3 people's looks planned, {_armour.Models.Count} DS3 armour sets to convert");
+            notes.AddRange(_armour.Notes);
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            notes.Add($"people armour: not planned ({ex.Message}); DS3's humans are left out");
+        }
         _talk = null;
-        if (TalkPort.Enabled && !options.NoPeople)
-            try
-            {
-                _talk = TalkPort.Plan(ds3, MapSlots.All.Select(s => s.Ds3));
-                notes.AddRange(_talk.Notes.Select(n => "people talk: " + n));
-            }
-            catch (Exception ex) when (ex is not OutOfMemoryException)
-            {
-                notes.Add($"people talk: not planned ({ex.Message}); DS3's people stay silent");
-            }
-        else
-            notes.Add("people talk: off (DARKSIGN_PEOPLE_TALK=0 or --no-people, fallback map-people G); DS3's people stay silent");
+        try
+        {
+            _talk = TalkPort.Plan(ds3, MapSlots.All.Select(s => s.Ds3));
+            notes.AddRange(_talk.Notes.Select(n => "people talk: " + n));
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            notes.Add($"people talk: not planned ({ex.Message}); DS3's people stay silent");
+        }
         EnemyPort.ChrMap? ported = null;
         var mapPath = ctx.ModPath(EnemyPort.ChrMap.FileName);
-        if (options.Enemies == EnemyPort.Method.Auto && File.Exists(mapPath))
+        if (File.Exists(mapPath))
             ported = EnemyPort.ChrMap.Parse(File.ReadAllLines(mapPath));
         report.AppendLine($"enemy catalog: {catalog.Count} Elden Ring placements ({catalog.Count(c => c.Boss)} bosses) from "
                           + $"{catalog.Select(c => c.Source).Distinct().Count()} legacy dungeons; {ported?.Count ?? 0} ported DS3 characters");
@@ -1918,7 +1501,7 @@ public static class MapPorter
             report.AppendLine($"  note: {note}");
         if (catalog.Count == 0 && (ported?.Count ?? 0) == 0)
             throw new InvalidDataException("no Elden Ring enemy placements found to stand in for DS3's");
-        return _enemies = new EnemyContext(catalog, new EnemyPort.Chooser(catalog, ported, options.Enemies), ds3Npc, people);
+        return _enemies = new EnemyContext(catalog, new EnemyPort.Chooser(catalog, ported), ds3Npc, people);
     }
 
     private static IEnumerable<EMEVD> Ds3Scripts(GameArchives ds3, MapId ds3Id)
@@ -1977,7 +1560,7 @@ public static class MapPorter
     private static readonly Dictionary<MapId, List<FLVER2>> _templateFlvers = new();
 
     private static (MapModelPort Models, BND4 Binder, DCX.CompressionInfo Compression, MapId BinderMap) MaterialTemplates(
-        GameArchives er, MapId hostId, MSBE host, bool plain)
+        GameArchives er, MapId hostId, MSBE host)
     {
         if (_templates.TryGetValue(hostId, out var known))
             return (known.Item1.Fresh(), known.Item2, known.Item3, known.Item4);
@@ -2033,8 +1616,8 @@ public static class MapPorter
             {
                 try
                 {
-                    models = MapModelPort.Create(flvers, matbins, layout.Value.Header, plain);
-                    if (models.Complete(plain))
+                    models = MapModelPort.Create(flvers, matbins, layout.Value.Header, plain: false);
+                    if (models.Complete(false))
                         break;
                 }
                 catch (InvalidDataException)
@@ -2052,7 +1635,7 @@ public static class MapPorter
             tried.Add(ItemText.Leaf(TemplateAsset));
             try
             {
-                models = MapModelPort.Create(flvers, matbins, layout.Value.Header, plain);
+                models = MapModelPort.Create(flvers, matbins, layout.Value.Header, plain: false);
             }
             catch (InvalidDataException)
             {
@@ -2061,7 +1644,7 @@ public static class MapPorter
         if (models is null)
             throw new InvalidDataException($"no plain one-layer material to use as a template in {string.Join(", ", tried)}");
         // DS3's water surfaces: Elden Ring's own pool water, from a map that has some (MapModelPort.WaterBinders).
-        if (!plain && !models.HasWater && MapModelPort.WaterEnabled)
+        if (!models.HasWater)
             foreach (var (map, number) in MapModelPort.WaterBinders)
             {
                 var path = ErMapBndPath(map, number);
@@ -2070,7 +1653,7 @@ public static class MapPorter
                 try
                 {
                     var water = BND4.Read(er.Read(path)).Files.Where(f => FLVER2.Is(f.Bytes)).Select(f => FLVER2.Read(f.Bytes)).ToList();
-                    var withWater = MapModelPort.Create([.. flvers, .. water], matbins, layout.Value.Header, plain);
+                    var withWater = MapModelPort.Create([.. flvers, .. water], matbins, layout.Value.Header, plain: false);
                     tried.Add(ItemText.Leaf(path));
                     if (withWater.HasWater)
                     {
@@ -2089,19 +1672,6 @@ public static class MapPorter
     }
 
     public static string MsbPath(MapId id) => $"/map/mapstudio/{id}.msb.dcx";
-    /// <summary>
-    /// Where each map piece model sits in one DS3 map, for <see cref="MapOverlayBacking"/>: every map piece the port
-    /// places (helper pieces left out as <see cref="MsbPort.HelperKind"/> says), by model number.
-    /// </summary>
-    private static Dictionary<string, Matrix4x4[]> OverlayPlacements(MSB3 ds3Msb, Options options)
-    {
-        bool layerOk = MsbPort.BaseLayerMeans(ds3Msb);
-        return ds3Msb.Parts.MapPieces
-            .Where(p => options.HelperPieces || MsbPort.HelperKind(p, layerOk) is null)
-            .GroupBy(p => ModelNumber(p.ModelName), StringComparer.OrdinalIgnoreCase)
-            .ToDictionary(g => g.Key, g => g.Select(MapOverlayBacking.Placement).ToArray(), StringComparer.OrdinalIgnoreCase);
-    }
-
     public static string Ds3MapBndPath(MapId id, string number) => $"/map/{id}/{id}_{number}.mapbnd.dcx";
     public static string ErMapBndPath(MapId id, string number) => $"/map/{id.AreaFolder}/{id}/{id}_{number}.mapbnd.dcx";
 
@@ -2109,17 +1679,16 @@ public static class MapPorter
     /// <summary>
     /// The collision models (and so the parts) left out of a ported map, and whether DS3's h file for each was empty. A
     /// model stays when either binder got its collision: DS3's l collision alone is ground too (the Painted World's 28
-    /// parts with an empty h file, whose enemies died on load while those parts were left out). Under
-    /// --drop-empty-collisions only the h binder counts, as up to 1.0.460.
+    /// parts with an empty h file, whose enemies died on load while those parts were left out).
     /// </summary>
     public static IEnumerable<(string Model, bool Empty)> CollisionModelsLeftOut(IEnumerable<string> models,
-        IReadOnlyDictionary<string, MapCollisions.Result> results, MapCollisions.EmptySideMethod method)
+        IReadOnlyDictionary<string, MapCollisions.Result> results)
     {
         bool Converted(string kind, string model) => results.TryGetValue(kind, out var r) && r.Ported.Contains(model);
         foreach (var name in models)
         {
             var model = ModelNumber(name);
-            if (Converted("h", model) || (method != MapCollisions.EmptySideMethod.Drop && Converted("l", model)))
+            if (Converted("h", model) || Converted("l", model))
                 continue;
             yield return (name, results.TryGetValue("h", out var h) && h.Empty?.Contains(model) == true);
         }
@@ -2127,11 +1696,10 @@ public static class MapPorter
 
     /// <summary>
     /// Port log lines for collision models whose DS3 file is an empty placeholder in one binder and real in the other
-    /// (<see cref="MapCollisions.EmptySideMethod"/>): how many DS3 collision parts use them and how many DS3 enemies name
+    /// (the empty side gets the other binder's collision): how many DS3 collision parts use them and how many DS3 enemies name
     /// one as the floor they stand on, so a log shows whether enemies stood on ground the port used to leave out.
     /// </summary>
-    public static IEnumerable<string> EmptySideNotes(MSB3 ds3Msb, IReadOnlyDictionary<string, MapCollisions.Result> results,
-        MapCollisions.EmptySideMethod method)
+    public static IEnumerable<string> EmptySideNotes(MSB3 ds3Msb, IReadOnlyDictionary<string, MapCollisions.Result> results)
     {
         HashSet<string> Of(string kind, Func<MapCollisions.Result, HashSet<string>?> pick) =>
             results.TryGetValue(kind, out var r) ? pick(r) ?? [] : [];
@@ -2146,13 +1714,7 @@ public static class MapPorter
             yield break;
         var parts = ds3Msb.Parts.Collisions.Where(c => oneSided.Contains(ModelNumber(c.ModelName ?? ""))).Select(c => c.Name).ToHashSet(StringComparer.OrdinalIgnoreCase);
         var standing = ds3Msb.Parts.Enemies.Where(e => parts.Contains(e.CollisionName ?? "")).ToList();
-        var what = method switch
-        {
-            MapCollisions.EmptySideMethod.Copy => "kept, the same collision in h and l",
-            MapCollisions.EmptySideMethod.Alone => "kept with only the side DS3 has (--empty-collision-alone)",
-            _ => "left out (--drop-empty-collisions)",
-        };
-        yield return $"collision with an empty DS3 file on one side: {oneSided.Count} models, {parts.Count} collision parts {what}; "
+        yield return $"collision with an empty DS3 file on one side: {oneSided.Count} models, {parts.Count} collision parts kept, the same collision in h and l; "
                      + $"{standing.Count} DS3 enemies name one as their floor"
                      + (standing.Count == 0 ? "" : $" ({string.Join(", ", standing.Take(12).Select(e => $"{e.Name} {e.EntityID} on {e.CollisionName}"))}{(standing.Count > 12 ? ", ..." : "")})");
     }
@@ -2232,7 +1794,7 @@ public static class MapPorter
             scripts.Insert(0, EMEVD.Read(er.Read("/event/m11_10_00_00.emevd.dcx")));
         var back = RunEvents.FindReturnPoint(scripts)
                    ?? throw new InvalidDataException("no WarpPlayer target found in Elden Ring's event scripts to return to");
-        RunEvents.AddTo(common, host, startEntity, back, RunEvents.AutoStart);
+        RunEvents.AddTo(common, host, startEntity, back);
         RunEvents.AddWarps(common, warps);
         // Talk flags move the way the converted scripts moved them (darksign_flags.tsv, written by the events step).
         var flags = FlagMap.Load(ctx.ModPath(MapEvents.FlagFile));
@@ -2242,23 +1804,22 @@ public static class MapPorter
         BossArenas.AddWarps(common, arenas, f => flagPort.Move(f, EventPort.Kind.Flag));
         CutsceneMenu.AddEvents(common, cutscenes);
         // DS3's new-game flags (Ds3Setup): DS3's common event 50 sets them; the maps' scripts read them.
-        string setupNote = "DS3 setup: off (DARKSIGN_DS3_SETUP=0, fallback map-setup B); DS3's new-game flags stay off";
-        if (Ds3Setup.Enabled)
-            try
+        string setupNote;
+        try
+        {
+            if (!ds3.Contains(Ds3Setup.Ds3Common))
+                setupNote = "DS3 setup: DS3 has no common.emevd; DS3's new-game flags stay off";
+            else
             {
-                if (!ds3.Contains(Ds3Setup.Ds3Common))
-                    setupNote = "DS3 setup: DS3 has no common.emevd; DS3's new-game flags stay off";
-                else
-                {
-                    var erDefs = Emedf.Parse(File.ReadAllText(ctx.Data.Emedf("er-common")));
-                    var maps = MapSlots.All.Where(s => !s.Probe).Select(s => (s.Ds3, s.Er)).Distinct().ToList();
-                    setupNote = Ds3Setup.AddTo(common, EMEVD.Read(ds3.Read(Ds3Setup.Ds3Common)), new EventPort(defs, erDefs, maps, flags));
-                }
+                var erDefs = Emedf.Parse(File.ReadAllText(ctx.Data.Emedf("er-common")));
+                var maps = MapSlots.All.Where(s => !s.Probe).Select(s => (s.Ds3, s.Er)).Distinct().ToList();
+                setupNote = Ds3Setup.AddTo(common, EMEVD.Read(ds3.Read(Ds3Setup.Ds3Common)), new EventPort(defs, erDefs, maps, flags));
             }
-            catch (Exception ex) when (ex is not OutOfMemoryException)
-            {
-                setupNote = $"DS3 setup: FAILED ({ex.Message}); DS3's new-game flags stay off";
-            }
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            setupNote = $"DS3 setup: FAILED ({ex.Message}); DS3's new-game flags stay off";
+        }
         flags.Save(ctx.ModPath(MapEvents.FlagFile));
         File.WriteAllBytes(modCommon, DCX.Compress(common.Write(), compression));
         return $"run events: start warps to {host} entity {startEntity}; leave warps to {back.Map} entity {back.EntityId}; "

@@ -25,51 +25,43 @@ namespace DarkSign.Porter.Maps;
 /// lines (<see cref="TalkPort.TextBase"/>, which shows in game), so every step finds a text's new number without a
 /// shared table. The step that follows the events writes all of DS3's event text into EventTextForMap and all of
 /// its area names into PlaceName, in the DLC02 binders, which ship nearly empty: no Elden Ring text changes.
-/// <para>
-/// DARKSIGN_MAP_TEXT (launcher fallback "map-text"): "noplaces" leaves the area names out (collisions name none,
-/// as before); "0" keeps DS3's numbers everywhere, as before.
-/// </para>
 /// </summary>
 public static class MapText
 {
     public const int Base = TalkPort.TextBase;
-
-    public enum Method { All, NoPlaces, Off }
-
-    public static Method Mode => ModeOf(Environment.GetEnvironmentVariable("DARKSIGN_MAP_TEXT"));
-
-    public static Method ModeOf(string? value) =>
-        value is "0" || string.Equals(value, "off", StringComparison.OrdinalIgnoreCase) ? Method.Off
-        : string.Equals(value, "noplaces", StringComparison.OrdinalIgnoreCase) ? Method.NoPlaces
-        : Method.All;
 
     /// <summary>The DS3 text numbers the converted scripts and rows name, for the report and for text that isn't in DS3's event text files.</summary>
     public sealed class Used
     {
         public SortedSet<int> Messages { get; } = [];
         public SortedSet<int> Places { get; } = [];
+        /// <summary>Boss health bar names (<see cref="EventPort.Kind.NpcName"/>) and ported characters' NpcParam nameId.</summary>
+        public SortedSet<int> Names { get; } = [];
     }
 
     private static bool Movable(long ds3Id) => ds3Id > 0 && ds3Id < Base;
 
     /// <summary>Elden Ring's EventTextForMap number of a DS3 event message (0 and less stay: "none").</summary>
-    public static long Message(long ds3Id, Method mode) => mode != Method.Off && Movable(ds3Id) ? Base + ds3Id : ds3Id;
+    public static long Message(long ds3Id) => Movable(ds3Id) ? Base + ds3Id : ds3Id;
 
-    public static long Message(long ds3Id) => Message(ds3Id, Mode);
+    /// <summary>
+    /// Elden Ring's NpcName number of a DS3 character name: a boss health bar's "Name ID" and an NpcParam row's
+    /// nameId. Up to 1.0.57x the scripts kept DS3's numbers (Iudex Gundyr 905110, Sister Friede 906020), under which
+    /// Elden Ring's NpcName has no text, so all 33 DS3 boss bars showed no name (census of the ported maps' scripts,
+    /// 2026-11-22).
+    /// </summary>
+    public static long Name(long ds3Id) => Movable(ds3Id) ? Base + ds3Id : ds3Id;
 
     /// <summary>
     /// Elden Ring's PlaceName number of a DS3 area name. A negative number other than -1 keeps its sign (the older
     /// games' collisions use a negative name for "this area, without the banner"; not checked in DS3's maps).
     /// </summary>
-    public static long Place(long ds3Id, Method mode) =>
-        mode != Method.All ? ds3Id
-        : Movable(ds3Id) ? Base + ds3Id
+    public static long Place(long ds3Id) =>
+        Movable(ds3Id) ? Base + ds3Id
         : ds3Id < -1 && Movable(-ds3Id) ? -(Base + -ds3Id)
         : ds3Id;
 
-    public static long Place(long ds3Id) => Place(ds3Id, Mode);
-
-    /// <summary>A DS3 collision's area name as the Elden Ring collision's (-1, none, when area names are off).</summary>
+    /// <summary>A DS3 collision's area name as the Elden Ring collision's.</summary>
     /// <remarks>
     /// Only DS3's positive names are kept. DS3 gives a few collisions at an area's edge the name (m31: 3100 Undead
     /// Settlement x2), the rest of the area the negative of it (-3100 x48) and some none (-1 x43). Up to 1.0.52x the
@@ -78,8 +70,8 @@ public static class MapText
     /// Settlement cycled "Undead Settlement" / "?PlaceName?". A negative name (and 0) is now Elden Ring's "none" (-1),
     /// so the banner shows where DS3 shows it: on the collisions that carry the positive name.
     /// </remarks>
-    public static int CollisionPlace(short ds3MapNameId, Method mode) =>
-        mode == Method.All && ds3MapNameId > 0 ? (int)Place(ds3MapNameId, mode) : -1;
+    public static int CollisionPlace(short ds3MapNameId) =>
+        ds3MapNameId > 0 ? (int)Place(ds3MapNameId) : -1;
 
     public static bool IsOurs(int id) => id >= Base || id <= -Base;
 
@@ -129,6 +121,8 @@ public static class MapText
     private static readonly string[] Ds3Items = ["/msg/engus/item_dlc2.msgbnd.dcx", "/msg/engus/item_dlc1.msgbnd.dcx", "/msg/engus/item.msgbnd.dcx"];
     // DS3 names its text files in Japanese: イベントテキスト = event text, 地名 = place name.
     private static readonly string[] EventNames = ["イベントテキスト", "EventText"], PlaceNames = ["地名", "PlaceName"];
+    // NPC名 = NPC name (bosses and people).
+    private static readonly string[] NpcNames = ["NPC名", "NpcName"];
     public const string ErItems = "/msg/engus/item_dlc02.msgbnd.dcx";
 
     /// <summary>
@@ -166,18 +160,14 @@ public static class MapText
     /// </summary>
     public static string Write(PorterContext ctx, GameArchives ds3, GameArchives er, Used used)
     {
-        var mode = Mode;
-        if (mode == Method.Off)
-            return "map text: off (DARKSIGN_MAP_TEXT=0); scripts, doors and collisions name DS3's text numbers, which Elden Ring doesn't have";
         Dictionary<int, string>? goods = null;
         try { goods = ItemText.Load(ds3, "GoodsName"); }
         catch (Exception ex) when (ex is not OutOfMemoryException) { _ = ex; } // the item tags stay as DS3 wrote them
         var lines = new List<string>
         {
             WriteOne(ctx, ds3, er, ActionButtons.ModMenu, "EventTextForMap", Ds3Menus, EventNames, used.Messages, "event messages", goods),
-            mode == Method.NoPlaces
-                ? "map text: area names off (DARKSIGN_MAP_TEXT=noplaces); no area name shows on entering a DS3 area"
-                : WriteOne(ctx, ds3, er, ErItems, "PlaceName", Ds3Items, PlaceNames, used.Places, "area names"),
+            WriteOne(ctx, ds3, er, ErItems, "PlaceName", Ds3Items, PlaceNames, used.Places, "area names"),
+            WriteOne(ctx, ds3, er, ErItems, "NpcName", Ds3Items, NpcNames, used.Names, "boss and character names"),
         };
         return string.Join(Environment.NewLine, lines);
     }

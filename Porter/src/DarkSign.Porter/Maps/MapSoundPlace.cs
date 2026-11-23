@@ -15,13 +15,10 @@ namespace DarkSign.Porter.Maps;
 /// music and ambience areas: the colosseum the slot's files come from, whose own row the colosseum slots already play
 /// DS3's music over without Elden Ring field music. A map with no row gets one, a copy of row 0 (what the game gave
 /// it so far: fast travel, weather and draw settings stay as they were) with only those two fields changed. A map
-/// that has a row (m11_70, m11_72) keeps it with the same two fields changed. Off with DARKSIGN_MAP_SOUND_PLACE=0
-/// (launcher fallback "map-music" E).</para>
+/// that has a row (m11_70, m11_72) keeps it with the same two fields changed.</para>
 /// </summary>
 public static class MapSoundPlace
 {
-    public static readonly bool Enabled = Environment.GetEnvironmentVariable("DARKSIGN_MAP_SOUND_PLACE") != "0";
-
     public const string ParamName = "MapDefaultInfoParam";
 
     /// <summary>The fields taken from the template's row: the field music area and the ambience area.</summary>

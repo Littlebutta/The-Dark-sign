@@ -20,13 +20,10 @@ namespace DarkSign.Porter.Maps;
 /// <item>A subtitle with no DS3 text is left out, so the game never shows an Elden Ring line of that number.</item>
 /// </list>
 /// The talk port (<see cref="TalkPort"/>) owns the rows from <see cref="TalkPort.TextBase"/> up to RowBase; this
-/// range is the cutscenes'. Off with DARKSIGN_CUTSCENE_SUBTITLES=0 (launcher fallback map-cutscenes G): subtitles
-/// become voice sound events again, as up to 1.0.549.
+/// range is the cutscenes'.
 /// </summary>
 public static class CutsceneSubtitles
 {
-    public static bool Enabled => Environment.GetEnvironmentVariable("DARKSIGN_CUTSCENE_SUBTITLES") != "0";
-
     /// <summary>The cutscenes' TalkParam rows and TalkMsg text: 1,100,000,000 + cutscene number * 1000 + n.</summary>
     public const int RowBase = TalkPort.TextBase + 100_000_000;
     public const int RowRange = 100_000_000;

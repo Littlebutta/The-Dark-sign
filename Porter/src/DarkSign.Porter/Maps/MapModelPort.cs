@@ -51,25 +51,12 @@ public sealed class MapModelPort
     private static readonly Regex WaterShader = new(@"^M(?:_|\[)(MuddyWater|Water_Cheap)\]?$", RegexOptions.IgnoreCase);
 
     /// <summary>
-    /// Fallback "map-sky-clouds" B: DARKSIGN_SKY_CLOUDS=0 leaves DS3's see-through unlit layers (M[A]_al_NoLight: cloud
-    /// bands, haze and far mountain rings around the sky) out again, as every build up to 1.0.52x.
-    /// </summary>
-    public static bool UnlitBlendEnabled => Environment.GetEnvironmentVariable("DARKSIGN_SKY_CLOUDS") != "0";
-
-    /// <summary>
     /// What a see-through unlit material ("nolight-blend") sets in its copy of the unlit template's MATBIN: blended
     /// (g_BlendMode 2), no depth write and alpha 1/255 cut, as vanilla Elden Ring's own blended unlit map material
     /// m15_00_865 (shader M[A]_NoLight, the same as the unlit template m10_00_003; read from allmaterial 2026-11-20).
     /// </summary>
     public static readonly (string Name, object Value)[] UnlitBlendParams =
         [("g_BlendMode", 2), ("g_GX_bDisableDepthWrite", true), ("g_AlphaRef", new[] { 1, 0 })];
-
-    /// <summary>
-    /// Fallback "map-far-cards" B: DARKSIGN_FAR_CARDS=0 leaves DS3's alpha-tested unlit meshes (M[A]_NoLight_e: the
-    /// far forest cards around the Painted World, Irithyll and the Ringed City) out of the map, instead of drawing
-    /// them with their cut-out (see <see cref="UnlitEdgeParams"/>).
-    /// </summary>
-    public static bool UnlitEdgeEnabled => Environment.GetEnvironmentVariable("DARKSIGN_FAR_CARDS") != "0";
 
     /// <summary>
     /// What an alpha-tested unlit material ("nolight-edge") sets in its copy of the unlit template's MATBIN: alpha cut
@@ -101,9 +88,6 @@ public sealed class MapModelPort
         return missing;
     }
 
-    /// <summary>Fallback "map-water" B: DARKSIGN_MAP_WATER=0 leaves DS3's water out again (builds up to 1.0.42x).</summary>
-    public static bool WaterEnabled => Environment.GetEnvironmentVariable("DARKSIGN_MAP_WATER") != "0";
-
     /// <summary>True when a water template was found.</summary>
     public bool HasWater => _templates.ContainsKey("water");
 
@@ -129,13 +113,12 @@ public sealed class MapModelPort
 
     /// <summary>A new port with the same templates and none of this one's materials (one per map).</summary>
     public MapModelPort Fresh() => new(_templates, _templateFlver)
-        { VanillaMaterials = VanillaMaterials, TemplateTextures = TemplateTextures, Ds3Alpha = Ds3Alpha, TerrainLayers = TerrainLayers, SkyLayers = SkyLayers, TintMaterials = TintMaterials,
-          HalfNormals = HalfNormals, LayerContours = LayerContours, OverlayBacking = OverlayBacking, CutFadedOverlays = CutFadedOverlays, FadeOverlays = FadeOverlays };
+        { VanillaMaterials = VanillaMaterials, TemplateTextures = TemplateTextures, TintMaterials = TintMaterials };
 
     /// <summary>
     /// Diagnostic "--tint-materials": the albedo of each DS3 material family that keeps something in vertex alpha is a
     /// solid colour (<see cref="Tints"/>), so one screenshot tells which family a wrong surface belongs to. Every
-    /// other material keeps its real texture. Not a launcher fallback: for test builds only.
+    /// other material keeps its real texture.
     /// </summary>
     public bool TintMaterials { get; set; }
 
@@ -172,66 +155,8 @@ public sealed class MapModelPort
 
     private const string FadeSuffix = "_fade";
 
-    /// <summary>
-    /// True (the default): DS3's vertex alpha keeps its meaning (<see cref="MapOverlays"/>): overlays fade, two-layer
-    /// materials show the layer each triangle mostly shows. False (fallback "map-overlays" B, --solid-overlays): every
-    /// vertex is solid and a two-layer material shows its first layer, as every build up to 1.0.340.
-    /// </summary>
-    public bool Ds3Alpha { get; set; } = true;
-
-    /// <summary>
-    /// True (the default): each triangle of a DS3 terrain blend (2m/3m/4m) is drawn with the layer DS3 shows there
-    /// (<see cref="MapTerrainBlends"/>). False (fallback "map-blend-layers" B, --first-blend-layer): the whole mesh shows
-    /// its first layer, as every build up to 1.0.353.
-    /// </summary>
-    public bool TerrainLayers { get; set; } = true;
-
-    /// <summary>
-    /// True (the default): a two-layer DS3 sky dome shows the layer that covers most of each of its meshes
-    /// (<see cref="MapTerrainBlends.ApplySky"/>). False (fallback "map-sky-layer" B, --first-sky-layer): it shows its
-    /// first layer, as every build up to 1.0.50x (the Painted World's sky was its cloud picture).
-    /// </summary>
-    public bool SkyLayers { get; set; } = true;
-
-    /// <summary>
-    /// True (the default): a terrain blend or two-layer triangle whose corners show different layers is cut along the
-    /// line where DS3 changes layer (<see cref="MapLayerContours"/>). False (fallback "map-blend-layers" C,
-    /// --whole-blend-triangles): it goes whole to one layer, as 1.0.354 to 1.0.46x, and the edges of painted patches
-    /// are jagged.
-    /// </summary>
-    public bool LayerContours { get; set; } = true;
-
-    /// <summary>
-    /// True (the default): DS3 normals stored as half floats (terrain blends) are read as half floats
-    /// (<see cref="Ds3HalfNormals"/>). False (fallback "map-materials" C, --raw-half-normals): they keep what SoulsFormats
-    /// reads, as up to 1.0.460, and terrain blend ground draws far too dark.
-    /// </summary>
-    public bool HalfNormals { get; set; } = true;
-
     /// <summary>What <see cref="Ds3HalfNormals"/> did to this port's models, for the port log.</summary>
     public Ds3HalfNormals.Stats HalfNormalStats { get; } = new();
-
-    /// <summary>
-    /// The map's index of surfaces under faded overlay triangles (<see cref="MapOverlayBacking"/>): a faded triangle is
-    /// left out only where one lies behind it. Null: each model is tested against its own surfaces.
-    /// </summary>
-    public MapOverlayBacking? OverlayBacking { get; set; }
-
-    /// <summary>
-    /// True (fallback "map-overlays" D, --cut-faded-overlays): every faded overlay triangle is left out whatever lies
-    /// behind it, as 1.0.353 to 1.0.383, which left holes in Firelink Shrine's floor. Only with <see cref="FadeOverlays"/>.
-    /// </summary>
-    public bool CutFadedOverlays { get; set; }
-
-    /// <summary>
-    /// False (the default): a one-layer DS3 map mesh (M[ARSN]_l and the like) is drawn solid whatever its vertex alpha
-    /// says. That alpha is not a fade: Firelink Shrine's tunnel walls (m004001: 32,705 vertices, m004520: 3,016, both
-    /// wall_103) have alpha 0 on every vertex next to a mesh of the same wall at alpha 1, and Undead Settlement's
-    /// wooden houses (m000120) and the Painted World's stone walls lost every triangle to the overlay cut. DS3 draws
-    /// all of them. True (fallback "map-overlays" C, --fade-overlays): the overlay fade of 1.0.353 to 1.0.383
-    /// (<see cref="MapOverlays"/>, <see cref="MapOverlayBacking"/>). Two-layer materials are split by layer either way.
-    /// </summary>
-    public bool FadeOverlays { get; set; }
 
     /// <summary>
     /// FLVERs left out of a binder that kept another, drawable FLVER: they held only meshes the port can't draw
@@ -271,14 +196,6 @@ public sealed class MapModelPort
     /// <summary>This port's templates with <see cref="TemplateTextures"/> on.</summary>
     public MapModelPort WithTemplateTextures() => new(_templates, _templateFlver) { TemplateTextures = true };
 
-    /// <summary>
-    /// False (the default): the MATBINs of unlit materials are told not to cast shadows. DS3's sky is a map piece,
-    /// an unlit dome kilometres across around the whole map, and Elden Ring lets every map piece shadow the sun
-    /// unless its material says otherwise (g_GX_bDisableShadowCasting, on in 857 vanilla materials): up to 1.0.284
-    /// the dome kept the sun off the entire map. True ("--host-lighting") leaves the template's own setting.
-    /// </summary>
-    public bool UnlitCastShadows { get; set; }
-
     /// <summary>The MATBIN switch that keeps a material's meshes out of the shadow maps.</summary>
     public const string NoShadowParam = "g_GX_bDisableShadowCasting";
 
@@ -296,7 +213,7 @@ public sealed class MapModelPort
     /// layer), "edge" (alpha tested: foliage, grates), "alpha" (blended) and "nolight" (unlit: DS3's sky domes). Only
     /// "opaque" is required. A candidate needs a vanilla static mesh drawn with it, whose vertex layout the ported
     /// meshes take. Within a kind the lowest <see cref="Rank"/> wins (a normal-mapped shader over an albedo-only one).
-    /// <paramref name="plain"/> (fallback "map-materials" B) only takes the albedo-only opaque shader JortPob uses.
+    /// <paramref name="plain"/> (the piece tests' vanilla-material pieces) only takes the albedo-only opaque shader JortPob uses.
     /// <paramref name="headerFlver"/> gives the FLVER header (a map piece); the first model when null.
     /// </summary>
     public static MapModelPort Create(IReadOnlyList<FLVER2> flvers, IReadOnlyDictionary<string, BinderFile> matbins,
@@ -393,7 +310,7 @@ public sealed class MapModelPort
     {
         // Water: its textures live in the MATBIN, so the material is used as it is (no samplers to fill).
         if (WaterShader.Match(Path.GetFileNameWithoutExtension(ItemText.Leaf(matbin.ShaderPath ?? ""))) is { Success: true } w)
-            return WaterEnabled ? ("water", w.Groups[1].Value.Equals("MuddyWater", StringComparison.OrdinalIgnoreCase) ? 0 : 1) : null;
+            return ("water", w.Groups[1].Value.Equals("MuddyWater", StringComparison.OrdinalIgnoreCase) ? 0 : 1);
         var roles = matbin.Samplers.Select(x => Role(x.Type)).Where(r => r is not null).Select(r => r!.Value).ToList();
         // Terrain blend materials (most of Elden Ring's legacy dungeon pieces) mix layers through a mask: not usable.
         if (roles.Any(r => r.Role == "blend" || r.Layer > 0) || roles.Count(r => r == ("albedo", 0)) != 1
@@ -430,13 +347,13 @@ public sealed class MapModelPort
             return "none";
         if (Regex.IsMatch(mtd, @"_al(?![a-z])", RegexOptions.IgnoreCase))
             return !noLight ? "alpha"
-                : UnlitBlendEnabled && !mtd.Contains("Opacity", StringComparison.OrdinalIgnoreCase) ? "nolight-blend"
+                : !mtd.Contains("Opacity", StringComparison.OrdinalIgnoreCase) ? "nolight-blend"
                 : "none";
         // An alpha-tested unlit card (M[A]_NoLight_e: the far forest rings of the Painted World, Irithyll and the Ringed
         // City, a tree atlas whose one-bit alpha cuts the trees out). Up to 1.0.53x it was "nolight" (no cut) and each
         // card stood as a grey rectangle: the Painted World's "cloud tower" (m002110, enkei_70).
         if (noLight && Regex.IsMatch(mtd, @"_e(?![a-z])|_alp|edge", RegexOptions.IgnoreCase))
-            return UnlitEdgeEnabled ? "nolight-edge" : "none";
+            return "nolight-edge";
         if (noLight)
             return "nolight";
         if (Regex.IsMatch(mtd, @"_e(?![a-z])|_alp|edge", RegexOptions.IgnoreCase))
@@ -619,9 +536,7 @@ public sealed class MapModelPort
             // the materials numbered as Elden Ring numbers them (a repeated material keeps its first number).
             if (flver.Nodes.Count == 1)
                 flver.Nodes[0].Name = leaf[..leaf.IndexOf('.')];
-            if (FlverMaterialNumbers.Apply(flver) == 0 && !FlverMaterialNumbers.Enabled)
-                for (int i = 0; i < flver.Materials.Count; i++)
-                    flver.Materials[i].Index = i;
+            FlverMaterialNumbers.Apply(flver);
             // DS3's lower detail lists, completed so the model can switch to them (MapLod).
             var lod = MapLod.Complete(flver);
             Lods.Add(lod.HasLod, lod);
@@ -968,39 +883,31 @@ public sealed class MapModelPort
         };
         MakeStatic(flver);
         // Terrain blends' half-float normals, while the DS3 vertex layouts still say which meshes have them.
-        if (HalfNormals)
         {
             var stats = new Ds3HalfNormals.Stats();
             Ds3HalfNormals.Fix(flver, stats);
             HalfNormalStats.Add(stats);
         }
-        // Overlays and two-layer materials, while the DS3 materials and vertex colours are still there.
-        var keepAlpha = new HashSet<FLVER2.Mesh>();
-        if (Ds3Alpha)
+        // Two-layer materials, while the DS3 materials and vertex colours are still there.
+        HashSet<FLVER2.Mesh> keepAlpha;
         {
             var stats = new MapOverlays.Stats();
-            var behind = CutFadedOverlays ? MapOverlays.CutEverywhere
-                : model is not null && OverlayBacking is { } backing ? backing.For(model)
-                : null;
-            keepAlpha = MapOverlays.Apply(flver, stats, behind, FadeOverlays, LayerContours);
+            keepAlpha = MapOverlays.Apply(flver, stats);
             Overlays.Add(stats);
         }
         // Terrain blends: one mesh per layer it shows (the weights are still in DS3's vertex layout here).
-        if (TerrainLayers)
         {
             var stats = new MapTerrainBlends.Stats();
-            MapTerrainBlends.Apply(flver, stats, LayerContours);
+            MapTerrainBlends.Apply(flver, stats);
             Blends.Add(stats);
         }
         // Sky domes: the layer that covers most of each dome mesh (the weights are still in DS3's vertex layout here).
-        if (SkyLayers)
         {
             var stats = new MapTerrainBlends.SkyStats();
             MapTerrainBlends.ApplySky(flver, stats);
             Skies.Add(stats);
         }
         // DS3's see-through unlit layers around the sky keep their fade (MapUnlitBlends), while DS3's colours are here.
-        if (UnlitBlendEnabled)
         {
             var stats = new MapUnlitBlends.Stats();
             keepAlpha.UnionWith(MapUnlitBlends.Apply(flver, stats));
@@ -1331,7 +1238,7 @@ public sealed class MapModelPort
             if (material.Template.Kind == "nolight-edge")
                 foreach (var param in SetUnlitEdge(matbin))
                     Notes.Add($"{material.Template.Matbin} has no {param}: {material.Name} (an alpha-tested unlit far card) may draw as a solid rectangle");
-            if (material.Template.Kind is "nolight" or "nolight-blend" or "nolight-edge" && !UnlitCastShadows)
+            if (material.Template.Kind is "nolight" or "nolight-blend" or "nolight-edge")
             {
                 if (matbin.Params.FirstOrDefault(p => p.Name == NoShadowParam && p.Value is bool) is { } noShadow)
                     noShadow.Value = true;

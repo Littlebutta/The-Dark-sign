@@ -21,7 +21,6 @@ namespace DarkSign.Porter.Enemies;
 /// chances of everything else in the roll stay exactly DS3's. Work\reports\enemy-drops.tsv lists every lot, every
 /// mapping and every DS3 item that has no Elden Ring item yet.
 ///
-/// Launcher Fallbacks window, "enemy-drops": B (DARKSIGN_ENEMY_DROPS=template) keeps the template's Elden Ring drops.
 /// </summary>
 public sealed class DropPort
 {
@@ -37,9 +36,6 @@ public sealed class DropPort
     public const int FlagBudget = 1500;
 
     public const int Slots = 8;
-
-    public static bool Enabled =>
-        Environment.GetEnvironmentVariable("DARKSIGN_ENEMY_DROPS")?.Trim().ToLowerInvariant() is not ("template" or "0" or "off");
 
     public enum Kind { Weapon, Armor, Ring, Goods }
 
@@ -206,11 +202,6 @@ public sealed class DropPort
     /// </summary>
     public static DropPort? Create(PorterContext ctx, ParamStore er, ParamStore ds3, Names? names, List<string> notes)
     {
-        if (!Enabled)
-        {
-            notes.Add("drops: off (Fallbacks enemy-drops B); ported enemies keep their template's Elden Ring drops");
-            return null;
-        }
         try
         {
             var ds3Lots = ds3.Get("ItemLotParam") ?? throw new InvalidDataException("DS3 has no ItemLotParam");
@@ -351,6 +342,69 @@ public sealed class DropPort
         return (Chain(live.Where(r => r.Flag <= 0).ToList(), _erEnemy, _usedEnemy, _enemyDefaults, _enemyChains, ref _nextEnemy, ref EnemyRows),
                 // A one-time drop whose flag found no room would drop on every kill: it is left out instead.
                 Chain(live.Where(r => r.Flag > 0 && MoveFlag(r.Flag) > 0).ToList(), _erMap, _usedMap, _mapDefaults, _mapChains, ref _nextMap, ref MapRows));
+    }
+
+    /// <summary>
+    /// The Elden Ring ItemLotParam_map row for a lot DS3's scripts award by number ("Award Item Lot", "Award Items
+    /// (Including Clients)", "Spawn Snuggly Item", "Initialize Crow Trade": boss souls, gifts, the Ashen Estus Flask),
+    /// or -1 when none of its items has an Elden Ring item. The DS3 row alone, like a one-time drop, its "got it" flag
+    /// moved with the scripts'. Up to 1.0.57x the scripts named DS3's numbers, under which ItemLotParam_map has no
+    /// row: none of the 58 lots the ported maps' scripts award gave anything (census 2026-11-22).
+    /// </summary>
+    /// <remarks>
+    /// One row, not the rows after it: DS3 awards a lot's own row (its eight slots), as the crow's trades show, twelve
+    /// lots 4300-4311 numbered one after another, each a trade of its own. The first offline build laid out the
+    /// following rows too, which made 4301 and 4302 the same chain as 4300 (2026-11-23). In Elden Ring the new row is
+    /// placed with free rows around it (<see cref="Chain"/>), so the game reads it alone as well.
+    /// </remarks>
+    public int PortLot(int ds3Lot)
+    {
+        var rows = new List<LotRow>();
+        if (ds3Lot > 0 && _ds3Lots.ContainsKey(ds3Lot) && Row(ds3Lot) is { } row)
+            rows.Add(row);
+        var live = rows.Where(r => r.SlotList.Any(s => s?.Er is not null)).ToList();
+        return Chain(live, _erMap, _usedMap, _mapDefaults, _mapChains, ref _nextMap, ref MapRows);
+    }
+
+    /// <summary>File next to the mod: DS3 lot the scripts award -> Elden Ring ItemLotParam_map row (<see cref="PortLot"/>).</summary>
+    public const string ScriptLotsFile = "darksign_script_lots.tsv";
+
+    /// <summary>Ports every lot the scripts award and writes <see cref="ScriptLotsFile"/>; returns a line for the log.</summary>
+    public string PortScriptLots(PorterContext ctx, IEnumerable<int> ds3Lots)
+    {
+        var lines = new List<string> { "# DS3 lot\tElden Ring ItemLotParam_map (written by DarkSignPorter port-maps)" };
+        int ported = 0, empty = 0, missing = 0;
+        foreach (var lot in ds3Lots.Distinct().Order())
+        {
+            if (!_ds3Lots.ContainsKey(lot))
+            {
+                missing++;
+                continue;
+            }
+            int er = PortLot(lot);
+            if (er < 0)
+            {
+                empty++;
+                continue;
+            }
+            lines.Add($"{lot}\t{er}");
+            ported++;
+        }
+        File.WriteAllLines(ctx.ModPath(ScriptLotsFile), lines);
+        return $"script item lots: {ported} lots the DS3 scripts award ported to ItemLotParam_map"
+               + (empty > 0 ? $", {empty} with no Elden Ring item yet left out" : "") + (missing > 0 ? $", {missing} not in DS3's ItemLotParam" : "");
+    }
+
+    /// <summary>Reads <see cref="ScriptLotsFile"/> (empty when there is none).</summary>
+    public static Dictionary<long, long> ReadScriptLots(PorterContext ctx)
+    {
+        var map = new Dictionary<long, long>();
+        var path = ctx.ModPath(ScriptLotsFile);
+        if (File.Exists(path))
+            foreach (var line in File.ReadAllLines(path).Where(l => !l.StartsWith('#')))
+                if (line.Split('\t') is [var a, var b, ..] && long.TryParse(a, out var ds3) && long.TryParse(b, out var er))
+                    map[ds3] = er;
+        return map;
     }
 
     /// <summary>One DS3 lot row, read and mapped once.</summary>
@@ -745,11 +799,6 @@ public sealed class DropPort
         var full = new DropPort(ds3Lots, TestParam([.. erFields]), TestParam([.. erFields]), items, null);
         var (noFlagEnemy, noFlagMap) = full.Port(knight);
         check("a one-time drop with no flag to keep it one-time is left out rather than dropped on every kill", noFlagEnemy == FirstLot && noFlagMap == -1 && full.FlagsLost == 1);
-        var saved = Environment.GetEnvironmentVariable("DARKSIGN_ENEMY_DROPS");
-        Environment.SetEnvironmentVariable("DARKSIGN_ENEMY_DROPS", "template");
-        bool off = !Enabled;
-        Environment.SetEnvironmentVariable("DARKSIGN_ENEMY_DROPS", saved);
-        check("Fallbacks enemy-drops B (DARKSIGN_ENEMY_DROPS=template) keeps the template's drops", off && (saved is not null || Enabled));
     }
 
     private static string Clean(string? text) => (text ?? "").Replace('\t', ' ').Replace('\n', ' ').Replace("\r", "");

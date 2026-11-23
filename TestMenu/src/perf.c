@@ -5,7 +5,7 @@
    hitch can be put on the map. A "hitch" is a frame over 50 ms (three frames' time at 60 fps).
 
    The time between two Present calls is what the player sees as one frame: CPU and GPU work, loading stalls and
-   shader compiles all show in it. It doesn't say which of them it was; the test builds (launcher Fallbacks) do. */
+   shader compiles all show in it. It doesn't say which of them it was; the build log may. */
 #include <windows.h>
 #include <stdio.h>
 #include <stdlib.h>

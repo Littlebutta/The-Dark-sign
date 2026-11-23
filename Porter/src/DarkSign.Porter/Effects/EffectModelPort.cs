@@ -16,12 +16,9 @@ namespace DarkSign.Porter;
 /// kind. A model whose material has no Elden Ring equivalent is not converted and its effect stays left out.</para>
 /// Method (RULE 3): the FLVER header / skeleton / node flag changes are the weapon model port's (ModelPort); the
 /// material mapping is this project's, from the survey of both games' effect models.
-/// Fallback "weapon-visuals": DARKSIGN_EFFECT_MODELS=0 leaves effects with models out, as before.
 /// </summary>
 public sealed partial class EffectModelPort
 {
-    public static bool Enabled => Environment.GetEnvironmentVariable("DARKSIGN_EFFECT_MODELS") != "0";
-
     /// <summary>An Elden Ring effect model that uses a material, kept as bytes so every use starts from a fresh copy.</summary>
     private sealed record Template(string Model, byte[] Flver, int Material);
 

@@ -23,7 +23,7 @@ public static class BoneDiag
         var erMain = BND4.Read(erArchives.Read("/chr/c0000.anibnd.dcx"));
         var ds3 = AnimPort.ReadDs3Skeleton(Leaf(ds3Main, "skeleton.hkx")!.Bytes);
         var er = AnimPort.ReadErSkeleton(Leaf(erMain, "skeleton.hkx")!.Bytes, erMain.Files.FirstOrDefault(f => f.Name.EndsWith(".compendium", StringComparison.OrdinalIgnoreCase))?.Bytes);
-        Log($"DS3 c0000: {ds3.Names.Count} bones; Elden Ring c0000: {er.Names.Count} bones; mode DARKSIGN_WEAPON_BONES={(AnimPort.BoneMode == "" ? "(unset: relative to rest)" : AnimPort.BoneMode)}");
+        Log($"DS3 c0000: {ds3.Names.Count} bones; Elden Ring c0000: {er.Names.Count} bones");
         AnimPort.PlanRetarget(ds3, er);
         var ds3Index = ds3.Names.Select((n, i) => (n, i)).GroupBy(x => x.n, StringComparer.OrdinalIgnoreCase)
             .ToDictionary(g => g.Key, g => g.First().i, StringComparer.OrdinalIgnoreCase);

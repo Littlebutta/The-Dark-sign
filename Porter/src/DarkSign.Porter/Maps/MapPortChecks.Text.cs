@@ -8,7 +8,7 @@ public static partial class MapPortChecks
     private static IEnumerable<(string Name, Action Test)> TextChecks()
     {
         yield return ("map text: a script's dialog, status and message lines name DS3's event text at 1,000,000,000 + the DS3 number, written in the line or passed in", TextInScripts);
-        yield return ("map text: an area welcome line and a collision's positive area name point at DS3's place name, a negative one names none; DARKSIGN_MAP_TEXT turns each off", TextPlaces);
+        yield return ("map text: an area welcome line and a collision's positive area name point at DS3's place name, a negative one names none", TextPlaces);
         yield return ("map text: a door's 'can't do that' message names DS3's event text and the prompt message is Elden Ring's", TextObjAct);
         yield return ("map text: DS3's text is merged into an Elden Ring text file, replacing an earlier run's and keeping Elden Ring's", TextMerge);
     }
@@ -48,8 +48,8 @@ public static partial class MapPortChecks
     ] }
     """;
 
-    private static EventPort TextPort(MapText.Method mode, MapText.Used? used = null) =>
-        new(Emedf.Parse(Ds3TextDefs), Emedf.Parse(ErTextDefs), [(Ds3Id, ErId)], new FlagMap()) { Texts = used, TextMode = mode };
+    private static EventPort TextPort(MapText.Used? used = null) =>
+        new(Emedf.Parse(Ds3TextDefs), Emedf.Parse(ErTextDefs), [(Ds3Id, ErId)], new FlagMap()) { Texts = used };
 
     private static void TextInScripts()
     {
@@ -66,7 +66,7 @@ public static partial class MapPortChecks
         script.Events.Add(shown);
 
         var used = new MapText.Used();
-        var port = TextPort(MapText.Method.All, used);
+        var port = TextPort(used);
         port.Learn(script);
         var result = port.Convert(script, EMEVD.Game.Sekiro, MoveToSlot);
         var main = result.Events[0].Instructions;
@@ -85,11 +85,27 @@ public static partial class MapPortChecks
                && EventPort.KindOf("Message Entity ID") == EventPort.Kind.Entity && EventPort.KindOf("Subarea Name Popup Message ID") == EventPort.Kind.Other,
             "only a plain Message ID is event text");
 
-        // Off: DS3's numbers stay, as before.
-        var off = TextPort(MapText.Method.Off);
-        off.Learn(script);
-        var kept = off.Convert(script, EMEVD.Game.Sekiro, MoveToSlot).Events[0].Instructions;
-        Expect(Arg(kept[1], "Message ID", er) == 10010160 && BitConverter.ToInt32(kept[0].ArgData, 8) == 10010161 && off.Stats.TextsMoved == 0, "DARKSIGN_MAP_TEXT=0 keeps DS3's numbers");
+        // A boss health bar's name is an NpcName number: DS3's (Iudex Gundyr 905110) names nothing in Elden Ring.
+        var names = new MapText.Used();
+        var namePort = TextPort(names);
+        Expect(EventPort.KindOf("Name ID") == EventPort.Kind.NpcName && namePort.Move(905110, EventPort.Kind.NpcName) == MapText.Base + 905110
+               && names.Names.SetEquals([905110]) && namePort.Move(-1, EventPort.Kind.NpcName) == -1, "boss bar names move to DS3's own names");
+
+        // Item lots the scripts award and AI rows they switch to move to the ported rows (Ds3Ids); unknown ones stay.
+        var chrMap = EnemyPort.ChrMap.Parse(["think\t124000\tc7130\t71309000\tPus of Man"]);
+        var idPort = new EventPort(Emedf.Parse(Ds3TextDefs), Emedf.Parse(ErTextDefs), [(Ds3Id, ErId)], new FlagMap())
+        {
+            Ids = new Ds3Ids(new Dictionary<long, long> { [4000505] = 900_000_100 }, chrMap, (type, id) => type == 3 && id == 2137 ? 8_000_100 : null),
+        };
+        Expect(EventPort.KindOf("Item Lot ID") == EventPort.Kind.ItemLot && EventPort.KindOf("AI ID") == EventPort.Kind.Think, "item lot and AI arguments are known");
+        Expect(idPort.Move(4000505, EventPort.Kind.ItemLot) == 900_000_100 && idPort.Move(4700, EventPort.Kind.ItemLot) == 4700, "a ported script lot moves, an unported one stays");
+        Expect(idPort.Move(124000, EventPort.Kind.Think) == 71309000 && idPort.Move(110070, EventPort.Kind.Think) == 110070, "a ported AI row moves, an unported one stays");
+        idPort.Ids!.WithBehaviors(new() { [5810] = 1_600_005_810 }).WithSfx(new() { [830095] = 900_830_095 }).WithCameras(new() { [5250] = 900_005_250 });
+        Expect(EventPort.KindOf("Behavior ID") == EventPort.Kind.Behavior && EventPort.KindOf("SFX ID") == EventPort.Kind.Sfx
+               && EventPort.KindOf("Normal Camera ID") == EventPort.Kind.Camera && EventPort.KindOf("Locked Camera ID") == EventPort.Kind.Camera, "behaviour, effect and camera arguments are known");
+        Expect(idPort.Move(5810, EventPort.Kind.Behavior) == 1_600_005_810 && idPort.Move(830095, EventPort.Kind.Sfx) == 900_830_095
+               && idPort.Move(5250, EventPort.Kind.Camera) == 900_005_250 && idPort.Move(7000, EventPort.Kind.Behavior) == 7000, "ported behaviours, effects and cameras move, others stay");
+        Expect(idPort.Ids.Item(3, 2137) == 8_000_100 && idPort.Ids.Item(3, 350) is null && idPort.Ids.Item(9, 2137) is null, "items by type");
     }
 
     private static void TextPlaces()
@@ -97,24 +113,18 @@ public static partial class MapPortChecks
         var er = Emedf.Parse(ErTextDefs);
         var script = OneEvent(0, Ins(2007, 11, 3000));
         var used = new MapText.Used();
-        var port = TextPort(MapText.Method.All, used);
+        var port = TextPort(used);
         port.Learn(script);
         var line = port.Convert(script, EMEVD.Game.Sekiro, MoveToSlot).Events[0].Instructions[0];
         Expect(line.Bank == 2007 && line.ID == 14 && Arg(line, "Message ID", er) == MapText.Base + 3000, $"the welcome line names DS3's area name ({line.Bank}[{line.ID}] {Arg(line, "Message ID", er)})");
         Expect(used.Places.SetEquals([3000]) && used.Messages.Count == 0, "an area name is a place name, not an event message");
 
-        var noPlaces = TextPort(MapText.Method.NoPlaces);
-        noPlaces.Learn(script);
-        Expect(Arg(noPlaces.Convert(script, EMEVD.Game.Sekiro, MoveToSlot).Events[0].Instructions[0], "Message ID", er) == 3000, "noplaces keeps the area name's DS3 number");
-
-        Expect(MapText.CollisionPlace(3000, MapText.Method.All) == MapText.Base + 3000, "a collision's area name moves");
-        Expect(MapText.CollisionPlace(-1, MapText.Method.All) == -1 && MapText.CollisionPlace(0, MapText.Method.All) == -1, "a collision with no area name (or 0) names none");
-        Expect(MapText.CollisionPlace(-3000, MapText.Method.All) == -1,
+        Expect(MapText.CollisionPlace(3000) == MapText.Base + 3000, "a collision's area name moves");
+        Expect(MapText.CollisionPlace(-1) == -1 && MapText.CollisionPlace(0) == -1, "a collision with no area name (or 0) names none");
+        Expect(MapText.CollisionPlace(-3000) == -1,
             "a negative area name (DS3: the rest of the area, no banner) names none: Elden Ring showed ?PlaceName? for it and a banner at every step onto it");
-        Expect(MapText.CollisionPlace(3000, MapText.Method.NoPlaces) == -1 && MapText.CollisionPlace(3000, MapText.Method.Off) == -1, "area names off: collisions name none, as before");
-        Expect(MapText.ModeOf(null) == MapText.Method.All && MapText.ModeOf("noplaces") == MapText.Method.NoPlaces && MapText.ModeOf("0") == MapText.Method.Off, "DARKSIGN_MAP_TEXT is read");
-        Expect(MapText.Message(10010160, MapText.Method.NoPlaces) == MapText.Base + 10010160 && MapText.Message(MapText.Base + 5, MapText.Method.All) == MapText.Base + 5,
-            "messages still move with area names off, and a moved number doesn't move twice");
+        Expect(MapText.Message(10010160) == MapText.Base + 10010160 && MapText.Message(MapText.Base + 5) == MapText.Base + 5,
+            "messages move, and a moved number doesn't move twice");
     }
 
     private static void TextObjAct()
@@ -155,15 +165,12 @@ public static partial class MapPortChecks
         var notes = new List<string>();
         var used = new HashSet<int>();
         var er = Er();
-        ObjectPort.AddObjActRows(er, ds3, null, notes, MapText.Method.All, used);
+        ObjectPort.AddObjActRows(er, ds3, null, notes, used);
         Expect((int)er[70300310]["actionFailedMsgId"].Value == MapText.Base + 10010161, $"the failed message names DS3's text ({er[70300310]["actionFailedMsgId"].Value})");
         Expect((int)er[70300320]["actionFailedMsgId"].Value == -1, "a row with no failed message keeps none");
         Expect((int)er[70300310]["actionEnableMsgId"].Value == -1, "the prompt message is the template's (Elden Ring prompts come from the action button row)");
         Expect(used.SetEquals([10010161]) && notes.Single().Contains("1 \"can't do that\" messages"), notes[0]);
 
-        var off = Er();
-        ObjectPort.AddObjActRows(off, ds3, null, null, MapText.Method.Off);
-        Expect((int)off[70300310]["actionFailedMsgId"].Value == 10010161 && (int)off[70300310]["actionEnableMsgId"].Value == 10010400, "DARKSIGN_MAP_TEXT=0 keeps DS3's numbers");
     }
 
     private static void TextMerge()

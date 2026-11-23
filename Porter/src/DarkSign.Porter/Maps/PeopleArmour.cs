@@ -4,8 +4,7 @@ namespace DarkSign.Porter.Maps;
 
 /// <summary>
 /// DS3's people in their DS3 armour. DS3's NPCs and hostile humans have no body of their own: they are the human
-/// body c0000 dressed by a CharaInitParam row (Hawkwood: Chain Helm and the Undead Legion set). Up to 1.0.366 they
-/// were left out, or (fallback map-people B) replaced by an Elden Ring person in Elden Ring clothes.
+/// body c0000 dressed by a CharaInitParam row (Hawkwood: Chain Helm and the Undead Legion set).
 ///
 /// For every DS3 person the ported maps place:
 /// <list type="number">
@@ -21,20 +20,15 @@ namespace DarkSign.Porter.Maps;
 /// DS3's weapons (<see cref="WeaponSlots"/>): the ported weapon (port-weapons' plan) or the Elden Ring weapon of the
 /// same name. A DS3 slot that is empty is emptied; a DS3 weapon with neither keeps the stand-in's weapon there and is
 /// named in the port log. Up to 1.0.403 every person held their stand-in's weapons (the Champion's Gravetender
-/// fought with Inquisitor Ghiza's). DARKSIGN_PEOPLE_WEAPONS=0 (fallback map-people E) keeps the stand-in's.</item>
+/// fought with Inquisitor Ghiza's).</item>
 /// </list>
 /// The rows are added after port-weapons, so a failure there puts the placed people back on their stand-in's own
 /// look (<see cref="Revert"/>) instead of naming rows that don't exist. A piece whose model can't be converted is
-/// left off (the row names no armour there). DARKSIGN_PEOPLE_ARMOUR=0 (fallback map-people D) leaves DS3's
-/// humans out again. Unproven in game (2026-11-12): that a converted DS3 armour model binds to Elden Ring's body.
+/// left off (the row names no armour there). Unproven in game (2026-11-12): that a converted DS3 armour model
+/// binds to Elden Ring's body.
 /// </summary>
 public sealed class PeopleArmour
 {
-    public static bool Enabled => Environment.GetEnvironmentVariable("DARKSIGN_PEOPLE_ARMOUR") != "0";
-    public static bool WeaponsEnabled => Environment.GetEnvironmentVariable("DARKSIGN_PEOPLE_WEAPONS") != "0";
-    /// <summary>Off (fallback map-people F, DARKSIGN_PEOPLE_HIDES=common): every piece hides the body like its slot's most common Elden Ring row, as up to 1.0.42x.</summary>
-    public static bool MatchHides => Environment.GetEnvironmentVariable("DARKSIGN_PEOPLE_HIDES") != "common";
-
     /// <summary>
     /// The body parts a piece hides: DS3's Mask00-97 and Elden Ring's invisibleFlag_SexVer00-95 count the same parts
     /// (Elden Ring's def: 00-01 fringe, 02 sideburns, 03-04 crown, 05-06 back hair, 07 collar; both games hide 60-69
@@ -312,7 +306,7 @@ public sealed class PeopleArmour
             .ToList();
         if (patterns.Count == 0)
             return null;
-        if (ds3Hides is null || !MatchHides)
+        if (ds3Hides is null)
             return patterns[0].OrderBy(r => r.ID).First();
         var best = patterns
             .Select((g, rank) => (Group: g, Rank: rank, Distance: ErHides(g.First()) is { } er ? HideDistance(er, ds3Hides) : int.MaxValue))

@@ -12,15 +12,12 @@ namespace DarkSign.Porter.Maps;
 /// those enemies in Elden Ring's world too, so a stand-in whose row has another level is placed on a copy of the row
 /// with the quiet level instead, at <see cref="RowBase"/> + the row's ID (the same ID on every PC, for co-op).
 /// <para>The copies are written after the people armour step (<see cref="WriteParams"/>); if that fails, the parts go
-/// back on Elden Ring's rows (<see cref="Revert"/>), so no part names a row that isn't there. Off with
-/// DARKSIGN_ENEMY_THREAT=template (launcher fallback "map-music" C, which keeps the templates' levels too).</para>
+/// back on Elden Ring's rows (<see cref="Revert"/>), so no part names a row that isn't there.</para>
 /// </summary>
 public sealed class QuietStandIns
 {
     /// <summary>The copies' NpcParam IDs: this + Elden Ring's row ID (Elden Ring's rows are all below 1e9).</summary>
     public const int RowBase = 1_000_000_000;
-
-    public static bool Enabled => !Enemies.ChrPort.KeepTemplateThreat;
 
     private readonly PARAM _npc;
     private readonly long _quiet;
@@ -33,9 +30,9 @@ public sealed class QuietStandIns
         _quiet = quiet;
     }
 
-    /// <summary>Null when it is off, or Elden Ring's NpcParam (or its threatLv field) couldn't be read.</summary>
+    /// <summary>Null when Elden Ring's NpcParam (or its threatLv field) couldn't be read.</summary>
     public static QuietStandIns? Create(PARAM? erNpc) =>
-        Enabled && erNpc is not null && Enemies.ChrPort.MusicThreatLevel(erNpc) is { } quiet ? new QuietStandIns(erNpc, quiet) : null;
+        erNpc is not null && Enemies.ChrPort.MusicThreatLevel(erNpc) is { } quiet ? new QuietStandIns(erNpc, quiet) : null;
 
     /// <summary>The level that starts no music.</summary>
     public long QuietLevel => _quiet;

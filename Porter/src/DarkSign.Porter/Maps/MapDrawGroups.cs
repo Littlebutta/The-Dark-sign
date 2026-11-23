@@ -27,9 +27,9 @@ namespace DarkSign.Porter.Maps;
 /// alternate groups or merges them in through the masks, depending on a game state.
 ///
 /// Checked on vanilla Stormveil (m10_00_00_00) with this reading: every one of its 223 map pieces that has draw groups
-/// is drawn from at least one collision (a median 16 of 111). Read the other way, the way the "map-groups" B fallback
+/// is drawn from at least one collision (a median 16 of 111). Read the other way, the way builds
 /// wrote DS3's masks up to 1.0.4xx (DS3 draw groups into the first array, display groups into the second), 105 of
-/// Stormveil's pieces would never be drawn, and the ported pieces' real draw groups stayed empty, so B never culled.
+/// Stormveil's pieces would never be drawn, and the ported pieces' real draw groups stayed empty, so they never culled.
 ///
 /// Parts are written so that both readings of the alternate groups give the same result: the alternate arrays are
 /// copies of the main ones and the masks keep every bit, with UseAltGroups set as 340 of Stormveil's 343 pieces have it.

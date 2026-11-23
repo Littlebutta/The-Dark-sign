@@ -28,21 +28,11 @@ namespace DarkSign.Porter.Maps;
 /// </list>
 /// What a value means (flag, line, text, shop) is known where it is used, and followed back through the arguments
 /// the script's state groups pass each other (<see cref="Kinds"/>). The converted script is t(<see cref="TalkIdBase"/>
-/// + DS3's number) in the ported map's own talk binder, and the placed person names it.
-/// DARKSIGN_PEOPLE_TALK=0 (fallback map-people G) leaves everyone silent, as before. Unproven in game (2026-11-19):
-/// that Elden Ring shows a line with no voice for a readable time.
+/// + DS3's number) in the ported map's own talk binder, and the placed person names it. Unproven in game
+/// (2026-11-19): that Elden Ring shows a line with no voice for a readable time.
 /// </summary>
 public sealed class TalkPort
 {
-    public static bool Enabled => Environment.GetEnvironmentVariable("DARKSIGN_PEOPLE_TALK") != "0";
-
-    /// <summary>DARKSIGN_TALK_ENGINE_FLAGS=0 (fallback map-people K) keeps waiting on the flags only DS3's characters set.</summary>
-    public static bool EngineFlagsOn => Environment.GetEnvironmentVariable("DARKSIGN_TALK_ENGINE_FLAGS") != "0";
-
-    /// <summary>Off (fallback map-people J, DARKSIGN_PEOPLE_VOICES=0): no voice banks; lines are subtitles only, as
-    /// up to 1.0.501, where Elden Ring moved on from each line at once.</summary>
-    public static bool Voices => Environment.GetEnvironmentVariable("DARKSIGN_PEOPLE_VOICES") != "0";
-
     /// <summary>
     /// Elden Ring finds an NPC's spoken lines in the voice bank named after the first three digits of its talk script
     /// (t204101000 speaks from vc204: every voiceId of Elden Ring's TalkParam starts with its bank's number, measured
@@ -757,19 +747,18 @@ public sealed class TalkPort
             var allScripts = BND4.Read(ds3.Read(TalkPath(slot.Ds3))).Files;
             var source = allScripts.Where(f => ScriptId(f.Name) is int id && used.Contains(id)).ToList();
             HashSet<long> engine = [];
-            if (EngineFlagsOn)
-                try
-                {
-                    var events = new[] { MapEvents.ScriptPath(slot.Ds3), "/event/common.emevd.dcx" }.Where(ds3.Contains).Select(p => EMEVD.Read(ds3.Read(p)));
-                    engine = EngineFlags(allScripts.Select(f => { try { return ESD.Read(f.Bytes); } catch (Exception ex) when (ex is not OutOfMemoryException) { _ = ex; return null; } })
-                        .OfType<ESD>(), events);
-                    if (engine.Count > 0)
-                        lines.Add($"  people talk: {slot.Ds3}: {engine.Count} flags only DS3's characters set, read as on ({string.Join(" ", engine.Order().Take(12))})");
-                }
-                catch (Exception ex) when (ex is not OutOfMemoryException)
-                {
-                    lines.Add($"  people talk: {slot.Ds3}: engine flags not worked out ({ex.Message}); menus that wait on a character may hang");
-                }
+            try
+            {
+                var events = new[] { MapEvents.ScriptPath(slot.Ds3), "/event/common.emevd.dcx" }.Where(ds3.Contains).Select(p => EMEVD.Read(ds3.Read(p)));
+                engine = EngineFlags(allScripts.Select(f => { try { return ESD.Read(f.Bytes); } catch (Exception ex) when (ex is not OutOfMemoryException) { _ = ex; return null; } })
+                    .OfType<ESD>(), events);
+                if (engine.Count > 0)
+                    lines.Add($"  people talk: {slot.Ds3}: {engine.Count} flags only DS3's characters set, read as on ({string.Join(" ", engine.Order().Take(12))})");
+            }
+            catch (Exception ex) when (ex is not OutOfMemoryException)
+            {
+                lines.Add($"  people talk: {slot.Ds3}: engine flags not worked out ({ex.Message}); menus that wait on a character may hang");
+            }
             var modPath = ctx.ModPath(MapPorter.ModParts(TalkPath(slot.Er)));
             var (vanilla, compression) = er.ReadWithCompression(er.Contains(TalkPath(slot.Er)) ? TalkPath(slot.Er) : templatePath!);
             var bnd = BND4.Read(File.Exists(modPath) ? DCX.Decompress(File.ReadAllBytes(modPath)) : vanilla);
@@ -814,7 +803,7 @@ public sealed class TalkPort
                         + (leftOut.Count > 0 ? $"; commands left out: {string.Join(", ", leftOut.Select(kv => $"{kv.Key} x{kv.Value}"))}" : "")
                         + (zeroed.Count > 0 ? $"; functions Elden Ring lacks read as 0: {string.Join(", ", zeroed.Select(kv => $"{kv.Key} x{kv.Value}"))}" : ""));
         lines.AddRange(WriteLines(ctx, ds3, er, regulation, ds3Params, needs, lineBank));
-        lines.Add(WriteShops(regulation, ds3Params, needs, items));
+        lines.Add(WriteShops(regulation, ds3Params, needs, items, moveFlag));
         regulation.Save(ctx.ModPath("regulation.bin"));
         Directory.CreateDirectory(ctx.WorkPath("reports"));
         File.WriteAllText(ctx.WorkPath("reports", ReportFile), report.ToString());
@@ -914,7 +903,7 @@ public sealed class TalkPort
             talkParam.Rows.Add(row);
             talkMsg.Entries.Add(new FMG.Entry(TextBase + id, words));
             rows++;
-            if (Voices && lineBank.TryGetValue(id, out var prefix))
+            if (lineBank.TryGetValue(id, out var prefix))
             {
                 var list = banks.TryGetValue(prefix, out var l) ? l : banks[prefix] = [];
                 list.Add((row, prefix * 1_000_000 + list.Count + 1, id, ReadingTime(words)));
@@ -948,8 +937,6 @@ public sealed class TalkPort
             foreach (var path in CutsceneSound.VoiceBankPaths(ctx, $"vc{p}"))
                 if (!banks.ContainsKey(p) && File.Exists(path))
                     File.Delete(path);
-        if (!Voices)
-            return ["people talk: voices off (DARKSIGN_PEOPLE_VOICES=0): subtitles only"];
         if (banks.Count == 0)
             return log;
         var notes = new List<string>();
@@ -995,7 +982,7 @@ public sealed class TalkPort
 
     // ---- Shops ----
 
-    private static string WriteShops(ParamStore regulation, ParamStore? ds3Params, Needs needs, Func<int, int, int?> items)
+    private static string WriteShops(ParamStore regulation, ParamStore? ds3Params, Needs needs, Func<int, int, int?> items, Func<long, long>? moveFlag = null)
     {
         if (needs.Shops.Count == 0)
             return "people talk: no shops opened by the converted scripts";
@@ -1006,7 +993,7 @@ public sealed class TalkPort
         // The row to copy: a plain goods row sold for runes.
         var template = shop.Rows.Where(r => PeopleArmour.Cell(r, "equipType") == 3 && PeopleArmour.Cell(r, "costType") <= 0 && PeopleArmour.Cell(r, "mtrlId") <= 0)
                            .OrderBy(r => r.ID).FirstOrDefault() ?? shop.Rows.OrderBy(r => r.ID).First();
-        int sold = 0, noItem = 0;
+        int sold = 0, noItem = 0, limited = 0;
         var done = new HashSet<int>();
         foreach (var (start, end) in needs.Shops)
             foreach (var source in ds3Shop.Rows.Where(r => r.ID >= start && r.ID <= end))
@@ -1026,16 +1013,31 @@ public sealed class TalkPort
                 PeopleArmour.SetCell(row, "equipType", type);
                 PeopleArmour.SetCell(row, "value", PeopleArmour.Cell(source, "value"));
                 PeopleArmour.SetCell(row, "mtrlId", -1);
-                PeopleArmour.SetCell(row, "sellQuantity", -1);
-                PeopleArmour.SetCell(row, "eventFlag_forStock", 0);
+                // DS3's stock: a ware sold a set number of times counts its sales in a flag (DS3 EventFlag), moved with
+                // the scripts' flags (ShopFlag). Up to 1.0.57x every ware sold without limit (one-of-a-kind rings,
+                // weapons and keys bought again and again). What a shop offers when (ashes handed over) is the talk
+                // script's choice of lineup range, which the converted script keeps.
+                int stockFlag = ShopFlag(PeopleArmour.Cell(source, "EventFlag"), moveFlag);
+                int quantity = PeopleArmour.Cell(source, "sellQuantity");
+                // Only one-of-a-kind wares: one flag says "sold". A count above one is kept in more than that flag in
+                // a way not checked yet, so those stay unlimited as before.
+                bool once = stockFlag > 0 && quantity == 1;
+                PeopleArmour.SetCell(row, "sellQuantity", once ? 1 : -1);
+                PeopleArmour.SetCell(row, "eventFlag_forStock", once ? stockFlag : 0);
                 PeopleArmour.SetCell(row, "eventFlag_forRelease", 0);
                 shop.Rows.Add(row);
                 sold++;
+                if (once)
+                    limited++;
             }
         shop.Rows.Sort((a, b) => a.ID.CompareTo(b.ID));
-        return $"people talk: {needs.Shops.Count} shops, {sold} wares on the shelves (ShopLineupParam {ShopBase}+: ported weapons and Elden Ring items of the same name), "
+        return $"people talk: {needs.Shops.Count} shops, {sold} wares on the shelves ({limited} sold once, as in DS3) (ShopLineupParam {ShopBase}+: ported weapons and Elden Ring items of the same name), "
                + $"{noItem} DS3 wares with no Elden Ring item yet left off";
     }
+
+    /// <summary>A DS3 shop flag as Elden Ring's (0: none). Without a flag mover (offline checks) there is none.</summary>
+    internal static int ShopFlag(int ds3Flag, Func<long, long>? moveFlag) =>
+        ds3Flag > 0 && moveFlag?.Invoke(ds3Flag) is var er and > 0 and < int.MaxValue ? (int)er : 0;
 
     /// <summary>Takes the talk scripts off every placed person (the scripts couldn't be written).</summary>
     public static int Revert(PorterContext ctx, IEnumerable<MapSlots.Slot> slots)

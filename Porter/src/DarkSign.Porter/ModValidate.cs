@@ -121,7 +121,7 @@ public static partial class ModValidate
         var hitVariations = new HashSet<int>();
         foreach (var row in ported)
         {
-            int section = Field(row, MovesetPort.UseWeaponMotionCategory ? "wepmotionCategory" : "spAtkcategory");
+            int section = Field(row, "spAtkcategory");
             bool isBase = row.ID % 10000 == 0;
             if (isBase && section >= 90)
             {
@@ -272,9 +272,8 @@ public static partial class ModValidate
                 r.Warn($"... {missing - 10} more ported weapons whose attack dummy polys are not on their model");
             Console.WriteLine($"validate: {missing} ported weapons name hit dummy polys their model doesn't carry");
         }
-        if (!MovesetPort.UseWeaponMotionCategory)
-            foreach (var row in bases.Where(row => Field(row, "spAtkcategory") is > 0 and < 50 or > 999))
-                r.Error($"weapon {row.ID}: spAtkcategory {Field(row, "spAtkcategory")} outside 50-999");
+        foreach (var row in bases.Where(row => Field(row, "spAtkcategory") is > 0 and < 50 or > 999))
+            r.Error($"weapon {row.ID}: spAtkcategory {Field(row, "spAtkcategory")} outside 50-999");
 
         // 3. Movesets: TAE, animations, imports, event groups, behaviour clips.
         var main = Binder("chr", "c0000.anibnd.dcx");
@@ -447,7 +446,7 @@ public static partial class ModValidate
             }
         }
         else
-            r.Info("sounds: the game's sound index isn't edited (DARKSIGN_SOUND_INDEX=0, or the build couldn't read it)");
+            r.Info("sounds: the game's sound index isn't edited (the build couldn't read it)");
         int listed = 0;
         foreach (var dup in bank.Objects.GroupBy(o => o.Id).Where(g => g.Count() > 1).Take(5))
             r.Error($"{bankName}: HIRC ID {dup.Key} is used by {dup.Count()} objects (Wwise rejects the bank)");

@@ -10,14 +10,11 @@ namespace DarkSign.Porter.Enemies;
 /// <para>The template is one of Elden Ring's own glowing character materials, found once per run: a C[...] MATBIN
 /// that samples albedo, normal and emissive maps (and nothing the port can't fill), preferring the plain glowing
 /// shader C[AMSN]_Glow, with the FLVER material and GX list its character uses for it. Its colour parameters are
-/// set to white, so the glow is the colour of DS3's own emissive texture (the Jailer's is orange). Without one
-/// (DARKSIGN_ENEMY_GLOW=0, or none found) glowing materials stay plain, as before. The weapon port does the same
-/// for weapons (<see cref="ModelPort.Emissive"/>).</para>
+/// set to white, so the glow is the colour of DS3's own emissive texture (the Jailer's is orange). The weapon
+/// port does the same for weapons (<see cref="ModelPort.Emissive"/>).</para>
 /// </summary>
 public static class ChrGlow
 {
-    public static bool Enabled => Environment.GetEnvironmentVariable("DARKSIGN_ENEMY_GLOW")?.Trim() != "0";
-
     /// <summary>A glowing Elden Ring character material: its MATBIN, sampler types, the FLVER material and GX list.</summary>
     public sealed record Template(string Matbin, string Shader, IReadOnlyList<string> Samplers, FLVER2.Material Material, FLVER2.GXList GX)
     {
@@ -36,11 +33,6 @@ public static class ChrGlow
             if (_searched)
                 return _found;
             _searched = true;
-            if (!Enabled)
-            {
-                Console.WriteLine("enemies: glowing DS3 materials are drawn plain (DARKSIGN_ENEMY_GLOW=0)");
-                return null;
-            }
             try
             {
                 _found = Search(er);

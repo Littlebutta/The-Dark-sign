@@ -25,8 +25,7 @@ namespace DarkSign.Porter.Maps;
 /// (<see cref="DepthFog"/>).</item>
 /// <item>ColorGrading off, so no colosseum's tint is laid over DS3's colours.</item>
 /// </list>
-/// Exposure, bloom and every other group stay the host's. Fallback "map-atmosphere" B (--host-atmosphere) keeps the
-/// host's file untouched.
+/// Exposure, bloom and every other group stay the host's.
 /// </summary>
 public static class MapAtmosphere
 {
@@ -43,20 +42,14 @@ public static class MapAtmosphere
     /// </summary>
     public const float Ds3FogStrength = 0.26f;
 
-    /// <summary>Fallback "map-atmosphere" C: DARKSIGN_FOG_STRENGTH=0 writes DS3's fog colours without their
-    /// strengths, as builds up to 1.0.44x did.</summary>
-    public static bool FogStrengthEnabled => Environment.GetEnvironmentVariable("DARKSIGN_FOG_STRENGTH") != "0";
-
     /// <summary>
     /// DS3's fog colours with their own strengths applied: the distance colour times its strength over
     /// <see cref="Ds3FogStrength"/>, the height colour times its strength (DS3 writes 1 or nearly where it draws height
     /// fog). A height colour of strength 0 means DS3 draws no height fog there (m30_00), so the rest of the fog takes
     /// the distance colour. No channel goes above 1.
     /// </summary>
-    public static (Vector4 Direct, Vector4 Others) FogColours(Vector4 colour, Vector4? height, bool strengths = true)
+    public static (Vector4 Direct, Vector4 Others) FogColours(Vector4 colour, Vector4? height)
     {
-        if (!strengths)
-            return (colour, height ?? colour);
         static Vector4 Scaled(Vector4 c, float by)
         {
             var v = new Vector3(c.X, c.Y, c.Z) * Math.Max(0, by);
@@ -80,11 +73,9 @@ public static class MapAtmosphere
     }
 
     /// <summary>port-maps step: writes the slot's gparam. Returns a line for the log.</summary>
-    public static string Write(PorterContext ctx, GameArchives ds3, GameArchives er, MapId ds3Id, MapId erId, MapId hostId, MSB3 ds3Msb, bool hostAtmosphere,
-        bool unturnedSun = false, bool hostFillLights = false, MSBE? layout = null, ISet<int>? lightSets = null, bool oneLightSet = false)
+    public static string Write(PorterContext ctx, GameArchives ds3, GameArchives er, MapId ds3Id, MapId erId, MapId hostId, MSB3 ds3Msb,
+        MSBE? layout = null, ISet<int>? lightSets = null)
     {
-        if (hostAtmosphere)
-            return "atmosphere: the host's own colours, fog and colour grading (--host-atmosphere)";
         var hostPath = GparamPath(hostId);
         if (!er.Contains(hostPath))
             return $"atmosphere: the host has no draw params ({hostPath.TrimStart('/')}); nothing written";
@@ -94,25 +85,19 @@ public static class MapAtmosphere
         var (hostBytes, compression) = er.ReadWithCompression(hostPath);
         var gparam = GPARAM.Read(hostBytes);
         var ds3Draw = GPARAM.Read(ds3.Read(source));
-        var wanted = layout is null || oneLightSet ? null : MapLightSets.Wanted(layout);
+        var wanted = layout is null ? null : MapLightSets.Wanted(layout);
         var characters = wanted is null ? null : MapLightSets.CharacterOnly(layout!);
-        var changes = Apply(gparam, ds3Draw, GroundHeight(ds3Msb), unturnedSun ? 0 : MapLighting.OffsetDegrees(ds3Msb), hostFillLights, wanted, Layer(ds3Msb), characters);
-        if (unturnedSun && MapLighting.OffsetDegrees(ds3Msb) != 0)
-            changes.Add("sun direction as DS3's file writes it, not turned with the map (--unturned-sun)");
+        var changes = Apply(gparam, ds3Draw, GroundHeight(ds3Msb), MapLighting.OffsetDegrees(ds3Msb), wanted, Layer(ds3Msb), characters);
         var target = ctx.ModPath(MapPorter.ModParts(GparamPath(erId)));
         Directory.CreateDirectory(Path.GetDirectoryName(target)!);
         File.WriteAllBytes(target, DCX.Compress(gparam.Write(), compression));
         if (lightSets is not null && Group(gparam, "LightSet") is { } written)
             lightSets.UnionWith(MapLightSets.Ids(written));
-        if (layout is not null && ScenesEnabled)
+        if (layout is not null)
             changes.Add(WriteScenes(ctx, ds3, ds3Id, erId, ds3Msb, layout, hostBytes, compression,
-                (host, draw) => Apply(host, draw, GroundHeight(ds3Msb), unturnedSun ? 0 : MapLighting.OffsetDegrees(ds3Msb), hostFillLights, wanted, Layer(ds3Msb), characters)));
+                (host, draw) => Apply(host, draw, GroundHeight(ds3Msb), MapLighting.OffsetDegrees(ds3Msb), wanted, Layer(ds3Msb), characters)));
         return "atmosphere: " + string.Join("; ", changes);
     }
-
-    /// <summary>Fallback "map-atmosphere" F: DARKSIGN_SCENE_GPARAMS=0 gives every place the map's one set of draw
-    /// params again (no DS3 per-place fog and light), as builds up to 1.0.55x.</summary>
-    public static bool ScenesEnabled => Environment.GetEnvironmentVariable("DARKSIGN_SCENE_GPARAMS") != "0";
 
     /// <summary>The draw params file of a map's place variant <paramref name="sub"/> (1-99: mAA_BB_0N00), the one a
     /// collision's scene setting switches to while the player stands on it.</summary>
@@ -256,8 +241,7 @@ public static class MapAtmosphere
     /// So each of these lights takes DS3's colour and DS3's strength times the host's sun strength over DS3's (the
     /// scale the lamps take, <see cref="MapLampStrength.SunScale"/>), the local lights are on where DS3 has them on,
     /// and the occlusion weights are Stormveil's. The hemisphere light stays the host's (the hosts and Stormveil
-    /// agree on it). "--host-fill-lights" (fallback "map-fill-light" B) keeps the host's strengths.
-    /// Returns what changed, for the log; nothing when either file lacks a sun strength.
+    /// agree on it). Returns what changed, for the log; nothing when either file lacks a sun strength.
     /// </summary>
     public static string? FillLights(GPARAM.Group light, GPARAM.Group ds3Light, float sunScale)
     {
@@ -296,7 +280,7 @@ public static class MapAtmosphere
     /// <param name="lightSets">The light sets the layout's parts name: DS3's sets among them that the host lacks are
     /// added (<see cref="MapLightSets.Add"/>).</param>
     /// <param name="characterSets">The sets only characters name (<see cref="MapLightSets.CharacterOnly"/>).</param>
-    public static List<string> Apply(GPARAM gparam, GPARAM ds3, float ground, float sunTurnDegrees = 0, bool hostFillLights = false,
+    public static List<string> Apply(GPARAM gparam, GPARAM ds3, float ground, float sunTurnDegrees = 0,
         IEnumerable<int>? lightSets = null, FogLayer? layer = null, IReadOnlySet<int>? characterSets = null)
     {
         var inv = CultureInfo.InvariantCulture;
@@ -323,9 +307,7 @@ public static class MapAtmosphere
                 ? string.Create(inv, $"sun colour {C(sc)} at {sa.X:F2},{sa.Y:F2} from DS3 light set 0 ({set} values)")
                   + (sunTurnDegrees != 0 ? string.Create(inv, $", turned {sunTurnDegrees:0.#} degrees with the map to {ta.X:F2},{ta.Y:F2} (sun yaw {ta.Y * 180 / MathF.PI:0} degrees, {SunHeight(ta):0} above the horizon)") : "")
                 : $"light set: {set} values from DS3");
-            if (hostFillLights)
-                changes.Add("lights without shadows keep the host's strengths (--host-fill-lights)");
-            else if (sunStrengths && FillLights(light, ds3Light, sunScale) is { } fill)
+            if (sunStrengths && FillLights(light, ds3Light, sunScale) is { } fill)
                 changes.Add(fill);
             // After set 0 is done: the other sets start from it.
             if (lightSets is not null && MapLightSets.Add(gparam, ds3, lightSets, sunScale, sunTurnDegrees, characterSets).Note is { } sets)
@@ -340,14 +322,14 @@ public static class MapAtmosphere
         var fog = Group(gparam, "VolumetricFog");
         if (fog is not null && fogColour is { } ds3Colour)
         {
-            var (direct, rest) = FogColours(ds3Colour, heightColour, FogStrengthEnabled);
+            var (direct, rest) = FogColours(ds3Colour, heightColour);
             SetAll(fog, "VolumetricFog DirLight DirectColor", _ => new Vector4(direct.X, direct.Y, direct.Z, FogDirectStrength));
             SetAll(fog, "VolumetricFog DirLight OppositeColor", _ => new Vector4(rest.X, rest.Y, rest.Z, FogOppositeStrength));
             SetAll(fog, "VolumetricFog SkyLight SkyColor", _ => new Vector4(rest.X, rest.Y, rest.Z, FogSkyStrength));
             var reach = Reach(ds3Fog);
             SetAll(fog, "VolumetricFog FarDepth", _ => reach);
             SetAll(fog, "VolumetricFog FogEndDepth", _ => reach);
-            var depth = layer is { } l && FogDepthEnabled ? DepthFog(ds3Colour.W, l, reach) : ((float Density, float Distribution, float Offset)?)null;
+            var depth = layer is { } l ? DepthFog(ds3Colour.W, l, reach) : ((float Density, float Distribution, float Offset)?)null;
             var (density, distribution, offset) = depth ?? (FogDensity, FogDistribution, ground);
             SetAll(fog, "VolumetricFog Global HeightFogDistribution", _ => distribution);
             SetAll(fog, "VolumetricFog Global HeightFogDensity Scale", _ => density);
@@ -356,7 +338,7 @@ public static class MapAtmosphere
             var thickness = depth is null
                 ? string.Create(inv, $"Stormveil's thickness (density {FogDensity}, out to {FogFarDepth} m) from height {ground:F0}")
                 : string.Create(inv, $"DS3's depth haze: {Math.Clamp(ds3Colour.W, MinHaze, MaxHaze):0.##} of the view hidden at {reach:0} m (density {density:0.#####}) through the height the map is played at ({layer!.Value.Height:F0}, halving every {MathF.Log(2) / distribution:F0} m up)");
-            changes.Add(string.Create(inv, $"fog colour {C(direct)} / {C(rest)} from DS3 fog 0 ({(FogStrengthEnabled ? $"its colours {C(ds3Colour)} at {ds3Colour.W:F2} and {C(heightColour ?? ds3Colour)} at {(heightColour ?? ds3Colour).W:F2}" : "colours without their strengths")}), ") + thickness);
+            changes.Add(string.Create(inv, $"fog colour {C(direct)} / {C(rest)} from DS3 fog 0 (its colours {C(ds3Colour)} at {ds3Colour.W:F2} and {C(heightColour ?? ds3Colour)} at {(heightColour ?? ds3Colour).W:F2}), ") + thickness);
         }
         else
             changes.Add("fog: " + (fog is null ? "no volumetric fog in the host" : "no fog colour in DS3") + "; kept");
@@ -378,10 +360,6 @@ public static class MapAtmosphere
             return new FogLayer(0, 0);
         return new FogLayer(heights[heights.Count / 2], heights[Math.Min(heights.Count - 1, heights.Count * 19 / 20)] - heights[heights.Count / 20]);
     }
-
-    /// <summary>Fallback "map-atmosphere" D: DARKSIGN_FOG_DEPTH=stormveil keeps Stormveil's fog thickness from the
-    /// map's ground up, as builds up to 1.0.52x had it.</summary>
-    public static bool FogDepthEnabled => !string.Equals(Environment.GetEnvironmentVariable("DARKSIGN_FOG_DEPTH"), "stormveil", StringComparison.OrdinalIgnoreCase);
 
     /// <summary>The least and most of the view DS3's haze may hide (DS3's fog 0 strength, clamped).</summary>
     public const float MinHaze = 0.02f, MaxHaze = 0.9f;
@@ -412,10 +390,6 @@ public static class MapAtmosphere
     /// <summary>The nearest and farthest the fog's reach may be set (<see cref="Reach"/>).</summary>
     public const float MinReach = 40, MaxReach = 2000;
 
-    /// <summary>Fallback "map-atmosphere" E: DARKSIGN_FOG_REACH=stormveil gives every map Stormveil's 300 m fog reach,
-    /// as builds up to 1.0.55x did.</summary>
-    public static bool FogReachEnabled => !string.Equals(Environment.GetEnvironmentVariable("DARKSIGN_FOG_REACH"), "stormveil", StringComparison.OrdinalIgnoreCase);
-
     /// <summary>
     /// How far DS3's fog 0 takes to reach its full strength: Fog-DistOffset (where it starts) plus Fog-Dist (how
     /// far it then thickens), clamped to <see cref="MinReach"/>..<see cref="MaxReach"/>. DS3's distance fog reaches
@@ -425,12 +399,11 @@ public static class MapAtmosphere
     /// gave every map Stormveil's 300 m (Elden Ring's fog keeps what it hides at its end depth for everything past
     /// it, as DS3 does at its reach), so DS3's haze only arrived four times farther out than DS3 draws it: the
     /// Painted World's snowy air hid half the view at 300 m instead of 70 m and the map looked clear (2026-11-21
-    /// playtest). Elden Ring's fog depth and end depth now take DS3's reach. Stormveil's 300 m when DS3 has no
-    /// distances or with fallback "map-atmosphere" E.
+    /// playtest). Elden Ring's fog depth and end depth now take DS3's reach.
     /// </summary>
     public static float Reach(GPARAM.Group? ds3Fog)
     {
-        if (!FogReachEnabled || Value<float>(ds3Fog, "Fog-Dist") is not { } dist || dist <= 0)
+        if (Value<float>(ds3Fog, "Fog-Dist") is not { } dist || dist <= 0)
             return FogFarDepth;
         var offset = Math.Max(0, Value<float>(ds3Fog, "Fog-DistOffset") ?? 0);
         return Math.Clamp(dist + offset, MinReach, MaxReach);

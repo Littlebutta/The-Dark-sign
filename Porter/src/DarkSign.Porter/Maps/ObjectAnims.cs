@@ -291,7 +291,7 @@ public static partial class ObjectAnims
             int id = int.Parse(match.Groups[1].Value) * 1_000_000 + int.Parse(match.Groups[2].Value);
             try
             {
-                var (hkx, _, _) = AnimPort.ConvertTimed(file.Bytes, ds3Skeleton, erSkeleton, t.Animation, t.Compendium, AnimPort.Spline, assetName);
+                var (hkx, _, _) = AnimPort.ConvertTimed(file.Bytes, ds3Skeleton, erSkeleton, t.Animation, t.Compendium, true, assetName);
                 bnd.Files.Add(new BinderFile(flags, 1_000_000_000 + id, folder + @"hkx_compendium\" + ItemText.Leaf(file.Name).ToLowerInvariant(), hkx));
                 ids.Add(id);
                 converted++;

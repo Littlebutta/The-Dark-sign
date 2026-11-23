@@ -147,19 +147,8 @@ public static partial class MapPortChecks
             ["l"] = new("l", new(ported, StringComparer.OrdinalIgnoreCase), Empty: new(StringComparer.OrdinalIgnoreCase) { "510300" }),
         };
         var models = new[] { "h000100", "h502300", "h510300" };
-        var left = MapPorter.CollisionModelsLeftOut(models, copy, MapCollisions.EmptySideMethod.Copy).ToList();
-        Expect(left.Count == 1 && left[0] == ("h510300", true), $"copy: only the model empty on both sides is left out: {string.Join(", ", left)}");
-
-        // --empty-collision-alone: h has nothing for 502300, l does; the part still stays.
-        var alone = new Dictionary<string, MapCollisions.Result>
-        {
-            ["h"] = new("h", new(StringComparer.OrdinalIgnoreCase) { "000100" }, Empty: new(StringComparer.OrdinalIgnoreCase) { "502300", "510300" }),
-            ["l"] = new("l", new(ported, StringComparer.OrdinalIgnoreCase), Empty: new(StringComparer.OrdinalIgnoreCase) { "510300" }),
-        };
-        left = MapPorter.CollisionModelsLeftOut(models, alone, MapCollisions.EmptySideMethod.Alone).ToList();
-        Expect(left.Count == 1 && left[0].Model == "h510300", $"alone: the part with l collision stays: {string.Join(", ", left)}");
-        left = MapPorter.CollisionModelsLeftOut(models, alone, MapCollisions.EmptySideMethod.Drop).ToList();
-        Expect(left.Select(l => l.Model).SequenceEqual(["h502300", "h510300"]) && left.All(l => l.Empty), $"drop: as up to 1.0.460, only h counts: {string.Join(", ", left)}");
+        var left = MapPorter.CollisionModelsLeftOut(models, copy).ToList();
+        Expect(left.Count == 1 && left[0] == ("h510300", true), $"only the model empty on both sides is left out: {string.Join(", ", left)}");
 
         // The port log names the enemies that stand on such a part.
         var msb = new SoulsFormats.MSB3();
@@ -167,21 +156,14 @@ public static partial class MapPortChecks
         msb.Parts.Collisions.Add(new SoulsFormats.MSB3.Part.Collision { Name = "h000100_0000", ModelName = "h000100" });
         msb.Parts.Enemies.Add(new SoulsFormats.MSB3.Part.Enemy { Name = "c6040_0000", ModelName = "c6040", EntityID = 4500300, CollisionName = "h502300_0000" });
         msb.Parts.Enemies.Add(new SoulsFormats.MSB3.Part.Enemy { Name = "c1280_0000", ModelName = "c1280", EntityID = 4500301, CollisionName = "h000100_0000" });
-        foreach (var (results, method) in new[] { (copy, MapCollisions.EmptySideMethod.Copy), (alone, MapCollisions.EmptySideMethod.Alone) })
-        {
-            var notes = MapPorter.EmptySideNotes(msb, results, method).ToList();
-            Expect(notes.Count == 1 && notes[0].Contains("1 models, 1 collision parts") && notes[0].Contains("1 DS3 enemies") && notes[0].Contains("c6040_0000 4500300 on h502300_0000"),
-                $"{method}: note: {string.Join(" / ", notes)}");
-        }
+        var notes = MapPorter.EmptySideNotes(msb, copy).ToList();
+        Expect(notes.Count == 1 && notes[0].Contains("1 models, 1 collision parts") && notes[0].Contains("1 DS3 enemies") && notes[0].Contains("c6040_0000 4500300 on h502300_0000"),
+            $"note: {string.Join(" / ", notes)}");
         Expect(!MapPorter.EmptySideNotes(msb, new Dictionary<string, MapCollisions.Result>
         {
             ["h"] = new("h", new(StringComparer.OrdinalIgnoreCase) { "000100" }),
             ["l"] = new("l", new(StringComparer.OrdinalIgnoreCase) { "000100" }),
-        }, MapCollisions.EmptySideMethod.Copy).Any(), "no note on a map without one-sided collision");
-
-        Expect(MapPorter.Options.Parse(["--empty-collision-alone"]).EmptyCollision == MapCollisions.EmptySideMethod.Alone
-               && MapPorter.Options.Parse(["--drop-empty-collisions"]).EmptyCollision == MapCollisions.EmptySideMethod.Drop
-               && new MapPorter.Options().EmptyCollision == MapCollisions.EmptySideMethod.Copy, "the empty-collision arguments are read");
+        }).Any(), "no note on a map without one-sided collision");
     }
 
     private static void EmptyCollision()

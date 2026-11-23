@@ -15,7 +15,7 @@ public static partial class MapPortChecks
     {
         yield return ("load: a DDS loses its largest mip levels and nothing else", DropMipLevels);
         yield return ("load: cube maps, uncompressed and unreadable textures", DropMipEdgeCases);
-        yield return ("load: the low detail copy of a map texture is half size; fallbacks map-texture-detail B and C", LowDetailCopies);
+        yield return ("load: the low detail copy of a map texture is half size", LowDetailCopies);
         yield return ("load: full textures only near the player", TextureDistance);
         yield return ("load: collision and navmeshes are binary tagfiles by default, the size of DS3's; --xml-collision keeps XML", CollisionFormat);
     }
@@ -142,21 +142,10 @@ public static partial class MapPortChecks
         Expect(low.Name == "m31_00_wall_l" && DdsMips.Read(low.Bytes) is { Width: 512, Height: 512, Mips: 10 } && low.Mipmaps == 10,
             "the low detail copy is half the width and height");
         Expect(low.Bytes.Length * 3 < full.Bytes.Length, "the low detail copy takes about a quarter of the memory");
-        Expect(MapTextures.LevelsDropped(MapTextures.Detail.Standard) == (0, 1), "default levels");
 
-        // B: half size textures, quarter size low detail copies.
-        var (fullDropB, lowDropB) = MapTextures.LevelsDropped(MapTextures.Detail.Half);
-        var (halfFull, halfLow) = Entries(MapTextures.BuildBinder([Texture()], deflate, fullDropB, lowDropB));
-        Expect(DdsMips.Read(halfFull.Bytes) is { Width: 512 } && DdsMips.Read(halfLow.Bytes) is { Width: 256 }, "--half-textures");
-        // A full copy read back from an earlier run's binder is already cut once: only the low copy shrinks further.
-        var cutOnce = new TPF.Texture("m31_00_wall", 0, 0, halfFull.Bytes, TPF.TPFPlatform.PC);
-        var (again, againLow) = Entries(MapTextures.BuildBinder([cutOnce], deflate, fullDropB, lowDropB, new HashSet<string> { "m31_00_wall" }));
-        Expect(DdsMips.Read(again.Bytes) is { Width: 512 } && DdsMips.Read(againLow.Bytes) is { Width: 256 }, "a kept texture isn't cut twice");
-
-        // C: as up to 1.0.299, both copies full.
-        var (fullDropC, lowDropC) = MapTextures.LevelsDropped(MapTextures.Detail.FullLow);
-        var (oldFull, oldLow) = Entries(MapTextures.BuildBinder([Texture()], deflate, fullDropC, lowDropC));
-        Expect(oldFull.Bytes.AsSpan().SequenceEqual(dds) && oldLow.Bytes.AsSpan().SequenceEqual(dds), "--full-low-textures");
+        // A full copy read back from an earlier run's binder is not cut again: only the low copy is made from it.
+        var (again, againLow) = Entries(MapTextures.BuildBinder([Texture()], deflate, 0, 1, new HashSet<string> { "m31_00_wall" }));
+        Expect(DdsMips.Read(again.Bytes) is { Width: 1024 } && DdsMips.Read(againLow.Bytes) is { Width: 512 }, "a kept texture isn't cut");
 
         // The report's memory figures.
         var (memFull, memLow, large, unread) = MapTextures.Memory(
@@ -164,11 +153,6 @@ public static partial class MapPortChecks
              new TPF.Texture("odd", 0, 0, SyntheticDds(64, 64, 1, fourCc: "XYZ1"), TPF.TPFPlatform.PC)], 0, 1);
         Expect(large == 1 && unread == 1, "one 4096 pixel texture, one unreadable");
         Expect(memLow * 3 < memFull && memFull > 11_000_000, "low detail is about a quarter of full detail");
-
-        var options = MapPorter.Options.Parse(["--half-textures"]);
-        Expect(options.TextureDetail == MapTextures.Detail.Half, "--half-textures parsed");
-        Expect(MapPorter.Options.Parse(["--full-low-textures"]).TextureDetail == MapTextures.Detail.FullLow, "--full-low-textures parsed");
-        Expect(MapPorter.Options.Parse([]).TextureDetail == MapTextures.Detail.Standard, "half size low detail copies by default");
     }
 
     private static void TextureDistance()
@@ -176,21 +160,19 @@ public static partial class MapPortChecks
         var def = new PARAMDEF { ParamType = "PARTS_DRAW_PARAM_ST", DataVersion = 1 };
         foreach (var name in new[] { "tex_lv01_BorderDist", "tex_lv01_PlayDist", "drawDist" })
             def.Fields.Add(new PARAMDEF.Field(def, PARAMDEF.DefType.f32, name));
-        PARAM.Row Row(bool legacy)
+        PARAM.Row Row()
         {
             var param = new PARAM { ParamType = def.ParamType, Rows = [] };
             param.ApplyParamdef(def);
             param.Rows.Add(new PARAM.Row(MapDrawParams.TemplateRow, "", def));
-            return param[MapDrawParams.AddRow(param, legacy)]!;
+            return param[MapDrawParams.AddRow(param)]!;
         }
         float Cell(PARAM.Row row, string name) => (float)row.Cells.Single(c => c.Def.InternalName == name).Value;
-        var row = Row(false);
+        var row = Row();
         Expect(Cell(row, "tex_lv01_BorderDist") == MapDrawParams.TextureDistance && Cell(row, "tex_lv01_PlayDist") == MapDrawParams.TextureBand,
             "full textures within TextureDistance");
-        Expect(MapDrawParams.TextureDistance < MapDrawParams.LegacyTextureDistance && MapDrawParams.TextureDistance >= 64, "nearer than before, never in the player's face");
+        Expect(MapDrawParams.TextureDistance < 256f && MapDrawParams.TextureDistance >= 64, "nearer than JortPob's 256 m, never in the player's face");
         Expect(Cell(row, "drawDist") > 9000f, "pieces themselves still draw at any distance");
-        var legacy = Row(true);
-        Expect(Cell(legacy, "tex_lv01_BorderDist") == 256f && Cell(legacy, "tex_lv01_PlayDist") == 32f, "--full-low-textures keeps JortPob's distances");
 
         // Larger pieces load full textures from further out.
         var param = new PARAM { ParamType = def.ParamType, Rows = [] };
@@ -216,12 +198,6 @@ public static partial class MapPortChecks
 
     private static void CollisionFormat()
     {
-        Expect(MapPorter.Options.Parse([]).BinaryCollision, "binary by default");
-        Expect(!MapPorter.Options.Parse(["--xml-collision"]).BinaryCollision, "--xml-collision (fallback map-collision B)");
-        Expect(MapPorter.Options.Parse(["--binary-collision"]).BinaryCollision, "older profiles' --binary-collision still accepted");
-        var simd = MapPorter.Options.Parse(["--simd"]);
-        Expect(simd.BinaryCollision && simd.KeepSimdTree, "--simd alone is fallback C (binary, DS3's tree)");
-
         // The binary file is about the DS3 file's size; the XML one many times it. Both decode to the same triangles.
         var ds3 = MapSelfTest.SyntheticDs3Collision(everything: true);
         var binary = CollisionPort.Convert(ds3, null, xml: false);

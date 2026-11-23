@@ -20,13 +20,10 @@ namespace DarkSign.Porter.Maps;
 /// Ring keeps its shared asset sounds in groups like 920, the same numbers the ported assets take); its row names the
 /// bank; and its TAE plays them as Elden Ring's own assets do: 129, type 14, the DS3 dummy poly, held sounds
 /// (DS3's 129 that last a second or more) with PlaybackBehaviorType 1 so they end with the event, the rest once.
-/// The banks are built like the enemy and cutscene banks (<see cref="ObjectSoundBanks"/>). Off with
-/// DARKSIGN_OBJECT_SOUNDS=0 (launcher fallback map-doors C): the objects move silently, as up to 1.0.50x.
+/// The banks are built like the enemy and cutscene banks (<see cref="ObjectSoundBanks"/>).
 /// </summary>
 public static class ObjectSounds
 {
-    public static readonly bool Enabled = Environment.GetEnvironmentVariable("DARKSIGN_OBJECT_SOUNDS") != "0";
-
     /// <summary>DS3's object sound type (o) and Elden Ring's asset sound type (g), in the TAE's first field.</summary>
     public const int Ds3Kind = 3, AssetKind = 14;
     public const char Ds3Letter = 'o', ErLetter = 'g';
@@ -391,8 +388,6 @@ public sealed class ObjectSoundBanks
         File.WriteAllLines(_ctx.ModPath(ManifestFile), _files.Order(StringComparer.OrdinalIgnoreCase));
         if (_written.Count == 0)
             return "index: nothing to list";
-        if (Environment.GetEnvironmentVariable("DARKSIGN_SOUND_INDEX") == "0")
-            return "index: not edited (DARKSIGN_SOUND_INDEX=0)";
         var path = SoundPort.IndexPath(_ctx);
         byte[]? bytes = File.Exists(path) ? File.ReadAllBytes(path) : er.Contains(SoundIndex.ArchivePath) ? er.Read(SoundIndex.ArchivePath) : null;
         if (bytes is null)

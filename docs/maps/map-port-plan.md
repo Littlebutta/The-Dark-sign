@@ -15,12 +15,12 @@ after `port-weapons`. If it fails, the weapons still load and the game starts; t
 | Map pieces | `map/m40_00_00_00/m40_00_00_00_NNNNNN.mapbnd.dcx` | `map/m45/m45_00_00_00/...`; materials become cloned Elden Ring matbins (`DKS_40_00_00_00_NNNN`) in `allmaterial`, copied from a plain one-layer material of a legacy dungeon's map pieces (the colosseums are built from assets, and most legacy dungeon pieces use terrain blend materials), or from JortPob's albedo-only asset material `AEG006_030_ID001`; samplers name the DS3 texture by bare name, as JortPob's do | `Maps/MapModelPort.cs` |
 | Textures | `map/m40/m40_000N.tpfbhd/.tpfbdt` | a new `map/m45/common/m45_0000.tpfbhd/.tpfbdt` (Elden Ring has no map area texture binders, but loads this one: JortPob's approach), one uncompressed TPF per texture plus its `_l` copy, plus a flat metallic map | `Maps/MapTextures.cs` |
 | Collision | `h40_00_00_00.hkxbhd` (Havok 2014 packfile) | `h45_00_00_00.hkxbhd` (Havok 2018 XML tagfile, same compressed-mesh tree); every triangle is checked after conversion | `Maps/CollisionPort.cs`, `Maps/MapCollisions.cs` |
-| Navmesh | `map/m40_00_00_00/m40_00_00_00.nvmhktbnd.dcx` (Havok AI 2014, one file per navmesh in its own space) and `m40_00_00_00.nva.dcx` (the navmesh list: placement, connections, gate nodes) | `map/m45/m45_00_00_00/m45_00_00_00.nvmhktbnd.dcx` (Havok AI 2018 tagfiles, an `n` and an `o` file per navmesh, in map space, face tree in a query mediator) and `m45_00_00_00.nva.dcx` (Elden Ring's list: NameIDs by position, both sets, connections renumbered, gate nodes). See "Navigation" below. Fallbacks `map-navmesh`. | `Maps/NavmeshPort.cs`, `Maps/NavFaceTree.cs`, `Maps/NavmeshList.cs`, `Maps/MapNavmesh.cs` |
+| Navmesh | `map/m40_00_00_00/m40_00_00_00.nvmhktbnd.dcx` (Havok AI 2014, one file per navmesh in its own space) and `m40_00_00_00.nva.dcx` (the navmesh list: placement, connections, gate nodes) | `map/m45/m45_00_00_00/m45_00_00_00.nvmhktbnd.dcx` (Havok AI 2018 tagfiles, an `n` and an `o` file per navmesh, in map space, face tree in a query mediator) and `m45_00_00_00.nva.dcx` (Elden Ring's list: NameIDs by position, both sets, connections renumbered, gate nodes). See "Navigation" below. | `Maps/NavmeshPort.cs`, `Maps/NavFaceTree.cs`, `Maps/NavmeshList.cs`, `Maps/MapNavmesh.cs` |
 | Map events | `event/m40_00_00_00.emevd.dcx` | `event/m45_00_00_00.emevd.dcx`, converted instruction by instruction (see "Event scripts" below); the slot's own Elden Ring events no longer run | `Maps/EventPort.cs`, `Maps/MapEvents.cs` |
 | Common events | `event/common_func.emevd.dcx` (only the events the ported maps start, and the ones those start) | added to `event/common_func.emevd.dcx` under IDs 103x291000-103x291999 | `Maps/MapEvents.cs`, `Maps/FlagMap.cs` |
-| Enemies and bosses | MSB3 enemy parts | MSBE enemy parts at DS3's spot, on DS3's collision, with DS3's entity ID moved to the slot. The character is the ported DS3 one when `Mods\ER\darksign_chr_map.tsv` lists it, otherwise an Elden Ring stand-in of the same kind copied from a vanilla legacy-dungeon placement; DS3 bosses (boss health bar in DS3's events) get Elden Ring bosses. DS3's people get Elden Ring people (see "People" below). Fallbacks `map-enemies`, `map-people`. | `Maps/EnemyPort.cs` |
-| Objects | MSB3 object parts, `obj/oNNNNNN.objbnd.dcx` | MSBE asset parts at DS3's spot with DS3's entity ID; each DS3 object model becomes an asset `asset/aeg/aeg92x/aeg92x_NNN.geombnd.dcx` (+ `_l.geomhkxbnd.dcx` collision for objects that don't break) with a row in AssetEnvironmentGeometryParam, built the way JortPob builds assets. Doors, lifts and levers move: animation binder, moving collision, ObjAct events and ObjActParam rows. Fallbacks `map-objects`, `map-doors`. See "Objects, regions and map-file events" and "Doors, lifts and levers". | `Maps/ObjectPort.cs`, `Maps/ObjectAnims.cs` |
-| Regions and map-file events | MSB3 regions (event areas, warp, spawn and patrol points), PatrolInfo, PlatoonInfo, Generator | MSBE "Other" regions, spawn points and patrol route points with DS3's shape and entity ID; patrol routes, platoons and generators naming the ported enemies and points. Fallbacks `map-regions`. | `Maps/RegionPort.cs` |
+| Enemies and bosses | MSB3 enemy parts | MSBE enemy parts at DS3's spot, on DS3's collision, with DS3's entity ID moved to the slot. The character is the ported DS3 one when `Mods\ER\darksign_chr_map.tsv` lists it, otherwise an Elden Ring stand-in of the same kind copied from a vanilla legacy-dungeon placement; DS3 bosses (boss health bar in DS3's events) get Elden Ring bosses. DS3's people get Elden Ring people (see "People" below). | `Maps/EnemyPort.cs` |
+| Objects | MSB3 object parts, `obj/oNNNNNN.objbnd.dcx` | MSBE asset parts at DS3's spot with DS3's entity ID; each DS3 object model becomes an asset `asset/aeg/aeg92x/aeg92x_NNN.geombnd.dcx` (+ `_l.geomhkxbnd.dcx` collision for objects that don't break) with a row in AssetEnvironmentGeometryParam, built the way JortPob builds assets. Doors, lifts and levers move: animation binder, moving collision, ObjAct events and ObjActParam rows. See "Objects, regions and map-file events" and "Doors, lifts and levers". | `Maps/ObjectPort.cs`, `Maps/ObjectAnims.cs` |
+| Regions and map-file events | MSB3 regions (event areas, warp, spawn and patrol points), PatrolInfo, PlatoonInfo, Generator | MSBE "Other" regions, spawn points and patrol route points with DS3's shape and entity ID; patrol routes, platoons and generators naming the ported enemies and points. | `Maps/RegionPort.cs` |
 | Map connections | MSB3 connect collisions | MSBE connect collisions copied from a legacy dungeon's, pointing at the neighbouring map's slot (ones to unported maps are left out) | `Maps/MsbPort.cs` |
 | Run start/leave | | two events in `common.emevd` wait for flags the F1 menu sets, then use the game's WarpPlayer | `Maps/RunEvents.cs`, `TestMenu/src/overlay.cpp` |
 
@@ -38,10 +38,9 @@ DS3 maps take over the colosseum arenas, which single-player never visits:
 
 The Painted World takes m19_70, a small map Elden Ring ships (layout, map pieces, collision, navmesh) that the
 single-player game never visits (area m19 is otherwise only the final boss arena). Its formats, template parts and
-per-map side files come from m45_00, the colosseum every slot is proven to load from. Fallback `map-painted-world` B
-puts it in m45_02 instead (the Undead Settlement is then left out), C leaves it out.
+per-map side files come from m45_00, the colosseum every slot is proven to load from.
 
-Since 2026-11-19 the other DS3 maps are ported too (`MapSlots.WorldSlots`, fallback `map-world`): Lothric Castle
+Since 2026-11-19 the other DS3 maps are ported too (`MapSlots.WorldSlots`): Lothric Castle
 m45_03, Road of Sacrifices m45_04, Cathedral m45_05, Catacombs m38_10, Irithyll m38_11, Irithyll Dungeon m38_12,
 Grand Archives m38_13, Archdragon Peak m38_14, Kiln m38_15, Dreg Heap m11_70, Ringed City m11_72; Filianore's Rest has
 no slot. The new blocks are added to the game's map list within its fixed arrays; see `own-map-ids.md`, "Third look".
@@ -158,7 +157,7 @@ test. The next build changes the first two and measures the third:
     port; in the second (`vanilla-model`) every map piece is the colosseum's own model, byte for byte; in the third
     (`vanilla-material`) DS3's geometry is drawn with the colosseum model's own vanilla material. Second loads:
     binders, layout and draw settings are fine. Third loads too: so is the converted geometry, and what is left is
-    the ported materials and textures. Fallback `map-draw` C builds all three normally.
+    the ported materials and textures.
 12. **1.0.271 playtest: both tests loaded, the real port still hung.** So the wait is on the ported MATBINs or the
     textures they name. Compared again with JortPob, the texture binder differed in two ways: its entries
     (`name.tpf.dcx`) are DCX (Kraken) compressed TPFs, where the port wrote bare TPFs under those `.dcx` names, and
@@ -173,7 +172,7 @@ Materials are sorted into kinds, each with its own vanilla template found in the
 (`M[AMSN_V]`), alpha tested (`_Edge`), blended (`_Alpha`) and unlit (`_NoLight`, DS3's sky domes). A kind with no
 template found falls back to opaque. Meshes with no stand-in yet (water, additive glows, decals, fog cards, unlit
 cloud layers) are left out and counted in the log ("meshes left out"). A DS3 material with no normal map gets a
-flat one (`DKS_flat_n`). Fallbacks: `map-materials` B (albedo-only template) and `map-groups` C (no draw groups).
+flat one (`DKS_flat_n`).
 
 **Sky and lighting.** DS3's sky is ordinary map pieces (009xxx, a 9 km dome), so it is drawn with the map. The
 sun, sky colours, fog and exposure come from the slot's gparam, which is still the colosseum's. Three things make
@@ -192,7 +191,7 @@ host's weak straight-down fill light, side faces black):
   inside Firelink Shrine); the light of candles, torches and bonfires comes from the flame effects of DS3's
   objects, which arrive with the object port.
 
-Fallback `map-lighting` B (`--host-lighting`) turns all three off. Still the colosseum's: sun direction and
+Still the colosseum's: sun direction and
 colour, fog, exposure (DS3's LightSet group has the same field names as Elden Ring's and each DS3 part names a
 light set, so those can be carried over next), and what the environment map shows in reflections.
 
@@ -201,7 +200,7 @@ as ordinary geometry, so up to 1.0.299 they stood in the maps (2026-11-11 playte
 holes in the High Wall, blurry doubles of rocks and ground in the Undead Settlement). `MsbPort.HelperKind` leaves
 out reflection proxies (DrawOnlyReflectCam: low detail doubles of whole areas for water reflections; m40's m200000
 and m200010), shadow casters (IsShadowOnly) and pieces off the map's base layer (MapStudioLayer bit 0, when nearly
-every piece has it). Fallback `map-helper-pieces` B (`--helper-pieces`) keeps them. `Work\reports\map-pieces-<slot>.tsv`
+every piece has it). `Work\reports\map-pieces-<slot>.tsv`
 lists every DS3 piece (position, flags, draw groups, size, each mesh's material type, kind and albedo) to name what
 a screenshot shows. Not handled: DS3's draw groups (which piece is drawn from which collision; Elden Ring's test
 looks like piece DrawGroups against collision DisplayGroups, each collision owning one bit in its second mask
@@ -215,7 +214,7 @@ of 1.0.307). `MapStandIns` leaves out a piece that is mostly low texture when at
 its box, none of them drawn from a collision that draws it, holding a quarter of its vertices. Measured on the real
 layouts: m30_00's m900xxx stand-ins have 400 to 1,700 pieces they are never drawn with, while m30_00's m980xxx
 (Lothric Castle's outside) and every low piece of m40_00 share a collision with all other pieces, so they stay.
-The port log lists each judged piece; fallback `map-stand-ins` B (`--stand-ins`) keeps them all.
+The port log lists each judged piece.
 
 **Vertex alpha: overlays and two-layer ground.** DS3 lays paving and rubble over its ground as separate one-layer
 meshes (M[ARSN]_l) whose vertex colour alpha fades them into what lies under them (m40's m000079 brick: 37% of its
@@ -227,8 +226,7 @@ Firelink Shrine. `MapOverlays` keeps an overlay's alpha (Elden Ring's map pieces
 its triangles whose three corners are all under 0.5, and splits a two-layer mesh into one mesh per layer, each
 triangle going to the layer its corners mostly show (Elden Ring has no two-layer map shader in use to blend them:
 one mesh in all of Stormveil names `[Mb2]`). Terrain blends (2m/3m/4m), grass, snow and water keep their alpha
-untouched. The port log's `vertex alpha:` line counts both; fallback `map-overlays` B (`--solid-overlays`) restores
-the old solid drawing (see below: the one-layer fade was later found not to be one and is off by default).
+untouched. The port log's `vertex alpha:` line counts both.
 
 **Faded triangles are cut only over ground.** Cutting every faded triangle (1.0.353 to 1.0.37x) opened holes to the
 sky wherever an overlay fades out over nothing: measured on m40 with every map piece placed by its MSB part, Firelink
@@ -240,7 +238,7 @@ of its model. The port collects faded triangles during its first read of each mo
 any, checks every placed model's surfaces against them in a second read, then converts the deferred models (about one
 extra read of the map: 44 s for m40 on 4 cores). On m40, 158,502 of 431,313 faded triangles are cut and the holes
 around the shrine and circle fall to 11 m² (mostly faded edges of the m001110 walls, not yet looked at).
-The port log's `overlay backing:` line counts them; fallback `map-overlays` D (`--cut-faded-overlays`) cuts them all.
+The port log's `overlay backing:` line counts them.
 
 **One-layer vertex alpha is not a fade (1.0.383 playtest, now the default).** Whole meshes DS3 plainly draws have
 alpha 0 on every vertex: Firelink Shrine's m004001 (a 32,705 vertex wall_103 mesh beside a 5,170 vertex mesh of the
@@ -248,8 +246,7 @@ same wall at alpha 1) and m004520 (3,016 vertices, wall_103), Undead Settlement'
 cut in 1.0.383) and the Painted World's Stone_Standard walls (103 pieces lost). DS3's one-layer materials are opaque
 (MTD BlendMode 0), so nothing there can hide them; the brick shards of 1.0.340 were terrain blends (the
 `--tint-materials` test showed them blue), not overlays. So one-layer meshes are drawn whole and solid by default;
-two-layer meshes are still split by layer. Fallback `map-overlays` C (`--fade-overlays`) restores the fade with the
-backing test above.
+two-layer meshes are still split by layer.
 
 **A shadow-only FLVER no longer takes its binder with it.** Many DS3 binders (Undead Settlement's m002050 trees, 354
 placements, m002610/m002620 hanging corpses, m003200 iron cages) hold a second FLVER with only an `M[Shadow]` caster.
@@ -269,33 +266,29 @@ a whole triangle went to the layer its corners averaged to; DS3's ground triangl
 edges of painted patches (the Undead Settlement's sand paths) were pale jagged shards. `MapLayerContours` now cuts a
 triangle whose corners disagree along the line where the interpolated weight is 0.5, with cut points shared by the
 triangles on both sides of an edge (no gaps); two-layer materials (`MapOverlays`) are cut the same way by vertex
-alpha. Fallback `map-blend-layers` C (`--whole-blend-triangles`) brings whole triangles back.
-The port log's `terrain blends:` line counts triangles per layer; fallback `map-blend-layers` B
-(`--first-blend-layer`) shows the first layer everywhere again. Unlit or scrolling "2m" materials are not ground:
+alpha.
+The port log's `terrain blends:` line counts triangles per layer. Unlit or scrolling "2m" materials are not ground:
 DS3's sky domes (`m009000` of m31 and m40, `M[A]_2m_NoLight_scroll`) cross-fade two cloud layers with the same bytes,
 and splitting one drew blue sky shards over map 3 in 1.0.366, so they stay whole. `MapTerrainBlends.ApplySky` gives
 each dome mesh the layer that covers most of its vertices (layer 2 where c0 >= 0.5 on more than half): m31 and m40
 keep their first layer, the Painted World's `m090000` (clouds `kumo_30` first, sky `sky_01` second, c0 0.64 on
 average) shows its sky; up to 1.0.50x its cloud picture stood over the map as huge grey shapes. The second layer is
 drawn on DS3's UV 2 (the panorama's own coordinates: v 1.00 at the horizon to 0.18 at the top of m090000, where UV 1
-is the cloud tile with v fixed at 0.50); 1.0.51x-1.0.52x drew it on UV 1, a smeared cyan band (fallback
-`map-sky-layer` C, `DARKSIGN_SKY_LAYER_UV=first`). Port log line `sky domes:`; fallback `map-sky-layer` B
-(`--first-sky-layer`) shows the first layer again.
+is the cloud tile with v fixed at 0.50); 1.0.51x-1.0.52x drew it on UV 1, a smeared cyan band. Port log line `sky domes:`.
 
 **See-through sky layers.** `M[A]_al_NoLight` meshes (unlit, faded by vertex alpha: m40's horizon cloud band in
 `m009000` and far mountain ring `m900300`, m30's `sky_02` rings, m31's cloud layer `m008501`, kumo cloud seas) were
 left out of every map up to 1.0.52x. They are kind `nolight-blend`: the unlit template with vanilla m15_00_865's blend
 switches (`g_BlendMode` 2, no depth write, alpha cut 1), DS3's vertex alpha kept, triangles under 0.5 on all corners
 left out (`MapUnlitBlends`). Opacity-masked cloud cards (`M[A]_al_m_NoLight_Opacity`) and additive layers stay out.
-Port log line `see-through sky layers:`; fallback `map-sky-clouds` B (`DARKSIGN_SKY_CLOUDS=0`).
+Port log line `see-through sky layers:`.
 
 **Atmosphere.** A slot used to keep its colosseum's gparam: Caelid's red volumetric fog lit at 1.6 on map 2,
 Leyndell's golden colour grading (LUT 101) and fog out to 2 km on map 1. `MapAtmosphere` writes the slot's
 `/param/drawparam/mAA_BB_0000.gparam.dcx` from the host's: the sun angle and the colours of directional lights 0 and
 1 from DS3's light set 0 (the set nearly every DS3 piece names), with Elden Ring's strengths; the volumetric fog's
 colours from DS3's fog 0 and its amounts from Stormveil (m10_00, first time of day), with the height fog starting
-where one in twenty of the map's enemies and player points stand lower; colour grading off. Fallback
-`map-atmosphere` B (`--host-atmosphere`) keeps the host's file.
+where one in twenty of the map's enemies and player points stand lower; colour grading off.
 
 **Environment light.** Elden Ring lights map pieces with light baked per environment map point: a light volume
 (GIIV, four BC7 volume textures W/X/Y/Z) and a reflection cube (GILM, BC6H) per time of day and detail level, in
@@ -305,7 +298,7 @@ the host spread the colosseum's over the whole DS3 map (measured with `map-diag 
 volume (ivinfo): red map surfaces on map 2 under an untinted player. `MapEnvironment` writes the slot's binders as the
 host's with every light volume one even grey (its brightest channel's mean) and every reflection cube one even grey of
 its mean brightness. Map 2's DS3 textures were measured neutral (`map-diag colours`: vertex-weighted mean albedo
-93 89 80). Fallback `map-env-light` B (`--host-env-light`) keeps the host's files.
+93 89 80).
 
 **Baked light (DS3's shade).** DS3 bakes shade into per-piece lightmaps (`g_DOLTexture1/2`) and into light probes
 (`.btpb`, read with SoulsFormatsNEXT's `BTPB`: first-order spherical harmonics in RGB plus a sun mask per probe,
@@ -316,9 +309,8 @@ time of day). Measured on vanilla files: a light volume spans the environment bo
 156 texels over 246 x 350 x 316 m), texture rows go up, and each of W/X/Y/Z holds one coefficient (order 0, then the
 x/y/z terms of order 1) with its colour as 128 + 127 * c / |c| and its size in alpha (W's colour never drops below
 127; Y is 0.87 of W in open arenas, the ratio of the up term to order 0 for light from the sky). DS3's open sky is
-scaled to the host volume's open-sky alpha. Unproven until seen in game: column and slice directions (fallback
-`map-baked-light` C/D mirror them), that the smaller box with the higher UnkT34 wins over the catch-all box, and that
-alpha is linear. Fallback `map-baked-light` B (`--flat-env-light`) leaves the volume out.
+scaled to the host volume's open-sky alpha. Unproven until seen in game: column and slice directions, that the smaller box with the higher UnkT34 wins over the catch-all box, and that
+alpha is linear.
 
 **Light areas (DS3's rooms).** One volume was not enough (Devin, 2026-11-13: still flat, lit by "the world base
 lighting"). Elden Ring draws no sunlight indoors: rooms get light only from a baked volume, a reflection cube, SSAO
@@ -329,7 +321,7 @@ m30 38, m31 28; UnkT09 = order, UnkT0A = shared point), in layout space like the
 box into an Elden Ring box of the same number, size and turn, with a volume over the box (its own axes) baked from the
 probes in it and a cube as bright as their median against open sky (m40: 0.02 in the undercroft to 0.9 in the
 courtyards). The map-wide volume 900 drops to UnkT34 5, under the rooms. Unproven until seen in game: box-local volume
-axes, that the larger UnkT34 wins, world-direction first-order terms. Fallback `map-light-areas` B (`--no-light-areas`).
+axes, that the larger UnkT34 wins, world-direction first-order terms.
 
 **Sun direction and probe axes (roof and object shade).** Devin, 2026-11-13: on map 3 some roofs seem to cast shade,
 many don't, and objects don't. Every shadow setting matches vanilla Stormveil: MSB part flags (pieces and assets),
@@ -344,7 +336,7 @@ so its sun shone from nearly the other side of the streets DS3 lit, against the 
 probes are lit mostly by the sky (lean 0.08) and can't confirm its direction. `MapAtmosphere.SunTurn` turns the yaw by
 the offset; the port log's baked light line prints the probes' lean for comparison. DS3's probe terms are also read in
 their fixed order (up, z, x; map 3's open sky gives term 1 at 0.88 of order 0, an even sky's 0.87): the old guess
-took map 1's large sunward x term as up. Fallback `map-sun` B (`--unturned-sun`), C (`--guess-probe-axes`).
+took map 1's large sunward x term as up.
 
 ### Lights without shadows (2026-11-19 playtest: "lighting across all the maps could use baked lighting")
 
@@ -359,7 +351,7 @@ dark on all three maps. `MapAtmosphere.FillLights` gives these lights DS3's colo
 sun over DS3's (the lamps' scale), switches the local lights as DS3 has them, and sets the SSAO weights of the sun and
 second light to Stormveil's 1 (m45_00 had 0.5 and 0, m45_01 1 and 0). The atmosphere line of the port log prints the
 change. Not done: DS3's other light sets (m40's pieces inside Firelink name sets 30 to 32, with no sun and a strong
-local light; every ported piece uses set 0). Fallback `map-fill-light` B (`--host-fill-lights`).
+local light; every ported piece uses set 0).
 
 ### Light sets per part (1.0.499 playtest: Friede's boss room "isn't lit like the original")
 
@@ -375,7 +367,7 @@ slot's draw params every DS3 set the layout names that the host lacks (DS3's col
 the host's sun over DS3's, no light above twice the slot's sun; the rest copied from set 0), keeping the values and
 the group's ID list in ID order; a part whose set is still missing goes back to -1. The host's sets 0, 100, 1000 and
 1100 stay (Elden Ring's floors name 100, as DS3's outdoor floors and characters do). Unproven: Elden Ring's own map
-pieces name only 0 and -1. Fallback `map-light-sets` B (`--one-light-set`). Log line: `light sets:`.
+pieces name only 0 and -1. Log line: `light sets:`.
 
 ### Lamps and flames (2026-11-19 playtest: large white lights on map 2, candles that light nothing)
 
@@ -390,8 +382,7 @@ spots as the 103 on every other layer) were the large white lights outside the D
 limits (11 of 184 lamps on the High Wall, 7 of 44 at Firelink, 2 of 160 in the Undead Settlement; the port log's
 lamps line lists them). `MapSfx.Convert` leaves out SFX regions of another map state by the parts' rule (layer bit
 0). Map 3's host (m45_02) has no light file, so map 3 had no lamps at all; it now gets DS3's in a new file (version
-18; that the game loads it is unproven). Fallback `map-lamps` B (`--ds3-lamp-strength`), `map-layers` B
-(`--all-layers`).
+18; that the game loads it is unproven).
 
 DS3 bakes a flame's light into its lightmaps, so its light file has no lamp at a candle; Elden Ring lights flames
 with lamps in the light file (Stormveil: 54 `touch_室内R` and 13 `touch_松明`, colour 240 180 120, strength 0.5 to
@@ -400,7 +391,7 @@ object whose ModelSfxParam effect converted and is a flame: it glows (additive b
 colour that isn't cold, read from the DS3 effect by port-weapons into `Work\map-sfx.tsv`. Flames within 3 m share a
 lamp; at most 200 lamps a map. The port log's flame lights line names every object effect and why it did or didn't
 get lamps. Unproven until tested: how DS3's candle effect (839010) reads (the DS3 effect files weren't at hand), so
-check that line first if candles still light nothing. Fallback `map-lamps` C (`--no-flame-lights`).
+check that line first if candles still light nothing.
 
 ### Sky
 
@@ -413,8 +404,7 @@ their houses (1.0.299 playtest). The colosseums have no `WorldMapLegacyConvParam
 the open world and its distant view (`m60_00_00_99`) is not involved.
 
 `MapDistantView` writes an empty layout in place of the slot's index-99 one; the sky that remains is DS3's own
-dome (map piece `m009000`). The build report's `sky:` line says what the host's distant view drew. Fallback
-`map-sky` B (`--host-sky`) leaves the host's distant view alone. Found by reading how JortPob edits
+dome (map piece `m009000`). The build report's `sky:` line says what the host's distant view drew. Found by reading how JortPob edits
 `m60_00_00_99` (it keeps only the `AEG096` assets there).
 
 ### What a map costs the game to hold (hitching)
@@ -429,8 +419,6 @@ with a map's size:
   map. So every texture of a map sat in graphics memory twice at full size. `MapTextures.BuildBinder` now writes
   the low copy without its largest mip level (`DdsMips`: DS3's own bytes, nothing re-encoded), and the row asks
   for full textures within 128 m (`MapDrawParams.TextureDistance`).
-- Fallback `map-texture-detail`: B halves the full copies too (`--half-textures`), C is 1.0.299's behaviour
-  (`--full-low-textures`).
 
 The port log now says what each map holds, so the next look at performance starts from numbers:
 `texture memory mXX: N textures, X MB full detail + Y MB low detail`, `load: N models, meshes, vertices,
@@ -439,13 +427,12 @@ triangles`, and the collision and navmesh lines end with the megabytes the game 
 Not changed, and the next suspects if a map still hitches:
 
 - Collision and navmesh are XML tagfiles, some 55 times the size of DS3's binary (a 4.7 MB file is 260 MB of XML
-  the game parses). JortPob ships XML and calls binary "worse in engine" without saying how; fallback
-  `map-collision` B wrote binary and was untested in game (binary is the default since 1.0.31x, see below).
+  the game parses). JortPob ships XML and calls binary "worse in engine" without saying how (binary is the only format since 1.0.31x, see below).
 - Every map piece draws from everywhere (no draw groups, unlimited draw distance). DS3 culls by draw group; DS3's
   groups written into Elden Ring's real group fields (`Maps/MapDrawGroups.cs`) were the default in 1.0.414-1.0.417
-  and hid the wrong things in game, so they are fallback `map-groups` B now. Instead, pieces whose models carry DS3's
+  and hid the wrong things in game, so they were dropped. Instead, pieces whose models carry DS3's
   lower detail triangle lists (LodLevel1/2 face sets; on map 3 about 60% and 20% of the full triangles) switch to them
-  at vanilla Elden Ring's 30 / 60 m (`Maps/MapLod.cs`, a twin of each piece row 20 up, 9420 and on, fallback `map-lod`; the port log's
+  at vanilla Elden Ring's 30 / 60 m (`Maps/MapLod.cs`, a twin of each piece row 20 up, 9420 and on; the port log's
   `lower detail` lines).
 - Enemies that can't find a path (the navmesh's links are a separate problem) ask again every few seconds.
 
@@ -454,8 +441,7 @@ occasional hitches on the other two). The port log's new numbers named the colli
 (High Wall) and 7.5 GB (Undead Settlement) of XML tagfiles, largest files 252, 188 and 300 MB, against DS3's 28 MB
 binder for the Cemetery. Textures (320 to 540 MB) and triangles (15 to 16 million) are about equal on all three
 maps, and only the collision is twice as large on the map that runs worst. Since 1.0.31x collision and navmeshes
-are binary tagfiles by default (the size of DS3's files, every triangle compared after the round trip); XML is
-fallback `map-collision` B (`--xml-collision`). Whether Elden Ring takes binary tagfiles whose type information is
+are binary tagfiles (the size of DS3's files, every triangle compared after the round trip). Whether Elden Ring takes binary tagfiles whose type information is
 inline (its own keep it in the binder's `.compendium`) is what the next playtest answers: falling through the
 floor on A means it doesn't.
 
@@ -487,7 +473,7 @@ Both games run the same event system, and DarkScript3 documents every instructio
   DS3 draw settings and some sound events are left out). Each gets a CutsceneMapIdParam row (PlayMapId = the slot).
   The scripts then play them: DS3's warping forms become "Play Cutscene to Player and Warp" (2002[11]), the others
   "Play Cutscene to Player"/"To All", playback flags 8 -> 16. A cutscene that didn't convert is left out as before.
-  `cutscene-survey` and `cutscene-test` check the files on a PC; fallback map-cutscenes B turns it off.
+  `cutscene-survey` and `cutscene-test` check the files on a PC.
 
 - DS3's "IF Action Button in Area" already names an ActionButtonParam row, but a DS3 one (boss fog walls 4001800,
   Gundyr's sword 8900, Ariandel's talk prompt 9373); each gets an Elden Ring copy (74000000+) with DS3's fields where
@@ -562,8 +548,7 @@ of a character on C is picked by what the enemy is (`ChrPort.PickBody`: same kin
 same boss-ness), not by bone names, and never from Elden Ring's wildlife or helper characters
 (`EnemyKinds.IsBystander`: deer, eagles, dummies, bonfires, scarabs), which are left out of the enemy catalog. On
 1.0.271 the Undead Settlement's Overgrown Skeletons were deer, the template with the most shared bone names. The written
-files are listed in `darksign_chr_files.txt` and deleted at the start of the next run. Fallbacks `enemy-port`: A model
-and animations, B model only, C Elden Ring bodies with DS3 stats, off. Offline checks: `DarkSignPorter enemy-selftest`.
+files are listed in `darksign_chr_files.txt` and deleted at the start of the next run. Offline checks: `DarkSignPorter enemy-selftest`.
 Not yet ported: DS3's AI scripts (the template's ThinkParam/AI is used), sounds (the template's bank), boss events.
 
 port-maps also writes `darksign_enemies.tsv` (every DS3 enemy it placed, with its slot part and entity) and
@@ -604,7 +589,6 @@ Stage 1 (2026-11-11, not yet playtested; written without game files, checked off
   converted, why it has or hasn't collision, whether it moves, breaks, is a ladder or an ObjAct target.
   `Mods\ER\darksign_objects.tsv` maps DS3 objects to assets. The port-maps log has "objects:", "regions:",
   "object port:" and "object params:" lines, and `darksign_maps_check.txt` checks every asset's file and row.
-- **If a map breaks:** launcher Fallbacks `map-objects` B (no collision) or off, `map-regions` B.
 
 Still missing after stage 1: object effects (candle and bonfire flames, torches), doors/levers/lifts (ObjAct events,
 ObjActParam, object animations), ladders, fog walls, breakable objects, treasure
@@ -614,7 +598,7 @@ ObjActParam, object animations), ladders, fog walls, breakable objects, treasure
 
 2026-11-19, not yet playtested; checked offline by `map-selftest` ("map text: ...") and in a cloud thread against
 DS3's real text binders, the scripts of m30, m31, m37, m40 and m45 with common_func, and the map files of m30, m31,
-m40 and m45. Fallback `map-text` (B `DARKSIGN_MAP_TEXT=noplaces`, C `=0`). Code: `Maps/MapText.cs`, written at the
+m40 and m45. Code: `Maps/MapText.cs`, written at the
 end of the events step.
 
 - **Cause.** DS3's text numbers were carried over as they were and Elden Ring looked them up in its own text. The
@@ -647,7 +631,7 @@ end of the events step.
 
 2026-11-19, not yet playtested; checked offline by `map-selftest` ("bonfires: ...") and run in a cloud thread on the
 real DS3 layouts of m30, m31, m37, m40 and m45 with DS3's and Elden Ring's regulations (30 bonfires found and placed).
-Fallback `map-bonfires` (since 2026-11-20: A DS3's sword, B `DARKSIGN_BONFIRES=grace`, C `=0`, D no travel). Code: `Maps/Bonfires.cs`, a port-maps step after the events.
+Code: `Maps/Bonfires.cs`, a port-maps step after the events.
 
 - **Same four things in both games** (read from DS3's m30/m40 and Stormveil's m10_00_00_00): a registered object or
   asset (map-local entity 1950+n; Elden Ring's is AEG099_060), an invisible talker c1000 (950+n; Elden Ring's all have
@@ -680,13 +664,13 @@ Fallback `map-bonfires` (since 2026-11-20: A DS3's sword, B `DARKSIGN_BONFIRES=g
   events for every effect port-weapons converted (`ObjectAnims.WantedEffects`), so the default (`Method.Sword`)
   registers DS3's own sword with no grace asset and no stand-in flame; a sword whose animations didn't port gets a
   flame event with 1011 on dummy 201. Unproven: that the engine plays the lit animations on a registered asset that
-  isn't AEG099_060. Fallback `map-bonfires` B (`DARKSIGN_BONFIRES=grace`) is the 1.0.48x layout.
+  isn't AEG099_060.
 - **Travel and Return** (`Maps/BonfireTravel.cs`): the talker runs t899001000, a copy of Elden Ring's grace menu
   t000001000 with entries 61 Travel and 62 Return to the Lands Between before Leave, and new state groups made from
   the script's own sub-menu pieces: the areas (BonfireWarpParam ListId, DS3's tab order) and per area the lit bonfires
   (row order). Picking sets request flag 1039292110+i; common.emevd event 1039291110+i warps to the bonfire's 980+n
   point. Return sets the F1 leave request (Roundtable Hold: Elden Ring gives scripts no way to warp to the last grace
-  rested at). Fallback D (`DARKSIGN_BONFIRE_TRAVEL=0`).
+  rested at).
 - **Bonfire pictures** (`Maps/BonfireImages.cs`, 2026-11-21, not yet playtested): picking a bonfire opens "Travel
   here" / "Back" and turns on preview flag 1039292000+i while it is open; the test menu DLL (loaded in every run)
   draws DS3's own warp-menu picture of that bonfire on the right of the screen while the flag is on. The picture is
@@ -698,12 +682,12 @@ Fallback `map-bonfires` (since 2026-11-20: A DS3's sword, B `DARKSIGN_BONFIRES=g
   its warp and boss fights inside.
 - **Fire Keeper level up** (`TalkPort.EngineFlags`): her level-up entry sets 74000135/136 and waits for 74000137/138,
   which only her DS3 character's behaviour sets; such handshake flags read as on (Firelink also has 74000391/392 and
-  74000432/433). Fallback `map-people` K.
+  74000432/433).
 
 ### Doors, lifts and levers (objects that move)
 
 2026-11-12, not yet playtested; checked offline by `map-selftest` ("doors: ...") and on DS3's o300310, o300320,
-o300500, o300510 and o400340 against Elden Ring's door AEG219_000 in a cloud thread. Fallback `map-doors`.
+o300500, o300510 and o400340 against Elden Ring's door AEG219_000 in a cloud thread.
 
 - **Which objects.** Every DS3 object whose objbnd has an animation binder and that doesn't break or serve as a ladder
   (`ObjectPort.ConvertMoving`). They are converted one at a time after the still objects, because their animations go
@@ -774,7 +758,7 @@ Elden Ring person, copied from a vanilla placement of `c0000` in the legacy dung
 
 The port log names every pairing (`enemies: people: Greirat -> ... (silent)`), and they are kept out of
 `darksign_enemies.tsv` so the randomizer never swaps one for a monster. Known limits: they look like Elden Ring characters, they say and sell nothing, and killing one drops what
-the Elden Ring person drops. Off switch: fallback `map-people` B (`port-maps --no-people`).
+the Elden Ring person drops.
 
 After the 1.0.326 playtest (no one in Firelink Shrine, Black Knights around it, no objects at all):
 
@@ -789,7 +773,7 @@ After the 1.0.326 playtest (no one in Firelink Shrine, Black Knights around it, 
 - **Map states.** DS3's m40 holds the Untended Graves at the same place as the Cemetery of Ash: its parts lack
   MapStudioLayer bit 0 (Black Knights c1300, Champion Gundyr, 40 enemies and 45 objects in all). Map pieces were
   already filtered that way (`MsbPort.HelperKind`); enemies and objects now are too (`MsbPort.OtherState`), m30 loses
-  11 objects and m31 2 enemies and 1 object the same way. Fallback `map-layers` B (`--all-layers`) keeps them.
+  11 objects and m31 2 enemies and 1 object the same way.
 - **Objects lost in 1.0.326.** Every object was placed and then taken out again: Paramdex's def for
   AssetEnvironmentGeometryParam (ASSET_GEOMETORY_PARAM_ST) has the game's row size, 320, but data version 4, and
   SoulsFormats' careful apply also compares the version. `ParamStore` now applies a def whose type and row size
@@ -810,8 +794,7 @@ After the 1.0.326 playtest (no one in Firelink Shrine, Black Knights around it, 
   and the ones passed over.
 - **No Elden Ring stand-ins for people (after 1.0.353).** Devin wants DS3's own people at Firelink or nobody. By
   default only people with a ported DS3 body (Fire Keeper, Ludleth...) are placed; DS3's human NPCs (c0000, built
-  from DS3 armour) are left out until they can be ported. The Elden Ring stand-ins are fallback `map-people` B
-  (`--er-people`), nobody at all is C (`--no-people`). DS3's logic characters (talk dummy c1000, invisible platoon
+  from DS3 armour) are left out until they can be ported. DS3's logic characters (talk dummy c1000, invisible platoon
   leader c0100 "Patrol Leader - Collective Patrol", "... target dummy character") no longer get a visible Elden Ring
   enemy either (`People.IsLogic`): m30 and m31 had six Mausoleum Exile Soldiers and a crossbow skeleton that way.
 
@@ -892,8 +875,7 @@ Decisions and what they cost:
 
 - **Face data is cleared** (every face is plain ground). Elden Ring reads face bits as impassable (0x1), gated
   (0x10000, 0x100000), lava, ladder and more; what DS3's bits are is unknown, and a DS3 mark read as "impassable"
-  would wall enemies in. The log lists DS3's values per map (`navmesh: DS3 face data ...`), and fallback
-  `map-navmesh` B keeps them, to find out.
+  would wall enemies in. The log lists DS3's values per map (`navmesh: DS3 face data ...`).
 - **Node banks are left out**: the faces DS3's events close and open (doors, fog). Enemies may try to path through a
   closed door.
 - **Jump and drop links are left out**: DS3 keeps them as link setups the game turns into edges on load; Elden Ring
@@ -930,7 +912,7 @@ so Firelink had its torches (objects) but no candle light.
 converts into Elden Ring's common effect binder (900,000,000 + DS3 ID) and writes which converted to
 `Work\map-sfx.tsv`. port-maps, after waiting for port-weapons, adds an Elden Ring SFX region for each DS3 one whose
 effect converted, with DS3's spot, shape, start state and moved entity ID. Unproven in game: that a map SFX region
-plays an effect from the resident common binder. Fallback `map-effects` B (DARKSIGN_MAP_SFX=0) turns them off.
+plays an effect from the resident common binder.
 WindSFX regions (they need DS3's wind areas) are still left out.
 
 ## DS3 people in their DS3 armour
@@ -948,8 +930,7 @@ looks:
   CharaInitParam row 3,000,000 + the DS3 row: a copy of that person's own row wearing the DS3 pieces, with DS3's sex.
 
 The rows are added after port-weapons; if they can't be written the people go back to their stand-in's own row.
-Unproven in game: that a DS3 armour FLVER, skinned to DS3's c0000 bones, binds to Elden Ring's body. Fallback
-`map-people` D (DARKSIGN_PEOPLE_ARMOUR=0) leaves DS3's humans out again. Weapons are still the stand-in's.
+Unproven in game: that a DS3 armour FLVER, skinned to DS3's c0000 bones, binds to Elden Ring's body. Weapons are still the stand-in's.
 
 ## Next stages
 

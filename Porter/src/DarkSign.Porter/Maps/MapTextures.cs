@@ -11,35 +11,16 @@ namespace DarkSign.Porter.Maps;
 public sealed class MapTextures
 {
     private readonly MapId _er;
-    private readonly Detail _detail;
     private readonly Dictionary<string, MapId> _needed = new(StringComparer.OrdinalIgnoreCase);
     // Every texture each DS3 map's models name, for the memory lines of the report.
     private readonly SortedDictionary<string, HashSet<string>> _byMap = new(StringComparer.Ordinal);
 
     /// <summary>
-    /// How much of each DS3 texture the game is given (launcher Fallbacks "map-texture-detail").
-    /// <list type="bullet">
-    /// <item><see cref="Standard"/>: DS3's texture in full, and a real low detail copy at half its width and height
-    /// (a quarter of the memory), which is what JortPob's low detail copies are. The game holds the low copy of
-    /// every texture of the map and the full one only for map pieces near the player
-    /// (<see cref="MapDrawParams.TextureDistance"/>).</item>
-    /// <item><see cref="Half"/>: the full copy is half size too and the low copy a quarter size, for a PC whose
-    /// graphics memory DS3's textures still don't fit in.</item>
-    /// <item><see cref="FullLow"/>: the low detail copy is the full texture again, as every build up to 1.0.299
-    /// wrote it: every texture of a map twice in graphics memory at full size.</item>
-    /// </list>
+    /// DS3's texture goes in full, and a real low detail copy at half its width and height (a quarter of the memory),
+    /// which is what JortPob's low detail copies are. The game holds the low copy of every texture of the map and the
+    /// full one only for map pieces near the player (<see cref="MapDrawParams.TextureDistance"/>).
     /// </summary>
-    public enum Detail { Standard, Half, FullLow }
-
-    /// <summary>The mip levels dropped from the full and the low detail copy.</summary>
-    public static (int Full, int Low) LevelsDropped(Detail detail) => detail switch
-    {
-        Detail.Half => (1, 2),
-        Detail.FullLow => (0, 0),
-        _ => (0, 1),
-    };
-
-    public MapTextures(MapId er, Detail detail = Detail.Standard) => (_er, _detail) = (er, detail);
+    public MapTextures(MapId er) => _er = er;
 
     public int Count => _needed.Count;
 
@@ -163,8 +144,7 @@ public sealed class MapTextures
         textures[MapModelPort.BlackMetallic] = new TPF.Texture(MapModelPort.BlackMetallic, 103, 0, ModelPort.BlackBc4Dds(), TPF.TPFPlatform.PC);
         textures[MapModelPort.FlatNormal] = new TPF.Texture(MapModelPort.FlatNormal, 0, 0, ModelPort.FlatNormalDds(), TPF.TPFPlatform.PC);
 
-        var (fullDrop, lowDrop) = LevelsDropped(_detail);
-        var bxf = BuildBinder(textures.Values, EntryCompression, fullDrop, lowDrop, kept);
+        var bxf = BuildBinder(textures.Values, EntryCompression, 0, 1, kept);
         Directory.CreateDirectory(Path.GetDirectoryName(bhdPath)!);
         bxf.Write(bhdPath, bdtPath);
         var summary = $"textures {area}: {added} DS3 textures, {textures.Count} in all, in {target.TrimStart('/')}";
@@ -175,10 +155,10 @@ public sealed class MapTextures
         // What the textures take in graphics memory, per DS3 map: the low detail copy of every texture the map's
         // pieces name is held the whole time, the full copy only near the player. A map whose two numbers together
         // pass the graphics card's memory hitches as the card swaps textures in and out.
-        summary += $"\n  texture detail: {DetailText(_detail)}";
+        summary += "\n  texture detail: full size textures, half size low detail copies";
         foreach (var (map, names) in _byMap)
         {
-            var (full, low, large, unread) = Memory(names.Where(textures.ContainsKey).Select(n => textures[n]), fullDrop, lowDrop);
+            var (full, low, large, unread) = Memory(names.Where(textures.ContainsKey).Select(n => textures[n]), 0, 1);
             summary += $"\n  texture memory {map}: {names.Count} textures, {Mb(full)} MB full detail + {Mb(low)} MB low detail"
                        + $" ({large} are 4096 pixels or wider{(unread > 0 ? $"; {unread} in a format the porter can't size, kept whole in both copies" : "")})";
         }
@@ -251,13 +231,6 @@ public sealed class MapTextures
 
     private static string Mb(long bytes) => (bytes / 1048576.0).ToString("F0", System.Globalization.CultureInfo.InvariantCulture);
 
-    public static string DetailText(Detail detail) => detail switch
-    {
-        Detail.Half => "half size textures, quarter size low detail copies (--half-textures)",
-        Detail.FullLow => "full size textures and full size low detail copies, as up to 1.0.299 (--full-low-textures)",
-        _ => "full size textures, half size low detail copies",
-    };
-
     /// <summary>
     /// The pixel bytes of a set of textures as the binder holds them: every full copy, every low detail copy, how
     /// many are 4096 pixels or wider, and how many are in a format <see cref="DdsMips"/> can't size.
@@ -295,7 +268,7 @@ public sealed class MapTextures
     /// thats what we need for a low detail texture"): the same DDS without its <paramref name="lowDrop"/> largest
     /// mip levels (<see cref="DdsMips"/>). Up to 1.0.299 it was the full texture a second time, so a DS3 map sat in
     /// graphics memory twice at full size (hitching on the High Wall, the Undead Settlement close to unplayable).
-    /// <paramref name="fullDrop"/> takes levels off the full copy as well (<see cref="Detail.Half"/>).
+    /// <paramref name="fullDrop"/> takes levels off the full copy as well.
     /// </summary>
     public static BXF4 BuildBinder(IEnumerable<TPF.Texture> textures, DCX.CompressionInfo compression, int fullDrop = 0, int lowDrop = 1,
         IReadOnlySet<string>? alreadyCut = null)

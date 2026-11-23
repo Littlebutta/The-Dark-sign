@@ -24,25 +24,12 @@ namespace DarkSign.Porter;
 /// Most DS3 weapons (spAtkCategory 0) do their class's skill: those come from the class's moveset section. One-shot
 /// skills with follow-ups (FPCostLight / FpCostStrong) get them as ComboEnd (R1) / ComboEnd_2 (R2) behind the hks's
 /// combo window SpEffects. Every ported weapon is locked to its art like Elden Ring's unique weapons.
-/// Fallback "weapon-arts": DARKSIGN_WEAPON_ARTS=nohks (no hks; stance arts become a one-shot of their light attack),
-/// unlocked (Ashes of War allowed), 0 (off: ported weapons keep their template's Elden Ring Ash of War, as before).
 /// </summary>
 public static partial class MovesetPort
 {
-    public static readonly string ArtsMode = (Environment.GetEnvironmentVariable("DARKSIGN_WEAPON_ARTS") ?? "").ToLowerInvariant();
-    private static bool ArtsEnabled => ArtsMode != "0";
-    private static bool ArtsWithHks => ArtsMode != "nohks";
-    // DARKSIGN_STANCE_CHAIN=0: stance light attacks don't chain (R1 after the first stance attack is a plain R1).
-    private static readonly bool StanceChain = Environment.GetEnvironmentVariable("DARKSIGN_STANCE_CHAIN") != "0";
-    // DARKSIGN_ART_POOL=0: the art IDs go out as in builds up to 1.0.378 (unique-named arts first, generic-named own-section arts
-    // such as Demon's Scar's 'Spin Slash' with the class skills), no hks stance-only IDs, no shared IDs.
-    private static readonly bool ArtPool = Environment.GetEnvironmentVariable("DARKSIGN_ART_POOL") != "0";
     // Art pool order: by default every art with its own DS3 moves gets an ID before any class skill (Demon's Scar,
     // the Frayed Blade and the Farron Greatsword keep their own; fx18: 176 weapons do a DS3 art, the Black Blade's Hold
-    // class skill becomes Elden Ring's Unsheathe). DARKSIGN_ART_POOL=weapons puts the jobs serving the most weapons
-    // first instead (own-section arts win ties): 201 weapons, but seven one-weapon arts fall back to an Elden Ring ash.
-    private static readonly bool ArtPoolByWeapons = Environment.GetEnvironmentVariable("DARKSIGN_ART_POOL") == "weapons";
-
+    // class skill becomes Elden Ring's Unsheathe).
     /// <summary>IDs ividyon's hks lists in IsStanceArts as "UNUSED" and names nowhere else (fx16: not in
     /// IsAttackStanceArts, no art row, no section): they play as a plain stance, so only a stance art gets one.</summary>
     internal static readonly int[] StanceOnlyArtIds = [342, 343, 346, 347];
@@ -109,20 +96,16 @@ public static partial class MovesetPort
     /// The block a weapon's own section keeps its art in, when the DS3 art's name says which kind it is ("Molten
     /// Perseverance" is a Perseverance: 377xx) and the section has that block's x00 move; else null and the section's
     /// first x00 move is the art, as before. 1.0.410 played a174's leftover Stomp (36000) for Molten Perseverance: a
-    /// short pose that ended, with the lava follow-up never ported. DARKSIGN_ART_BLOCK_BY_NAME=0 turns it off.
+    /// short pose that ended, with the lava follow-up never ported.
     /// </summary>
     internal static int? NamedBlock(IEnumerable<string?> artNames, IReadOnlyCollection<int> skill)
     {
-        if (!ArtBlockByName)
-            return null;
         foreach (var name in artNames.Where(n => !string.IsNullOrWhiteSpace(n)))
             foreach (var (kind, block) in Kinds)
                 if (System.Text.RegularExpressions.Regex.IsMatch(name!, $@"\b{System.Text.RegularExpressions.Regex.Escape(kind)}\b", System.Text.RegularExpressions.RegexOptions.IgnoreCase) && skill.Contains(block * 100))
                     return block;
         return null;
     }
-
-    private static readonly bool ArtBlockByName = Environment.GetEnvironmentVariable("DARKSIGN_ART_BLOCK_BY_NAME") != "0";
 
     public sealed record ArtResult(int Arts, int Weapons, Dictionary<int, string> Names, List<int> StanceIds);
 
@@ -171,8 +154,8 @@ public static partial class MovesetPort
     }
 
     /// <summary>The DS3 art sections whose effects and sounds the arts need (so they are ported with the movesets').</summary>
-    private static IEnumerable<int> ArtSections(IEnumerable<WeaponPlan> ports, PARAM ds3Weapons) => !ArtsEnabled ? []
-        : ports.SelectMany(p => new[] { Convert.ToInt32(ds3Weapons[p.Ds3Id]!["spAtkCategory"].Value), Convert.ToInt32(ds3Weapons[p.Ds3Id]!["wepmotionCategory"].Value) })
+    private static IEnumerable<int> ArtSections(IEnumerable<WeaponPlan> ports, PARAM ds3Weapons) =>
+        ports.SelectMany(p => new[] { Convert.ToInt32(ds3Weapons[p.Ds3Id]!["spAtkCategory"].Value), Convert.ToInt32(ds3Weapons[p.Ds3Id]!["wepmotionCategory"].Value) })
             .Where(s => s > 0).Distinct();
 
     private static ArtResult PortArts(PorterContext ctx, GameArchives erArchives, GameArchives ds3Archives, ParamStore er, ParamStore ds3,
@@ -181,11 +164,6 @@ public static partial class MovesetPort
         EffectEvents effectEvents, FxrPort.Result effects, SoundEvents soundPort, List<string> timing)
     {
         var none = new ArtResult(0, 0, [], []);
-        if (!ArtsEnabled)
-        {
-            Console.WriteLine("arts: off (weapon-arts fallback), ported weapons keep Elden Ring Ashes of War");
-            return none;
-        }
         var artParam = er.Get("SwordArtsParam")!;
         var erWeapons = er.Get("EquipParamWeapon")!;
         var ds3Weapons = ds3.Get("EquipParamWeapon")!;
@@ -210,7 +188,7 @@ public static partial class MovesetPort
         // Wheel in 1.0.206). Every ID the hks names is skipped, whichever range it is in; the hks is read for that
         // even when it isn't written (weapon-arts B).
         string? hksText = LoadHks(ctx);
-        string? hks = ArtsWithHks ? hksText : null;
+        string? hks = hksText;
         var hksNamed = hksText is null ? [] : HksNamedIds(hksText);
         hksNamed.UnionWith(VanillaSpecialArtIds);
         var extra = hks is null ? [] : Enumerable.Range(1, 169).Concat(Enumerable.Range(255, 45));
@@ -218,7 +196,7 @@ public static partial class MovesetPort
             .Concat(extra)
             .Where(id => !hksNamed.Contains(id) && !usedIds.Contains(id) && !taeSections.Contains(600 + id) && !clipsBySection.ContainsKey(600 + id)));
         // Four more IDs for stance arts only (art pool): the hks already makes them stances.
-        var stanceFree = new Queue<int>(ArtPool && hks is not null
+        var stanceFree = new Queue<int>(hks is not null
             ? StanceOnlyArtIds.Where(id => !usedIds.Contains(id) && !taeSections.Contains(600 + id) && !clipsBySection.ContainsKey(600 + id)
                                            && !HksAttackStanceIds(hks).Contains(id))
             : []);
@@ -255,7 +233,7 @@ public static partial class MovesetPort
             int? named = source == "own" ? NamedBlock(weapons.Select(p => Kind(p).Name), skill) : null;
             if (named is { } nb && nb != 362)
                 Console.WriteLine($"arts: {string.Join(", ", weapons.Select(p => p.Name))}: DS3 a{section} art '{Kind(weapons[0]).Name}' is block {nb * 100} by its name " +
-                                  $"(the section's first is {skill.FirstOrDefault(id => id % 100 == 0, skill[0])}) [DARKSIGN_ART_BLOCK_BY_NAME=0 off]");
+                                  $"(the section's first is {skill.FirstOrDefault(id => id % 100 == 0, skill[0])})");
             bool stance = named is null ? skill.Contains(36200) : named == 362;
             // One-shot: the block's first move (its x00 animation). Without the hks, a stance plays its light attack.
             int start = stance && hks is null ? 36230 : stance ? 36200 : named is { } b ? b * 100 : skill.FirstOrDefault(id => id % 100 == 0, skill[0]);
@@ -363,14 +341,8 @@ public static partial class MovesetPort
         // Art pool: by default every art with its own DS3 section comes before every class skill, whatever its name (its animations exist nowhere
         // else; a class skill has an Elden Ring Ash of War of the same kind to fall back on). Up to 1.0.378 a generic
         // name ranked an own art with the class skills, so 27 of them took an Elden Ring ash.
-        jobs = ArtPoolByWeapons
-            ? jobs.OrderByDescending(j => j.Weapons.Any(p => p.Ds3Id == 10180000)).ThenByDescending(j => j.Weapons.Count)
-                .ThenBy(j => j.Source == "own" ? 0 : 1).ThenBy(j => IsGenericArt(Kind(j.Weapons[0]).Name) ? 1 : 0).ThenBy(j => j.Ds3Section).ToList()
-            : ArtPool
-            ? jobs.OrderByDescending(j => j.Weapons.Any(p => p.Ds3Id == 10180000)).ThenBy(j => j.Source == "own" ? 0 : 1)
-                .ThenBy(j => IsGenericArt(Kind(j.Weapons[0]).Name) ? 1 : 0).ThenByDescending(j => j.Weapons.Count).ThenBy(j => j.Ds3Section).ToList()
-            : jobs.OrderByDescending(j => j.Weapons.Any(p => p.Ds3Id == 10180000)).ThenBy(j => IsGenericArt(Kind(j.Weapons[0]).Name) ? 1 : 0)
-                .ThenByDescending(j => j.Weapons.Count).ThenBy(j => j.Ds3Section).ToList();
+        jobs = jobs.OrderByDescending(j => j.Weapons.Any(p => p.Ds3Id == 10180000)).ThenBy(j => j.Source == "own" ? 0 : 1)
+                .ThenBy(j => IsGenericArt(Kind(j.Weapons[0]).Name) ? 1 : 0).ThenByDescending(j => j.Weapons.Count).ThenBy(j => j.Ds3Section).ToList();
         // Jobs whose DS3 moves are the same files with the same events (Golden Ritual Spear and Heysel Pick, the a48
         // shield arts) share one art ID (art pool): the second weapon gets the first's Ash of War row.
         string JobKey(ArtJob j)
@@ -401,10 +373,9 @@ public static partial class MovesetPort
         var windowProto = FindWindowEvent(erMain, artSelectors.Count > 0 ? clipsBySection.Keys.Where(s => s is >= 600 and < 1000) : []);
 
         // Stance chains need the hks's art-318 chain (see PatchHks) and a combo window event to copy.
-        bool chainHks = hks is not null && StanceChain && windowProto is not null && CanChainStances(hks);
+        bool chainHks = hks is not null && windowProto is not null && CanChainStances(hks);
         if (hks is not null && !chainHks)
-            Console.WriteLine(StanceChain ? "arts: stance light attacks won't chain (the hks has no art-318 chain to reuse, or no combo window event was found)"
-                                          : "arts: stance light attacks won't chain (DARKSIGN_STANCE_CHAIN=0)");
+            Console.WriteLine("arts: stance light attacks won't chain (the hks has no art-318 chain to reuse, or no combo window event was found)");
 
         var ds3Captions = new Dictionary<int, string>();
         var names = new Dictionary<int, string>();
@@ -416,7 +387,7 @@ public static partial class MovesetPort
         foreach (var job in jobs)
         {
             var label = string.Join(", ", job.Weapons.Select(p => p.Name).Take(3)) + (job.Weapons.Count > 3 ? $" +{job.Weapons.Count - 3}" : "");
-            string? jobKey = ArtPool ? JobKey(job) : null;
+            string? jobKey = JobKey(job);
             if (jobKey is not null && builtByKey.TryGetValue(jobKey, out var shared))
             {
                 foreach (var plan in job.Weapons)
@@ -679,7 +650,7 @@ public static partial class MovesetPort
                     var template = ErAnimFile(erArchives, $"a{SectionOf(erId):D3}_{erId:D6}")
                                    ?? ErAnimFile(erArchives, AnimSourceName(anim, SectionOf(erId), erId))
                                    ?? ErAnimFile(erArchives, "a000_000000")!;
-                    var (hkx, _, erDuration) = AnimPort.ConvertTimed(ds3Bytes, ds3Skeleton, erSkeleton, template.Bytes, template.Compendium, AnimPort.Spline);
+                    var (hkx, _, erDuration) = AnimPort.ConvertTimed(ds3Bytes, ds3Skeleton, erSkeleton, template.Bytes, template.Compendium, true);
                     var newName = $"a{section:D3}_{erId:D6}";
                     if (erAnims.Files.Count >= ClipBudget.AnimFileLimit)
                         throw new InvalidOperationException($"the player's animation binder is full ({erAnims.Files.Count} files, the game takes {ClipBudget.AnimFileLimit})");
@@ -811,7 +782,7 @@ public static partial class MovesetPort
         if (!light && !heavy)
             return;
         var ds3Window = ds3Events?.FirstOrDefault(e => e.Type == proto.Type && WindowId(e) is not null);
-        float? exit = MoveTiming.Guard && ds3Window is null && ds3Events is not null ? MoveTiming.Recovery(ds3Events, HitStarts(ds3Events)) : null;
+        float? exit = ds3Window is null && ds3Events is not null ? MoveTiming.Recovery(ds3Events, HitStarts(ds3Events)) : null;
         float start = ds3Window?.StartTime ?? exit ?? duration * 0.45f;
         float end = ds3Window?.EndTime ?? (exit is not null ? Math.Max(duration, start + 0.5f) : duration * 0.9f);
         // Stance chains: a DS3 stance attack holds SpEffect 100490 ("[HKS] Non-generator Transition - Friede's Great
@@ -893,15 +864,9 @@ public static partial class MovesetPort
     /// <summary>
     /// Ties every ported weapon to its art, as DS3 does: no Ash of War can be put on it or its affinity changed, like
     /// Elden Ring's unique weapons (their gemMountType, read from the weapons whose art no Ash of War gives).
-    /// DARKSIGN_WEAPON_ARTS=unlocked keeps the template's (Ashes of War allowed).
     /// </summary>
     private static void LockArts(ParamStore er, IReadOnlyList<WeaponPlan> ports, PARAM erWeapons)
     {
-        if (ArtsMode == "unlocked")
-        {
-            Console.WriteLine("arts: weapons not locked (unlocked fallback), Ashes of War can replace the ported arts");
-            return;
-        }
         var arts = er.Get("SwordArtsParam")!;
         var gemArts = er.Get("EquipParamGem")?.Rows.Select(r => Convert.ToInt32(r["swordArtsParamId"]?.Value ?? -1)).ToHashSet() ?? [];
         var ported = ports.Where(p => p.NewId is not null).Select(p => p.NewId!.Value).ToList();
@@ -1224,9 +1189,6 @@ public static class ArtSelfTest
         Check(MovesetPort.TaeEffectFate(100280, "[HKS] Is Charging Heavy Attack", "[HKS] Is Charging Heavy Attack", true) == MovesetPort.TaeEffect.Keep, "effects: a marker both games name the same is kept");
         Check(MovesetPort.TaeEffectFate(100500, "[HKS] Non-generator Transition", "[HKS] Sword Arts - Raptor Dodge", true) == MovesetPort.TaeEffect.Port, "effects: a DS3 marker Elden Ring's hks reads as something else is ported under a new ID, never kept");
         Check(MovesetPort.TaeEffectFate(100420, "[HKS] Dragonhead Greatshield", null, false) == MovesetPort.TaeEffect.Port, "effects: a DS3 marker Elden Ring lacks is ported (its fields, e.g. a behaviour judge offset, still count)");
-        MovesetPort.DropMarkers = true;
-        Check(MovesetPort.TaeEffectFate(100490, "[HKS] Non-generator Transition - Friede's Great Scythe", null, false) == MovesetPort.TaeEffect.Drop, "effects: DARKSIGN_HKS_MARKERS=drop drops them as before");
-        MovesetPort.DropMarkers = Environment.GetEnvironmentVariable("DARKSIGN_HKS_MARKERS") == "drop";
         Check(MovesetPort.TaeEffectFate(31, "Counter damage (puncture)", "Behavior - Counter Frames", false) == MovesetPort.TaeEffect.Port, "effects: a real DS3 effect is ported");
         Check(MovesetPort.TaeEffectFate(6340, "Weapon Art - Stomp", "Toughness Unk - Damage Level Small", true) == MovesetPort.TaeEffect.Keep, "effects: a real effect the hks checks by ID is kept");
         // Node flags (ModelPort.SetNodeFlags): dummy owners, mesh node; a Disabled node is left alone.
@@ -1257,22 +1219,11 @@ public static class ArtSelfTest
         int size = def.GetRowSize(), filled = ParamStore.FillBitfields(def);
         Check(filled == 3 && def.GetRowSize() == size && def.Fields.Count == 7, $"params: unnamed bits of a bitfield byte get a filler, row size unchanged ({filled} bits, {size} -> {def.GetRowSize()} bytes)");
         // Friede's 712 override (DS3 ChangeType 5 on slots RH1 and LH1, condition 2): a612's "hang location" move
-        // (ChangeType 3) by default, Elden Ring's paired-art move (ChangeType 2) with "both", the 1.0.221 move (1 / 0)
-        // with "back", untouched with "keep"; the condition stays 2.
+        // (ChangeType 3); the condition stays 2.
         byte[] Override() { var b = new byte[24]; b[1] = 0xFF; b[2] = 2; b[3] = 5; b[5] = 0xFF; b[7] = 0xFF; b[8] = 0; b[9] = 3; b[10] = 2; b[11] = 5; b[16] = 1; b[17] = 1; return b; }
         var ov = Override();
-        Check(MovesetPort.FixModelOverride(ov, "") == 2 && ov[2] == 2 && ov[3] == 3 && ov[10] == 2 && ov[11] == 3 && ov[9] == 3 && ov[16] == 1,
+        Check(MovesetPort.FixModelOverride(ov) == 2 && ov[2] == 2 && ov[3] == 3 && ov[10] == 2 && ov[11] == 3 && ov[9] == 3 && ov[16] == 1,
             $"712: Friede's override becomes 'hang location' (condition 2, ChangeType 3, a612's bytes) on both slots, other slots and tail untouched (got RH1 {ov[2]}/{(sbyte)ov[3]} LH1 {ov[10]}/{(sbyte)ov[11]})");
-        ov = Override();
-        Check(MovesetPort.FixModelOverride(ov, "art") == 2 && ov[3] == 3 && ov[11] == 3, "712: 'art' is the default");
-        ov = Override();
-        Check(MovesetPort.FixModelOverride(ov, "both") == 2 && ov[2] == 2 && ov[3] == 2 && ov[10] == 2 && ov[11] == 2,
-            $"712: 'both' moves the models to their two-handed location (ChangeType 2) (got RH1 {ov[2]}/{(sbyte)ov[3]} LH1 {ov[10]}/{(sbyte)ov[11]})");
-        ov = Override();
-        Check(MovesetPort.FixModelOverride(ov, "back") == 2 && ov[2] == 2 && ov[3] == 1 && ov[10] == 2 && ov[11] == 0,
-            $"712: 'back' keeps condition 2 and moves right-hand models to the 1H-left location, left-hand ones to 1H-right (got RH1 {ov[2]}/{(sbyte)ov[3]} LH1 {ov[10]}/{(sbyte)ov[11]})");
-        ov = Override();
-        Check(MovesetPort.FixModelOverride(ov, "keep") == 0 && ov[3] == 5, "712: 'keep' leaves DS3's override as it is");
         // The stance chain: Friede's block gives two more light attacks, a plain DS3 stance none.
         Check(MovesetPort.StanceChainMoves([36200, 36210, 36215, 36220, 36230, 36231, 36240, 36241, 36250, 36251, 36290, 36291]).SequenceEqual([36250, 36290]),
             "chain: Friede's stance chains 36230 -> 36250 -> 36290 (no-FP copies and the heavy attack left out)");

@@ -9,15 +9,8 @@ public sealed class PreflightTests
     [Fact]
     public void Launcher_me3_profile_uses_only_keys_me3_reads()
     {
-        // Every combination of launch tweaks the Fallbacks window can ask for (audit 2026-11-05: mem_patch, disable_arxan).
-        foreach (var arxan in new[] { false, true })
-            foreach (var mem in new[] { false, true })
-                foreach (var online in new[] { false, true })
-                {
-                    var text = EldenRingSetup.Me3Profile(@"C:\mod", [@"C:\a.dll", @"C:\b.dll"],
-                        new Fallbacks.LaunchTweaks(DisableArxan: arxan, NoMemPatch: mem, StartOnline: online));
-                    Assert.Empty(Preflight.CheckMe3Profile(text));
-                }
+        var text = EldenRingSetup.Me3Profile(@"C:\mod", [@"C:\a.dll", @"C:\b.dll"]);
+        Assert.Empty(Preflight.CheckMe3Profile(text));
     }
 
     [Fact]
@@ -141,7 +134,7 @@ public sealed class PreflightTests
             ]);
             var items = Preflight.Run(new Preflight.Context(root, settings, null));
             Assert.Contains(items, i => i.Area == "Elden Ring" && i.Level == Preflight.Level.Fail);
-            Assert.Contains(items, i => i.Area == "Event flags" && i.Level == Preflight.Level.Fail && i.Text.Contains("map-flags"));
+            Assert.Contains(items, i => i.Area == "Event flags" && i.Level == Preflight.Level.Fail && i.Text.Contains("map flags"));
             Assert.Contains(items, i => i.Area == "me3 profile" && i.Level == Preflight.Level.Ok);
         }
         finally

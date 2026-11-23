@@ -21,7 +21,6 @@ namespace DarkSign.Porter.Maps;
 /// writes the slot's own environment map binders as the host's, every name and size the same, with each light volume
 /// one even grey (its brightest channel's mean, alpha its mean) and each reflection cube one even grey of its mean
 /// brightness: the host's strength, without its colour or its arena. DS3's textures, sun and fog then give the colour.
-/// Fallback "map-env-light" B (--host-env-light) keeps the host's files.
 /// </summary>
 public static class MapEnvironment
 {
@@ -37,22 +36,10 @@ public static class MapEnvironment
     }
 
     /// <summary>port-maps step. Returns a line for the log.</summary>
-    public static string Write(PorterContext ctx, GameArchives er, MapId erId, MapId hostId, bool hostEnvLight, IReadOnlyList<MapBakedLight.Volume>? baked = null)
+    public static string Write(PorterContext ctx, GameArchives er, MapId erId, MapId hostId, IReadOnlyList<MapBakedLight.Volume>? baked = null)
     {
         var binders = Binders(er, hostId);
         string Target(string path) => ctx.ModPath(MapPorter.ModParts(path.Replace(hostId.ToString(), erId.ToString(), StringComparison.OrdinalIgnoreCase)));
-        if (hostEnvLight)
-        {
-            // An earlier default build's neutral files would otherwise stay in the mod folder.
-            int removed = 0;
-            foreach (var path in binders)
-                if (File.Exists(Target(path)))
-                {
-                    File.Delete(Target(path));
-                    removed++;
-                }
-            return $"environment light: the host's own (--host-env-light){(removed > 0 ? $"; {removed} neutral binders from an earlier build removed" : "")}";
-        }
         if (binders.Count == 0)
             return $"environment light: the host {hostId} has no environment map binders; nothing written";
 

@@ -8,30 +8,16 @@ namespace DarkSign.Porter.Enemies;
 /// into the node list instead of DS3's per-mesh palettes, one tangent, a vertex colour where Elden Ring's shaders
 /// read one, Elden Ring's node flags and per-mesh culling boxes.
 ///
-/// Materials (launcher Fallbacks "enemy-model"): by default every DS3 material becomes a plain Elden Ring character
-/// material (C[AMSN].spx: albedo, metallic, normal) with DS3's textures. DARKSIGN_ENEMY_MATERIALS=template copies the
-/// template's matching material instead, as builds up to 1.0.255 did; that drew DS3 knights with the template's
-/// own multi-layer shader (a beast skeleton's bone and mud detail layers). DARKSIGN_ENEMY_NODES=0 keeps DS3's node
-/// flags and mesh boxes.
+/// Materials: every DS3 material becomes a plain Elden Ring character material (C[AMSN].spx: albedo, metallic,
+/// normal) with DS3's textures. Builds up to 1.0.255 copied the template's matching material instead, which drew DS3
+/// knights with the template's own multi-layer shader (a beast skeleton's bone and mud detail layers).
 /// </summary>
 public static class ChrModel
 {
-    /// <summary>False with DARKSIGN_ENEMY_MATERIALS=template: materials are copies of the template's.</summary>
-    public static bool PlainMaterials => Environment.GetEnvironmentVariable("DARKSIGN_ENEMY_MATERIALS")?.Trim().ToLowerInvariant() != "template";
-
-    /// <summary>False with DARKSIGN_ENEMY_NODES=0: DS3's node flags and mesh boxes stay.</summary>
-    public static bool ErNodes => Environment.GetEnvironmentVariable("DARKSIGN_ENEMY_NODES")?.Trim() != "0";
-
     /// <summary>The samplers of Elden Ring's plain character shader, as its FLVERs and MATBINs name them.</summary>
     public const string PlainAlbedo = "C_AMSN__snp_Texture2D_2_AlbedoMap_0",
         PlainMetallic = "C_AMSN__snp_Texture2D_0_MetallicMap_0",
         PlainNormal = "C_AMSN__snp_Texture2D_7_NormalMap_4";
-
-    /// <summary>
-    /// False with DARKSIGN_ENEMY_COLOURS=ds3: the model keeps DS3's vertex colours (and white where DS3 has none),
-    /// and a two-layer material shows its first layer, as builds up to 1.0.299 did.
-    /// </summary>
-    public static bool ErVertexColours => Environment.GetEnvironmentVariable("DARKSIGN_ENEMY_COLOURS")?.Trim().ToLowerInvariant() != "ds3";
 
     /// <summary>From the last Convert on this thread: vertex colours changed to Elden Ring's, materials shown by their second layer.</summary>
     [ThreadStatic] public static int VertexColoursSet;
@@ -40,7 +26,7 @@ public static class ChrModel
     public static List<ChrMaterial> Convert(FLVER2 flver, FLVER2 template, int ds3Chr, int newChr, Func<string, long>? textureArea = null,
         ChrGlow.Template? glow = null, Func<string, string>? rename = null, IReadOnlyDictionary<string, ChrBlend.Ds3Draw>? ds3Mtds = null,
         ChrGlow.Template? seeThrough = null) =>
-        Convert(flver, template, ds3Chr, newChr, PlainMaterials, ErNodes, textureArea, ErVertexColours, glow, rename, ds3Mtds, seeThrough);
+        Convert(flver, template, ds3Chr, newChr, true, true, textureArea, true, glow, rename, ds3Mtds, seeThrough);
 
     /// <summary>From the last Convert on this thread: DS3 materials drawn on the glowing material.</summary>
     [ThreadStatic] public static int Glowing;
@@ -113,7 +99,7 @@ public static class ChrModel
             // fur cards out (g_AlphaRef 50), layer 1 on the second UV set the body texture that tints them. The plain
             // shader draws one layer on the first UV set: the strands (mid grey, as the wolf's body is), cut out. Up to
             // 1.0.422 the larger layer won: the body texture over the strand UVs, uncut, drawn as white shards.
-            bool fur = IsFur(m.MTD) && FurEnabled;
+            bool fur = IsFur(m.MTD);
             if (!fur && erColours && textureArea is not null && Ds3Texture("g_DiffuseTexture2", "_AlbedoMap_1") is { } albedo2
                 && (albedo is null || textureArea(albedo2) > textureArea(albedo)))
             {
@@ -279,9 +265,6 @@ public static class ChrModel
     public static bool IsFur(string mtd) =>
         Path.GetFileNameWithoutExtension(ItemText.Leaf(mtd)).StartsWith("C[Fur]", StringComparison.OrdinalIgnoreCase);
 
-    /// <summary>Fallback enemy-model K: DARKSIGN_ENEMY_FUR=0 draws DS3 fur as up to 1.0.422.</summary>
-    public static bool FurEnabled => Environment.GetEnvironmentVariable("DARKSIGN_ENEMY_FUR")?.Trim() != "0";
-
     public static bool IsAlphaTested(string mtd)
     {
         var name = Path.GetFileNameWithoutExtension(ItemText.Leaf(mtd));
@@ -372,12 +355,6 @@ public static class ChrModel
     /// <summary>A DS3 texture name under the new character ID ("c1020_body_a" -> "c7003_body_a").</summary>
     public static string TextureName(string name, string oldTag, string newTag) =>
         name.Replace(oldTag, newTag, StringComparison.OrdinalIgnoreCase);
-
-    /// <summary>
-    /// False with DARKSIGN_ENEMY_TEXTURES=added: DS3's textures go into a second file next to the template's in the
-    /// high-quality texture binder, with flat "not metal" maps, as builds up to 1.0.271 did.
-    /// </summary>
-    public static bool OwnTextureFile => Environment.GetEnvironmentVariable("DARKSIGN_ENEMY_TEXTURES")?.Trim().ToLowerInvariant() != "added";
 
     /// <summary>DS3 textures renamed to the new ID; with <paramref name="flatMetallic"/> plus a flat _m (metallic) map per _r (reflectance) map.</summary>
     public static bool IsDds(byte[]? bytes) => bytes is { Length: >= 128 } && bytes[0] == 'D' && bytes[1] == 'D' && bytes[2] == 'S' && bytes[3] == ' ';

@@ -21,19 +21,13 @@ namespace DarkSign.Porter.Enemies;
 /// own (<see cref="ChrSounds"/>).</item>
 /// </list>
 /// In a move that plays a DS3 animation the effect events are DS3's alone (the template's, stretched onto another
-/// animation, are dropped), and so are the character's own sounds once it has a bank.
-/// Fallbacks "enemy-effects": DARKSIGN_ENEMY_EFFECTS=0 (all of this off, as builds up to 1.0.299),
-/// DARKSIGN_ENEMY_SOUNDS=0 (no DS3 sounds: the template's stay). Report: Work\reports\enemy-effects.tsv.
-/// Method (RULE 3): the event layouts are DSAnimStudio's TAE templates for both games, the param relations
-/// sn0wsh00's FXR / bullet articles and Paramdex (see VfxPort, BulletPort), the bank layout the community's custom
-/// sound banks (see WwiseBank.WriteOwnBank).
+/// animation, are dropped), and so are the character's own sounds once it has a bank. Report:
+/// Work\reports\enemy-effects.tsv. Method (RULE 3): the event layouts are DSAnimStudio's TAE templates for both
+/// games, the param relations sn0wsh00's FXR / bullet articles and Paramdex (see VfxPort, BulletPort), the bank
+/// layout the community's custom sound banks (see WwiseBank.WriteOwnBank).
 /// </summary>
 public sealed class ChrEffects
 {
-    public static bool Enabled => Environment.GetEnvironmentVariable("DARKSIGN_ENEMY_EFFECTS") != "0";
-    public static bool SoundsEnabled => Environment.GetEnvironmentVariable("DARKSIGN_ENEMY_SOUNDS") != "0";
-    private static readonly bool OneShot = Environment.GetEnvironmentVariable("DARKSIGN_SOUND_ONESHOT") != "0";
-
     public const int SpEffectBase = 700_000_000;
     public const string ReportFile = "enemy-effects.tsv";
     private const int BulletEvent = 2;
@@ -70,12 +64,8 @@ public sealed class ChrEffects
     /// (<see cref="ChrSounds.FloorVariant"/>).</summary>
     internal (int Kind, int Id)? PortedSound(TAE.Event e) =>
         SoundPort.Sound(e) is not { } s ? null
-        : s.Kind == FloorSoundKind && FloorSounds ? (1, _sounds?.FloorVariant(s.Id) ?? s.Id)
+        : s.Kind == FloorSoundKind ? (1, _sounds?.FloorVariant(s.Id) ?? s.Id)
         : s;
-
-    /// <summary>DARKSIGN_FLOOR_SOUNDS=0 (launcher fallback enemy-effects D): floor-material sound events stay as
-    /// DS3 had them (silent in Elden Ring), as before.</summary>
-    public static readonly bool FloorSounds = Environment.GetEnvironmentVariable("DARKSIGN_FLOOR_SOUNDS") != "0";
 
     private readonly PorterContext _ctx;
     private readonly GameArchives? _er;
@@ -111,7 +101,7 @@ public sealed class ChrEffects
         public int NpcEffects, NpcEffectsSkipped;
         /// <summary>DS3 effects its row names that DS3's scripts only take off (left out), and ones they only put on (added).</summary>
         public List<int> ScriptDropped = [], ScriptAdded = [], CategoryDropped = [];
-        /// <summary>AI state markers DS3's scripts put on, left out of the row (<see cref="ScriptMarkersLeftOut"/>).</summary>
+        /// <summary>AI state markers DS3's scripts put on, left out of the row.</summary>
         public List<int> ScriptMarkers = [];
         public string Note = "";
     }
@@ -149,11 +139,6 @@ public sealed class ChrEffects
     /// </summary>
     public static ChrEffects? Create(PorterContext ctx, GameArchives er, GameArchives ds3, IReadOnlyList<ChrPort.Plan> plans, List<string> notes)
     {
-        if (!Enabled)
-        {
-            Console.WriteLine("enemies: DS3 effects, sounds and abilities are off (DARKSIGN_ENEMY_EFFECTS=0): the templates' stay");
-            return null;
-        }
         try
         {
             TAE.ValidateEventBank = false;
@@ -190,15 +175,14 @@ public sealed class ChrEffects
             var erParams = ctx.LoadParams(PorterGame.EldenRing);
             var ds3Params = ctx.LoadParams(PorterGame.DarkSouls3);
             SpEffectPort? planned = null;
-            if (SpEffectPort.Enabled)
-                planned = new SpEffectPort(erParams, ds3Params, SpEffectId, full: true);
+            planned = new SpEffectPort(erParams, ds3Params, SpEffectId, full: true);
             // The layouts a ported sound event takes: Elden Ring's most common one-shot character sound (see
             // MovesetPort.SoundEvents) and its most common 128.
             var swing = erEvents.Where(e => e.Type == 129 && SoundPort.Sound(e) is { Kind: 1 }).Select(e => e.GetParameterBytes(false))
                 .Where(b => b.Length >= 32).GroupBy(Convert.ToHexString).MaxBy(g => g.Count())?.First();
             var sound = erEvents.Where(e => e.Type == 128).Select(e => e.GetParameterBytes(false)).GroupBy(Convert.ToHexString).MaxBy(g => g.Count())?.First();
             ChrSounds? sounds = null;
-            if (SoundsEnabled && (swing ?? sound) is not null)
+            if ((swing ?? sound) is not null)
                 try
                 {
                     var templateIds = erEvents.Select(SoundPort.Sound).Where(s => s is { Kind: 1 }).GroupBy(s => s!.Value.Id)
@@ -209,8 +193,6 @@ public sealed class ChrEffects
                 {
                     notes.Add($"enemy sounds: off, the templates' sounds stay ({ChrPort.Describe(e)})");
                 }
-            else if (!SoundsEnabled)
-                Console.WriteLine("enemies: DS3 sounds are off (DARKSIGN_ENEMY_SOUNDS=0): the templates' sounds stay");
             var scripts = ScriptEffects.Read(ds3, notes);
             var fx = new ChrEffects(ctx, er, erParams.Get("NpcParam"), ds3Params.Get("NpcParam"), ds3Params.Get("SpEffectParam"),
                 new Ds3EffectRefs(ds3Params, "BehaviorParam", "AtkParam_Npc"), events, new FxrPort.ChrConverter(ds3Fx, er), layout, planned, sounds, swing, sound, scripts);
@@ -320,7 +302,7 @@ public sealed class ChrEffects
             if (e.Type == BulletEvent)
             {
                 // The behaviour judge it names is kept; the row it finds is ported with the character's variation.
-                if (!BulletPort.Enabled || !_fx.Lengths.TryGetValue(BulletEvent, out var lengths) || !lengths.Contains(bytes.Length))
+                if (!_fx.Lengths.TryGetValue(BulletEvent, out var lengths) || !lengths.Contains(bytes.Length))
                     return (Fate.Drop, e.Type, null);
                 return (Fate.Add, e.Type, BulletPort.ConvertEvent(bytes));
             }
@@ -353,7 +335,7 @@ public sealed class ChrEffects
     /// </summary>
     internal (int Type, byte[] Bytes)? SoundEvent(int kind, int id, bool loops = false)
     {
-        int type = OneShot && _swingSample is not null ? 129 : 128;
+        int type = _swingSample is not null ? 129 : 128;
         var layout = type == 129 ? _swingSample : _soundSample;
         if (layout is null || layout.Length < 8)
             return null;
@@ -484,21 +466,12 @@ public sealed class ChrEffects
     public IReadOnlyCollection<int> ScriptSpEffectIds { get; set; } = [];
 
     /// <summary>
-    /// DS3 SpEffects the ported AI scripts check (<see cref="AiPort.RenumberSpEffects"/>): ported too, and kept on an
+    /// DS3 SpEffects the ported AI scripts check: ported too, and kept on an
     /// NpcParam row that names them even when they show nothing (a state marker such as the wolf's 5020, which the
     /// script reads to choose its attacks).
     /// </summary>
     public IReadOnlySet<int> AiSpEffectIds { get; set; } = new HashSet<int>();
 
-    /// <summary>
-    /// An effect DS3's map scripts put on an enemy that shows nothing and only tells its AI what is going on (a state
-    /// marker) stays off the ported row: the scripts set it when something happens on the map, while on the row it is
-    /// on from the start. Ariandel's wolf pack gets 13032 from m45's event 14505200 once its leader is gone; that
-    /// branch of DS3's wolf AI (604000_battle) only circles, guards and backs off, and with 13032 on its row since
-    /// #183 ported the wolf's markers, the 1.0.442 wolf circled and never attacked. The ported map scripts still set
-    /// the marker on placed enemies. Fallback enemy-ai I (DARKSIGN_ENEMY_SCRIPT_MARKERS=keep) puts them back on the row.
-    /// </summary>
-    public static bool ScriptMarkersLeftOut => Environment.GetEnvironmentVariable("DARKSIGN_ENEMY_SCRIPT_MARKERS")?.Trim().ToLowerInvariant() != "keep";
     private AttackParamPort? _attacks;
 
     /// <summary>
@@ -510,28 +483,26 @@ public sealed class ChrEffects
         var effects = new FxrPort.Result();
         foreach (var (ds3Id, newId) in _ported)
             effects.Effects[ds3Id] = newId;
-        if (SpEffectPort.Enabled)
-            try
-            {
-                _sp = new SpEffectPort(regulation, ds3, SpEffectId, full: true);
-                _sp.BindVisuals(effects);
-            }
-            catch (Exception e) when (e is not OutOfMemoryException)
-            {
-                notes.Add($"enemy effects: SpEffects not ported ({ChrPort.Describe(e)})");
-                _sp = null;
-            }
+        try
+        {
+            _sp = new SpEffectPort(regulation, ds3, SpEffectId, full: true);
+            _sp.BindVisuals(effects);
+        }
+        catch (Exception e) when (e is not OutOfMemoryException)
+        {
+            notes.Add($"enemy effects: SpEffects not ported ({ChrPort.Describe(e)})");
+            _sp = null;
+        }
         _attacks = new AttackParamPort(regulation, ds3, "BehaviorParam", "AtkParam_Npc") { Effects = _sp, FullHitEffects = true };
-        if (BulletPort.Enabled)
-            try
-            {
-                _bullets = _attacks.Bullets = new BulletPort(regulation, ds3, _sp, _attacks.PortBulletAttack);
-                _bullets.Bind(effects);
-            }
-            catch (Exception e) when (e is not OutOfMemoryException)
-            {
-                notes.Add($"enemy effects: projectiles not ported ({ChrPort.Describe(e)})");
-            }
+        try
+        {
+            _bullets = _attacks.Bullets = new BulletPort(regulation, ds3, _sp, _attacks.PortBulletAttack);
+            _bullets.Bind(effects);
+        }
+        catch (Exception e) when (e is not OutOfMemoryException)
+        {
+            notes.Add($"enemy effects: projectiles not ported ({ChrPort.Describe(e)})");
+        }
         // The effects the moves cast were given their IDs when the files were built; their rows are added here.
         if (_sp is not null)
             foreach (var built in _built.Values.OrderBy(b => b.Plan.NewChr))
@@ -576,13 +547,7 @@ public sealed class ChrEffects
         // The damage it takes: DS3 gives phantoms and a few bosses their toughness this way (Gael's phantom 0.57).
         || ChrPort.DamageRateFields.Any(f => ParamDefaults.Cell(ds3Effect, f)?.Value is float r && r > 0 && r != 1)
         // The moves it plays: a variant's TAE section (5404 = +1,000,000, the spear Lothric Knight; ChrVariants).
-        || (ChrVariants.Enabled && ParamDefaults.Int(ds3Effect, "animIdOffset") > 0);
-
-    /// <summary>
-    /// A ported character's NpcParam row: DS3's own effects in the slots the template leaves free, and the row
-    /// pointed at the character's own effect binder and sound bank (the template's bank stays as the second one).
-    /// </summary>
-    public static bool CategoriesEnabled => Environment.GetEnvironmentVariable("DARKSIGN_ENEMY_CATEGORIES")?.Trim() != "0";
+        || (ParamDefaults.Int(ds3Effect, "animIdOffset") > 0);
 
     /// <summary>
     /// DS3's rule that a character shows one effect of a category (spCategory), the one of highest categoryPriority,
@@ -590,8 +555,7 @@ public sealed class ChrEffects
     /// SpEffect list) carried all three of its category-100 lights at once, 11900 cyan (priority 1), 11899 orange (4)
     /// and 11902 blue (2), although the ported rows name their category: Elden Ring doesn't sort out effects an
     /// NpcParam row starts with by category. So only the winner of each category goes into the ported row; effects
-    /// without a category all stay, and of equal priorities the first named stays. Off with DARKSIGN_ENEMY_CATEGORIES=0
-    /// (fallback enemy-glow D).
+    /// without a category all stay, and of equal priorities the first named stays.
     /// </summary>
     public static (List<int> Kept, List<int> Dropped) OnePerCategory(IReadOnlyList<int> ids, Func<int, PARAM.Row?> row)
     {
@@ -627,7 +591,7 @@ public sealed class ChrEffects
                 built.ScriptAdded = [.. built.ScriptAdded.Union(added)];
                 scriptAdded.UnionWith(added);
             }
-            if (CategoriesEnabled && _ds3SpEffects is { } ds3Sp)
+            if (_ds3SpEffects is { } ds3Sp)
             {
                 (ds3Effects, var lost) = OnePerCategory(ds3Effects, id => ds3Sp[id]);
                 built.CategoryDropped = [.. built.CategoryDropped.Union(lost)];
@@ -637,9 +601,9 @@ public sealed class ChrEffects
                 if (_ds3SpEffects?[id] is not { } effect)
                     continue;
                 bool shows = NpcEffectWanted(effect);
-                if (!shows && scriptAdded.Contains(id) && AiSpEffectIds.Contains(id) && ScriptMarkersLeftOut)
+                if (!shows && scriptAdded.Contains(id) && AiSpEffectIds.Contains(id))
                 {
-                    // A state the map scripts switch on later, not part of how the enemy starts (see ScriptMarkersLeftOut).
+                    // A state the map scripts switch on later, not part of how the enemy starts.
                     if (!built.ScriptMarkers.Contains(id))
                         built.ScriptMarkers.Add(id);
                     continue;

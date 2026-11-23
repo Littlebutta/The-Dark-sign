@@ -32,7 +32,7 @@ public sealed class BuildEstimator
 
     /// <param name="parts">The parts, in run order.</param>
     /// <param name="history">Last build's stats by part name (may be missing some or all).</param>
-    /// <param name="serial">The parts run one after another (Fallbacks "build-threads" B) instead of side by side.</param>
+    /// <param name="serial">The parts run one after another instead of side by side.</param>
     public BuildEstimator(IEnumerable<string> parts, IReadOnlyDictionary<string, BuildStat>? history, bool serial, DateTime now)
     {
         foreach (var name in parts)

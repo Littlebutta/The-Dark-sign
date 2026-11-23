@@ -17,53 +17,6 @@ namespace DarkSign.Porter.Maps;
 /// </summary>
 public static class MsbPort
 {
-    public sealed class Options
-    {
-        /// <summary>
-        /// DS3's culling (opt-in, fallback "map-groups" B): map pieces, collisions and objects carry DS3's draw and
-        /// display groups in Elden Ring's real group fields (<see cref="MapDrawGroups"/>), so the game draws only what
-        /// DS3 drew from where the player stands. It was the default in 1.0.414-1.0.417 and Devin's walk (2026-11-12
-        /// 19:42Z) showed it wrong in game: Firelink's chairs hidden inside the shrine, the world outside phasing out,
-        /// the player vanishing near the Crystal Lizard, Friede's arena phasing. Default off: every part is drawn from
-        /// everywhere, as up to 1.0.410. Enemies and player points are drawn from everywhere either way.
-        /// </summary>
-        public bool Ds3Culling { get; init; }
-
-        /// <summary>
-        /// Enemies and player points (and, without <see cref="Ds3Culling"/>, collisions) get every group on. Off: they
-        /// get DS3's groups too.
-        /// </summary>
-        public bool AllVisible { get; init; } = true;
-
-        /// <summary>
-        /// No group masks at all (every array zero), the way JortPob's parts and the colosseum's own parts have them.
-        /// Wins over <see cref="Ds3Culling"/> and <see cref="AllVisible"/>. Fallback "map-groups" C.
-        /// </summary>
-        public bool NoGroups { get; init; }
-
-        /// <summary>
-        /// Keep DS3's helper pieces as ordinary map pieces (see <see cref="HelperKind"/>), as every build up to
-        /// 1.0.299 did. Fallback "map-helper-pieces" B.
-        /// </summary>
-        public bool HelperPieces { get; init; }
-
-        /// <summary>
-        /// Keep the enemies and objects of every DS3 map state, not only the start of the game's (m40 holds the
-        /// Cemetery of Ash and the Untended Graves at the same place; see <see cref="OtherState"/>). Fallback
-        /// "map-layers" B.
-        /// </summary>
-        public bool AllLayers { get; init; }
-
-        /// <summary>
-        /// Write every collision's hit filter exactly as DS3 numbers it, filter 24 included (see <see cref="HitFilter"/>),
-        /// as every build up to 1.0.353 did. Fallback "map-hit-filters" B.
-        /// </summary>
-        public bool Ds3HitFilters { get; init; }
-
-        /// <summary>The PartsDrawParam row every map piece names (see <see cref="MapDrawParams"/>).</summary>
-        public short DrawParamId { get; init; } = MapDrawParams.VanillaRow;
-    }
-
     public sealed record Result(MSBE Msb, int MapPieces, int Collisions, int Players, int StartEntityId,
         List<string> Notes);
 
@@ -72,10 +25,9 @@ public static class MsbPort
 
     /// <param name="slots">Every ported DS3 map and its slot, so connect collisions can point at the right map.</param>
     /// <param name="connectTemplate">An Elden Ring connect collision to copy (the host map usually has none).</param>
-    public static Result Convert(MSB3 ds3, MSBE host, MapId ds3Id, MapId erId, Options? options = null,
+    public static Result Convert(MSB3 ds3, MSBE host, MapId ds3Id, MapId erId,
         IReadOnlyList<(MapId Ds3, MapId Er)>? slots = null, MSBE.Part.ConnectCollision? connectTemplate = null)
     {
-        options ??= new Options();
         var notes = new List<string>();
         var msb = new MSBE();
 
@@ -100,7 +52,7 @@ public static class MsbPort
         var helpers = new Dictionary<string, List<string>>();
         foreach (var src in ds3.Parts.MapPieces)
         {
-            if (!options.HelperPieces && HelperKind(src, layerOk) is { } helper)
+            if (HelperKind(src, layerOk) is { } helper)
             {
                 if (!helpers.TryGetValue(helper, out var names))
                     helpers[helper] = names = [];
@@ -109,8 +61,8 @@ public static class MsbPort
             }
             var part = (MSBE.Part.MapPiece)mapPieceTemplate.DeepCopy();
             CopyCommon(src, part, ds3Id, erId);
-            ApplyPieceGroups(src, part.Unk1, options);
-            DrawNormally(part, options.DrawParamId);
+            ApplyPieceGroups(part.Unk1);
+            DrawNormally(part, MapDrawParams.FirstRow);
             msb.Parts.MapPieces.Add(part);
             AddModel(msb.Models.MapPieces, src.ModelName, mapPieceModel, erId);
         }
@@ -122,28 +74,27 @@ public static class MsbPort
 
         var remapped = new List<string>();
         var unknownFilter = new List<string>();
-        var textMode = MapText.Mode;
         foreach (var src in ds3.Parts.Collisions)
         {
-            if (!options.Ds3HitFilters && !ErKnowsFilter(src.HitFilterID))
+            if (!ErKnowsFilter(src.HitFilterID))
             {
                 unknownFilter.Add($"{src.Name} (filter {src.HitFilterID})");
                 continue;
             }
             var part = (MSBE.Part.Collision)collisionTemplate.DeepCopy();
             CopyCommon(src, part, ds3Id, erId);
-            ApplyCollisionGroups(src, part.Unk1, options);
+            ApplyGroups(part.Unk1);
             if (part.Unk2 is { } unk2)
                 for (int i = 0; i < unk2.DispGroups.Length; i++)
-                    unk2.DispGroups[i] = options.NoGroups ? 0 : Culls(options) || !options.AllVisible ? (i < src.DispGroups.Length ? src.DispGroups[i] : 0) : 0xFFFFFFFF;
-            part.HitFilterID = HitFilter(src.HitFilterID, options.Ds3HitFilters);
+                    unk2.DispGroups[i] = 0xFFFFFFFF;
+            part.HitFilterID = HitFilter(src.HitFilterID);
             if (part.HitFilterID != (MSBE.Part.Collision.HitFilterType)src.HitFilterID)
                 remapped.Add(src.Name);
             // Online/region IDs from the colosseum would only confuse the game; Elden Ring treats 0/-1 as unset.
             part.PlayRegionID = -1;
             // DS3's area name for this ground ("High Wall of Lothric"), shown as a banner on stepping onto it: the
             // copy of DS3's name the map text step writes (MapText). Up to 1.0.50x no DS3 area showed its name.
-            part.LocationTextID = MapText.CollisionPlace(src.MapNameID, textMode);
+            part.LocationTextID = MapText.CollisionPlace(src.MapNameID);
             msb.Parts.Collisions.Add(part);
             AddModel(msb.Models.Collisions, src.ModelName, collisionModel, erId);
         }
@@ -170,7 +121,7 @@ public static class MsbPort
             }
             var part = (MSBE.Part.ConnectCollision)connectTemplate.DeepCopy();
             CopyCommon(src, part, ds3Id, erId);
-            ApplyCollisionGroups(src, part.Unk1, options);
+            ApplyGroups(part.Unk1);
             part.CollisionName = src.CollisionName;
             part.MapID = [(byte)to.Area, (byte)to.Block, (byte)to.Region, (byte)to.Index];
             msb.Parts.ConnectCollisions.Add(part);
@@ -187,7 +138,7 @@ public static class MsbPort
         {
             var part = (MSBE.Part.Player)playerTemplate.DeepCopy();
             CopyCommon(src, part, ds3Id, erId);
-            ApplyGroups(src, part.Unk1, options);
+            ApplyGroups(part.Unk1);
             if (src == start)
             {
                 part.Name = "c0000_9990";
@@ -207,9 +158,7 @@ public static class MsbPort
                       + (Guarded(ds3, start) ? "; every point has an enemy beside it" : ""));
         }
 
-        if (!Culls(options))
-            notes.Add(options.NoGroups ? "draw groups: none (--no-groups); every piece is drawn from everywhere"
-                : "draw groups: off (default; --ds3-culling turns DS3's on); every piece is drawn from everywhere, nothing is culled");
+        notes.Add("draw groups: off; every piece is drawn from everywhere, nothing is culled");
 
         // Elden Ring's MSBs have one layer table entry list and reference models by index; SoulsFormats rebuilds
         // indices from names on write.
@@ -248,23 +197,23 @@ public static class MsbPort
     public const byte Ds3FloorCopyFilter = 24;
 
     /// <summary>
-    /// The Elden Ring hit filter for a DS3 collision. Both games share 8 (normal), 9 (camera only), 11 (NPCs only),
-    /// 13 (fall death camera) and 15 (kill plane) by soulstruct's lists (horkrux), so those and the other numbers
-    /// pass through. DS3's floor copies (<see cref="Ds3FloorCopyFilter"/>) become normal floor, so a character that
-    /// finds one under it stands on it. <paramref name="keepDs3"/>: DS3's number unchanged.
-    /// </summary>
-    /// <summary>
     /// Whether Elden Ring's layout format names this hit filter. DS3 uses a few that Elden Ring never does (14 on one
     /// special h900001 collision in Irithyll, Road of Sacrifices, Cathedral and Grand Archives); written as they are,
     /// the layout no longer reads back, and from 1.0.5xx (#228) every step that reads the ported layouts again failed
     /// on them: bonfires (no site of grace anywhere: nothing to rest at, no fire), map effects and object effects.
-    /// Such a collision is left out (fallback map-hit-filters B keeps it).
+    /// Such a collision is left out.
     /// </summary>
     public static bool ErKnowsFilter(byte ds3) =>
         ds3 == Ds3FloorCopyFilter || Enum.IsDefined(typeof(MSBE.Part.Collision.HitFilterType), ds3);
 
-    public static MSBE.Part.Collision.HitFilterType HitFilter(byte ds3, bool keepDs3) =>
-        !keepDs3 && ds3 == Ds3FloorCopyFilter ? MSBE.Part.Collision.HitFilterType.Standard : (MSBE.Part.Collision.HitFilterType)ds3;
+    /// <summary>
+    /// The Elden Ring hit filter for a DS3 collision. Both games share 8 (normal), 9 (camera only), 11 (NPCs only),
+    /// 13 (fall death camera) and 15 (kill plane) by soulstruct's lists (horkrux), so those and the other numbers
+    /// pass through. DS3's floor copies (<see cref="Ds3FloorCopyFilter"/>) become normal floor, so a character that
+    /// finds one under it stands on it.
+    /// </summary>
+    public static MSBE.Part.Collision.HitFilterType HitFilter(byte ds3) =>
+        ds3 == Ds3FloorCopyFilter ? MSBE.Part.Collision.HitFilterType.Standard : (MSBE.Part.Collision.HitFilterType)ds3;
 
     public const string ReflectionOnly = "drawn only in water reflections", ShadowOnly = "shadow casters only",
         OffBaseLayer = "not in the map's base state";
@@ -374,46 +323,15 @@ public static class MsbPort
         return underscore >= 0 && int.TryParse(name[(underscore + 1)..], out var n) ? n : 0;
     }
 
-    /// <summary>Whether map pieces, collisions and objects get DS3's groups (<see cref="Options.Ds3Culling"/>).</summary>
-    public static bool Culls(Options options) => options.Ds3Culling && !options.NoGroups;
-
     /// <summary>
-    /// Map pieces and objects: DS3's groups when culling (<see cref="MapDrawGroups"/>), else no masks, as every part the
-    /// colosseums draw (483 assets) and JortPob's map pieces have them, which Elden Ring draws from everywhere.
+    /// Map pieces and objects: no group masks, as every part the colosseums draw (483 assets) and JortPob's map pieces
+    /// have them, which Elden Ring draws from everywhere. (DS3's own culling groups hid the wrong things in game in
+    /// 1.0.414-1.0.417.)
     /// </summary>
-    internal static void ApplyPieceGroups(MSB3.Part src, MSBE.Part.UnkStruct1? unk1, Options options)
-    {
-        if (Culls(options))
-            MapDrawGroups.Set(unk1, src.DispGroups, src.DrawGroups);
-        else
-            MapDrawGroups.Clear(unk1);
-    }
+    internal static void ApplyPieceGroups(MSBE.Part.UnkStruct1? unk1) => MapDrawGroups.Clear(unk1);
 
-    /// <summary>
-    /// Collisions: what standing on them shows is DS3's DispGroups when culling; otherwise everything. A collision's
-    /// own draw groups stay empty, as 104 of vanilla Stormveil's 111 collisions have them (measured 2026-11-12 by the
-    /// "Fix DS3 map spawns" thread): a collision with draw groups may be switched off where it isn't drawn, and
-    /// enemies standing on it fall. Vanilla collisions also carry Unk2 DispGroups {2, own index} with Condition = own
-    /// index, where the port writes DS3's {0, own}; not changed, as nothing yet shows it matters.
-    /// </summary>
-    internal static void ApplyCollisionGroups(MSB3.Part src, MSBE.Part.UnkStruct1? unk1, Options options)
-    {
-        if (Culls(options))
-            MapDrawGroups.Set(unk1, src.DispGroups, ReadOnlySpan<uint>.Empty);
-        else
-            ApplyGroups(src, unk1, options);
-    }
-
-    /// <summary>Enemies and player points: every group on (drawn from everywhere), DS3's groups when <see cref="Options.AllVisible"/> is off.</summary>
-    internal static void ApplyGroups(MSB3.Part src, MSBE.Part.UnkStruct1? unk1, Options options)
-    {
-        if (options.NoGroups)
-            MapDrawGroups.Clear(unk1);
-        else if (options.AllVisible)
-            MapDrawGroups.SetAll(unk1);
-        else
-            MapDrawGroups.Set(unk1, src.DispGroups, src.DrawGroups);
-    }
+    /// <summary>Collisions, enemies and player points: every group on (drawn from everywhere, showing everything).</summary>
+    internal static void ApplyGroups(MSBE.Part.UnkStruct1? unk1) => MapDrawGroups.SetAll(unk1);
 
     internal static void AddModel<T>(List<T> models, string name, T? template, MapId erId) where T : MSBE.Model, new()
     {

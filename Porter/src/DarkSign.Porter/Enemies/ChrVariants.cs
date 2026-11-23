@@ -26,12 +26,9 @@ namespace DarkSign.Porter.Enemies;
 /// template's own offset effects come off the row (a ported Cathedral Evangelist kept the template's 5402 and played
 /// section 2), and DS3's NpcParam animIdOffset is copied (ChrPort.PortParams).</item>
 /// </list>
-/// Fallback enemy-model L: DARKSIGN_ENEMY_VARIANTS=0 (every variant plays the base moves, as up to 1.0.443).
 /// </summary>
 public static partial class ChrVariants
 {
-    public static bool Enabled => Environment.GetEnvironmentVariable("DARKSIGN_ENEMY_VARIANTS")?.Trim() != "0";
-
     public const int SectionStep = 1_000_000;
 
     [GeneratedRegex(@"^a(\d{3})_(\d{6})\.hkx$", RegexOptions.IgnoreCase)]
@@ -45,8 +42,16 @@ public static partial class ChrVariants
     /// <param name="templateMoves">The template's section 0 IDs that have a file and an entry.</param>
     /// <param name="templateHas">Every (section, ID) the template's binders already have a file or entry for.</param>
     /// <param name="ds3Plays">DS3's moves: (section, ID) -> the animation file it plays.</param>
+    /// <param name="templateFiles">
+    /// The (section, ID) pairs the template has an animation file of its own for. When given, a section entry the
+    /// template has with no file of its own (one that borrows another move's clip) is planned too, and
+    /// <see cref="AddSectionFiles"/> gives it DS3's own: the Valiant Gargoyle (c4770, the Dancer's template) plays
+    /// 1003021 with 1003027's clip and 1003025 with 1003023's, so the Dancer's own phase-2 3021 and 3025 (57 and 32
+    /// events, her dark blade's trail and burst among them) never played; another of her attacks did instead.
+    /// </param>
     public static List<(int Section, int Id)> Plan(IEnumerable<int> templateMoves, IReadOnlySet<(int Section, int Id)> templateHas,
-        IReadOnlyDictionary<(int Section, int Id), (int Section, int Id)> ds3Plays, Func<int, bool> templateAdditive, Func<(int, int), bool> ds3Additive)
+        IReadOnlyDictionary<(int Section, int Id), (int Section, int Id)> ds3Plays, Func<int, bool> templateAdditive, Func<(int, int), bool> ds3Additive,
+        IReadOnlySet<(int Section, int Id)>? templateFiles = null)
     {
         var plan = new List<(int, int)>();
         var sections = ds3Plays.Keys.Select(k => k.Section).Where(s => s is > 0 and < 1000).Distinct().Order().ToList();
@@ -54,7 +59,7 @@ public static partial class ChrVariants
         foreach (int s in sections)
             foreach (int id in ids)
             {
-                if (templateHas.Contains((s, id)) || !ds3Plays.TryGetValue((s, id), out var file))
+                if ((templateFiles?.Contains((s, id)) ?? templateHas.Contains((s, id))) || !ds3Plays.TryGetValue((s, id), out var file))
                     continue;
                 // A section entry that plays the base file is the base move again: the game falls back to it anyway.
                 if (file.Section == 0 || (ds3Plays.TryGetValue((0, id), out var baseFile) && baseFile == file))
@@ -72,7 +77,8 @@ public static partial class ChrVariants
     /// <summary>
     /// Adds each planned section move to the binders: a copy of the base move's file (same binder, the file ID moved by
     /// a section, path and name for the section) and a TAE entry cloned from the base entry under section × 1,000,000 + ID,
-    /// playing its own file. Returns the moves added.
+    /// playing its own file. A section entry the template already has but that borrows another clip keeps its place
+    /// and is pointed at the new file instead. Returns the moves added.
     /// </summary>
     public static List<(int Section, int Id)> AddSectionFiles(IEnumerable<BND4> anibnds, IReadOnlyList<(int Section, int Id)> plan)
     {
@@ -87,14 +93,23 @@ public static partial class ChrVariants
         var tae = TAE.Read(taeFile.Bytes);
         var entries = tae.Animations.GroupBy(a => a.ID).ToDictionary(g => g.Key, g => g.First());
         var baseFiles = new Dictionary<int, (BND4 Bnd, BinderFile File)>();
+        var sectionFiles = new HashSet<(int, int)>();
         foreach (var b in binders)
             foreach (var f in b.Files)
-                if (HkxLeaf().Match(ItemText.Leaf(f.Name)) is { Success: true } m && int.Parse(m.Groups[1].Value) == 0)
-                    baseFiles.TryAdd(int.Parse(m.Groups[2].Value), (b, f));
+                if (HkxLeaf().Match(ItemText.Leaf(f.Name)) is { Success: true } m)
+                {
+                    int fs = int.Parse(m.Groups[1].Value), fid = int.Parse(m.Groups[2].Value);
+                    sectionFiles.Add((fs, fid));
+                    if (fs == 0)
+                        baseFiles.TryAdd(fid, (b, f));
+                }
         foreach (var (s, id) in plan)
         {
             long entryId = (long)s * SectionStep + id;
-            if (!entries.TryGetValue(id, out var donor) || entries.ContainsKey(entryId) || !baseFiles.TryGetValue(id, out var donorFile))
+            if (!entries.TryGetValue(id, out var donor) || !baseFiles.TryGetValue(id, out var donorFile))
+                continue;
+            entries.TryGetValue(entryId, out var borrower);
+            if (borrower is not null && sectionFiles.Contains((s, id)))
                 continue;
             long fileId = donorFile.File.ID + (long)s * SectionStep;
             if (fileId > int.MaxValue || donorFile.Bnd.Files.Any(f => f.ID == fileId))
@@ -102,6 +117,17 @@ public static partial class ChrVariants
             var leaf = ItemText.Leaf(donorFile.File.Name);
             var name = donorFile.File.Name[..^leaf.Length] + $"a{s:D3}_{id:D6}.hkx";
             donorFile.Bnd.Files.Add(new BinderFile(donorFile.File.Flags, (int)fileId, name, (byte[])donorFile.File.Bytes.Clone()));
+            sectionFiles.Add((s, id));
+            if (borrower is not null)
+            {
+                // The template's entry stays (its place, its events until the port lays DS3's in) but plays its own file.
+                borrower.AnimFileName = HktName(s, id);
+                borrower.MiniHeader = borrower.MiniHeader is TAE.Animation.AnimMiniHeader.Standard bs
+                    ? new TAE.Animation.AnimMiniHeader.Standard { IsLoopByDefault = bs.IsLoopByDefault, AllowDelayLoad = bs.AllowDelayLoad, ImportsHKX = false, ImportHKXSourceAnimID = 0 }
+                    : new TAE.Animation.AnimMiniHeader.Standard();
+                added.Add((s, id));
+                continue;
+            }
             var entry = ChrMoves.CloneEntry(donor, id);
             entry.ID = entryId;
             entry.AnimFileName = HktName(s, id);

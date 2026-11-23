@@ -18,12 +18,9 @@ namespace DarkSign.Porter.Enemies;
 /// blend mode (modulate becomes alpha: Elden Ring's characters never modulate) and an alpha cut of at least 1, so
 /// fully clear texels are not drawn at all. A DS3 MTD that cuts by alpha (g_AlphaRef above 0 with blend 0:
 /// C[ARSN]_e_Decal's 128) is cut out whatever its name.</para>
-/// Fallback enemy-model O: DARKSIGN_ENEMY_BLEND=0 draws them solid, as up to 1.0.567.
 /// </summary>
 public static class ChrBlend
 {
-    public static bool Enabled => Environment.GetEnvironmentVariable("DARKSIGN_ENEMY_BLEND")?.Trim() != "0";
-
     public const string MtdBinder = "/mtd/allmaterialbnd.mtdbnd.dcx";
 
     /// <summary>The plain see-through shader of Elden Ring's characters.</summary>
@@ -59,22 +56,21 @@ public static class ChrBlend
             if (_mtds is not null)
                 return _mtds;
             var table = new Dictionary<string, Ds3Draw>(StringComparer.Ordinal);
-            if (Enabled)
-                try
+            try
+            {
+                foreach (var f in BND4.Read(ds3.Read(MtdBinder)).Files)
                 {
-                    foreach (var f in BND4.Read(ds3.Read(MtdBinder)).Files)
-                    {
-                        MTD mtd;
-                        try { mtd = MTD.Read(f.Bytes); }
-                        catch (Exception e) when (e is not OutOfMemoryException) { continue; }
-                        table.TryAdd(Key(f.Name), Read(mtd));
-                    }
-                    Console.WriteLine($"enemies: {table.Count} DS3 MTDs read, {table.Values.Count(d => d.Blended)} of them blended");
+                    MTD mtd;
+                    try { mtd = MTD.Read(f.Bytes); }
+                    catch (Exception e) when (e is not OutOfMemoryException) { continue; }
+                    table.TryAdd(Key(f.Name), Read(mtd));
                 }
-                catch (Exception e) when (e is not OutOfMemoryException)
-                {
-                    Console.WriteLine($"enemies: DS3 MTDs not read ({ChrPort.Describe(e)}); see-through DS3 materials are drawn solid");
-                }
+                Console.WriteLine($"enemies: {table.Count} DS3 MTDs read, {table.Values.Count(d => d.Blended)} of them blended");
+            }
+            catch (Exception e) when (e is not OutOfMemoryException)
+            {
+                Console.WriteLine($"enemies: DS3 MTDs not read ({ChrPort.Describe(e)}); see-through DS3 materials are drawn solid");
+            }
             return _mtds = table;
         }
     }
@@ -110,8 +106,6 @@ public static class ChrBlend
             if (_searched)
                 return _template;
             _searched = true;
-            if (!Enabled)
-                return null;
             try
             {
                 var candidates = new List<(string Name, MATBIN Matbin, int Score)>();

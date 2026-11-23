@@ -362,17 +362,15 @@ public partial class MainWindow : Window
             if (restored.Count > 0)
                 _log.Write($"Rescue mode is over: {restored.Count} hidden DS3 map file(s)/folder(s) put back into the mod folder.");
             var coop = _settings.SeamlessCoop;
-            var tweaks = Fallbacks.Launch(_settings.Methods, coop);
-            var loader = tweaks.ModEngine2 ? await EnsureModEngineAsync(setup) : await EnsureMe3Async(setup);
+            var loader = await EnsureMe3Async(setup);
             var porterVersion = await EnsurePorterAsync(setup);
-            // The stamp holds the build methods (Fallbacks window), so switching one rebuilds the content.
-            var stamp = Fallbacks.BuildStamp(porterVersion, _settings.Methods);
-            // What the build depends on (the porter's files, methods, recipe): an update that didn't change the porter
-            // keeps the content already built instead of rebuilding the same thing.
-            var contentId = setup.ContentId(_settings.Methods);
+            var stamp = porterVersion;
+            // What the build depends on (the porter's files, recipe): an update that didn't change the porter keeps
+            // the content already built instead of rebuilding the same thing.
+            var contentId = setup.ContentId();
             if (!rebuild && setup.ContentVersion is { } builtWith && builtWith != stamp && !setup.NeedsContentBuild(stamp, contentId))
             {
-                _log.Write($"Content kept: the porter of {porterVersion} is the one that built it ({builtWith}); same build methods, nothing to rebuild.");
+                _log.Write($"Content kept: the porter of {porterVersion} is the one that built it ({builtWith}); nothing to rebuild.");
                 setup.MarkContentBuilt(stamp, contentId);
             }
             if (rebuild || setup.NeedsContentBuild(stamp, contentId))
@@ -407,18 +405,17 @@ public partial class MainWindow : Window
             await EnsureRandomizedWorldAsync(setup, _settings.GetActiveProfile(), remake: false);
             SaveIsolation.EnsureSaveDirectory(Root, _settings.GetActiveProfile().Name, GameId.EldenRing);
             var dlls = new List<string> { setup.WriteDll(SaveIsolation.RedirectDllName, RedirectDll.Bytes) };
-            var env = Fallbacks.GameEnvironment(_settings.Methods);
-            env[Fallbacks.ModDirVariable] = setup.ModDir;
-            var testMenuNeeded = Fallbacks.NeedsTestMenuDll(_settings.Methods) || Fallbacks.NeedsMusicDll(_settings.Methods, setup.ModDir);
+            var env = new Dictionary<string, string> { [ModRuntime.ModDirVariable] = setup.ModDir };
+            var testMenuNeeded = ModRuntime.NeedsMusicDll(setup.ModDir);
             if ((_settings.TestMenu || testMenuNeeded) && TestMenuDll.Bytes is not null)
             {
                 dlls.Add(setup.WriteDll(EldenRingSetup.TestMenuDllName, TestMenuDll.Bytes));
                 env[EldenRingSetup.ItemsVariable] = setup.ItemsFile;
                 if (!_settings.TestMenu)
                 {
-                    // Loaded only for a fallback method (DLL sounds) or DS3's music: no menu, no hotkeys.
-                    env[Fallbacks.NoOverlayVariable] = "1";
-                    env[Fallbacks.NoHotkeysVariable] = "1";
+                    // Loaded only for DS3's music: no menu, no hotkeys.
+                    env[ModRuntime.NoOverlayVariable] = "1";
+                    env[ModRuntime.NoHotkeysVariable] = "1";
                 }
             }
             string? seamless = null;
@@ -438,26 +435,20 @@ public partial class MainWindow : Window
                 if (hidden.Count == 0)
                     _log.Write("Rescue mode: no ported maps were in the mod folder (nothing to hide).");
             }
-            var info = tweaks.ModEngine2
-                ? EldenRingSetup.LaunchInfo(plan, loader, setup.WriteConfig(natives), env)
-                : EldenRingSetup.Me3LaunchInfo(plan, loader, setup.WriteProfile(natives, tweaks), env);
+            var info = EldenRingSetup.Me3LaunchInfo(plan, loader, setup.WriteProfile(natives), env);
             _log.Write($"Starting {info.FileName} {(info.ArgumentList.Count > 0 ? string.Join(" ", info.ArgumentList.Select(Quote)) : info.Arguments)}".TrimEnd());
             foreach (var dll in natives)
                 _log.Write($"  native DLL: {dll}");
             foreach (var (key, value) in env)
                 _log.Write($"  env {key}={value}");
             Process.Start(info);
-            var methods = Fallbacks.Summary(_settings.Methods);
             SetStatus(rescue
                 ? "Launched Elden Ring in rescue mode: the DS3 maps are hidden for this launch. Load the stuck character, press Ctrl+Shift+F2 " +
                   "(Leave DS3 run), quit, then press PLAY as usual to put the maps back."
-                : $"Launched Elden Ring{(tweaks.ModEngine2 ? " (ModEngine2)" : "")}. Saves: {plan.SaveDirectory}" +
-                (methods.Length > 0 ? $". Fallback methods: {methods}" : "") +
+                : $"Launched Elden Ring. Saves: {plan.SaveDirectory}" +
                 (seamless is not null ? $". Seamless Co-op is on (mod code {CoopCheckCode(setup) ?? "?"})" : "") +
                 (!_settings.TestMenu || !env.ContainsKey(EldenRingSetup.ItemsVariable) ? "."
-                    : env.ContainsKey(Fallbacks.NoOverlayVariable)
-                        ? ". Test menu hotkeys: Ctrl+Shift+F1 start the DS3 run, F2 leave, 1-9 warp to a map, F3 give the DS3 weapons."
-                        : ". Press F1 in game for the test menu (it shows over Borderless or Windowed mode)."));
+                    : ". Press F1 in game for the test menu (it shows over Borderless or Windowed mode)."));
         }
         catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or IOException or InvalidDataException
                                        or InvalidOperationException or UnauthorizedAccessException
@@ -482,7 +473,7 @@ public partial class MainWindow : Window
     }
 
     /// <summary>
-    /// Older launchers put the save redirect in the game folder as dinput8.dll. ModEngine2 now loads it, and two
+    /// Older launchers put the save redirect in the game folder as dinput8.dll. me3 now loads it, and two
     /// copies would both hook the game, so our old copy is removed (never another mod's dinput8.dll).
     /// </summary>
     private void RemoveGameFolderProxy(string exePath)
@@ -510,22 +501,6 @@ public partial class MainWindow : Window
         }
         setup.InstallMe3(zip);
         return setup.FindMe3() ?? throw new InvalidOperationException("me3 was downloaded but me3.exe is missing.");
-    }
-
-    private async Task<string> EnsureModEngineAsync(EldenRingSetup setup)
-    {
-        if (setup.FindModEngineLauncher() is { } existing)
-            return existing;
-        SetStatus("Downloading ModEngine2…");
-        var zip = DownloadPath(Path.GetFileName(EldenRingSetup.ModEngineUrl));
-        using (var http = new HttpClient { Timeout = TimeSpan.FromMinutes(5) })
-        {
-            http.DefaultRequestHeaders.UserAgent.ParseAdd("TheDarkSignLauncher");
-            var bytes = await http.GetByteArrayAsync(EldenRingSetup.ModEngineUrl);
-            await File.WriteAllBytesAsync(zip, bytes);
-        }
-        setup.InstallModEngine(zip);
-        return setup.FindModEngineLauncher() ?? throw new InvalidOperationException("ModEngine2 was downloaded but its launcher is missing.");
     }
 
     /// <summary>Gets the porter released with this launcher version (falls back to an installed one).</summary>
@@ -591,16 +566,12 @@ public partial class MainWindow : Window
     private async Task<bool> RunContentBuildAsync(EldenRingSetup setup)
     {
         var started = Stopwatch.StartNew();
-        // Fallback "build-threads" B (one core): port-maps starts only after port-weapons, so nothing runs side by side.
-        var serial = Fallbacks.SerialBuild(_settings.Methods);
-        var estimator = new BuildEstimator(["weapons", "maps"], _settings.LastBuild, serial, DateTime.Now);
+        var estimator = new BuildEstimator(["weapons", "maps"], _settings.LastBuild, serial: false, DateTime.Now);
         using var progress = new BuildProgress(this, estimator, started);
         var weapons = StartPorter(setup, "port-weapons", [], line => progress.Update("weapons", line));
         estimator.Start("weapons", DateTime.Now);
         _ = weapons.Completion.ContinueWith(_ => estimator.Finish("weapons", DateTime.Now), TaskScheduler.Default);
-        var weaponsFailed = serial && !(await weapons.Completion).Ok;
-        var mapsArgs = serial ? new List<string>() : new List<string> { "--after-pid", weapons.Pid.ToString() };
-        mapsArgs.AddRange(Fallbacks.MapsArguments(_settings.Methods));
+        var mapsArgs = new List<string> { "--after-pid", weapons.Pid.ToString() };
         // The DS3 maps (F1 menu, "DS3 run" tab) are a test feature: if they fail, the weapons still work, so the game
         // starts anyway and the log says what went wrong.
         PorterRun? maps = null;
@@ -608,14 +579,12 @@ public partial class MainWindow : Window
         {
             if (_buildCancelled)
                 estimator.Skip("maps");
-            else if (!weaponsFailed)
+            else
             {
                 maps = StartPorter(setup, "port-maps", mapsArgs, line => progress.Update("maps", line));
                 estimator.Start("maps", DateTime.Now);
                 _ = maps.Completion.ContinueWith(_ => estimator.Finish("maps", DateTime.Now), TaskScheduler.Default);
             }
-            else
-                estimator.Skip("maps");
         }
         catch (Exception ex) when (ex is Win32Exception or InvalidOperationException or IOException)
         {
@@ -885,13 +854,8 @@ public partial class MainWindow : Window
         start.ArgumentList.Add(command);
         foreach (var arg in extraArgs)
             start.ArgumentList.Add(arg);
-        // The build methods chosen in the Fallbacks window reach the porter as DARKSIGN_* variables.
-        foreach (var (key, value) in Fallbacks.PorterEnvironment(_settings.Methods))
-            start.Environment[key] = value;
 
         _log.Write($"Running porter: {string.Join(" ", start.ArgumentList.Select(Quote))}");
-        foreach (var (key, value) in Fallbacks.PorterEnvironment(_settings.Methods))
-            _log.Write($"  env {key}={value}");
         var process = Process.Start(start)!;
         lock (_porters)
             _porters.Add(process);
@@ -992,19 +956,6 @@ public partial class MainWindow : Window
         var path = Path.Combine(dir, fileName);
         PathGuard.EnsureInsideRoot(path, Root);
         return path;
-    }
-
-    private void OnFallbacks(object sender, RoutedEventArgs e)
-    {
-        StoreRowsIntoSettings();
-        if (!FallbacksWindow.Show(this, _settings.Methods, out var methods))
-            return;
-        var before = Fallbacks.BuildSignature(_settings.Methods);
-        _settings.Methods = methods;
-        _settings.Save(_settingsPath);
-        var summary = Fallbacks.Summary(methods);
-        SetStatus((summary.Length == 0 ? "All features use their default method (A)." : $"Fallback methods: {summary}.") +
-                          (Fallbacks.BuildSignature(methods) != before ? " The content is rebuilt on the next PLAY." : ""));
     }
 
     /// <summary>Pre-flight check window: fast checks, the porter's checks of the built mod, and the test report zip.</summary>

@@ -245,7 +245,6 @@ public sealed class CoreTests : IDisposable
         loaded = LauncherSettings.Load(path);
         Assert.Empty(loaded.GameExePaths);
         Assert.Equal("Default", loaded.GetActiveProfile().Name);
-        Assert.Empty(Fallbacks.BuildSignature(loaded.Methods));
     }
 
     [Fact]
@@ -265,17 +264,11 @@ public sealed class CoreTests : IDisposable
     }
 
     [Fact]
-    public void Elden_ring_setup_writes_modengine_config_and_tracks_the_content_build()
+    public void Elden_ring_setup_tracks_the_content_build()
     {
         var setup = new EldenRingSetup(_root);
-        var exe = Touch("ELDEN RING", "Game", "eldenring.exe");
         var dll = setup.WriteDll(EldenRingSetup.TestMenuDllName, [1, 2, 3]);
         Assert.StartsWith(Path.Combine(_root, "TheDarkSign", "Tools", "Dlls"), dll);
-
-        var config = File.ReadAllText(setup.WriteConfig([dll, @"D:\Quote""d\x.dll"]));
-        Assert.Contains($"\"{dll.Replace("\\", "\\\\")}\",", config);
-        Assert.Contains(@"""D:\\Quote\""d\\x.dll""", config);
-        Assert.Contains($"path = \"{setup.ModDir.Replace("\\", "\\\\")}\"", config);
 
         Assert.True(setup.NeedsContentBuild("1.0.9"));
         Touch("TheDarkSign", "Mods", "ER", "regulation.bin");
@@ -285,25 +278,22 @@ public sealed class CoreTests : IDisposable
         Assert.True(setup.NeedsContentBuild("1.0.10"));
 
         // A launcher update that reused the porter (2026-11-20: 10 of 59 releases) keeps the content.
-        Assert.Null(setup.ContentId(null));
+        Assert.Null(setup.ContentId());
         Touch("TheDarkSign", "Tools", "Porter", "DarkSignPorter.dll");
         File.WriteAllText(Path.Combine(setup.PorterDir, "version.txt"), "1.0.9");
-        var id = setup.ContentId(null);
+        var id = setup.ContentId();
         Assert.NotNull(id);
         Assert.True(setup.NeedsContentBuild("1.0.10", id), "content built before content IDs: rebuilt once");
         setup.MarkContentBuilt("1.0.9", id);
-        Assert.False(setup.NeedsContentBuild("1.0.10", id), "same porter files and methods: kept");
+        Assert.False(setup.NeedsContentBuild("1.0.10", id), "same porter files: kept");
         File.WriteAllText(Path.Combine(setup.PorterDir, "version.txt"), "1.0.10");
-        Assert.Equal(id, setup.ContentId(null));
+        Assert.Equal(id, setup.ContentId());
         Assert.True(setup.NeedsContentBuild("1.0.10"), "without an ID the version decides, as before");
         File.WriteAllBytes(Path.Combine(setup.PorterDir, "DarkSignPorter.dll"), [1]);
-        Assert.NotEqual(id, setup.ContentId(null));
-        Assert.True(setup.NeedsContentBuild("1.0.10", setup.ContentId(null)), "a changed porter file: rebuilt");
+        Assert.NotEqual(id, setup.ContentId());
+        Assert.True(setup.NeedsContentBuild("1.0.10", setup.ContentId()), "a changed porter file: rebuilt");
         File.WriteAllBytes(Path.Combine(setup.PorterDir, "DarkSignPorter.dll"), []);
-        Assert.Equal(id, setup.ContentId(null));
-        var methods = new Dictionary<string, string> { ["build-threads"] = "D" };
-        Assert.NotEqual(id, setup.ContentId(methods));
-        Assert.True(setup.NeedsContentBuild("1.0.10", setup.ContentId(methods)), "a changed build method: rebuilt");
+        Assert.Equal(id, setup.ContentId());
         setup.MarkContentBuilt("1.0.9");
         Assert.Null(setup.BuiltContentId);
         Assert.True(setup.NeedsContentBuild("1.0.10", id), "a stamp written without an ID drops the old one");
@@ -329,14 +319,6 @@ public sealed class CoreTests : IDisposable
             Touch("TheDarkSign", "Mods", "ER", "menu", "hi", file);
         Assert.Null(setup.IconFilesProblem());
         Assert.False(setup.NeedsContentBuild("1.0.9"));
-
-        var settings = new LauncherSettings { GameExePaths = { [GameId.EldenRing] = exe } };
-        var start = EldenRingSetup.LaunchInfo(LaunchPlanner.Plan(settings, _root, GameId.EldenRing),
-            Path.Combine(_root, "TheDarkSign", "Tools", "ModEngine2", "modengine2_launcher.exe"), setup.ConfigPath,
-            new Dictionary<string, string> { [EldenRingSetup.ItemsVariable] = setup.ItemsFile });
-        Assert.Equal(["-t", "er", "-c", setup.ConfigPath, "-p", exe], start.ArgumentList);
-        Assert.Equal(setup.ItemsFile, start.Environment[EldenRingSetup.ItemsVariable]);
-        Assert.Equal(".dksign", start.Environment[SaveIsolation.SaveExtVariable]);
     }
 
     [Fact]

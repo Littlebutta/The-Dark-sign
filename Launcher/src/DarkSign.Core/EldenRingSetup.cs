@@ -26,10 +26,6 @@ public sealed class EldenRingSetup(string root)
     /// </summary>
     public const string BuildRecipe = "1";
 
-    public const string ModEngineUrl =
-        "https://github.com/soulsmods/ModEngine2/releases/download/release-2.1.0/ModEngine-2.1.0.0-win64.zip";
-    public const string ModEngineSha256 = "8A5952453A8E3851247ED6A9DD8926CA638CF6135AA96C90298B63F15D8900EF";
-
     /// <summary>me3 (garyttierney/me3, MIT/Apache-2.0), the portable Windows build.</summary>
     public const string Me3Url = "https://github.com/garyttierney/me3/releases/download/v0.13.0/me3-windows-amd64.zip";
     public const string Me3Sha256 = "A8B693C574106F20532AB1E8B58B2452F37370679B938A884FE75F87F9B68C2B";
@@ -39,8 +35,6 @@ public sealed class EldenRingSetup(string root)
     public string ModDir => Path.Combine(Root, "TheDarkSign", "Mods", "ER");
     public string ItemsFile => Path.Combine(ModDir, "darksign_items.tsv");
     public string BuildStampFile => Path.Combine(ModDir, BuildStampName);
-    public string ModEngineDir => Path.Combine(ToolsDir, "ModEngine2");
-    public string ConfigPath => Path.Combine(ModEngineDir, "config_darksign_launcher.toml");
     public string Me3Dir => Path.Combine(ToolsDir, "me3");
     public string ProfilePath => Path.Combine(Me3Dir, "darksign-er.me3");
     public string DllDir => Path.Combine(ToolsDir, "Dlls");
@@ -48,10 +42,6 @@ public sealed class EldenRingSetup(string root)
     public string PorterExe => Path.Combine(PorterDir, "DarkSignPorter.exe");
     public string LogDir => Path.Combine(Root, "TheDarkSign", "Work", "logs");
     private string PorterVersionFile => Path.Combine(PorterDir, "version.txt");
-
-    public string? FindModEngineLauncher() => Directory.Exists(ModEngineDir)
-        ? Directory.EnumerateFiles(ModEngineDir, "modengine2_launcher.exe", SearchOption.AllDirectories).FirstOrDefault()
-        : null;
 
     public string? FindMe3() => Directory.Exists(Me3Dir)
         ? Directory.EnumerateFiles(Me3Dir, "me3.exe", SearchOption.AllDirectories).FirstOrDefault()
@@ -70,12 +60,11 @@ public sealed class EldenRingSetup(string root)
 
     /// <summary>
     /// What a content build's result depends on, apart from the player's game files: every file of the installed
-    /// porter (byte for byte; version.txt left out), the build methods with the porter environment and port-maps
-    /// arguments they give, and <see cref="BuildRecipe"/>. A launcher update whose release reused the previous porter
+    /// porter (byte for byte; version.txt left out) and <see cref="BuildRecipe"/>. A launcher update whose release reused the previous porter
     /// (the release workflow rebuilds it only when Porter/, DarkSign.Core or the randomizer change) gives the same
     /// ID, so the content it would build is the content already built. Null when no porter is installed.
     /// </summary>
-    public string? ContentId(IReadOnlyDictionary<string, string>? methods)
+    public string? ContentId()
     {
         if (!Directory.Exists(PorterDir))
             return null;
@@ -94,11 +83,6 @@ public sealed class EldenRingSetup(string root)
             Add($"file {file} {bytes.Length}");
             hash.AppendData(bytes);
         }
-        Add("methods " + Fallbacks.BuildSignature(methods));
-        foreach (var (k, v) in Fallbacks.PorterEnvironment(methods).OrderBy(e => e.Key, StringComparer.Ordinal))
-            Add($"env {k}={v}");
-        Add("maps " + string.Join(" ", Fallbacks.MapsArguments(methods)));
-        Add("serial " + Fallbacks.SerialBuild(methods));
         return Convert.ToHexString(hash.GetHashAndReset());
     }
 
@@ -160,19 +144,6 @@ public sealed class EldenRingSetup(string root)
             File.Delete(Guard(ContentIdFile));
     }
 
-    /// <summary>Unpacks ModEngine2's release zip into TheDarkSign\Tools\ModEngine2 after checking its hash.</summary>
-    public void InstallModEngine(string zipPath)
-    {
-        if (ModEngineSha256.Length > 0)
-        {
-            using var stream = File.OpenRead(zipPath);
-            var hash = Convert.ToHexString(SHA256.HashData(stream));
-            if (!hash.Equals(ModEngineSha256, StringComparison.OrdinalIgnoreCase))
-                throw new InvalidDataException($"The ModEngine2 download does not match the expected file (SHA-256 {hash}).");
-        }
-        ZipFile.ExtractToDirectory(zipPath, Guard(ModEngineDir), overwriteFiles: true);
-    }
-
     /// <summary>Unpacks me3's portable release zip into TheDarkSign\Tools\me3 after checking its hash.</summary>
     public void InstallMe3(string zipPath)
     {
@@ -186,25 +157,18 @@ public sealed class EldenRingSetup(string root)
     }
 
     /// <summary>Writes the me3 profile: the content mod folder as a package, and our DLLs as natives.</summary>
-    public string WriteProfile(IEnumerable<string> dlls, Fallbacks.LaunchTweaks? tweaks = null)
+    public string WriteProfile(IEnumerable<string> dlls)
     {
         Directory.CreateDirectory(Guard(Me3Dir));
-        File.WriteAllText(ProfilePath, Me3Profile(ModDir, dlls, tweaks));
+        File.WriteAllText(ProfilePath, Me3Profile(ModDir, dlls));
         return ProfilePath;
     }
 
-    public static string Me3Profile(string modDir, IEnumerable<string> dlls, Fallbacks.LaunchTweaks? tweaks = null)
+    public static string Me3Profile(string modDir, IEnumerable<string> dlls)
     {
         var text = new StringBuilder();
         text.AppendLine("# Written by The Dark Sign launcher on every launch; edits here are overwritten.");
         text.AppendLine("profileVersion = \"v1\"");
-        // Fallback methods (launcher Fallbacks window): me3 v0.13.0 profile options (crates/mod-protocol ModProfileV1).
-        if (tweaks?.DisableArxan == true)
-            text.AppendLine("disable_arxan = true");
-        if (tweaks?.NoMemPatch == true)
-            text.AppendLine("mem_patch = false");
-        if (tweaks?.StartOnline == true)
-            text.AppendLine("start_online = true");
         text.AppendLine();
         text.AppendLine("[[supports]]");
         text.AppendLine("game = \"eldenring\"");
@@ -255,53 +219,6 @@ public sealed class EldenRingSetup(string root)
         if (!File.Exists(path) || !File.ReadAllBytes(path).AsSpan().SequenceEqual(bytes))
             File.WriteAllBytes(path, bytes);
         return path;
-    }
-
-    public string WriteConfig(IEnumerable<string> dlls)
-    {
-        Directory.CreateDirectory(Guard(ModEngineDir));
-        File.WriteAllText(ConfigPath, ModEngineConfig(ModDir, dlls));
-        return ConfigPath;
-    }
-
-    /// <summary>ModEngine2's config: load the content mod folder and inject our DLLs.</summary>
-    public static string ModEngineConfig(string modDir, IEnumerable<string> dlls)
-    {
-        var text = new StringBuilder();
-        text.AppendLine("# Written by The Dark Sign launcher on every launch; edits here are overwritten.");
-        text.AppendLine("[modengine]");
-        text.AppendLine("debug = false");
-        text.AppendLine("external_dlls = [");
-        foreach (var dll in dlls)
-            text.AppendLine($"    {Toml(dll)},");
-        text.AppendLine("]");
-        text.AppendLine();
-        text.AppendLine("[extension.mod_loader]");
-        text.AppendLine("enabled = true");
-        text.AppendLine("loose_params = false");
-        text.AppendLine("mods = [");
-        text.AppendLine($"    {{ enabled = true, name = \"darksign\", path = {Toml(modDir)} }},");
-        text.AppendLine("]");
-        text.AppendLine();
-        text.AppendLine("[extension.scylla_hide]");
-        text.AppendLine("enabled = false");
-        return text.ToString();
-    }
-
-    /// <summary>Starts ModEngine2, which starts the game with the mod and DLLs loaded and our environment set.</summary>
-    public static ProcessStartInfo LaunchInfo(LaunchPlan plan, string modEngineLauncher, string config,
-        IReadOnlyDictionary<string, string> extraEnvironment)
-    {
-        var start = new ProcessStartInfo(modEngineLauncher)
-        {
-            WorkingDirectory = Path.GetDirectoryName(modEngineLauncher)!,
-            UseShellExecute = false,
-        };
-        foreach (var arg in new[] { "-t", "er", "-c", config, "-p", plan.ExePath })
-            start.ArgumentList.Add(arg);
-        foreach (var (key, value) in plan.Environment.Concat(extraEnvironment))
-            start.Environment[key] = value;
-        return start;
     }
 
     private static string Toml(string value) => "\"" + value.Replace("\\", "\\\\").Replace("\"", "\\\"") + "\"";

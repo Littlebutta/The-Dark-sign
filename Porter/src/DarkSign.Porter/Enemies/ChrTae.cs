@@ -13,10 +13,10 @@ namespace DarkSign.Porter.Enemies;
 /// <para>DS3 events whose type the template's TAE lacks but Elden Ring lays out the same (<see cref="SharedTypes"/>)
 /// come along too, in a group of their own when no Elden Ring TAE has one: DS3's map scripts wait on them (type 231,
 /// the event message the Hollow Soldier's burst move 3010 sends so common event 20005415 swaps it for the Pus of
-/// Man). Fallbacks "enemy-ai": DARKSIGN_ENEMY_SIGNALS=0 drops them again, as up to 1.0.383. Type 233
+/// Man). Type 233
 /// ChangeChrDrawMask (32 bytes, one per display mask bit) shows or hides masked meshes mid-move: Iudex Gundyr's Pus of
 /// Man body, horns and red eyes (mask 1, which neither his NpcParam row nor m40's script turns on) appear through it
-/// when he transforms. Fallbacks "enemy-glow": DARKSIGN_ENEMY_DRAW_MASK=0 drops it again, as up to 1.0.403.</para>
+/// when he transforms.</para>
 /// Method (RULE 3): the type and its layout are DSAnimStudio's TAE templates (DS3 and Elden Ring both name type 231
 /// RequestMsgMapList: s32 EzStateRequestID and three s32, 16 bytes); its condition in EMEVD is "IF Character Has Event
 /// Message" (darkscript3's emedf).
@@ -26,11 +26,8 @@ public static class ChrTae
     /// <summary>Kept from the template: behaviour windows (0 JumpTable, 67, 608, 800) and ID-based sounds/effects.</summary>
     public static readonly HashSet<int> TemplateTypes = [0, 67, 608, 800, 96, 112, 128, 129, 133, 139, 224, 792, 907];
 
-    public static bool SignalsEnabled => Environment.GetEnvironmentVariable("DARKSIGN_ENEMY_SIGNALS")?.Trim() != "0";
-    public static bool DrawMaskEnabled => Environment.GetEnvironmentVariable("DARKSIGN_ENEMY_DRAW_MASK")?.Trim() != "0";
-
-    /// <summary>Whether a <see cref="SharedTypes"/> type comes along (each has its own fallback switch).</summary>
-    public static bool Shared(int type) => SharedTypes.ContainsKey(type) && (type == DrawMaskType ? DrawMaskEnabled : SignalsEnabled);
+    /// <summary>Whether a <see cref="SharedTypes"/> type comes along.</summary>
+    public static bool Shared(int type) => SharedTypes.ContainsKey(type);
 
     public const int DrawMaskType = 233;
 
@@ -53,12 +50,6 @@ public static class ChrTae
         [231] = 16, // RequestMsgMapList: the event message a map script's "Character Has Event Message" waits on
         [DrawMaskType] = 32, // ChangeChrDrawMask: one u8 per display mask bit (both games' TAE templates)
     };
-
-    /// <summary>
-    /// Whether event layouts are compared by each type's usual length over the whole character (default) or, as up to
-    /// 1.0.501, by the first event of the type in one TAE file. Fallback enemy-port F: DARKSIGN_ENEMY_EVENT_LAYOUT=0.
-    /// </summary>
-    public static bool PooledLayout => Environment.GetEnvironmentVariable("DARKSIGN_ENEMY_EVENT_LAYOUT")?.Trim() != "0";
 
     /// <summary>
     /// Each event type's parameter length: the most common one among the events (the longer on a tie). A TAE file

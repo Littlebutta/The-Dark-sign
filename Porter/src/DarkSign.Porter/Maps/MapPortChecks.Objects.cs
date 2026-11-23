@@ -63,8 +63,8 @@ public static partial class MapPortChecks
         var ds3 = Ds3WithRegions();
         var layout = MsbPort.Convert(ds3, SyntheticHost(), Ds3Id, ErId);
         var partNames = new Dictionary<string, string>();
-        var chooser = new EnemyPort.Chooser(SyntheticCatalog(), null, EnemyPort.Method.Auto);
-        EnemyPort.Place(ds3, layout.Msb, Ds3Id, ErId, new MsbPort.Options(), chooser,
+        var chooser = new EnemyPort.Chooser(SyntheticCatalog(), null);
+        EnemyPort.Place(ds3, layout.Msb, Ds3Id, ErId, chooser,
             e => new EnemyPort.Ds3Enemy(e.ModelName, e.NPCParamID, "Lothric Knight", false, false), null, null, partNames);
         Expect(partNames.Count == 2, $"both enemies placed and named ({partNames.Count})");
         var result = RegionPort.Convert(ds3, layout.Msb, Ds3Id, ErId, partNames);
@@ -92,7 +92,6 @@ public static partial class MapPortChecks
         Expect(msb.Regions.GetEntries().Count == 0 && msb.Events.GetEntries().Count == 0 && msb.Parts.Enemies.All(e => string.IsNullOrEmpty(e.WalkRouteName)),
             "Strip takes the regions, events and routes out again");
         MSBE.Read(msb.Write());
-        Expect(MapPorter.Options.Parse(["--no-regions"]).NoRegions && !new MapPorter.Options().NoRegions, "--no-regions is read");
     }
 
     private static void MapEffects()
@@ -243,8 +242,6 @@ public static partial class MapPortChecks
         Expect(asset.Row == 921001 && asset.Group == "AEG921", $"row {asset.Row} is the asset's group and number");
         Expect(ObjectPort.GeomBndPath("AEG921_001") == "/asset/aeg/aeg921/aeg921_001.geombnd.dcx"
                && ObjectPort.GeomHkxBndPath("AEG921_001") == "/asset/aeg/aeg921/aeg921_001_l.geomhkxbnd.dcx", "file paths as JortPob writes them");
-        Expect(ObjectPort.ParseMethod("none") == ObjectPort.Method.None && ObjectPort.ParseMethod("nocollision") == ObjectPort.Method.NoCollision
-               && MapPorter.Options.Parse(["--objects", "none"]).Objects == ObjectPort.Method.None && new MapPorter.Options().Objects == ObjectPort.Method.Full, "--objects is read");
     }
 
     /// <summary>A DS3 object: the root, a node 5 m up with one triangle bound to it, and a dummy point on that node.</summary>
@@ -386,7 +383,7 @@ public static partial class MapPortChecks
             ["o302590"] = new() { Ds3Model = "o302590", Index = 7, Name = "AEG920_007", Converted = true, Collision = true },
             ["o000404"] = new() { Ds3Model = "o000404", Index = 0, Name = "AEG920_000", Failure = "DS3 has no /obj/o000404.objbnd.dcx" },
         };
-        var placed = ObjectPort.PlaceParts(ds3, layout.Msb, Ds3Id, ErId, new MsbPort.Options(), m => assets.GetValueOrDefault(m));
+        var placed = ObjectPort.PlaceParts(ds3, layout.Msb, Ds3Id, ErId, m => assets.GetValueOrDefault(m));
         Expect(placed.Placed == 2 && placed.LeftOut == 1 && placed.WithCollision == 2 && placed.Models == 1, placed.Summary);
         Expect(placed.Notes.Any(n => n.Contains("o000404.objbnd")), "an object that didn't convert is left out and the report says why");
         var regions = RegionPort.Convert(ds3, layout.Msb, Ds3Id, ErId, placed.PartNames);

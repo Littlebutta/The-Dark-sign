@@ -22,7 +22,6 @@ namespace DarkSign.Porter.Maps;
 /// own lamps (the colosseum's 35 arena lights) go, since they would hang in the air of the DS3 map.</item>
 /// </list>
 /// The sun, sky colours, fog and exposure stay the host's (its draw params are untouched).
-/// "--host-lighting" (launcher Fallbacks "map-lighting" B) leaves all three out.
 /// </summary>
 public static class MapLighting
 {
@@ -122,26 +121,21 @@ public static class MapLighting
     /// The lamps are moved by DS3's map offset (<see cref="MapNavmesh.MapOffset"/>): a light file is in the map's own
     /// space, like its collisions, while the ported layout keeps DS3's world space. Measured on DS3's files: m40's lamps
     /// sit a median 67 m from the nearest part as written and 3.8 m once moved (Firelink's interior lights were 175 m
-    /// north-west of the shrine), m31's 184 m and 2.6 m; m30 has no offset. <paramref name="noOffset"/>
-    /// ("--no-light-offset", fallback "map-light-place" B) leaves them where they were.
+    /// north-west of the shrine), m31's 184 m and 2.6 m; m30 has no offset.
     /// </para>
     /// <para>
     /// Their strengths are brought to Elden Ring's scale (<see cref="MapLampStrength"/>: the host's sun strength over
-    /// DS3's, then no stronger than Elden Ring's own lamps); <paramref name="ds3Strength"/> ("--ds3-lamp-strength",
-    /// fallback "map-lamps" B) keeps DS3's as written. <paramref name="noNewFile"/> ("--no-new-light-file", fallback
-    /// "map-lamps" E) writes nothing for a host with no light file, as before.
+    /// DS3's, then no stronger than Elden Ring's own lamps). A host with no light file gets a new one.
     /// </para>
     /// </summary>
     public static string PortLights(PorterContext ctx, GameArchives ds3, GameArchives er, MapId ds3Id, MapId erId, MapId hostId,
-        MSB3? ds3Msb = null, bool noOffset = false, bool ds3Strength = false, bool noNewFile = false)
+        MSB3? ds3Msb = null)
     {
         var sources = Enumerable.Range(0, 10).Select(n => Ds3LightPath(ds3Id, n)).Where(ds3.Contains).ToList();
         if (sources.Count == 0)
             return "lamps: the DS3 map has no light file; the host's lights stay";
 
         var hostPath = ErLightPath(hostId);
-        if (noNewFile && !er.Contains(hostPath))
-            return $"lamps: the host map has no light file ({hostPath.TrimStart('/')}); none written (--no-new-light-file)";
         BTL? hostLights = null;
         DCX.CompressionInfo compression = MapTextures.EntryCompression;
         if (er.Contains(hostPath))
@@ -151,18 +145,12 @@ public static class MapLighting
         }
         var source = sources[0];
         var ds3Lights = BTL.Read(ds3.Read(source)).Lights;
-        var offset = noOffset ? null : MapNavmesh.MapOffset(ds3Msb);
+        var offset = MapNavmesh.MapOffset(ds3Msb);
         var ported = Convert(ds3Lights, hostLights?.Version ?? ErLightVersion, hostLights?.LongOffsets ?? true, out var skipped, offset, OffsetDegrees(ds3Msb));
-        string strengths;
-        if (ds3Strength)
-            strengths = "DS3's strengths as written (--ds3-lamp-strength)";
-        else
-        {
-            float sunScale = MapLampStrength.SunScale(ReadDrawParams(er, MapAtmosphere.GparamPath(hostId)),
-                ReadDrawParams(ds3, MapAtmosphere.Ds3GparamPaths(ds3Id).FirstOrDefault(ds3.Contains)));
-            var changes = ported.Lights.Select(l => MapLampStrength.Fit(l, sunScale)).OfType<MapLampStrength.Change>().ToList();
-            strengths = MapLampStrength.Describe(sunScale, changes, ported.Lights.Count);
-        }
+        float sunScale = MapLampStrength.SunScale(ReadDrawParams(er, MapAtmosphere.GparamPath(hostId)),
+            ReadDrawParams(ds3, MapAtmosphere.Ds3GparamPaths(ds3Id).FirstOrDefault(ds3.Contains)));
+        var changes = ported.Lights.Select(l => MapLampStrength.Fit(l, sunScale)).OfType<MapLampStrength.Change>().ToList();
+        var strengths = MapLampStrength.Describe(sunScale, changes, ported.Lights.Count);
         var target = ctx.ModPath(MapPorter.ModParts(ErLightPath(erId)));
         Directory.CreateDirectory(Path.GetDirectoryName(target)!);
         File.WriteAllBytes(target, DCX.Compress(ported.Write(), compression));
@@ -175,7 +163,7 @@ public static class MapLighting
                (skipped > 0 ? $"; {skipped} directional left out (the sun is the host's)" : "") +
                (sources.Count > 1 ? $"; {sources.Count - 1} light files of other map states left out ({string.Join(", ", sources.Skip(1).Select(ItemText.Leaf))})" : "") +
                (offset is null
-                   ? (noOffset ? "; DS3's map offset not applied (--no-light-offset)" : "; the map has no map offset")
+                   ? "; the map has no map offset"
                    : string.Create(inv, $"; moved by DS3's map offset ({offset.Value.M41:0.#}, {offset.Value.M42:0.#}, {offset.Value.M43:0.#}, turned {OffsetDegrees(ds3Msb):0.#} degrees)")) +
                "; " + strengths;
     }

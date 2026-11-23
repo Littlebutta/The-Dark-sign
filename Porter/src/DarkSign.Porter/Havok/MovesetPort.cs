@@ -34,9 +34,6 @@ public static partial class MovesetPort
     /// <summary>The last Apply's ported art names by SwordArtsParam row (its textId), for <see cref="WriteArtNames"/>.</summary>
     public static IReadOnlyDictionary<int, string> ArtNames { get; private set; } = new Dictionary<int, string>();
 
-    /// <summary>DARKSIGN_COPY_ER_ANIMS=1 copies the template's own animations under the new category, as before, instead of importing them.</summary>
-    private static readonly bool CopyErAnims = Environment.GetEnvironmentVariable("DARKSIGN_COPY_ER_ANIMS") == "1";
-
     /// <summary>Weapons whose motion category doesn't fit the row's byte, for the mod DLL (Mods\ER\motion-categories.txt).</summary>
     public const string WideTable = "motion-categories.txt";
 
@@ -57,9 +54,6 @@ public static partial class MovesetPort
         [66] = (8, [0]), [67] = (8, [0]), [302] = (16, [0]), [331] = (16, [0, 4]), [401] = (8, [0]),
     };
 
-    /// <summary>DARKSIGN_RESIDENT=0 (fallback "weapon-visuals" E): no DS3 always-on effects on ported weapon models.</summary>
-    private static readonly bool Resident = Environment.GetEnvironmentVariable("DARKSIGN_RESIDENT") != "0";
-
     /// <summary>
     /// Gives each ported weapon (every affinity row) its DS3 resident effects under their converted IDs. A slot whose
     /// effect wasn't converted keeps what the template row had (nothing, for almost every template). No weapon is left
@@ -69,11 +63,6 @@ public static partial class MovesetPort
     internal static int ResidentEffects(IEnumerable<WeaponPlan> ports, PARAM ds3Weapons, PARAM erWeapons, FxrPort.Result effects)
     {
         int weapons = 0;
-        if (!Resident)
-        {
-            Console.WriteLine("effects: no DS3 always-on effects on weapon models (DARKSIGN_RESIDENT=0)");
-            return 0;
-        }
         foreach (var plan in ports)
         {
             var slots = Ds3EffectRefs.Resident(ds3Weapons[plan.Ds3Id]!).Select(r => (r.Slot, Fxr: effects.Map(r.Fxr), r.Dummy)).Where(r => r.Fxr is not null).ToList();
@@ -118,8 +107,6 @@ public static partial class MovesetPort
 
     internal enum TaeEffect { Keep, Drop, Port }
 
-    internal static bool DropMarkers = Environment.GetEnvironmentVariable("DARKSIGN_HKS_MARKERS") == "drop";
-
     /// <summary>
     /// What becomes of a SpEffect ID a DS3 move casts (TAE 66/67/331...). Both games' scripts (hks) look for marker
     /// effects named "[HKS] ...", and number them differently: DS3's 100500 "[HKS] Non-generator Transition" (on
@@ -136,9 +123,9 @@ public static partial class MovesetPort
         // A DS3 marker Elden Ring's hks doesn't know is ported under a new ID (by default): its ID meant something else
         // there (100500, see above), but its fields still work. DS3's 100420 "[HKS] Dragonhead Greatshield" adds 100
         // to the behaviour judge (addBehaviorJudgeId_add), which picks Dragon Roar's breath; dropped (up to 1.0.385),
-        // the art played the template's effect. DARKSIGN_HKS_MARKERS=drop drops them again.
+        // the art played the template's effect.
         if (marker)
-            return erName is not null && Norm(ds3Name) == Norm(erName) ? TaeEffect.Keep : DropMarkers ? TaeEffect.Drop : TaeEffect.Port;
+            return erName is not null && Norm(ds3Name) == Norm(erName) ? TaeEffect.Keep : TaeEffect.Port;
         return hksChecksId ? TaeEffect.Keep : TaeEffect.Port;
     }
 
@@ -173,8 +160,6 @@ public static partial class MovesetPort
     /// <summary>An event group of each type from anywhere in Elden Ring's player TAE (see MergeEvents.TryPlayerGroup).</summary>
     private static Dictionary<int, TAE.EventGroup> PlayerEffectGroups = [];
     private static int _effectGroupsAdded;
-    private static readonly bool NamedFiles = Environment.GetEnvironmentVariable("DARKSIGN_NAMED_FILES") != "0";
-    private static readonly bool Ds3JumpTables = Environment.GetEnvironmentVariable("DARKSIGN_DS3_JUMPTABLES") == "1";
     // Event types Elden Ring keeps from its own template animation: sounds, effects and other references to IDs that
     // DS3 numbers differently. Every other type comes from DS3 when both games lay it out the same.
     private static readonly HashSet<int> EldenRingOnlyTypes = [96, 112, 128, 129, 133, 139, 224, 792, 907, .. BehaviourTypes];
@@ -197,7 +182,6 @@ public static partial class MovesetPort
             if (ds3Ids.Count == 1 && erSelectors.TryGetValue(name, out var erIds) && erIds.Count == 1)
                 erToDs3.TryAdd(erIds.First(), ds3Ids.First());
         var erSelectorIds = erSelectors.Values.SelectMany(v => v).ToHashSet();
-        ExtendMap(erToDs3, erSelectorIds);
         AddTwoHanded(erToDs3, erSelectorIds);
 
         // Each binder is read once (decompressing the large animation binder took a while).
@@ -233,12 +217,11 @@ public static partial class MovesetPort
         var ds3Weapons = ds3.Get("EquipParamWeapon")!;
         var attackPort = new AttackParamPort(er, ds3) { Effects = spEffects };
         BulletPort? bullets = null;
-        if (BulletPort.Enabled)
-            try { bullets = attackPort.Bullets = new BulletPort(er, ds3, spEffects, attackPort.PortBulletAttack); }
-            catch (Exception e) when (e is InvalidDataException or FileNotFoundException)
-            {
-                Console.WriteLine($"bullets: off, bullet behaviours keep the template's ({e.Message})");
-            }
+        try { bullets = attackPort.Bullets = new BulletPort(er, ds3, spEffects, attackPort.PortBulletAttack); }
+        catch (Exception e) when (e is InvalidDataException or FileNotFoundException)
+        {
+            Console.WriteLine($"bullets: off, bullet behaviours keep the template's ({e.Message})");
+        }
         Ds3ParryJudges = ParryJudges(ds3.Get("BehaviorParam_PC"));
         Console.WriteLine($"moveset: DS3 parry judges {string.Join(" ", Ds3ParryJudges.Order())} -> Elden Ring {ErParryJudge}");
         TaeEffects = spEffects;
@@ -284,9 +267,7 @@ public static partial class MovesetPort
         // byte, a section above 255 needed the mod DLL to hand it to the game (motion-categories.txt), the DLL's hook
         // never found its code, and the one build that tried closed at startup. That close, like the one of
         // 1.0.297, came from the number of animation files in c0000_a9x (ClipBudget.AnimFileLimit), not the numbers.
-        // DARKSIGN_WIDE_MOTION=0 stops at 255 again; with DARKSIGN_MOVESET_FIELD=wmc the wide sections stay off
-        // unless DARKSIGN_WIDE_MOTION=1.
-        var wide = WideSections ? Enumerable.Range(256, UseWeaponMotionCategory ? 744 : 144) : [];
+        var wide = Enumerable.Range(256, 144);
         var freeSections = new Queue<int>(Enumerable.Range(90, 166).Reverse().Concat(wide)
             .Where(s => !usedSections.Contains(s)));
         var wideCategories = new SortedDictionary<int, int>();
@@ -320,14 +301,11 @@ public static partial class MovesetPort
         var ds3TaeMoves = new Dictionary<int, HashSet<int>>();
         bool Ds3Has(int section, int id) => section > 0 && (ds3TaeMoves.TryGetValue(section, out var known) ? known
             : ds3TaeMoves[section] = Ds3Tae(section)?.Animations.Select(a => (int)a.ID).ToHashSet() ?? []).Contains(id);
-        bool canBeLean = LeanMovesets && !UseWeaponMotionCategory && !UseBothFields;
         var pairedKeys = own.Concat(classes).Where(g => g.Any(IsPairedPort)).Select(g => g.Key).ToHashSet();
         ClipBudget.Want Cost((int Ds3Section, int Ds3ArtSection, int TemplateSection) key)
         {
             var clipMoves = erClipMoves.GetValueOrDefault(key.TemplateSection) ?? [];
-            if (!canBeLean)
-                return new(clipMoves.Count, clipMoves.Count);
-            bool paired = PairedTwoHanded && pairedKeys.Contains(key);
+            bool paired = pairedKeys.Contains(key);
             bool Has(int id) => Ds3Has(key.Ds3ArtSection, id) || Ds3Has(key.Ds3Section, id);
             int lean = clipMoves.Count(erId => ErTaeMoves(key.TemplateSection).Contains(erId) && erToDs3.TryGetValue(erId, out var ds3Id)
                 && (Has(ds3Id) || paired && erId is >= 32000 and < 33000 && ds3Id is >= 34000 and < 35000 && Has(ds3Id - 1000)));
@@ -355,7 +333,7 @@ public static partial class MovesetPort
         Console.WriteLine($"moveset: behaviour animation IDs: Elden Ring's reach {nextInternalId - 1} of {ClipBudget.Limit}, {ClipBudget.ArtReserve} kept for arts, {clipIdsFree} for movesets; " +
                           $"{modes.Count(m => m.Value == ClipBudget.Mode.Full)} movesets as full copies ({modes.Where(m => m.Value == ClipBudget.Mode.Full).Sum(m => Cost(m.Key).Full)} IDs), " +
                           $"{modes.Count(m => m.Value == ClipBudget.Mode.Lean)} lean ({modes.Where(m => m.Value == ClipBudget.Mode.Lean).Sum(m => Cost(m.Key).Lean)} IDs)" +
-                          $"{(canBeLean ? "" : " (lean builds off)")}; {freeSections.Count} free motion categories{(WideSections ? "" : " (none above 255)")}, {freeSections.Count(n => n > byte.MaxValue)} of them above 255");
+                          $"; {freeSections.Count} free motion categories, {freeSections.Count(n => n > byte.MaxValue)} of them above 255");
         foreach (var g in own.Where(g => g.Key.Ds3ArtSection != 0 && g.Any(IsPairedPort)))
             Console.WriteLine($"moveset: paired {string.Join(", ", g.Select(p => p.Name))}: own DS3 moveset {g.Key.Ds3Section}/{g.Key.Ds3ArtSection} " +
                               (order.Contains(g.Key) ? "built" : "did not fit, class moveset used"));
@@ -382,58 +360,62 @@ public static partial class MovesetPort
             wantedEffects.UnionWith(weaponRefs.VisualFxr);
         if (bullets is not null)
             wantedEffects.UnionWith(weaponRefs.BulletFxr);
-        if (SpEffectPort.VisualsEnabled)
-            wantedEffects.UnionWith(weaponRefs.ResidentFxr);
+        wantedEffects.UnionWith(weaponRefs.ResidentFxr);
         Console.WriteLine($"effects: {wantedEffects.Count} DS3 effects wanted: move events, {weaponRefs.VisualFxr.Count} shown by {weaponRefs.SpEffects.Count} SpEffects" +
                           $"{(spEffects?.Visuals is null ? " (visuals off)" : "")}, {weaponRefs.BulletFxr.Count} by {weaponRefs.Bullets.Count} bullets{(bullets is null ? " (bullets off)" : "")}, " +
-                          $"{weaponRefs.ResidentFxr.Count} on weapon models{(SpEffectPort.VisualsEnabled ? "" : " (off)")}");
+                          $"{weaponRefs.ResidentFxr.Count} on weapon models");
         // DS3's map effects (Firelink's candles, fog, light shafts): port-maps places them as SFX regions once they
         // are converted here, into the same common binder (MapSfx).
         Maps.MapSfx.ClearTable(ctx);
         var mapEffects = new SortedSet<int>();
-        if (Maps.MapSfx.Enabled)
+        try
+        {
+            var notes = new List<string>();
+            mapEffects = Maps.MapSfx.Wanted(ds3Archives, Maps.MapSlots.All, notes);
+            // The effects the maps' scripts spawn by ID ("Spawn Oneshot SFX", "Create Object-following SFX"):
+            // the events step points them at their converted IDs (EventPort.Kind.Sfx, Ds3Ids).
             try
             {
-                var notes = new List<string>();
-                mapEffects = Maps.MapSfx.Wanted(ds3Archives, Maps.MapSlots.All, notes);
-                // The effects DS3 objects carry on their own dummy polys (Firelink's candle flames: ObjectSfx).
-                if (Maps.ObjectSfx.Enabled)
-                    try
-                    {
-                        if (ds3.Get(Maps.ObjectSfx.Ds3ParamName) is { } modelSfx)
-                            mapEffects.UnionWith(Maps.ObjectSfx.Wanted(ds3Archives, modelSfx, Maps.MapSlots.All, notes));
-                        else
-                            notes.Add($"object effects: DS3 has no {Maps.ObjectSfx.Ds3ParamName}; objects get no DS3 effects");
-                    }
-                    catch (Exception e) when (e is not OutOfMemoryException)
-                    {
-                        notes.Add($"object effects: not read ({e.GetType().Name}: {e.Message}); objects get no DS3 effects");
-                    }
-                // The effects DS3 objects play from their animations (a bonfire's fire, a door's dust: ObjectAnims).
-                try { mapEffects.UnionWith(Maps.ObjectAnims.WantedEffects(ds3Archives, Maps.MapSlots.All, notes)); }
-                catch (Exception e) when (e is not OutOfMemoryException)
-                {
-                    notes.Add($"object animation effects: not read ({e.GetType().Name}: {e.Message}); moving objects play no effects");
-                }
-                // The stand-in flame for a sword next to an Elden Ring grace asset (Bonfires, DARKSIGN_BONFIRES=grace).
-                if (Maps.Bonfires.Mode == Maps.Bonfires.Method.Grace)
-                    mapEffects.Add(Maps.Bonfires.FlameEffect);
-                if (Maps.Bonfires.Mode != Maps.Bonfires.Method.Off)
-                    mapEffects.UnionWith(Maps.Bonfires.OwnEffects);
-                // The effects the maps' cutscenes play (boss intros): pointed at their converted copies by the cutscene port.
-                if (Maps.CutscenePort.Enabled)
-                    try { mapEffects.UnionWith(Maps.CutscenePort.WantedEffects(ds3Archives, Maps.MapSlots.All, notes)); }
-                    catch (Exception e) when (e is not OutOfMemoryException)
-                    {
-                        notes.Add($"cutscene effects: not read ({e.GetType().Name}: {e.Message}); cutscenes get no DS3 effects");
-                    }
-                notes.ForEach(Console.WriteLine);
-                wantedEffects.UnionWith(mapEffects);
+                var scriptEffects = Maps.MapEvents.ScriptIds(ctx, ds3Archives, Maps.MapSlots.All.Where(s => !s.Probe).ToList(), Maps.EventPort.Kind.Sfx);
+                mapEffects.UnionWith(scriptEffects);
+                notes.Add($"map effects: the scripts spawn {scriptEffects.Count} effects by ID");
             }
             catch (Exception e) when (e is not OutOfMemoryException)
             {
-                Console.WriteLine($"map effects: DS3 map files not read ({e.GetType().Name}: {e.Message}); the maps get no DS3 effects");
+                notes.Add($"map effects: the scripts' effects not read ({e.GetType().Name}: {e.Message}); they keep DS3's IDs");
             }
+            // The effects DS3 objects carry on their own dummy polys (Firelink's candle flames: ObjectSfx).
+            try
+            {
+                if (ds3.Get(Maps.ObjectSfx.Ds3ParamName) is { } modelSfx)
+                    mapEffects.UnionWith(Maps.ObjectSfx.Wanted(ds3Archives, modelSfx, Maps.MapSlots.All, notes));
+                else
+                    notes.Add($"object effects: DS3 has no {Maps.ObjectSfx.Ds3ParamName}; objects get no DS3 effects");
+            }
+            catch (Exception e) when (e is not OutOfMemoryException)
+            {
+                notes.Add($"object effects: not read ({e.GetType().Name}: {e.Message}); objects get no DS3 effects");
+            }
+            // The effects DS3 objects play from their animations (a bonfire's fire, a door's dust: ObjectAnims).
+            try { mapEffects.UnionWith(Maps.ObjectAnims.WantedEffects(ds3Archives, Maps.MapSlots.All, notes)); }
+            catch (Exception e) when (e is not OutOfMemoryException)
+            {
+                notes.Add($"object animation effects: not read ({e.GetType().Name}: {e.Message}); moving objects play no effects");
+            }
+            mapEffects.UnionWith(Maps.Bonfires.OwnEffects);
+            // The effects the maps' cutscenes play (boss intros): pointed at their converted copies by the cutscene port.
+            try { mapEffects.UnionWith(Maps.CutscenePort.WantedEffects(ds3Archives, Maps.MapSlots.All, notes)); }
+            catch (Exception e) when (e is not OutOfMemoryException)
+            {
+                notes.Add($"cutscene effects: not read ({e.GetType().Name}: {e.Message}); cutscenes get no DS3 effects");
+            }
+            notes.ForEach(Console.WriteLine);
+            wantedEffects.UnionWith(mapEffects);
+        }
+        catch (Exception e) when (e is not OutOfMemoryException)
+        {
+            Console.WriteLine($"map effects: DS3 map files not read ({e.GetType().Name}: {e.Message}); the maps get no DS3 effects");
+        }
         FxrPort.Result effects;
         try { effects = FxrPort.Apply(ctx, erArchives, ds3EffectFiles, wantedEffects); }
         catch (Exception e) when (e is not OutOfMemoryException)
@@ -451,8 +433,7 @@ public static partial class MovesetPort
         bullets?.Bind(effects);
         // The effects a DS3 weapon plays on its own model while held (the Dancer's Enchanted Swords' fire and dark, the
         // Demon's Scar's flame blade), on the same dummy polys of the ported model.
-        if (SpEffectPort.VisualsEnabled)
-            pointWeapons.Add(() => Console.WriteLine($"effects: {ResidentEffects(ports, ds3Weapons, erWeapons, effects)} weapons play DS3 effects on their model"));
+        pointWeapons.Add(() => Console.WriteLine($"effects: {ResidentEffects(ports, ds3Weapons, erWeapons, effects)} weapons play DS3 effects on their model"));
         effectsTime.Dispose();
 
         // DS3's sounds, the same way: every character and effect sound the sections play, under new IDs.
@@ -483,8 +464,6 @@ public static partial class MovesetPort
             sounds = new SoundPort.Result();
         }
         soundsTime.Dispose();
-        if (sounds.InOwnBank)
-            LoadOwnBank(er);
         // The most common Elden Ring character swing sound (129, kind 1): the layout for ported sounds in moves whose
         // template has no 129 of its own (128 isn't used for them: see SoundEvents).
         var swingSample = erMainEvents.Where(e => e.Type == 129 && SoundPort.Sound(e) is { Kind: 1 }).Select(e => e.GetParameterBytes(false))
@@ -504,7 +483,7 @@ public static partial class MovesetPort
             Console.WriteLine($"moveset: {unfit.Count} weapons' own DS3 moves did not fit a free motion category and use their class's moveset: " +
                               string.Join(", ", unfit.Select(p => $"{p.Name} (a{Key(p, true).Ds3ArtSection})")));
         // Their projectiles are kept all the same, see WithOwnBullets below.
-        var spareJudges = new Queue<int>(BorrowBullets && bullets is not null ? attackPort.FreeJudges() : []);
+        var spareJudges = new Queue<int>(bullets is not null ? attackPort.FreeJudges() : []);
         var borrowed = new Dictionary<(int Art, int Judge), int>();
         int borrowedEvents = 0, borrowedRows = 0;
 
@@ -526,12 +505,10 @@ public static partial class MovesetPort
         // Ringed Knight Paired Greatswords' Ember slam lost its explosion (judges 702/703 fire bullets in DS3) once the
         // binder filled up and 20 movesets were skipped (Crow Quills, Dancer's Enchanted Swords, Valorheart ...). The
         // weapon now gets its DS3 variation all the same (DS3's rows over the template's, as every built moveset's
-        // Elden Ring moves already have). DARKSIGN_SKIPPED_ATTACKS=0 keeps the template's variation.
+        // Elden Ring moves already have).
         var attacksOnly = new List<string>();
         void KeepDs3Attacks(IEnumerable<WeaponPlan> skipped)
         {
-            if (!SkippedAttacks)
-                return;
             foreach (var plan in skipped)
             {
                 if (plan.NewId is not { } newId || ds3Weapons[plan.Ds3Id] is not { } ds3Row || erWeapons[newId] is not { } erRow)
@@ -627,8 +604,9 @@ public static partial class MovesetPort
                 int converted = 0, copied = 0, dualMoves = 0, namedFileMoves = 0;
                 var missingFiles = new List<string>();
                 // A paired weapon's two-handed attacks are DS3's dual-wield set (033xxx), not its 034xxx two-handed
-                // set: see PairedTwoHanded.
-                bool pairedGroup = PairedTwoHanded && group.Any(IsPairedPort);
+                // set: in DS3 a paired weapon two-hands into its L1 dual attacks; Elden Ring plays them through the
+                // ordinary two-handed selectors (032xxx).
+                bool pairedGroup = group.Any(IsPairedPort);
                 // Each converted move's stretch onto the DS3 timeline, for its behaviour clips below.
                 var stretches = new Dictionary<int, MoveTiming.Stretch>();
                 // Elden Ring's own imports show the ID scheme (section * 1,000,000 + ID) and the unknown field.
@@ -660,8 +638,8 @@ public static partial class MovesetPort
                     // a158_030320 plays a025_030320 with the wave added, Smough's a070_030020 plays 030010's motion)
                     // has no file under its own name. Up to 1.0.385 such a move kept Elden Ring's animation and lost
                     // its DS3 events (the wave, Smough's third and fourth R1); the weapon arts already looked for the
-                    // named file. DARKSIGN_NAMED_FILES=0 goes back to that.
-                    if (ds3File is null && NamedFiles && source is { FileName: { } named } && !string.Equals(named, source.HkxName, StringComparison.OrdinalIgnoreCase)
+                    // named file.
+                    if (ds3File is null && source is { FileName: { } named } && !string.Equals(named, source.HkxName, StringComparison.OrdinalIgnoreCase)
                         && ds3Hkx.Read(named) is { } namedBytes)
                     {
                         ds3File = namedBytes;
@@ -707,7 +685,7 @@ public static partial class MovesetPort
                         return;
                     try
                     {
-                        var (converted, _, erDuration) = AnimPort.ConvertTimed(bytes, ds3Skeleton, erSkeleton, template.Bytes, template.Compendium, AnimPort.Spline);
+                        var (converted, _, erDuration) = AnimPort.ConvertTimed(bytes, ds3Skeleton, erSkeleton, template.Bytes, template.Compendium, true);
                         convertedHkx[i] = (converted, erDuration, null);
                     }
                     catch (Exception e)
@@ -757,19 +735,14 @@ public static partial class MovesetPort
                         continue;
                     else if (anim.MiniHeader is TAE.Animation.AnimMiniHeader.Standard && ErAnimFile(erArchives, templateName) is { } original)
                     {
-                        if (CopyErAnims)
-                            AddFile(erAnims, newName + ".hkx", original.Bytes);
-                        else
+                        // Elden Ring's own move: import the template's animation (motion and events), as Elden
+                        // Ring's own categories do, instead of a copy. 4,087 copies made the binder 4 times vanilla.
+                        anim.MiniHeader = new TAE.Animation.AnimMiniHeader.ImportOtherAnim
                         {
-                            // Elden Ring's own move: import the template's animation (motion and events), as Elden
-                            // Ring's own categories do, instead of a copy. 4,087 copies made the binder 4 times vanilla.
-                            anim.MiniHeader = new TAE.Animation.AnimMiniHeader.ImportOtherAnim
-                            {
-                                ImportFromAnimID = templateSection * 1_000_000 + erId,
-                                Unknown = importUnknown,
-                            };
-                            anim.AnimFileName = templateName + ".hkt";
-                        }
+                            ImportFromAnimID = templateSection * 1_000_000 + erId,
+                            Unknown = importUnknown,
+                        };
+                        anim.AnimFileName = templateName + ".hkt";
                         copied++;
                     }
                 }
@@ -805,8 +778,6 @@ public static partial class MovesetPort
                         if (!internalIds.TryGetValue(name, out var internalId))
                             internalIds[name] = internalId = checked((short)nextInternalId++);
                         var copy = HavokGraph.ShallowCopy(clip);
-                        if (JumpBinding && int.Parse(m.Groups[2].Value) % 100 == 70)
-                            BindStartTime(copy, timeActVariable);
                         copy.m_animationName = name;
                         copy.m_name = clip.m_name?.Replace(clip.m_animationName!, name, StringComparison.Ordinal);
                         copy.m_animationInternalId = internalId;
@@ -819,7 +790,7 @@ public static partial class MovesetPort
 
                 Console.WriteLine($"moveset: {groupName} -> motion category {section} (from Elden Ring {templateSection}, DS3 {ds3Section}/{ds3ArtSection}): " +
                                   $"{converted} DS3 animations, " +
-                                  (lean ? $"lean (every other move plays from Elden Ring's {templateSection}), " : $"{copied} kept from Elden Ring ({(CopyErAnims ? "copied" : "imported")}), ") +
+                                  (lean ? $"lean (every other move plays from Elden Ring's {templateSection}), " : $"{copied} kept from Elden Ring (imported), ") +
                                   (movesShared > 0 ? $"{movesShared} of them play another moveset's file, " : "") +
                                   $"{registered} behaviour clips, {nextInternalId - firstClipId} animation IDs, {erAnims.Files.Count} files in the binder, {(DateTime.UtcNow - started).TotalSeconds:0}s" +
                                   (pairedGroup ? $"; paired: {dualMoves} two-handed moves from DS3's dual-wield set (033xxx)" : "") +
@@ -850,8 +821,6 @@ public static partial class MovesetPort
                     foreach (var ((_, judge), alias) in borrowed.Where(b => b.Key.Art == ownArt && ownArt != 0))
                         if (attackPort.AliasJudge(variation, judge, alias))
                             borrowedRows++;
-                    if (UseWeaponMotionCategory && section > byte.MaxValue)
-                        wideCategories[newId] = section; // the row keeps its template's category for the DLL to replace
                     foreach (var row in erWeapons.Rows.Where(r => r.ID >= newId && r.ID < newId + 10000))
                         PointRow(row, section, variation, sounds.Count > 0);
                 });
@@ -860,7 +829,7 @@ public static partial class MovesetPort
 
         if (attacksOnly.Count > 0)
             pointWeapons.Add(() => Console.WriteLine($"moveset: {attacksOnly.Count} weapons whose moveset was skipped keep Elden Ring's moves but their DS3 attacks " +
-                                                     $"(their DS3 art's hits and projectiles): {string.Join(", ", attacksOnly)} [DARKSIGN_SKIPPED_ATTACKS=0 off]"));
+                                                     $"(their DS3 art's hits and projectiles): {string.Join(", ", attacksOnly)}"));
         // Params first: a failure there must not leave behaviour and animation files for weapons that don't use them.
         foreach (var point in pointWeapons)
             point();
@@ -888,19 +857,18 @@ public static partial class MovesetPort
         Directory.CreateDirectory(Path.GetDirectoryName(timingReport)!);
         File.WriteAllLines(timingReport, timing);
         int moves = timing.Count - 1, held = timing.Skip(1).Count(l => l.Split('\t')[9] != "0"), early = timing.Skip(1).Count(l => l.EndsWith("\tEARLY"));
-        Console.WriteLine($"moveset: timing guard {(MoveTiming.Guard ? "on" : "off (1.0.89 timing)")}: {moves} DS3 moves, {held} had windows held back to DS3's own recovery, " +
+        Console.WriteLine($"moveset: timing guard on: {moves} DS3 moves, {held} had windows held back to DS3's own recovery, " +
                           $"{clipFixes} behaviour clip limits fitted, {early} still exit before DS3 does; per move: {timingReport}");
         Console.WriteLine($"moveset: animation files: {erAnims.Files.Count} in {ItemText.Leaf(AnimBinder)} of {ClipBudget.AnimFileLimit} the game takes; " +
                           $"{sharedMovesets} movesets play {sharedMoves} moves from another moveset's file (no room for a file of their own)");
-        Console.WriteLine($"moveset: event switches: DS3 effect events {Ds3EffectEvents}, DS3 sound events {Ds3SoundEvents}, swing align {SwingAlign}");
         Console.WriteLine($"moveset: {portedGroups} movesets ported, {skippedGroups} skipped; attacks: {attackPort.Summary}; {_taeEffectEvents} DS3 SpEffect events with ported effects; " +
                           $"{wideCategories.Count} weapons on categories above 255 (mod DLL)");
         Console.WriteLine($"effects: {_effectGroupsAdded} moves got an effect event group their template section has none of (DS3 effects there were dropped before)");
         if (bullets is not null)
             Console.WriteLine($"bullets: {bullets.Summary}; {_bulletEvents} DS3 bullet events copied into the moves");
-            Console.WriteLine($"bullets: {borrowedEvents} projectile events of weapons built as their class were added to the class moves under {borrowed.Count} spare judges " +
-                              $"({string.Join(" ", borrowed.OrderBy(b => b.Value).Select(b => $"a{b.Key.Art}:{b.Key.Judge}={b.Value}"))}), {borrowedRows} behaviour rows added for them");
-            Console.WriteLine($"bullets: {attackPort.BulletBaseAttacks} bullet attacks take the weapon's attack power (percentages only in DS3)");
+        Console.WriteLine($"bullets: {borrowedEvents} projectile events of weapons built as their class were added to the class moves under {borrowed.Count} spare judges " +
+                          $"({string.Join(" ", borrowed.OrderBy(b => b.Value).Select(b => $"a{b.Key.Art}:{b.Key.Judge}={b.Value}"))}), {borrowedRows} behaviour rows added for them");
+        Console.WriteLine($"bullets: {attackPort.BulletBaseAttacks} bullet attacks take the weapon's attack power (percentages only in DS3)");
         if (spEffects?.Visuals is { } visualRows)
             Console.WriteLine($"effect visuals: {visualRows.Summary}");
         try
@@ -933,61 +901,6 @@ public static partial class MovesetPort
     }
 
     /// <summary>
-    /// DARKSIGN_ANIM_MAP (launcher fallback "anim-map"): how Elden Ring moves find their DS3 animation beyond the
-    /// behaviour selectors that hold exactly one ID in each game (the default, which left moves such as charged heavies
-    /// on Elden Ring's animation when a selector holds several IDs or the two games name it differently).
-    /// "offsets": an unpaired Elden Ring ID takes the ID offset its paired neighbours in the same block of 100 share
-    /// (Elden Ring 0305xx -> DS3 0303xx when most of that block's pairs differ by the same amount).
-    /// "table": offsets, plus the pairs found by hand while porting Friede's scythe (heavy 030500/030501/030505 = DS3
-    /// 030320/030330/030321; two-handed moves are DS3 034xxx = Elden Ring 032xxx), which win over everything else.
-    /// A pair is only used when the weapon's DS3 sections have that animation, so a wrong guess keeps Elden Ring's move.
-    /// </summary>
-    public static readonly string AnimMap = (Environment.GetEnvironmentVariable("DARKSIGN_ANIM_MAP") ?? "").ToLowerInvariant();
-
-    internal static readonly (int Er, int Ds3)[] HandPairs = [(30500, 30320), (30501, 30330), (30505, 30321)];
-
-    /// <summary>Adds pairs to <paramref name="erToDs3"/> per <see cref="AnimMap"/>; <paramref name="erIds"/> are every
-    /// Elden Ring ID the weapon selectors play.</summary>
-    internal static void ExtendMap(Dictionary<int, int> erToDs3, IReadOnlySet<int> erIds, string? mode = null)
-    {
-        mode ??= AnimMap;
-        if (mode is not ("offsets" or "table"))
-            return;
-        int before = erToDs3.Count;
-        // The usual offset in each block of 100 (Elden Ring ID / 100), from the pairs the selectors gave.
-        var blockOffset = erToDs3.GroupBy(p => p.Key / 100)
-            .Select(g => (Block: g.Key, Best: g.GroupBy(p => p.Value - p.Key).OrderByDescending(o => o.Count()).First(), Total: g.Count()))
-            .Where(b => b.Best.Count() * 2 > b.Total) // a clear majority, else the block is left alone
-            .ToDictionary(b => b.Block, b => b.Best.Key);
-        foreach (var er in erIds.Where(id => !erToDs3.ContainsKey(id)).Order())
-            if (blockOffset.TryGetValue(er / 100, out var offset) && er + offset > 0)
-                erToDs3[er] = er + offset;
-        if (mode == "table")
-            foreach (var (er, ds3) in HandPairs)
-            {
-                erToDs3[er] = ds3;
-                if (erIds.Contains(er + 2000)) // two-handed: Elden Ring 032xxx, DS3 034xxx
-                    erToDs3[er + 2000] = ds3 + 4000;
-            }
-        Console.WriteLine($"moveset: anim map '{mode}' added {erToDs3.Count - before} pairs to the {before} from behaviour selectors");
-    }
-
-    // DARKSIGN_TWOHAND_MAP=0: two-handed moves are paired by behaviour selector names only, as before.
-    private static readonly bool TwoHandMap = Environment.GetEnvironmentVariable("DARKSIGN_TWOHAND_MAP") != "0";
-
-    /// <summary>
-    /// A paired weapon's two-handed attacks come from DS3's dual-wield set. In DS3 a paired weapon (Ringed Knight Paired
-    /// Greatswords, Farron Greatsword, Sellsword Twinblades, fists) two-hands into its L1 dual attacks, which live in
-    /// its own section as 033xxx (a253_033000/010/020, run 033500, roll 033900); its 034xxx two-handed entries only import
-    /// the class's one-handed swings (a253_034000 -> a026_030000). Elden Ring plays a paired weapon's (isDualBlade)
-    /// dual attacks through the ordinary two-handed selectors, 032xxx. So, in a paired weapon's moveset, Elden Ring
-    /// 032yyy takes DS3 033yyy wherever the DS3 sections have it (the offsets inside the block are the same as the
-    /// 034xxx pairing's), else the 034xxx pair as before. Without this (builds up to 1.0.217) the Ringed Knight pair
-    /// and the Farron Greatsword two-handed like a one-handed Ultra Greatsword. DARKSIGN_PAIRED_2H=0 turns it off.
-    /// </summary>
-    private static readonly bool PairedTwoHanded = Environment.GetEnvironmentVariable("DARKSIGN_PAIRED_2H") != "0";
-
-    /// <summary>
     /// Two-handed moves the selector names didn't pair: each one-handed pair (Elden Ring 030xxx = DS3 030xxx) gives
     /// its two-handed twin, Elden Ring 032xxx = DS3 034xxx (found on Friede's scythe: DS3's two-handed R1 chain is
     /// 034000/034010/034020, Elden Ring's 032000/032010/032020). Without it two-handed swings kept the Elden Ring
@@ -996,8 +909,6 @@ public static partial class MovesetPort
     /// </summary>
     internal static int AddTwoHanded(Dictionary<int, int> erToDs3, IReadOnlySet<int> erIds)
     {
-        if (!TwoHandMap)
-            return 0;
         int added = 0;
         foreach (var (er, ds3) in erToDs3.Where(p => p.Key is >= 30000 and < 31000 && p.Value is >= 30000 and < 31000).ToList())
             if (erIds.Contains(er + 2000) && erToDs3.TryAdd(er + 2000, ds3 + 4000))
@@ -1006,47 +917,10 @@ public static partial class MovesetPort
         return added;
     }
 
-    /// <summary>
-    /// DARKSIGN_MOVESET_FIELD=wmc puts the new section in wepmotionCategory, as builds up to 1.0.1xx did. By default it
-    /// goes in spAtkcategory ("Special Motion Category"), the way Elden Ring's own unique movesets and the community's
-    /// custom movesets do it (Themyys, Introduction to Moveset Modding): every animation in that section overrides the
-    /// weapon motion category's. With the section only in wepmotionCategory, the template's own special section (e.g.
-    /// a weapon's unique heavies) still overrode the ported DS3 moves, so R2 kept looking like Elden Ring. The row
-    /// keeps its template's wepmotionCategory, which Elden Ring also uses for class rules (powerstance, guard, ...).
-    /// </summary>
-    public static readonly bool UseWeaponMotionCategory =
-        string.Equals(Environment.GetEnvironmentVariable("DARKSIGN_MOVESET_FIELD"), "wmc", StringComparison.OrdinalIgnoreCase);
-
-    /// <summary>
-    /// DARKSIGN_MOVESET_FIELD=both: the section goes in spAtkcategory and, when it fits the byte, in wepmotionCategory
-    /// too, so whichever field the game reads for a move finds the DS3 moveset. Elden Ring's class rules that follow
-    /// wepmotionCategory (powerstance, guard) then come from the new section, which starts as a copy of the template's.
-    /// </summary>
-    public static readonly bool UseBothFields =
-        string.Equals(Environment.GetEnvironmentVariable("DARKSIGN_MOVESET_FIELD"), "both", StringComparison.OrdinalIgnoreCase);
-
-    /// <summary>
-    /// Whether motion categories above 255 are handed out (see Apply). On by default with the moveset in
-    /// spAtkcategory, where DARKSIGN_WIDE_MOTION=0 (fallback "moveset-capacity" B) stops at 255 as builds up to
-    /// 1.0.284 did; with DARKSIGN_MOVESET_FIELD=wmc they need the mod DLL and stay off unless DARKSIGN_WIDE_MOTION=1.
-    /// </summary>
-    internal static bool WideSections => Environment.GetEnvironmentVariable("DARKSIGN_WIDE_MOTION") is var v
-        && (UseWeaponMotionCategory ? v == "1" : v != "0");
-
-    /// <summary>Fallback "moveset-capacity" C: DARKSIGN_LEAN_MOVESETS=0 builds full copies only (ClipBudget); a
-    /// moveset the animation IDs have no room for is left out and its weapons use their class's.</summary>
-    private static readonly bool LeanMovesets = Environment.GetEnvironmentVariable("DARKSIGN_LEAN_MOVESETS") != "0";
-
     /// <summary>Points one EquipParamWeapon row at its ported section and DS3 attack variation.</summary>
     public static void PointRow(PARAM.Row row, int section, int variation, bool ds3Sounds)
     {
-        if (UseWeaponMotionCategory || UseBothFields)
-        {
-            if (section <= byte.MaxValue)
-                row["wepmotionCategory"].Value = Convert.ChangeType(section, row["wepmotionCategory"].Value!.GetType());
-        }
-        if (!UseWeaponMotionCategory)
-            row["spAtkcategory"].Value = Convert.ChangeType(section, row["spAtkcategory"].Value!.GetType());
+        row["spAtkcategory"].Value = Convert.ChangeType(section, row["spAtkcategory"].Value!.GetType());
         if (variation > 0)
             row["behaviorVariationId"].Value = Convert.ChangeType(variation, row["behaviorVariationId"].Value!.GetType());
         // Elden Ring adds wepSeIdOffset (0-99) to a weapon's sound IDs so one TAE serves weapons with different
@@ -1055,14 +929,6 @@ public static partial class MovesetPort
         if (ds3Sounds)
             row["wepSeIdOffset"].Value = Convert.ChangeType(0, row["wepSeIdOffset"].Value!.GetType());
     }
-
-    /// <summary>
-    /// DARKSIGN_JUMP_BINDING=1 (launcher fallback "jump-attacks" B): every new clip of an animation whose ID ends in 70
-    /// gets its own variable binding set with its Start Time bound to the behaviour variable TimeActEditor_10, as
-    /// Themyys' moveset guide says jump attacks need (else they play again on landing). By default a new clip shares
-    /// the template clip's binding set, which is the same binding when the template has it.
-    /// </summary>
-    private static readonly bool JumpBinding = Environment.GetEnvironmentVariable("DARKSIGN_JUMP_BINDING") == "1";
 
     private static int _jumpBindings;
 
@@ -1102,7 +968,7 @@ public static partial class MovesetPort
     private const int OverrideWeaponModelLocations = 712;
     // ChangeType 5 is "Friede's Scythe Override", hardcoded in DS3's engine by weapon ID: it is how Friede's art takes the
     // second scythe off the back into the left hand. Elden Ring doesn't know the ported weapon's ID, so the event did
-    // nothing. DARKSIGN_FRIEDE_OVERRIDE=keep leaves it as DS3 wrote it; see FixModelOverride for the other modes.
+    // nothing; see FixModelOverride.
     /// <summary>
     /// Turns DS3's Friede-only ChangeType 5 (TAE 712 OverrideWeaponModelLocations, per slot: AbsorpPosParamCondition
     /// byte, ChangeType byte) into a move Elden Ring knows. Elden Ring's own player animations move a right-hand
@@ -1111,29 +977,18 @@ public static partial class MovesetPort
     /// condition 2, ChangeType 2), and 3, "the model's hang location" (a612's art sends model 1 there: slot RH1
     /// condition 2, ChangeType 3; the paired arts put the blade back with it). Condition 2 matches a model shown only
     /// in use (wepInvisibleType 2), which Friede's model 1 is in DS3's row and ours.
-    /// Default ("art"): ChangeType 3, and AbsorpPort makes model 1's hang slot the left hand, so the second scythe
-    /// stays on the back until the art (a612's bytes exactly). "both" (the previous build): ChangeType 2, with AbsorpPort's
-    /// Elden Ring paired layout (left hand two-handed and in the art). "back" (1.0.221-1.0.238): ChangeType 1
-    /// ("1H left location", left_1 = left hand), which no Elden Ring move uses on a right-hand model and never showed
-    /// the scythe; a left-hand model's slot goes the other way (ChangeType 0). "keep": untouched. The condition byte
-    /// stays DS3's (2) in every mode.
+    /// It becomes ChangeType 3, and AbsorpPort makes model 1's hang slot the left hand, so the second scythe stays on
+    /// the back until the art (a612's bytes exactly). The condition byte stays DS3's (2).
     /// </summary>
-    internal static int FixModelOverride(byte[] bytes) => FixModelOverride(bytes, AbsorpPort.FriedeMode);
-
-    internal static int FixModelOverride(byte[] bytes, string mode)
+    internal static int FixModelOverride(byte[] bytes)
     {
-        if (mode == "keep" || bytes.Length < 16)
+        if (bytes.Length < 16)
             return 0;
         int fixedCount = 0;
         for (int slot = 0; slot < 8; slot++)
             if ((sbyte)bytes[2 * slot + 1] == 5)
             {
-                bytes[2 * slot + 1] = mode switch
-                {
-                    "back" => slot < 4 ? (byte)1 : (byte)0,
-                    "both" => 2,
-                    _ => 3,
-                };
+                bytes[2 * slot + 1] = 3;
                 fixedCount++;
             }
         return fixedCount;
@@ -1155,7 +1010,7 @@ public static partial class MovesetPort
         {
             if (groupOf.TryGetValue(type, out group))
                 return true;
-            if (!AddGroups || !templateGroups.TryGetValue(type, out var proto))
+            if (!templateGroups.TryGetValue(type, out var proto))
                 return false;
             group = proto.GetClone();
             anim.EventGroups.Add(group);
@@ -1165,11 +1020,11 @@ public static partial class MovesetPort
         // An effect event in a move whose whole template section has no event of that type (Elden Ring's stance art
         // a614 plays no effect at all, so every effect of a DS3 stance built on it was dropped: Friede's ice blade,
         // 440501, showed only in the two chain moves built on a612). It takes a copy of the group any move of the
-        // player's TAE files that type under. DARKSIGN_ADD_EVENT_GROUPS=0 turns this off with the template's groups.
+        // player's TAE files that type under.
         bool TryPlayerGroup(int type, out TAE.EventGroup? group)
         {
             group = null;
-            if (!AddGroups || !PlayerEffectGroups.TryGetValue(type, out var proto))
+            if (!PlayerEffectGroups.TryGetValue(type, out var proto))
                 return false;
             group = proto.GetClone();
             anim.EventGroups.Add(group);
@@ -1185,7 +1040,7 @@ public static partial class MovesetPort
         var erSwing = erEvents.FirstOrDefault(e => e.Type == 129 && e.Group is not null && SoundPort.Sound(e) is { Kind: 1 });
         foreach (var e in ds3Events)
         {
-            if (Ds3SoundEvents && sounds.Convert(e, erSwing) is { } sound
+            if (sounds.Convert(e, erSwing) is { } sound
                 && (erSwing?.Group ?? (sound.Type == 129 ? groupOf.GetValueOrDefault(129) ?? groupOf.GetValueOrDefault(128)
                     : groupOf.GetValueOrDefault(128) ?? groupOf.GetValueOrDefault(129))) is { } soundGroup)
             {
@@ -1194,7 +1049,7 @@ public static partial class MovesetPort
                 ds3Sounds = true;
                 continue;
             }
-            if (Ds3EffectEvents && effectEvents.IsEffect(e.Type))
+            if (effectEvents.IsEffect(e.Type))
             {
                 if (effectEvents.Convert(e, effects) is { } converted && (TryGroup(e.Type, out var effectGroup) || TryPlayerGroup(e.Type, out effectGroup)))
                 {
@@ -1271,15 +1126,8 @@ public static partial class MovesetPort
         // evenly when the two games swing a different number of times, so later swings keep their own whooshes.
         var ds3Hits = HitStarts(ds3Events);
         var erHits = HitStarts(erEvents);
-        if (!SwingAlign)
-        {
-            // As first ported: every kept event moves with the first hit.
-            ds3Hits = [.. ds3Hits.Take(1)];
-            erHits = [.. erHits.Take(1)];
-        }
         // A move that plays DS3's own character and effect sounds drops Elden Ring's (footsteps and the rest stay).
-        var kept = erEvents.Where(e => (ErOwned(e.Type) && (KeepErEffects || !ds3Effects.Contains(e.Type))
-                                        || KeepErEffects && effectEvents.IsEffect(e.Type) && e.Group is not null)
+        var kept = erEvents.Where(e => ErOwned(e.Type) && !ds3Effects.Contains(e.Type)
                                        && !(ds3Sounds && SoundPort.Sound(e) is { } s && SoundPort.Letter(s.Kind) is not null)).ToList();
         int Pair(int erHit) => erHits.Count == 1 ? 0 : (int)Math.Round(erHit * (ds3Hits.Count - 1) / (double)(erHits.Count - 1));
         var pairedDs3 = new HashSet<int>();
@@ -1293,7 +1141,7 @@ public static partial class MovesetPort
         var ds3Charge = ds3Events.Where(e => e.Type == 67 && FirstInt(e) is not null).GroupBy(e => FirstInt(e)!.Value)
             .ToDictionary(g => g.Key, g => g.OrderBy(e => e.StartTime).ToList());
         var chargeUsed = new HashSet<int>();
-        foreach (var e in kept.Where(e => BehaviourTypes.Contains(e.Type) && !Ds3JumpTables))
+        foreach (var e in kept.Where(e => BehaviourTypes.Contains(e.Type)))
         {
             if (e.Type == 67 && FirstInt(e) is { } charge && ds3Charge.TryGetValue(charge, out var own))
             {
@@ -1305,7 +1153,7 @@ public static partial class MovesetPort
             var (start, end) = moveStretch.Place(e);
             merged.Add(new TAE.Event(start, end, e.Type, e.Unk04, (byte[])e.GetParameterBytes(false).Clone(), false) { Group = e.Group });
         }
-        foreach (var e in kept.Where(e => !BehaviourTypes.Contains(e.Type) || Ds3JumpTables))
+        foreach (var e in kept.Where(e => !BehaviourTypes.Contains(e.Type)))
         {
             float shift = 0;
             if (ds3Hits.Count > 0 && erHits.Count > 0)
@@ -1321,9 +1169,8 @@ public static partial class MovesetPort
         // swing sounds of the nearest paired hit. Only when the move plays Elden Ring's swing sounds: with DS3's own
         // (every DS3 sound event is ported, one per DS3 swing), what is left of Elden Ring's (kinds other than c and
         // s) was copied once per extra DS3 hitbox, so a swing with several hitboxes played them several times
-        // (1.0.347: the Dragonslayer Greataxe; 261 moves, +4,187 events). DARKSIGN_SWING_SOUND_REPEAT=1 repeats them
-        // anyway, as before.
-        if (erHits.Count > 0 && (!ds3Sounds || SwingSoundRepeat))
+        // (1.0.347: the Dragonslayer Greataxe; 261 moves, +4,187 events).
+        if (erHits.Count > 0 && (!ds3Sounds))
             for (int d = 0; d < ds3Hits.Count; d++)
             {
                 if (pairedDs3.Contains(d))
@@ -1335,46 +1182,11 @@ public static partial class MovesetPort
         return merged.OrderBy(e => e.StartTime).ToList();
     }
 
-    /// <summary>
-    /// Sounds method E: Torrent's NpcParam rows name the ported sounds' own bank in SoundAddBankId, so the game keeps
-    /// it loaded (Yonder's "Custom Soundbanks" guide: Torrent's rows 8002-8005 from Elden Ring 1.17, 8000 before; a
-    /// row that already names a bank keeps it).
-    /// </summary>
-    private static void LoadOwnBank(ParamStore er)
-    {
-        if (er.Get("NpcParam") is not { } npcs)
-        {
-            Console.WriteLine("sounds: method E: no NpcParam; the own bank won't be loaded");
-            return;
-        }
-        var set = new List<int>();
-        foreach (var row in npcs.Rows.Where(r => r.ID is >= 8000 and <= 8005))
-        {
-            if (row.Cells.FirstOrDefault(c => c.Def.InternalName == "SoundAddBankId") is not { } cell || System.Convert.ToInt32(cell.Value) >= 0)
-                continue;
-            cell.Value = System.Convert.ChangeType(SoundPort.OwnBankNumber, cell.Value!.GetType());
-            set.Add(row.ID);
-        }
-        Console.WriteLine($"sounds: method E: Torrent's NpcParam rows {(set.Count == 0 ? "(none free)" : string.Join(", ", set))} load {SoundPort.OwnBankName}");
-    }
-
-    /// <summary>
-    /// The one-shot form of Wwise_PlaySound_BySlot (129) ported sounds use unless DARKSIGN_SOUND_ONESHOT=0:
-    /// PlaybackBehaviorType 0 (play until the sound ends; DS3's sound events last a frame or two, and type 1 cuts the
-    /// sound off when the event ends) and no slot (-1). Nightreign Ultimate Voices' new Play_c9xxxxxxxx events stayed
-    /// silent as 128s and in a cut-off layout, and played once written as the game's own one-shot 129s.
-    /// </summary>
-    private static readonly bool OneShot = Environment.GetEnvironmentVariable("DARKSIGN_SOUND_ONESHOT") != "0";
-
-    /// <summary>DS3 sound events as Elden Ring PlaySound events for the ported sounds: in the layout of the move's
-    /// own swing sound (129) when it has one, else of Elden Ring's most common character 129 (else 128).</summary>
-    private static readonly bool OverrideSame = string.Equals(Environment.GetEnvironmentVariable("DARKSIGN_SOUND_OVERRIDE"), "same", StringComparison.OrdinalIgnoreCase);
-
     private sealed class SoundEvents(SoundPort.Result sounds, byte[]? sample, byte[]? swingSample)
     {
         public TAE.Event? Convert(TAE.Event e, TAE.Event? erSwing)
         {
-            int type = erSwing?.Type ?? (OneShot && swingSample is not null ? 129 : 128);
+            int type = erSwing?.Type ?? (swingSample is not null ? 129 : 128);
             var layout = erSwing?.GetParameterBytes(false) ?? (type == 129 ? swingSample : sample);
             if (layout is null || SoundPort.Sound(e) is not { } s || SoundPort.Letter(s.Kind) is null || sounds.Map(s.Kind, s.Id) is not { } id)
                 return null;
@@ -1387,39 +1199,24 @@ public static partial class MovesetPort
             // The override is cleared (type 0, ID 0), as in about 99.9% of vanilla Elden Ring's ~24,900 129 events
             // (fx20). Up to 1.0.410 it named the ported sound itself, so each DS3 swing sound could play twice at
             // once, a hair apart: the Dragonslayer Greataxe's "jet engine" (two copies of one sound comb-filter into a
-            // flanger whoosh). DARKSIGN_SOUND_OVERRIDE=same sets it to the ported sound again.
+            // flanger whoosh).
             if (type == 129 && bytes.Length >= 32)
             {
                 BitConverter.GetBytes((short)0).CopyTo(bytes, 16);
-                BitConverter.GetBytes(OverrideSame ? s.Kind : 0).CopyTo(bytes, 20);
-                BitConverter.GetBytes(OverrideSame ? id : 0).CopyTo(bytes, 24);
+                BitConverter.GetBytes(0).CopyTo(bytes, 20);
+                BitConverter.GetBytes(0).CopyTo(bytes, 24);
                 bytes[28] = unchecked((byte)-1);
-                if (OneShot)
-                {
-                    BitConverter.GetBytes(-1).CopyTo(bytes, 12); // SlotID: none
-                    // PlaybackBehaviorType: until the sound ends. A sound that loops never ends by itself, so it
-                    // gets the type Elden Ring's own long sound events have (1: the sound ends with the event;
-                    // inferred from those events and the field's name, not observed in game).
-                    bytes[18] = sounds.Loops(s.Kind, s.Id) ? (byte)1 : (byte)0;
-                }
+                BitConverter.GetBytes(-1).CopyTo(bytes, 12); // SlotID: none
+                // PlaybackBehaviorType: until the sound ends. A sound that loops never ends by itself, so it
+                // gets the type Elden Ring's own long sound events have (1: the sound ends with the event;
+                // inferred from those events and the field's name, not observed in game).
+                bytes[18] = sounds.Loops(s.Kind, s.Id) ? (byte)1 : (byte)0;
             }
             return new TAE.Event(e.StartTime, e.EndTime, type, e.Unk04, bytes, false);
         }
     }
 
     // Switches for finding which part of the event port Elden Ring rejects; all on unless set to 0.
-    private static readonly bool Ds3EffectEvents = Environment.GetEnvironmentVariable("DARKSIGN_DS3_EFFECT_EVENTS") != "0";
-    /// <summary>
-    /// DARKSIGN_KEEP_ER_EFFECTS=1 (launcher fallback "effects" C): a move that spawns DS3's effects keeps the
-    /// template's Elden Ring effects of the same types too, so a DS3 effect that doesn't show leaves Elden Ring's
-    /// trail and sparks rather than nothing.
-    /// </summary>
-    private static readonly bool KeepErEffects = Environment.GetEnvironmentVariable("DARKSIGN_KEEP_ER_EFFECTS") == "1";
-    private static readonly bool Ds3SoundEvents = Environment.GetEnvironmentVariable("DARKSIGN_DS3_SOUND_EVENTS") != "0";
-    private static readonly bool SwingAlign = Environment.GetEnvironmentVariable("DARKSIGN_SWING_ALIGN") != "0";
-    private static readonly bool SwingSoundRepeat = Environment.GetEnvironmentVariable("DARKSIGN_SWING_SOUND_REPEAT") == "1";
-    private static readonly bool AddGroups = Environment.GetEnvironmentVariable("DARKSIGN_ADD_EVENT_GROUPS") != "0";
-
     // Sound events repeated for extra DS3 swings.
     private static readonly HashSet<int> SwingTypes = [128, 129];
 
@@ -1450,12 +1247,10 @@ public static partial class MovesetPort
     /// A converted move's behaviour clip is a copy of the template's, whose limits were set for the Elden Ring
     /// animation: an enforced duration plays the DS3 animation in the Elden Ring move's time, and a crop cuts its
     /// end off. Both are cleared, and trigger times fixed on the Elden Ring timeline are moved onto DS3's (triggers
-    /// measured from the clip's end stay). Returns 1 when anything changed. Off with DARKSIGN_TIMING_GUARD=0.
+    /// measured from the clip's end stay). Returns 1 when anything changed.
     /// </summary>
     private static int FitClip(hkbClipGenerator clip, MoveTiming.Stretch stretch)
     {
-        if (!MoveTiming.Guard)
-            return 0;
         bool changed = clip.m_enforcedDuration > 0 || clip.m_cropStartAmountLocalTime != 0 || clip.m_cropEndAmountLocalTime != 0;
         clip.m_enforcedDuration = 0;
         clip.m_cropStartAmountLocalTime = 0;
@@ -1489,19 +1284,11 @@ public static partial class MovesetPort
     internal static Dictionary<int, HashSet<int>> EventLengths(IEnumerable<TAE.Event> events) =>
         events.GroupBy(e => e.Type).ToDictionary(g => g.Key, g => g.Select(e => e.GetParameterBytes(false).Length).ToHashSet());
 
-    private static bool ErOwned(int type) => EldenRingOnlyTypes.Contains(type) && !(Ds3JumpTables && BehaviourTypes.Contains(type));
+    private static bool ErOwned(int type) => EldenRingOnlyTypes.Contains(type);
 
     private static TAE.Event Shifted(TAE.Event e, float shift) =>
         new(Math.Max(0, e.StartTime + shift), Math.Max(0, e.EndTime + shift), e.Type, e.Unk04,
             (byte[])e.GetParameterBytes(false).Clone(), false) { Group = e.Group };
-
-    /// <summary>Fallback "weapon-visuals" H: DARKSIGN_BORROW_BULLETS=0 leaves a weapon built as its class without the
-    /// projectiles of its own section, as in builds up to 1.0.282.</summary>
-    private static readonly bool BorrowBullets = Environment.GetEnvironmentVariable("DARKSIGN_BORROW_BULLETS") != "0";
-
-    /// <summary>Fallback weapon-arts I: DARKSIGN_SKIPPED_ATTACKS=0 leaves a weapon whose moveset was skipped on its
-    /// template's behaviour variation, as up to 1.0.44x (its DS3 art's projectiles found no row).</summary>
-    private static readonly bool SkippedAttacks = Environment.GetEnvironmentVariable("DARKSIGN_SKIPPED_ATTACKS") != "0";
 
     /// <summary>A DS3 move: its animation file, events, and the file its TAE entry names (when that differs).</summary>
     private sealed record Ds3Move(string HkxName, List<TAE.Event> Events, string? FileName = null);
@@ -1616,12 +1403,6 @@ public sealed class AttackParamPort(ParamStore er, ParamStore ds3, string behavi
     private readonly PARAM _erAttack = er.Get(attackParam)!, _ds3Attack = ds3.Get(attackParam)!;
     private int _behaviors, _attacks, _effectBehaviors;
 
-    // Fallback weapon-hits: A (unset) DS3 attack fields over the template's attack, B "ds3" DS3 fields only (unnamed
-    // Elden Ring fields at their defaults), C "template" the template weapon's own attack row for each judge DS3 has.
-    private static readonly string? AttackMode = Environment.GetEnvironmentVariable("DARKSIGN_ATTACKS");
-    private static bool AttacksFromTemplate => AttackMode == "template";
-    private static bool AttacksDs3Only => AttackMode == "ds3";
-
     /// <summary>When set, DS3 SpEffect references (behaviours that cast an effect, attacks that apply one) are ported
     /// with it instead of standing in the template's or being dropped.</summary>
     public SpEffectPort? Effects { get; init; }
@@ -1655,7 +1436,7 @@ public sealed class AttackParamPort(ParamStore er, ParamStore ds3, string behavi
         // attack only counts the weapon when isAddBaseAtk is set: all 98 Ash of War bullet attacks that have
         // percentages and no power of their own set it (Storm Assault), and the bullet attack the port starts from
         // doesn't, so every such DS3 projectile hit for nothing and built up none of the weapon's frost or bleed.
-        if (BulletBaseAttack && _attackIds.ContainsKey(ds3Id) && _bulletAttacks.Add(id) && _erAttack[id] is { } row
+        if (_attackIds.ContainsKey(ds3Id) && _bulletAttacks.Add(id) && _erAttack[id] is { } row
             && Power(row, "Correction") && !Power(row, "") && ParamDefaults.Cell(row, "isAddBaseAtk") is { } add)
         {
             add.Value = Convert.ChangeType(1, add.Value!.GetType());
@@ -1663,10 +1444,6 @@ public sealed class AttackParamPort(ParamStore er, ParamStore ds3, string behavi
         }
         return id;
     }
-
-    /// <summary>Fallback "weapon-visuals" G: DARKSIGN_BULLET_BASE_ATK=0 leaves ported bullet attacks without the
-    /// weapon's own attack power, as in builds up to 1.0.279.</summary>
-    private static readonly bool BulletBaseAttack = Environment.GetEnvironmentVariable("DARKSIGN_BULLET_BASE_ATK") != "0";
 
     private static bool Power(PARAM.Row row, string suffix) =>
         new[] { "atkPhys", "atkMag", "atkFire", "atkThun", "atkDark" }
@@ -1683,6 +1460,45 @@ public sealed class AttackParamPort(ParamStore er, ParamStore ds3, string behavi
     /// new variation also gets the Elden Ring template's rows for every judge ID DS3 lacks: the moves kept from the
     /// template (Elden Ring-only attacks) look their hits up in the weapon's variation too, and found nothing there.
     /// </summary>
+    /// <summary>Where the behaviour rows DS3's map scripts name by ID get their copies: this + the DS3 row ID.</summary>
+    public const int ScriptRowBase = 1_600_000_000;
+
+    /// <summary>
+    /// A behaviour row DS3's map scripts name by its row ID ("Shoot Bullet", "Create Damaging Object": Carthus's bolt
+    /// traps 5810-5846, Grand Archives' curse hands 5210, Crystal Sage's clones 213200010), copied to
+    /// <see cref="ScriptRowBase"/> + the DS3 ID with its bullet, attack or SpEffect ported the way an enemy's are.
+    /// Returns the new row ID, or -1 when the row or what it names couldn't be ported. Up to 1.0.57x the scripts kept
+    /// DS3's IDs, and 55 of the 56 rows they name don't exist in Elden Ring's BehaviorParam (census 2026-11-22).
+    /// </summary>
+    public int PortScriptRow(int ds3Row)
+    {
+        if (_scriptRows.TryGetValue(ds3Row, out var done))
+            return done;
+        int id = ds3Row is > 0 and < int.MaxValue - ScriptRowBase ? ScriptRowBase + ds3Row : -1;
+        if (id < 0 || _ds3Behavior[ds3Row] is not { } source)
+            return _scriptRows[ds3Row] = -1;
+        if (_erBehavior[id] is not null)
+            return _scriptRows[ds3Row] = id;
+        int refType = Convert.ToInt32(source["refType"].Value), refId = Convert.ToInt32(source["refId"].Value);
+        int target = refType switch
+        {
+            0 => PortAttack(refId),
+            1 => Bullets?.Port(refId) ?? -1,
+            2 => Effects?.Port(refId) ?? -1,
+            _ => -1,
+        };
+        if (target <= 0)
+            return _scriptRows[ds3Row] = -1;
+        var row = CopyByName(source, new PARAM.Row(id, $"[DS3 script] {source.Name}", _erBehavior.AppliedParamdef));
+        row["refId"].Value = Convert.ChangeType(target, row["refId"].Value!.GetType());
+        _erBehavior.Rows.Add(row);
+        _erBehavior.Rows.Sort((a, b) => a.ID.CompareTo(b.ID));
+        _behaviors++;
+        return _scriptRows[ds3Row] = id;
+    }
+
+    private readonly Dictionary<int, int> _scriptRows = new();
+
     public int PortVariation(int ds3Variation, int templateVariation = 0, int? newVariation = null)
     {
         if (_variations.TryGetValue((ds3Variation, templateVariation), out var done))
@@ -1793,9 +1609,7 @@ public sealed class AttackParamPort(ParamStore er, ParamStore ds3, string behavi
             var templateRow = templateRows.GetValueOrDefault((prefix, judge));
             int refType = Convert.ToInt32(source["refType"].Value);
             PARAM.Row row;
-            if (refType == 0 && AttacksFromTemplate && templateRow is not null)
-                row = CopyRow(templateRow, id);
-            else if (refType == 0)
+            if (refType == 0)
             {
                 row = CopyByName(source, new PARAM.Row(id, source.Name ?? "", _erBehavior.AppliedParamdef));
                 // Elden Ring-only attack fields start from the template's attack for this judge (or any of its attacks).
@@ -1868,7 +1682,7 @@ public sealed class AttackParamPort(ParamStore er, ParamStore ds3, string behavi
         // Start from an Elden Ring attack of the template weapon (its fields DS3 lacks: isAddBaseAtk, regain, decals,
         // dmgLevel_vsPlayer...), then lay every DS3 field over it.
         var row = new PARAM.Row(id, source.Name ?? "", _erAttack.AppliedParamdef);
-        if (erBase is not null && !AttacksDs3Only && StructurallyEqual(erBase, row))
+        if (erBase is not null && StructurallyEqual(erBase, row))
             for (int i = 0; i < row.Cells.Count; i++)
                 row.Cells[i].Value = erBase.Cells[i].Value is byte[] b ? b.Clone() : erBase.Cells[i].Value;
         row = CopyByName(source, row);

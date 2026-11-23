@@ -46,10 +46,6 @@ namespace DarkSign.Porter.Maps;
 /// </summary>
 public static partial class CutscenePort
 {
-    /// <summary>DARKSIGN_CUTSCENES=0 (launcher fallback "map-cutscenes" B): no cutscenes are converted, and the scripts
-    /// leave cutscene lines out (a warping one keeps its warp), as before the cutscene port.</summary>
-    public static bool Enabled => Environment.GetEnvironmentVariable("DARKSIGN_CUTSCENES") != "0";
-
     /// <summary>"/remo/s45_00_0010.remobnd.dcx": where DS3 keeps a cutscene.</summary>
     public static string Ds3Path(string name) => $"/remo/{name}.remobnd.dcx";
 
@@ -842,7 +838,7 @@ public static partial class CutscenePort
     /// <param name="sound">Rewrites the DS3 timeline's sound events first (<see cref="CutsceneSound.Prepare"/>), or null.</param>
     /// <param name="cast">The map's <see cref="CutsceneCast.Resolver"/> (DS3 part name -> the Elden Ring name, null = no
     /// Elden Ring model). Given, it renames parts, leaves out what Elden Ring can't load and lays the cut files out as
-    /// Elden Ring's (<see cref="CutsceneCast"/>); null converts as before (fallback map-cutscenes E).</param>
+    /// Elden Ring's (<see cref="CutsceneCast"/>); null converts without it.</param>
     public static (BND4 Binder, BinderStats Stats) ConvertBinder(BND4 ds3, string ds3Name, string erName, Func<string, string?> rename,
         MapId ds3Map, MapId erMap, ErSide side, Action<MQB>? sound = null, Func<string, string?>? cast = null, Func<int, int?>? effects = null)
     {
@@ -870,7 +866,7 @@ public static partial class CutscenePort
                 cutFiles = CutsceneCast.CutFiles(mqb);
                 CutsceneCast.Remove(mqb, CutsceneCast.Unplayable(mqb, cast, stats.Cast));
             }
-            stats.Mqb.Add(ConvertMqb(mqb, ds3Name, erName, names, ds3Map, erMap, side.Catalog, CutsceneShape.ConformEnabled ? side.Shape : null));
+            stats.Mqb.Add(ConvertMqb(mqb, ds3Name, erName, names, ds3Map, erMap, side.Catalog, side.Shape));
             if (cast is not null)
                 CutsceneCast.RenameHkts(mqb);
             // Last: every event's own timeline and the one it hangs on, under their numbers after the edits above.
@@ -961,8 +957,6 @@ public static partial class CutscenePort
         var ported = new Dictionary<int, int>();
         infos = [];
         var lines = new List<string>();
-        if (!Enabled)
-            return (ported, "cutscenes: off (DARKSIGN_CUTSCENES=0, fallback map-cutscenes B); cutscene lines in the scripts are left out");
         var notes = new List<string>();
         var side = ReadEr(er, notes);
         lines.Add($"Elden Ring side: {side.Catalog.Files} cutscene timelines read, {side.Catalog.Kinds.Count} resource kinds; "
@@ -1001,45 +995,35 @@ public static partial class CutscenePort
             return modelSkeletons[model] = skeleton;
         };
         // DS3 effect ID -> the converted effect in the common binder (port-weapons converts the ones WantedEffects lists).
-        var effectTable = MapSfx.Enabled ? MapSfx.ReadTable(ctx) : [];
+        var effectTable = MapSfx.ReadTable(ctx);
         Func<int, int?> effects = id => effectTable.TryGetValue(id, out var to) ? to : null;
-        lines.Add(MapSfx.Enabled
-            ? $"effects: {effectTable.Count} converted DS3 effects known (Work\\{MapSfx.TableFile}); a cutscene effect that didn't convert is left out"
-            : "effects: off (DARKSIGN_MAP_SFX=0); cutscene effects are left out");
+        lines.Add($"effects: {effectTable.Count} converted DS3 effects known (Work\\{MapSfx.TableFile}); a cutscene effect that didn't convert is left out");
         // The cutscenes' sound (CutsceneSound): one bank per cutscene, built as each is converted.
         CutsceneSound? sounds = null;
-        if (CutsceneSound.Enabled)
+        try
         {
-            try
-            {
-                sounds = CutsceneSound.Create(ctx, ds3, er, notes);
-                if (sounds is not null)
-                    lines.Add($"sound: template bank {sounds.TemplateName}, {sounds.EventCount} DS3 sound events, {sounds.VoiceCount} DS3 talks with a voice");
-            }
-            catch (Exception ex) when (ex is not OutOfMemoryException)
-            {
-                lines.Add($"sound: FAILED to start ({ex.GetType().Name}: {ex.Message}); cutscenes stay silent");
-            }
+            sounds = CutsceneSound.Create(ctx, ds3, er, notes);
+            if (sounds is not null)
+                lines.Add($"sound: template bank {sounds.TemplateName}, {sounds.EventCount} DS3 sound events, {sounds.VoiceCount} DS3 talks with a voice");
         }
-        else
-            lines.Add("sound: off (DARKSIGN_CUTSCENE_SOUND=0, fallback map-cutscenes C)");
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            lines.Add($"sound: FAILED to start ({ex.GetType().Name}: {ex.Message}); cutscenes stay silent");
+        }
         var soundNumbers = SoundNumbers(ds3);
         // Subtitles (CutsceneSubtitles): DS3's words for each line, rows written with the CutsceneMapIdParam rows.
         Func<int, string?>? subtitleText = null;
         var subtitleLines = new List<CutsceneSubtitles.Line>();
         var silentVoices = new HashSet<int>();
         int subtitlesDropped = 0;
-        if (CutsceneSubtitles.Enabled)
-        {
-            ParamStore? ds3Params = null;
-            try { ds3Params = ctx.LoadParams(PorterGame.DarkSouls3); }
-            catch (Exception ex) when (ex is IOException or InvalidDataException) { notes.Add($"subtitles: DS3's params unreadable ({ex.Message}); talk numbers used as text numbers"); }
-            try { subtitleText = CutsceneSubtitles.LoadText(ds3, ds3Params); }
-            catch (Exception ex) when (ex is not OutOfMemoryException) { lines.Add($"subtitles: DS3's text unreadable ({ex.Message}); subtitles left out"); subtitleText = _ => null; }
-        }
+        ParamStore? ds3Params = null;
+        try { ds3Params = ctx.LoadParams(PorterGame.DarkSouls3); }
+        catch (Exception ex) when (ex is IOException or InvalidDataException) { notes.Add($"subtitles: DS3's params unreadable ({ex.Message}); talk numbers used as text numbers"); }
+        try { subtitleText = CutsceneSubtitles.LoadText(ds3, ds3Params); }
+        catch (Exception ex) when (ex is not OutOfMemoryException) { lines.Add($"subtitles: DS3's text unreadable ({ex.Message}); subtitles left out"); subtitleText = _ => null; }
         // What Elden Ring can load for a cutscene's cast (CutsceneCast): models in the mod or the game.
         EnemyPort.ChrMap? chrMap = null;
-        if (CutsceneCast.Enabled && File.Exists(ctx.ModPath(EnemyPort.ChrMap.FileName)))
+        if (File.Exists(ctx.ModPath(EnemyPort.ChrMap.FileName)))
             chrMap = EnemyPort.ChrMap.Parse(File.ReadAllLines(ctx.ModPath(EnemyPort.ChrMap.FileName)));
         var modelExists = new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase);
         bool ModelExists(string model)
@@ -1050,13 +1034,18 @@ public static partial class CutscenePort
             var archive = lower.StartsWith("aeg") ? ObjectPort.GeomBndPath(model) : $"/chr/{lower}.chrbnd.dcx";
             return modelExists[model] = er.Contains(archive) || File.Exists(ctx.ModPath(MapPorter.ModParts(archive)));
         }
-        lines.Add(CutsceneCast.Enabled
-            ? $"cast: parts resolved to Elden Ring models (map part names, {(chrMap is null ? "no enemy model list" : "the enemy port's model list")}); DS3 draw settings and unplayed cut files left out"
-            : "cast: off (DARKSIGN_CUTSCENE_CAST=0, fallback map-cutscenes E); DS3 part names, draw settings and cut files kept");
+        // The object port's assets (darksign_objects.tsv): DS3 object and map-piece models, placed or cutscene-only.
+        var assets = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        if (File.Exists(ctx.ModPath(ObjectPort.TableFile)))
+            foreach (var line in File.ReadAllLines(ctx.ModPath(ObjectPort.TableFile)).Where(l => !l.StartsWith('#')))
+                if (line.Split('\t') is { Length: >= 2 } cols)
+                    assets.TryAdd(cols[0], cols[1]);
+        lines.Add($"cast: parts resolved to Elden Ring models (map part names, {(chrMap is null ? "no enemy model list" : "the enemy port's model list")}, "
+                  + $"{assets.Count} object port assets); DS3 draw settings and unplayed cut files left out");
         foreach (var map in maps.Where(m => !m.Slot.Probe))
         {
             var rename = Renamer(map.PartNames);
-            var cast = CutsceneCast.Enabled ? CutsceneCast.Resolver(map.PartNames, m => chrMap?.ModelOf(m), ModelExists) : null;
+            var cast = CutsceneCast.Resolver(map.PartNames, m => chrMap?.ModelOf(m), ModelExists, m => assets.GetValueOrDefault(m));
             foreach (var name in CutscenesOf(ds3, map.Slot.Ds3))
             {
                 var ds3Id = IdOf(name)!.Value;
@@ -1241,7 +1230,7 @@ public static partial class CutscenePort
         Directory.CreateDirectory(outDir);
         int failures = 0;
         var soundNotes = new List<string>();
-        var sounds = CutsceneSound.Enabled ? CutsceneSound.Create(ctx, ds3, er, soundNotes) : null;
+        var sounds = CutsceneSound.Create(ctx, ds3, er, soundNotes);
         r.AppendLine(sounds is null ? $"  sound: none ({string.Join("; ", soundNotes)})"
             : $"  sound: template bank {sounds.TemplateName}, {sounds.EventCount} DS3 sound events, {sounds.VoiceCount} DS3 talks with a voice{string.Concat(soundNotes.Select(n => "; " + n))}");
         var soundNumbers = SoundNumbers(ds3);
