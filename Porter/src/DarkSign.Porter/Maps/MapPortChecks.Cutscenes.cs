@@ -268,6 +268,22 @@ public static partial class MapPortChecks
         Expect(resolve("c4750_0000") is null, "an Elden Ring model's name that isn't placed on the map is left out");
         Expect(CutsceneCast.ModelOf("AEG920_001_9000") == "AEG920_001" && CutsceneCast.ModelOf("c7120_9000") == "c7120" && CutsceneCast.ModelOf("o459020_0000") is null, "models of names");
 
+        // Cutscene-only models (High Wall's s30_00_0000, 2026-11-22 port log): objects no map places and map pieces of
+        // another map, both built as assets by the object port and found through its table.
+        Expect(CutsceneCast.CastModel("o007010_0002") == "o007010" && CutsceneCast.CastModel("m31_00_00_00_005810_1000") == "m31_00_00_00_005810"
+               && CutsceneCast.CastModel("h30_00_00_00_995000") is null && CutsceneCast.CastModel("c1100_0000") is null && CutsceneCast.CastModel("d0200_0000") is null,
+            "cast models: objects and map pieces only");
+        Expect(CutsceneCast.Ds3ModelPath("m31_00_00_00_005810") == "/map/m31_00_00_00/m31_00_00_00_005810.mapbnd.dcx"
+               && CutsceneCast.Ds3ModelPath("o007010") == "/obj/o007010.objbnd.dcx", "cast models: DS3 binders");
+        var castAssets = new Dictionary<string, string> { ["o007010"] = "AEG920_400", ["m31_00_00_00_005810"] = "AEG920_401" };
+        var models2 = new HashSet<string>(models, StringComparer.OrdinalIgnoreCase) { "AEG920_400", "AEG920_401" };
+        // Placed for the cutscene by the map port (Elden Ring casts only map parts, CutsceneCast.OnlyPlaced).
+        var placedForCutscene = new Dictionary<string, string>(partNames) { ["(cutscene part 1)"] = "AEG920_400_0002", ["(cutscene part 2)"] = "AEG920_401_1000" };
+        var resolve2 = CutsceneCast.Resolver(placedForCutscene, _ => null, models2.Contains, m => castAssets.GetValueOrDefault(m));
+        Expect(resolve2("o007010_0002") == "AEG920_400_0002", "a cutscene-only object takes its built asset");
+        Expect(resolve2("m31_00_00_00_005810_1000") == "AEG920_401_1000", "a cutscene's map piece takes its built asset");
+        Expect(resolve2("o007030_0000") is null, "a cast object with no asset is still left out");
+
         var mqb = new MQB { Version = MQB.MQBVersion.DarkSouls3, Name = "NEW_SCENE", Framerate = 30, ResourceDirectory = "", Resources = [], Cuts = [] };
         mqb.Resources.Add(new MQB.Resource { Name = "a0000.HKT", ParentIndex = -1, Unk48 = 266, Path = @"N:\FDP\data\Model\remo\scn\s45_00_0000\cut0010\hkx\a0000.HKT" }); // 0
         mqb.Resources.Add(new MQB.Resource { Name = "c6020_0000", ParentIndex = 0, Unk48 = 1 });                  // 1 kept, renamed
