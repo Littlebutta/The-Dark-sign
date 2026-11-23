@@ -61,7 +61,9 @@ public static class MapEvents
                 commonPort ??= port;
             var template = erTemplate(slot);
             port.MusicMap = slot.Ds3;
-            var script = port.Convert(ds3Script, template.Format, id => id is 0 or 50 || !slot.Ds3.OwnsDs3Id(id) ? id : slot.Ds3.MoveEntity((int)id, slot.Er));
+            // An event's ID is its run-once flag too, so it moves like that flag (MapFlags.MoveEvent): into the slot where
+            // the game keeps the block, otherwise to a saved number.
+            var script = port.Convert(ds3Script, template.Format, id => id is 0 or 50 || !slot.Ds3.OwnsDs3Id(id) ? id : port.Move(id, EventPort.Kind.Event));
             script.Compression = template.Compression;
             script.LinkedFileOffsets = [.. template.LinkedFileOffsets];
             script.StringData = (byte[])template.StringData.Clone();
@@ -106,7 +108,9 @@ public static class MapEvents
         }
         else
             summary.Add("common_func: DS3 common events not ported (no DS3 common_func.emevd or no map script)");
-        summary.Add($"flags: {flags.Flags.Count} DS3 global flags and {flags.Events.Count} common events have Elden Ring numbers");
+        summary.Add($"flags: {flags.Flags.Count} DS3 global flags and {flags.Events.Count} common events have Elden Ring numbers; "
+                    + $"{flags.LocalUsed} map flags and map event IDs of slots whose blocks the game doesn't keep are in saved ranges"
+                    + (flags.LocalOverflow > 0 ? $"; WARN {flags.LocalOverflow} found no room and stay in blocks the game doesn't keep" : ""));
         return new Result(scripts, erCommon, string.Join("\n  ", summary));
     }
 

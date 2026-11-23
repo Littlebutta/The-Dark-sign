@@ -207,6 +207,11 @@ public static partial class MapPortChecks
         Expect(probes.Contains(1039290999) && probes.Contains(1039292999) && probes.Contains(45000999) && probes.Contains(45009999)
                && probes.Contains(1030290999) && probes.Contains(1031290999) && probes.Contains(MapMusic.FirstFlag / 1000 * 1000 + 999), "probes: " + string.Join(",", probes));
         Expect(!probes.Contains(1039291999), "event IDs need no flag block");
+        Expect(!probes.Contains(45006999), "a slot block the port puts no flags in isn't probed");
+        var worldProbes = FlagAlloc.ProbeLines(new[] { "m11_70_00_00", "m11_72_00_00", "m19_70_00_00" }.Concat(Enumerable.Range(10, 6).Select(b => $"m38_{b}_00_00"))
+            .Select(MapId.Parse).Append(ErId), []).Where(l => !l.StartsWith('#')).ToList();
+        Expect(worldProbes.All(l => !l.StartsWith("11") && !l.StartsWith("19") && !l.StartsWith("38")) && worldProbes.Count < 64,
+            "world slots whose blocks the game doesn't keep add no probes: " + worldProbes.Count);
         Expect(!FlagAlloc.ProbeLines([ErId], [], slotFlags: false).Any(l => l.StartsWith("4500")), "map-flags B drops the slot blocks");
 
         var map = new FlagMap();

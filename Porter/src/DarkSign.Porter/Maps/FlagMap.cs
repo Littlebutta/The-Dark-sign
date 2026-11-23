@@ -20,6 +20,8 @@ public sealed class FlagMap
 
     private readonly Dictionary<long, long> _flags = new();
     private readonly Dictionary<long, long> _events = new();
+    /// <summary>The Elden Ring numbers <see cref="_flags"/> hands out (kept beside it: a lookup per new flag).</summary>
+    private readonly HashSet<long> _used = new();
     private int _nextFlag, _nextEvent;
 
     public IReadOnlyDictionary<long, long> Flags => _flags;
@@ -51,18 +53,41 @@ public sealed class FlagMap
     /// <summary>The Elden Ring flag for one of a ported map's own flags under map-flags B.</summary>
     public long LocalFlag(long ds3) => Take(ds3, LocalSlot, LocalCapacity, ref _nextLocal);
 
+    /// <summary>
+    /// <see cref="LocalFlag"/>, or null once the saved ranges are full (counted in <see cref="LocalOverflow"/>), so a
+    /// full range never stops an hour-long build: the caller keeps the slot's own number.
+    /// </summary>
+    public long? TryLocalFlag(long ds3)
+    {
+        if (_flags.TryGetValue(ds3, out var er))
+            return er;
+        try { return LocalFlag(ds3); }
+        catch (InvalidOperationException)
+        {
+            LocalOverflow++;
+            return null;
+        }
+    }
+
+    /// <summary>Map flags and event IDs that found no room in the saved ranges (they stay in the slot's own blocks).</summary>
+    public int LocalOverflow { get; private set; }
+
+    /// <summary>How many saved-range numbers ported maps' own flags and events took.</summary>
+    public int LocalUsed => _flags.Values.Count(v => v >= FirstTile && v < FirstTile + Tiles * TileStep && (v - FirstTile) % TileStep is >= 4000 and < 5000 or >= 7000 and < 10000);
+
     private long Take(long ds3, Func<int, long> slot, int capacity, ref int next)
     {
         if (ds3 <= 0)
             return ds3;
         if (_flags.TryGetValue(ds3, out var er))
             return er;
-        var used = _flags.Values.ToHashSet();
-        while (used.Contains(slot(next)))
+        while (next < capacity && _used.Contains(slot(next)))
             next++;
         if (next >= capacity)
             throw new InvalidOperationException($"no room left for DS3 flag {ds3} ({capacity} used)");
-        return _flags[ds3] = slot(next++);
+        var taken = slot(next++);
+        _used.Add(taken);
+        return _flags[ds3] = taken;
     }
 
     /// <summary>
@@ -84,7 +109,7 @@ public sealed class FlagMap
         int count = (int)(end - start + 1);
         if (count > PerTile)
             return -1;
-        var used = _flags.Values.ToHashSet();
+        var used = _used;
         // Start at the next free number whose block has room for the whole range.
         int n = next;
         while (n % PerTile + count > PerTile || Enumerable.Range(n, count).Any(i => used.Contains(slot(i))))
@@ -96,6 +121,7 @@ public sealed class FlagMap
             if (_flags.ContainsKey(start + i))
                 return -1;
             _flags[start + i] = slot(n + i);
+            _used.Add(slot(n + i));
         }
         if (n == next)
             next += count;
@@ -129,7 +155,10 @@ public sealed class FlagMap
             if (p.Length < 3 || line.StartsWith('#') || !long.TryParse(p[1], out var ds3) || !long.TryParse(p[2], out var er))
                 continue;
             if (p[0] == "flag")
+            {
                 map._flags[ds3] = er;
+                map._used.Add(er);
+            }
             else if (p[0] == "event")
                 map._events[ds3] = er;
         }

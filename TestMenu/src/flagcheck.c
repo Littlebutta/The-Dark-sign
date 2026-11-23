@@ -13,7 +13,9 @@
 #include "flagcheck.h"
 #include "game.h"
 
-#define MAX_PROBES 64
+/* Enough for every block the port can use (36 saved-range blocks, 9 global, the colosseums' 27, the run's): the
+   11-22 check stopped at 64 lines, all of them unused slot blocks, and never reached the ones in use. */
+#define MAX_PROBES 512
 
 static DWORD WINAPI run(LPVOID unused)
 {
@@ -30,11 +32,15 @@ static DWORD WINAPI run(LPVOID unused)
     }
     uint32_t probes[MAX_PROBES];
     char what[MAX_PROBES][96];
-    int count = 0;
+    int count = 0, skipped = 0;
     char line[256];
-    while (count < MAX_PROBES && fgets(line, sizeof line, f)) {
+    while (fgets(line, sizeof line, f)) {
         if (line[0] == '#' || line[0] < '0' || line[0] > '9')
             continue;
+        if (count == MAX_PROBES) {
+            skipped++;
+            continue;
+        }
         char *tab = strchr(line, '\t');
         probes[count] = (uint32_t)strtoul(line, NULL, 10);
         snprintf(what[count], sizeof what[count], "%s", tab ? tab + 1 : "");
@@ -43,6 +49,8 @@ static DWORD WINAPI run(LPVOID unused)
             count++;
     }
     fclose(f);
+    if (skipped)
+        dks_log("flagcheck: %d more blocks in darksign_flag_blocks.txt than the check holds (%d); those aren't checked", skipped, MAX_PROBES);
 
     /* Wait (up to an hour) for a loaded character: the flag manager only holds a save's blocks then. */
     for (int i = 0; i < 720 && dks_get_runes() < 0; i++)

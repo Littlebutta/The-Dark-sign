@@ -92,6 +92,8 @@ public sealed class EventPort
         public int SpEffectsMoved, SpEffectsKept;
         /// <summary>DS3 ActionButtonParam IDs pointed at their Elden Ring copies.</summary>
         public int ActionButtonsMoved;
+        /// <summary>Map events started in several slots whose run-once flags were placed together in the saved ranges.</summary>
+        public int EventSlotRanges;
         /// <summary>Event message and area name numbers pointed at DS3's own text (<see cref="MapText"/>).</summary>
         public int TextsMoved;
         /// <summary>Item lots, AI rows and items pointed at their Elden Ring rows (<see cref="Ds3Ids"/>), and ones left as DS3's.</summary>
@@ -462,6 +464,39 @@ public sealed class EventPort
                     }
                 }
         }
+        if (!common)
+            PlaceEventSlots(script);
+    }
+
+    /// <summary>
+    /// A map event started in several slots (InitializeEvent slot N) keeps one run-once flag per slot, ID + N. Where the
+    /// map's block isn't kept and the event moves to a saved number (<see cref="MapFlags.MoveEvent"/>), its slots' flags
+    /// get the numbers right after it, as one range, before anything else takes them.
+    /// </summary>
+    private void PlaceEventSlots(EMEVD script)
+    {
+        var lastSlot = new Dictionary<long, int>();
+        foreach (var ins in script.Events.SelectMany(e => e.Instructions))
+            if (ins.Bank == 2000 && ins.ID == 0 && ins.ArgData.Length >= 8)
+            {
+                int slot = BitConverter.ToInt32(ins.ArgData, 0);
+                long callee = BitConverter.ToUInt32(ins.ArgData, 4);
+                if (slot > 0 && slot < FlagMap.PerTile)
+                    lastSlot[callee] = Math.Max(slot, lastSlot.GetValueOrDefault(callee));
+            }
+        foreach (var (callee, last) in lastSlot.OrderBy(k => k.Key))
+        {
+            var owners = _maps.Where(m => m.Ds3.OwnsDs3Id(callee)).Take(1).ToList();
+            if (owners.Count == 0)
+                continue;
+            var (ds3, er) = owners[0];
+            if (callee < ds3.Ds3FlagBase || callee + last >= ds3.Ds3FlagBase + 10_000 || MapFlags.RangeKept(ds3, er, callee, callee + last))
+                continue;
+            if (_flags.LocalRange(callee, callee + last) < 0)
+                Stats.Notes.Add($"event {callee}: its {last + 1} slot flags couldn't be placed together (some already have numbers)");
+            else
+                Stats.EventSlotRanges++;
+        }
     }
 
     private bool OwnedByPortedMap(long id) => _maps.Any(m => m.Ds3.OwnsDs3Id(id));
@@ -482,7 +517,8 @@ public sealed class EventPort
             case Kind.Event:
                 foreach (var (ds3, er) in _maps)
                     if (ds3.OwnsDs3Id(value))
-                        return ds3.MoveEntity((int)value, er);
+                        // A map event's ID is also its run-once flag: it moves like the flag of the same number.
+                        return kind == Kind.Event ? MapFlags.MoveEvent(_flags, ds3, er, value) : ds3.MoveEntity((int)value, er);
                 if (kind == Kind.Event && _commonEvents.Contains(value))
                     return _flags.Event(value);
                 return value;
