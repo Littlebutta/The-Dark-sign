@@ -1045,7 +1045,8 @@ public static partial class CutscenePort
         foreach (var map in maps.Where(m => !m.Slot.Probe))
         {
             var rename = Renamer(map.PartNames);
-            var cast = CutsceneCast.Resolver(map.PartNames, m => chrMap?.ModelOf(m), ModelExists, m => assets.GetValueOrDefault(m));
+            var anchors = new SortedSet<string>(StringComparer.OrdinalIgnoreCase);
+            var cast = CutsceneCast.Resolver(map.PartNames, m => chrMap?.ModelOf(m), ModelExists, m => assets.GetValueOrDefault(m), anchors);
             foreach (var name in CutscenesOf(ds3, map.Slot.Ds3))
             {
                 var ds3Id = IdOf(name)!.Value;
@@ -1114,6 +1115,10 @@ public static partial class CutscenePort
                     lines.Add($"{name}: FAILED ({ex.GetType().Name}: {ex.Message}); its script lines are left out (a warp stays a warp)");
                 }
             }
+            // The asset models these cutscenes cast that the map places nothing of: one hidden part each, so the map
+            // loads the model and the cutscenes spawn their copies (CutsceneCast.PlaceAnchors).
+            if (anchors.Count > 0)
+                lines.Add(PlaceAnchors(ctx, map.Slot.Er, anchors));
         }
 
         // The map each cutscene is placed against. Without its row the cutscene isn't played; if the rows can't be
@@ -1148,6 +1153,24 @@ public static partial class CutscenePort
                       + string.Join(", ", total.Mqb.DroppedKinds.Select(k => $"{k.Key}:{k.Value}")));
         lines.AddRange(notes.Take(10).Select(n => "note: " + n));
         return (ported, $"cutscenes: {ported.Count} DS3 cutscenes converted\n  " + string.Join("\n  ", lines));
+    }
+
+    private static string PlaceAnchors(PorterContext ctx, MapId er, IEnumerable<string> models)
+    {
+        var path = ctx.ModPath(MapPorter.ModParts(MapPorter.MsbPath(er)));
+        try
+        {
+            var msb = MSBE.Read(DCX.Decompress(File.ReadAllBytes(path), out var compression));
+            var placed = CutsceneCast.PlaceAnchors(msb, models);
+            var bytes = msb.Write();
+            MSBE.Read(bytes);
+            File.WriteAllBytes(path, DCX.Compress(bytes, compression));
+            return $"{er} cutscene anchors: {placed.Count} hidden parts so the map loads models only its cutscenes cast ({string.Join(" ", placed.Take(12))}{(placed.Count > 12 ? " ..." : "")})";
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            return $"{er} cutscene anchors: WARN not placed ({ex.GetType().Name}: {ex.Message}); its cutscenes' copies of {string.Join(" ", models.Take(8))} may not show";
+        }
     }
 
     /// <summary>

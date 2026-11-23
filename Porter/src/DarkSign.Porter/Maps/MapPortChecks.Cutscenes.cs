@@ -16,7 +16,7 @@ public static partial class MapPortChecks
         yield return ("cutscenes: a timeline with no main audio gets DS3's p<ID*10+n> per cut; events of sounds the bank lacks are stripped", CutsceneSoundAutoAndStrip);
         yield return ("cutscenes: converted timelines take Elden Ring's shape: event fields, timeline Unk10 and full parameter lists", CutsceneShapeConform);
         yield return ("cutscenes: the F1 Cutscenes tab warps to the map in one event and plays the pending cutscene after the load in another; its list names the characters", CutsceneMenuEvents);
-        yield return ("cutscenes: the cast resolves to the parts the map places (Elden Ring casts map parts by name); parts it doesn't place, and DS3 draw settings, are left out", CutsceneCastResolve);
+        yield return ("cutscenes: the cast resolves to the parts the map places or copies of models it loads (as Elden Ring casts); cutscene-only assets get hidden anchors; DS3 draw settings are left out", CutsceneCastResolve);
         yield return ("cutscenes: each cut's Havok file becomes cutNNNN\\a0000.hkx at ID NNNN*10000; files no cut plays are left out", CutsceneCutFiles);
         yield return ("cutscenes: events keep their own and their parent's timeline numbers when timelines are taken out or added (1.0.460 Friede crash)", CutsceneTimelineRelink);
         yield return ("cutscenes: bones carry the Elden Ring part's name, effect events play converted DS3 effects, a solid model under the decal shader is drawn", CutsceneBonesAndEffects);
@@ -260,8 +260,9 @@ public static partial class MapPortChecks
         var models = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "c7120", "c7000", "c7010", "AEG920_001", "c4750" };
         var resolve = CutsceneCast.Resolver(partNames, m => m == "c6010" ? "c7010" : null, models.Contains);
         Expect(resolve("c6020_0000") == "c7120_9000", "a placed part takes its map name");
-        Expect(resolve("o459020_8000") is null, "an object part the map doesn't place is left out (Elden Ring casts map parts by name)");
-        Expect(resolve("c6010_0001") is null && resolve("c3000_0005") is null, "characters the map doesn't place are left out");
+        Expect(resolve("o459020_8000") == "AEG920_001_8000", "another instance of a placed model is a spawned copy (s19_00_0010 casts AEG228_215_0001, m19 places _1000+)");
+        Expect(resolve("c3000_0005") == "c7000_0005", "a copy of a placed character too (s14_00_0000 casts c2040_0000+, m14 places c2040_9000+)");
+        Expect(resolve("c6010_0001") is null, "a character whose model the map doesn't place is left out");
         Expect(resolve("c0000_0013") is null, "a c0000 part that isn't the player and isn't placed is left out");
         Expect(resolve("c3000_0001") == "c7000_9000", "a placed character keeps its map name");
         Expect(resolve("h45_00_00_00_008100") is null && resolve("o459200_8000") is null && resolve("c9999_0000") is null, "a collision, an unported object or character: no model");
@@ -284,6 +285,22 @@ public static partial class MapPortChecks
         Expect(resolve2("o007010_0002") == "AEG920_400_0002", "a cutscene-only object takes its built asset");
         Expect(resolve2("m31_00_00_00_005810_1000") == "AEG920_401_1000", "a cutscene's map piece takes its built asset");
         Expect(resolve2("o007030_0000") is null, "a cast object with no asset is still left out");
+        // Not placed anywhere on the map: the cast keeps its copy and the model gets a hidden anchor part.
+        var anchors = new SortedSet<string>(StringComparer.OrdinalIgnoreCase);
+        var resolve3 = CutsceneCast.Resolver(partNames, _ => null, models2.Contains, m => castAssets.GetValueOrDefault(m), anchors);
+        Expect(resolve3("o007010_0002") == "AEG920_400_0002" && resolve3("m31_00_00_00_005810_1000") == "AEG920_401_1000" && anchors.SetEquals(["AEG920_400", "AEG920_401"]),
+            "cutscene-only assets are kept and listed for anchors");
+        Expect(resolve3("c4750_0000") is null && anchors.Count == 2, "characters get no anchor");
+        var anchorMsb = new MSBE();
+        anchorMsb.Parts.Players.Add(new MSBE.Part.Player { Name = "c0000_9000", ModelName = "c0000", Position = new Vector3(5, 6, 7) });
+        anchorMsb.Parts.Assets.Add(new MSBE.Part.Asset { Name = "AEG920_401_9950", ModelName = "AEG920_999" });
+        var placedAnchors = CutsceneCast.PlaceAnchors(anchorMsb, anchors);
+        var a0 = anchorMsb.Parts.Assets.First(a => a.ModelName == "AEG920_400");
+        Expect(placedAnchors.SequenceEqual(["AEG920_400_9950", "AEG920_401_9951"]) && a0.Position == new Vector3(5, 6, 7) && a0.EntityID == 0
+               && a0.Unk1.DrawGroups.All(g => g == 0) && a0.Unk1.DisplayGroups.All(g => g == 0) && anchorMsb.Models.Assets.Count == 2
+               && anchorMsb.Models.Assets[0].SibPath == @"N:\GR\data\Asset\Environment\geometry\AEG920\AEG920_400\sib\AEG920_400.sib",
+            $"one hidden part per model at the player part, free instance numbers ({string.Join(" ", placedAnchors)})");
+        Expect(CutsceneCast.PlaceAnchors(anchorMsb, anchors).Count == 0, "a model the map already has a part of gets none");
 
         var mqb = new MQB { Version = MQB.MQBVersion.DarkSouls3, Name = "NEW_SCENE", Framerate = 30, ResourceDirectory = "", Resources = [], Cuts = [] };
         mqb.Resources.Add(new MQB.Resource { Name = "a0000.HKT", ParentIndex = -1, Unk48 = 266, Path = @"N:\FDP\data\Model\remo\scn\s45_00_0000\cut0010\hkx\a0000.HKT" }); // 0
