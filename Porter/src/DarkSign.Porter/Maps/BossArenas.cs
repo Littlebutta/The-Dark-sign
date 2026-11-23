@@ -120,7 +120,7 @@ public static class BossArenas
             var intro = introId > 0 ? msb.Regions.GetEntries().FirstOrDefault(r => r.EntityID == introId) : null;
             if (intro is not null && !Contains(intro, point))
             {
-                var (p, why) = ArrivalPoint(msb, intro, warpPoints, members);
+                var (p, why) = ArrivalPoint(msb, intro, warpPoints, members, approachBoss: false);
                 (point, from) = (p, $"intro {why}");
             }
             else if (intro is null)
@@ -300,14 +300,16 @@ public static class BossArenas
     /// <item>a point DS3's scripts warp the player to inside the area (FromSoftware's own landing spots, like Vordt's
     /// post-cutscene point; <paramref name="warpPoints"/>);</item>
     /// <item>the area's centre at the height of the boss's own placement when the boss stands in the area's height
-    /// range (+0.5 m): the boss stands on the arena floor. Without one, the area's bottom + up to 1.5 m.</item>
+    /// range (+0.5 m): the boss stands on the arena floor;</item>
+    /// <item>with the boss outside that range (the area is a strip at the way in), the boss's floor + 0.5 m,
+    /// <see cref="ApproachDistance"/> from the boss toward the area. Without a boss, the area's bottom + up to 1.5 m.</item>
     /// </list>
     /// DS3's boss area boxes start well below the floor: Oceiros' at y -51.98 under a floor at -50.0, so the old
     /// "bottom + 1.5 m" put the player 0.5 m inside the floor (1.0.383: stuck, and the fight never started because
     /// the player never entered the area). Friede's starts 1.4 m under hers.
     /// </summary>
     public static (Vector3 Point, string From) ArrivalPoint(MSB3 msb, MSB3.Region area, IReadOnlySet<int>? warpPoints = null,
-        IReadOnlySet<int>? boss = null)
+        IReadOnlySet<int>? boss = null, bool approachBoss = true)
     {
         var inside = msb.Parts.Players.FirstOrDefault(p => Contains(area, p.Position));
         if (inside is not null)
@@ -327,9 +329,32 @@ public static class BossArenas
                 .Select(e => (float?)e.Position.Y).Min();
         if (floor is { } y)
             return (new Vector3(area.Position.X, y + 0.5f, area.Position.Z), $"area {area.Name} at the boss's floor + 0.5 m");
+        // The boss stands outside the area's height range: the area is a strip at the arena's way in, not the arena
+        // (Iudex Gundyr's 4002800 starts 3.9 m above the floor he kneels on, 37 m from him). Its bottom + 1.5 m put the
+        // player in the cemetery passage behind walls, out of sight of a boss whose fight only starts at him (the
+        // sword pull, 2026-11-23). Land on the boss's floor instead, ApproachDistance from him toward the area.
+        // Only a boss near the area (the same arena: Gundyr 37 m off, 3.9 m below), and not for an intro area, which the
+        // player has to walk through (Vordt's gate box).
+        var placed = boss is null || !approachBoss ? null
+            : msb.Parts.Enemies.Where(e => boss.Contains(e.EntityID)).OrderBy(e => e.EntityID)
+                .FirstOrDefault(e => new Vector2(e.Position.X - area.Position.X, e.Position.Z - area.Position.Z).Length() <= ApproachReach
+                                     && Math.Abs(e.Position.Y - area.Position.Y) <= ApproachHeight);
+        if (placed is not null)
+        {
+            var toArea = new Vector3(area.Position.X - placed.Position.X, 0, area.Position.Z - placed.Position.Z);
+            var distance = toArea.Length();
+            var step = distance < 0.1f ? new Vector3(0, 0, ApproachDistance) : toArea / distance * Math.Min(ApproachDistance, distance);
+            return (placed.Position + step + new Vector3(0, 0.5f, 0), $"{Math.Min(ApproachDistance, distance):0.#} m from the boss toward area {area.Name}, on the boss's floor + 0.5 m");
+        }
         var lift = height > 0 ? Math.Min(height / 2, 1.5f) : 0.5f;
         return (area.Position + new Vector3(0, lift, 0), $"area {area.Name} + {lift:0.##} m");
     }
+
+    /// <summary>How far from a boss outside its area's height range the warp lands (<see cref="ArrivalPoint"/>).</summary>
+    public const float ApproachDistance = 8f;
+
+    /// <summary>How far (across, and up or down) a boss may stand from its area to be approached instead.</summary>
+    public const float ApproachReach = 60f, ApproachHeight = 20f;
 
     /// <summary>Whether a point lies in a DS3 region (box, cylinder or sphere; boxes and cylinders rest on their position).</summary>
     public static bool Contains(MSB3.Region area, Vector3 p)
