@@ -18,7 +18,6 @@ namespace DarkSign.Porter.Enemies;
 /// blend mode (modulate becomes alpha: Elden Ring's characters never modulate) and an alpha cut of at least 1, so
 /// fully clear texels are not drawn at all. A DS3 MTD that cuts by alpha (g_AlphaRef above 0 with blend 0:
 /// C[ARSN]_e_Decal's 128) is cut out whatever its name.</para>
-/// Fallback enemy-model O: DARKSIGN_ENEMY_BLEND=0 draws them solid, as up to 1.0.567.
 /// </summary>
 public static class ChrBlend
 {

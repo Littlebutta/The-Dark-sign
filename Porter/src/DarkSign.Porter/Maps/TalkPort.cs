@@ -803,7 +803,7 @@ public sealed class TalkPort
                         + (leftOut.Count > 0 ? $"; commands left out: {string.Join(", ", leftOut.Select(kv => $"{kv.Key} x{kv.Value}"))}" : "")
                         + (zeroed.Count > 0 ? $"; functions Elden Ring lacks read as 0: {string.Join(", ", zeroed.Select(kv => $"{kv.Key} x{kv.Value}"))}" : ""));
         lines.AddRange(WriteLines(ctx, ds3, er, regulation, ds3Params, needs, lineBank));
-        lines.Add(WriteShops(regulation, ds3Params, needs, items));
+        lines.Add(WriteShops(regulation, ds3Params, needs, items, moveFlag));
         regulation.Save(ctx.ModPath("regulation.bin"));
         Directory.CreateDirectory(ctx.WorkPath("reports"));
         File.WriteAllText(ctx.WorkPath("reports", ReportFile), report.ToString());
@@ -982,7 +982,7 @@ public sealed class TalkPort
 
     // ---- Shops ----
 
-    private static string WriteShops(ParamStore regulation, ParamStore? ds3Params, Needs needs, Func<int, int, int?> items)
+    private static string WriteShops(ParamStore regulation, ParamStore? ds3Params, Needs needs, Func<int, int, int?> items, Func<long, long>? moveFlag = null)
     {
         if (needs.Shops.Count == 0)
             return "people talk: no shops opened by the converted scripts";
@@ -993,7 +993,7 @@ public sealed class TalkPort
         // The row to copy: a plain goods row sold for runes.
         var template = shop.Rows.Where(r => PeopleArmour.Cell(r, "equipType") == 3 && PeopleArmour.Cell(r, "costType") <= 0 && PeopleArmour.Cell(r, "mtrlId") <= 0)
                            .OrderBy(r => r.ID).FirstOrDefault() ?? shop.Rows.OrderBy(r => r.ID).First();
-        int sold = 0, noItem = 0;
+        int sold = 0, noItem = 0, limited = 0;
         var done = new HashSet<int>();
         foreach (var (start, end) in needs.Shops)
             foreach (var source in ds3Shop.Rows.Where(r => r.ID >= start && r.ID <= end))
@@ -1013,16 +1013,31 @@ public sealed class TalkPort
                 PeopleArmour.SetCell(row, "equipType", type);
                 PeopleArmour.SetCell(row, "value", PeopleArmour.Cell(source, "value"));
                 PeopleArmour.SetCell(row, "mtrlId", -1);
-                PeopleArmour.SetCell(row, "sellQuantity", -1);
-                PeopleArmour.SetCell(row, "eventFlag_forStock", 0);
+                // DS3's stock: a ware sold a set number of times counts its sales in a flag (DS3 EventFlag), moved with
+                // the scripts' flags (ShopFlag). Up to 1.0.57x every ware sold without limit (one-of-a-kind rings,
+                // weapons and keys bought again and again). What a shop offers when (ashes handed over) is the talk
+                // script's choice of lineup range, which the converted script keeps.
+                int stockFlag = ShopFlag(PeopleArmour.Cell(source, "EventFlag"), moveFlag);
+                int quantity = PeopleArmour.Cell(source, "sellQuantity");
+                // Only one-of-a-kind wares: one flag says "sold". A count above one is kept in more than that flag in
+                // a way not checked yet, so those stay unlimited as before.
+                bool once = stockFlag > 0 && quantity == 1;
+                PeopleArmour.SetCell(row, "sellQuantity", once ? 1 : -1);
+                PeopleArmour.SetCell(row, "eventFlag_forStock", once ? stockFlag : 0);
                 PeopleArmour.SetCell(row, "eventFlag_forRelease", 0);
                 shop.Rows.Add(row);
                 sold++;
+                if (once)
+                    limited++;
             }
         shop.Rows.Sort((a, b) => a.ID.CompareTo(b.ID));
-        return $"people talk: {needs.Shops.Count} shops, {sold} wares on the shelves (ShopLineupParam {ShopBase}+: ported weapons and Elden Ring items of the same name), "
+        return $"people talk: {needs.Shops.Count} shops, {sold} wares on the shelves ({limited} sold once, as in DS3) (ShopLineupParam {ShopBase}+: ported weapons and Elden Ring items of the same name), "
                + $"{noItem} DS3 wares with no Elden Ring item yet left off";
     }
+
+    /// <summary>A DS3 shop flag as Elden Ring's (0: none). Without a flag mover (offline checks) there is none.</summary>
+    internal static int ShopFlag(int ds3Flag, Func<long, long>? moveFlag) =>
+        ds3Flag > 0 && moveFlag?.Invoke(ds3Flag) is var er and > 0 and < int.MaxValue ? (int)er : 0;
 
     /// <summary>Takes the talk scripts off every placed person (the scripts couldn't be written).</summary>
     public static int Revert(PorterContext ctx, IEnumerable<MapSlots.Slot> slots)

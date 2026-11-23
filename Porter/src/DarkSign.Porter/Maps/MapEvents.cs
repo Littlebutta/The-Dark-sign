@@ -321,7 +321,11 @@ public static class MapEvents
     /// The DS3 SpEffect IDs the ported maps' scripts (and DS3's common events) set, clear or check, for the enemy
     /// port to give rows, so <see cref="Port"/> can point the scripts at them.
     /// </summary>
-    public static SortedSet<int> ScriptSpEffects(PorterContext ctx, GameArchives ds3, IReadOnlyList<MapSlots.Slot> slots)
+    public static SortedSet<int> ScriptSpEffects(PorterContext ctx, GameArchives ds3, IReadOnlyList<MapSlots.Slot> slots) =>
+        ScriptIds(ctx, ds3, slots, EventPort.Kind.SpEffect);
+
+    /// <summary>The DS3 values of one kind (SpEffects, item lots...) the ported maps' scripts, DS3's common events and the boss kits use.</summary>
+    public static SortedSet<int> ScriptIds(PorterContext ctx, GameArchives ds3, IReadOnlyList<MapSlots.Slot> slots, EventPort.Kind kind)
     {
         var defs = Emedf.Parse(File.ReadAllText(ctx.Data.Emedf("ds3-common")));
         var (scripts, common) = ReadDs3(ds3, slots);
@@ -330,11 +334,11 @@ public static class MapEvents
             port.Learn(common, common: true);
         foreach (var s in scripts.Values)
             port.Learn(s);
-        var ids = port.ScriptSpEffects(common is null ? scripts.Values : scripts.Values.Append(common));
+        var ids = port.ScriptIds(common is null ? scripts.Values : scripts.Values.Append(common), kind);
         // Boss kits run in every map, so their SpEffects (Pontiff's 10636 and 10637) need rows whichever maps ported.
         var kits = new EMEVD(EMEVD.Game.DarkSouls3);
         kits.Events.AddRange(Kits(ctx, ds3).SelectMany(k => k.Events));
-        ids.UnionWith(port.ScriptSpEffects([kits]));
+        ids.UnionWith(port.ScriptIds([kits], kind));
         return ids;
     }
 

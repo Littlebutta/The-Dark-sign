@@ -28,7 +28,7 @@ public sealed class EventPort
     /// <remarks>MusicRegion: a value an event uses only as the region of DS3's music lines (the shared boss events'
     /// track regions). The lines that start the event pass the region's switch flag there instead
     /// (<see cref="MapMusic.Plan.SwitchFor"/>), and the event's music lines set that flag.</remarks>
-    public enum Kind { Other, Entity, Flag, FlagRangeStart, FlagRangeEnd, Event, Area, Block, PackedMap, Cutscene, SpEffect, WarpPoint, ActionButton, ObjAct, MusicRegion, Message, PlaceName }
+    public enum Kind { Other, Entity, Flag, FlagRangeStart, FlagRangeEnd, Event, Area, Block, PackedMap, Cutscene, SpEffect, WarpPoint, ActionButton, ObjAct, MusicRegion, Message, PlaceName, NpcName, ItemLot, Think, Behavior, Sfx, Camera }
 
     private readonly Emedf _ds3, _er;
     private readonly IReadOnlyList<(MapId Ds3, MapId Er)> _maps;
@@ -79,6 +79,9 @@ public sealed class EventPort
     /// </summary>
     public MapText.Used? Texts { get; init; }
 
+    /// <summary>Where item lots, AI rows and items move (<see cref="Ds3Ids"/>); null: the run's (<see cref="Ds3Ids.Current"/>).</summary>
+    public Ds3Ids? Ids { get; init; }
+
     // DS3's "IF Action Button" family (all start Result Condition Group, Target Entity Type, Target Entity ID, ...).
     private static readonly HashSet<int> ActionButtonIds = [5, 13, 18, 19];
 
@@ -91,6 +94,8 @@ public sealed class EventPort
         public int ActionButtonsMoved;
         /// <summary>Event message and area name numbers pointed at DS3's own text (<see cref="MapText"/>).</summary>
         public int TextsMoved;
+        /// <summary>Item lots, AI rows and items pointed at their Elden Ring rows (<see cref="Ds3Ids"/>), and ones left as DS3's.</summary>
+        public int IdsMoved, IdsKept;
         /// <summary>Cutscene lines that play a converted cutscene, and ones left out (or kept as their warp).</summary>
         public int CutscenesPlayed, CutscenesLeftOut;
         public SortedSet<long> CutscenesLeftOutIds { get; } = [];
@@ -104,6 +109,7 @@ public sealed class EventPort
             $"{Events - EventsDropped}/{Events} events, {Converted}/{Instructions} instructions converted, {NoOps} no-ops"
             + (ActionButtonsMoved == 0 ? "" : $", {ActionButtonsMoved} DS3 action button rows pointed at their copies")
             + (TextsMoved == 0 ? "" : $", {TextsMoved} messages and area names pointed at DS3's text")
+            + (IdsMoved + IdsKept == 0 ? "" : $", item lots, AI rows, items, behaviours, effects and cameras: {IdsMoved} to ported rows, {IdsKept} kept")
             + (SpEffectsMoved + SpEffectsKept == 0 ? "" : $", SpEffects: {SpEffectsMoved} to ported rows, {SpEffectsKept} kept"
                 + (SpEffectsKeptIds.Count == 0 ? "" : $" ({string.Join(" ", SpEffectsKeptIds.Take(12))})"))
             + (CutscenesPlayed + CutscenesLeftOut == 0 ? "" : $", cutscenes: {CutscenesPlayed} lines play a ported cutscene, {CutscenesLeftOut} left out"
@@ -239,6 +245,25 @@ public sealed class EventPort
             return Kind.Message;
         if (n == "area name message id")
             return Kind.PlaceName;
+        // A boss health bar's name (Display Boss Health Bar): an NpcName number (MapText.Name).
+        if (n == "name id")
+            return Kind.NpcName;
+        // Lots the scripts award (Award Item Lot, Spawn Snuggly Item, Initialize Crow Trade) and the NpcThinkParam row
+        // "Set Character AI ID" switches a character to: ported rows (Ds3Ids). Item IDs move with their type (MoveItem).
+        if (n == "item lot id")
+            return Kind.ItemLot;
+        if (n == "ai id")
+            return Kind.Think;
+        // The behaviour row "Shoot Bullet" and "Create Damaging Object/Asset" fire, by row ID (AttackParamPort.PortScriptRow).
+        if (n == "behavior id")
+            return Kind.Behavior;
+        // An effect the script spawns by ID ("Spawn Oneshot SFX", "Create Object-following SFX"): converted by
+        // port-weapons into the common binder with the map effects (MapSfx table, Ds3Ids.Sfx).
+        if (n == "sfx id")
+            return Kind.Sfx;
+        // "Change Camera": LockCamParam rows (Enemies.LockCams).
+        if (n is "normal camera id" or "locked camera id")
+            return Kind.Camera;
         // Where the player lands: Warp Player's "Initial Area (Entity) ID", the respawn point, and the point a
         // cutscene warps the player to (DS3's "Play Cutscene and Warp Player").
         // "IF ObjAct Event Flag" (5[02], both games) names the ObjAct map event by its entity ID (DS3's lever
@@ -489,6 +514,55 @@ public sealed class EventPort
                 return value;
             case Kind.ObjAct:
                 return ObjectPort.ObjActRow(value);
+            case Kind.ItemLot:
+                if ((Ids ?? Ds3Ids.Current)?.ItemLot(value) is { } lot)
+                {
+                    Stats.IdsMoved++;
+                    return lot;
+                }
+                Stats.IdsKept++;
+                return value;
+            case Kind.Think:
+                if ((Ids ?? Ds3Ids.Current)?.Think(value) is { } think)
+                {
+                    Stats.IdsMoved++;
+                    return think;
+                }
+                Stats.IdsKept++;
+                return value;
+            case Kind.Behavior:
+                if ((Ids ?? Ds3Ids.Current)?.Behavior(value) is { } behavior)
+                {
+                    Stats.IdsMoved++;
+                    return behavior;
+                }
+                Stats.IdsKept++;
+                return value;
+            case Kind.Sfx:
+                if ((Ids ?? Ds3Ids.Current)?.Sfx(value) is { } sfx)
+                {
+                    Stats.IdsMoved++;
+                    return sfx;
+                }
+                Stats.IdsKept++;
+                return value;
+            case Kind.Camera:
+                if ((Ids ?? Ds3Ids.Current)?.Camera(value) is { } camera)
+                {
+                    Stats.IdsMoved++;
+                    return camera;
+                }
+                Stats.IdsKept++;
+                return value;
+            case Kind.NpcName:
+                var name = MapText.Name(value);
+                if (name != value)
+                {
+                    Stats.TextsMoved++;
+                    if (value < int.MaxValue)
+                        Texts?.Names.Add((int)value);
+                }
+                return name;
             case Kind.Message:
             case Kind.PlaceName:
                 // DS3's text numbers name nothing (or other words) in Elden Ring: each names a copy of DS3's text.
@@ -788,7 +862,33 @@ public sealed class EventPort
                 value = PlaybackMethod(value);
             Emedf.Write(output, arg, value);
         }
+        MoveItem(ins, from, to, output, paramBytes);
         return (new EMEVD.Instruction(to.Bank, to.Id, output), map);
+    }
+
+    /// <summary>
+    /// The item of a line that names one by type and ID ("IF Player Has/Doesn't Have Item", "Remove Item From Player",
+    /// "Award Gesture Item"...): DS3's item numbers are other items in Elden Ring (the Coiled Sword 2137 is none, the
+    /// Homeward Bone 350 is the Holy Water Pot), so the ID becomes the Elden Ring item <see cref="Ds3Ids.Item"/> gives;
+    /// one it has none for stays. Only when both values are written in the line (not passed in).
+    /// </summary>
+    private void MoveItem(EMEVD.Instruction ins, Emedf.Instr from, Emedf.Instr to, byte[] output, IReadOnlySet<long> paramBytes)
+    {
+        var ids = Ids ?? Ds3Ids.Current;
+        if (ids is null)
+            return;
+        var fromType = from.Args.FirstOrDefault(a => a.Name.Equals("Item Type", StringComparison.OrdinalIgnoreCase));
+        var fromId = from.Args.FirstOrDefault(a => a.Name.Equals("Item ID", StringComparison.OrdinalIgnoreCase));
+        var toId = to.Args.FirstOrDefault(a => a.Name.Equals("Item ID", StringComparison.OrdinalIgnoreCase));
+        if (fromType is null || fromId is null || toId is null || paramBytes.Contains(fromType.Offset) || paramBytes.Contains(fromId.Offset))
+            return;
+        if (ids.Item(Emedf.Read(ins.ArgData, fromType), Emedf.Read(ins.ArgData, fromId)) is { } item)
+        {
+            Emedf.Write(output, toId, item);
+            Stats.IdsMoved++;
+        }
+        else
+            Stats.IdsKept++;
     }
 
     // The event and line being converted (for what the line's passed-in values hold).

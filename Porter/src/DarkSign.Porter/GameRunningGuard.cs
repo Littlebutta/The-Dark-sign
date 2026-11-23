@@ -18,14 +18,18 @@ public static class GameRunningGuard
     };
 
     /// <summary>The message to stop with when Elden Ring is running and the command writes the mod, else null.</summary>
-    public static string? Problem(string command)
+    /// <param name="root">The --root the command writes under, or null for the usual one. A game running from outside
+    /// it (a build into a scratch folder while the real game is open) holds none of the files the command writes;
+    /// a game whose path can't be read counts as inside.</param>
+    public static string? Problem(string command, string? root = null)
     {
         if (!WritingCommands.Contains(command))
             return null;
         int running;
         try
         {
-            running = Process.GetProcessesByName("eldenring").Length;
+            var games = Process.GetProcessesByName("eldenring");
+            running = root is null ? games.Length : games.Count(g => Inside(g, Path.GetFullPath(root)));
         }
         catch (Exception e) when (e is InvalidOperationException or PlatformNotSupportedException)
         {
@@ -35,5 +39,18 @@ public static class GameRunningGuard
             $"error: Elden Ring is running and keeps the mod files open, so {command} would leave TheDarkSign\\Mods\\ER " +
             "half-written (that is what made the DS3 weapon icons vanish). Close the game completely, check Task Manager " +
             "for eldenring.exe, then run it again.";
+    }
+
+    private static bool Inside(Process game, string root)
+    {
+        try
+        {
+            var exe = game.MainModule?.FileName;
+            return exe is null || Path.GetFullPath(exe).StartsWith(root.TrimEnd('\\', '/') + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase);
+        }
+        catch (Exception e) when (e is System.ComponentModel.Win32Exception or InvalidOperationException or NotSupportedException)
+        {
+            return true;
+        }
     }
 }
