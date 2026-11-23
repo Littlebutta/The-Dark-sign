@@ -40,78 +40,133 @@ public static class CutsceneWarpPoints
         public MSBE? Get(MapId id) => Loaded.TryGetValue(id, out var m) ? m : Loaded[id] = _load(id);
     }
 
-    public sealed record Counts(int Warps, int AlreadyRegion, int Added, int Reused, int Parameterized, int NoLayout, int NotFound, int NoFreeId)
+    public sealed record Counts(int Warps, int AlreadyRegion, int Added, int Reused, int Parameterized, int NoLayout, int NotFound, int NoFreeId, int ThroughCallers = 0)
     {
         public string Summary =>
             $"cutscene warp points: {Warps} cutscene warps; {AlreadyRegion} already at a region, {Added} regions added and {Reused} reused for warps to a part"
-            + (Parameterized > 0 ? $", {Parameterized} take their target from the caller (left as they are)" : "")
+            + (ThroughCallers > 0 ? $" ({ThroughCallers} of them passed in by the lines that start the event)" : "")
+            + (Parameterized > 0 ? $", WARN {Parameterized} take their target from a caller this can't follow (left as they are)" : "")
             + (NoLayout > 0 ? $", {NoLayout} name a map that wasn't ported" : "")
             + (NotFound > 0 ? $", WARN {NotFound} name an entity the map doesn't have" : "")
             + (NoFreeId > 0 ? $", WARN {NoFreeId} found no free entity ID" : "");
     }
 
-    /// <summary>Rewrites the 2002[11] warps of <paramref name="scripts"/>. Layouts that get a region are listed in
-    /// <see cref="Layouts.Changed"/>; returns the counts and whether any script changed.</summary>
+    private sealed record Start(EMEVD.Event Event, int Index);
+
+    /// <summary>Rewrites the 2002[11] warps of <paramref name="scripts"/>. A warp whose target or map comes from the
+    /// event's parameters is followed to every line that starts the event (2000[0]/[6]: event ID at byte 4, the
+    /// passed values from byte 8), and the target is rewritten there, when the event uses that value only for warps.
+    /// Layouts that get a region are listed in <see cref="Layouts.Changed"/>.</summary>
     public static Counts Fix(IEnumerable<EMEVD> scripts, Layouts layouts, List<string>? notes = null)
     {
-        int warps = 0, region = 0, added = 0, reused = 0, param = 0, noLayout = 0, notFound = 0, noId = 0;
+        var list = scripts.ToList();
+        int warps = 0, region = 0, added = 0, reused = 0, param = 0, noLayout = 0, notFound = 0, noId = 0, callers = 0;
         // (map, part entity) -> new region entity, so every cutscene warping to one part shares one region.
         var made = new Dictionary<(MapId, uint), uint>();
-        foreach (var script in scripts)
-            foreach (var e in script.Events)
-                for (int i = 0; i < e.Instructions.Count; i++)
+        var starts = new Dictionary<long, List<Start>>();
+        foreach (var ev in list.SelectMany(x => x.Events))
+            for (int k = 0; k < ev.Instructions.Count; k++)
+                if (ev.Instructions[k] is { Bank: 2000, ID: 0 or 6 } st && st.ArgData.Length >= 8)
                 {
-                    var ins = e.Instructions[i];
-                    if (ins.Bank != Bank || ins.ID != Id || ins.ArgData.Length < MapOffset + 4)
-                        continue;
-                    warps++;
-                    if (e.Parameters.Any(p => p.InstructionIndex == i && p.TargetStartByte < MapOffset + 4 && p.TargetStartByte + p.ByteCount > EntityOffset))
+                    long id = BitConverter.ToUInt32(st.ArgData, 4);
+                    (starts.TryGetValue(id, out var l) ? l : starts[id] = []).Add(new Start(ev, k));
+                }
+
+        // The region to warp to instead of (map, entity), or null when nothing changes; counts the outcome.
+        uint? Resolve(MapId map, uint entity, long eventId)
+        {
+            var msb = layouts.Get(map);
+            if (msb is null)
+            {
+                noLayout++;
+                return null;
+            }
+            if (msb.Regions.GetEntries().Any(r => r.EntityID == entity))
+            {
+                region++;
+                return null;
+            }
+            if (made.TryGetValue((map, entity), out var target))
+            {
+                reused++;
+                return target;
+            }
+            var part = msb.Parts.GetEntries().FirstOrDefault(p => p.EntityID == entity && entity != 0);
+            if (part is null)
+            {
+                notFound++;
+                notes?.Add($"{map} event {eventId}: cutscene warp to entity {entity}, which the map doesn't have");
+                return null;
+            }
+            if (FreeId(msb, map) is not { } free)
+            {
+                noId++;
+                return null;
+            }
+            AddRegion(msb, part, free);
+            layouts.Changed.Add(map);
+            made[(map, entity)] = free;
+            added++;
+            notes?.Add($"{map}: warp point {free} at {part.Name} (was entity {entity})");
+            return free;
+        }
+
+        foreach (var e in list.SelectMany(x => x.Events))
+            for (int i = 0; i < e.Instructions.Count; i++)
+            {
+                var ins = e.Instructions[i];
+                if (ins.Bank != Bank || ins.ID != Id || ins.ArgData.Length < MapOffset + 4)
+                    continue;
+                warps++;
+                var ps = e.Parameters.Where(p => p.InstructionIndex == i && p.TargetStartByte < MapOffset + 4 && p.TargetStartByte + p.ByteCount > EntityOffset).ToList();
+                if (ps.Count == 0)
+                {
+                    uint entity = BitConverter.ToUInt32(ins.ArgData, EntityOffset);
+                    var map = FromPacked(BitConverter.ToInt32(ins.ArgData, MapOffset));
+                    if (Resolve(map, entity, e.ID) is { } target)
+                    {
+                        var args = (byte[])ins.ArgData.Clone();
+                        BitConverter.GetBytes(target).CopyTo(args, EntityOffset);
+                        e.Instructions[i] = new EMEVD.Instruction(ins.Bank, ins.ID, args);
+                    }
+                    continue;
+                }
+                // Parameterized: only whole 4-byte values at the two offsets, the target passed in and used for warps only.
+                var entityParam = ps.FirstOrDefault(p => p.TargetStartByte == EntityOffset && p.ByteCount == 4);
+                var mapParam = ps.FirstOrDefault(p => p.TargetStartByte == MapOffset && p.ByteCount == 4);
+                bool shapeOk = ps.All(p => p == entityParam || p == mapParam) && entityParam is not null;
+                bool warpsOnly = entityParam is not null && e.Parameters.Where(p => p.SourceStartByte == entityParam.SourceStartByte)
+                    .All(p => e.Instructions[(int)p.InstructionIndex] is { Bank: 2002, ID: 11 } or { Bank: 2003, ID: 14 });
+                if (!shapeOk || !warpsOnly || !starts.TryGetValue(e.ID, out var callerList))
+                {
+                    param++;
+                    continue;
+                }
+                foreach (var start in callerList)
+                {
+                    var st = start.Event.Instructions[start.Index];
+                    int at = 8 + (int)entityParam!.SourceStartByte;
+                    int mapAt = mapParam is null ? -1 : 8 + (int)mapParam.SourceStartByte;
+                    // A start that passes its own parameter on is followed no further.
+                    bool passedOn = start.Event.Parameters.Any(p => p.InstructionIndex == start.Index
+                        && (p.TargetStartByte == at || p.TargetStartByte == mapAt));
+                    if (passedOn || at + 4 > st.ArgData.Length || mapAt + 4 > st.ArgData.Length)
                     {
                         param++;
                         continue;
                     }
-                    uint entity = BitConverter.ToUInt32(ins.ArgData, EntityOffset);
-                    var map = FromPacked(BitConverter.ToInt32(ins.ArgData, MapOffset));
-                    var msb = layouts.Get(map);
-                    if (msb is null)
+                    uint entity = BitConverter.ToUInt32(st.ArgData, at);
+                    var map = FromPacked(mapAt >= 0 ? BitConverter.ToInt32(st.ArgData, mapAt) : BitConverter.ToInt32(ins.ArgData, MapOffset));
+                    if (Resolve(map, entity, e.ID) is { } target)
                     {
-                        noLayout++;
-                        continue;
+                        var args = (byte[])st.ArgData.Clone();
+                        BitConverter.GetBytes(target).CopyTo(args, at);
+                        start.Event.Instructions[start.Index] = new EMEVD.Instruction(st.Bank, st.ID, args);
+                        callers++;
                     }
-                    if (msb.Regions.GetEntries().Any(r => r.EntityID == entity))
-                    {
-                        region++;
-                        continue;
-                    }
-                    if (!made.TryGetValue((map, entity), out var target))
-                    {
-                        var part = msb.Parts.GetEntries().FirstOrDefault(p => p.EntityID == entity && entity != 0);
-                        if (part is null)
-                        {
-                            notFound++;
-                            notes?.Add($"{map} event {e.ID}: cutscene warp to entity {entity}, which the map doesn't have");
-                            continue;
-                        }
-                        var free = FreeId(msb, map);
-                        if (free is null)
-                        {
-                            noId++;
-                            continue;
-                        }
-                        target = free.Value;
-                        AddRegion(msb, part, target);
-                        layouts.Changed.Add(map);
-                        made[(map, entity)] = target;
-                        added++;
-                        notes?.Add($"{map}: warp point {target} at {part.Name} (was entity {entity})");
-                    }
-                    else
-                        reused++;
-                    var args = (byte[])ins.ArgData.Clone();
-                    BitConverter.GetBytes(target).CopyTo(args, EntityOffset);
-                    e.Instructions[i] = new EMEVD.Instruction(ins.Bank, ins.ID, args);
                 }
-        return new Counts(warps, region, added, reused, param, noLayout, notFound, noId);
+            }
+        return new Counts(warps, region, added, reused, param, noLayout, notFound, noId, callers);
     }
 
     /// <summary>A free entity ID in the map's own range, or null.</summary>
@@ -198,6 +253,6 @@ public static class CutsceneWarpPoints
             if (!bytes.AsSpan().SequenceEqual(before[i]))
                 File.WriteAllBytes(scripts[i].Path, DCX.Compress(bytes, scripts[i].Compression));
         }
-        return counts.Summary + string.Concat(notes.Take(12).Select(n => "\n  " + n));
+        return counts.Summary + string.Concat(notes.Take(40).Select(n => "\n  " + n));
     }
 }

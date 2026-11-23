@@ -682,15 +682,29 @@ public static partial class MapPortChecks
         param.Instructions.Add(Warp(45010040, 0));
         param.Parameters.Add(new EMEVD.Parameter(0, 8, 0, 4));
         script.Events.Add(param);
+        // A common event that takes its warp target (and map) from the line that starts it; one start passes the part.
+        var common = new EMEVD();
+        var passed = new EMEVD.Event(90005800, EMEVD.Event.RestBehaviorType.Default);
+        passed.Instructions.Add(Warp(45010050, 0));
+        passed.Instructions.Add(RunEvents.Make(2003, 14, (byte)45, (byte)1, (byte)0, (byte)0, 0u, 0));
+        passed.Parameters.Add(new EMEVD.Parameter(0, 8, 4, 4));
+        passed.Parameters.Add(new EMEVD.Parameter(0, 12, 8, 4));
+        passed.Parameters.Add(new EMEVD.Parameter(1, 4, 4, 4));
+        common.Events.Add(passed);
+        var ctor = new EMEVD.Event(0, EMEVD.Event.RestBehaviorType.Default);
+        ctor.Instructions.Add(RunEvents.Make(2000, 6, 0, 90005800u, 45015000u, 45012810u, 45010000));
+        script.Events.Insert(0, ctor);
         var layouts = new CutsceneWarpPoints.Layouts(id => id == map ? msb : null);
-        var counts = CutsceneWarpPoints.Fix([script], layouts);
+        var counts = CutsceneWarpPoints.Fix([script, common], layouts);
         uint Target(EMEVD.Event ev, int i) => BitConverter.ToUInt32(ev.Instructions[i].ArgData, 8);
         var added = msb.Regions.Others.Where(r => r.Name.StartsWith("[DS3] cutscene warp point")).ToList();
-        Expect(counts is { Warps: 5, Added: 1, Reused: 1, AlreadyRegion: 1, NotFound: 1, Parameterized: 1 }, counts.ToString());
+        Expect(counts is { Warps: 6, Added: 1, Reused: 2, AlreadyRegion: 1, NotFound: 1, Parameterized: 1, ThroughCallers: 1 }, counts.ToString());
+        Expect(BitConverter.ToUInt32(ctor.Instructions[0].ArgData, 12) == 45012951 && BitConverter.ToUInt32(ctor.Instructions[0].ArgData, 8) == 45015000,
+            "a target passed in by the starting line is rewritten there (the event uses it only for warps)");
         Expect(added.Count == 1 && added[0].EntityID == 45012951 && added[0].Position == new Vector3(1, 2, 3) && added[0].Rotation == new Vector3(0, 90, 0)
                && added[0].Shape is MSB.Shape.Sphere { Radius: 1 } && added[0].RegionID == 8 && added[0].MapID == -1 && added[0].UnkS0C == -1,
             "one Other sphere (radius 1) at the part, first free ID in the map's range (2950 taken)");
-        Expect(Target(e, 0) == 45012951 && Target(e, 1) == 45012951 && Target(e, 2) == 45012800 && Target(param, 0) == 0, "warps to the part now name the region; others unchanged");
+        Expect(Target(script.Events[1], 0) == 45012951 && Target(script.Events[1], 1) == 45012951 && Target(script.Events[1], 2) == 45012800 && Target(param, 0) == 0, "warps to the part now name the region; others unchanged");
         Expect(msb.Parts.Players[0].EntityID == 45012810 && layouts.Changed.SetEquals([map]), "the part keeps its ID");
         Expect(CutsceneWarpPoints.FromPacked(19700000) == new MapId(19, 70, 0, 0), "packed map ID");
     }
