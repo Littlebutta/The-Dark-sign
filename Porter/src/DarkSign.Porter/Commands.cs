@@ -91,6 +91,22 @@ public static class Commands
     }
 
     /// <summary>
+    /// `cutscene-warp-points`: gives the cutscene warps of an already built mod Elden Ring style warp regions
+    /// (<see cref="Maps.CutsceneWarpPoints"/>), for testing without a rebuild. Port runs do this as a step.
+    /// </summary>
+    public static int CutsceneWarpPoints(PorterContext ctx)
+    {
+        // Opening Elden Ring's archives puts the game's oo2core on the search path (KRAK files need it).
+        using var er = ctx.OpenArchives(PorterGame.EldenRing);
+        var events = ctx.ModPath("event");
+        var maps = Directory.Exists(events)
+            ? Directory.EnumerateFiles(events, "m*.emevd.dcx").Select(f => Maps.MapId.Parse(Path.GetFileName(f)[..12])).ToList()
+            : [];
+        Console.WriteLine(Maps.CutsceneWarpPoints.Apply(ctx, maps));
+        return 0;
+    }
+
+    /// <summary>
     /// Lists what DS3 has to port (weapons, armor, rings, spells, enemies) and what Elden Ring already uses,
     /// and writes it to Work\reports\inventory.json.
     /// </summary>

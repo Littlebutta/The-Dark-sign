@@ -458,6 +458,9 @@ public static class MapPorter
             Step(report, "run events", () => AddRunEvents(ctx, ds3, er, startMap.Slot.Er, (uint)startMap.StartEntity, warps, arenas, menuCutscenes));
         else
             report.AppendLine("run events: not added (Firelink Shrine / Cemetery of Ash was not ported)");
+        // Elden Ring warps the player to a region after a cutscene; DS3's scripts (and the F1 events) name a player part.
+        if (ported.Count > 0)
+            Step(report, "cutscene warp points", () => CutsceneWarpPoints.Apply(ctx, ported.Select(p => p.Slot.Er).Distinct()));
 
         // Every ported map side by side, so a step that works on one map and loses pieces on another is seen (RULE 4).
         // In the maps' port order, whichever finished first.
