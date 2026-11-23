@@ -85,6 +85,24 @@ public static partial class MapPortChecks
                && EventPort.KindOf("Message Entity ID") == EventPort.Kind.Entity && EventPort.KindOf("Subarea Name Popup Message ID") == EventPort.Kind.Other,
             "only a plain Message ID is event text");
 
+        // A boss health bar's name is an NpcName number: DS3's (Iudex Gundyr 905110) names nothing in Elden Ring.
+        var names = new MapText.Used();
+        var namePort = TextPort(MapText.Method.All, names);
+        Expect(EventPort.KindOf("Name ID") == EventPort.Kind.NpcName && namePort.Move(905110, EventPort.Kind.NpcName) == MapText.Base + 905110
+               && names.Names.SetEquals([905110]) && namePort.Move(-1, EventPort.Kind.NpcName) == -1, "boss bar names move to DS3's own names");
+        Expect(TextPort(MapText.Method.Off).Move(905110, EventPort.Kind.NpcName) == 905110, "DARKSIGN_MAP_TEXT=0 keeps DS3's name numbers");
+
+        // Item lots the scripts award and AI rows they switch to move to the ported rows (Ds3Ids); unknown ones stay.
+        var chrMap = EnemyPort.ChrMap.Parse(["think\t124000\tc7130\t71309000\tPus of Man"]);
+        var idPort = new EventPort(Emedf.Parse(Ds3TextDefs), Emedf.Parse(ErTextDefs), [(Ds3Id, ErId)], new FlagMap())
+        {
+            Ids = new Ds3Ids(new Dictionary<long, long> { [4000505] = 900_000_100 }, chrMap, (type, id) => type == 3 && id == 2137 ? 8_000_100 : null),
+        };
+        Expect(EventPort.KindOf("Item Lot ID") == EventPort.Kind.ItemLot && EventPort.KindOf("AI ID") == EventPort.Kind.Think, "item lot and AI arguments are known");
+        Expect(idPort.Move(4000505, EventPort.Kind.ItemLot) == 900_000_100 && idPort.Move(4700, EventPort.Kind.ItemLot) == 4700, "a ported script lot moves, an unported one stays");
+        Expect(idPort.Move(124000, EventPort.Kind.Think) == 71309000 && idPort.Move(110070, EventPort.Kind.Think) == 110070, "a ported AI row moves, an unported one stays");
+        Expect(idPort.Ids!.Item(3, 2137) == 8_000_100 && idPort.Ids.Item(3, 350) is null && idPort.Ids.Item(9, 2137) is null, "items by type");
+
         // Off: DS3's numbers stay, as before.
         var off = TextPort(MapText.Method.Off);
         off.Learn(script);

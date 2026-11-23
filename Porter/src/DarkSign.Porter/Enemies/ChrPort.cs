@@ -432,6 +432,8 @@ public static partial class ChrPort
         public List<string> Notes = [];
         /// <summary>What the params step adds once port-weapons has written regulation.bin.</summary>
         public List<(Plan Plan, Dictionary<int, int> NpcRows)> Params = [];
+        /// <summary>DS3 item lots the ported maps' scripts award, given ItemLotParam_map rows with the drops (DropPort.PortScriptLots).</summary>
+        public IReadOnlyCollection<int> ScriptLots = [];
         public List<ChrMaterial> Materials = [];
         /// <summary>Both games' item names, read while DS3's archives are open, for the drops (<see cref="DropPort"/>).</summary>
         public DropPort.Names? ItemNames;
@@ -870,7 +872,10 @@ public static partial class ChrPort
         string dropSummary = "";
         if (drops is not null)
         {
-            dropSummary = "\n  " + drops.Finish(ctx);
+            if (result.ScriptLots.Count > 0)
+                try { dropSummary = "\n  " + drops.PortScriptLots(ctx, result.ScriptLots); }
+                catch (Exception ex) when (ex is not OutOfMemoryException) { dropSummary = $"\n  script item lots: FAILED ({Describe(ex)}); the scripts' awards give nothing"; }
+            dropSummary += "\n  " + drops.Finish(ctx);
             result.Notes.AddRange(drops.Notes);
         }
         if (templateFx is not null)
@@ -2053,6 +2058,9 @@ public static partial class ChrPort
             // DS3's damage taken, not the template's weaknesses (Pus of Man took the Giant Beast Skeleton's).
             if (plan.Stage == Stage.All)
                 SetDamageRates(plan.Ds3.Chr, row);
+            // DS3's own stats where both games' NpcParams have the field (CopyDs3Stats).
+            if (plan.Stage == Stage.All && ds3Npc?[ds3Id] is { } statSource)
+                CopyDs3Stats(statSource, row);
             // DS3's body on a template's row: the body capsule is DS3's size (Ariandel's wolf kept the Elden Ring wolf's).
             if (newModel && plan.Stage != Stage.Clone && ds3Npc?[ds3Id] is { } sizeSource)
                 CopyBodySize(sizeSource, row);
@@ -2105,6 +2113,49 @@ public static partial class ChrPort
         }
         npc.Rows.Sort((a, b) => a.ID.CompareTo(b.ID));
         return added;
+    }
+
+    /// <summary>Off (DARKSIGN_ENEMY_DS3_STATS=0, launcher fallback enemy-model Q): poise, status resistances, turn speed
+    /// and name come from the Elden Ring template, as up to 1.0.57x.</summary>
+    public static bool Ds3StatsEnabled => Environment.GetEnvironmentVariable("DARKSIGN_ENEMY_DS3_STATS") != "0";
+
+    /// <summary>
+    /// DS3 NpcParam fields copied onto the ported row: the same meaning in both games, renamed where Elden Ring renamed
+    /// them (Paramdex defs, checked on both games' NpcParam dumps 2026-11-22). Up to 1.0.57x a ported enemy took these
+    /// from its Elden Ring template: a DS3 boss staggered like the Elden Ring enemy it was built on, resisted status as
+    /// that enemy did and turned at its speed. Elden Ring's sleep and madness, which DS3 lacks, stay the template's;
+    /// DS3's toxic is Elden Ring's poison guard where DS3's toxic resistance is higher.
+    /// </summary>
+    internal static readonly (string Ds3, string Er)[] Ds3StatFields =
+    [
+        ("superArmorDurability", "superArmorDurability"), ("SuperArmorRecoverCorrection", "superArmorRecoverCorrection"),
+        ("SuperArmorBrakeKnockbackDist", "superArmorBrakeKnockbackDist"),
+        ("resistPoison", "resist_poison"), ("resistBlood", "resist_blood"), ("resistCurse", "resist_curse"), ("resistFrost", "resist_freeze"),
+        ("poisonGuardResist", "poisonGuardResist"), ("bloodGuardResist", "bloodGuardResist"), ("curseGuardResist", "curseGuardResist"),
+        ("turnVellocity", "turnVellocity"),
+    ];
+
+    /// <summary>Copies <see cref="Ds3StatFields"/> and the name (NameId -> nameId at MapText.Name) from the DS3 row.</summary>
+    public static int CopyDs3Stats(PARAM.Row ds3, PARAM.Row er)
+    {
+        if (!Ds3StatsEnabled)
+            return 0;
+        int copied = 0;
+        foreach (var (from, to) in Ds3StatFields)
+            if (Cell(ds3, from) is { Value: not null and not byte[] } source && Cell(er, to) is { } target)
+            {
+                Set(target, source.Value);
+                copied++;
+            }
+        if (Cell(ds3, "toxicGuardResist") is { Value: not null and not byte[] } toxic && Cell(er, "poisonGuardResist") is { } poison
+            && Convert.ToDouble(toxic.Value) > Convert.ToDouble(poison.Value))
+            Set(poison, toxic.Value);
+        if (Cell(ds3, "NameId") is { Value: not null and not byte[] } name && Convert.ToInt64(name.Value) > 0 && Cell(er, "nameId") is { } erName)
+        {
+            Set(erName, Maps.MapText.Name(Convert.ToInt64(name.Value)));
+            copied++;
+        }
+        return copied;
     }
 
     /// <summary>

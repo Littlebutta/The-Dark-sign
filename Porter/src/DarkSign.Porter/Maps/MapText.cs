@@ -48,6 +48,8 @@ public static class MapText
     {
         public SortedSet<int> Messages { get; } = [];
         public SortedSet<int> Places { get; } = [];
+        /// <summary>Boss health bar names (<see cref="EventPort.Kind.NpcName"/>) and ported characters' NpcParam nameId.</summary>
+        public SortedSet<int> Names { get; } = [];
     }
 
     private static bool Movable(long ds3Id) => ds3Id > 0 && ds3Id < Base;
@@ -56,6 +58,16 @@ public static class MapText
     public static long Message(long ds3Id, Method mode) => mode != Method.Off && Movable(ds3Id) ? Base + ds3Id : ds3Id;
 
     public static long Message(long ds3Id) => Message(ds3Id, Mode);
+
+    /// <summary>
+    /// Elden Ring's NpcName number of a DS3 character name: a boss health bar's "Name ID" and an NpcParam row's
+    /// nameId. Up to 1.0.57x the scripts kept DS3's numbers (Iudex Gundyr 905110, Sister Friede 906020), under which
+    /// Elden Ring's NpcName has no text, so all 33 DS3 boss bars showed no name (census of the ported maps' scripts,
+    /// 2026-11-22). Off with DARKSIGN_MAP_TEXT=0.
+    /// </summary>
+    public static long Name(long ds3Id, Method mode) => mode != Method.Off && Movable(ds3Id) ? Base + ds3Id : ds3Id;
+
+    public static long Name(long ds3Id) => Name(ds3Id, Mode);
 
     /// <summary>
     /// Elden Ring's PlaceName number of a DS3 area name. A negative number other than -1 keeps its sign (the older
@@ -129,6 +141,8 @@ public static class MapText
     private static readonly string[] Ds3Items = ["/msg/engus/item_dlc2.msgbnd.dcx", "/msg/engus/item_dlc1.msgbnd.dcx", "/msg/engus/item.msgbnd.dcx"];
     // DS3 names its text files in Japanese: イベントテキスト = event text, 地名 = place name.
     private static readonly string[] EventNames = ["イベントテキスト", "EventText"], PlaceNames = ["地名", "PlaceName"];
+    // NPC名 = NPC name (bosses and people).
+    private static readonly string[] NpcNames = ["NPC名", "NpcName"];
     public const string ErItems = "/msg/engus/item_dlc02.msgbnd.dcx";
 
     /// <summary>
@@ -178,6 +192,7 @@ public static class MapText
             mode == Method.NoPlaces
                 ? "map text: area names off (DARKSIGN_MAP_TEXT=noplaces); no area name shows on entering a DS3 area"
                 : WriteOne(ctx, ds3, er, ErItems, "PlaceName", Ds3Items, PlaceNames, used.Places, "area names"),
+            WriteOne(ctx, ds3, er, ErItems, "NpcName", Ds3Items, NpcNames, used.Names, "boss and character names"),
         };
         return string.Join(Environment.NewLine, lines);
     }

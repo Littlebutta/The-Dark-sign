@@ -878,6 +878,8 @@ public static class Fallbacks
                 { PorterEnv = Env("DARKSIGN_ENEMY_BLEND", "0") },
             new("P", "The template's flinch blending", "As A, but ported animations keep the blend hint of the Elden Ring file they replace (DARKSIGN_ANIM_BLEND_HINT=template), as up to 1.0.567: DS3's additive flinches are then applied in parent space, which bends limbs whose rest is turned (the Dancer's knees) the wrong way while she is hit. Use when ported enemies jerk, twist or T-pose when hit with A.")
                 { PorterEnv = Env("DARKSIGN_ANIM_BLEND_HINT", "template") },
+            new("Q", "The template's poise, resistances and name", "As A, but a ported enemy keeps the poise, status resistances, turn speed and name of the Elden Ring enemy it is built on (DARKSIGN_ENEMY_DS3_STATS=0), as up to 1.0.57x. Use when ported enemies stagger, resist status or turn very differently from DS3 with A.")
+                { PorterEnv = Env("DARKSIGN_ENEMY_DS3_STATS", "0") },
         ]),
         new("enemy-drops", "DS3 maps", "What ported DS3 enemies drop", Stage.Build,
             "A ported DS3 enemy drops nothing where DS3 drops something, drops the wrong item or far too often, the game crashes or hangs when a ported enemy dies, or the build's enemy params step says the drops were not ported.",
