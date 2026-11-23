@@ -755,6 +755,8 @@ public static class Fallbacks
                 { PorterEnv = Env("DARKSIGN_CUTSCENE_SUBTITLES", "0") },
             new("H", "Timeline links as up to 1.0.549", "The cutscenes play as in A, but each timeline keeps the link to the timeline it hangs on that DS3 gave it (DARKSIGN_CUTSCENE_PARENTS=0), as up to 1.0.549, where only the events' links were renumbered after the port took timelines out: Friede's intro and Cathedral of the Deep's cutscenes hung.")
                 { PorterEnv = Env("DARKSIGN_CUTSCENE_PARENTS", "0") },
+            new("I", "Unplaced parts kept, as up to 1.0.567", "The cutscenes play as in A, but a DS3 part the ported map doesn't place still goes into the cutscene under its model's name (DARKSIGN_CUTSCENE_UNPLACED=1), as up to 1.0.567: Friede's intro and second-phase cutscene, Cathedral of the Deep's and the Dancer's played to the end and then stayed black.")
+                { PorterEnv = Env("DARKSIGN_CUTSCENE_UNPLACED", "1") },
         ]),
 
         new("map-music", "DS3 maps", "DS3's music (areas and boss fights)", Stage.Build,
