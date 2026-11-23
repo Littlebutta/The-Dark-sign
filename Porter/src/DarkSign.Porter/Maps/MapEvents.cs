@@ -163,13 +163,17 @@ public static class MapEvents
             buttonNote = $"action buttons: not converted ({ex.Message}); events that wait for them are left out";
         }
 
-        // SpEffects: a DS3 ID the enemy port gave a row (700,000,000 + the ID) is pointed at that row.
+        // SpEffects: a DS3 effect a ported weapon carries is pointed at the weapon port's row (the player has that one:
+        // the Storm Ruler's charge in the Yhorm fight, SpEffectPort.ReadWeaponTable); any other DS3 ID the enemy port
+        // gave a row (700,000,000 + the ID) at that row.
         Func<long, long?>? spEffects = null;
         string spNote = "";
         try
         {
             var sp = (regulation ?? ActionButtons.LoadRegulation(ctx)).Get("SpEffectParam") ?? throw new InvalidDataException("no SpEffectParam");
-            spEffects = id => Enemies.ChrEffects.SpEffectId((int)Math.Min(id, int.MaxValue)) is > 0 and var n && sp[n] is not null ? n : null;
+            var weapon = SpEffectPort.ReadWeaponTable(ctx);
+            spEffects = id => weapon.TryGetValue(id, out var w) && sp[(int)w] is not null ? w
+                : Enemies.ChrEffects.SpEffectId((int)Math.Min(id, int.MaxValue)) is > 0 and var n && sp[n] is not null ? n : null;
         }
         catch (Exception ex) when (ex is not OutOfMemoryException)
         {
