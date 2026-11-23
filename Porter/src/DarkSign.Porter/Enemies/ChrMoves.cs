@@ -22,19 +22,13 @@ namespace DarkSign.Porter.Enemies;
 /// The same goes for the waiting poses, getting-up moves and map-script moves DS3's map scripts force (see
 /// <see cref="Families"/>): the Hollow Soldiers of the High Wall wait crouched (702) and stand up (1702) before
 /// bursting into the Pus of Man, and a forced animation the graph has no state for never plays, so the map script
-/// waiting for it to finish never goes on.
-/// Fallbacks "enemy-ai": DARKSIGN_ENEMY_EXTRA_MOVES=0 leaves the template's slots only; =attacks adds attacks only.
-/// Method (RULE 3): the Attack_SM / CustomManualSelectorGenerator layout is Elden Ring's own c9997.hkx read with HKLib;
-/// cloning a state and its W_Attack event is how the community adds an attack to an Elden Ring enemy, and the clip
-/// registration follows <see cref="MovesetPort"/>'s for the player's weapon categories.
+/// waiting for it to finish never goes on. Method (RULE 3): the Attack_SM / CustomManualSelectorGenerator layout is
+/// Elden Ring's own c9997.hkx read with HKLib; cloning a state and its W_Attack event is how the community adds an
+/// attack to an Elden Ring enemy, and the clip registration follows <see cref="MovesetPort"/>'s for the player's weapon
+/// categories.
 /// </summary>
 public static partial class ChrMoves
 {
-    public static bool Enabled => Environment.GetEnvironmentVariable("DARKSIGN_ENEMY_EXTRA_MOVES") != "0";
-
-    /// <summary>DARKSIGN_ENEMY_EXTRA_MOVES=attacks: attacks only, no waiting poses or map-script moves (as up to 1.0.383).</summary>
-    public static bool AttacksOnly => Environment.GetEnvironmentVariable("DARKSIGN_ENEMY_EXTRA_MOVES")?.Trim().ToLowerInvariant() == "attacks";
-
     public const int FirstAttack = 3000, LastAttack = 3999;
     public static bool IsAttack(int id) => id is >= FirstAttack and <= LastAttack;
 
@@ -72,12 +66,6 @@ public static partial class ChrMoves
     public const string AiMoveFamily = "AI move";
 
     /// <summary>
-    /// Fallback enemy-ai L: DARKSIGN_ENEMY_AI_MOVES=0 adds no state for moves DS3's AI asks for outside 3000-3999
-    /// (phase changes stay unplayable, as up to 1.0.549).
-    /// </summary>
-    public static bool AiMovesEnabled => Environment.GetEnvironmentVariable("DARKSIGN_ENEMY_AI_MOVES") != "0";
-
-    /// <summary>
     /// The whole numbers DS3's AI scripts name (constants of every function in every luabnd), set by the enemy port
     /// once DS3's AI is read (<see cref="AiPort.NamedNumbers"/>). An ID of the AI-move family is added only when the AI
     /// names it: the AI is what asks for it.
@@ -93,8 +81,8 @@ public static partial class ChrMoves
     public static bool Wanted(int id, bool ds3Ai) => FamilyOf(id) is { } f && f.Name switch
     {
         "attack" => ds3Ai,
-        AiMoveFamily => ds3Ai && AiMovesEnabled && !AttacksOnly && AiNamed.Contains(id),
-        _ => !AttacksOnly,
+        AiMoveFamily => ds3Ai && AiNamed.Contains(id),
+        _ => true,
     };
 
     [GeneratedRegex(@"^a(\d{3})_(\d{6})\.hkx$", RegexOptions.IgnoreCase)]
@@ -136,7 +124,7 @@ public static partial class ChrMoves
             var donorFamily = family.DonorFamily is { } dn ? Families.First(f => f.Name == dn) : family;
             var entries = templateEntries.Where(id => FamilyOf(id) == donorFamily).ToList();
             var whole = entries.Where(id => templateFiles.Contains(id) && !additive.Contains(id)).Order().ToList();
-            var donors = whole.Count > 0 ? whole : BorrowedClips ? entries.Where(id => !additive.Contains(id)).Order().ToList() : [];
+            var donors = whole.Count > 0 ? whole : entries.Where(id => !additive.Contains(id)).Order().ToList();
             if (donors.Count == 0)
                 continue;
             foreach (var id in ds3.Where(id => FamilyOf(id) == family))
@@ -145,18 +133,12 @@ public static partial class ChrMoves
                     plan.Add(new Added(id, donors.MinBy(d => (Math.Abs(d - id), d)), OwnEntry: templateEntries.Contains(id)));
                 else if (!templateEntries.Contains(id))
                     plan.Add(new Added(id, donors.MinBy(d => (Math.Abs(d - id), d))));
-                else if (BorrowedClips)
+                else
                     plan.Add(new Added(id, id, FileOnly: true));
             }
         }
         return plan.OrderBy(a => a.Id).ToList();
     }
-
-    /// <summary>
-    /// Fallback enemy-ai J: DARKSIGN_ENEMY_OWN_POSES=0 gives no DS3 move a file where the template's entry borrows
-    /// another move's clip, and takes donors with a file of their own only (as up to 1.0.460).
-    /// </summary>
-    public static bool BorrowedClips => Environment.GetEnvironmentVariable("DARKSIGN_ENEMY_OWN_POSES") != "0";
 
     /// <summary>
     /// Step 1, the animations: for each planned move a file (a copy of a template clip, which the animation port then

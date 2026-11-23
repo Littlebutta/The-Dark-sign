@@ -15,8 +15,7 @@ namespace DarkSign.Porter.Maps;
 /// so the open world's own distant view (m60_00_00_99) is not what was seen.
 ///
 /// The port writes an empty layout in its place, so the only sky left is the one DS3 built into the map: the dome
-/// of map piece m009000 (drawn since 1.0.285). "--host-sky" (launcher Fallbacks "map-sky" B) leaves the host's
-/// distant view alone, and removes an empty one an earlier build wrote.
+/// of map piece m009000 (drawn since 1.0.285).
 ///
 /// JortPob (infernoplus and contributors, https://github.com/infernoplus/JortPob, OverworldManager.cs) is where
 /// the index-99 layout was identified as the one holding the sky: it edits m60_00_00_99 the same way for its
@@ -50,20 +49,12 @@ public static class MapDistantView
         view.Parts.GetEntries().Count == 0 && view.Regions.GetEntries().Count == 0 && view.Events.GetEntries().Count == 0;
 
     /// <summary>
-    /// Replaces the slot's distant view with an empty layout (or, with keepHost, leaves the host's and deletes an
-    /// empty one written before). Returns the report line.
+    /// Replaces the slot's distant view with an empty layout. Returns the report line.
     /// </summary>
-    public static string Write(PorterContext ctx, GameArchives er, MapId erId, bool keepHost)
+    public static string Write(PorterContext ctx, GameArchives er, MapId erId)
     {
         var path = MapPorter.MsbPath(Of(erId));
         var modPath = ctx.ModPath(MapPorter.ModParts(path));
-        if (keepHost)
-        {
-            bool removed = File.Exists(modPath);
-            if (removed)
-                File.Delete(modPath);
-            return $"sky: the host's own (--host-sky): Elden Ring's sky and Erdtree stay over this map{(removed ? "; the empty distant view of an earlier build was removed" : "")}";
-        }
         if (!er.Contains(path))
             return $"sky: Elden Ring has no distant view for {erId} ({Of(erId)}), so there is no Elden Ring sky or Erdtree to remove";
 

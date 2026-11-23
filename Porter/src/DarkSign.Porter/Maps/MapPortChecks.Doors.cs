@@ -53,9 +53,6 @@ public static partial class MapPortChecks
         Expect(f2.Nodes.Count == 3 && f2.Nodes[0].Name == "root" && f2.Nodes[2].Name == "AEG920_007" && f2.Meshes[0].Vertices.All(v => v.NormalWs[0] == 1),
             "a node named after the asset is added after the others, so no node number changes");
 
-        Expect(ObjectPort.ParseMoving("off") == ObjectPort.MovingMethod.Off && ObjectPort.ParseMoving("b") == ObjectPort.MovingMethod.NoCollision
-               && MapPorter.Options.Parse(["--moving-objects", "nocollision"]).MovingObjects == ObjectPort.MovingMethod.NoCollision
-               && new MapPorter.Options().MovingObjects == ObjectPort.MovingMethod.Full, "--moving-objects is read");
         Expect(ObjectAnims.AnibndName("AEG920_007") == @"N:\GR\data\INTERROOT_win64\asset\aeg\AEG920\AEG920_007\anibnd\AEG920_007.anibnd", "the animation binder's name, as Elden Ring's door has it");
     }
 
@@ -513,7 +510,7 @@ public static partial class MapPortChecks
             ["o300310"] = new() { Ds3Model = "o300310", Index = 3, Name = "AEG920_003", Converted = true, Moving = true, Collision = true },
             ["o302590"] = new() { Ds3Model = "o302590", Index = 7, Name = "AEG920_007", Converted = true },
         };
-        var placed = ObjectPort.PlaceParts(ds3, layout.Msb, Ds3Id, ErId, new MsbPort.Options(), m => assets.GetValueOrDefault(m));
+        var placed = ObjectPort.PlaceParts(ds3, layout.Msb, Ds3Id, ErId, m => assets.GetValueOrDefault(m));
         Expect(placed.Notes.Any(n => n == "ObjActs: 1 placed, 1 left out (their object doesn't move), 1 left out (their object wasn't placed)"), string.Join("; ", placed.Notes));
         var msb = MSBE.Read(layout.Msb.Write());
         var act = msb.Events.ObjActs.Single(e => e.Name.EndsWith("door"));

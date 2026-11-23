@@ -67,7 +67,7 @@ public static class MapSelfTest
         foreach (var xml in new[] { true, false })
         {
             if (CollisionPort.WarmUp(template, xml, keepSimdTree: false) is null)
-                throw new Exception("WarmUp declined (is DARKSIGN_COLLISION_LOCK set?)");
+                throw new Exception("WarmUp declined");
             var warmed = Havok.HavokCaches.Count;
             // Plain and full files, both templates, serialized in parallel without the lock, as port-maps does.
             var inputs = new[] { SyntheticDs3Collision(), SyntheticDs3Collision(everything: true) };

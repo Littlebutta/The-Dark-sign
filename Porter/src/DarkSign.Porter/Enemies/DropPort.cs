@@ -21,7 +21,6 @@ namespace DarkSign.Porter.Enemies;
 /// chances of everything else in the roll stay exactly DS3's. Work\reports\enemy-drops.tsv lists every lot, every
 /// mapping and every DS3 item that has no Elden Ring item yet.
 ///
-/// Launcher Fallbacks window, "enemy-drops": B (DARKSIGN_ENEMY_DROPS=template) keeps the template's Elden Ring drops.
 /// </summary>
 public sealed class DropPort
 {
@@ -37,9 +36,6 @@ public sealed class DropPort
     public const int FlagBudget = 1500;
 
     public const int Slots = 8;
-
-    public static bool Enabled =>
-        Environment.GetEnvironmentVariable("DARKSIGN_ENEMY_DROPS")?.Trim().ToLowerInvariant() is not ("template" or "0" or "off");
 
     public enum Kind { Weapon, Armor, Ring, Goods }
 
@@ -206,11 +202,6 @@ public sealed class DropPort
     /// </summary>
     public static DropPort? Create(PorterContext ctx, ParamStore er, ParamStore ds3, Names? names, List<string> notes)
     {
-        if (!Enabled)
-        {
-            notes.Add("drops: off (Fallbacks enemy-drops B); ported enemies keep their template's Elden Ring drops");
-            return null;
-        }
         try
         {
             var ds3Lots = ds3.Get("ItemLotParam") ?? throw new InvalidDataException("DS3 has no ItemLotParam");
@@ -745,11 +736,6 @@ public sealed class DropPort
         var full = new DropPort(ds3Lots, TestParam([.. erFields]), TestParam([.. erFields]), items, null);
         var (noFlagEnemy, noFlagMap) = full.Port(knight);
         check("a one-time drop with no flag to keep it one-time is left out rather than dropped on every kill", noFlagEnemy == FirstLot && noFlagMap == -1 && full.FlagsLost == 1);
-        var saved = Environment.GetEnvironmentVariable("DARKSIGN_ENEMY_DROPS");
-        Environment.SetEnvironmentVariable("DARKSIGN_ENEMY_DROPS", "template");
-        bool off = !Enabled;
-        Environment.SetEnvironmentVariable("DARKSIGN_ENEMY_DROPS", saved);
-        check("Fallbacks enemy-drops B (DARKSIGN_ENEMY_DROPS=template) keeps the template's drops", off && (saved is not null || Enabled));
     }
 
     private static string Clean(string? text) => (text ?? "").Replace('\t', ' ').Replace('\n', ' ').Replace("\r", "");

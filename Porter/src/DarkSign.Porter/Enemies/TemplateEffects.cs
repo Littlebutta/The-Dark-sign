@@ -14,12 +14,9 @@ namespace DarkSign.Porter.Enemies;
 /// Ring's characters carry (a Godskin's stance, a skeleton's revival, a pumpkin head's helmet). The shared ones (most
 /// of Elden Ring's enemies carry 90030, 90060, 5400...: resistances and common reactions) stay. Work\reports\
 /// enemy-template-effects.tsv lists what each template lost.
-/// Fallbacks "enemy-effects": DARKSIGN_ENEMY_TEMPLATE_FX=keep keeps them all (builds before this option).
 /// </summary>
 public sealed class TemplateEffects
 {
-    public static bool Enabled => Environment.GetEnvironmentVariable("DARKSIGN_ENEMY_TEMPLATE_FX")?.Trim().ToLowerInvariant() != "keep";
-
     public const int MinCharacters = 8;
     public const int ReviveState = 143;
     public const int Slots = 32;

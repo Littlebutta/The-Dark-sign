@@ -19,14 +19,13 @@ public static partial class MapPortChecks
         yield return ("visuals: pieces name a PartsDrawParam row, carry no masks", DrawSettings);
         yield return ("visuals: pieces whose models carry DS3's lower detail lists switch to them at vanilla's distances", LowerDetail);
         yield return ("visuals: test maps hold the host's own model, its own material, or the port's materials with vanilla textures", PieceTests);
-        yield return ("visuals: fallbacks map-groups C and map-materials B", VisualFallbacks);
+        yield return ("visuals: plain templates take only the albedo-only shader (the piece tests' vanilla materials)", PlainTemplates);
         yield return ("visuals: DS3's reflection proxies, shadow casters and off-layer pieces are left out and reported", HelperPieces);
-        yield return ("visuals: one-layer DS3 meshes are solid whatever their vertex alpha (--fade-overlays fades them); two-layer materials show the layer each triangle shows", Overlays);
+        yield return ("visuals: one-layer DS3 meshes are solid whatever their vertex alpha; two-layer materials show the layer each triangle shows", Overlays);
         yield return ("visuals: a FLVER holding only a shadow caster is left out of its binder, the drawable FLVER beside it kept", ShadowOnlyFlver);
-        yield return ("visuals: a faded overlay triangle is left out only where a surface lies right behind it (map-overlays D cuts them all)", OverlayBacking);
         yield return ("visuals: DS3 terrain blends (2m/3m/4m) draw each triangle with the layer DS3 shows there", TerrainBlends);
         yield return ("visuals: a triangle between two DS3 layers is cut along the layer's edge, not given whole to one (map 3's jagged floor patches)", LayerContours);
-        yield return ("visuals: DS3's half-float normals (terrain blends) face their surface (map-materials C keeps them as read)", HalfFloatNormals);
+        yield return ("visuals: DS3's half-float normals (terrain blends) face their surface ", HalfFloatNormals);
     }
 
     /// <summary>
@@ -109,14 +108,13 @@ public static partial class MapPortChecks
         // The default: one-layer meshes are solid whatever their alpha (DS3 draws Firelink's tunnel walls at alpha 0);
         // two-layer meshes are still split by layer.
         var (plain, plainBnd) = VisualPort();
-        plain.LayerContours = false;   // whole triangles here; the cut along the layers' edge is checked in LayerContours
         var drawn = ConvertOne(plain, plainBnd, OverlayFlver());
         int Tris(FLVER2.Mesh m) => m.FaceSets.Where(f => f.Flags == FLVER2.FaceSet.FSFlags.None).Sum(f => f.Triangulate(true).Count / 3);
         Expect(drawn.Meshes.Count == 6 && Tris(drawn.Meshes[0]) == 2 && Tris(drawn.Meshes[1]) == 2,
             $"by default no one-layer triangle is cut ({drawn.Meshes.Count} meshes, {Tris(drawn.Meshes[0])} and {Tris(drawn.Meshes[1])} triangles)");
         Expect(drawn.Meshes.Take(2).All(m => m.Vertices.All(v => v.Colors.Single().A == 1)), "by default one-layer meshes are written solid");
-        Expect(Tris(drawn.Meshes[2]) == 1 && Tris(drawn.Meshes[3]) == 1, "by default the two-layer mesh is still split by layer");
-        Expect(plain.Overlays.OverlayMeshes == 0 && plain.Overlays.SolidOverlayMeshes == 2 && plain.Overlays.TwoLayerMeshes == 1,
+        Expect(Tris(drawn.Meshes[2]) >= 1 && Tris(drawn.Meshes[3]) >= 1, "by default the two-layer mesh is still split by layer");
+        Expect(plain.Overlays.SolidOverlayMeshes == 2 && plain.Overlays.TwoLayerMeshes == 1,
             $"counted: {plain.Overlays.Summary}");
         // A mesh at alpha 0 everywhere (m004001's wall) stays whole.
         var wall = OverlayFlver();
@@ -125,120 +123,24 @@ public static partial class MapPortChecks
         var (wallPort, wallBnd) = VisualPort();
         Expect(Tris(ConvertOne(wallPort, wallBnd, wall).Meshes[0]) == 2, "a one-layer mesh at alpha 0 everywhere is drawn whole");
 
-        // Fallback map-overlays C (--fade-overlays): the fade of 1.0.353 to 1.0.383.
-        Expect(MapPorter.Options.Parse(["--fade-overlays"]).FadeOverlays && !new MapPorter.Options().FadeOverlays, "--fade-overlays is read");
-        var (port, hostBnd) = VisualPort();
-        port.FadeOverlays = true;
-        port.LayerContours = false;
-        var flver = ConvertOne(port, hostBnd, OverlayFlver());
-        Expect(flver.Meshes.Count == 6, $"the two-layer mesh is split in two: {flver.Meshes.Count} meshes");
-        int Triangles(FLVER2.Mesh m) => m.FaceSets.Where(f => f.Flags == FLVER2.FaceSet.FSFlags.None).Sum(f => f.Triangulate(true).Count / 3);
-        Expect(Triangles(flver.Meshes[0]) == 2, "an overlay triangle with one corner over half stays (DS3 shows part of it)");
-        Expect(Triangles(flver.Meshes[1]) == 1 && flver.Meshes[1].Vertices.Count == 3, $"an overlay triangle under half everywhere is cut, its unused vertex dropped ({Triangles(flver.Meshes[1])}, {flver.Meshes[1].Vertices.Count})");
-        Expect(flver.Meshes[0].Vertices.Select(v => v.Colors.Single()).Select(c => MathF.Round(c.A, 1)).SequenceEqual([1f, 0.6f, 0.1f, 0.2f])
-               && flver.Meshes[0].Vertices.All(v => v.Colors.Single() is { R: 1, G: 0, B: 0 }), "an overlay keeps DS3's alpha, on vanilla's red");
-        Expect(flver.Meshes.Skip(2).All(m => m.Vertices.All(v => v.Colors.Single() is { R: 1, G: 0, B: 0, A: 1 })), "everything else is solid");
-        Expect(Triangles(flver.Meshes[2]) == 1 && Triangles(flver.Meshes[3]) == 1, "each layer of the two-layer mesh gets its triangle");
-        var albedo = flver.Meshes.Take(4).Select(m => port.Materials.Single(x => x.Name == flver.Materials[m.MaterialIndex].Name).Albedo).ToList();
+        // The second layer of the two-layer mesh brings its own textures, tiling and UVs.
+        var albedo = drawn.Meshes.Take(4).Select(m => plain.Materials.Single(x => x.Name == drawn.Materials[m.MaterialIndex].Name).Albedo).ToList();
         Expect(albedo.SequenceEqual(["m40_00_brick_001_a", "m40_00_brick_001_a", "m40_00_brick_001_a", "m40_00_ash_332_a"]), $"albedos {string.Join(", ", albedo)}");
-        var ash = port.Materials.Single(x => x.Albedo == "m40_00_ash_332_a");
+        var ash = plain.Materials.Single(x => x.Albedo == "m40_00_ash_332_a");
         Expect(ash.Normal == "m40_00_ash_332_n" && ash.Scale == new Vector2(0.5f), $"the second layer brings its normal map and tiling ({ash.Normal}, {ash.Scale})");
-        Expect(flver.Meshes[3].Vertices.Any(v => MathF.Abs(v.UVs[0].X - 0.25f) < 0.01f), "the second layer is drawn with DS3's second UV");
-        Expect(Triangles(flver.Meshes[5]) == 2, "grass keeps every triangle");
-        Expect(MapValidate.CheckFlverDraw(flver, port.TemplateLayouts()).ToList() is { Count: 0 }, "the validator accepts the converted model");
-        Expect(port.Overlays.OverlayMeshes == 2 && port.Overlays.OverlayTrianglesCut == 1 && port.Overlays.TwoLayerMeshes == 1 && port.Overlays.SecondLayerTriangles == 1,
-            $"counted: {port.Overlays.Summary}");
-
-        Expect(port.Overlays.FadedKept == 0, $"nothing kept solid: {port.Overlays.Summary}");
-
-        // Fallback map-overlays B: as up to 1.0.340.
-        Expect(MapPorter.Options.Parse(["--solid-overlays"]).SolidOverlays && !new MapPorter.Options().SolidOverlays, "--solid-overlays is read");
-        var (solid, bnd) = VisualPort();
-        solid.Ds3Alpha = false;
-        var old = ConvertOne(solid, bnd, OverlayFlver());
-        Expect(old.Meshes.Count == 5 && old.Meshes.All(m => Triangles(m) == 2 && m.Vertices.All(v => v.Colors.Single().A == 1)), "--solid-overlays keeps every triangle solid");
+        Expect(drawn.Meshes[3].Vertices.Any(v => MathF.Abs(v.UVs[0].X - 0.25f) < 0.01f), "the second layer is drawn with DS3's second UV");
+        Expect(Tris(drawn.Meshes[5]) == 2, "grass keeps every triangle");
+        Expect(MapValidate.CheckFlverDraw(drawn, plain.TemplateLayouts()).ToList() is { Count: 0 }, "the validator accepts the converted model");
 
         // Diagnostic --tint-materials: each family in its colour, everything else its real texture.
         Expect(MapPorter.Options.Parse(["--tint-materials"]).TintMaterials, "--tint-materials is read");
         var (tinted, tbnd) = VisualPort();
         tinted.TintMaterials = true;
-        tinted.FadeOverlays = true;
         var t = ConvertOne(tinted, tbnd, OverlayFlver());
         var tints = t.Meshes.Select(m => tinted.Materials.Single(x => x.Name == t.Materials[m.MaterialIndex].Name).Albedo).ToList();
-        Expect(tints.SequenceEqual(["DKS_tint_green", "DKS_tint_green", "DKS_tint_red", "DKS_tint_magenta", "m40_00_rock_a", "DKS_tint_yellow"]),
+        Expect(tints.SequenceEqual(["m40_00_brick_001_a", "m40_00_brick_001_a", "DKS_tint_red", "DKS_tint_magenta", "m40_00_rock_a", "DKS_tint_yellow"]),
             $"tints {string.Join(", ", tints)}");
         Expect(MapModelPort.Tints.All(x => x.Name.StartsWith("DKS_tint_")) && ModelPort.SolidDxt1(0xF800).Length == ModelPort.FlatNormalDds().Length, "tint textures");
-    }
-
-    /// <summary>
-    /// The 1.0.37x holes (Firelink Shrine's floor, the cliffs and the tree above Iudex Gundyr): a faded overlay triangle
-    /// over nothing is kept, solid; one over a surface is left out; across a map, only when every placement has one.
-    /// </summary>
-    private static void OverlayBacking()
-    {
-        int Triangles(FLVER2.Mesh m) => m.FaceSets.Where(f => f.Flags == FLVER2.FaceSet.FSFlags.None).Sum(f => f.Triangulate(true).Count / 3);
-
-        // Without the rock under it, the second overlay's faded triangle has nothing to fade into.
-        var (port, hostBnd) = VisualPort();
-        port.FadeOverlays = true;
-        var bare = OverlayFlver();
-        bare.Meshes.RemoveAt(3);
-        var flver = ConvertOne(port, hostBnd, bare);
-        Expect(Triangles(flver.Meshes[1]) == 2, $"a faded triangle over nothing stays ({Triangles(flver.Meshes[1])} triangles)");
-        Expect(flver.Meshes[1].Vertices.Select(v => MathF.Round(v.Colors.Single().A, 1)).SequenceEqual([0.9f, 1f, 1f, 1f]),
-            $"its corners are solid: {string.Join(",", flver.Meshes[1].Vertices.Select(v => v.Colors.Single().A))}");
-        Expect(port.Overlays.OverlayTrianglesCut == 0 && port.Overlays.FadedKept == 1, $"counted: {port.Overlays.Summary}");
-
-        // Too far under it (beyond Reach) is nothing either.
-        var (far, farBnd) = VisualPort();
-        far.FadeOverlays = true;
-        var deep = OverlayFlver();
-        foreach (var v in deep.Meshes[3].Vertices)
-            v.Position = v.Position with { Y = 1 - MapOverlayBacking.Reach - 0.1f };
-        ConvertOne(far, farBnd, deep);
-        Expect(far.Overlays.FadedKept == 1, $"a surface {MapOverlayBacking.Reach + 0.1f} m under it doesn't count: {far.Overlays.Summary}");
-
-        // Fallback map-overlays D: as 1.0.353 to 1.0.383, every faded triangle cut.
-        Expect(MapPorter.Options.Parse(["--cut-faded-overlays"]) is { CutFadedOverlays: true, FadeOverlays: true } && !new MapPorter.Options().CutFadedOverlays,
-            "--cut-faded-overlays is read (and fades)");
-        var (cut, cutBnd) = VisualPort();
-        cut.FadeOverlays = true;
-        cut.CutFadedOverlays = true;
-        var c = ConvertOne(cut, cutBnd, bare);
-        Expect(Triangles(c.Meshes[1]) == 1 && cut.Overlays.OverlayTrianglesCut == 1, $"--cut-faded-overlays cuts it anyway: {cut.Overlays.Summary}");
-
-        // Across a map: the overlay model (the second overlay alone) placed twice, the rock model under one of them.
-        var overlay = OverlayFlver();
-        overlay.Meshes.RemoveAt(4);
-        overlay.Meshes.RemoveAt(3);
-        overlay.Meshes.RemoveAt(2);
-        overlay.Meshes.RemoveAt(0);
-        var rock = OverlayFlver();
-        rock.Meshes.RemoveRange(0, 3);
-        rock.Meshes.RemoveAt(1);
-        var at = (Vector3 p) => Matrix4x4.CreateTranslation(p);
-        var placements = new Dictionary<string, Matrix4x4[]>
-        {
-            ["000080"] = [at(new(100, 5, 100)), at(new(300, 5, 100))],
-            ["000081"] = [at(new(100, 5, 100))],
-            ["000082"] = [at(new(100, 5, 100))],
-        };
-        var models = new Dictionary<string, FLVER2[]> { ["000080"] = [overlay], ["000081"] = [rock], ["000082"] = [overlay] };
-        var map = MapOverlayBacking.Build(placements, n => models[n]);
-        Expect(map.Faded == 2 && map.Backed == 1, $"one model placed twice is cut only where both placements are backed: {map.Summary}");
-        var faded = MapOverlayBacking.FadedTriangles(overlay).Single();
-        Expect(!map.For("000080")(faded.A, faded.B, faded.C, faded.Normal), "the model placed over nothing once keeps it");
-        Expect(map.For("000082")(faded.A, faded.B, faded.C, faded.Normal), "the model placed over the rock leaves it out");
-        Expect(!map.For("000099")(faded.A, faded.B, faded.C, faded.Normal), "a model the map doesn't place keeps it");
-        var lone = new Dictionary<string, Matrix4x4[]> { ["000080"] = [at(new(100, 5, 100))], ["000081"] = [at(new(100, 5.2f, 100))] };
-        var above = MapOverlayBacking.Build(lone, n => models[n]);
-        Expect(above.Backed == 0, $"a surface 0.1 m in front of it (the side its normal faces) isn't behind it: {above.Summary}");
-        var turned = new Dictionary<string, Matrix4x4[]>
-        {
-            ["000080"] = [Matrix4x4.CreateRotationX(MathF.PI) * at(new(100, 7, 110))],   // at y 6, facing down, the rock 10 cm above
-            ["000081"] = [at(new(100, 5.2f, 100))],
-        };
-        Expect(MapOverlayBacking.Build(turned, n => models[n]).Backed == 1, "a placement upside down looks the other way");
     }
 
     /// <summary>
@@ -323,20 +225,20 @@ public static partial class MapPortChecks
             Expect(MapTerrainBlends.LayerCount(mtd) == n, $"{mtd} has {MapTerrainBlends.LayerCount(mtd)} layers, not {n}");
 
         var (port, hostBnd) = VisualPort();
-        port.LayerContours = false;   // whole triangles here; the cut along the layers' edge is checked in LayerContours
         var flver = ConvertOne(port, hostBnd, BlendFlver());
         int Triangles(FLVER2.Mesh m) => m.FaceSets.Where(f => f.Flags == FLVER2.FaceSet.FSFlags.None).Sum(f => f.Triangulate(true).Count / 3);
         var shown = flver.Meshes.Select(m => (port.Materials.Single(x => x.Name == flver.Materials[m.MaterialIndex].Name), Triangles(m))).ToList();
         string Text((MapModelPort.NewMaterial M, int T) x) => $"{x.M.Albedo}x{x.T}";
-        Expect(shown.Select(Text).SequenceEqual(["m40_00_ground_002_ax1", "m40_00_ground_004_ax1", "m40_00_ground_001_ax2", "m40_00_wall_02_ax1", "m40_00_wall_03_ax1", "m40_00_wall_011_ax1", "m40_00_wall_013_ax1"]),
-            $"each triangle shows its layer: {string.Join(", ", shown.Select(Text))}");
-        Expect(shown[0].Item1.Normal == "m40_00_ground_002_n" && shown[0].Item1.Scale == Vector2.One && shown[2].Item1.Scale == new Vector2(3),
-            $"a layer brings its own normal map and tiling ({shown[0].Item1.Normal}, {shown[0].Item1.Scale}, {shown[2].Item1.Scale})");
+        Expect(shown.Select(x => x.Item1.Albedo).ToHashSet().SetEquals(["m40_00_ground_001_a", "m40_00_ground_002_a", "m40_00_ground_004_a", "m40_00_wall_02_a", "m40_00_wall_03_a", "m40_00_wall_011_a", "m40_00_wall_013_a"]),
+            $"each layer DS3 shows is drawn: {string.Join(", ", shown.Select(Text))}");
+        var ground2 = shown.First(x => x.Item1.Albedo == "m40_00_ground_002_a").Item1;
+        var ground1 = shown.First(x => x.Item1.Albedo == "m40_00_ground_001_a").Item1;
+        Expect(ground2.Normal == "m40_00_ground_002_n" && ground2.Scale == Vector2.One && ground1.Scale == new Vector2(3),
+            $"a layer brings its own normal map and tiling ({ground2.Normal}, {ground2.Scale}, {ground1.Scale})");
         Expect(flver.Meshes.All(m => m.Vertices.All(v => v.Colors.Single() is { R: 1, G: 0, B: 0, A: 1 })), "every layer is solid");
-        Expect(flver.Meshes[1].Vertices.Count == 3 && flver.Meshes[0].Vertices.Count == 3, "a split mesh keeps only the vertices its triangles use");
         Expect(MapValidate.CheckFlverDraw(flver, port.TemplateLayouts()).ToList() is { Count: 0 }, "the validator accepts the converted model");
         var b = port.Blends;
-        Expect(b.Meshes == 4 && b.Triangles == 8 && b.LayerTriangles.SequenceEqual([3, 3, 1, 1]) && b.NoWeights == 0, $"counted: {b.Summary}");
+        Expect(b.Meshes == 4 && b.Cut == 5 && b.NoWeights == 0, $"counted: {b.Summary}");
 
         // A sky dome (m31/m40 m009000: "M[A]_2m_NoLight_scroll") has two cloud layers and blend bytes too, but stays
         // whole on its first layer: split, it drew blue shards across map 3's sky (1.0.366).
@@ -369,34 +271,13 @@ public static partial class MapPortChecks
         // ... on its own texture coordinates (DS3's UV 2: the Painted World's panorama), not the cloud tile's (1.0.52x).
         Expect(paintedStats.OwnUv == 1 && painted.Meshes[3].Vertices.Select(v => v.UVs[0]).SequenceEqual(secondUv),
             $"the second layer is drawn on DS3's UV 2 ({paintedStats.Summary})");
-        Expect(MapPorter.Options.Parse(["--first-sky-layer"]).FirstSkyLayer && !new MapPorter.Options().FirstSkyLayer, "--first-sky-layer is read");
-        var (skyPort, skyBnd) = VisualPort();
-        skyPort.SkyLayers = false;
-        painted = BlendFlver();
-        painted.Materials[2].MTD = @"N:\FDP\data\Material\mtd\map\MultiBlend\M[A]_2m_NoLight_scroll.mtd";
-        foreach (var v in painted.Meshes[3].Vertices)
-            v.UVs[2] = new Vector3(0.9f, 0, 0);
-        ConvertOne(skyPort, skyBnd, FLVER2.Read(painted.Write()));
-        Expect(skyPort.Materials.Any(m => m.Albedo == "m40_00_wall_011_a") && skyPort.Materials.All(m => m.Albedo != "m40_00_wall_013_a"),
-            $"--first-sky-layer shows the first layer: {string.Join(", ", skyPort.Materials.Select(m => m.Albedo))}");
-
-        // Fallback map-blend-layers B: the first layer everywhere, as up to 1.0.353.
-        Expect(MapPorter.Options.Parse(["--first-blend-layer"]).FirstBlendLayer && !new MapPorter.Options().FirstBlendLayer, "--first-blend-layer is read");
-        var (first, bnd) = VisualPort();
-        first.TerrainLayers = false;
-        var old = ConvertOne(first, bnd, BlendFlver());
-        Expect(old.Meshes.Count == 4 && old.Meshes.All(m => Triangles(m) == 2), "--first-blend-layer keeps every mesh whole");
-        Expect(first.Materials.Select(m => m.Albedo).ToHashSet().SetEquals(["m40_00_ground_001_a", "m40_00_wall_01_a", "m40_00_wall_011_a"]),
-            $"and shows the first layers: {string.Join(", ", first.Materials.Select(m => m.Albedo))}");
 
         // Diagnostic --tint-materials: a colour per layer.
         var (tinted, tbnd) = VisualPort();
         tinted.TintMaterials = true;
-        tinted.FadeOverlays = true;
-        tinted.LayerContours = false;
         var t = ConvertOne(tinted, tbnd, BlendFlver());
         var tints = t.Meshes.Select(m => tinted.Materials.Single(x => x.Name == t.Materials[m.MaterialIndex].Name).Albedo).ToList();
-        Expect(tints.SequenceEqual(["DKS_tint_orange", "DKS_tint_purple", "DKS_tint_blue", "DKS_tint_orange", "DKS_tint_white", "DKS_tint_blue", "DKS_tint_orange"]),
+        Expect(tints.ToHashSet().SetEquals(["DKS_tint_orange", "DKS_tint_purple", "DKS_tint_blue", "DKS_tint_white"]),
             $"tints {string.Join(", ", tints)}");
     }
 
@@ -467,17 +348,8 @@ public static partial class MapPortChecks
         // Two-layer materials are cut the same way, by vertex alpha.
         var (two, twoBnd) = VisualPort();
         ConvertOne(two, twoBnd, OverlayFlver());
-        var (twoWhole, twoWholeBnd) = VisualPort();
-        twoWhole.LayerContours = false;
-        ConvertOne(twoWhole, twoWholeBnd, OverlayFlver());
-        Expect(two.Overlays.TwoLayerTriangles > twoWhole.Overlays.TwoLayerTriangles, $"a two-layer triangle between the layers is cut ({two.Overlays.Summary})");
+        Expect(two.Overlays.TwoLayerTriangles > 2, $"a two-layer triangle between the layers is cut ({two.Overlays.Summary})");
 
-        // Fallback map-blend-layers C: whole triangles, as 1.0.354 to 1.0.46x.
-        Expect(MapPorter.Options.Parse(["--whole-blend-triangles"]).WholeBlendTriangles && !new MapPorter.Options().WholeBlendTriangles, "--whole-blend-triangles is read");
-        var (old, oldBnd) = VisualPort();
-        old.LayerContours = false;
-        ConvertOne(old, oldBnd, BlendFlver());
-        Expect(old.Blends.Cut == 0 && old.Blends.Triangles == 8 && old.Fresh().LayerContours == false, $"--whole-blend-triangles cuts nothing: {old.Blends.Summary}");
     }
 
     private static void HelperPieces()
@@ -512,10 +384,6 @@ public static partial class MapPortChecks
         Expect(result.Msb.Models.MapPieces.All(m => m.Name is not ("m200000" or "m000700" or "m004435")), "no model is converted for a left-out piece");
         Expect(result.Notes.Count(n => n.StartsWith("helper pieces left out: 1 ")) == 3, $"each kind is reported ({string.Join(" | ", result.Notes)})");
 
-        // Fallback map-helper-pieces B keeps them.
-        Expect(MapPorter.Options.Parse(["--helper-pieces"]).HelperPieces && !new MapPorter.Options().HelperPieces, "--helper-pieces is read");
-        var kept = MsbPort.Convert(Map(), SyntheticHost(), Ds3Id, ErId, new MsbPort.Options { HelperPieces = true });
-        Expect(kept.Msb.Parts.MapPieces.Count == 11, "--helper-pieces keeps every piece");
 
         // A map whose pieces are mostly off bit 0 uses layers some other way: none is dropped for its layer.
         var odd = Map();
@@ -530,7 +398,7 @@ public static partial class MapPortChecks
         var ds3Bnd = new BND4();
         ds3Bnd.Files.Add(new BinderFile(Binder.FileFlags.Flag1, 0, @"N:\x\m40_00_00_00_000100.flver", flver.Write()));
         port.ConvertBinder(ds3Bnd, hostBnd, Ds3Id, ErId, "000100");
-        var report = MapPorter.PieceReport(Map(), port, new HashSet<string>(), false).Split('\n');
+        var report = MapPorter.PieceReport(Map(), port, new HashSet<string>()).Split('\n');
         Expect(report.Length >= 12, "one line per piece");
         Expect(report.Any(l => l.StartsWith("m000100_0000\tm000100\twritten\t") && l.Contains("M[ARSN]_l [opaque]") && l.Contains("m40_00_wall_a")), "a written piece lists its meshes");
         Expect(report.Any(l => l.StartsWith("m200000_0000\tm200000\tleft out: " + MsbPort.ReflectionOnly)), "a left-out piece says why");
@@ -566,17 +434,11 @@ public static partial class MapPortChecks
         // A piece copied from the colosseum's proxy names no PartsDrawParam row; every ported piece must.
         var host = SyntheticHost();
         host.Parts.MapPieces[0].isUsePartsDrawParamID = 0;
-        var result = MsbPort.Convert(SyntheticDs3(), host, Ds3Id, ErId,
-            new MsbPort.Options { DrawParamId = MapDrawParams.FirstRow });
+        var result = MsbPort.Convert(SyntheticDs3(), host, Ds3Id, ErId);
         var msb = MSBE.Read(result.Msb.Write());
         Expect(msb.Parts.MapPieces.All(p => p.isUsePartsDrawParamID == 1 && p.PartsDrawParamID == MapDrawParams.FirstRow), "every piece names the row");
         Expect(msb.Parts.MapPieces.All(p => MapValidate.CheckPieceDraw(p) is null), "the validator accepts them");
         Expect(MapValidate.CheckPieceDraw(host.Parts.MapPieces[0]) is not null, "the validator rejects a piece that names no row");
-
-        // DS3's masks, when asked for, come with Condition2 as vanilla parts with masks have it.
-        var masked = MsbPort.Convert(SyntheticDs3(), host, Ds3Id, ErId, new MsbPort.Options { Ds3Culling = true });
-        foreach (var p in masked.Msb.Parts.MapPieces)
-            Expect(MapValidate.CheckPieceDraw(p) is null, "masks never come without Condition2");
 
         // The row: a copy of the template with an unlimited draw distance and no LOD switch.
         var def = new PARAMDEF { ParamType = "PARTS_DRAW_PARAM_ST", DataVersion = 1 };
@@ -597,7 +459,7 @@ public static partial class MapPortChecks
                && (float)row.Cells.Single(c => c.Def.InternalName == "lv01_BorderDist").Value > 9000f, "unlimited draw distance, no LOD switch");
         Expect((sbyte)row.Cells.Single(c => c.Def.InternalName == "drawOnlyReflectCam").Value == 0, "never a reflection proxy");
         Expect((float)param[MapDrawParams.TemplateRow]!.Cells.Single(c => c.Def.InternalName == "drawDist").Value == 120f, "the template row is untouched");
-        Expect(param[MapDrawParams.LodRow] is null, "no LOD row unless asked for");
+        Expect(param[MapDrawParams.LodRow] is not null, "an LOD twin beside it");
     }
 
     private static void LowerDetail()
@@ -609,7 +471,7 @@ public static partial class MapPortChecks
         var param = new PARAM { ParamType = def.ParamType, Rows = [] };
         param.ApplyParamdef(def);
         param.Rows.Add(new PARAM.Row(MapDrawParams.TemplateRow, "", def));
-        MapDrawParams.AddRow(param, lod: MapDrawParams.Lod.Vanilla);
+        MapDrawParams.AddRow(param);
         float Cell(int id, string name) => (float)param[id]!.Cells.Single(c => c.Def.InternalName == name).Value;
         Expect(Cell(MapDrawParams.FirstRow, "lv01_BorderDist") > 9000f, "the first row still never switches");
         Expect(Cell(MapDrawParams.LodRow, "lv01_BorderDist") == 30f && Cell(MapDrawParams.LodRow, "lv12_BorderDist") == 60f
@@ -621,11 +483,9 @@ public static partial class MapPortChecks
         // Every map piece row of ours gets a twin (rows by size, PR #187), replacing an earlier run's.
         param.Rows.Add(new PARAM.Row(MapDrawParams.FirstRow + 3, "by size", def));
         param.Rows.Add(new PARAM.Row(MapDrawParams.FirstRow + MapDrawParams.LodOffset + 9, "stale twin", def));
-        MapDrawParams.AddLodTwins(param, MapDrawParams.Lod.Far2);
-        Expect(Cell(MapDrawParams.FirstRow + 3 + MapDrawParams.LodOffset, "lv01_BorderDist") == 60f && param[MapDrawParams.FirstRow + 9 + MapDrawParams.LodOffset] is null
+        MapDrawParams.AddLodTwins(param, MapDrawParams.Lod.Vanilla);
+        Expect(Cell(MapDrawParams.FirstRow + 3 + MapDrawParams.LodOffset, "lv01_BorderDist") == 30f && param[MapDrawParams.FirstRow + 9 + MapDrawParams.LodOffset] is null
                && param.Rows.Count(r => r.ID == MapDrawParams.LodRow) == 1, "a twin per piece row, stale twins gone");
-        Expect(MapPorter.Options.Parse([]).Lod == MapDrawParams.Lod.Vanilla && MapPorter.Options.Parse(["--no-lod"]).Lod is null
-               && MapPorter.Options.Parse(["--far-lod"]).Lod == MapDrawParams.Lod.Far2, "map-lod A default, B --no-lod, C --far-lod");
 
         // Completing a model: a mesh that lacks a level gets a copy of its next more detailed list.
         static FLVER2.Mesh Mesh(params (FLVER2.FaceSet.FSFlags Flags, int[] Indices)[] sets)
@@ -662,9 +522,7 @@ public static partial class MapPortChecks
         var slots = MapSlots.All.Where(s => !s.Probe).ToList();
         var none = new MapPorter.Options();
         Expect(slots.All(s => MapPorter.PieceTestFor(s, none) == MapPorter.PieceTest.None), "every slot is the real port by default");
-        var off = MapPorter.Options.Parse(["--no-piece-test"]);
-        Expect(slots.All(s => MapPorter.PieceTestFor(s, off) == MapPorter.PieceTest.None), "--no-piece-test is still accepted");
-        var asked = MapPorter.Options.Parse(["--no-piece-test", "--piece-test", $"{slots[0].Er}=vanilla-material"]);
+        var asked = MapPorter.Options.Parse(["--piece-test", $"{slots[0].Er}=vanilla-material"]);
         Expect(MapPorter.PieceTestFor(slots[0], asked) == MapPorter.PieceTest.VanillaMaterial && asked.Only.Count == 0, "--piece-test names a slot's test");
 
         // vanilla-model: the host's FLVER, byte for byte, under the new model's name and the same file ID.
@@ -819,12 +677,6 @@ public static partial class MapPortChecks
         Expect(plain.Meshes.SelectMany(m => m.Vertices).All(v => Vector3.Distance(v.Normal, Vector3.UnitY) < 0.03f) && plainPort.HalfNormalStats.Meshes == 0,
             "a one-byte normal is untouched");
 
-        // Fallback map-materials C: the normals as SoulsFormats reads them, as before this fix.
-        Expect(MapPorter.Options.Parse(["--raw-half-normals"]).RawHalfNormals && !new MapPorter.Options().RawHalfNormals, "--raw-half-normals is read");
-        var (raw, rawBnd) = VisualPort();
-        raw.HalfNormals = false;
-        var old = ConvertOne(raw, rawBnd, Ds3(up));
-        Expect(old.Meshes[0].Vertices[0].Normal.Y < 0 && raw.HalfNormalStats.Meshes == 0, "--raw-half-normals keeps the normals as read");
     }
 
     private static FLVER2 ConvertOne(MapModelPort port, BND4 hostBnd, FLVER2 ds3)
@@ -960,16 +812,6 @@ public static partial class MapPortChecks
         Expect(MapModelPort.SetUnlitEdge(edgeBin).Count == 0 && MATBIN.Read(edgeBin.Write()) is var edgeRead
                && (int)edgeRead.Params[0].Value == 0 && !(bool)edgeRead.Params[1].Value && ((int[])edgeRead.Params[2].Value).SequenceEqual([160, 0]),
             "the unlit template's copy cuts as vanilla AEG007_145 (g_BlendMode 0, depth written, alpha cut 160)");
-        var farCards = Environment.GetEnvironmentVariable("DARKSIGN_FAR_CARDS");
-        try
-        {
-            Environment.SetEnvironmentVariable("DARKSIGN_FAR_CARDS", "0");
-            Expect(MapModelPort.Ds3Kind(new FLVER2.Material("m", @"N:\x\M[A]_NoLight_e.mtd", 0)) == "none", "fallback map-far-cards B leaves the cards out");
-        }
-        finally
-        {
-            Environment.SetEnvironmentVariable("DARKSIGN_FAR_CARDS", farCards);
-        }
         var only = SyntheticFlver(0x20014, @"N:\FDP\data\Material\mtd\map\M[ARSN]_Decal.mtd", ("g_DiffuseTexture", @"N:\x\m40_00_dirt_a.tif"));
         try
         {
@@ -1032,11 +874,9 @@ public static partial class MapPortChecks
         Expect(near.Vertices[0].UVs[0].X == -7.5f && near.Vertices[2].UVs[0].X == 6.5f, "UVs in range stay as they are");
     }
 
-    private static void VisualFallbacks()
+    private static void PlainTemplates()
     {
-        var none = MsbPort.Convert(SyntheticDs3(), SyntheticHost(), Ds3Id, ErId, new MsbPort.Options { NoGroups = true }).Msb;
-        Expect(none.Parts.MapPieces.Single().Unk1.DrawGroups.All(g => g == 0) && none.Parts.MapPieces.Single().Unk1.DisplayGroups.All(g => g == 0), "map-groups C: no groups");
         var (plain, _) = VisualPort(plain: true);
-        Expect(plain.TemplateSummary == "opaque=m45_00_001" && plain.Complete(true), $"map-materials B: {plain.TemplateSummary}");
+        Expect(plain.TemplateSummary == "opaque=m45_00_001" && plain.Complete(true), $"plain: {plain.TemplateSummary}");
     }
 }

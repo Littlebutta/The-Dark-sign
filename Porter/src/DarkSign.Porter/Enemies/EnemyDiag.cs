@@ -60,7 +60,7 @@ public static partial class EnemyDiag
         var characters = ChrPort.Ds3Characters(ds3, ctx.LoadParams(PorterGame.DarkSouls3).Get("NpcParam"));
         TAE.ValidateEventBank = false;
         var ranks = new Dictionary<int, string>();
-        var plans = ChrPort.MakePlans(er, ds3, characters, catalog, ChrPort.CurrentMethod, notes, null, (c, ranked) =>
+        var plans = ChrPort.MakePlans(er, ds3, characters, catalog, ChrPort.Method.Full, notes, null, (c, ranked) =>
             ranks[c.Chr] = string.Join(" | ", ranked.Take(4).Select(r => FormattableString.Invariant(
                 $"{r.Template.Model} {Short(r.Template.Name)} b{r.Match:0.00} s{r.Size:0.00} ={r.Score:0.00}"))));
         var lines = new List<string> { "DS3 chr\tname\tboss\tmethod\ttemplate files\tbest four (model name, b = share of DS3 bones, s = size match, = score)" };

@@ -159,19 +159,6 @@ public static partial class MapPortChecks
         // The same input gives the same numbers (every PC builds the same flags: co-op).
         var again = MusicPlanFor(Ds3MusicScript(), Ds3MusicCommon());
         Expect(again.Sources.Select(s => (s.SwitchFlag, s.PlayFlag, s.EventId)).SequenceEqual(plan.Sources.Select(s => (s.SwitchFlag, s.PlayFlag, s.EventId))), "numbers are stable");
-        // Fallback map-music D: a boss's tracks aren't switched, so they play wherever the player stands in their region.
-        MapMusic.BossTracksUnswitched = true;
-        try
-        {
-            var arena = MusicPlanFor(Ds3MusicScript(), Ds3MusicCommon());
-            Expect(arena.ByEntity[4004800].SwitchFlag == 0 && arena.ByEntity[4004801].SwitchFlag == 0 && arena.FirstBossSwitch == 0
-                   && arena.ByEntity[4004450].SwitchFlag != 0 && arena.SwitchFor(4004800) == MapMusic.Plan.SpareFlag,
-                "DARKSIGN_MAP_MUSIC=arena: boss tracks have no switch flag, the shrine's song keeps its own");
-        }
-        finally
-        {
-            MapMusic.BossTracksUnswitched = false;
-        }
         // What 1.0.479 did: without the shared event's lines a boss region looked like one that plays from the start.
         var alone = MusicPlanFor(Ds3MusicScript());
         Expect(alone.ByEntity[4004800].StartsOn && !alone.ByEntity[4004800].Boss, "(the map script alone has no line that turns a boss track on)");

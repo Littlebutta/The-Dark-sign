@@ -8,7 +8,7 @@
    souls-client debug_spawn do it (CREDITS.md); the WorldChrMan pattern is EldenRingTool's (kh0nsu).
 
    Clearing uses the characters this menu spawned (kept by pointer and entity ID, checked before every use):
-   method A sets their HP to 0 so the game kills them; fallback B (DKSIGN_SPAWN_REMOVE=1) removes them with the
+   method A sets their HP to 0 so the game kills them; DKSIGN_SPAWN_REMOVE=1 removes them with the
    game's RemoveChrIns, souls-client's way, which leaves no bodies but runs off the game's update thread. */
 #ifndef DKSIGN_SPAWN_H
 #define DKSIGN_SPAWN_H

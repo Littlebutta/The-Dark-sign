@@ -37,7 +37,6 @@ namespace DarkSign.Porter.Maps;
 /// sharpness 0.2 and never gives a lamp of sharpness 4 or more a strength above 1.5), written as
 /// strength * (1 - distance / reach) ^ (1 / sharpness). The exact curve isn't known; the limits are Elden Ring's
 /// own lamps measured with the same curve, so a lamp that passes is one Elden Ring could have placed.
-/// "--ds3-lamp-strength" (launcher fallback "map-lamps" B) keeps DS3's strengths as written.
 /// </summary>
 public static class MapLampStrength
 {

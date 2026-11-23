@@ -14,21 +14,9 @@ namespace DarkSign.Porter;
 /// draws every metal blade in DS3's near-black diffuse colour, the dark grey, untextured look. This converts each
 /// _a/_r pair the standard way: metallic from how strong the reflectance is, and base colour taken from the
 /// reflectance where the surface is metal (from the diffuse elsewhere).
-///
-/// Method from the launcher's Fallbacks window (DARKSIGN_WEAPON_PBR): unset = convert both maps (A), "metal" = make
-/// _m from _r but keep DS3's _a (B), "0" = the old flat black _m (off).
 /// </summary>
 public static class WeaponTextures
 {
-    public enum Mode { Full, MetalOnly, Flat }
-
-    public static Mode CurrentMode => Environment.GetEnvironmentVariable("DARKSIGN_WEAPON_PBR")?.Trim().ToLowerInvariant() switch
-    {
-        "metal" or "b" => Mode.MetalOnly,
-        "0" or "off" or "flat" => Mode.Flat,
-        _ => Mode.Full,
-    };
-
     // Reflectance (linear luminance) at and below which a pixel is plain dielectric (DS3 paints non-metals ~0.04),
     // and at and above which it is fully metal.
     private const float DielectricMax = 0.06f, MetalMin = 0.25f;
@@ -36,10 +24,10 @@ public static class WeaponTextures
     private const int DxgiBc4Unorm = 80;
 
     /// <summary>
-    /// Adds an _m for every _r (names already renamed) and, in the full mode, rewrites the matching _a. A texture
+    /// Adds an _m for every _r (names already renamed) and rewrites the matching _a. A texture
     /// that can't be decoded falls back to the old flat black _m so the model still loads.
     /// </summary>
-    public static void AddMetallicMaps(TPF tpf, Mode mode)
+    public static void AddMetallicMaps(TPF tpf)
     {
         var byName = tpf.Textures.ToDictionary(t => t.Name, StringComparer.OrdinalIgnoreCase);
         var added = new List<TPF.Texture>();
@@ -51,7 +39,6 @@ public static class WeaponTextures
             if (byName.ContainsKey(stem + "_m" + lodMark))
                 continue;
             byte[] metallic = ModelPort.BlackBc4Dds();
-            if (mode != Mode.Flat)
             {
                 try
                 {
@@ -66,7 +53,7 @@ public static class WeaponTextures
                     }
                     metallic = Encode(mPixels, sw, sh, CompressionFormat.Bc4, DxgiBc4Unorm);
 
-                    if (mode == Mode.Full && byName.TryGetValue(stem + "_a" + lodMark, out var albedo)
+                    if (byName.TryGetValue(stem + "_a" + lodMark, out var albedo)
                         && AlbedoFormat(albedo.Bytes) is { } fmt)
                     {
                         var (diff, aw, ah) = Decode(albedo.Bytes);
@@ -206,7 +193,7 @@ public static class WeaponTextures
         var tpf = new TPF { Platform = TPF.TPFPlatform.PC, Encoding = 1, Flag2 = 3 };
         tpf.Textures.Add(new TPF.Texture("WP_A_9999_a", 0, 0, Encode(a, n, n, CompressionFormat.Bc1, 72), TPF.TPFPlatform.PC));
         tpf.Textures.Add(new TPF.Texture("WP_A_9999_r", 0, 0, Encode(r, n, n, CompressionFormat.Bc1, 72), TPF.TPFPlatform.PC));
-        AddMetallicMaps(tpf, Mode.Full);
+        AddMetallicMaps(tpf);
         var m = tpf.Textures.FirstOrDefault(t => t.Name == "WP_A_9999_m");
         Check(m is not null && m.Format == 103, "an _m (BC4, format 103) is added");
         if (m is not null)
@@ -220,26 +207,18 @@ public static class WeaponTextures
         var reread = TPF.Read(tpf.Write());
         Check(reread.Textures.Count == 3, "TPF round-trips with 3 textures");
 
-        var flat = new TPF { Platform = TPF.TPFPlatform.PC, Encoding = 1, Flag2 = 3 };
-        flat.Textures.Add(new TPF.Texture("X_r", 0, 0, Encode(r, n, n, CompressionFormat.Bc1, 72), TPF.TPFPlatform.PC));
-        AddMetallicMaps(flat, Mode.Flat);
-        Check(flat.Textures.Any(t => t.Name == "X_m" && t.Bytes.SequenceEqual(ModelPort.BlackBc4Dds())), "off mode keeps the flat black _m");
-
-        // LOD layout (ModelPort.LodSharesMaterials): Elden Ring's LOD binders name textures <main name>_l and draw with
+        // LOD layout: Elden Ring's LOD binders name textures <main name>_l and draw with
         // the main model's MATBIN.
         var lodTpf = new TPF { Platform = TPF.TPFPlatform.PC, Encoding = 1, Flag2 = 3 };
         lodTpf.Textures.Add(new TPF.Texture("WP_A_9020_r_l", 0, 0, Encode(r, n, n, CompressionFormat.Bc1, 72), TPF.TPFPlatform.PC));
-        AddMetallicMaps(lodTpf, Mode.Flat);
+        AddMetallicMaps(lodTpf);
         Check(lodTpf.Textures.Any(t => t.Name == "WP_A_9020_m_l"), "a LOD _r_l gets an _m_l");
-        if (ModelPort.LodSharesMaterials)
-        {
-            Check(ModelPort.TextureName("WP_A_0201_a_l", "WP_A_0201", "WP_A_9020") == "WP_A_9020_a_l", "a LOD texture keeps _l at the end (WP_A_9020_a_l)");
-            Check(ModelPort.TextureName("WP_A_0201_1_n_l", "WP_A_0201", "WP_A_9020") == "WP_A_9020_1_n_l", "a LOD part texture keeps _l at the end");
-            string[] main = ["P[WP_A_9020]_Metal", "P[WP_A_9020_1]_Leather"];
-            Check(ModelPort.LodMatbin("P[WP_A_9020_L]_Metal", "WP_A_9020_L", "", main) == "P[WP_A_9020]_Metal", "a LOD material draws with the main MATBIN");
-            Check(ModelPort.LodMatbin("P[WP_A_9020_1_L]_Metal", "WP_A_9020_1_L", "", main) == "P[WP_A_9020_1]_Leather", "a LOD part draws with its main part's MATBIN");
-            Check(ModelPort.LodMatbin("P[WP_A_9020_2_L]_Metal", "WP_A_9020_2_L", "", main) is null, "a LOD part the main model lacks keeps a MATBIN of its own");
-        }
+        Check(ModelPort.TextureName("WP_A_0201_a_l", "WP_A_0201", "WP_A_9020") == "WP_A_9020_a_l", "a LOD texture keeps _l at the end (WP_A_9020_a_l)");
+        Check(ModelPort.TextureName("WP_A_0201_1_n_l", "WP_A_0201", "WP_A_9020") == "WP_A_9020_1_n_l", "a LOD part texture keeps _l at the end");
+        string[] main = ["P[WP_A_9020]_Metal", "P[WP_A_9020_1]_Leather"];
+        Check(ModelPort.LodMatbin("P[WP_A_9020_L]_Metal", "WP_A_9020_L", "", main) == "P[WP_A_9020]_Metal", "a LOD material draws with the main MATBIN");
+        Check(ModelPort.LodMatbin("P[WP_A_9020_1_L]_Metal", "WP_A_9020_1_L", "", main) == "P[WP_A_9020_1]_Leather", "a LOD part draws with its main part's MATBIN");
+        Check(ModelPort.LodMatbin("P[WP_A_9020_2_L]_Metal", "WP_A_9020_2_L", "", main) is null, "a LOD part the main model lacks keeps a MATBIN of its own");
         Console.WriteLine(fails == 0 ? "texture-selftest: all passed" : $"texture-selftest: {fails} failed");
         return fails == 0 ? 0 : 1;
     }

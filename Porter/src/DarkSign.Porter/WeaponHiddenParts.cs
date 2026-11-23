@@ -11,12 +11,9 @@ namespace DarkSign.Porter;
 /// anibnd, so the port leaves it out, and the scabbard showed along the blade ("hitting them with a stick"). Here every
 /// bone the idle animation scales to almost nothing (and the bones under it) is read, and the vertices on those bones
 /// are pulled to the bone, as the scale does in DS3: the part is still there, but draws nothing.
-/// DARKSIGN_HIDDEN_PARTS=0 keeps the parts as DS3's model draws them without the animation.
 /// </summary>
 public static class WeaponHiddenParts
 {
-    public static readonly bool Enabled = Environment.GetEnvironmentVariable("DARKSIGN_HIDDEN_PARTS") != "0";
-
     /// <summary>A bone counts as hidden when every axis of its idle scale is below this.</summary>
     public const float HiddenScale = 0.01f;
 

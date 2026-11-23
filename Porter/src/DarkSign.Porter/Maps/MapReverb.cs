@@ -5,7 +5,7 @@ using Ds3 = HKX2;
 namespace DarkSign.Porter.Maps;
 
 /// <summary>
-/// DS3's room reverb, per place, as Elden Ring's reverb regions (launcher fallback map-reverb).
+/// DS3's room reverb, per place, as Elden Ring's reverb regions.
 /// <para><b>How DS3 decides reverb</b> (measured on Devin's DS3 map files, 2026-11-20): every collision part carries a
 /// SoundSpaceType byte (MSB3 Part.Collision, SoulsFormats: NoReverb 0, Small A/B 1-2, Middle A/B 3-4, Large A/B 5-6,
 /// Extra large A/B 7-8) and the sound engine uses the one of the ground the player stands on. 60-90% of each map's
@@ -32,9 +32,6 @@ namespace DarkSign.Porter.Maps;
 /// </summary>
 public static class MapReverb
 {
-    /// <summary>DARKSIGN_MAP_REVERB=0: no reverb regions, Elden Ring's automatic reverb everywhere (as up to 1.0.55x).</summary>
-    public static readonly bool Enabled = Environment.GetEnvironmentVariable("DARKSIGN_MAP_REVERB") != "0";
-
     /// <summary>DS3's largest reverb type (ExtraLargeReverbB); Elden Ring's types use the same numbers (0 dry ... 8).</summary>
     public const byte MaxType = 8;
 

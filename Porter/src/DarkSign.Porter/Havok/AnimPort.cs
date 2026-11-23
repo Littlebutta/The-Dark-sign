@@ -36,13 +36,6 @@ public static class AnimPort
         public Quaternion[]? Pre, Post;
     }
 
-    /// <summary>
-    /// DARKSIGN_WEAPON_BONES: unset, every shared bone's rotation is carried over relative to its own rest pose
-    /// (<see cref="PlanRetarget"/>); "freeze" keeps Elden Ring's rest pose on the end bones whose rest differs, as
-    /// 1.0.225 did; "ds3" copies DS3's rotation into every shared bone, as builds up to 1.0.221 did.
-    /// </summary>
-    public static readonly string BoneMode = (Environment.GetEnvironmentVariable("DARKSIGN_WEAPON_BONES") ?? "").Trim().ToLowerInvariant();
-    private const float RestAngleDegrees = 10f;
     /// <summary>Rest differences under this are noise and leave the DS3 rotation bytes untouched.</summary>
     private const float CorrectAngleDegrees = 0.5f;
 
@@ -69,16 +62,6 @@ public static class AnimPort
     {
         er.Frozen = null;
         er.Pre = er.Post = null;
-        if (BoneMode == "ds3")
-        {
-            Console.WriteLine("moveset: DARKSIGN_WEAPON_BONES=ds3: every shared bone copies DS3's rotation");
-            return;
-        }
-        if (BoneMode == "freeze")
-        {
-            er.Frozen = RestDifferent(ds3, er);
-            return;
-        }
         if (er.Parents.Count != er.Names.Count || ds3.Parents.Count != ds3.Names.Count)
         {
             Console.WriteLine("moveset: a skeleton has no parent indices; every shared bone copies DS3's rotation");
@@ -120,7 +103,7 @@ public static class AnimPort
         er.Frozen = frozen;
         Console.WriteLine(corrected.Count == 0
             ? "moveset: every shared bone rests alike in both skeletons; all take DS3's rotation"
-            : $"moveset: {corrected.Count} shared bones rest differently in the two skeletons; their DS3 rotation is carried over relative to rest: {string.Join(", ", corrected)} [DARKSIGN_WEAPON_BONES=freeze or ds3 for the old behaviours]");
+            : $"moveset: {corrected.Count} shared bones rest differently in the two skeletons; their DS3 rotation is carried over relative to rest: {string.Join(", ", corrected)}");
         if (kept.Count > 0)
             Console.WriteLine($"moveset: {kept.Count} shared bones hang from a different parent in the two skeletons and keep Elden Ring's rest pose: {string.Join(", ", kept)}");
     }
@@ -160,36 +143,6 @@ public static class AnimPort
         return 4 * MathF.Asin(MathF.Min(1, chord / 2)) * 180 / MathF.PI;
     }
 
-    /// <summary>
-    /// 1.0.225's way (DARKSIGN_WEAPON_BONES=freeze): shared end bones (no children) whose reference-pose rotation
-    /// differs between the two skeletons by more than <see cref="RestAngleDegrees"/> keep Elden Ring's reference pose;
-    /// every other shared bone copies DS3's rotation. It missed L_Weapon, which has a child (L_Shield) in Elden Ring.
-    /// </summary>
-    public static HashSet<int> RestDifferent(Ds3Skeleton ds3, ErSkeleton er)
-    {
-        var result = new HashSet<int>();
-        if (er.Parents.Count != er.Names.Count || ds3.Parents.Count != ds3.Names.Count)
-            return result;
-        var ds3Index = ds3.Names.Select((n, i) => (n, i)).GroupBy(x => x.n, StringComparer.OrdinalIgnoreCase)
-            .ToDictionary(g => g.Key, g => g.First().i, StringComparer.OrdinalIgnoreCase);
-        var hasChildren = er.Parents.Where(p => p >= 0).Select(p => (int)p).ToHashSet();
-        var notes = new List<string>();
-        for (int b = 0; b < er.Names.Count; b++)
-        {
-            if (hasChildren.Contains(b) || !ds3Index.TryGetValue(er.Names[b], out var d))
-                continue;
-            float degrees = Degrees(er.ReferencePose[b].m_rotation, ds3.ReferencePose[d].Rotation);
-            if (degrees <= RestAngleDegrees)
-                continue;
-            result.Add(b);
-            notes.Add($"{er.Names[b]} {degrees:0}°");
-        }
-        Console.WriteLine(result.Count == 0
-            ? "moveset: DARKSIGN_WEAPON_BONES=freeze: every shared end bone rests alike in both skeletons; all take DS3's rotation"
-            : $"moveset: DARKSIGN_WEAPON_BONES=freeze: {result.Count} shared end bones keep Elden Ring's pose in ported moves: {string.Join(", ", notes)}");
-        return result;
-    }
-
     public static Ds3Skeleton ReadDs3Skeleton(byte[] bytes)
     {
         var hkx = HKX.Read(bytes, HKX.HKXVariation.HKXDS3, false);
@@ -210,28 +163,11 @@ public static class AnimPort
         return new ErSkeleton { Names = skeleton.m_bones.Select(b => b.m_name ?? "").ToList(), ReferencePose = skeleton.m_referencePose, Parents = skeleton.m_parentIndices };
     }
 
-    /// <summary>
-    /// Builds an Elden Ring animation file from a DS3 one. <paramref name="erTemplate"/> is any Elden Ring player
-    /// animation file; its container layout is kept and its animation replaced.
-    /// </summary>
-    /// <summary>Writes spline-compressed animations (see <see cref="SplineTranscode"/>); DARKSIGN_ANIM_INTERLEAVED=1 writes the old uncompressed ones.</summary>
-    public static bool Spline = Environment.GetEnvironmentVariable("DARKSIGN_ANIM_INTERLEAVED") != "1";
-
-    /// <summary>
-    /// Whether a converted animation carries DS3's blend hint rather than the Elden Ring template file's. DS3's additive
-    /// clips (enemy flinches 9000-9499) are ADDITIVE_CHILD_SPACE deltas; Elden Ring's templates (c4770's 27 flinch
-    /// files) are ADDITIVE_PARENT_SPACE. Up to 1.0.567 the template's hint stayed, so every DS3 flinch turned bones
-    /// about their parent's axes instead of their own: on bones whose rest isn't near identity (the Dancer's knees,
-    /// Calf00 and Thigh00 rest turned 180° about X) a hit bent the leg the wrong way. Measured 2026-11-21 on c5270 -> c7130:
-    /// all 27 built additive clips hint 1, all DS3 sources hint 2. Fallback enemy-model P: DARKSIGN_ANIM_BLEND_HINT=template.
-    /// </summary>
-    public static bool DS3BlendHint => Environment.GetEnvironmentVariable("DARKSIGN_ANIM_BLEND_HINT")?.Trim().ToLowerInvariant() != "template";
-
     /// <summary>Held around every use of HKLib's serializer (see <see cref="Convert(byte[], Ds3Skeleton, ErSkeleton, byte[], byte[], bool)"/>).</summary>
     public static readonly object HavokLock = new();
 
     public static (byte[] Hkx, string Summary) Convert(byte[] ds3Hkx, Ds3Skeleton ds3, ErSkeleton er, byte[] erTemplate, byte[]? compendium) =>
-        Convert(ds3Hkx, ds3, er, erTemplate, compendium, Spline);
+        Convert(ds3Hkx, ds3, er, erTemplate, compendium, true);
 
     public static (byte[] Hkx, string Summary) Convert(byte[] ds3Hkx, Ds3Skeleton ds3, ErSkeleton er, byte[] erTemplate, byte[]? compendium, bool spline)
     {
@@ -323,8 +259,8 @@ public static class AnimPort
             erBinding.m_transformTrackToBoneIndices = bound.Select(b => (short)b).ToList();
             erBinding.m_floatTrackToFloatSlotIndices = [];
             erBinding.m_partitionIndices = [];
-            // The data is DS3's, so the blend hint is too (DS3BlendHint): DS3's additive clips are child-space deltas.
-            if (DS3BlendHint && binding is not null && Enum.IsDefined(typeof(hkaAnimationBinding.BlendHint), (int)binding.BlendHint))
+            // The data is DS3's, so the blend hint is too: DS3's additive clips are child-space deltas.
+            if (binding is not null && Enum.IsDefined(typeof(hkaAnimationBinding.BlendHint), (int)binding.BlendHint))
                 erBinding.m_blendHint = (hkaAnimationBinding.BlendHint)(int)binding.BlendHint;
             if (skeletonName is not null)
                 erBinding.m_originalSkeletonName = skeletonName;

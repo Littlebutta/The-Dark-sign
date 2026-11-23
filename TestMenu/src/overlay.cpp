@@ -447,7 +447,7 @@ void draw_cutscenes()
     }
     if (g_cutscenes.empty()) {
         ImGui::TextWrapped("No Dark Souls III cutscenes are ported yet. Press Rebuild content in the launcher, then restart the game. "
-                           "(Cutscenes need the Cemetery of Ash map ported, and the map-cutscenes fallback on A.)");
+                           "(Cutscenes need the Cemetery of Ash map ported.)");
         return;
     }
     ImGui::TextWrapped("Plays a converted Dark Souls III cutscene. You are warped to its map first; it starts a few seconds after the map loads.");
@@ -568,7 +568,7 @@ void draw_spawn()
     }
     if (!shown)
         ImGui::TextWrapped(g_spawn_game == 0 && from_file
-                               ? "No Dark Souls III enemy has its own model in this build (Fallbacks: enemy port is off, or it failed). See Work\\reports\\enemy-port.tsv."
+                               ? "No Dark Souls III enemy has its own model in this build (the enemy port failed). See Work\\reports\\enemy-port.tsv."
                            : g_spawn_game == 0
                                ? "No spawn list yet. Press Rebuild content in the launcher (the enemy port writes it), then restart the game."
                                : "Nothing matches.");
@@ -1508,7 +1508,7 @@ DWORD WINAPI start(LPVOID)
     dks_sound_init();
     dks_music_init();
     dks_flagcheck_start();
-    // Fallback "F1 test menu" B: no overlay (if hooking DirectX 12 breaks the game); the hotkeys still work.
+    // DKSIGN_NO_OVERLAY=1: no overlay (if hooking DirectX 12 breaks the game); the hotkeys still work.
     wchar_t no_overlay[8];
     DWORD n = GetEnvironmentVariableW(L"DKSIGN_NO_OVERLAY", no_overlay, 8);
     if (n > 0 && n < 8 && no_overlay[0] == L'1') {

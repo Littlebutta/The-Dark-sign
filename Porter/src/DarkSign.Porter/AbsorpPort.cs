@@ -15,36 +15,15 @@ namespace DarkSign.Porter;
 /// BothHandDamipolyId(k) two-handed in the right hand, BothHandDamipolyId(4+k) two-handed in the left hand,
 /// ShealthDamipolyId(2k) / (2k+1) = Elden Ring leftHang_k / rightHang_k (the struct is the same field for field). DS3 Unk22-25 =
 /// wepInvisibleType_0-3 and Unk30-53 = the dispPosType bytes (6 per model), copied so model 1 shows only where DS3 shows it.
-/// DARKSIGN_ABSORP=0 keeps every weapon on its template's row.
-/// Fallbacks (launcher "two-hand" B and C): DARKSIGN_ABSORP=er copies the positions from an Elden Ring row that
-/// already holds a second model in the left hand when two-handed (the game's own working layout); DARKSIGN_ABSORP=raw
-/// copies DS3's dummy poly IDs as they are, without matching them through the bones.
 /// </summary>
 public static class AbsorpPort
 {
-    private static readonly string Mode = (Environment.GetEnvironmentVariable("DARKSIGN_ABSORP") ?? "").ToLowerInvariant();
-    private static readonly bool Enabled = Mode != "0";
     // Elden Ring c0000's left-weapon dummy (L_Weapon, as in DS3), where paired rows hold model 1 two-handed.
     private const int LeftWeaponDummy = 21;
-    // Friede's second scythe (see Apply): DARKSIGN_FRIEDE_OVERRIDE unset / "art" = DS3's layout (second scythe on the
-    // back, two-handed too) plus the left hand as model 1's hang slot, where the art moves it with the 712 move Elden
-    // Ring's own arts make (ChangeType 3); "both" = Elden Ring's paired layout (the second scythe in the left hand
-    // two-handed and in the art, the previous build); "back" = DS3's layout plus a left-hand slot the art moves it to with
-    // ChangeType 1 (1.0.221-1.0.238); "keep" = DS3's row and DS3's override event as they are.
-    internal static readonly string FriedeMode = (Environment.GetEnvironmentVariable("DARKSIGN_FRIEDE_OVERRIDE") ?? "").Trim().ToLowerInvariant();
-    private static readonly bool FriedeLeftHand = FriedeMode != "keep";
-    private static readonly bool FriedeBothHands = FriedeMode == "both";
-    private static readonly bool FriedeHang = FriedeMode is "" or "art";
-    // DARKSIGN_PAIRED_GRIP=0: paired weapons keep the template's isDualBlade and hold motions (positions still DS3's).
-    private static readonly bool PairedGrip = Environment.GetEnvironmentVariable("DARKSIGN_PAIRED_GRIP") != "0";
-
+    // Friede's second scythe (see Apply): DS3's layout (second scythe on the back, two-handed too) plus the left hand
+    // as model 1's hang slot, where the art moves it with the 712 move Elden Ring's own arts make (ChangeType 3).
     public static void Apply(GameArchives erArchives, GameArchives ds3Archives, ParamStore er, ParamStore ds3, IReadOnlyList<WeaponPlan> plans)
     {
-        if (!Enabled)
-        {
-            Console.WriteLine("absorp: off (DARKSIGN_ABSORP=0), weapons keep their template's model positions");
-            return;
-        }
         var erWeapons = er.Get("EquipParamWeapon")!;
         var ds3Weapons = ds3.Get("EquipParamWeapon")!;
         var erAbsorp = er.Get("WepAbsorpPosParam");
@@ -54,12 +33,7 @@ public static class AbsorpPort
             Console.WriteLine("absorp: WepAbsorpPosParam missing in one of the games, skipped");
             return;
         }
-        var map = Mode == "raw" ? RawMap(ds3Archives) : DummyMap(ds3Archives, erArchives);
-        // DARKSIGN_ABSORP=er: Elden Ring rows whose model 1 sits in the left hand when two-handed, most used first.
-        var erSplitRows = Mode == "er" ? ErSplitRows(erAbsorp, erWeapons) : [];
-        if (Mode == "er")
-            Console.WriteLine($"absorp: method 'er': {erSplitRows.Count} Elden Ring rows hold model 1 in the left hand two-handed" +
-                              (erSplitRows.Count > 0 ? $" (using row {erSplitRows[0].ID})" : "; falling back to DS3 positions"));
+        var map = DummyMap(ds3Archives, erArchives);
         int nextId = Math.Max(erAbsorp.Rows.Max(r => r.ID) + 1, 900_000);
         int added = 0, pairedCount = 0, friedeCount = 0;
         var ds3Bones = PlayerDummies(ds3Archives).ToDictionary(d => d.Key, d => d.Value.Bone);
@@ -82,17 +56,8 @@ public static class AbsorpPort
             }
             var row = new PARAM.Row(nextId++, "", erAbsorp.AppliedParamdef);
             var unmapped = new SortedSet<int>();
-            if (erSplitRows.Count > 0)
-            {
-                // The Elden Ring split row as a whole (positions, display types and visibility for every model).
-                var split = erSplitRows[0];
-                for (int i = 0; i < row.Cells.Count; i++)
-                    row.Cells[i].Value = split.Cells[i].Value;
-                models = 0; // nothing more to place
-            }
-            else
-                for (int i = 0; i < row.Cells.Count; i++)
-                    row.Cells[i].Value = template.Cells[i].Value;
+            for (int i = 0; i < row.Cells.Count; i++)
+                row.Cells[i].Value = template.Cells[i].Value;
             // DS3's display bytes are taken for weapons whose model 1 only shows while in use (wepInvisibleType_1 = 2:
             // Friede's scythe, paired swords, twinblades, fists); weapons with a plain sheath part keep the behaviour
             // that already worked (template bytes).
@@ -141,39 +106,31 @@ public static class AbsorpPort
             // blade out one-handed), and 3, "to its hang location" (a612 sends model 1 there during an art, and the
             // paired arts put the blade back with it). ChangeType 1 (1H-left location) is used by neither game on a
             // right-hand model and never showed the scythe (1.0.221-1.0.238, "back").
-            // Default ("art"): DS3's positions as they are (second scythe on the back one- and two-handed, as Devin
+            // So: DS3's positions as they are (second scythe on the back one- and two-handed, as Devin
             // wants), and model 1's right-hand hang slot (rightHang_1, which DS3 points at the back too) becomes the
             // left hand, shown as a left-hand model; MovesetPort turns the override into ChangeType 3, so only the art
             // brings the scythe into the left hand, exactly a612's bytes. Known limit: the hang slot also serves when
             // Friede's scythe sits in the right slot while the left weapon is two-handed, where the small scythe then
-            // shows in the left hand. "both" (the previous build) is Elden Ring's paired layout instead: left hand two-handed and
-            // in the art (ChangeType 2).
-            if (!paired && ds3Display && FriedeLeftHand && models >= 2)
+            // shows in the left hand.
+            if (!paired && ds3Display && models >= 2)
             {
                 for (int k = 1; k < Math.Min(models, 4); k++)
                 {
-                    string[] slots = FriedeBothHands ? [$"left_{k}", $"both_{k}", $"leftBoth_{k}"] : FriedeHang ? [$"rightHang_{k}"] : [$"left_{k}"];
-                    string[] shows = FriedeBothHands ? [$"dispPosType_left_{k}", $"dispPosType_rightBoth_{k}", $"dispPosType_leftBoth_{k}"]
-                        : FriedeHang ? [$"dispPosType_rightHang_{k}"] : [$"dispPosType_left_{k}"];
-                    foreach (var field in slots)
-                        if (row[field] is { } cell)
-                            cell.Value = Convert.ChangeType(LeftWeaponDummy, cell.Value!.GetType());
-                    foreach (var field in shows)
-                        if (row[field] is { } cell)
-                            cell.Value = Convert.ChangeType(1, cell.Value!.GetType());
+                    if (row[$"rightHang_{k}"] is { } slot)
+                        slot.Value = Convert.ChangeType(LeftWeaponDummy, slot.Value!.GetType());
+                    if (row[$"dispPosType_rightHang_{k}"] is { } shows)
+                        shows.Value = Convert.ChangeType(1, shows.Value!.GetType());
                 }
-                if (FriedeBothHands)
-                    paired = true;
                 friedeCount++;
             }
             // Every Elden Ring paired row marks model 0 in the left hand as 1 (DS3 wrote 0 there).
-            if (paired && erSplitRows.Count == 0 && row["dispPosType_left_0"] is { } left0)
+            if (paired && row["dispPosType_left_0"] is { } left0)
                 left0.Value = Convert.ChangeType(1, left0.Value!.GetType());
             var gripNote = "";
             foreach (var weapon in erWeapons.Rows.Where(r => r.ID >= plan.NewId!.Value && r.ID < plan.NewId.Value + 10000))
             {
                 weapon["absorpParamId"].Value = Convert.ChangeType(row.ID, weapon["absorpParamId"].Value!.GetType());
-                if (!paired || !PairedGrip)
+                if (!paired)
                     continue;
                 if (weapon["isDualBlade"] is { } dual)
                     dual.Value = Convert.ChangeType(1, dual.Value!.GetType());
@@ -195,41 +152,22 @@ public static class AbsorpPort
         erAbsorp.Rows.Sort((a, b) => a.ID.CompareTo(b.ID));
         Console.WriteLine($"absorp: {added} split weapons got DS3 model positions ({map.Count} DS3 dummy polys matched), " +
                           $"{pairedCount} paired (left blade in the left hand two-handed; plus {friedeCount} Friede-style: second blade on the back, " +
-                          (FriedeBothHands ? "left hand two-handed and in the art, as Elden Ring's paired weapons [DARKSIGN_FRIEDE_OVERRIDE=both])"
-                              : FriedeHang ? "left hand only in the art, as its hang slot: rightHang 21, dispPosType_rightHang 1)"
-                              : "left hand only in the art, shown there: dispPosType_left 1 [DARKSIGN_FRIEDE_OVERRIDE=back])") + (PairedGrip ? "" : " [grip/isDualBlade off: DARKSIGN_PAIRED_GRIP=0]"));
+                          "left hand only in the art, as its hang slot: rightHang 21, dispPosType_rightHang 1)");
         foreach (var note in notes.Take(12))
             Console.WriteLine("  " + note);
     }
 
     /// <summary>
-    /// Where <see cref="Apply"/> will hang a weapon's models: null when it keeps its template's row (one model, or
-    /// DARKSIGN_ABSORP=0 / er), else the DS3 dummy poly to Elden Ring dummy poly map its new row is written with
+    /// Where <see cref="Apply"/> will hang a weapon's models: null when it keeps its template's row (one model),
+    /// else the DS3 dummy poly to Elden Ring dummy poly map its new row is written with
     /// (WeaponHold turns a shield for the dummy it really sits on).
     /// </summary>
     public static Dictionary<int, int>? Ds3Placement(GameArchives ds3, GameArchives er, int models)
     {
-        if (!Enabled || Mode == "er" || models < 2)
+        if (models < 2)
             return null;
-        return Mode == "raw" ? RawMap(ds3) : DummyMap(ds3, er);
+        return DummyMap(ds3, er);
     }
-
-    /// <summary>Elden Ring rows that place a model 1 in the left hand when two-handed, by how many weapons use them.</summary>
-    private static List<PARAM.Row> ErSplitRows(PARAM absorp, PARAM weapons)
-    {
-        var uses = weapons.Rows.GroupBy(w => Convert.ToInt32(w["absorpParamId"].Value)).ToDictionary(g => g.Key, g => g.Count());
-        // Elden Ring's paired rows (claws 22, fists 42, Falx 101, Starscourge 260, Rellana's 261...) all hide model 1
-        // except when it is in use (wepInvisibleType_1 = 2) and hold it in the left hand two-handed (both_1 = 21 or
-        // 2117, on the left hand); ordinary rows keep model 1 as a sheath part (wepInvisibleType_1 = 1).
-        return absorp.Rows.Where(r => r["wepInvisibleType_1"] is { } inv && Convert.ToInt32(inv.Value) == 2
-                                      && r["both_1"] is { } c && Convert.ToInt32(c.Value) > 0
-                                      && r["both_0"] is { } b && Convert.ToInt32(b.Value) > 0 && uses.ContainsKey(r.ID))
-            .OrderByDescending(r => uses[r.ID]).ThenBy(r => r.ID).ToList();
-    }
-
-    /// <summary>DS3 dummy poly IDs unchanged (method 'raw'): every player dummy maps to itself.</summary>
-    private static Dictionary<int, int> RawMap(GameArchives ds3) =>
-        PlayerDummies(ds3).Keys.ToDictionary(id => id, id => id);
 
     /// <summary>
     /// Whether DS3 holds model 1 in the left hand when the weapon is two-handed: BothHandDamipolyId1 is a dummy on the

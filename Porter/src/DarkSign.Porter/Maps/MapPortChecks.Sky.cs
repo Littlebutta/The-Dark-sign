@@ -15,7 +15,6 @@ public static partial class MapPortChecks
         Expect(MapPorter.MsbPath(MapDistantView.Of(slot)) == "/map/mapstudio/m45_02_00_99.msb.dcx", "its archive path");
         Expect(MapDistantView.IsErdtree("AEG094_003") && MapDistantView.IsSky("aeg096_611") && !MapDistantView.IsSky("AEG400_059"),
             "Erdtree (AEG094) and sky (AEG096) assets are told apart from scenery");
-        Expect(MapPorter.Options.Parse(["--host-sky"]).HostSky && !new MapPorter.Options().HostSky, "--host-sky is read");
 
         // A stand-in for the host's distant view: a sky asset, an Erdtree asset, scenery and a region.
         var host = new MSBE();

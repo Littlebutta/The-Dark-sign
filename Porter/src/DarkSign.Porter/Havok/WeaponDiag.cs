@@ -194,7 +194,7 @@ public static class WeaponDiag
         // Moveset section: first R1 one-handed, two-handed, dual.
         Log("");
         Log("## 3. Moveset TAE (mod), first attacks");
-        int moveSection = Convert.ToInt32(row[MovesetPort.UseWeaponMotionCategory ? "wepmotionCategory" : "spAtkcategory"].Value);
+        int moveSection = Convert.ToInt32(row["spAtkcategory"].Value);
         if (moveSection <= 0)
             moveSection = Convert.ToInt32(row["wepmotionCategory"].Value);
         DumpTae(Log, "mod", modMain, moveSection, a => a.ID is 30000 or 30500 or 32000 or 32500);

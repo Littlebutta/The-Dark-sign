@@ -133,7 +133,7 @@ public static class MapValidate
                 ctx.ModPath(MapPorter.ModParts(FlagAlloc.LegacyList)), registered);
             // The in-game check (dksign_testmenu.dll) asks the game itself about these blocks.
             File.WriteAllLines(ctx.ModPath(FlagAlloc.ProbeFile),
-                FlagAlloc.ProbeLines(listed.Select(l => l.Er), flags.Flags.Values, slotFlags: !MapFlags.Common));
+                FlagAlloc.ProbeLines(listed.Select(l => l.Er), flags.Flags.Values, slotFlags: true));
         }
         catch (Exception ex)
         {
@@ -404,7 +404,7 @@ public static class MapValidate
         var view = MapDistantView.Of(erId);
         if (!File.Exists(modFile))
             return hostHasView
-                ? (Level.Warn, $"{erId}: Elden Ring's distant view {view} is in place: its sky and the Erdtree show over the DS3 map (fallback map-sky B, or the sky step failed)")
+                ? (Level.Warn, $"{erId}: Elden Ring's distant view {view} is in place: its sky and the Erdtree show over the DS3 map (the sky step failed)")
                 : (Level.Ok, $"{erId}: Elden Ring has no distant view {view}: no Elden Ring sky over the map");
         try
         {
@@ -627,7 +627,7 @@ public static class MapValidate
     {
         if (msb.Parts.Enemies.Count == 0)
         {
-            report.Warn($"{erId}: no enemies placed (Fallbacks \"map-enemies\" C, or nothing could stand in; see the port-maps log)");
+            report.Warn($"{erId}: no enemies placed (nothing could stand in; see the port-maps log)");
             return;
         }
         var missing = msb.Models.Enemies.Select(m => m.Name)
@@ -668,7 +668,7 @@ public static class MapValidate
 
         if (msb.Parts.Assets.Count == 0)
         {
-            report.Warn($"{erId}: no DS3 objects placed (Fallbacks \"map-objects\" off, or the object port failed; see the port-maps log)");
+            report.Warn($"{erId}: no DS3 objects placed (the object port failed; see the port-maps log)");
             return;
         }
         var noFile = msb.Models.Assets.Select(m => m.Name)

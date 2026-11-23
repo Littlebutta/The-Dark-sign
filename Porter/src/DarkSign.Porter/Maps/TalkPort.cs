@@ -28,21 +28,11 @@ namespace DarkSign.Porter.Maps;
 /// </list>
 /// What a value means (flag, line, text, shop) is known where it is used, and followed back through the arguments
 /// the script's state groups pass each other (<see cref="Kinds"/>). The converted script is t(<see cref="TalkIdBase"/>
-/// + DS3's number) in the ported map's own talk binder, and the placed person names it.
-/// DARKSIGN_PEOPLE_TALK=0 (fallback map-people G) leaves everyone silent, as before. Unproven in game (2026-11-19):
-/// that Elden Ring shows a line with no voice for a readable time.
+/// + DS3's number) in the ported map's own talk binder, and the placed person names it. Unproven in game
+/// (2026-11-19): that Elden Ring shows a line with no voice for a readable time.
 /// </summary>
 public sealed class TalkPort
 {
-    public static bool Enabled => Environment.GetEnvironmentVariable("DARKSIGN_PEOPLE_TALK") != "0";
-
-    /// <summary>DARKSIGN_TALK_ENGINE_FLAGS=0 (fallback map-people K) keeps waiting on the flags only DS3's characters set.</summary>
-    public static bool EngineFlagsOn => Environment.GetEnvironmentVariable("DARKSIGN_TALK_ENGINE_FLAGS") != "0";
-
-    /// <summary>Off (fallback map-people J, DARKSIGN_PEOPLE_VOICES=0): no voice banks; lines are subtitles only, as
-    /// up to 1.0.501, where Elden Ring moved on from each line at once.</summary>
-    public static bool Voices => Environment.GetEnvironmentVariable("DARKSIGN_PEOPLE_VOICES") != "0";
-
     /// <summary>
     /// Elden Ring finds an NPC's spoken lines in the voice bank named after the first three digits of its talk script
     /// (t204101000 speaks from vc204: every voiceId of Elden Ring's TalkParam starts with its bank's number, measured
@@ -757,19 +747,18 @@ public sealed class TalkPort
             var allScripts = BND4.Read(ds3.Read(TalkPath(slot.Ds3))).Files;
             var source = allScripts.Where(f => ScriptId(f.Name) is int id && used.Contains(id)).ToList();
             HashSet<long> engine = [];
-            if (EngineFlagsOn)
-                try
-                {
-                    var events = new[] { MapEvents.ScriptPath(slot.Ds3), "/event/common.emevd.dcx" }.Where(ds3.Contains).Select(p => EMEVD.Read(ds3.Read(p)));
-                    engine = EngineFlags(allScripts.Select(f => { try { return ESD.Read(f.Bytes); } catch (Exception ex) when (ex is not OutOfMemoryException) { _ = ex; return null; } })
-                        .OfType<ESD>(), events);
-                    if (engine.Count > 0)
-                        lines.Add($"  people talk: {slot.Ds3}: {engine.Count} flags only DS3's characters set, read as on ({string.Join(" ", engine.Order().Take(12))})");
-                }
-                catch (Exception ex) when (ex is not OutOfMemoryException)
-                {
-                    lines.Add($"  people talk: {slot.Ds3}: engine flags not worked out ({ex.Message}); menus that wait on a character may hang");
-                }
+            try
+            {
+                var events = new[] { MapEvents.ScriptPath(slot.Ds3), "/event/common.emevd.dcx" }.Where(ds3.Contains).Select(p => EMEVD.Read(ds3.Read(p)));
+                engine = EngineFlags(allScripts.Select(f => { try { return ESD.Read(f.Bytes); } catch (Exception ex) when (ex is not OutOfMemoryException) { _ = ex; return null; } })
+                    .OfType<ESD>(), events);
+                if (engine.Count > 0)
+                    lines.Add($"  people talk: {slot.Ds3}: {engine.Count} flags only DS3's characters set, read as on ({string.Join(" ", engine.Order().Take(12))})");
+            }
+            catch (Exception ex) when (ex is not OutOfMemoryException)
+            {
+                lines.Add($"  people talk: {slot.Ds3}: engine flags not worked out ({ex.Message}); menus that wait on a character may hang");
+            }
             var modPath = ctx.ModPath(MapPorter.ModParts(TalkPath(slot.Er)));
             var (vanilla, compression) = er.ReadWithCompression(er.Contains(TalkPath(slot.Er)) ? TalkPath(slot.Er) : templatePath!);
             var bnd = BND4.Read(File.Exists(modPath) ? DCX.Decompress(File.ReadAllBytes(modPath)) : vanilla);
@@ -914,7 +903,7 @@ public sealed class TalkPort
             talkParam.Rows.Add(row);
             talkMsg.Entries.Add(new FMG.Entry(TextBase + id, words));
             rows++;
-            if (Voices && lineBank.TryGetValue(id, out var prefix))
+            if (lineBank.TryGetValue(id, out var prefix))
             {
                 var list = banks.TryGetValue(prefix, out var l) ? l : banks[prefix] = [];
                 list.Add((row, prefix * 1_000_000 + list.Count + 1, id, ReadingTime(words)));
@@ -948,8 +937,6 @@ public sealed class TalkPort
             foreach (var path in CutsceneSound.VoiceBankPaths(ctx, $"vc{p}"))
                 if (!banks.ContainsKey(p) && File.Exists(path))
                     File.Delete(path);
-        if (!Voices)
-            return ["people talk: voices off (DARKSIGN_PEOPLE_VOICES=0): subtitles only"];
         if (banks.Count == 0)
             return log;
         var notes = new List<string>();

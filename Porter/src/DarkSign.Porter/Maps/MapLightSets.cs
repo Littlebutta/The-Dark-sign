@@ -23,8 +23,7 @@ namespace DarkSign.Porter.Maps;
 /// 1000, 1100) stay the host's: Elden Ring's floors name 100 (92 of Stormveil's 111 collisions), as DS3's outdoor
 /// floors and characters do.</para>
 /// <para>Unproven until tested: Elden Ring's own map pieces name only 0 and -1, so that the game reads other set IDs
-/// from a map piece is taken from DS3 and Sekiro, whose draw params Elden Ring's format follows. Fallback
-/// "map-light-sets" B (port-maps --one-light-set) leaves every part on -1, as up to 1.0.499.</para>
+/// from a map piece is taken from DS3 and Sekiro, whose draw params Elden Ring's format follows.</para>
 /// </summary>
 public static class MapLightSets
 {
@@ -82,12 +81,9 @@ public static class MapLightSets
     /// set 110 0.4, 0.3 and 0.4 with specular light of 1 and 2 (2.7 as specular light). Elden Ring has no baked light
     /// to brighten the room around them as DS3 did, so they stood out lit like a stage. A character-only set now lights
     /// no more in all than the slot's character set: its lights keep DS3's colours, directions and proportions, all
-    /// scaled down together. Fallback "map-light-sets" D: DARKSIGN_CHARACTER_LIGHT=ds3 keeps DS3's strengths (each
-    /// light within <see cref="MaxOverSun"/>), as builds up to 1.0.53x had them.
+    /// scaled down together.
     /// </summary>
     public const int HostCharacterSet = 100;
-
-    public static bool CharacterLightLimited => Environment.GetEnvironmentVariable("DARKSIGN_CHARACTER_LIGHT") != "ds3";
 
     /// <summary>The diffuse colours, the specular ones, and the switch each light needs on to count (null: always on).</summary>
     private static readonly (string Diffuse, string Specular, string? Switch)[] Lights =
@@ -157,10 +153,6 @@ public static class MapLightSets
     public static bool IsFarView(int id, string ds3Name) =>
         ds3Name.Contains("遠景", StringComparison.Ordinal) || ds3Name.Contains("天球", StringComparison.Ordinal) || id is >= 300 and < 400;
 
-    /// <summary>Fallback "map-light-sets" C: DARKSIGN_FAR_LIGHT_CAP=1 keeps far-view sets within
-    /// <see cref="MaxOverSun"/> like every other set, as builds up to 1.0.52x had them.</summary>
-    public static bool FarViewsBright => Environment.GetEnvironmentVariable("DARKSIGN_FAR_LIGHT_CAP") != "1";
-
     /// <summary>Switches DS3 sets per light set.</summary>
     public static readonly string[] Switches = ["Directional Enable LocalLight1", "Directional Enable LocalLight2", "Directional LightLight1 FollowedCamera"];
 
@@ -211,14 +203,14 @@ public static class MapLightSets
 
         foreach (var id in added)
         {
-            bool farView = FarViewsBright && IsFarView(id, Ds3Name(id));
+            bool farView = IsFarView(id, Ds3Name(id));
             if (farView)
                 far.Add(id);
             float setCap = farView ? farCap : cap;
             // A character-only set: every light scaled by one factor so the set's total stays within the slot's
             // character set, as diffuse and as specular light.
             float diffuseScale = 1, specularScale = 1;
-            if (CharacterLightLimited && characterSets is not null && characterSets.Contains(id) && !farView)
+            if (characterSets is not null && characterSets.Contains(id) && !farView)
             {
                 var (d, s) = Total(ds3Light, id, sunScale);
                 if (d > hostCharacter.Diffuse && hostCharacter.Diffuse > 0)
@@ -294,10 +286,9 @@ public static class MapLightSets
     public static HashSet<int> Ids(GPARAM.Group group) => [.. group.Params.SelectMany(p => p.ValueIDs)];
 
     /// <summary>
-    /// After the draw params are written: a part whose light set they lack goes back to -1, the default (all of them
-    /// when <paramref name="off"/>, fallback "map-light-sets" B). Returns a line for the log.
+    /// After the draw params are written: a part whose light set they lack goes back to -1, the default. Returns a line for the log.
     /// </summary>
-    public static string Finish(MSBE msb, IReadOnlySet<int> defined, bool off)
+    public static string Finish(MSBE msb, IReadOnlySet<int> defined)
     {
         var kept = new SortedDictionary<int, int>();
         int reset = 0, parts = 0;
@@ -308,7 +299,7 @@ public static class MapLightSets
             parts++;
             if (g.LightSetID < 0)
                 continue;
-            if (off || !defined.Contains(g.LightSetID))
+            if (!defined.Contains(g.LightSetID))
             {
                 g.LightSetID = -1;
                 reset++;
@@ -316,8 +307,6 @@ public static class MapLightSets
             }
             kept[g.LightSetID] = kept.GetValueOrDefault(g.LightSetID) + 1;
         }
-        if (off)
-            return $"light sets: every part on the default set (--one-light-set); {reset} DS3 light set names dropped";
         var own = kept.Where(k => k.Key != 0).Select(k => $"{k.Key} x{k.Value}").ToList();
         return $"light sets: {kept.Values.Sum()} of {parts} parts name DS3's light set ({kept.GetValueOrDefault(0)} on set 0"
                + (own.Count > 0 ? $"; {string.Join(", ", own.Take(24))}{(own.Count > 24 ? ", ..." : "")}" : "") + ")"

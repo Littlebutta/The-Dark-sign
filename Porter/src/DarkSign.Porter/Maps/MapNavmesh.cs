@@ -27,7 +27,7 @@ public static class MapNavmesh
     public const int NSetFirstId = 10000, OSetFirstId = 20000;
 
     /// <summary>Report lines for the port-maps log, the first the summary.</summary>
-    public static IReadOnlyList<string> Port(PorterContext ctx, GameArchives ds3, GameArchives er, MapId ds3Id, MapId erId, MapPorter.Options options,
+    public static IReadOnlyList<string> Port(PorterContext ctx, GameArchives ds3, GameArchives er, MapId ds3Id, MapId erId,
         MapId? hostId = null, MSB3? ds3Msb = null)
     {
         var source = Ds3BinderPath(ds3Id);
@@ -44,9 +44,7 @@ public static class MapNavmesh
 
         Nva? ds3List = null, hostList = null;
         var listCompression = compression;
-        if (options.HostNavmeshList)
-            lines.Add("navmesh list: the host's own, untouched (--host-navmesh-list): the game loads no DS3 navmesh");
-        else if (!ds3.Contains(Ds3ListPath(ds3Id)))
+        if (!ds3.Contains(Ds3ListPath(ds3Id)))
             lines.Add($"navmesh list: DS3 has no {ItemText.Leaf(Ds3ListPath(ds3Id))}; the host's stays and the game loads no DS3 navmesh");
         else
         {
@@ -83,7 +81,7 @@ public static class MapNavmesh
                 lines.Add($"navmesh: DS3 list: {line}");
 
         var points = PlacementPoints(ds3Msb);
-        var settings = new Settings(!options.BinaryCollision, options.Ds3NavmeshFlags, hostId, points);
+        var settings = new Settings(Xml: false, hostId, points);
         var result = Convert(ds3Binder, host, ds3Id, erId, settings, ds3List, hostList, Matrix4x4.Identity);
         // DS3's list entries are in world space; a map with a MapOffset event has its parts in the map's own space,
         // which the port keeps. Whichever space puts more of the map's characters over a navmesh face is the map's.
@@ -105,7 +103,7 @@ public static class MapNavmesh
     }
 
     /// <param name="Points">Where DS3 placed characters, to check the navmeshes lie under them.</param>
-    public sealed record Settings(bool Xml, bool KeepFaceData = false, MapId? HostId = null, IReadOnlyList<Vector3>? Points = null);
+    public sealed record Settings(bool Xml, MapId? HostId = null, IReadOnlyList<Vector3>? Points = null);
 
     public sealed record Result(BND4 Binder, Nva? List, string Summary, int Converted, IReadOnlyList<string> Notes, int Covered);
 
@@ -166,7 +164,7 @@ public static class MapNavmesh
                 var leaf = ItemText.Leaf(file.Name);
                 try
                 {
-                    var navmesh = NavmeshPort.Convert(Unpacked(file), settings.Xml, null, settings.KeepFaceData, layout);
+                    var navmesh = NavmeshPort.Convert(Unpacked(file), settings.Xml, null, layout);
                     output.Files.Add(new BinderFile(flags, nextId++, folder + leaf.Replace(ds3Id.Digits, erId.Digits, StringComparison.OrdinalIgnoreCase), Packed(navmesh.Bytes)));
                     converted++;
                     faces += navmesh.Faces;
@@ -212,7 +210,7 @@ public static class MapNavmesh
                 named.Add(stem);
                 try
                 {
-                    navmesh = NavmeshPort.Convert(Unpacked(file), settings.Xml, NavmeshList.Placement(entry) * world, settings.KeepFaceData, layout);
+                    navmesh = NavmeshPort.Convert(Unpacked(file), settings.Xml, NavmeshList.Placement(entry) * world, layout);
                     if (entry.Rotation.Length() > 1e-4f || Vector3.Distance(entry.Scale, Vector3.One) > 1e-4f)
                         rotated++;
                     foreach (var (value, count) in navmesh.FaceData)
@@ -251,7 +249,7 @@ public static class MapNavmesh
             notes.Add($"{renumbered} entries shared a ModelID or had none; given new ones");
         notes.Add($"{rotated} of {done} navmeshes were turned or scaled into place, the rest only moved");
         if (faceData.Keys.Any(k => k != 0))
-            notes.Add($"DS3 face data ({(settings.KeepFaceData ? "kept (--navmesh-flags ds3)" : "cleared: every face is plain ground")}): "
+            notes.Add($"DS3 face data (cleared: every face is plain ground): "
                       + string.Join(", ", faceData.OrderByDescending(k => k.Value).Take(12).Select(k => $"0x{k.Key:X} x{k.Value}")));
         if (linkSetups > 0)
             notes.Add($"{linkSetups} DS3 jump and drop links left out (enemies won't jump or drop between ledges)");

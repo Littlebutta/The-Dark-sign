@@ -18,8 +18,7 @@ public static partial class MapPortChecks
         yield return ("baked light: DS3's probe terms read in DS3's order (up, z, x), z mirrored when the layout says so", BakedAxes);
         yield return ("baked light: probes move and turn by DS3's map offset", BakedOffset);
         yield return ("baked light: environment point/box over the probes, GIIV0900 textures added to the binder", BakedRegionAndBinder);
-        yield return ("baked light: --flat-env-light and --baked-light-flip are read", BakedOptions);
-        yield return ("baked light: open sky at DS3's share of the sun (map 1 unchanged, map 2 and 3 darker), options read", BakedSkyLevel);
+        yield return ("baked light: open sky at DS3's share of the sun (map 1 unchanged, map 2 and 3 darker)", BakedSkyLevel);
         yield return ("light areas: each DS3 room gets its own volume and darker reflection cube, in box order, shared points kept", LightAreas);
         yield return ("light areas: every volume's textures go into the binder under its own number", LightAreasBinder);
     }
@@ -91,7 +90,7 @@ public static partial class MapPortChecks
 
     private static void BakedEncoding()
     {
-        var vol = MapBakedLight.Bake(SyntheticProbes(), 56, MapBakedLight.Options.Default);
+        var vol = MapBakedLight.Bake(SyntheticProbes(), 56);
         var high = vol.Levels["high"];
         Expect(vol.Levels.Count == 3 && high.W % 4 == 0 && high.H % 4 == 0, $"three levels, high {high.W} x {high.H} x {high.D}");
         MapLightDiag.Volume Decode(char c) => MapLightDiag.DecodeVolume(MapBakedLight.VolumeDds(HostVolumeDds(1, 2, 3, 4), high.W, high.H, high.D, high.Bc7[c]))!.Value;
@@ -117,9 +116,6 @@ public static partial class MapPortChecks
         Expect(Math.Abs(up.a - outside.a * 0.87) <= 6, $"Y alpha {up.a} about 0.87 of W's {outside.a}");
         Expect(Decode('X').At(ox, oy, oz).a <= 2, "no sideways light in X");
 
-        var flipped = MapBakedLight.Bake(SyntheticProbes(), 56, MapBakedLight.Options.Default with { FlipX = true }).Levels["high"];
-        var wf = MapLightDiag.DecodeVolume(MapBakedLight.VolumeDds(HostVolumeDds(1, 2, 3, 4), flipped.W, flipped.H, flipped.D, flipped.Bc7['W']))!.Value;
-        Expect(wf.At(high.W - 1 - ox, oy, oz).a == outside.a, "--baked-light-flip x mirrors the columns");
     }
 
     private static BTPB SyntheticBtpb(int upTerm, float upSign, float zSign)
@@ -153,13 +149,6 @@ public static partial class MapPortChecks
         Expect(sunward[0].Sh[3] == 800 && sunward[0].Sh[6] == 0, $"a large term 3 (map 1's low sun) stays x, not up ({string.Join(",", sunward[0].Sh)})");
         var zward = MapBakedLight.ReadProbes(SyntheticBtpb(2, 1, 1), null, []);
         Expect(zward[0].Sh[9] == 800 && zward[0].Sh[6] == 0, $"term 2 is z ({string.Join(",", zward[0].Sh)})");
-        // --guess-probe-axes: the old guess, the largest term under open sky is up.
-        foreach (var (term, sign) in new[] { (1, 1f), (2, 1f), (1, -1f), (3, 1f) })
-        {
-            var notes = new List<string>();
-            var probes = MapBakedLight.ReadProbes(SyntheticBtpb(term, sign, 1), null, notes, guessAxes: true);
-            Expect(probes[0].Sh[6] == 800 && probes[0].Sh[3] == 0 && probes[0].Sh[9] == 0, $"--guess-probe-axes, term {term} sign {sign}: up read as Y ({string.Join(",", probes[0].Sh)}); {notes[0]}");
-        }
         // The sun check: probes leaning towards +x (yaw 90 degrees).
         var lean = MapBakedLight.ReadProbes(SyntheticBtpb(3, 1, 1), null, []);
         var sun = MapBakedLight.SunYawFromProbes(lean);
@@ -190,13 +179,11 @@ public static partial class MapPortChecks
         var want = Vector3.TransformNormal(new Vector3(300, 800, 0), m);
         Expect(Vector3.Distance(dir, want) < 0.5f, $"first-order terms turn with the map: {dir} (want {want})");
         Expect(moved[5].Sh[0] == 1000, "order 0 unchanged");
-        var kept = MapBakedLight.ReadProbes(SyntheticBtpb(2, 1, 1), msb, [], noOffset: true);
-        Expect(kept[5].Position == raw, "--no-light-offset leaves them in the map's space");
     }
 
     private static void BakedRegionAndBinder()
     {
-        var vol = MapBakedLight.Bake(SyntheticProbes(), 56, MapBakedLight.Options.Default);
+        var vol = MapBakedLight.Bake(SyntheticProbes(), 56);
         // The binder: the host's light volume W and reflection cube under their archive names.
         var bnd = new BND4();
         var host = MapId.Parse("m45_00_00_00");
@@ -232,20 +219,13 @@ public static partial class MapPortChecks
 
     private static void BakedSkyLevel()
     {
-        var o = MapBakedLight.Options.Default;
         // Measured open sky and sun scales (port log 1.0.499): map 1 877 x 0.75, map 2 625 x 0.41, map 3 571 x 0.27.
-        float m1 = MapBakedLight.SkyAlpha(877, 0.6f / 0.8f, 56, o);
-        float m2 = MapBakedLight.SkyAlpha(625, 0.5f / 1.23f, 73, o);
-        float m3 = MapBakedLight.SkyAlpha(571, 0.4f / 1.5f, 89, o);
+        float m1 = MapBakedLight.SkyAlpha(877, 0.6f / 0.8f);
+        float m2 = MapBakedLight.SkyAlpha(625, 0.5f / 1.23f);
+        float m3 = MapBakedLight.SkyAlpha(571, 0.4f / 1.5f);
         Expect(Math.Abs(m1 - 56) <= 1.5f, $"map 1 keeps alpha 56 ({m1:0.0})");
         Expect(m2 / 73 is > 0.25f and < 0.36f, $"map 2 at about 1/3.4 of the colosseum's ({m2:0.0} of 73)");
         Expect(m3 / 89 is > 0.11f and < 0.18f, $"map 3 at about 1/7 of the colosseum's ({m3:0.0} of 89)");
-        Expect(MapBakedLight.SkyAlpha(625, 0.41f, 73, o with { ColosseumSky = true }) == 73, "--colosseum-sky-light keeps the colosseum's");
-        Expect(Math.Abs(MapBakedLight.SkyAlpha(625, 0.41f, 73, o with { Level = 2 }) - 2 * MapBakedLight.SkyAlpha(625, 0.41f, 73, o)) < 0.01f, "--baked-light-level scales it");
-        Expect(MapPorter.Options.Parse(["--colosseum-sky-light"]).BakedLight.ColosseumSky, "--colosseum-sky-light is read");
-        Expect(MapPorter.Options.Parse(["--baked-light-level", "0.6"]).BakedLight.Level == 0.6f, "--baked-light-level 0.6 is read");
-        Expect(MapPorter.Options.Parse(["--baked-light-level", "x"]).BakedLight.Level == 1, "a bad level is ignored");
-        Expect(MapPorter.Options.Parse(["--brighter-sky-light"]).BakedLight.Level == 1.6f && MapPorter.Options.Parse(["--darker-sky-light"]).BakedLight.Level == 0.6f, "map-sky-level C/D flags are read");
 
         // The colosseum's even light and cube are dimmed by the same share.
         var volume = new TPF.Texture("v_GIIV0000_00_W", 102, 0, HostVolumeDds(250, 230, 170, 60), TPF.TPFPlatform.PC);
@@ -255,13 +235,6 @@ public static partial class MapPortChecks
         var cube = new TPF.Texture("c_GILM0000_00_rem", 115, 0, MapEnvironment.TestDds(MapEnvironment.DxgiBc6hUf16, MapEnvironment.Bc6hBlock(0.05f)), TPF.TPFPlatform.PC);
         MapEnvironment.NeutraliseCube(cube, 0.5f);
         Expect(Math.Abs(MapEnvironment.DecodeGrey(cube.Bytes) - 0.025f) < 0.002f, "reflection cube 0.05 x 0.5");
-    }
-
-    private static void BakedOptions()
-    {
-        Expect(MapPorter.Options.Parse(["--flat-env-light"]).BakedLight.Flat && !new MapPorter.Options().BakedLight.Flat, "--flat-env-light is read");
-        var o = MapPorter.Options.Parse(["--baked-light-flip", "xz"]).BakedLight;
-        Expect(o.FlipX && !o.FlipY && o.FlipZ && !o.Flat, "--baked-light-flip xz is read");
     }
 
     /// <summary>
@@ -296,7 +269,7 @@ public static partial class MapPortChecks
         msb.Regions.EnvironmentMapPoints.Add(point);
         msb.Regions.EnvironmentMapEffectBoxes.Add(box);
         var probes = SyntheticProbes();
-        var (volumes, line) = MapLightAreas.Build(AreaLayout(), probes, msb, point, box, 56, MapBakedLight.OpenSky(probes), MapBakedLight.Options.Default);
+        var (volumes, line) = MapLightAreas.Build(AreaLayout(), probes, msb, point, box, 56, MapBakedLight.OpenSky(probes));
         return (volumes, line, msb);
     }
 
@@ -330,16 +303,15 @@ public static partial class MapPortChecks
         Expect(!points.ContainsKey("Env_Point102"), "a box sharing a point gets none of its own");
 
         // Numbers the layout already uses are left alone.
-        var again = MapLightAreas.Build(AreaLayout(), SyntheticProbes(), msb, msb.Regions.EnvironmentMapPoints[0], msb.Regions.EnvironmentMapEffectBoxes[0], 56, 1000, MapBakedLight.Options.Default);
+        var again = MapLightAreas.Build(AreaLayout(), SyntheticProbes(), msb, msb.Regions.EnvironmentMapPoints[0], msb.Regions.EnvironmentMapEffectBoxes[0], 56, 1000);
         Expect(again.Volumes.Count == 0 && again.Line.Contains("already used"), $"a second run adds nothing: {again.Line}");
         Expect(MapLightAreas.NumberOf("Env_Box104") == 104 && MapLightAreas.NumberOf("Env_Box") == -1, "numbers read from names");
-        Expect(MapPorter.Options.Parse(["--no-light-areas"]).BakedLight.NoAreas && !new MapPorter.Options().BakedLight.NoAreas, "--no-light-areas is read");
     }
 
     private static void LightAreasBinder()
     {
         var (volumes, _, _) = BuildAreas();
-        var all = new List<MapBakedLight.Volume> { MapBakedLight.Bake(SyntheticProbes(), 56, MapBakedLight.Options.Default) };
+        var all = new List<MapBakedLight.Volume> { MapBakedLight.Bake(SyntheticProbes(), 56) };
         all.AddRange(volumes);
         var bnd = new BND4();
         var host = MapId.Parse("m45_02_00_00");

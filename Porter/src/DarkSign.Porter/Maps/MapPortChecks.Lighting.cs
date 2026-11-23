@@ -43,12 +43,6 @@ public static partial class MapPortChecks
         Expect(byKind["nolight"], "the sky dome's material casts no shadow");
         Expect(!byKind["opaque"], "the wall's material still casts shadows");
 
-        // --host-lighting: the template's own setting.
-        Expect(MapPorter.Options.Parse(["--host-lighting"]).HostLighting && !new MapPorter.Options().HostLighting, "--host-lighting is read");
-        var (hostLit, bnd) = VisualPort();
-        hostLit.UnlitCastShadows = true;
-        ConvertOne(hostLit, bnd, Model());
-        Expect(hostLit.MatbinFiles(0).All(f => !NoShadow(f)), "--host-lighting leaves the sky dome casting");
     }
 
     private static void AmbientBox()
@@ -171,8 +165,6 @@ public static partial class MapPortChecks
                && MapLampStrength.SunScale(Sun(5, false), Sun(0.5f, true)) == MapLampStrength.MaxSunScale, "sun scale: kept inside its range");
         Expect(MapLampStrength.Describe(sun, changes.OfType<MapLampStrength.Change>().ToList(), 5).Contains("4 of 5 turned down")
                && MapLampStrength.Describe(1, [], 3).Contains("every lamp is inside"), "the log line names what was turned down");
-        Expect(MapPorter.Options.Parse(["--ds3-lamp-strength"]).Ds3LampStrength && !MapPorter.Options.Parse([]).Ds3LampStrength,
-            "--ds3-lamp-strength (fallback map-lamps B) is read");
     }
 
     private static void FlameLamps()
@@ -268,8 +260,6 @@ public static partial class MapPortChecks
         var many = Enumerable.Range(0, 900).Select(i => new Vector3(i % 30 * 5, 0, i / 30 * 5)).ToList();
         var wide = FlameLights.Build(new BTL { Version = 18, LongOffsets = true }, many, "m45_02_00_00");
         Expect(wide.Lamps <= FlameLights.MaxLamps && wide.Lamps > 20 && wide.MergedWithin > FlameLights.MergeDistance, $"900 spread flames stay under the cap ({wide})");
-        Expect(MapPorter.Options.Parse(["--no-flame-lights"]).NoFlameLights && !MapPorter.Options.Parse([]).NoFlameLights, "--no-flame-lights (fallback map-lamps C) is read");
-        Expect(MapPorter.Options.Parse(["--no-new-light-file"]).NoNewLightFile && !MapPorter.Options.Parse([]).NoNewLightFile, "--no-new-light-file (fallback map-lamps E) is read");
     }
 
     private static void LampsOffset()
@@ -289,7 +279,5 @@ public static partial class MapPortChecks
         Expect(hub.Position == new Vector3(149.9f, -58.0f, 727.9f), "the DS3 lights read are not changed");
         var none = MapLighting.Convert([hub], 18, true, out _).Lights[0];
         Expect(none.Position == hub.Position, "no offset, no move (m30 has none)");
-        Expect(MapPorter.Options.Parse(["--no-light-offset"]) is { NoLightOffset: true, BakedLight.NoOffset: true }
-               && !MapPorter.Options.Parse([]).NoLightOffset, "--no-light-offset (fallback map-light-place B) reaches lamps and baked light");
     }
 }

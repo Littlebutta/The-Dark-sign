@@ -119,8 +119,7 @@ export function convert(bytes, newId, mapJson) {
 //   radius, as Elden Ring's do.
 // - Volume density, the faint glow a light gives the air around it: 0.5 for 2,788 of Elden Ring's lights, 0 for all
 //   of DS3's. Now 0.5.
-// Colours, radius, flicker, shadows and fade times stay DS3's. Fallback "map-effects" E (DARKSIGN_FXR_LIGHTS=ds3)
-// keeps the lights as the library converts them, as builds before 2026-11-20 had them.
+// Colours, radius, flicker, shadows and fade times stay DS3's.
 function erLight(light) {
   light.diffuseMultiplier = anyValueMult(10, light.diffuseMultiplier);
   light.specularMultiplier = anyValueMult(10, light.specularMultiplier);
@@ -137,7 +136,6 @@ function erLight(light) {
 // (2026-11-20 playtest: "missing the light shaft from the window", "I cant see the ground like i should in ds3").
 // Converted as read, they had a tenth of an Elden Ring light's strength in the dark and no volume density, so Elden
 // Ring drew neither the shaft (the lit air inside the cone) nor the patch. A spot light has no falloff value to set.
-// Fallback "map-effects" E (DARKSIGN_FXR_LIGHTS=ds3) keeps them as converted, with the point lights.
 function erSpot(light) {
   light.diffuseMultiplier = anyValueMult(10, light.diffuseMultiplier);
   light.specularMultiplier = anyValueMult(10, light.specularMultiplier);

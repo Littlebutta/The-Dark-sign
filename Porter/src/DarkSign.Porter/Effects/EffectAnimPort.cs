@@ -12,12 +12,9 @@ namespace DarkSign.Porter;
 /// 88880, animation 0), as Havok 2018 tagfiles. The conversion takes an Elden Ring effect anibnd as the template:
 /// its skeleton file gets DS3's bones (in DS3's order, so nothing needs remapping), and each DS3 animation goes
 /// through AnimPort onto its animation file. Up to 1.0.378 such effects were left out ("uses animated models").
-/// DARKSIGN_FX_ANIMATED_MODELS=0 leaves them out again.
 /// </summary>
 public static class EffectAnimPort
 {
-    public static readonly bool Enabled = Environment.GetEnvironmentVariable("DARKSIGN_FX_ANIMATED_MODELS") != "0";
-
     /// <summary>The Elden Ring effect anibnd used as the template: its skeleton and first animation file.</summary>
     public sealed record Template(string Folder, string Stem, BinderFile Skeleton, BinderFile Animation, Binder.FileFlags Flags, BND4 Header);
 
@@ -106,7 +103,7 @@ public static class EffectAnimPort
             var suffix = a >= 0 ? leaf[a..] : $"_a000_{f.ID % 1000000:D6}.hkx";
             try
             {
-                var (hkx, _, _) = AnimPort.ConvertTimed(f.Bytes, ds3Skeleton, erSkeleton, animTemplate, null, AnimPort.Spline);
+                var (hkx, _, _) = AnimPort.ConvertTimed(f.Bytes, ds3Skeleton, erSkeleton, animTemplate, null, true);
                 result.Files.Add(new BinderFile(template.Flags, f.ID, $"{folder}{newStem}{suffix}", hkx));
                 animations++;
             }

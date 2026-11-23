@@ -13,30 +13,11 @@ public static partial class MapPortChecks
         yield return ("event port: event parameters follow their argument and values passed in move by kind", EventParameters);
         yield return ("event port: DS3 common events are ported once, under saved IDs, with Elden Ring's slot argument", EventCommon);
         yield return ("event port: flag ranges stay consecutive and the flag table reads back the same", EventFlagTable);
-        yield return ("fallbacks: map-flags B gives map flags JortPob numbers and still moves entities to the slot", EventCommonMapFlags);
         yield return ("flags: a ported map's own flags stay in the slot only in blocks the game keeps (m19_70 has none, 450x6 missing)", EventKeptFlagBlocks);
         yield return ("layout: connect collisions point at the neighbouring map's slot; ones to unported maps are left out", ConnectCollisions);
         yield return ("event port: SpEffect IDs go to the enemy port's rows (700,000,000 + DS3 ID) where they exist, written or passed in", EventSpEffects);
         yield return ("event port: DS3 action buttons become IF Action Button in Area with one ActionButtonParam row per prompt", EventActionButtons);
         yield return ("event port: DS3's online checks become Elden Ring's single-player forms (world type, co-op clients, the host check as Elden Ring's own)", EventOnlineChecks);
-    }
-
-    private static void EventCommonMapFlags()
-    {
-        Environment.SetEnvironmentVariable("DARKSIGN_MAP_FLAGS", "common");
-        try
-        {
-            var port = NewEventPort();
-            long flag = Ds3Id.Ds3FlagBase + 800, entity = Ds3Id.Ds3EntityBase + 800;
-            Expect(port.Move(flag, EventPort.Kind.Flag) == FlagMap.LocalSlot(0), $"map flag became {port.Move(flag, EventPort.Kind.Flag)}");
-            Expect(port.Move(entity, EventPort.Kind.Entity) == ErId.EntityBase + 800, "entities still move to the slot");
-            Expect(port.Move(50000, EventPort.Kind.Flag) == FlagMap.FlagSlot(0), "global flags unchanged");
-        }
-        finally
-        {
-            Environment.SetEnvironmentVariable("DARKSIGN_MAP_FLAGS", null);
-        }
-        Expect(NewEventPort().Move(Ds3Id.Ds3FlagBase + 800, EventPort.Kind.Flag) == ErId.EntityBase + 800, "method A moves map flags to the slot");
     }
 
     private static void EventKeptFlagBlocks()
@@ -57,16 +38,6 @@ public static partial class MapPortChecks
         Expect(seventh != ErId.EntityBase + 6100 && DarkSign.Core.Preflight.JortPobLayout(seventh) == "saved", $"block 45006 flag became {seventh}");
         Expect(MapFlags.SlotBlockKept(45029999) && !MapFlags.SlotBlockKept(45016000) && !MapFlags.SlotBlockKept(19700800) && !MapFlags.SlotBlockKept(11700800),
             "kept blocks: the colosseums' but their 7th, no other slot's");
-        Environment.SetEnvironmentVariable("DARKSIGN_MAP_FLAGS", "slot");
-        try
-        {
-            Expect(NewEventPort().Move(MapId.Parse("m40_00_00_00").Ds3FlagBase + 6100, EventPort.Kind.Flag) == ErId.EntityBase + 6100,
-                "map-flags C keeps every flag in the slot, as up to 1.0.422");
-        }
-        finally
-        {
-            Environment.SetEnvironmentVariable("DARKSIGN_MAP_FLAGS", null);
-        }
     }
 
     // Made-up definitions in DarkScript3's format, shaped like the real ones where it matters.
@@ -476,7 +447,7 @@ public static partial class MapPortChecks
         ds3.Parts.ConnectCollisions.Add(unported);
         var template = new MSBE.Part.ConnectCollision { Name = "h000000_0000", ModelName = "h000000", CollisionName = "x" };
 
-        var result = MsbPort.Convert(ds3, SyntheticHost(), Ds3Id, ErId, null, [(Ds3Id, ErId), (Ds3High, ErHigh)], template);
+        var result = MsbPort.Convert(ds3, SyntheticHost(), Ds3Id, ErId, [(Ds3Id, ErId), (Ds3High, ErHigh)], template);
         var connects = result.Msb.Parts.ConnectCollisions;
         Expect(connects.Count == 1, $"{connects.Count} connect collisions, expected 1");
         Expect(connects[0].MapID.SequenceEqual(new byte[] { 45, 1, 0, 0 }), $"connect collision points at {string.Join(",", connects[0].MapID)}");
@@ -522,16 +493,6 @@ public static partial class MapPortChecks
         Expect(ins[8].Bank == 1003 && ins[8].ID == 203 && ins[8].ArgData.Length == 8 && ins[8].ArgData[0] == 1 && ins[8].ArgData.Skip(1).All(b => b == 0),
             $"SKIP IF no host -> SKIP IF Map Has Permission To Update(1, 0), as Elden Ring's own lever lift (90005500): the owner runs the flag set behind it, joined players don't (got {ins[8].Bank}[{ins[8].ID}])");
         Expect(ins[9].Bank == 2003, "the flag set behind the host check stays");
-        Environment.SetEnvironmentVariable("DARKSIGN_HOST_CHECKS", "invaders");
-        try
-        {
-            var old = NewEventPort().Convert(script, EMEVD.Game.Sekiro, MoveToSlot).Events[0].Instructions;
-            Expect(old[8].Bank == 1000 && old[8].ID == 3, "fallback map-enemies C: SKIP IF no host -> SKIP unconditionally, as up to 1.0.567");
-        }
-        finally
-        {
-            Environment.SetEnvironmentVariable("DARKSIGN_HOST_CHECKS", null);
-        }
     }
 
     // EventPort's no-op: WAIT 0 seconds.

@@ -8,13 +8,8 @@ namespace DarkSign.Porter.Maps;
 /// part at the same spot, on the same collision, with its DS3 entity ID and entity groups moved to the slot, so the
 /// converted event scripts (boss fights, ambushes, death flags, drops) find it.
 ///
-/// Which character stands there, by method (launcher Fallbacks window, "map-enemies"):
-/// <list type="bullet">
-/// <item>A (default): the ported DS3 character when the enemy porter has ported it (darksign_chr_map.tsv), otherwise
-/// an Elden Ring stand-in as in B.</item>
-/// <item>B: Elden Ring stand-ins only.</item>
-/// <item>C: no enemies.</item>
-/// </list>
+/// Which character stands there: the ported DS3 character when the enemy porter has ported it
+/// (darksign_chr_map.tsv), otherwise an Elden Ring stand-in.
 ///
 /// Stand-ins are real Elden Ring placements (model, NpcParam, ThinkParam and the part itself, copied from a vanilla
 /// legacy dungeon), picked by what the DS3 enemy is: its NpcParam name ("Lothric Knight") is matched by kind
@@ -26,15 +21,6 @@ namespace DarkSign.Porter.Maps;
 /// </summary>
 public static class EnemyPort
 {
-    public enum Method { Auto, StandIn, None }
-
-    public static Method ParseMethod(string? text) => text?.ToLowerInvariant() switch
-    {
-        "standin" or "stand-in" or "b" => Method.StandIn,
-        "none" or "off" or "c" => Method.None,
-        _ => Method.Auto,
-    };
-
     /// <summary>An Elden Ring character that can stand somewhere: a vanilla placement, or a ported DS3 character.</summary>
     public sealed record ErEnemy(string Model, int NpcParam, int ThinkParam, string Name, bool Boss, string Source,
         MSBE.Part.EnemyBase? Part = null, MSBE.Model.Enemy? ModelEntry = null)
@@ -49,31 +35,29 @@ public static class EnemyPort
     public static string KindOf(string name) => DarkSign.Randomizer.Logic.EnemyKinds.KindOf(name);
 
     /// <summary>
-    /// Picks who stands in for a DS3 enemy: the ported character if there is one (method A), else the first Elden
+    /// Picks who stands in for a DS3 enemy: the ported character if there is one, else the first Elden
     /// Ring placement of the same kind and boss-ness, else the most common one of the same boss-ness.
     /// </summary>
     public sealed class Chooser
     {
         private readonly IReadOnlyList<ErEnemy> _catalog;
         private readonly ChrMap? _ported;
-        private readonly Method _method;
         private readonly ErEnemy? _commonEnemy, _commonBoss;
         private readonly Dictionary<string, int> _bossTurn = new();
 
-        public Chooser(IReadOnlyList<ErEnemy> catalog, ChrMap? ported, Method method)
+        public Chooser(IReadOnlyList<ErEnemy> catalog, ChrMap? ported)
         {
             _catalog = catalog;
             _ported = ported;
-            _method = method;
             _commonEnemy = catalog.Where(e => !e.Boss).GroupBy(e => e.Model).OrderByDescending(g => g.Count()).Select(g => g.First()).FirstOrDefault();
             _commonBoss = catalog.FirstOrDefault(e => e.Boss);
         }
 
         public ErEnemy? Choose(Ds3Enemy ds3)
         {
-            if (_method == Method.None || ds3.Npc)
+            if (ds3.Npc)
                 return null;
-            if (_method == Method.Auto && _ported?.Find(ds3) is { } ported)
+            if (_ported?.Find(ds3) is { } ported)
                 return ported;
             var kind = KindOf(ds3.Name);
             var sameKind = _catalog.Where(e => e.Boss == ds3.Boss && kind.Length > 0 && e.Kind == kind).ToList();
@@ -91,15 +75,15 @@ public static class EnemyPort
             return sameKind.FirstOrDefault() ?? _commonEnemy ?? _commonBoss;
         }
 
-        /// <summary>The ported DS3 character for this one, if the enemy porter made it (method A only).</summary>
-        public ErEnemy? Ported(Ds3Enemy ds3) => _method == Method.Auto ? _ported?.Find(ds3) : null;
+        /// <summary>The ported DS3 character for this one, if the enemy porter made it.</summary>
+        public ErEnemy? Ported(Ds3Enemy ds3) => _ported?.Find(ds3);
 
         /// <summary>
         /// The ported character for a person: only a row ported for this very NpcParam. A body ported because its boss
         /// placements fight (Friede) must not put that hostile boss row where DS3 has the same body as a person (Friede
         /// in her chapel, 4500710).
         /// </summary>
-        public ErEnemy? PortedPerson(Ds3Enemy ds3) => _method == Method.Auto ? _ported?.FindPerson(ds3) : null;
+        public ErEnemy? PortedPerson(Ds3Enemy ds3) => _ported?.FindPerson(ds3);
 
         /// <summary>
         /// The ThinkParam a placement gets: for a ported character whose AI was ported, the row ported from the DS3
@@ -117,7 +101,7 @@ public static class EnemyPort
             // those have no row on this model; up to 1.0.417 they took the character's first row (143010, a goal
             // DS3 never places there) and circled the player without attacking. An NpcThinkParam row names goals
             // and senses only, so the row ported with the other character serves this one as DS3 does.
-            if (SharedThinks && _ported.ThinkAny(ds3Think) is { } shared)
+            if (_ported.ThinkAny(ds3Think) is { } shared)
             {
                 BorrowedThinks++;
                 return shared;
@@ -128,8 +112,6 @@ public static class EnemyPort
         /// <summary>Placements given a DS3 think row ported with another character (see <see cref="ThinkFor"/>).</summary>
         public int BorrowedThinks { get; private set; }
 
-        /// <summary>Fallback enemy-ai H: DARKSIGN_ENEMY_SHARED_THINK=0 gives such placements their character's first row, as up to 1.0.417.</summary>
-        public static bool SharedThinks => Environment.GetEnvironmentVariable("DARKSIGN_ENEMY_SHARED_THINK") != "0";
     }
 
     /// <summary>
@@ -263,10 +245,10 @@ public static class EnemyPort
     /// Adds the DS3 map's enemies to the converted layout. <paramref name="describe"/> says what each DS3 enemy is
     /// (name from its NpcParam, boss or not, NPC or not).
     /// </summary>
-    public static Result Place(MSB3 ds3, MSBE msb, MapId ds3Id, MapId erId, MsbPort.Options options, Chooser chooser,
+    public static Result Place(MSB3 ds3, MSBE msb, MapId ds3Id, MapId erId, Chooser chooser,
         Func<MSB3.Part.Enemy, Ds3Enemy> describe, MSBE.Part.Enemy? fallbackTemplate = null, List<string>? table = null,
         Dictionary<string, string>? partNames = null, People? people = null, IReadOnlyDictionary<string, Seat>? seats = null,
-        bool placePeople = true, PeopleArmour? armour = null, bool erStandIns = true, TalkPort? talk = null, QuietStandIns? quiet = null)
+        PeopleArmour? armour = null, TalkPort? talk = null, QuietStandIns? quiet = null)
     {
         int talking = 0, quieted = 0;
         int dressed = 0, borrowedBefore = chooser.BorrowedThinks;
@@ -279,10 +261,10 @@ public static class EnemyPort
         var nextInstance = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
         var standInUse = new Dictionary<string, int>();
 
-        var layerOk = !options.AllLayers && MsbPort.BaseLayerMeans(ds3);
+        var layerOk = MsbPort.BaseLayerMeans(ds3);
         int otherState = 0, phantoms = 0, logic = 0;
         var otherStateNames = new Dictionary<string, int>();
-        var laterVersions = OneVersion ? LaterVersions(ds3.Parts.Enemies.Where(e => !MsbPort.OtherState(e, layerOk)), describe) : [];
+        var laterVersions = LaterVersions(ds3.Parts.Enemies.Where(e => !MsbPort.OtherState(e, layerOk)), describe);
         var laterNames = new Dictionary<string, int>();
         foreach (var src in ds3.Parts.Enemies)
         {
@@ -308,13 +290,12 @@ public static class EnemyPort
             }
             if (what.Npc)
             {
-                // A person: the ported DS3 character if it has a body of its own (Fire Keeper, Ludleth...). Elden Ring
-                // people stand in only when asked (--er-people, fallback map-people B): Devin wants DS3's own people
-                // at Firelink or nobody (1.0.353). c1000 is DS3's invisible talk dummy (bonfires, menus): nobody.
-                // A DS3 human (c0000) with a DS3 look (PeopleArmour) is an Elden Ring person wearing DS3's armour.
-                who = !placePeople ? null
-                    : People.IsHuman(what.Model) ? (erStandIns || armour?.LookFor(src.CharaInitID) is not null ? people?.Choose(what, src.TalkID > 0) : null)
-                    : chooser.PortedPerson(what) ?? (People.IsDummy(what.Model) || !erStandIns ? null : people?.Choose(what with { Model = People.Human }, talks: true));
+                // A person: the ported DS3 character if it has a body of its own (Fire Keeper, Ludleth...). Devin wants
+                // DS3's own people at Firelink or nobody (1.0.353), so no Elden Ring person stands in for one. c1000 is
+                // DS3's invisible talk dummy (bonfires, menus): nobody. A DS3 human (c0000) with a DS3 look
+                // (PeopleArmour) is an Elden Ring person wearing DS3's armour.
+                who = People.IsHuman(what.Model) ? (armour?.LookFor(src.CharaInitID) is not null ? people?.Choose(what, src.TalkID > 0) : null)
+                    : chooser.PortedPerson(what);
                 if (who is null)
                 {
                     npcs++;
@@ -348,7 +329,7 @@ public static class EnemyPort
             var template = who.Part as MSBE.Part.Enemy ?? fallbackTemplate ?? new MSBE.Part.Enemy();
             var part = (MSBE.Part.Enemy)template.DeepCopy();
             MsbPort.CopyCommon(src, part, ds3Id, erId);
-            MsbPort.ApplyGroups(src, part.Unk1, options);
+            MsbPort.ApplyGroups(part.Unk1);
             // Part names are model_instance, unique in the map.
             var instance = nextInstance.GetValueOrDefault(who.Model, 9000);
             while (names.Contains($"{who.Model}_{instance:D4}"))
@@ -438,7 +419,7 @@ public static class EnemyPort
         if (phantoms > 0)
             notes.Add($"people: {phantoms} DS3 summons and invaders (White/Mad Phantom, Dark Spirit) left out: they only appear when summoned or invading");
         if (laterNames.Count > 0)
-            notes.Add($"people: {laterNames.Values.Sum()} later quest versions of a person left out (DS3 places every version and its scripts show one; the first, lowest talk script, stands) [DARKSIGN_PEOPLE_ONE_VERSION=0 off]: "
+            notes.Add($"people: {laterNames.Values.Sum()} later quest versions of a person left out (DS3 places every version and its scripts show one; the first, lowest talk script, stands): "
                       + string.Join("; ", laterNames.OrderBy(n => n.Key, StringComparer.Ordinal).Select(n => $"{n.Key} x{n.Value}")));
         if (seated > 0)
             notes.Add($"people: {seated} moved from DS3's holding spot to the seat DS3's scripts warp them to"
@@ -585,20 +566,7 @@ public static class EnemyPort
         return warps;
     }
 
-    /// <summary>
-    /// DARKSIGN_PEOPLE_ONE_VERSION=0 places every version of a DS3 person again (launcher fallback map-people M).
-    /// <para>FACTS (DS3 m40_00_00_00.msb and its scripts, read 2026-11-20): DS3 places each quest state of a person as a
-    /// part of its own, and its scripts enable one by quest flags. Irina of Carim is c0000_0021/0003/0004 (NpcParam
-    /// 25701/25702/25703, talk 400260/400261/400262), Eygon 25801 (talk 400270) and 25802 (400271, "Enemy"), Sirris
-    /// 25200 (talk 400180) and 25204 (no talk, her hostile version), Hawkwood 25100 twice (400170/400171), Anri 26001
-    /// twice (400290/400295), Patches 26103/26104 (400300/400301). A person's versions share their NpcParam ID's
-    /// hundreds (257xx is Irina). The scripts' warps seat Irina's second version and Eygon's enemy version at
-    /// (171, -67, 616), 36 m from Gundyr's arena, and Sirris's hostile one 61 m from it: Devin's "NPCs in random
-    /// places, like right outside Corrupted Gundyr's arena" (2026-11-20), as every version stood at once.</para>
-    /// </summary>
-    public static readonly bool OneVersion = Environment.GetEnvironmentVariable("DARKSIGN_PEOPLE_ONE_VERSION") != "0";
-
-    /// <summary>The parts that are a later quest version of a DS3 person (<see cref="OneVersion"/>): among the DS3
+    /// <summary>The parts that are a later quest version of a DS3 person: among the DS3
     /// humans (c0000) whose NpcParam IDs share the hundreds, when one of them talks, every one but the talker with
     /// the lowest talk script (DS3's first state). Groups where nobody talks (enemies in one family) are kept whole.</summary>
     public static HashSet<string> LaterVersions(IEnumerable<MSB3.Part.Enemy> parts, Func<MSB3.Part.Enemy, Ds3Enemy> describe)

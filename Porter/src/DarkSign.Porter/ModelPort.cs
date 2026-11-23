@@ -41,7 +41,7 @@ public static class ModelPort
     private static bool _emissiveSearched;
 
     /// <summary>
-    /// Finds the emissive template once per run (DARKSIGN_EMISSIVE=0 turns glowing materials off).
+    /// Finds the emissive template once per run.
     /// </summary>
     public static EmissiveTemplate? Emissive(GameArchives er)
     {
@@ -50,8 +50,6 @@ public static class ModelPort
             if (_emissiveSearched)
                 return _emissive;
             _emissiveSearched = true;
-            if (Environment.GetEnvironmentVariable("DARKSIGN_EMISSIVE") is "0" or "off")
-                return null;
             var candidates = new List<(string Name, string Tag, int Score)>();
             foreach (var binder in Explore.MaterialBinders)
                 foreach (var f in BND4.Read(er.Read(binder)).Files)
@@ -140,15 +138,12 @@ public static class ModelPort
             if (hiddenByPart.TryGetValue(part, out var known))
                 return known;
             var bones = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            if (WeaponHiddenParts.Enabled)
-            {
-                IBinder parts = source;
-                if (WeaponHiddenParts.AnibndFor(source, part) is null && lod && ds3.Contains(PartsPath(ds3Model)))
-                    parts = mainParts ??= BND4.Read(ds3.Read(PartsPath(ds3Model)));
-                bones = WeaponHiddenParts.IdleHiddenBones(parts, part, out var note);
-                if (note.Length > 0)
-                    Console.WriteLine($"models: {oldTag}{(lod ? " LOD" : "")} model {part}: hidden parts not read: {note}");
-            }
+            IBinder parts = source;
+            if (WeaponHiddenParts.AnibndFor(source, part) is null && lod && ds3.Contains(PartsPath(ds3Model)))
+                parts = mainParts ??= BND4.Read(ds3.Read(PartsPath(ds3Model)));
+            bones = WeaponHiddenParts.IdleHiddenBones(parts, part, out var note);
+            if (note.Length > 0)
+                Console.WriteLine($"models: {oldTag}{(lod ? " LOD" : "")} model {part}: hidden parts not read: {note}");
             return hiddenByPart[part] = bones;
         }
         foreach (var file in source.Files)
@@ -164,7 +159,7 @@ public static class ModelPort
                     Console.WriteLine($"models: {oldTag} -> {newTag}{(lod ? " LOD" : "")} {ItemText.Leaf(file.Name)}: hid {moved} vertices in meshes " +
                                       $"{string.Join(", ", hiddenMeshes)} on bones DS3's idle animation hides ({string.Join(", ", hiddenBones.Order())})");
                 ConvertFlver(flver, templateFlver, stem, oldTag, newTag, materials, Emissive(er), hold?.TurnFor(WeaponHiddenParts.PartOf(file.Name)), shape,
-                    lod && LodSharesMaterials ? mainMatbins ?? [] : null);
+                    lod ? mainMatbins ?? [] : null);
                 FlverMaterialNumbers.Apply(flver);
                 files.Add(new BinderFile(file.Flags, file.ID, folder + leaf, flver.Write()));
             }
@@ -198,7 +193,7 @@ public static class ModelPort
         if (holdTurn is { } turn && !turn.IsIdentity && !WeaponHold.Apply(flver, turn))
             Console.WriteLine($"models: {stem}: shield hold turn skipped (its nodes still place the meshes)");
         // Shields: laid on the shape of the Elden Ring shield they are built on (ShieldShape).
-        if (shape is not null && ShieldShape.Enabled)
+        if (shape is not null)
         {
             if (shape.Turn is null)
             {
@@ -212,7 +207,7 @@ public static class ModelPort
                     var match = ShieldShape.Match(mine, theirs);
                     if (match.Turn is { } m)
                         shape.Turn = m;
-                    Console.WriteLine($"models: {stem}: shield shape: {match.Note} (ported {mine}; template {theirs}) [DARKSIGN_SHIELD_SHAPE=0 off]");
+                    Console.WriteLine($"models: {stem}: shield shape: {match.Note} (ported {mine}; template {theirs})");
                 }
             }
             if (!shape.Turn.Value.IsIdentity && !WeaponHold.Apply(flver, shape.Turn.Value))
@@ -276,7 +271,7 @@ public static class ModelPort
             m.Textures = source.Textures
                 .Select(t => new FLVER2.Texture(t.ParamName, "", t.TilingScale, t.TilingTypeU, t.TilingTypeV, t.Unk14, t.Unk18, t.Unk1C))
                 .ToList();
-            // A LOD model draws with its main model's MATBIN, as Elden Ring's own do (see LodSharesMaterials).
+            // A LOD model draws with its main model's MATBIN, as Elden Ring's own do.
             if (lodOfMain is not null && LodMatbin(newMatbin, stem, suffix, lodOfMain) is { } shared)
             {
                 m.Name = TagIn(shared) + suffix;
@@ -326,9 +321,8 @@ public static class ModelPort
         // Elden Ring's weapon shader blends its detail layers (rust, bone, leather...) by vertex colour, and its own
         // weapons all carry one colour (1,0,0,1). DS3's vertex colours mean something else (most are (1,0,0.41,1)),
         // which mixed a detail layer over the DS3 texture (Friede's scythe came out rust grey). Every ported vertex
-        // takes the template weapon's colour (DARKSIGN_VCOLOR=keep keeps DS3's).
-        if (Environment.GetEnvironmentVariable("DARKSIGN_VCOLOR") is not ("keep" or "0")
-            && template.Meshes.SelectMany(m => m.Vertices).FirstOrDefault(v => v.Colors.Count > 0) is { } tv)
+        // takes the template weapon's colour.
+        if (template.Meshes.SelectMany(m => m.Vertices).FirstOrDefault(v => v.Colors.Count > 0) is { } tv)
         {
             var color = tv.Colors[0];
             foreach (var vertex in flver.Meshes.SelectMany(m => m.Vertices))
@@ -343,12 +337,9 @@ public static class ModelPort
     /// "WP_A_0612" is Mesh | Bone, its dummy nodes DummyOwner). DS3's FLVER (0x20014) left the field 0 on every node
     /// but a Disabled one, and the converted models kept 0, so the game had no owner for the hit spheres (dummy
     /// polys 100-140) and weapon effects: ported weapons hit nothing and their hit effects played off the weapon.
-    /// DARKSIGN_NODE_FLAGS=0 keeps DS3's.
     /// </summary>
     internal static void SetNodeFlags(FLVER2 flver)
     {
-        if (Environment.GetEnvironmentVariable("DARKSIGN_NODE_FLAGS") is "0" or "off")
-            return;
         var dummyOwners = flver.Dummies.SelectMany(d => new[] { (int)d.ParentBoneIndex, (int)d.AttachBoneIndex }).Where(i => i >= 0).ToHashSet();
         var meshNodes = flver.Meshes.Select(m => m.NodeIndex).Where(i => i >= 0).ToHashSet();
         var bones = flver.Meshes.SelectMany(m => m.BoneIndices).Where(i => i >= 0).ToHashSet();
@@ -385,37 +376,19 @@ public static class ModelPort
     {
         foreach (var t in tpf.Textures)
             t.Name = TextureName(t.Name, oldTag, newTag);
-        WeaponTextures.AddMetallicMaps(tpf, WeaponTextures.CurrentMode);
+        WeaponTextures.AddMetallicMaps(tpf);
         return tpf;
     }
 
     /// <summary>
     /// A DS3 texture name under the new model: "WP_A_0201_a" -> "WP_A_9020_a". A LOD texture keeps the LOD mark at
     /// the end ("WP_A_0201_a_l" -> "WP_A_9020_a_l"), as Elden Ring's and DS3's own LOD binders name them (wp_a_0100_l:
-    /// WP_A_0100_a_l, WP_A_0100_1_n_l). With <see cref="LodSharesMaterials"/> off it moves in front of the map letter
-    /// ("WP_A_9020_L_a"), the layout of builds up to 1.0.50x, to match the LOD model's own MATBIN.
+    /// WP_A_0100_a_l, WP_A_0100_1_n_l).
     /// </summary>
     public static string TextureName(string ds3Name, string oldTag, string newTag)
     {
-        var name = ds3Name.Replace(oldTag, newTag, StringComparison.OrdinalIgnoreCase);
-        if (!LodSharesMaterials && name.Length > 4 && name.EndsWith("_l", StringComparison.OrdinalIgnoreCase) && name[^4] == '_')
-            name = name[..^4] + "_L" + name[^4..^2];
-        return name;
+        return ds3Name.Replace(oldTag, newTag, StringComparison.OrdinalIgnoreCase);
     }
-
-    /// <summary>
-    /// DARKSIGN_WEAPON_LOD_LAYOUT=0 goes back to LOD models with MATBINs of their own (launcher fallback weapon-materials H).
-    /// <para>FACTS (measured on Devin's PC, 2026-11-20, Work\reports\diag\weapon-lod-dump.txt): Elden Ring's
-    /// wp_a_0100_l / wp_a_0400_l binders hold the same mesh as the main model and a TPF of half-size copies named with
-    /// _l at the very end (WP_A_0100_a_l, WP_A_0100_1_n_l); their FLVER materials name the main model's MATBIN
-    /// (P[WP_A_0100]_metal, P[WP_A_0100_1]_Leather), whose samplers name only the main textures; there is no _L MATBIN
-    /// in allmaterial, _dlc01 or _dlc02. DS3's wp_a_0201_l is laid out the same way (WP_A_0201_a_l). So the game finds a
-    /// LOD texture by adding _l to the sampler's name. The port wrote P[WP_A_9250_L]_Metal with textures
-    /// WP_A_9250_L_a: the game then looked for WP_A_9250_L_a_l, found nothing, and drew the LOD untextured (white and
-    /// shiny). The LOD binder is the one other characters' weapons load: DS3's people held ported weapons that way in
-    /// 1.0.50x while the player's own looked right (Devin, 2026-11-20).</para>
-    /// </summary>
-    public static readonly bool LodSharesMaterials = Environment.GetEnvironmentVariable("DARKSIGN_WEAPON_LOD_LAYOUT") != "0";
 
     /// <summary>The main model's MATBIN a LOD material draws with: its own name without the LOD mark
     /// ("P[WP_A_9250_L]_Metal" -> "P[WP_A_9250]_Metal") when the main model made it, else the main MATBIN of the same

@@ -14,15 +14,12 @@ namespace DarkSign.Porter.Enemies;
 /// dragon's front feet, 12 m in front of him and 6 m to each side, in every pose ("his pose is broken"); his feet
 /// were fine, because DS3 has Foot_Target bones of its own and keeps them on his feet.
 /// The rule, for every ported enemy: a limb whose IK target is a bone DS3 doesn't animate is no longer pinned (the
-/// limb plays DS3's animation as it is); a limb whose target is a DS3 bone keeps the template's IK.
-/// Fallback enemy-model M: DARKSIGN_ENEMY_IK=template keeps the template's limb IK as it is (as up to 1.0.460).
-/// Method (RULE 3): the modifiers, their variable bindings and bone numbers are Elden Ring's own c4520.behbnd read
-/// with HKLib; switching a hand off is the modifier's own per-hand enable flag.
+/// limb plays DS3's animation as it is); a limb whose target is a DS3 bone keeps the template's IK. Method (RULE
+/// 3): the modifiers, their variable bindings and bone numbers are Elden Ring's own c4520.behbnd read with HKLib;
+/// switching a hand off is the modifier's own per-hand enable flag.
 /// </summary>
 public static class ChrIk
 {
-    public static bool Enabled => Environment.GetEnvironmentVariable("DARKSIGN_ENEMY_IK")?.Trim().ToLowerInvariant() != "template";
-
     /// <summary>What <see cref="Fit(IHavokObject, IReadOnlyList{string}, IReadOnlySet{string})"/> did: the limbs that had IK and the target bones of those switched off.</summary>
     public readonly record struct Result(int Limbs, IReadOnlyList<string> Off);
 

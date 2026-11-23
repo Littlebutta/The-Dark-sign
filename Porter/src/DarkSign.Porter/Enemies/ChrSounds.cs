@@ -9,8 +9,8 @@ namespace DarkSign.Porter.Enemies;
 /// cs_main, which is always in memory; ninety enemies' sounds as PCM there would not fit.
 /// <para>A sound is ported exactly as the weapon port does it (<see cref="SoundPort"/>): the samples DS3's event of
 /// that name plays (<see cref="Fev"/>), decoded to PCM, one Play action per layer, under the event name
-/// Play_c/s&lt;900000000 + DS3 ID&gt;. The bank itself is the weapon port's "bank of our own" (launcher fallback sounds
-/// E, <see cref="WwiseBank.WriteOwnBank"/>): the new sounds with unchanged copies of cs_main's actor-mixers above
+/// Play_c/s&lt;900000000 + DS3 ID&gt;. The bank itself is the weapon port's "bank of our own"
+/// (<see cref="WwiseBank.WriteOwnBank"/>): the new sounds with unchanged copies of cs_main's actor-mixers above
 /// them. Samples come from the bank DS3's event file belongs to (fdp_c2230.fev -> fdp_c2230.fsb), encrypted ones
 /// included.</para>
 /// The game's sound index and the loose copies of the media are written by <see cref="Finish"/>, after port-weapons
@@ -18,8 +18,6 @@ namespace DarkSign.Porter.Enemies;
 /// </summary>
 public sealed class ChrSounds
 {
-    private static readonly bool Mirror = Environment.GetEnvironmentVariable("DARKSIGN_SOUND_MIRROR") != "0";
-    private static readonly bool Register = Environment.GetEnvironmentVariable("DARKSIGN_SOUND_INDEX") != "0";
     private static readonly string[] Suffixes = ["", "b", "c", "d", "e", "f", "g", "h"];
     /// <summary>Banks several characters play from stay in memory up to this many bytes; the rest are read again.</summary>
     private const long CacheLimit = 512L << 20;
@@ -217,7 +215,7 @@ public sealed class ChrSounds
             uint eventId = FxSoundExplore.Fnv1($"Play_{letter}{SoundPort.IdBase + id:D9}");
             if (bank.Has(eventId)) { Left("event ID taken"); continue; }
             // A sound that can't get a Stop event must not loop: nothing could end it.
-            var stop = SoundPort.StopEvents ? SoundPort.StopOf(letter, id, ds3Event.Event, stopTemplate) : null;
+            var stop = SoundPort.StopOf(letter, id, ds3Event.Event, stopTemplate);
             if (stop is not null && bank.Has(stop.EventId))
                 stop = null;
             // Nor must a sound an effect plays without holding it.
@@ -288,17 +286,16 @@ public sealed class ChrSounds
         result.BankBytes = bankBytes.Length;
         Directory.CreateDirectory(Path.GetDirectoryName(result.BankFile)!);
         File.WriteAllBytes(result.BankFile, bankBytes);
-        // Loose copies of the media, as the weapon port writes them (SoundPort.Mirror); they wait in the work folder
+        // Loose copies of the media, as the weapon port writes them; they wait in the work folder
         // until port-weapons, which empties sd\wem, is done.
-        if (Mirror)
-            foreach (var (id, wem) in wems)
-            {
-                var file = id.ToString();
-                var path = Path.Combine(Staging(_ctx), file[..2], file + ".wem");
-                Directory.CreateDirectory(Path.GetDirectoryName(path)!);
-                File.WriteAllBytes(path, wem);
-                result.Media.Add(Path.Combine(file[..2], file + ".wem"));
-            }
+        foreach (var (id, wem) in wems)
+        {
+            var file = id.ToString();
+            var path = Path.Combine(Staging(_ctx), file[..2], file + ".wem");
+            Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+            File.WriteAllBytes(path, wem);
+            result.Media.Add(Path.Combine(file[..2], file + ".wem"));
+        }
         return result;
     }
 
@@ -313,21 +310,18 @@ public sealed class ChrSounds
         if (banks.Count == 0)
             return "sounds: no character has a DS3 sound bank";
         string index = "index not edited";
-        if (Register)
+        var path = SoundPort.IndexPath(_ctx);
+        byte[]? bytes = File.Exists(path) ? File.ReadAllBytes(path) : _er.Contains(SoundIndex.ArchivePath) ? _er.Read(SoundIndex.ArchivePath) : null;
+        if (bytes is not null)
         {
-            var path = SoundPort.IndexPath(_ctx);
-            byte[]? bytes = File.Exists(path) ? File.ReadAllBytes(path) : _er.Contains(SoundIndex.ArchivePath) ? _er.Read(SoundIndex.ArchivePath) : null;
-            if (bytes is not null)
-            {
-                var soundIndex = SoundIndex.Read(bytes);
-                int added = banks.Sum(r => soundIndex.Register(r.BankId, r.Events, sectionOf: _mainBankId));
-                Directory.CreateDirectory(Path.GetDirectoryName(path)!);
-                File.WriteAllBytes(path, soundIndex.Write());
-                index = $"{added} events of {banks.Count} banks listed in the game's sound index";
-            }
-            else
-                index = "the game has no sound index to list them in";
+            var soundIndex = SoundIndex.Read(bytes);
+            int added = banks.Sum(r => soundIndex.Register(r.BankId, r.Events, sectionOf: _mainBankId));
+            Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+            File.WriteAllBytes(path, soundIndex.Write());
+            index = $"{added} events of {banks.Count} banks listed in the game's sound index";
         }
+        else
+            index = "the game has no sound index to list them in";
         var moved = new List<string>();
         foreach (var rel in banks.SelectMany(r => r.Media).Distinct())
         {

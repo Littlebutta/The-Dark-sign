@@ -116,17 +116,16 @@ public static class RegionPort
         // DS3's music regions (and the child regions that widen them) as script regions the music events check the
         // player against (MapMusic); their own Sound entries stay out, as every sound emitter does.
         int musicZones = 0;
-        if (MapMusic.Enabled)
-            foreach (var (src, zone) in MapMusic.ZoneRegions(ds3, ds3Id, erId))
-            {
-                var region = new MSBE.Region.Other();
-                Fill(src, region);
-                region.EntityID = zone.Entity;
-                if (zone.NewEntity)
-                    withEntity++;
-                msb.Regions.Others.Add(region);
-                musicZones++;
-            }
+        foreach (var (src, zone) in MapMusic.ZoneRegions(ds3, ds3Id, erId))
+        {
+            var region = new MSBE.Region.Other();
+            Fill(src, region);
+            region.EntityID = zone.Entity;
+            if (zone.NewEntity)
+                withEntity++;
+            msb.Regions.Others.Add(region);
+            musicZones++;
+        }
         if (musicZones > 0)
             notes.Add($"{musicZones} music regions carried as script regions (where DS3's tracks play)");
 
@@ -208,21 +207,19 @@ public static class RegionPort
         // type on the route, so each gets a route of that type without points (as Stormveil's one WalkAround route and
         // JortPob's MakePart.PatrolRandom() are).
         int wanderers = 0;
-        if (Ds3MoveTypes)
-            foreach (var src in ds3.Parts.Enemies)
-            {
-                if (src.PointMoveType != WalkAround || !partNames.TryGetValue(src.Name, out var ported) || !byName.TryGetValue(ported, out var enemy)
-                    || !string.IsNullOrEmpty(enemy.WalkRouteName))
-                    continue;
-                var patrol = new MSBE.Event.PatrolInfo { PatrolType = WalkAround };
-                NewEvent($"wander {enemy.Name}", patrol);
-                msb.Events.PatrolInfo.Add(patrol);
-                enemy.WalkRouteName = patrol.Name;
-                wanderers++;
-            }
+        foreach (var src in ds3.Parts.Enemies)
+        {
+            if (src.PointMoveType != WalkAround || !partNames.TryGetValue(src.Name, out var ported) || !byName.TryGetValue(ported, out var enemy)
+                || !string.IsNullOrEmpty(enemy.WalkRouteName))
+                continue;
+            var patrol = new MSBE.Event.PatrolInfo { PatrolType = WalkAround };
+            NewEvent($"wander {enemy.Name}", patrol);
+            msb.Events.PatrolInfo.Add(patrol);
+            enemy.WalkRouteName = patrol.Name;
+            wanderers++;
+        }
         if (patrols > 0 || wanderers > 0)
-            notes.Add("patrol: " + (Ds3MoveTypes ? "" : "DS3's own move types off (DARKSIGN_ENEMY_MOVE_TYPES=route); ")
-                      + $"route types {string.Join(", ", moveTypes.Select(t => $"{TypeName(t.Key)} x{t.Value}"))}"
+            notes.Add($"patrol: route types {string.Join(", ", moveTypes.Select(t => $"{TypeName(t.Key)} x{t.Value}"))}"
                       + $"; {ownTypes} routes take their enemy's own move type, {wanderers} enemies without a route wander around their spot");
 
         // Platoons: enemies that are alerted together.
@@ -277,12 +274,6 @@ public static class RegionPort
         return new Result(regions, withEntity, routePoints, patrols, walking, platoons, generators, leftOut, notes);
     }
 
-    /// <summary>
-    /// Fallback map-regions C: DARKSIGN_ENEMY_MOVE_TYPES=route gives a patrol route only the type DS3's route event
-    /// carries and no enemy wanders, as up to 1.0.470.
-    /// </summary>
-    public static bool Ds3MoveTypes => Environment.GetEnvironmentVariable("DARKSIGN_ENEMY_MOVE_TYPES")?.Trim().ToLowerInvariant() != "route";
-
     /// <summary>POINT_MOVE_TYPE_WalkAround in Elden Ring's ai_define.lua: wander around the home spot, no points.</summary>
     public const byte WalkAround = 6;
 
@@ -298,7 +289,7 @@ public static class RegionPort
     public static int MoveType(int routeType, IEnumerable<int> enemyTypes)
     {
         int type = Math.Clamp(routeType, 0, 255);
-        if (type != 0 || !Ds3MoveTypes)
+        if (type != 0)
             return type;
         var own = enemyTypes.Distinct().ToList();
         return own.Count == 1 ? Math.Clamp(own[0], 0, 255) : 0;
@@ -364,7 +355,7 @@ public static class RegionPort
     }
 
     /// <summary>
-    /// Takes the regions and map-file events this step added back out (fallback "map-regions" B, or when the layout
+    /// Takes the regions and map-file events this step added back out (when the layout
     /// with them fails its write/read check): the map is then as it was before the step existed.
     /// </summary>
     public static void Strip(MSBE msb)

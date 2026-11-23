@@ -30,26 +30,17 @@ namespace DarkSign.Porter.Maps;
 /// region's switch flag (<see cref="EventPort.Kind.MusicRegion"/>). The test menu DLL watches the playing
 /// flags and plays the DS3 track of the last one turned on, decoded from DS3's sound banks to a WAV file
 /// (Mods\ER\darksign_music), looping where DS3's sample loops, fading out when the flag goes off. It plays the music
-/// itself (an XAudio2 stream, as the DLL sounds of fallback "sounds" D) instead of through Elden Ring's Wwise banks,
+/// itself (an XAudio2 stream) instead of through Elden Ring's Wwise banks,
 /// because an added bank's loading is unproven in this mod (Elden Ring's music is its own music hierarchy, and loose
 /// streamed media stayed silent in game, see <see cref="SoundPort"/>).</para>
 /// <para>Flags 1039295000-5998 are in JortPob's second reset-on-load range of the run block (<see cref="RunEvents"/>),
 /// so a death or a map change stops every track and the map's events start the right one again; the zone events are
 /// 1039291000-1099. Until 2026-11-20 the flags were 1039292000-2099: room for 99, while DS3's whole world (15 maps since
 /// the world slots) has more tracks than that, each switched one taking two, so the last maps' tracks went silent.
-/// Off with DARKSIGN_MAP_MUSIC=0 (launcher fallback "map-music" B).</para>
+/// </para>
 /// </summary>
 public static class MapMusic
 {
-    public static readonly bool Enabled = Environment.GetEnvironmentVariable("DARKSIGN_MAP_MUSIC") != "0";
-
-    /// <summary>
-    /// DARKSIGN_MAP_MUSIC=arena (launcher fallback "map-music" D): a boss's tracks get no switch flag, so they play
-    /// wherever the player stands in their region, as 1.0.479 did, for when a fight's own lines leave it silent.
-    /// </summary>
-    public static bool BossTracksUnswitched { get; set; } =
-        string.Equals(Environment.GetEnvironmentVariable("DARKSIGN_MAP_MUSIC"), "arena", StringComparison.OrdinalIgnoreCase);
-
     /// <summary>The list the DLL reads (Mods\ER): playing flag, track file, loop points, fade-out, map, region.</summary>
     public const string ListFile = "darksign_music.tsv";
     /// <summary>Where the tracks go (Mods\ER\darksign_music\m&lt;ID&gt;.wav); must match TestMenu/src/music.cpp.</summary>
@@ -474,7 +465,7 @@ public static class MapMusic
             numbered.RemoveAt(numbered.Count - 1);
             plan.Notes.Add($"no flag or event number left for {last.Ds3} {last.Name} ({last.Sound}): it stays silent");
         }
-        foreach (var s in numbered.Where(s => s.Scripted && s.Boss && !BossTracksUnswitched))
+        foreach (var s in numbered.Where(s => s.Scripted && s.Boss))
         {
             s.SwitchFlag = flag++;
             if (plan.FirstBossSwitch == 0)
@@ -569,9 +560,6 @@ public static class MapMusic
         lines.Add($"music: {plan.Converted} script lines switch a track by name, {plan.PassedIn} switch the track their event is started with " +
                   $"(DS3's shared boss events), {plan.BossStops} stop the boss music, {plan.MusicPlaysLeftOut} Elden Ring music plays left out; " +
                   $"boss switch flags {plan.FirstBossSwitch}-{plan.LastBossSwitch}");
-        // What went wrong in 1.0.479: a track no line turns on plays wherever the player stands in its region.
-        if (BossTracksUnswitched)
-            lines.Add("music: boss tracks play wherever the player stands in their arena (DARKSIGN_MAP_MUSIC=arena, fallback map-music D)");
         foreach (var s in plan.Sources.Where(s => s.Scripted && s.StartsOn))
             lines.Add($"music: WARN no script line turns on {s.Ds3} {s.Name} ({s.Sound}): it plays from the load until a line turns it off");
         var sounds = plan.Sources.Where(s => s.PlayFlag != 0).Select(s => s.Sound).Distinct().Order(StringComparer.Ordinal).ToList();

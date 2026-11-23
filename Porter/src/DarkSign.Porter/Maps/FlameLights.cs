@@ -28,8 +28,6 @@ namespace DarkSign.Porter.Maps;
 /// one lamp per chandelier), and a flame within <see cref="NearLamp"/> of a warm DS3 lamp gets none (DS3 lit that
 /// one itself). At most <see cref="MaxLamps"/> a map: past that the flames are merged over a wider distance.
 /// </para>
-/// "--no-flame-lights" (launcher fallback "map-lamps" C) leaves them out; "--no-new-light-file" ("map-lamps" E)
-/// leaves them out of a slot that has no light file yet.
 /// </summary>
 public static class FlameLights
 {
@@ -174,7 +172,7 @@ public static class FlameLights
             var rowId = ObjectSfx.Ds3Row(part);
             if (rowId < 0 || rowId > int.MaxValue || ds3Param[(int)rowId] is not { } row)
                 continue;
-            var placement = MapOverlayBacking.Placement(part);
+            var placement = Placement(part);
             IReadOnlyDictionary<int, Vector3>? points = null;
             bool asked = false;
             foreach (var (effect, dummy) in ObjectSfx.Effects(row))
@@ -216,12 +214,8 @@ public static class FlameLights
     /// light file yet (a DS3 map without lamps) gets one in Elden Ring's format.
     /// </summary>
     public static string Apply(PorterContext ctx, GameArchives ds3, IEnumerable<MapSlots.Slot> slots,
-        Func<MapId, IReadOnlyDictionary<string, string>?> partNames, bool off = false, bool noNewFile = false)
+        Func<MapId, IReadOnlyDictionary<string, string>?> partNames)
     {
-        if (off)
-            return "flame lights: off (--no-flame-lights)";
-        if (!ObjectSfx.Enabled)
-            return "flame lights: none (object effects are off, so no flame burns)";
         var converted = MapSfx.ReadTable(ctx);
         var looks = MapSfx.ReadLooks(ctx);
         if (converted.Count == 0)
@@ -269,11 +263,6 @@ public static class FlameLights
             BTL btl;
             DCX.CompressionInfo compression = MapTextures.EntryCompression;
             bool existed = File.Exists(target);
-            if (!existed && noNewFile)
-            {
-                lines.Add($"flame lights: {slot.Ds3} -> {slot.Er}: none, the slot has no light file (--no-new-light-file); {flames.Count} flames");
-                continue;
-            }
             if (existed)
                 btl = BTL.Read(DCX.Decompress(File.ReadAllBytes(target), out compression));
             else
@@ -291,5 +280,15 @@ public static class FlameLights
                       (tally.Count == 0 ? "" : "; object effects: " + string.Join(", ", tally.Select(t => $"{t.Key} x{t.Value.Parts} {t.Value.Why}"))));
         }
         return lines.Count == 0 ? "flame lights: no ported objects carry DS3 effects" : string.Join(Environment.NewLine, lines);
+    }
+
+    /// <summary>A part's place in the map: scaled, turned (degrees, X then Z then Y, as DSMapStudio places DS3 parts) and moved.</summary>
+    public static Matrix4x4 Placement(MSB3.Part part)
+    {
+        const float rad = MathF.PI / 180;
+        var r = part.Rotation;
+        var scale = part.Scale == Vector3.Zero ? Vector3.One : part.Scale;
+        return Matrix4x4.CreateScale(scale) * Matrix4x4.CreateRotationX(r.X * rad) * Matrix4x4.CreateRotationZ(r.Z * rad)
+               * Matrix4x4.CreateRotationY(r.Y * rad) * Matrix4x4.CreateTranslation(part.Position);
     }
 }

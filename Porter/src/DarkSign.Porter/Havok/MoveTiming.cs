@@ -26,16 +26,12 @@ namespace DarkSign.Porter;
 ///    anchor was squeezed by 3 s / 100 s: Friede's stance loop opened its attack window for 0.08 s instead of 2.3 s
 ///    (the stance attacks only came out while mashing). The end anchor now comes from the finite events, and a
 ///    sentinel end stays a sentinel.
-///
-/// DARKSIGN_TIMING_GUARD=0 (launcher fallback "combo-windows" D) turns all four off: exactly the 1.0.89 timing.
 /// </summary>
 internal static class MoveTiming
 {
-    public static bool Guard = Environment.GetEnvironmentVariable("DARKSIGN_TIMING_GUARD") != "0";
-
     /// <summary>Elden Ring's "until the animation ends" event end (written as 100.000 s).</summary>
     public const float Sentinel = 99.9f;
-    public static bool IsSentinel(float t) => Guard && t >= Sentinel;
+    public static bool IsSentinel(float t) => t >= Sentinel;
 
     /// <summary>One move's stretch from the template's timeline onto DS3's.</summary>
     public sealed class Stretch
@@ -87,7 +83,7 @@ internal static class MoveTiming
     {
         var candidates = new List<(float Er, float Ds3)>();
         for (int h = 0; h < erHits.Count && ds3Hits.Count > 0; h++)
-            candidates.Add((erHits[h], ds3Hits[Guard && h == erHits.Count - 1 ? ds3Hits.Count - 1 : pair(h)]));
+            candidates.Add((erHits[h], ds3Hits[h == erHits.Count - 1 ? ds3Hits.Count - 1 : pair(h)]));
         // JumpTable windows both games share (the recovery cancels: 4, 103, 107, ...) open where each game's move
         // can end, so they anchor the stretch too; without them Elden Ring's quick chain window opened while the
         // slower DS3 swing was still recovering.
@@ -109,7 +105,7 @@ internal static class MoveTiming
         {
             Anchors = anchors,
             ErLastHit = erHits.Count > 0 ? erHits[^1] : null,
-            Recovery = Guard && erHits.Count > 0 ? Recovery(ds3Events, ds3Hits) : null,
+            Recovery = erHits.Count > 0 ? Recovery(ds3Events, ds3Hits) : null,
             Ds3End = ds3End,
         };
     }
@@ -151,21 +147,14 @@ internal static class MoveTiming
         }
         static List<float> Hits(List<TAE.Event> ev) =>
             ev.Where(e => e.Type == 1).Select(e => e.StartTime).Order().Aggregate(new List<float>(), (l, t) => { if (l.Count == 0 || t - l[^1] > 0.1f) l.Add(t); return l; });
-        bool saved = Guard;
-        try
         {
             // 1. Single template hit vs DS3 triple swing: the chain window (JT 115) must open after DS3's third hit.
             var er = new List<TAE.Event> { Ev(0.4f, 0.5f, 1), Ev(0.7f, 1.2f, 0, 115), Ev(0.9f, 1.2f, 0, 4) };
             var ds3 = new List<TAE.Event> { Ev(0.3f, 0.4f, 1), Ev(0.8f, 0.9f, 1), Ev(1.3f, 1.4f, 1), Ev(1.7f, 2.2f, 0, 30) };
             int Pair1(int h) => 0;
-            Guard = false;
-            var old = Build(ds3, er, Hits(ds3), Hits(er), Pair1, 2.4f);
-            var oldChain = old.Place(er[1]).Start;
-            Guard = true;
             var now = Build(ds3, er, Hits(ds3), Hits(er), Pair1, 2.4f);
             var chain = now.Place(er[1]).Start;
-            Check($"multi-hit DS3 swing: chain window {oldChain:0.00}s before (inside the swings), {chain:0.00}s now (after the last hit at 1.30s)",
-                oldChain < 1.3f && chain >= 1.3f);
+            Check($"multi-hit DS3 swing: chain window at {chain:0.00}s (after the last hit at 1.30s)", chain >= 1.3f);
             Check("multi-hit DS3 swing: chain window not before DS3's own recovery (1.70s)", chain >= 1.7f - 0.001f);
 
             // 2. No shared JumpTable IDs, slow DS3 recovery: windows held back to DS3's first window after the hit.
@@ -181,14 +170,10 @@ internal static class MoveTiming
             //    a template chain window that opened before DS3's first exit (0.70s) now waits for it.
             er = [Ev(0.35f, 0.45f, 1), Ev(0.6f, 1.0f, 0, 4), Ev(0.55f, 1.0f, 0, 115)];
             ds3 = [Ev(0.40f, 0.50f, 1), Ev(0.7f, 1.4f, 0, 4)];
-            Guard = false;
-            old = Build(ds3, er, Hits(ds3), Hits(er), h => 0, 1.5f);
-            var before = er.Skip(1).Select(old.Place).ToList();
-            Guard = true;
             now = Build(ds3, er, Hits(ds3), Hits(er), h => 0, 1.5f);
             var after = er.Skip(1).Select(now.Place).ToList();
-            Check($"shared cancel ID: JT 4 stays at {after[0].Start:0.00}s (1.0.89: {before[0].Start:0.00}s)", Math.Abs(after[0].Start - before[0].Start) < 0.002f);
-            Check($"shared cancel ID: chain {before[1].Start:0.00}s -> {after[1].Start:0.00}s, not before DS3's first exit 0.70s", after[1].Start >= 0.7f - 0.001f);
+            Check($"shared cancel ID: JT 4 at {after[0].Start:0.00}s (DS3's 0.70s)", Math.Abs(after[0].Start - 0.7f) < 0.002f);
+            Check($"shared cancel ID: chain at {after[1].Start:0.00}s, not before DS3's first exit 0.70s", after[1].Start >= 0.7f - 0.001f);
 
             // 4. A move without hits (e.g. a guard): no guard applied, plain stretch to DS3's length.
             er = [Ev(0.2f, 0.8f, 0, 4)];
@@ -200,18 +185,10 @@ internal static class MoveTiming
             //    a 2.5 s template) must cover the 3.33 s DS3 loop, not 0.08 s of it; the sentinel end stays 100.
             er = [Ev(0.0f, 2.33f, 67, 100150), Ev(0.0f, 100.0f, 605, 0), Ev(2.4f, 2.5f, 0, 4)];
             ds3 = [Ev(0.0f, 3.2f, 67, 100150), Ev(3.3f, 3.333f, 0, 30)];
-            Guard = false;
-            old = Build(ds3, er, Hits(ds3), Hits(er), h => 0, 3.333f);
-            var oldWindow = old.Place(er[0]);
-            Guard = true;
             now = Build(ds3, er, Hits(ds3), Hits(er), h => 0, 3.333f);
             var window = now.Place(er[0]);
-            Check($"sentinel end: stance window {oldWindow.End:0.00}s long before, {window.End:0.00}s now (DS3 loop 3.33s)", oldWindow.End < 0.2f && window.End > 3.0f);
+            Check($"sentinel end: stance window {window.End:0.00}s long (DS3 loop 3.33s)", window.End > 3.0f);
             Check($"sentinel end: the until-the-end event keeps its 100s end ({now.Place(er[1]).End:0})", now.Place(er[1]).End >= 99.9f);
-        }
-        finally
-        {
-            Guard = saved;
         }
         Console.WriteLine($"timing-selftest: {(failures == 0 ? "all passed" : $"{failures} failed")}");
         return failures == 0 ? 0 : 1;

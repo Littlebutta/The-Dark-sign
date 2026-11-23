@@ -18,15 +18,9 @@ namespace DarkSign.Porter;
 /// </summary>
 public static class FlverMaterialNumbers
 {
-    /// <summary>Whether the porter numbers materials (fallback <c>DARKSIGN_MATERIAL_NUMBERS=ds3</c> keeps DS3's).</summary>
-    public static bool Enabled =>
-        !string.Equals(Environment.GetEnvironmentVariable("DARKSIGN_MATERIAL_NUMBERS"), "ds3", StringComparison.OrdinalIgnoreCase);
-
     /// <summary>Sets every material's number as Elden Ring's models do; returns how many changed.</summary>
     public static int Apply(FLVER2 flver)
     {
-        if (!Enabled)
-            return 0;
         var first = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
         int changed = 0;
         for (int i = 0; i < flver.Materials.Count; i++)

@@ -29,34 +29,12 @@ namespace DarkSign.Porter.Enemies;
 /// </list>
 /// What a script needs that can't come along (a function only another map's script defines, an engine goal Elden
 /// Ring may not have) is listed in Work\reports\enemy-ai.tsv, with the engine names no Elden Ring common script uses.
-/// Fallbacks "enemy-ai": DARKSIGN_ENEMY_AI=template keeps the templates' AI (builds before this option).
 /// Method (RULE 3): the file layout follows katalash's DSLuaDecompiler (HKS reader for DS3, Sekiro and Elden Ring)
 /// and SoulsFormats' LUAGNL / LUAINFO; the per-goal binder layout is Elden Ring's own (300000_battle.luabnd).
 /// </summary>
 public sealed class AiPort
 {
-    public static bool Enabled => Environment.GetEnvironmentVariable("DARKSIGN_ENEMY_AI")?.Trim().ToLowerInvariant() is not ("template" or "0" or "off");
-
-    /// <summary>
-    /// DS3's goal scripts ask which NpcThinkParam row they run under (self:GetNpcThinkParamID() == 110054: the High
-    /// Wall's transforming Hollow Soldiers only walk up to you) and compare it with DS3's row numbers, which a ported
-    /// row doesn't have (it is NewChr*10000 + 9000 + DS3 row % 100). Such a number is renumbered to the ported row in
-    /// the functions that make the call. DARKSIGN_ENEMY_THINK_IDS=ds3 keeps DS3's numbers, as up to 1.0.383.
-    /// </summary>
-    public static bool RenumberThinks => Environment.GetEnvironmentVariable("DARKSIGN_ENEMY_THINK_IDS")?.Trim().ToLowerInvariant() != "ds3";
-
     public const string ThinkCall = "GetNpcThinkParamID";
-
-    /// <summary>
-    /// DS3's goal scripts check the SpEffects that mark an enemy's state (Ariandel's wolf: HasSpecialEffectId(TARGET_SELF,
-    /// 5020) and a dozen more pick which attacks it may use; AddObserveSpecialEffectAttribute(TARGET_SELF, 5025) wakes it
-    /// when one starts), by DS3's numbers. A ported enemy's moves, NpcParam row and map scripts put those effects on at
-    /// <see cref="ChrEffects.SpEffectId"/> (700,000,000 + the DS3 ID), so up to 1.0.410 every such check was false and
-    /// the wolf only circled. The number a script passes for an effect on itself, its event target or a friend is
-    /// renumbered to the ported row (<see cref="RenumberSpEffectIds"/>); effects it checks on the player
-    /// (TARGET_ENE_*) keep their numbers. DARKSIGN_ENEMY_AI_SPEFFECTS=ds3 (fallback enemy-ai G) keeps DS3's numbers, as up to 1.0.410.
-    /// </summary>
-    public static bool RenumberSpEffects => Environment.GetEnvironmentVariable("DARKSIGN_ENEMY_AI_SPEFFECTS")?.Trim().ToLowerInvariant() != "ds3";
 
     /// <summary>Script calls whose second argument (after the target) is a SpEffect ID.</summary>
     public static readonly string[] SpEffectCalls = ["HasSpecialEffectId", "AddObserveSpecialEffectAttribute", "DeleteObserveSpecialEffectAttribute"];
@@ -609,12 +587,12 @@ public sealed class AiPort
     }
 
     /// <summary>
-    /// A compiled script with the DS3 think rows (<see cref="RenumberThinks"/>) and SpEffects (<see cref="RenumberSpEffects"/>)
+    /// A compiled script with the DS3 think rows and SpEffects
     /// it checks for renumbered to the ported ones; the same bytes when none.
     /// </summary>
     private byte[] Renumbered(byte[] bytes, string leaf)
     {
-        bool thinks = RenumberThinks && _thinkIds.Count > 0, effects = RenumberSpEffects && SpEffectPorted is not null;
+        bool thinks = _thinkIds.Count > 0, effects = SpEffectPorted is not null;
         if (!(thinks || effects) || !HksChunk.Is(bytes))
             return bytes;
         var chunk = HksChunk.Read(bytes);
@@ -948,12 +926,8 @@ public sealed class AiPort
         yield return $"# {_liftedNames.Count} DS3 functions lifted out of files that can't come along: {string.Join(", ", _lifted.SelectMany(l => l.Value.Select(f => $"{f.Name} ({l.Key.Leaf})")).Concat(_liftedConstants.Keys))}";
         yield return $"# {_newGoals.Count} goal numbers added to goal_list: {string.Join(", ", _newGoals.OrderBy(g => g.Value).Select(g => $"{g.Key}={g.Value}"))}";
         yield return $"# {_newLogics.Count} logic numbers added to logic_list: {string.Join(", ", _newLogics.OrderBy(g => g.Value).Select(g => $"{g.Key}={g.Value}"))}";
-        yield return RenumberThinks
-            ? $"# DS3 think rows the scripts check for ({ThinkCall}), renumbered to the ported rows in {_thinkRewrites.Count} scripts: {string.Join(", ", _thinkRewrites.Select(r => $"{r.Key} ({r.Value})"))}"
-            : $"# DS3 think rows the scripts check for ({ThinkCall}) kept as DS3's (DARKSIGN_ENEMY_THINK_IDS=ds3)";
-        yield return !RenumberSpEffects
-            ? "# DS3 SpEffects the scripts check for kept as DS3's (DARKSIGN_ENEMY_AI_SPEFFECTS=ds3)"
-            : SpEffectPorted is null
+        yield return $"# DS3 think rows the scripts check for ({ThinkCall}), renumbered to the ported rows in {_thinkRewrites.Count} scripts: {string.Join(", ", _thinkRewrites.Select(r => $"{r.Key} ({r.Value})"))}";
+        yield return SpEffectPorted is null
                 ? "# DS3 SpEffects the scripts check for kept as DS3's: the enemy effect port is off, no ported rows to point at"
                 : $"# {_spEffectIds.Count} DS3 SpEffects the scripts check on themselves / their event target / friends, renumbered to the ported rows (700,000,000 + ID) in {_spEffectRewrites.Count} scripts" +
                   $"{(_spEffectSkipped > 0 ? $" ({_spEffectSkipped} comparisons left as DS3's: no room for the constant)" : "")}: " +
@@ -1006,7 +980,7 @@ public sealed class AiPort
                     catch (Exception e) when (e is InvalidCastException or OverflowException or FormatException) { }
                 }
             }
-            if (Ds3Senses && ds3Think?[t.Ds3Think] is { } senses)
+            if (ds3Think?[t.Ds3Think] is { } senses)
                 ApplySenses(row, senses);
             if (t.Battle is { } battle)
                 SetInt(row, "battleGoalID", battle);
@@ -1018,12 +992,6 @@ public sealed class AiPort
         erThink.Rows.Sort((a, b) => a.ID.CompareTo(b.ID));
         return added;
     }
-
-    /// <summary>
-    /// Fallback enemy-ai K: DARKSIGN_ENEMY_SENSES=template keeps the template's hearing, forget times and Elden Ring's
-    /// search sight on ported think rows, as up to 1.0.470.
-    /// </summary>
-    public static bool Ds3Senses => Environment.GetEnvironmentVariable("DARKSIGN_ENEMY_SENSES")?.Trim().ToLowerInvariant() != "template";
 
     /// <summary>
     /// The senses the copy by name misses ("aggro can be pulled from a long ways away", 1.0.470). Read from both

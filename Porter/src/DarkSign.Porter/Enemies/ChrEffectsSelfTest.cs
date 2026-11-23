@@ -300,16 +300,6 @@ public static class ChrEffectsSelfTest
         wolfFx.ApplyNpc(wolfRow, wolfNpc, wolfPlan);
         Check("NpcParam: an AI marker DS3's script puts on the wolf pack (13032) stays off the ported wolf; the marker its row names (5020) is kept",
             Slots(wolfRow, 700_005_020) == 1 && Slots(wolfRow, 700_013_032) == 0 && wolfFx.Characters[7128].ScriptMarkers.SequenceEqual([13032]));
-        Environment.SetEnvironmentVariable("DARKSIGN_ENEMY_SCRIPT_MARKERS", "keep");
-        try
-        {
-            var keptRow = Add(erNpc, 71280001, "Wolf", ("spEffectID0", -1), ("spEffectID1", -1), ("spEffectID2", -1), ("spEffectID3", -1),
-                ("SfxResBankId", -1), ("SoundBankId", -1), ("SoundAddBankId", -1));
-            wolfFx.ApplyNpc(keptRow, wolfNpc, wolfPlan);
-            Check("NpcParam: enemy-ai I (DARKSIGN_ENEMY_SCRIPT_MARKERS=keep) puts the script's marker back on the row, as in 1.0.442",
-                Slots(keptRow, 700_013_032) == 1);
-        }
-        finally { Environment.SetEnvironmentVariable("DARKSIGN_ENEMY_SCRIPT_MARKERS", null); }
 
         // Glowing materials: DS3's emissive map on Elden Ring's glowing character material, with its colours white.
         var glowMatbin = new MATBIN { ShaderPath = @"N:\GR\data\Material\mtd\Chr\shader\C[AMSN]_Glow.spx", SourcePath = @"N:\GR\data\Material\mtd\Chr\matxml\C[c3570]_Body_Glow.matxml" };
@@ -395,7 +385,7 @@ public static class ChrEffectsSelfTest
             new FLVER2.Texture("g_EmissiveTexture", @"N:\FDP\chr\c2230\tex\c2230_weapon_e.tif", System.Numerics.Vector2.One, 0, 0, 0, 0, 0),
         ];
         var plainMade = ChrModel.Convert(noGlow, glowTemplateModel, 2230, 7071, plainMaterials: true, erNodes: false, glow: null);
-        Check("glow: with no glowing material (fallback DARKSIGN_ENEMY_GLOW=0, or none found) the material is plain as before",
+        Check("glow: with no glowing material (none found) the material is plain as before",
             plainMade.Single() is { TemplateMatbin: ChrMaterial.PlainSource, Emissive: null } && noGlow.GXLists.Count == 1 && ChrModel.Glowing == 0);
 
 

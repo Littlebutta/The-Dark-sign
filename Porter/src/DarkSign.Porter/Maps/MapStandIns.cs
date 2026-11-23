@@ -62,7 +62,7 @@ public static class MapStandIns
 
     public sealed record Result(IReadOnlyList<Verdict> Verdicts)
     {
-        /// <summary>Every judged piece's box, for <see cref="AcrossMaps"/>.</summary>
+        /// <summary>Every judged piece's box (the world step's doorway lists use them).</summary>
         public IReadOnlyList<PieceBox> Pieces { get; init; } = [];
 
         /// <summary>Low-detail stand-ins kept because nothing in their own map stands for them.</summary>
@@ -161,70 +161,6 @@ public static class MapStandIns
         {
             Pieces = pieces.Select(p => new PieceBox(p.Part.Name, p.Min, p.Max, p.Vertices, IsLowPiece(p.Vertices, p.LowVertices))).ToList(),
         };
-    }
-
-    /// <summary>
-    /// Stand-ins for a neighbouring map. DS3 places all its maps in one world, and a map's low-detail stand-ins
-    /// often show its neighbour (m30_01 Lothric Castle keeps 60, drawn from 57 of its 71 collisions). While only maps
-    /// 1 to 3 were ported, such a stand-in was the only geometry there and stayed. With every map ported, the
-    /// neighbour's real pieces load in the same place (its connect collisions load it), and the stand-in sits on top of
-    /// them as low-resolution slabs ("extra LODs overlaid on the full res", 1.0.52x playtest). DS3 never shows both: a
-    /// stand-in is drawn from its own map's collisions, the neighbour's detail from the neighbour's. A kept stand-in
-    /// is left out when the detailed pieces of the maps DS3 joins to its map, inside its box, pass the same test as
-    /// in its own map: at least <see cref="MinCovered"/> of them, with at least a quarter of its vertices.
-    /// <paramref name="neighbourDetail"/> holds the neighbours' pieces; their own stand-ins don't count.
-    /// </summary>
-    public static List<Verdict> AcrossMaps(IReadOnlyList<PieceBox> own, IReadOnlySet<string> keptStandIns, IEnumerable<PieceBox> neighbourDetail)
-    {
-        var detail = neighbourDetail.Where(d => !d.Low).Select(d => (Centre: (d.Min + d.Max) / 2, d.Vertices)).ToList();
-        var verdicts = new List<Verdict>();
-        foreach (var s in own.Where(p => keptStandIns.Contains(p.Name)))
-        {
-            int covered = 0;
-            long coveredVertices = 0;
-            foreach (var d in detail)
-                if (Vector3.Clamp(d.Centre, s.Min - Vector3.One, s.Max + Vector3.One) == d.Centre)
-                {
-                    covered++;
-                    coveredVertices += d.Vertices;
-                }
-            bool leftOut = covered >= MinCovered && coveredVertices * 4 >= s.Vertices;
-            verdicts.Add(new Verdict(s.Name, leftOut, s.Vertices, 0, covered, (int)Math.Min(coveredVertices, int.MaxValue),
-                leftOut ? "a neighbouring map's detailed pieces stand there" : "no neighbouring map has detail there"));
-        }
-        return verdicts;
-    }
-
-    /// <summary>
-    /// The neighbour each kept stand-in stands for, for <see cref="MapNeighbourGroups"/>: the joined map with the most
-    /// detailed vertices in pieces whose box meets the stand-in's (1 m slack), when those pieces hold at least a
-    /// quarter of its vertices. Looser than <see cref="AcrossMaps"/> (boxes that meet, not centres inside, and no
-    /// minimum count), because a stand-in found here is only hidden while that neighbour is loaded, never left out:
-    /// AcrossMaps' test missed 27 of Lothric Castle's 60 kept stand-ins (1.0.53x port log), and some sat in Dancer's
-    /// arena once the castle loaded next to the High Wall.
-    /// </summary>
-    public static List<KeyValuePair<string, MapId>> ForNeighbours(IReadOnlyList<PieceBox> own, IReadOnlySet<string> keptStandIns,
-        IReadOnlyDictionary<MapId, IEnumerable<PieceBox>> neighbours)
-    {
-        var detail = neighbours.ToDictionary(n => n.Key, n => n.Value.Where(d => !d.Low).ToList());
-        var found = new List<KeyValuePair<string, MapId>>();
-        foreach (var s in own.Where(p => keptStandIns.Contains(p.Name)))
-        {
-            MapId? best = null;
-            long bestVertices = 0;
-            foreach (var (map, pieces) in detail.OrderBy(d => d.Key.ToString()))
-            {
-                long vertices = 0;
-                foreach (var d in pieces)
-                    if (Meets(s.Min - Vector3.One, s.Max + Vector3.One, d.Min, d.Max))
-                        vertices += d.Vertices;
-                if (vertices > bestVertices)
-                    (best, bestVertices) = (map, vertices);
-            }
-            if (best is { } b && bestVertices * 4 >= s.Vertices)
-                found.Add(new(s.Name, b));
-        }
-        return found;
     }
 
     private static bool Meets(Vector3 aMin, Vector3 aMax, Vector3 bMin, Vector3 bMax) =>

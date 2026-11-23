@@ -39,8 +39,7 @@ public static class AnimSelfTest
             var b = RandomRotation();
             Check(Same(M(Quaternion.Concatenate(a, b)), M(a) * M(b)), "quaternions: Concatenate(a, b) is 'a then b' (M(a) * M(b))");
             // 1.0.567: DS3's child-space flinches were written with the template's parent-space hint (the Dancer's knees).
-            Check(AnimPort.DS3BlendHint
-                  && (int)SoulsAssetPipeline.Animation.HKX.AnimationBlendHint.ADDITIVE_CHILD_SPACE == (int)HKLib.hk2018.hkaAnimationBinding.BlendHint.ADDITIVE_CHILD_SPACE
+            Check((int)SoulsAssetPipeline.Animation.HKX.AnimationBlendHint.ADDITIVE_CHILD_SPACE == (int)HKLib.hk2018.hkaAnimationBinding.BlendHint.ADDITIVE_CHILD_SPACE
                   && (int)SoulsAssetPipeline.Animation.HKX.AnimationBlendHint.ADDITIVE_PARENT_SPACE == (int)HKLib.hk2018.hkaAnimationBinding.BlendHint.ADDITIVE_PARENT_SPACE
                   && (int)SoulsAssetPipeline.Animation.HKX.AnimationBlendHint.NORMAL == (int)HKLib.hk2018.hkaAnimationBinding.BlendHint.NORMAL,
                 "blend hint: converted animations take DS3's hint, and both games number the hints alike");
@@ -116,7 +115,6 @@ public static class AnimSelfTest
             Check(er.Pre is not null && er.Post is not null && AnimPort.Degrees(er.Pre[2], Quaternion.CreateFromAxisAngle(Vector3.UnitX, MathF.PI)) < 0.01f && AnimPort.Degrees(er.Post[2]) < 0.01f
                   && er.Pre[1] == Quaternion.Identity && er.Post[1] == Quaternion.Identity,
                   "retarget: L_Weapon's case: Pre = 180° about X, Post = identity; the hand, resting alike, is copied");
-            // Copying DS3's rotation as it was (DARKSIGN_WEAPON_BONES=ds3) turns the weapon bone's skin 180° (about the hand's X axis).
             var copied = Skin(erRest, ds3Rest, parents, 2);
             float copiedDegrees = AnimPort.Degrees(Quaternion.CreateFromRotationMatrix(copied));
             Check(MathF.Abs(copiedDegrees - 180) < 0.1f,
