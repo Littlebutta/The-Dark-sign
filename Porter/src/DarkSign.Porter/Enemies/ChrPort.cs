@@ -395,6 +395,10 @@ public static partial class ChrPort
         public List<string> Notes = [];
         /// <summary>What the params step adds once port-weapons has written regulation.bin.</summary>
         public List<(Plan Plan, Dictionary<int, int> NpcRows)> Params = [];
+        /// <summary>DS3 item lots the ported maps' scripts award, given ItemLotParam_map rows with the drops (DropPort.PortScriptLots).</summary>
+        public IReadOnlyCollection<int> ScriptLots = [];
+        /// <summary>DS3 behaviour rows the ported maps' scripts fire by ID (AttackParamPort.PortScriptRow).</summary>
+        public IReadOnlyCollection<int> ScriptBehaviors = [];
         public List<ChrMaterial> Materials = [];
         /// <summary>Both games' item names, read while DS3's archives are open, for the drops (<see cref="DropPort"/>).</summary>
         public DropPort.Names? ItemNames;
@@ -790,6 +794,20 @@ public static partial class ChrPort
                 result.Notes.Add($"c{plan.Ds3.Chr:D4} {plan.Ds3.Name}: params failed ({Describe(ex)})");
             }
         }
+        if (regulation.Get("LockCamParam") is { } erCams && ds3.Get("LockCamParam") is { } ds3Cams)
+            try
+            {
+                int cams = LockCams.Port(erCams, ds3Cams);
+                Maps.Ds3Ids.WriteTable(ctx, LockCams.TableFile, "LockCamParam", ds3Cams.Rows.Where(r => r.ID > 0).Select(r => ((long)r.ID, (long)LockCams.Id(r.ID))));
+                result.Notes.Add($"lock-on cameras: {cams} DS3 LockCamParam rows at {LockCams.Base:N0} + the DS3 row");
+            }
+            catch (Exception ex) when (ex is not OutOfMemoryException) { result.Notes.Add($"lock-on cameras: not ported ({Describe(ex)}); bosses keep their templates' cameras"); }
+        if (result.ScriptBehaviors.Count > 0)
+        {
+            var moved = result.ScriptBehaviors.Select(b => (Ds3: (long)b, Er: (long)attacks.PortScriptRow(b))).Where(t => t.Er > 0).ToList();
+            Maps.Ds3Ids.WriteTable(ctx, Maps.Ds3Ids.ScriptBehaviorsFile, "BehaviorParam", moved);
+            result.Notes.Add($"script behaviours: {moved.Count} of the {result.ScriptBehaviors.Count} behaviour rows the DS3 scripts fire ported (BehaviorParam {AttackParamPort.ScriptRowBase:N0} + the DS3 row)");
+        }
         int friendly = MakePeopleFriendly(regulation.Get("NpcParam")!, result.Params);
         if (friendly > 0)
             result.Notes.Add($"people: {friendly} NpcParam rows of DS3's people with a body of their own put on Elden Ring's friendly team ({FriendlyTeam(regulation.Get("NpcParam")!)})");
@@ -812,7 +830,10 @@ public static partial class ChrPort
         string dropSummary = "";
         if (drops is not null)
         {
-            dropSummary = "\n  " + drops.Finish(ctx);
+            if (result.ScriptLots.Count > 0)
+                try { dropSummary = "\n  " + drops.PortScriptLots(ctx, result.ScriptLots); }
+                catch (Exception ex) when (ex is not OutOfMemoryException) { dropSummary = $"\n  script item lots: FAILED ({Describe(ex)}); the scripts' awards give nothing"; }
+            dropSummary += "\n  " + drops.Finish(ctx);
             result.Notes.AddRange(drops.Notes);
         }
         if (templateFx is not null)
@@ -1983,6 +2004,9 @@ public static partial class ChrPort
             // DS3's damage taken, not the template's weaknesses (Pus of Man took the Giant Beast Skeleton's).
             if (plan.Stage == Stage.All)
                 SetDamageRates(plan.Ds3.Chr, row);
+            // DS3's own stats where both games' NpcParams have the field (CopyDs3Stats).
+            if (plan.Stage == Stage.All && ds3Npc?[ds3Id] is { } statSource)
+                CopyDs3Stats(statSource, row);
             // DS3's body on a template's row: the body capsule is DS3's size (Ariandel's wolf kept the Elden Ring wolf's).
             if (newModel && plan.Stage != Stage.Clone && ds3Npc?[ds3Id] is { } sizeSource)
                 CopyBodySize(sizeSource, row);
@@ -2035,6 +2059,46 @@ public static partial class ChrPort
         }
         npc.Rows.Sort((a, b) => a.ID.CompareTo(b.ID));
         return added;
+    }
+
+    /// <summary>
+    /// DS3 NpcParam fields copied onto the ported row: the same meaning in both games, renamed where Elden Ring renamed
+    /// them (Paramdex defs, checked on both games' NpcParam dumps 2026-11-22). Up to 1.0.57x a ported enemy took these
+    /// from its Elden Ring template: a DS3 boss staggered like the Elden Ring enemy it was built on, resisted status as
+    /// that enemy did and turned at its speed. Elden Ring's sleep and madness, which DS3 lacks, stay the template's;
+    /// DS3's toxic is Elden Ring's poison guard where DS3's toxic resistance is higher.
+    /// </summary>
+    internal static readonly (string Ds3, string Er)[] Ds3StatFields =
+    [
+        ("superArmorDurability", "superArmorDurability"), ("SuperArmorRecoverCorrection", "superArmorRecoverCorrection"),
+        ("SuperArmorBrakeKnockbackDist", "superArmorBrakeKnockbackDist"),
+        ("resistPoison", "resist_poison"), ("resistBlood", "resist_blood"), ("resistCurse", "resist_curse"), ("resistFrost", "resist_freeze"),
+        ("poisonGuardResist", "poisonGuardResist"), ("bloodGuardResist", "bloodGuardResist"), ("curseGuardResist", "curseGuardResist"),
+        ("turnVellocity", "turnVellocity"),
+    ];
+
+    /// <summary>Copies <see cref="Ds3StatFields"/> and the name (NameId -> nameId at MapText.Name) from the DS3 row.</summary>
+    public static int CopyDs3Stats(PARAM.Row ds3, PARAM.Row er)
+    {
+        int copied = 0;
+        foreach (var (from, to) in Ds3StatFields)
+            if (Cell(ds3, from) is { Value: not null and not byte[] } source && Cell(er, to) is { } target)
+            {
+                Set(target, source.Value);
+                copied++;
+            }
+        if (Cell(ds3, "toxicGuardResist") is { Value: not null and not byte[] } toxic && Cell(er, "poisonGuardResist") is { } poison
+            && Convert.ToDouble(toxic.Value) > Convert.ToDouble(poison.Value))
+            Set(poison, toxic.Value);
+        if (Cell(ds3, "lockCamParamId") is { Value: not null and not byte[] } cam && Convert.ToInt32(cam.Value) > 0
+            && Cell(er, "lockCameraParamId") is { } erCam)
+            Set(erCam, LockCams.Id(Convert.ToInt32(cam.Value)));
+        if (Cell(ds3, "NameId") is { Value: not null and not byte[] } name && Convert.ToInt64(name.Value) > 0 && Cell(er, "nameId") is { } erName)
+        {
+            Set(erName, Maps.MapText.Name(Convert.ToInt64(name.Value)));
+            copied++;
+        }
+        return copied;
     }
 
     /// <summary>

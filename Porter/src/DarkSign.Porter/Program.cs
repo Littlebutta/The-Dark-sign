@@ -134,7 +134,7 @@ try
         return EffectSelfTest.Run();
     if (argList[0].Equals("event-coverage", StringComparison.OrdinalIgnoreCase) && argList.Count == 3)
         return DarkSign.Porter.Maps.EventPort.CoverageReport(argList[1], argList[2]);
-    if (GameRunningGuard.Problem(argList[0]) is { } running)
+    if (GameRunningGuard.Problem(argList[0], PorterContext.FindRoot(root)) is { } running)
         return Fail(running);
     var ctx = new PorterContext(PorterContext.FindRoot(root), gameExes);
     return argList[0].ToLowerInvariant() switch

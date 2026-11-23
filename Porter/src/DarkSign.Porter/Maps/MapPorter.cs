@@ -310,6 +310,17 @@ public static class MapPorter
             }
             Time(report, "object params", objectClock);
         }
+        // The floor materials of our own the converted collisions name (HitMaterials).
+        if (ported.Count > 0)
+        {
+            Step(report, "hit materials", () =>
+            {
+                var regulation = ActionButtons.LoadRegulation(ctx);
+                var line = HitMaterials.AddRows(regulation.Get("HitMtrlParam") ?? throw new InvalidDataException("Elden Ring has no HitMtrlParam"));
+                regulation.Save(ctx.ModPath("regulation.bin"));
+                return line;
+            });
+        }
         // DS3's map effects (Firelink's candles, fog, light shafts), converted by port-weapons into the common binder.
         if (ported.Count > 0)
         {
@@ -334,6 +345,19 @@ public static class MapPorter
                 catch (Exception ex) when (ex is not OutOfMemoryException)
                 {
                     report.AppendLine($"enemy params: script SpEffects not read ({ex.Message}); scripts keep DS3 IDs where no move casts them");
+                }
+            // The lots the maps' scripts award get ItemLotParam_map rows with the drops (Ds3Ids, DropPort.PortScriptLots).
+            if (ported.Count > 0)
+                try
+                {
+                    var lots = MapEvents.ScriptIds(ctx, ds3, ported.Select(p => p.Slot).ToList(), EventPort.Kind.ItemLot);
+                    lots.UnionWith(MapTreasure.Lots(ds3, ported.Select(p => p.Slot)));
+                    enemyPort.ScriptLots = lots;
+                    enemyPort.ScriptBehaviors = MapEvents.ScriptIds(ctx, ds3, ported.Select(p => p.Slot).ToList(), EventPort.Kind.Behavior);
+                }
+                catch (Exception ex) when (ex is not OutOfMemoryException)
+                {
+                    report.AppendLine($"enemy params: script item lots and behaviours not read ({ex.Message}); the scripts keep DS3's numbers");
                 }
             Step(report, "enemy params", () => ChrPort.ApplyParams(ctx, er, enemyPort));
         }
@@ -368,6 +392,19 @@ public static class MapPorter
             });
         Dictionary<int, SortedSet<uint>> playedFlags = [];
         if (ported.Count > 0)
+            Step(report, "event IDs", () =>
+            {
+                // What the scripts' item lots, AI rows and items become (Ds3Ids), from the steps above.
+                var lines = new List<string>();
+                var regulation = ActionButtons.LoadRegulation(ctx);
+                ParamStore? ds3Params = null;
+                try { ds3Params = ctx.LoadParams(PorterGame.DarkSouls3); } catch (Exception ex) when (ex is not OutOfMemoryException) { lines.Add($"  DS3 params unreadable ({ex.Message})"); }
+                var ids = Ds3Ids.Load(ctx, TalkItems(ctx, ds3, er, regulation, ds3Params, lines));
+                lines.Insert(0, $"event IDs: {ids.Lots} ported item lots, {ids.Behaviors} behaviour rows, AI rows from the enemy port, items by the drops' rule");
+                return string.Join(Environment.NewLine, lines);
+            });
+            Step(report, "map treasure", () => MapTreasure.Apply(ctx, ds3, ported.Select(p => p.Slot),
+                id => _partNames.GetValueOrDefault(id), lot => Ds3Ids.Current?.ItemLot(lot)));
             Step(report, "events", () => MapEvents.Port(ctx, ds3, er, ported.Select(p => p.Slot).ToList(), cutscenes, f => playedFlags = f, music));
         if (music is not null)
             Step(report, "music", () => MapMusic.WriteAudio(ctx, ds3, music));

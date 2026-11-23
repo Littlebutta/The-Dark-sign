@@ -477,7 +477,8 @@ public static class CollisionPort
             });
         foreach (var d in p.m_primitiveDataArray ?? [])
         {
-            var data = new fsnpCustomMeshParameter.PrimitiveData { m_materialNameData = d.m_materialNameData };
+            // The floor material, numbered as Elden Ring's HitMtrlParam means it (HitMaterials).
+            var data = new fsnpCustomMeshParameter.PrimitiveData { m_materialNameData = HitMaterials.Map(d.m_materialNameData) };
             data.m_vertexData.AddRange(d.m_vertexData ?? []);
             data.m_triangleData.AddRange(d.m_triangleData ?? []);
             data.m_primitiveData.AddRange(d.m_primitiveData ?? []);
