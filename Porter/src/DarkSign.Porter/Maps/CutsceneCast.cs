@@ -14,9 +14,12 @@ namespace DarkSign.Porter.Maps;
 /// cutscene's map (s10_00_0010: all 11 characters and assets are m10_00_00_00 parts of that name, 2026-11-23). DS3 names
 /// its own parts (c6020 Friede, o459020 objects, h45_00_00_00_008100 a collision), which the map port renamed or left
 /// out. So each part is resolved to the Elden Ring part the map port placed for it (the map port's new part names);
-/// cameras, the player and cutscene dummies (dNNNN_NNNN) keep their names; a part with no Elden Ring model, or one the
-/// map doesn't place, is left out, with the parts under it and its timelines (and its Havok
-/// track, <see cref="CutscenePort.ConvertHkx"/>).</item>
+/// cameras, the player and cutscene dummies (dNNNN_NNNN) keep their names; a part the map doesn't place is kept as a copy
+/// when the map loads its model (Elden Ring spawns such copies: s14_00_0000 casts c2040_0000-0140, m14 places
+/// c2040_9000+), an asset model the map places nothing of gets a hidden anchor part (<see cref="PlaceAnchors"/>), and
+/// anything else (no Elden Ring model) is left out, with the parts under it and its timelines (and its Havok
+/// track, <see cref="CutscenePort.ConvertHkx"/>). The black screen at the end of every ported cutscene was the warp
+/// target (<see cref="CutsceneWarpPoints"/>), not the cast.</item>
 /// <item><b>Cut files.</b> Elden Ring keeps each cut's Havok file as cutNNNN\a0000.hkx with binder ID NNNN*10000 and
 /// nothing else (every Elden Ring cutscene read), while DS3 also numbers them a0001 (Dancer, IDs 110001...) and
 /// ships cut0000 files no cut plays (Friede's standby poses). Each cut's file becomes a0000 at Elden Ring's ID, its
@@ -117,8 +120,10 @@ public static partial class CutsceneCast
     /// <param name="modelExists">Whether Elden Ring (the mod or the game) has a model ("c7073", "AEG920_001").</param>
     /// <param name="castAsset">The object port's asset for a DS3 object or map-piece model ("o007010" or
     /// "m31_00_00_00_005810" -> "AEG920_123"), placed or built for the cutscenes only (<see cref="CastModels"/>), or null.</param>
+    /// <param name="anchors">Collects the asset models a cutscene casts that the map places no part of; the caller
+    /// places one hidden part of each (<see cref="PlaceAnchors"/>) so the map loads the model. Null: such casts are left out.</param>
     public static Func<string, string?> Resolver(IReadOnlyDictionary<string, string> partNames, Func<string, string?> chrModel, Func<string, bool> modelExists,
-        Func<string, string?>? castAsset = null)
+        Func<string, string?>? castAsset = null, ISet<string>? anchors = null)
     {
         // DS3 model -> Elden Ring model, from the parts the map port renamed (o459020 -> AEG920_001, c6020 -> c7120).
         var models = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
@@ -129,6 +134,7 @@ public static partial class CutsceneCast
                 models.TryAdd(from[..a], m);
         }
         var placedNames = new HashSet<string>(partNames.Values, StringComparer.OrdinalIgnoreCase);
+        var placedModels = partNames.Values.Select(ModelOf).OfType<string>().ToHashSet(StringComparer.OrdinalIgnoreCase);
         var cache = new Dictionary<string, string?>(StringComparer.Ordinal);
         return name =>
         {
@@ -152,13 +158,67 @@ public static partial class CutsceneCast
                 else if (ModelOf(name) is { } own && modelExists(own))
                     result = name;
             }
-            // Elden Ring finds a cutscene's characters and assets among the parts its map places, by name; one the map
-            // doesn't place leaves the cutscene unable to hand back at its end.
-            if (result is not null && !NeedsNoPart(result) && !placedNames.Contains(result))
+            // Elden Ring casts a part its map places (by name), or spawns a copy of a model the map loads: s14_00_0000
+            // casts c2040_0000-0140 while m14 places c2040_9000+, s19_00_0010 casts AEG228_215_0001 while m19 places
+            // _1000+. A model the map places nothing of gets a hidden anchor part (anchors), else the cast is left out.
+            if (result is not null && !NeedsNoPart(result) && !placedNames.Contains(result) && ModelOf(result) is { } castModelName
+                && !placedModels.Contains(castModelName))
+            {
+                if (anchors is not null && castModelName.StartsWith("AEG", StringComparison.OrdinalIgnoreCase))
+                    anchors.Add(castModelName);
+                else
+                    result = null;
+            }
+            else if (result is not null && !NeedsNoPart(result) && ModelOf(result) is null && !placedNames.Contains(result))
                 result = null;
             cache[name] = result;
             return result;
         };
+    }
+
+    /// <summary>First instance number of an anchor part (<see cref="PlaceAnchors"/>).</summary>
+    public const int AnchorInstance = 9950;
+
+    /// <summary>
+    /// One part of each asset model in <paramref name="models"/> the map doesn't place yet, so the map loads the model
+    /// and its cutscenes can spawn their copies: at the map's first player part (or the origin), in no draw or display
+    /// group (never drawn in play; the cutscene draws its own copies), no entity ID. The models DS3's cutscenes alone
+    /// use are built without collision (#264). Returns the parts placed.
+    /// </summary>
+    public static List<string> PlaceAnchors(MSBE msb, IEnumerable<string> models)
+    {
+        var placed = new List<string>();
+        var names = msb.Parts.GetEntries().Select(p => p.Name).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var at = msb.Parts.Players.FirstOrDefault()?.Position ?? System.Numerics.Vector3.Zero;
+        foreach (var model in models.Distinct(StringComparer.OrdinalIgnoreCase).Order(StringComparer.OrdinalIgnoreCase))
+        {
+            if (msb.Parts.Assets.Any(a => a.ModelName.Equals(model, StringComparison.OrdinalIgnoreCase)))
+                continue;
+            int instance = AnchorInstance;
+            while (names.Contains($"{model}_{instance:D4}"))
+                instance++;
+            var part = ObjectPort.NewPart();
+            part.Name = $"{model}_{instance:D4}";
+            part.InstanceID = instance;
+            part.ModelName = model;
+            part.Position = at;
+            part.Scale = System.Numerics.Vector3.One;
+            part.UnkT54PartName = part.Name;
+            part.UnkPartNames[4] = part.Name;
+            part.UnkPartNames[5] = part.Name;
+            Array.Clear(part.Unk1.DrawGroups);
+            Array.Clear(part.Unk1.DisplayGroups);
+            msb.Parts.Assets.Add(part);
+            names.Add(part.Name);
+            if (msb.Models.Assets.All(m => !m.Name.Equals(model, StringComparison.OrdinalIgnoreCase)))
+                msb.Models.Assets.Add(new MSBE.Model.Asset
+                {
+                    Name = model,
+                    SibPath = $@"N:\GR\data\Asset\Environment\geometry\{model[..6]}\{model}\sib\{model}.sib",
+                });
+            placed.Add(part.Name);
+        }
+        return placed;
     }
 
     /// <summary>Names that are no map part in Elden Ring either: the player himself, cameras and cutscene dummies.</summary>
