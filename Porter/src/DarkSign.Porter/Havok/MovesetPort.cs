@@ -396,6 +396,18 @@ public static partial class MovesetPort
             {
                 var notes = new List<string>();
                 mapEffects = Maps.MapSfx.Wanted(ds3Archives, Maps.MapSlots.All, notes);
+                // The effects the maps' scripts spawn by ID ("Spawn Oneshot SFX", "Create Object-following SFX"):
+                // the events step points them at their converted IDs (EventPort.Kind.Sfx, Ds3Ids).
+                try
+                {
+                    var scriptEffects = Maps.MapEvents.ScriptIds(ctx, ds3Archives, Maps.MapSlots.All.Where(s => !s.Probe).ToList(), Maps.EventPort.Kind.Sfx);
+                    mapEffects.UnionWith(scriptEffects);
+                    notes.Add($"map effects: the scripts spawn {scriptEffects.Count} effects by ID");
+                }
+                catch (Exception e) when (e is not OutOfMemoryException)
+                {
+                    notes.Add($"map effects: the scripts' effects not read ({e.GetType().Name}: {e.Message}); they keep DS3's IDs");
+                }
                 // The effects DS3 objects carry on their own dummy polys (Firelink's candle flames: ObjectSfx).
                 if (Maps.ObjectSfx.Enabled)
                     try
@@ -1683,6 +1695,45 @@ public sealed class AttackParamPort(ParamStore er, ParamStore ds3, string behavi
     /// new variation also gets the Elden Ring template's rows for every judge ID DS3 lacks: the moves kept from the
     /// template (Elden Ring-only attacks) look their hits up in the weapon's variation too, and found nothing there.
     /// </summary>
+    /// <summary>Where the behaviour rows DS3's map scripts name by ID get their copies: this + the DS3 row ID.</summary>
+    public const int ScriptRowBase = 1_600_000_000;
+
+    /// <summary>
+    /// A behaviour row DS3's map scripts name by its row ID ("Shoot Bullet", "Create Damaging Object": Carthus's bolt
+    /// traps 5810-5846, Grand Archives' curse hands 5210, Crystal Sage's clones 213200010), copied to
+    /// <see cref="ScriptRowBase"/> + the DS3 ID with its bullet, attack or SpEffect ported the way an enemy's are.
+    /// Returns the new row ID, or -1 when the row or what it names couldn't be ported. Up to 1.0.57x the scripts kept
+    /// DS3's IDs, and 55 of the 56 rows they name don't exist in Elden Ring's BehaviorParam (census 2026-11-22).
+    /// </summary>
+    public int PortScriptRow(int ds3Row)
+    {
+        if (_scriptRows.TryGetValue(ds3Row, out var done))
+            return done;
+        int id = ds3Row is > 0 and < int.MaxValue - ScriptRowBase ? ScriptRowBase + ds3Row : -1;
+        if (id < 0 || _ds3Behavior[ds3Row] is not { } source)
+            return _scriptRows[ds3Row] = -1;
+        if (_erBehavior[id] is not null)
+            return _scriptRows[ds3Row] = id;
+        int refType = Convert.ToInt32(source["refType"].Value), refId = Convert.ToInt32(source["refId"].Value);
+        int target = refType switch
+        {
+            0 => PortAttack(refId),
+            1 => Bullets?.Port(refId) ?? -1,
+            2 => Effects?.Port(refId) ?? -1,
+            _ => -1,
+        };
+        if (target <= 0)
+            return _scriptRows[ds3Row] = -1;
+        var row = CopyByName(source, new PARAM.Row(id, $"[DS3 script] {source.Name}", _erBehavior.AppliedParamdef));
+        row["refId"].Value = Convert.ChangeType(target, row["refId"].Value!.GetType());
+        _erBehavior.Rows.Add(row);
+        _erBehavior.Rows.Sort((a, b) => a.ID.CompareTo(b.ID));
+        _behaviors++;
+        return _scriptRows[ds3Row] = id;
+    }
+
+    private readonly Dictionary<int, int> _scriptRows = new();
+
     public int PortVariation(int ds3Variation, int templateVariation = 0, int? newVariation = null)
     {
         if (_variations.TryGetValue((ds3Variation, templateVariation), out var done))

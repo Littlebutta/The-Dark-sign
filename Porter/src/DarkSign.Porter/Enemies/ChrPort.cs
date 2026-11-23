@@ -434,6 +434,8 @@ public static partial class ChrPort
         public List<(Plan Plan, Dictionary<int, int> NpcRows)> Params = [];
         /// <summary>DS3 item lots the ported maps' scripts award, given ItemLotParam_map rows with the drops (DropPort.PortScriptLots).</summary>
         public IReadOnlyCollection<int> ScriptLots = [];
+        /// <summary>DS3 behaviour rows the ported maps' scripts fire by ID (AttackParamPort.PortScriptRow).</summary>
+        public IReadOnlyCollection<int> ScriptBehaviors = [];
         public List<ChrMaterial> Materials = [];
         /// <summary>Both games' item names, read while DS3's archives are open, for the drops (<see cref="DropPort"/>).</summary>
         public DropPort.Names? ItemNames;
@@ -849,6 +851,20 @@ public static partial class ChrPort
                 failed++;
                 result.Notes.Add($"c{plan.Ds3.Chr:D4} {plan.Ds3.Name}: params failed ({Describe(ex)})");
             }
+        }
+        if (LockCams.Enabled && regulation.Get("LockCamParam") is { } erCams && ds3.Get("LockCamParam") is { } ds3Cams)
+            try
+            {
+                int cams = LockCams.Port(erCams, ds3Cams);
+                Maps.Ds3Ids.WriteTable(ctx, LockCams.TableFile, "LockCamParam", ds3Cams.Rows.Where(r => r.ID > 0).Select(r => ((long)r.ID, (long)LockCams.Id(r.ID))));
+                result.Notes.Add($"lock-on cameras: {cams} DS3 LockCamParam rows at {LockCams.Base:N0} + the DS3 row");
+            }
+            catch (Exception ex) when (ex is not OutOfMemoryException) { result.Notes.Add($"lock-on cameras: not ported ({Describe(ex)}); bosses keep their templates' cameras"); }
+        if (result.ScriptBehaviors.Count > 0)
+        {
+            var moved = result.ScriptBehaviors.Select(b => (Ds3: (long)b, Er: (long)attacks.PortScriptRow(b))).Where(t => t.Er > 0).ToList();
+            Maps.Ds3Ids.WriteTable(ctx, Maps.Ds3Ids.ScriptBehaviorsFile, "BehaviorParam", moved);
+            result.Notes.Add($"script behaviours: {moved.Count} of the {result.ScriptBehaviors.Count} behaviour rows the DS3 scripts fire ported (BehaviorParam {AttackParamPort.ScriptRowBase:N0} + the DS3 row)");
         }
         int friendly = MakePeopleFriendly(regulation.Get("NpcParam")!, result.Params);
         if (friendly > 0)
@@ -2150,6 +2166,9 @@ public static partial class ChrPort
         if (Cell(ds3, "toxicGuardResist") is { Value: not null and not byte[] } toxic && Cell(er, "poisonGuardResist") is { } poison
             && Convert.ToDouble(toxic.Value) > Convert.ToDouble(poison.Value))
             Set(poison, toxic.Value);
+        if (LockCams.Enabled && Cell(ds3, "lockCamParamId") is { Value: not null and not byte[] } cam && Convert.ToInt32(cam.Value) > 0
+            && Cell(er, "lockCameraParamId") is { } erCam)
+            Set(erCam, LockCams.Id(Convert.ToInt32(cam.Value)));
         if (Cell(ds3, "NameId") is { Value: not null and not byte[] } name && Convert.ToInt64(name.Value) > 0 && Cell(er, "nameId") is { } erName)
         {
             Set(erName, Maps.MapText.Name(Convert.ToInt64(name.Value)));

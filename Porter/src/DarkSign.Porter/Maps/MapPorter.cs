@@ -557,10 +557,11 @@ public static class MapPorter
                 try
                 {
                     enemyPort.ScriptLots = MapEvents.ScriptIds(ctx, ds3, ported.Select(p => p.Slot).ToList(), EventPort.Kind.ItemLot);
+                    enemyPort.ScriptBehaviors = MapEvents.ScriptIds(ctx, ds3, ported.Select(p => p.Slot).ToList(), EventPort.Kind.Behavior);
                 }
                 catch (Exception ex) when (ex is not OutOfMemoryException)
                 {
-                    report.AppendLine($"enemy params: script item lots not read ({ex.Message}); the scripts' awards give nothing");
+                    report.AppendLine($"enemy params: script item lots and behaviours not read ({ex.Message}); the scripts keep DS3's numbers");
                 }
             Step(report, "enemy params", () => ChrPort.ApplyParams(ctx, er, enemyPort));
         }
@@ -605,7 +606,7 @@ public static class MapPorter
                 ParamStore? ds3Params = null;
                 try { ds3Params = ctx.LoadParams(PorterGame.DarkSouls3); } catch (Exception ex) when (ex is not OutOfMemoryException) { lines.Add($"  DS3 params unreadable ({ex.Message})"); }
                 var ids = Ds3Ids.Load(ctx, TalkItems(ctx, ds3, er, regulation, ds3Params, lines));
-                lines.Insert(0, $"event IDs: {ids.Lots} ported item lots, AI rows from the enemy port, items by the drops' rule");
+                lines.Insert(0, $"event IDs: {ids.Lots} ported item lots, {ids.Behaviors} behaviour rows, AI rows from the enemy port, items by the drops' rule");
                 return string.Join(Environment.NewLine, lines);
             });
             Step(report, "events", () => MapEvents.Port(ctx, ds3, er, ported.Select(p => p.Slot).ToList(), cutscenes, f => playedFlags = f, music));

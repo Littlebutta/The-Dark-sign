@@ -880,6 +880,8 @@ public static class Fallbacks
                 { PorterEnv = Env("DARKSIGN_ANIM_BLEND_HINT", "template") },
             new("Q", "The template's poise, resistances and name", "As A, but a ported enemy keeps the poise, status resistances, turn speed and name of the Elden Ring enemy it is built on (DARKSIGN_ENEMY_DS3_STATS=0), as up to 1.0.57x. Use when ported enemies stagger, resist status or turn very differently from DS3 with A.")
                 { PorterEnv = Env("DARKSIGN_ENEMY_DS3_STATS", "0") },
+            new("R", "The template's lock-on camera", "As A, but DS3's lock-on cameras (how far back and how wide the camera sits when locked on to a boss) are not ported (DARKSIGN_LOCK_CAMS=0): ported bosses use the camera of the Elden Ring enemy they are built on and DS3's arena scripts keep DS3's camera numbers, as up to 1.0.57x.")
+                { PorterEnv = Env("DARKSIGN_LOCK_CAMS", "0") },
         ]),
         new("enemy-drops", "DS3 maps", "What ported DS3 enemies drop", Stage.Build,
             "A ported DS3 enemy drops nothing where DS3 drops something, drops the wrong item or far too often, the game crashes or hangs when a ported enemy dies, or the build's enemy params step says the drops were not ported.",

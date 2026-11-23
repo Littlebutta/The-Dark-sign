@@ -28,7 +28,7 @@ public sealed class EventPort
     /// <remarks>MusicRegion: a value an event uses only as the region of DS3's music lines (the shared boss events'
     /// track regions). The lines that start the event pass the region's switch flag there instead
     /// (<see cref="MapMusic.Plan.SwitchFor"/>), and the event's music lines set that flag.</remarks>
-    public enum Kind { Other, Entity, Flag, FlagRangeStart, FlagRangeEnd, Event, Area, Block, PackedMap, Cutscene, SpEffect, WarpPoint, ActionButton, ObjAct, MusicRegion, Message, PlaceName, NpcName, ItemLot, Think }
+    public enum Kind { Other, Entity, Flag, FlagRangeStart, FlagRangeEnd, Event, Area, Block, PackedMap, Cutscene, SpEffect, WarpPoint, ActionButton, ObjAct, MusicRegion, Message, PlaceName, NpcName, ItemLot, Think, Behavior, Sfx, Camera }
 
     private readonly Emedf _ds3, _er;
     private readonly IReadOnlyList<(MapId Ds3, MapId Er)> _maps;
@@ -112,7 +112,7 @@ public sealed class EventPort
             $"{Events - EventsDropped}/{Events} events, {Converted}/{Instructions} instructions converted, {NoOps} no-ops"
             + (ActionButtonsMoved == 0 ? "" : $", {ActionButtonsMoved} DS3 action button rows pointed at their copies")
             + (TextsMoved == 0 ? "" : $", {TextsMoved} messages and area names pointed at DS3's text")
-            + (IdsMoved + IdsKept == 0 ? "" : $", item lots, AI rows and items: {IdsMoved} to ported rows, {IdsKept} kept")
+            + (IdsMoved + IdsKept == 0 ? "" : $", item lots, AI rows, items, behaviours, effects and cameras: {IdsMoved} to ported rows, {IdsKept} kept")
             + (SpEffectsMoved + SpEffectsKept == 0 ? "" : $", SpEffects: {SpEffectsMoved} to ported rows, {SpEffectsKept} kept"
                 + (SpEffectsKeptIds.Count == 0 ? "" : $" ({string.Join(" ", SpEffectsKeptIds.Take(12))})"))
             + (CutscenesPlayed + CutscenesLeftOut == 0 ? "" : $", cutscenes: {CutscenesPlayed} lines play a ported cutscene, {CutscenesLeftOut} left out"
@@ -260,6 +260,16 @@ public sealed class EventPort
             return Kind.ItemLot;
         if (n == "ai id")
             return Kind.Think;
+        // The behaviour row "Shoot Bullet" and "Create Damaging Object/Asset" fire, by row ID (AttackParamPort.PortScriptRow).
+        if (n == "behavior id")
+            return Kind.Behavior;
+        // An effect the script spawns by ID ("Spawn Oneshot SFX", "Create Object-following SFX"): converted by
+        // port-weapons into the common binder with the map effects (MapSfx table, Ds3Ids.Sfx).
+        if (n == "sfx id")
+            return Kind.Sfx;
+        // "Change Camera": LockCamParam rows (Enemies.LockCams).
+        if (n is "normal camera id" or "locked camera id")
+            return Kind.Camera;
         // Where the player lands: Warp Player's "Initial Area (Entity) ID", the respawn point, and the point a
         // cutscene warps the player to (DS3's "Play Cutscene and Warp Player").
         // "IF ObjAct Event Flag" (5[02], both games) names the ObjAct map event by its entity ID (DS3's lever
@@ -523,6 +533,30 @@ public sealed class EventPort
                 {
                     Stats.IdsMoved++;
                     return think;
+                }
+                Stats.IdsKept++;
+                return value;
+            case Kind.Behavior:
+                if ((Ids ?? Ds3Ids.Current)?.Behavior(value) is { } behavior)
+                {
+                    Stats.IdsMoved++;
+                    return behavior;
+                }
+                Stats.IdsKept++;
+                return value;
+            case Kind.Sfx:
+                if ((Ids ?? Ds3Ids.Current)?.Sfx(value) is { } sfx)
+                {
+                    Stats.IdsMoved++;
+                    return sfx;
+                }
+                Stats.IdsKept++;
+                return value;
+            case Kind.Camera:
+                if ((Ids ?? Ds3Ids.Current)?.Camera(value) is { } camera)
+                {
+                    Stats.IdsMoved++;
+                    return camera;
                 }
                 Stats.IdsKept++;
                 return value;
