@@ -402,6 +402,8 @@ public static class Fallbacks
                 { MapsArgs = ["--xml-collision"] },
             new("C", "Binary, keeping DS3's SIMD tree", "Binary tagfiles that keep DS3's SIMD collision tree instead of building a new one (port-maps --simd).")
                 { MapsArgs = ["--simd"] },
+            new("D", "DS3's floor numbers as they are", "Binary tagfiles as in A, but each floor keeps DS3's hit material number (DARKSIGN_HIT_MATERIALS=0), as up to 1.0.57x: DS3's no-fall-damage floors under its designed drops are then Elden Ring's slowing floor and Lake of Rot, and its toxic floor applies an Elden Ring effect. Use when footsteps or floors behave oddly with A.")
+                { PorterEnv = Env("DARKSIGN_HIT_MATERIALS", "0") },
         ]),
         new("map-groups", "DS3 maps", "Which map parts are drawn (culling)", Stage.Build,
             "Parts of a DS3 map vanish or pop in as you move, a room is empty until you step inside, or the map lags far more than an Elden Ring map.",

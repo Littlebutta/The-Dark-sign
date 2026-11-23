@@ -55,6 +55,10 @@ public static class MapSelfTest
         var shape = (HKLib.hk2018.fsnpCustomParamCompressedMeshShape)body.m_shape!;
         if (shape.m_pParam?.m_primitiveDataArray.Count != 1 || shape.m_pParam.m_primitiveDataArray[0].m_materialNameData != 7)
             throw new Exception("hit material lost");
+        // DS3's floors whose Elden Ring numbers mean other things (HitMaterials): the variant hundreds stay.
+        if (HitMaterials.Enabled && (HitMaterials.Map(49) != HitMaterials.NoFallDamage || HitMaterials.Map(147) != 100 + HitMaterials.NoFallDamage
+                                     || HitMaterials.Map(48) != HitMaterials.NoFallDamagePoison || HitMaterials.Map(30) != 37 || HitMaterials.Map(143) != 143 || HitMaterials.Map(1) != 1))
+            throw new Exception("DS3 hit materials not mapped to Elden Ring's meanings");
         if (body.m_name != "h_test" || Vector3.Distance(new Vector3(body.m_position.X, body.m_position.Y, body.m_position.Z), new Vector3(5, 1, 2)) > 1e-4f)
             throw new Exception("body name or position lost");
     }

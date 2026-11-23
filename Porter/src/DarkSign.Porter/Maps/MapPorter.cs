@@ -527,6 +527,17 @@ public static class MapPorter
             }
             Time(report, "object params", objectClock);
         }
+        // The floor materials of our own the converted collisions name (HitMaterials).
+        if (ported.Count > 0)
+        {
+            Step(report, "hit materials", () =>
+            {
+                var regulation = ActionButtons.LoadRegulation(ctx);
+                var line = HitMaterials.AddRows(regulation.Get("HitMtrlParam") ?? throw new InvalidDataException("Elden Ring has no HitMtrlParam"));
+                regulation.Save(ctx.ModPath("regulation.bin"));
+                return line;
+            });
+        }
         // DS3's map effects (Firelink's candles, fog, light shafts), converted by port-weapons into the common binder.
         if (ported.Count > 0)
         {

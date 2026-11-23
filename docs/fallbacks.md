@@ -307,6 +307,7 @@ Try the next option if: You fall through the floor of a DS3 map, or the game han
 - **A: Binary tagfiles (default).** DS3 collision and navmeshes converted to Havok 2018 and stored as binary tagfiles, the form Elden Ring ships its own in: the same size as DS3's files.
 - **B: XML tagfiles, as up to 1.0.30x.** The same collision stored as XML tagfiles, which JortPob ships and Elden Ring reads, but some 55 times larger: 3.4 to 7.5 GB per DS3 map, which the game reads as you walk (port-maps --xml-collision). Try it if you fall through the floor on A. (`port-maps --xml-collision`)
 - **C: Binary, keeping DS3's SIMD tree.** Binary tagfiles that keep DS3's SIMD collision tree instead of building a new one (port-maps --simd). (`port-maps --simd`)
+- **D: DS3's floor numbers as they are.** Binary tagfiles as in A, but each floor keeps DS3's hit material number (DARKSIGN_HIT_MATERIALS=0), as up to 1.0.57x: DS3's no-fall-damage floors under its designed drops are then Elden Ring's slowing floor and Lake of Rot, and its toxic floor applies an Elden Ring effect. Use when footsteps or floors behave oddly with A. (`DARKSIGN_HIT_MATERIALS=0`)
 
 ### Which map parts are drawn (culling) (`map-groups`, rebuilds the content)
 
