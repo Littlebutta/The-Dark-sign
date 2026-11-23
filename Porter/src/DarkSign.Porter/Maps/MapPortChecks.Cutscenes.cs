@@ -16,7 +16,7 @@ public static partial class MapPortChecks
         yield return ("cutscenes: a timeline with no main audio gets DS3's p<ID*10+n> per cut; events of sounds the bank lacks are stripped", CutsceneSoundAutoAndStrip);
         yield return ("cutscenes: converted timelines take Elden Ring's shape: event fields, timeline Unk10 and full parameter lists", CutsceneShapeConform);
         yield return ("cutscenes: the F1 Cutscenes tab warps to the map in one event and plays the pending cutscene after the load in another; its list names the characters", CutsceneMenuEvents);
-        yield return ("cutscenes: the cast resolves to Elden Ring models (map names, enemy models, assets); parts with none, and DS3 draw settings, are left out", CutsceneCastResolve);
+        yield return ("cutscenes: the cast resolves to the parts the map places (Elden Ring casts map parts by name); parts it doesn't place, and DS3 draw settings, are left out", CutsceneCastResolve);
         yield return ("cutscenes: each cut's Havok file becomes cutNNNN\\a0000.hkx at ID NNNN*10000; files no cut plays are left out", CutsceneCutFiles);
         yield return ("cutscenes: events keep their own and their parent's timeline numbers when timelines are taken out or added (1.0.460 Friede crash)", CutsceneTimelineRelink);
         yield return ("cutscenes: bones carry the Elden Ring part's name, effect events play converted DS3 effects, a solid model under the decal shader is drawn", CutsceneBonesAndEffects);
@@ -275,12 +275,13 @@ public static partial class MapPortChecks
         var models = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "c7120", "c7000", "c7010", "AEG920_001", "c4750" };
         var resolve = CutsceneCast.Resolver(partNames, m => m == "c6010" ? "c7010" : null, models.Contains);
         Expect(resolve("c6020_0000") == "c7120_9000", "a placed part takes its map name");
-        Expect(resolve("o459020_8000") == "AEG920_001_8000", "an object part the map doesn't place takes its model's asset, its own instance");
-        Expect(resolve("c6010_0001") == "c7010_0001", "a character the map doesn't place takes the enemy port's model");
-        Expect(resolve("c3000_0005") == "c7000_0005", "another instance of a placed character's model");
+        Expect(resolve("o459020_8000") is null, "an object part the map doesn't place is left out (Elden Ring casts map parts by name)");
+        Expect(resolve("c6010_0001") is null && resolve("c3000_0005") is null, "characters the map doesn't place are left out");
+        Expect(resolve("c0000_0013") is null, "a c0000 part that isn't the player and isn't placed is left out");
+        Expect(resolve("c3000_0001") == "c7000_9000", "a placed character keeps its map name");
         Expect(resolve("h45_00_00_00_008100") is null && resolve("o459200_8000") is null && resolve("c9999_0000") is null, "a collision, an unported object or character: no model");
         Expect(resolve("c0000_0000") == "c0000_0000" && resolve("cam0010") == "cam0010" && resolve("d0003_0004") == "d0003_0004", "player, camera and dummies keep their names");
-        Expect(resolve("c4750_0000") == "c4750_0000", "an Elden Ring model's name stays");
+        Expect(resolve("c4750_0000") is null, "an Elden Ring model's name that isn't placed on the map is left out");
         Expect(CutsceneCast.ModelOf("AEG920_001_9000") == "AEG920_001" && CutsceneCast.ModelOf("c7120_9000") == "c7120" && CutsceneCast.ModelOf("o459020_0000") is null, "models of names");
 
         var mqb = new MQB { Version = MQB.MQBVersion.DarkSouls3, Name = "NEW_SCENE", Framerate = 30, ResourceDirectory = "", Resources = [], Cuts = [] };

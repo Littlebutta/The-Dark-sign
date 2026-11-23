@@ -614,6 +614,7 @@ Try the next option if: The game crashes, hangs or shows a black screen when a D
 - **F: DS3's fade-out kept.** The cutscenes play as in A, but a cutscene DS3 ends with a fade-out keeps it (DARKSIGN_CUTSCENE_FADE=1), as builds up to 1.0.47x had it: the Dancer's intro ended on a black screen. (`DARKSIGN_CUTSCENE_FADE=1`)
 - **G: No subtitles.** The cutscenes play as in A, but without subtitles (DARKSIGN_CUTSCENE_SUBTITLES=0): the spoken lines play as sounds of the cutscene, as up to 1.0.549. (`DARKSIGN_CUTSCENE_SUBTITLES=0`)
 - **H: Timeline links as up to 1.0.549.** The cutscenes play as in A, but each timeline keeps the link to the timeline it hangs on that DS3 gave it (DARKSIGN_CUTSCENE_PARENTS=0), as up to 1.0.549, where only the events' links were renumbered after the port took timelines out: Friede's intro and Cathedral of the Deep's cutscenes hung. (`DARKSIGN_CUTSCENE_PARENTS=0`)
+- **I: Unplaced parts kept, as up to 1.0.567.** The cutscenes play as in A, but a DS3 part the ported map doesn't place still goes into the cutscene under its model's name (DARKSIGN_CUTSCENE_UNPLACED=1), as up to 1.0.567: Friede's intro and second-phase cutscene, Cathedral of the Deep's and the Dancer's played to the end and then stayed black. (`DARKSIGN_CUTSCENE_UNPLACED=1`)
 
 ### DS3's music (areas and boss fights) (`map-music`, rebuilds the content)
 
