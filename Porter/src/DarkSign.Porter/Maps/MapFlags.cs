@@ -35,8 +35,20 @@ public static class MapFlags
         if (flags.Flags.ContainsKey(flag))
             return flags.LocalFlag(flag);
         long moved = ds3.MoveEntity((int)flag, er);
-        return SlotBlockKept(moved) ? moved : flags.LocalFlag(flag);
+        return SlotBlockKept(moved) ? moved : flags.TryLocalFlag(flag) ?? moved;
     }
+
+    /// <summary>
+    /// A ported map's own DS3 event ID in Elden Ring. An event's ID is a flag too: a run-once (Default) event turns
+    /// flag ID + slot on when it ends, and won't run again while it is on, and DS3's scripts read other events' flags
+    /// (and the fight-reset events turn them off). In a block the game doesn't keep, that flag is never set, so every
+    /// one-time event of the map (an item's pickup, a door's first opening, a boss's death reward) runs again on each
+    /// load. So an event moves exactly like the flag of the same number (<see cref="Move"/>): into the slot where the
+    /// block is kept, otherwise to the same saved number in JortPob's ranges that flag gets.
+    /// Values that aren't DS3 event numbers (1AABLLLL) move as entities.
+    /// </summary>
+    public static long MoveEvent(FlagMap flags, MapId ds3, MapId er, long id) =>
+        id >= ds3.Ds3FlagBase && id < ds3.Ds3FlagBase + 10_000 ? Move(flags, ds3, er, id) : ds3.MoveEntity((int)id, er);
 
     /// <summary>Whether every flag of a ported map's range start..end can stay in the slot's map flags.</summary>
     public static bool RangeKept(MapId ds3, MapId er, long start, long end) =>

@@ -66,6 +66,9 @@ public static class BossArenas
         public uint Ds3Entry { get; init; }
         public uint Ds3FirstEncounter { get; init; }
 
+        /// <summary>The fight events in DS3's numbering: their run-once flags move like the scripts moved the events (<see cref="MapFlags.MoveEvent"/>).</summary>
+        public IReadOnlyList<uint> Ds3Events { get; init; } = [];
+
         /// <summary>The talk-only flags in DS3's numbering (moved when the events are written) and the talk entity, moved.</summary>
         public IReadOnlyList<uint> TalkFlags { get; init; } = [];
         public uint TalkEntity { get; init; }
@@ -420,6 +423,7 @@ public static class BossArenas
                 Ds3Defeated = f.Defeated,
                 Ds3Entry = f.Entry,
                 Ds3FirstEncounter = f.FirstEncounter,
+                Ds3Events = f.Events,
                 LandsAtIntro = f.IntroArea > 0,
             });
             if (f.TalkFlags.Count > 0)
@@ -465,6 +469,9 @@ public static class BossArenas
                 Defeated = Flag(a.Ds3Defeated, a.Defeated),
                 Entry = Flag(a.Ds3Entry, a.Entry),
                 FirstEncounter = Flag(a.Ds3FirstEncounter, a.FirstEncounter),
+                // An event and the flag of the same number move alike, so moving the event as a flag gives its flag.
+                Events = moveFlag is not null && a.Ds3Events.Count == a.Events.Count
+                    ? a.Ds3Events.Select((ds3, k) => Flag(ds3, a.Events[k])).ToList() : a.Events,
             };
             e.Instructions.Add(RunEvents.Make(1003, 0, On, EventFlagType, RequestFlag(a.Index)));
             e.Instructions.Add(SetFlag(RequestFlag(a.Index), Off));

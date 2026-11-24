@@ -13,7 +13,7 @@ public static partial class MapPortChecks
         yield return ("event port: event parameters follow their argument and values passed in move by kind", EventParameters);
         yield return ("event port: DS3 common events are ported once, under saved IDs, with Elden Ring's slot argument", EventCommon);
         yield return ("event port: flag ranges stay consecutive and the flag table reads back the same", EventFlagTable);
-        yield return ("flags: a ported map's own flags stay in the slot only in blocks the game keeps (m19_70 has none, 450x6 missing)", EventKeptFlagBlocks);
+        yield return ("flags: a ported map's own flags and event IDs (run-once flags, slots together) stay in the slot only in blocks the game keeps (m19_70 has none, 450x6 missing)", EventKeptFlagBlocks);
         yield return ("layout: connect collisions point at the neighbouring map's slot; ones to unported maps are left out", ConnectCollisions);
         yield return ("event port: SpEffect IDs go to the enemy port's rows (700,000,000 + DS3 ID) where they exist, written or passed in", EventSpEffects);
         yield return ("event port: DS3 action buttons become IF Action Button in Area with one ActionButtonParam row per prompt", EventActionButtons);
@@ -38,6 +38,28 @@ public static partial class MapPortChecks
         Expect(seventh != ErId.EntityBase + 6100 && DarkSign.Core.Preflight.JortPobLayout(seventh) == "saved", $"block 45006 flag became {seventh}");
         Expect(MapFlags.SlotBlockKept(45029999) && !MapFlags.SlotBlockKept(45016000) && !MapFlags.SlotBlockKept(19700800) && !MapFlags.SlotBlockKept(11700800),
             "kept blocks: the colosseums' but their 7th, no other slot's");
+
+        // A map event's ID is its run-once flag: it moves to the same number as the flag (11-22 flag check: no block of
+        // m11_70, m11_72, m19_70 or m38_10-15 is kept, so one-time events there ran again on every load).
+        Expect(port.Move(friede, EventPort.Kind.Event) == moved, "an event moves like the flag of the same number");
+        Expect(port.Move(Ds3Id.Ds3FlagBase + 800, EventPort.Kind.Event) == ErId.EntityBase + 800, "events stay in kept blocks");
+        Expect(port.Move(Ds3Id.Ds3FlagBase + 6100, EventPort.Kind.Event) == seventh, "an event of block 45006 moves with its flag");
+        Expect(port.Move(painted.Ds3EntityBase + 801, EventPort.Kind.Event) == slot.EntityBase + 801, "a non-event value passed as an event moves as an entity");
+        // An event started in slots 0-3 keeps four consecutive flags, placed before anything else takes them.
+        var script = new EMEVD(EMEVD.Game.DarkSouls3);
+        var start = new EMEVD.Event(0);
+        foreach (var n in new[] { 0, 3, 1 })
+            start.Instructions.Add(RunEvents.Make(2000, 0, n, (uint)(painted.Ds3FlagBase + 5200), 0u));
+        script.Events.Add(start);
+        var fresh = new FlagMap();
+        var slotted = new EventPort(Emedf.Parse(Ds3Defs), Emedf.Parse(ErDefs), [(painted, slot)], fresh);
+        fresh.LocalFlag(99_999_999); // something already took the first saved number
+        slotted.Learn(script);
+        var first = slotted.Move(painted.Ds3FlagBase + 5200, EventPort.Kind.Event);
+        Expect(DarkSign.Core.Preflight.JortPobLayout(first) == "saved" && Enumerable.Range(0, 4).All(i => slotted.Move(painted.Ds3FlagBase + 5200 + i, EventPort.Kind.Flag) == first + i),
+            $"slot flags of event {painted.Ds3FlagBase + 5200} follow it ({first}); {slotted.Stats.EventSlotRanges} ranges");
+        var converted = slotted.Convert(script, EMEVD.Game.Sekiro, id => id is 0 or 50 ? id : slotted.Move(id, EventPort.Kind.Event));
+        Expect(converted.Events[0].Instructions.All(i => BitConverter.ToUInt32(i.ArgData, 4) == first), "InitializeEvent starts the moved event");
     }
 
     // Made-up definitions in DarkScript3's format, shaped like the real ones where it matters.

@@ -158,7 +158,8 @@ public static class FlagAlloc
         Add(RunEvents.StartDs3Request, "F1 menu start/leave/warp request flags");
         Add(RunEvents.StartEventId, "run event IDs");
         Add(MapMusic.FirstFlag, "DS3 music switch and playing flags (MapMusic)");
-        foreach (var s in slots.Distinct())
+        // A slot's own blocks hold flags only where the game keeps them (MapFlags.SlotBlockKept); the rest went to saved ranges.
+        foreach (var s in slots.Distinct().Where(s => MapFlags.SlotBlockKept(s.EntityBase)))
             Add(s.EntityBase, $"{s} map flags (e.g. boss defeated)");
         foreach (var f in globalFlags.Where(f => f > 0))
             Add(f, "ported DS3 global flags / common events (darksign_flags.tsv)");
@@ -170,7 +171,10 @@ public static class FlagAlloc
     /// <summary>
     /// The flag blocks the game is asked about in game (TestMenu flagcheck.c): every block a flag of the port lives in
     /// (event IDs aren't flags and need no block). Each line is the block's probe flag (its last number, which the port
-    /// never hands out) and what uses the block.
+    /// never hands out) and what uses the block. A slot's own blocks are probed only where the port puts flags in them
+    /// (<see cref="MapFlags.SlotBlockKept"/>): listing all ten blocks of every slot (m11_70, m38_10...) filled the
+    /// DLL's 64-probe list with blocks nothing used, so the 11-22 check logged "0 blocks ok, 64 missing" and never
+    /// reached the blocks the flags are actually in.
     /// </summary>
     public static IEnumerable<string> ProbeLines(IEnumerable<MapId> slots, IEnumerable<long> flags, bool slotFlags = true)
     {
@@ -182,7 +186,8 @@ public static class FlagAlloc
         if (slotFlags)
             foreach (var s in slots.Distinct())
                 for (long b = 0; b < 10; b++)
-                    Add(s.EntityBase + b * 1000, $"{s} map flags");
+                    if (MapFlags.SlotBlockKept(s.EntityBase + b * 1000))
+                        Add(s.EntityBase + b * 1000, $"{s} map flags");
         foreach (var f in flags.Where(f => f > 0))
             Add(f, Layout(f));
         yield return "# probe flag\twhat uses the block (written by port-maps; read by dksign_testmenu.dll, which logs flagcheck: lines)";
