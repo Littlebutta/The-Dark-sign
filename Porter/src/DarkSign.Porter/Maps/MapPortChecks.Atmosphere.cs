@@ -16,7 +16,7 @@ public static partial class MapPortChecks
         yield return ("atmosphere: the slot's gparam takes DS3's sun and fog colours, Stormveil's fog amounts, no colour grading", Atmosphere);
         yield return ("atmosphere: the sun's direction turns with DS3's map offset, like the map's lamps and baked light", SunTurned);
         yield return ("atmosphere: the lights without shadows (second directional light, local lights) take DS3's share of the sun, not the colosseum's", FillLights);
-        yield return ("light sets: each part keeps DS3's light set and the slot's draw params get DS3's sets (Friede's dark hall, the bosses' own light)", LightSets);
+        yield return ("light sets: parts name Elden Ring's sets (one set lights the whole frame; DS3's per-part sets flickered), and the draw params write any DS3 set something names", LightSets);
     }
 
     /// <summary>
@@ -355,24 +355,33 @@ public static partial class MapPortChecks
         mixed.Parts.Enemies.AddRange([friede, father]);
         Expect(MapLightSets.CharacterOnly(mixed).SetEquals([120]), "only sets no map piece names count as character sets");
 
-        // Parts: a DS3 part's set is carried; one the draw params lack goes to -1.
+        // Parts: Elden Ring's set for the part's kind, never DS3's (one light set lights the whole frame in Elden Ring,
+        // so DS3's per-part sets made the sun flicker); one the draw params lack goes to -1.
         var piece = new MSB3.Part.MapPiece { Name = "m010701_5000", ModelName = "m010701" };
-        piece.Gparam.LightSetID = 1;
+        piece.Gparam.LightSetID = 40;
         var ported = new MSBE.Part.MapPiece();
         ported.Gparam.LightSetID = -1;
         MapLightSets.Carry(piece, ported);
+        var floor = new MSB3.Part.Collision { Name = "h002000", ModelName = "h002000" };
+        floor.Gparam.LightSetID = 51;
+        var portedFloor = new MSBE.Part.Collision();
+        MapLightSets.Carry(floor, portedFloor);
         var enemy = new MSB3.Part.Enemy { Name = "c6020_0000", ModelName = "c6020" };
         enemy.Gparam.LightSetID = 111;
         var portedEnemy = new MSBE.Part.Enemy();
+        portedEnemy.Gparam.LightSetID = -1;
         MapLightSets.Carry(enemy, portedEnemy);
         var stray = new MSBE.Part.MapPiece();
         stray.Gparam.LightSetID = 999;
         var msb = new MSBE();
         msb.Parts.MapPieces.AddRange([ported, stray]);
+        msb.Parts.Collisions.Add(portedFloor);
         msb.Parts.Enemies.Add(portedEnemy);
-        Expect(ported.Gparam.LightSetID == 1 && portedEnemy.Gparam.LightSetID == 111 && MapLightSets.Wanted(msb).SetEquals([1, 111, 999]), "DS3's sets carried to the ported parts");
-        var line = MapLightSets.Finish(msb, new HashSet<int> { 0, 1, 100, 111 });
-        Expect(ported.Gparam.LightSetID == 1 && portedEnemy.Gparam.LightSetID == 111 && stray.Gparam.LightSetID == -1 && line.Contains("1 x1") && line.Contains("1 on sets the draw params lack"), line);
+        Expect(ported.Gparam.LightSetID == 0 && portedFloor.Gparam.LightSetID == 100 && portedEnemy.Gparam.LightSetID == -1,
+            "ported parts name Elden Ring's sets (pieces 0, floors 100, characters their template's), not DS3's 40 / 51 / 111");
+        Expect(MapLightSets.Wanted(msb).SetEquals([0, 100, 999]), "no DS3 set is wanted by a ported part");
+        var line = MapLightSets.Finish(msb, new HashSet<int> { 0, 100, 1000, 1100 });
+        Expect(stray.Gparam.LightSetID == -1 && line.Contains("1 on sets the draw params lack"), line);
     }
 
     private static void Atmosphere()
