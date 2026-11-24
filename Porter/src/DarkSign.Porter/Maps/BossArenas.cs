@@ -50,6 +50,9 @@ public static class BossArenas
 
         /// <summary>The area the boss's own first-encounter event waits for (<see cref="IntroArea"/>), or 0.</summary>
         public int IntroArea { get; init; }
+
+        /// <summary>The map's flags the fight's own events turn on (<see cref="FightFlags"/>), DS3 numbering.</summary>
+        public IReadOnlyList<uint> SetFlags { get; init; } = [];
     }
 
     /// <summary>A fight placed in an Elden Ring map: its IDs moved to the slot and its arrival point.</summary>
@@ -68,6 +71,9 @@ public static class BossArenas
 
         /// <summary>The fight events in DS3's numbering: their run-once flags move like the scripts moved the events (<see cref="MapFlags.MoveEvent"/>).</summary>
         public IReadOnlyList<uint> Ds3Events { get; init; } = [];
+
+        /// <summary>The map flags the fight's events turn on, in DS3's numbering (<see cref="FightFlags"/>); turned off before the warp.</summary>
+        public IReadOnlyList<uint> Ds3SetFlags { get; init; } = [];
 
         /// <summary>The talk-only flags in DS3's numbering (moved when the events are written) and the talk entity, moved.</summary>
         public IReadOnlyList<uint> TalkFlags { get; init; } = [];
@@ -138,9 +144,11 @@ public static class BossArenas
             if (named is not null && named.IndexOf(" - ", StringComparison.Ordinal) is > 0 and var dash)
                 named = named[..dash];
             var (talkFlags, talkEntity) = first > 0 ? TalkGate(mapScript, allScripts, first) : ([], 0);
+            var events = FightEvents(mapScript, ds3, defeated, defeatedLocals);
             fights.Add(new Fight(named?.Trim() ?? $"Boss {defeated}", (uint)defeated, (uint)entry, first > 0 ? (uint)first : 0, area, boss,
-                FightEvents(mapScript, ds3, defeated, defeatedLocals), point, from)
+                events, point, from)
             {
+                SetFlags = FightFlags(mapScript, ds3, events, [(uint)defeated, (uint)entry, (uint)Math.Max(first, 0)]),
                 TalkFlags = talkFlags,
                 TalkEntity = talkEntity > 0 ? talkEntity : boss,
                 IntroArea = introId,
@@ -265,6 +273,24 @@ public static class BossArenas
         return mapScript.Events.Select(e => e.ID).Where(id => ds3.OwnsDs3Id(id) && id != defeated)
             .Where(id => Local(ds3, id) is var l && (l >= from && l < to || l >= from + 5000 && l < to + 5000))
             .Select(id => (uint)id).Distinct().ToList();
+    }
+
+    /// <summary>
+    /// The map's own flags the fight's events turn on (Set Event Flag / Set Network-Connected Event Flag; not values
+    /// passed to other events), other than the defeated, entry and first-encounter flags the warp handles itself, and
+    /// other than the fight's event IDs. Iudex Gundyr's sword pull sets 14000802 (m40 14005811), and DS3 keeps it: on
+    /// a later visit 14005811 skips the "Remove sword" prompt and 14005810 stands him up as the player walks in. The
+    /// warp left such flags as an earlier visit or test set them, so a warp after one sword pull never showed the
+    /// prompt again and fought the repeat start instead of the first (1.0.614). The warp turns these off too, so each
+    /// warp is the fight's first visit.
+    /// </summary>
+    public static List<uint> FightFlags(EMEVD mapScript, MapId ds3, IReadOnlyList<uint> events, IReadOnlyCollection<uint> handled)
+    {
+        var ids = events.ToHashSet();
+        return mapScript.Events.Where(e => ids.Contains((uint)e.ID))
+            .SelectMany(e => FlagsTurnedOn(e.Instructions.Where(i => i.Bank != 2000)))
+            .Where(f => f > 0 && ds3.OwnsDs3Id(f) && f >= ds3.Ds3FlagBase && !handled.Contains((uint)f) && !ids.Contains((uint)f))
+            .Select(f => (uint)f).Distinct().Order().ToList();
     }
 
     /// <summary>A DS3 ID's map-local number (0-9999), or -1 for an ID of another map.</summary>
@@ -424,13 +450,15 @@ public static class BossArenas
                 Ds3Entry = f.Entry,
                 Ds3FirstEncounter = f.FirstEncounter,
                 Ds3Events = f.Events,
+                Ds3SetFlags = f.SetFlags,
                 LandsAtIntro = f.IntroArea > 0,
             });
             if (f.TalkFlags.Count > 0)
                 notes.Add($"boss arenas: {f.Name}'s first encounter waits for {string.Join(", ", f.TalkFlags)}, which only a talk sets: "
                           + $"turned on within {TalkReach} m of {f.TalkEntity}");
             notes.Add($"boss arenas: {f.Name} lands at {f.Point.X:0.#} {f.Point.Y:0.#} {f.Point.Z:0.#} ({f.PointFrom}), entity {entity}; "
-                      + $"flags: defeated {Move(f.Defeated)}, entry {Move(f.Entry)}, first encounter {Move(f.FirstEncounter)}; {f.Events.Count} fight events reset");
+                      + $"flags: defeated {Move(f.Defeated)}, entry {Move(f.Entry)}, first encounter {Move(f.FirstEncounter)}; {f.Events.Count} fight events reset"
+                      + (f.SetFlags.Count > 0 ? $", {f.SetFlags.Count} flags the fight sets turned off ({string.Join(" ", f.SetFlags)})" : ""));
         }
         return arenas;
     }
@@ -483,6 +511,10 @@ public static class BossArenas
                 e.Instructions.Add(SetFlag(a.FirstEncounter, Off));
             foreach (var id in a.Events)
                 e.Instructions.Add(SetFlag(id, Off));
+            // What the fight's events set on an earlier visit (Gundyr's sword pull, 14000802): off, so this is a first visit.
+            if (moveFlag is not null)
+                foreach (var ds3 in a.Ds3SetFlags)
+                    e.Instructions.Add(SetFlag((uint)moveFlag(ds3), Off));
             e.Instructions.Add(RunEvents.Make(2003, 14, (byte)m.Area, (byte)m.Block, (byte)m.Region, (byte)m.Index, a.PointEntity, 0));
             // After it: once the player stands in the map and its events have started, begin the fight.
             e.Instructions.Add(RunEvents.Make(1001, 0, 3f));

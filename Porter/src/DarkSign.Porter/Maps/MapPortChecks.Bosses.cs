@@ -13,6 +13,7 @@ public static partial class MapPortChecks
         yield return ("boss arenas: placed only where the boss was placed, with a fresh arrival point, IDs moved to the slot", BossArenaPlace);
         yield return ("boss arenas: the warp event resets the fight, warps, waits for the map and begins the fight", BossArenaEvents);
         yield return ("boss arenas: a boss shown only once the player walks through its intro area (Vordt) is warped to in that area", BossArenaIntro);
+        yield return ("boss arenas: the warp turns off what the fight's events set on an earlier visit (Gundyr's sword pull)", BossArenaSetFlags);
         foreach (var check in KitChecks())
             yield return check;
     }
@@ -211,5 +212,35 @@ public static partial class MapPortChecks
         int warp = ins.FindIndex(i => i.Bank == 2003 && i.ID == 14);
         Expect(Flag(45000801, 0) is >= 0 and var off && off < warp, "the first encounter is cleared before the warp");
         Expect(Flag(45000801, 1) < 0 && Flag(45005805, 1) < 0, "neither the first encounter nor the entry flag is set by the warp");
+    }
+
+    // Gundyr's sword pull in miniature: 14005811 sets 14000802 (network flag), 14005812 the music flag, and an event
+    // start passes the entry flag (not a flag the event sets).
+    private static void BossArenaSetFlags()
+    {
+        var script = new EMEVD(EMEVD.Game.DarkSouls3);
+        var pull = new EMEVD.Event(14005811, EMEVD.Event.RestBehaviorType.Default);
+        pull.Instructions.Add(RunEvents.Make(2003, 62, 14000802, (byte)1));
+        pull.Instructions.Add(RunEvents.Make(2003, 62, 14000801, (byte)1));  // the first encounter: the warp's own
+        pull.Instructions.Add(RunEvents.Make(2003, 2, 14000803, (byte)0));   // turned off, not on
+        pull.Instructions.Add(RunEvents.Make(2003, 2, 9319, (byte)1));       // a global flag, not the map's
+        var music = new EMEVD.Event(14005812, EMEVD.Event.RestBehaviorType.Restart);
+        music.Instructions.Add(RunEvents.Make(2003, 2, 14005802, (byte)1));
+        music.Instructions.Add(RunEvents.Make(2000, 6, 20005800, 14000800, 14005805));
+        var other = new EMEVD.Event(14005900, EMEVD.Event.RestBehaviorType.Default);
+        other.Instructions.Add(RunEvents.Make(2003, 2, 14000900, (byte)1));  // not a fight event
+        script.Events.AddRange([pull, music, other]);
+        var flags = BossArenas.FightFlags(script, Ds3Id, [14005811, 14005812], [14000800, 14005805, 14000801]);
+        Expect(flags.SequenceEqual(new uint[] { 14000802, 14005802 }), "the flags the fight's events turn on, the map's own only: " + string.Join(" ", flags));
+
+        var common = SyntheticCommon();
+        var arena = new BossArenas.Arena(Ds3Id, ErId, "Test map", "Iudex Gundyr", 45000800, 45005805, 45000801, [45005811, 45005812], 45009970)
+            { Index = 4, Ds3Defeated = 14000800, Ds3Entry = 14005805, Ds3FirstEncounter = 14000801, Ds3Events = [14005811, 14005812], Ds3SetFlags = flags };
+        BossArenas.AddWarps(common, [arena], f => f - 14_000_000 + 45_000_000);
+        var ins = EMEVD.Read(common.Write()).Events.Single(e => e.ID == BossArenas.EventId(4)).Instructions;
+        int Flag(uint flag, byte state) => ins.FindIndex(i => i.Bank == 2003 && i.ID == 66 && BitConverter.ToUInt32(i.ArgData, 4) == flag && i.ArgData[8] == state);
+        int warp = ins.FindIndex(i => i.Bank == 2003 && i.ID == 14);
+        Expect(Flag(45000802, 0) is >= 0 and var a && a < warp && Flag(45005802, 0) is >= 0 and var b && b < warp,
+            "the sword-pull and music flags are turned off before the warp, so the prompt shows again");
     }
 }
