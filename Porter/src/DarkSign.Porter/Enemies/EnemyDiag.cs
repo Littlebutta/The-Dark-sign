@@ -42,7 +42,9 @@ public static partial class EnemyDiag
             return Matbin(ctx, args[1], args.Skip(2).ToList());
         if (args.Count >= 2 && args[0].Equals("bones", StringComparison.OrdinalIgnoreCase))
             return EnemyBonesDiag.Run(ctx, args.Skip(1).ToList());
-        Console.Error.WriteLine("enemy-diag survey | plan [build <DS3 chr>...] | textures <DS3 chr>... | binder <file>... | matbin <binder> <name part>... | unpack <file>... | bones <DS3 chr> [template chr] [built chr] | bones all");
+        if (args.Count >= 2 && args[0].Equals("hks", StringComparison.OrdinalIgnoreCase))
+            return Hks(ctx, args.Skip(1).ToList());
+        Console.Error.WriteLine("enemy-diag hks <file>... | hks ds3 [cXXXX...] | hks port <clone> <DS3 script> | survey | plan [build <DS3 chr>...] | textures <DS3 chr>... | binder <file>... | matbin <binder> <name part>... | unpack <file>... | bones <DS3 chr> [template chr] [built chr] | bones all");
         return 1;
     }
 
@@ -284,6 +286,67 @@ public static partial class EnemyDiag
     {
         var raw = File.ReadAllBytes(path);
         return DCX.Is(raw) ? DCX.Decompress(raw) : raw;
+    }
+
+    /// <summary>
+    /// The scripted-state hand-overs of behaviour scripts (<see cref="EventChains"/>): "hks &lt;file&gt;..." for files on
+    /// disk (no game needed; also says whether the file reads and writes back byte for byte), "hks ds3 [cXXXX...]" for
+    /// DS3's own action\script files (every character's when none is named), written to
+    /// Work\reports\enemy-diag\hks-ds3.txt. Only states that hand over to something other than W_Idle are listed.
+    /// </summary>
+    private static int Hks(PorterContext ctx, List<string> args)
+    {
+        var lines = new List<string>();
+        void Dump(string label, byte[] bytes)
+        {
+            try
+            {
+                var script = BehaviourScript.Read(bytes);
+                var same = script.Write().AsSpan().SequenceEqual(bytes);
+                var states = script.Named().Where(p => p.Key.StartsWith("Event", StringComparison.Ordinal) && p.Key.EndsWith("_onUpdate", StringComparison.Ordinal)).ToList();
+                lines.Add($"== {label}: {bytes.Length} bytes, {script.Main.All().Count()} functions, {states.Count} Event states, writes back {(same ? "byte for byte" : "DIFFERENT")}");
+                foreach (var (name, f) in states.OrderBy(p => p.Key, StringComparer.Ordinal))
+                    if (EventChains.HandOvers(f) is var to && !(to.Count == 1 && to[0] == "W_Idle"))
+                        lines.Add($"   {name}: {(to.Count == 0 ? "(no hand-over)" : string.Join(" ", to))}");
+            }
+            catch (InvalidDataException ex)
+            {
+                lines.Add($"== {label}: FAIL {ex.Message}");
+            }
+        }
+        if (args.Count == 3 && args[0].Equals("port", StringComparison.OrdinalIgnoreCase))
+        {
+            // "hks port <clone> <DS3 script>": what the port would change (every hand-over target taken as present).
+            var (changed, note) = EventChains.Apply(ReadAny(args[1]), ReadAny(args[2]), () => null!);
+            Console.WriteLine(note);
+            if (changed is not null)
+            {
+                File.WriteAllBytes(args[1] + ".ported", changed);
+                Dump(args[1] + ".ported", changed);
+            }
+            foreach (var line in lines)
+                Console.WriteLine(line);
+            return 0;
+        }
+        if (args[0].Equals("ds3", StringComparison.OrdinalIgnoreCase))
+        {
+            using var ds3 = ctx.OpenArchives(PorterGame.DarkSouls3);
+            var wanted = args.Skip(1).Select(a => a.TrimStart('c', 'C')).ToHashSet(StringComparer.OrdinalIgnoreCase);
+            foreach (var path in ds3.Entries.Select(e => e.Path).OfType<string>()
+                         .Where(p => p.StartsWith("/action/script/c", StringComparison.OrdinalIgnoreCase) && p.EndsWith(".hks", StringComparison.OrdinalIgnoreCase))
+                         .Where(p => wanted.Count == 0 || wanted.Contains(Path.GetFileNameWithoutExtension(p)[1..])).Order(StringComparer.Ordinal))
+                Dump(path, ds3.Read(path));
+            var report = ctx.WorkPath("reports", "enemy-diag", "hks-ds3.txt");
+            Directory.CreateDirectory(Path.GetDirectoryName(report)!);
+            File.WriteAllLines(report, lines);
+            lines.Add($"written to {report}");
+        }
+        else
+            foreach (var path in args)
+                Dump(path, ReadAny(path));
+        foreach (var line in lines)
+            Console.WriteLine(line);
+        return lines.Any(l => l.Contains(": FAIL ", StringComparison.Ordinal)) ? 2 : 0;
     }
 
     /// <summary>What is inside binder files on disk (built or extracted): files, textures of each TPF, materials of each model.</summary>

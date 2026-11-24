@@ -1641,6 +1641,20 @@ public static partial class ChrPort
         {
             var animated = PortAnimations(ds3, x, binders, n, notes, t, plan.Stage, plan.Stage == Stage.All ? fx : null, plan);
             files.Animations = animated;
+
+            // The scripted moves hand over to the states DS3's behaviour script names (Gundyr's sword pull 20003 on to
+            // his stand-up 20002, which starts his fight), not the template's (EventChains).
+            var hksPath = $"/action/script/c{n:D4}.hks";
+            int hks = files.Outputs.FindIndex(o => o.Path.Equals(hksPath, StringComparison.OrdinalIgnoreCase));
+            if (hks >= 0)
+            {
+                var ds3Hks = $"/action/script/c{x:D4}.hks";
+                var (changed, note) = EventChains.Apply(files.Outputs[hks].Bytes, ds3.Contains(ds3Hks) ? ds3.Read(ds3Hks) : null,
+                    () => binders.TryGetValue($"/chr/c{n:D4}.behbnd.dcx", out var beh) ? EventChains.GraphEvents(beh.Bnd) : []);
+                if (changed is not null)
+                    files.Outputs[hks] = (files.Outputs[hks].Path, changed);
+                notes.Add(note);
+            }
         }
 
         foreach (var (path, (bnd, compression)) in binders.OrderBy(b => b.Key, StringComparer.Ordinal))
