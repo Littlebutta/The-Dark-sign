@@ -1,0 +1,16 @@
+## N:\GR\data\INTERROOT_win64\action\c7112\Export\Behaviors\c7112.hkx: 1 state machines
+## N:\GR\data\INTERROOT_win64\action\c7112\Export\Behaviors\c9997.hkx: 95 state machines
+  [EventSingle_SM] wildcard W_Event20003 -> 'Event20003' (10) flags FLAG_ALLOW_SELF_TRANSITION_BY_TRANSITION_FROM_ANY_STATE, FLAG_IS_GLOBAL_WILDCARD, FLAG_IS_LOCAL_WILDCARD trans CustomTransitionEffect
+  [EventLoop_SM] wildcard W_Event30000 -> 'Event30000' (17) flags FLAG_ALLOW_SELF_TRANSITION_BY_TRANSITION_FROM_ANY_STATE, FLAG_IS_GLOBAL_WILDCARD, FLAG_IS_LOCAL_WILDCARD trans CustomTransitionEffect
+  [EventLoop_SM] wildcard W_Event930000 -> 'Event30000' (17) flags FLAG_ALLOW_SELF_TRANSITION_BY_TRANSITION_FROM_ANY_STATE, FLAG_IS_GLOBAL_WILDCARD, FLAG_IS_LOCAL_WILDCARD trans hkbHoldFromBlendingTransitionEffect
+  [EventLoop_SM] wildcard W_Event30002 -> 'Event30002' (38) flags FLAG_ALLOW_SELF_TRANSITION_BY_TRANSITION_FROM_ANY_STATE, FLAG_IS_GLOBAL_WILDCARD, FLAG_IS_LOCAL_WILDCARD trans CustomTransitionEffect
+  [EventLoop_SM] wildcard W_Event930002 -> 'Event30002' (38) flags FLAG_ALLOW_SELF_TRANSITION_BY_TRANSITION_FROM_ANY_STATE, FLAG_IS_GLOBAL_WILDCARD, FLAG_IS_LOCAL_WILDCARD trans hkbHoldFromBlendingTransitionEffect
+  [Attack_SM] wildcard W_Attack3012 -> 'Attack3012' (13) flags FLAG_ALLOW_SELF_TRANSITION_BY_TRANSITION_FROM_ANY_STATE, FLAG_IS_GLOBAL_WILDCARD, FLAG_IS_LOCAL_WILDCARD trans CustomTransitionEffect
+  [Attack_SM] wildcard W_Event3012 -> 'Attack3012' (13) flags FLAG_ALLOW_SELF_TRANSITION_BY_TRANSITION_FROM_ANY_STATE, FLAG_IS_GLOBAL_WILDCARD, FLAG_IS_LOCAL_WILDCARD trans CustomTransitionEffect
+  [Attack_SM] wildcard W_Attack3014 -> 'Attack3014' (59) flags FLAG_ALLOW_SELF_TRANSITION_BY_TRANSITION_FROM_ANY_STATE, FLAG_IS_GLOBAL_WILDCARD, FLAG_IS_LOCAL_WILDCARD trans CustomTransitionEffect
+  [Attack_SM] wildcard W_Event3014 -> 'Attack3014' (59) flags FLAG_ALLOW_SELF_TRANSITION_BY_TRANSITION_FROM_ANY_STATE, FLAG_IS_GLOBAL_WILDCARD, FLAG_IS_LOCAL_WILDCARD trans CustomTransitionEffect
+  parent of EventLoop_SM: StateInfo 'state 'EventLoop' (2)'.m_generator
+  parent of EventSingle_SM: StateInfo 'state 'EventSingle' (1)'.m_generator
+  EventLoop_SM state 'Event30000' (17): probability 1 enable True transitions -1 listeners 0 [] enterNotify -1 exitNotify -1
+  EventLoop_SM state 'Event30001' (37): probability 1 enable True transitions -1 listeners 0 [] enterNotify -1 exitNotify -1
+  EventLoop_SM state 'Event30002' (38): probability 1 enable True transitions -1 listeners 0 [] enterNotify -1 exitNotify -1
