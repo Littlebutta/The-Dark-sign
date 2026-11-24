@@ -1,0 +1,4 @@
+c7112.chrbnd.dcx: 113 dummies, 299 bones
+  ref 100: parent Dummy_Static(251) attach none(-1) pos <0.27099994, 0, -1.582> fwd <-5.9604645E-08, 2.9802322E-08, 0.3791262> up <0, 0.14428504, 0> useUp True
+c5110.chrbnd: 113 dummies, 299 bones
+  ref 100: parent Dummy_Static(251) attach none(-1) pos <0.27099994, 0, -1.582> fwd <-5.9604645E-08, 2.9802322E-08, 0.3791262> up <0, 0.14428504, 0> useUp True
