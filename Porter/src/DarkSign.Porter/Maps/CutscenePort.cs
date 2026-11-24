@@ -129,6 +129,38 @@ public static partial class CutscenePort
             table.TryGetValue(kind, out var d) && d.TryGetValue(p.Name, out var type) && type == p.Type;
     }
 
+    /// <summary>
+    /// DS3 event parameters Elden Ring keeps under another name, by resource kind: a spot light's (244) beam size,
+    /// DS3's Width and Height, is Elden Ring's FovH and FovV.
+    /// </summary>
+    public static readonly IReadOnlyDictionary<int, (string Ds3, string Er)[]> EventParamRenames = new Dictionary<int, (string, string)[]>
+    {
+        [244] = [("Width", "FovH"), ("Height", "FovV")],
+    };
+
+    /// <summary>
+    /// Keeps an event Elden Ring knows the kind of when most of its parameters are Elden Ring's: the parameters Elden
+    /// Ring doesn't have for the kind are taken off (after <see cref="EventParamRenames"/>), and the shape conform
+    /// adds the ones only Elden Ring has with their usual values. Up to 1.0.60x one parameter Elden Ring lacks left the
+    /// whole event out, and every DS3 cutscene light was one: a point light (243) carries DS3's ShadingModel, a spot
+    /// light (244) also Width and Height, so all 75 lights of the DS3 cutscenes were dropped and each cutscene was lit
+    /// by the map alone (Devin's High Wall report: "the lighting was way off"). Returns how many parameters were taken
+    /// off; an event with no more than half its parameters known is left as it is (the filter after this drops it).
+    /// </summary>
+    public static int KeepFittingParams(MQB.Event ev, int kind, Catalog catalog)
+    {
+        if (!catalog.Events.ContainsKey(kind) || ev.Parameters.Count == 0)
+            return 0;
+        if (EventParamRenames.TryGetValue(kind, out var renames))
+            foreach (var (ds3, er) in renames)
+                if (ev.Parameters.FirstOrDefault(p => p.Name == ds3) is { } p && ev.Parameters.All(q => q.Name != er))
+                    p.Name = er;
+        int fitting = ev.Parameters.Count(p => Catalog.Fits(catalog.Events, kind, p));
+        if (fitting == ev.Parameters.Count || fitting * 2 <= ev.Parameters.Count)
+            return 0;
+        return ev.Parameters.RemoveAll(p => !Catalog.Fits(catalog.Events, kind, p));
+    }
+
     /// <summary>A timeline's kind: that of its first event's resource (-1 for none).</summary>
     public static int TimelineKind(MQB mqb, MQB.Timeline tl) =>
         tl.Events.FirstOrDefault(e => e.ResourceIndex >= 0 && e.ResourceIndex < mqb.Resources.Count) is { } ev ? mqb.Resources[ev.ResourceIndex].Unk48 : -1;
@@ -232,6 +264,9 @@ public static partial class CutscenePort
                 var kind = TimelineKind(mqb, tl);
                 int hadEvents = tl.Events.Count;
                 s.Events += hadEvents;
+                foreach (var ev in tl.Events)
+                    if (ev.ResourceIndex >= 0 && ev.ResourceIndex < keep.Length && keep[ev.ResourceIndex])
+                        s.ParamsDropped += KeepFittingParams(ev, mqb.Resources[ev.ResourceIndex].Unk48, catalog);
                 tl.Events.RemoveAll(ev =>
                 {
                     var ok = ev.ResourceIndex < 0 || ev.ResourceIndex < keep.Length && keep[ev.ResourceIndex]

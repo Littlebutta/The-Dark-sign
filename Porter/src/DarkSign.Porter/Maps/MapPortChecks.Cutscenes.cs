@@ -21,6 +21,7 @@ public static partial class MapPortChecks
         yield return ("cutscenes: events keep their own and their parent's timeline numbers when timelines are taken out or added (1.0.460 Friede crash)", CutsceneTimelineRelink);
         yield return ("cutscenes: bones carry the Elden Ring part's name, effect events play converted DS3 effects, a solid model under the decal shader is drawn", CutsceneBonesAndEffects);
         yield return ("cutscenes: a cutscene warp to a player part gets an Elden Ring warp region (Other sphere at the part) and the script points at it", CutsceneWarpRegions);
+        yield return ("cutscenes: DS3 light events keep the parameters Elden Ring has (ShadingModel dropped, a spot light's Width/Height become FovH/FovV); events mostly unknown are left out", CutsceneLightParams);
         yield return ("cutscenes: Clear played cutscenes lists each cutscene's seen flags (set and checked by its event, parameters followed) and its event's own flag", CutsceneReplayFlags);
     }
 
@@ -486,6 +487,23 @@ public static partial class MapPortChecks
         cut.Timelines.AddRange([part, light, sound]);
         mqb.Cuts.Add(cut);
         return mqb;
+    }
+
+    private static void CutsceneLightParams()
+    {
+        const MQB.Parameter.DataType F = MQB.Parameter.DataType.Float, I = MQB.Parameter.DataType.Int;
+        var catalog = new CutscenePort.Catalog();
+        catalog.Events[243] = new() { ["DiffuseColor"] = F, ["Radius"] = F };
+        catalog.Events[244] = new() { ["DiffuseColor"] = F, ["FovH"] = F, ["FovV"] = F };
+        var point = new MQB.Event { Parameters = [P("DiffuseColor", F, 1f), P("Radius", F, 5f), P("ShadingModel", I, 1)] };
+        Expect(CutscenePort.KeepFittingParams(point, 243, catalog) == 1 && point.Parameters.Select(p => p.Name).SequenceEqual(["DiffuseColor", "Radius"]), "a point light loses only ShadingModel");
+        var spot = new MQB.Event { Parameters = [P("DiffuseColor", F, 1f), P("Width", F, 30f), P("Height", F, 20f), P("ShadingModel", I, 0)] };
+        CutscenePort.KeepFittingParams(spot, 244, catalog);
+        Expect(spot.Parameters.Select(p => p.Name).SequenceEqual(["DiffuseColor", "FovH", "FovV"]) && (float)spot.Parameters[1].Value == 30f, "a spot light's Width/Height become FovH/FovV");
+        var odd = new MQB.Event { Parameters = [P("DiffuseColor", F, 1f), P("A", I, 0), P("B", I, 0)] };
+        Expect(CutscenePort.KeepFittingParams(odd, 243, catalog) == 0 && odd.Parameters.Count == 3, "an event mostly of unknown parameters is left for the filter");
+        var none = new MQB.Event { Parameters = [P("X", I, 0)] };
+        Expect(CutscenePort.KeepFittingParams(none, 999, catalog) == 0, "a kind Elden Ring lacks is left alone");
     }
 
     private static CutscenePort.Catalog CutsceneCatalog()
