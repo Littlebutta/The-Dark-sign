@@ -185,6 +185,19 @@ public static class EffectSelfTest
         Check(WeaponPort.Ds3HoldFor(0, 15, 0, 10, erHolds) == (null, null) && WeaponPort.Ds3HoldFor(0, 0, 0, 10, erHolds) == (null, null), "holds: DS3's 'no two-handed grip' isn't given to a weapon");
         Check(WeaponPort.Ds3HoldFor(7, 11, 3, 13, erHolds) == (null, null), "holds: a hold Elden Ring never uses stays the template's");
 
+        // DS3's poise damage, crit, parry window, guard and hit material on the ported weapon, not the template's;
+        // the template's Elden Ring enemy bonus rates gone.
+        var ds3Stats = Param(("saWeaponDamage", S16), ("throwAtkRate", S16), ("parryDamageLife", S16), ("defMaterial", S16), ("enableParry", U8), ("guardLevel", U8));
+        var erStats = Param(("saWeaponDamage", F32), ("throwAtkRate", S16), ("parryDamageLife", S16), ("defSeMaterial1", PARAMDEF.DefType.u16), ("enableParry", U8),
+            ("guardLevel", S8), ("weakA_DamageRate", F32), ("wepmotionCategory", U8));
+        var ds3Dagger = Add(ds3Stats, 1000000, ("saWeaponDamage", 8), ("throwAtkRate", 30), ("parryDamageLife", 14), ("defMaterial", 3), ("enableParry", 1), ("guardLevel", 1));
+        var erCopy = Add(erStats, 80000000, ("saWeaponDamage", 12f), ("throwAtkRate", 130), ("parryDamageLife", -1), ("defSeMaterial1", 50), ("enableParry", 0),
+            ("guardLevel", 3), ("weakA_DamageRate", 1.2f), ("wepmotionCategory", 33));
+        Check(WeaponPort.CopyShared(ds3Dagger, erCopy) == 6 && (float)erCopy["saWeaponDamage"].Value == 8f && Convert.ToInt32(erCopy["throwAtkRate"].Value) == 30
+              && Convert.ToInt32(erCopy["parryDamageLife"].Value) == 14 && Convert.ToInt32(erCopy["defSeMaterial1"].Value) == 3 && Convert.ToInt32(erCopy["enableParry"].Value) == 1
+              && Convert.ToInt32(erCopy["guardLevel"].Value) == 1 && (float)erCopy["weakA_DamageRate"].Value == 1f && Convert.ToInt32(erCopy["wepmotionCategory"].Value) == 33,
+            "weapons: DS3's poise damage, crit, parry window, guard and block sound replace the template's; its bonus rates go; its class stays");
+
         // Effect models.
         var erModel = Model(0x2001A, true, (@"N:\GR\data\Material\mtd\sfx\matxml\S[A]_add_Soft.matxml", [("M_A__snp_Texture2D_0_AlbedoMap_0", @"N:\GR\data\Sfx\Tex\s00001_a.tif")]),
             (@"N:\GR\data\Material\mtd\sfx\matxml\S[ARSN]_em.matxml", [("S_ARSN__snp_Texture2D_2_AlbedoMap_0", ""), ("S_ARSN__snp_Texture2D_7_NormalMap_4", ""), ("S_ARSN__snp_Texture2D_1_EmissiveMap", "")]));
