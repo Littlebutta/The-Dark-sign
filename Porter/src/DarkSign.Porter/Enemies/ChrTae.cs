@@ -32,6 +32,24 @@ public static class ChrTae
     public const int DrawMaskType = 233;
 
     /// <summary>
+    /// JumpTable (type 0) flags that end or remove the character, named alike in both games' TAE templates
+    /// (DSAnimStudio TAE.Template.ER.xml / TAE.Template.DS3.xml): 12 Kill Character / Death State, 40 Temporary Death
+    /// State, 46 Disappear Character / Permanently Disable Character, 47 Kill Character (No Item Drop) / Death2,
+    /// 69 Throw Death Transition, 92 Sky Death Warp / Warp Anim Root After Death.
+    /// <para>A template entry keeps its own JumpTables on the DS3 animation its file now holds, and an entry ID can
+    /// mean another move in each game. Corrupted Gundyr's 20002 is DS3's stand-up after the sword pull (its TAE sends
+    /// the message 40 that starts the fight), but c3060's 20002 is a death move: Kill Character at 0.83 s and Disappear
+    /// Character at 4.97 s. So the moment the stand-up ended his invincibility he died, his boss bar showed empty and he
+    /// vanished (probe 16 run B, probe 18 B1/B2, 1.0.620). These flags now stay only when the DS3 move itself carries
+    /// one of them (a DS3 death move on a template death move), for every enemy and every move.</para>
+    /// </summary>
+    public static readonly HashSet<int> LethalJumpTables = [12, 40, 46, 47, 69, 92];
+
+    /// <summary>The JumpTable ID of a type-0 event (-1 for another type or a short one).</summary>
+    public static int JumpTableId(TAE.Event e) =>
+        e.Type == 0 && e.GetParameterBytes(false) is { Length: >= 4 } p ? BitConverter.ToInt32(p, 0) : -1;
+
+    /// <summary>
     /// Event types both games have whose Elden Ring layout reads a field DS3 always writes 0 or doesn't have
     /// (DSAnimStudio's TAE.Template.DS3.xml / TAE.Template.ER.xml, compared field by field 2026-11-20). They come along
     /// only where the template itself uses the type, never just because another Elden Ring character does.
@@ -70,7 +88,7 @@ public static class ChrTae
     public static List<TAE.Event> Merge(List<TAE.Event> ds3Events, TAE.Animation anim, IReadOnlyDictionary<int, int> erLengths,
         IReadOnlyDictionary<int, TAE.EventGroup> templateGroups, float ds3Duration, float erDuration, ChrEffects.Session? fx = null,
         IReadOnlyDictionary<int, TAE.EventGroup>? otherGroups = null, Dictionary<int, int>? kept = null, Dictionary<int, int>? dropped = null,
-        IReadOnlyDictionary<int, int>? ds3Lengths = null)
+        IReadOnlyDictionary<int, int>? ds3Lengths = null, Dictionary<int, int>? lethalDropped = null)
     {
         float scale = ds3Duration > 0 && erDuration > 0 ? ds3Duration / erDuration : 1;
         var merged = new List<TAE.Event>();
@@ -91,9 +109,18 @@ public static class ChrTae
             anim.EventGroups.Add(g);
             return groupOf[type] = g;
         }
+        bool ds3Dies = ds3Events.Any(e => LethalJumpTables.Contains(JumpTableId(e)));
         foreach (var e in anim.Events.Where(e => TemplateTypes.Contains(e.Type) && fx?.DropsTemplate(e) != true))
+        {
+            if (!ds3Dies && LethalJumpTables.Contains(JumpTableId(e)))
+            {
+                if (lethalDropped is not null)
+                    lethalDropped[JumpTableId(e)] = lethalDropped.GetValueOrDefault(JumpTableId(e)) + 1;
+                continue;
+            }
             merged.Add(new TAE.Event(e.StartTime * scale, e.EndTime * scale, e.Type, e.Unk04, (byte[])e.GetParameterBytes(false).Clone(), false)
                 { Group = e.Group });
+        }
         foreach (var e in ds3Events)
         {
             // DS3's effects, SpEffects, projectiles and own sounds, converted (ChrEffects); one that can't be is dropped.

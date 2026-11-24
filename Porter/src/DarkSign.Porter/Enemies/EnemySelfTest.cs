@@ -322,6 +322,23 @@ public static class EnemySelfTest
         Check("TAE merge: DS3's attack replaces the template's, wrong-size events dropped",
             merged.Count(e => e.Type == 1) == 1 && merged.First(e => e.Type == 1).StartTime == 0.7f && merged.All(e => e.Type != 2));
         Check("TAE merge: every event has a group", merged.All(e => e.Group is not null));
+        // A template death move's kill/disappear flags never ride on a DS3 move that doesn't die (Gundyr's stand-up
+        // 20002 on c3060's death move 20002: JumpTable 12 Kill Character, 46 Disappear Character).
+        static byte[] Jt(int id) { var b = new byte[16]; BitConverter.GetBytes(id).CopyTo(b, 0); return b; }
+        var deathAnim = new TAE.Animation(20002, new TAE.Animation.AnimMiniHeader.Standard(), "a000_020002.hkx");
+        var deathJt = new TAE.EventGroup(0);
+        deathAnim.EventGroups.Add(deathJt);
+        foreach (var (id, t) in new[] { (12, 0.8f), (46, 4.9f), (49, 0f) })
+            deathAnim.Events.Add(new TAE.Event(t, t + 0.1f, 0, 0, Jt(id), false) { Group = deathJt });
+        var lethalDropped = new Dictionary<int, int>();
+        var standUp = ChrTae.Merge([new(3.6f, 4.6f, 231, 0, new byte[16], false)], deathAnim, new Dictionary<int, int> { [0] = 16 },
+            new Dictionary<int, TAE.EventGroup>(), 5f, 5f, lethalDropped: lethalDropped);
+        Check("TAE merge: template JumpTables 12/46 (kill, disappear) left off a DS3 move that doesn't die; 49 kept",
+            standUp.Where(e => e.Type == 0).Select(ChrTae.JumpTableId).SequenceEqual([49]) && lethalDropped.Count == 2);
+        var dying = ChrTae.Merge([new(0.5f, 0.6f, 0, 0, Jt(12), false)], deathAnim, new Dictionary<int, int> { [0] = 16 },
+            new Dictionary<int, TAE.EventGroup>(), 5f, 5f);
+        Check("TAE merge: a DS3 death move keeps the template's kill/disappear JumpTables",
+            dying.Where(e => e.Type == 0).Select(ChrTae.JumpTableId).OrderBy(i => i).SequenceEqual([12, 46, 49]));
         // A map script's signal (type 231, the Hollow Soldier's burst telling common event 20005415 to swap in the Pus
         // of Man) comes along though the template's TAE has no event of the type, in a group of its own.
         var signalAnim = new TAE.Animation(3010, new TAE.Animation.AnimMiniHeader.Standard(), "a000_003010.hkx");
