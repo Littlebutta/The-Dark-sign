@@ -620,18 +620,19 @@ public static class EnemySelfTest
         Check("NpcParam: team, resident effects, model swaps, health, DS3's 0 deactivate distance and a float into a byte field stay the template's",
             Npc("teamType") is (byte)26 && Npc("spEffectID0") is 5000 && Npc("normalChangeModelId") is (short)-1 && Npc("hp") is 2000u
             && Npc("deactivateDist") is (short)-1 && Npc("itemSearchRadius") is (byte)3);
-        // A template row that borrows another character's anibnd (vanilla c3061 -> c3060) doesn't pass it on.
+        // A template row that refers to another character's resources doesn't pass them on.
         var swapDef = new PARAMDEF { ParamType = "NPC_PARAM_ST", Fields = [] };
         foreach (var f in ChrPort.ResourceSwapFields)
             swapDef.Fields.Add(new PARAMDEF.Field(swapDef, PARAMDEF.DefType.s16, f) { Default = -1 });
         var swapRow = new PARAM.Row(3, "c3061 row", swapDef);
-        swapRow["normalChangeAnimChrId"]!.Value = (short)3060;
+        // Gundyr's rows 71120000/71120001 as built: retarget and texture swap to c3060.
         swapRow["RetargetReferenceChrId"]!.Value = (short)3060;
-        foreach (var f in new[] { "normalChangeModelId", "normalChangeTexChrId", "normalChangeResouceId" })
+        swapRow["normalChangeTexChrId"]!.Value = (short)3060;
+        foreach (var f in new[] { "normalChangeAnimChrId", "normalChangeModelId", "normalChangeResouceId" })
             swapRow[f]!.Value = (short)-1;
         var swaps = ChrPort.OwnResources(swapRow);
-        Check($"NpcParam: a ported model plays its own anibnd: the template row's animation/retarget swaps to another character go to -1 ({string.Join(" ", swaps)})",
-            swaps.SequenceEqual(["normalChangeAnimChrId=3060", "RetargetReferenceChrId=3060"]) && ChrPort.ResourceSwapFields.All(f => swapRow[f]!.Value is (short)-1)
+        Check($"NpcParam: a ported model plays its own anibnd: the template row's retarget/texture swaps to another character go to -1 ({string.Join(" ", swaps)})",
+            swaps.SequenceEqual(["RetargetReferenceChrId=3060", "normalChangeTexChrId=3060"]) && ChrPort.ResourceSwapFields.All(f => swapRow[f]!.Value is (short)-1)
             && ChrPort.OwnResources(swapRow).Count == 0);
         Check("NpcParam: the template's appear condition, carried asset, footprint effect and Elden Ring weakness go back to the defaults",
             templateCleared == 4 && Npc("chrActivateConditionParamId") is 0u && Npc("loadAssetId") is -1 && Npc("isWeakC") is (byte)0 && Npc("autoFootEffectSfxId") is -1);

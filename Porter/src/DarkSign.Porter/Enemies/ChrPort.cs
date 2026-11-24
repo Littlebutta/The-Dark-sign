@@ -918,13 +918,13 @@ public static partial class ChrPort
         lines.Add(missing.Count == 0
             ? $"check: ok   all {rows.Select(p => p[3]).Distinct().Count()} NpcParam rows the maps and spawn list use are in regulation.bin"
             : $"FAIL check: {missing.Count} NpcParam rows missing from regulation.bin (the game crashes loading them): {string.Join(", ", missing.Take(8))}");
-        // A row that borrows another character's anibnd plays that character's vanilla clips, not the model's (OwnResources).
+        // A row that refers to another character's animations or textures plays that character's vanilla clips (OwnResources).
         var borrowing = rows.Where(p => int.TryParse(p[3], out var id) && ChrId(p[2]) is >= FirstNewChr and <= LastNewChr && !gameHas(p[2])
-                                        && npc[id] is { } r && Cell(r, "normalChangeAnimChrId") is { Value: not null and not byte[] } c && Convert.ToInt64(c.Value) != -1)
+                                        && npc[id] is { } r && ResourceSwapFields.Any(f => Cell(r, f) is { Value: not null and not byte[] } c && Convert.ToInt64(c.Value) != -1))
             .Select(p => $"{p[3]} ({p[2]})").Distinct().ToList();
         lines.Add(borrowing.Count == 0
-            ? "check: ok   no ported model's NpcParam row takes another character's animations (normalChangeAnimChrId)"
-            : $"FAIL check: {borrowing.Count} ported NpcParam rows take another character's animations (normalChangeAnimChrId): {string.Join(", ", borrowing.Take(8))}");
+            ? "check: ok   no ported model's NpcParam row refers to another character's animations, model or textures"
+            : $"FAIL check: {borrowing.Count} ported NpcParam rows refer to another character's animations, model or textures ({string.Join(", ", ResourceSwapFields)}): {string.Join(", ", borrowing.Take(8))}");
         int bad = 0;
         foreach (var model in rows.Select(p => p[2]).Where(m => ChrId(m) is >= FirstNewChr and <= LastNewChr && !gameHas(m)).Distinct())
         {
@@ -2039,8 +2039,8 @@ public static partial class ChrPort
             // DS3's model hides and shows its "#NN#" meshes (weapon and armour variants) by DS3's display masks.
             if (newModel && plan.Stage != Stage.Clone && ds3Npc?[ds3Id] is { } maskSource)
                 CopyDisplayMasks(maskSource, row);
-            // The new model's own animations, skeleton, model and textures, not those of the character the template
-            // borrows them from (OwnResources): Gundyr played the Giant Skeleton's vanilla clips.
+            // The new model's own animations, model and textures, not those of the character the template's row
+            // refers to (OwnResources): Gundyr played the Giant Skeleton's (c3060) vanilla clips.
             if (newModel && OwnResources(row) is { Count: > 0 } swaps && notes is not null
                 && !notes.Any(x => x.StartsWith($"c{plan.NewChr:D4} resources:", StringComparison.Ordinal)))
                 notes.Add($"c{plan.NewChr:D4} resources: the template row's {string.Join(", ", swaps)} cleared (the model plays its own anibnd)");
@@ -2211,13 +2211,17 @@ public static partial class ChrPort
     ];
 
     /// <summary>
-    /// NpcParam fields that make a character use another character's resources. normalChangeAnimChrId is "replace the
-    /// character's animations with the anibnd of this ID" (Paramdex): vanilla c3061 plays c3060's clips this way. The
-    /// port copies the template's row, so every DS3 enemy on such a template played the lender's vanilla clips and never
-    /// the DS3 clips in its own binders, and every clip the port added (Gundyr's 30001/30002 kneel and 3014, the High
-    /// Wall hollows' 700s, phase changes 1500/1600) did nothing, because the lender has no such file. Proven on Gundyr
-    /// (c7112, template row borrowing c3060): putting other bytes into our c7112_div00 3012 changed nothing, the same in a
-    /// copy of vanilla c3060_div00 changed what he played (probes 11-12, reports/boss-start).
+    /// NpcParam fields that make a character use another character's resources (Paramdex: normalChangeAnimChrId
+    /// "replace the animations with the anibnd of this ID", RetargetReferenceChrId "the character referenced for motion
+    /// retargeting", normalChangeTexChrId / normalChangeModelId / normalChangeResouceId the same for textures, model and
+    /// resources; -1 = the character's own, the vanilla default). The port copied the template's row, so 221 of 585
+    /// ported rows inherited a RetargetReferenceChrId (3060 x82, 4350 x33, 4310 x23, 3450 x19, 3000 x18, 3660 x17...),
+    /// and those enemies played the referenced character's vanilla clips instead of the DS3 clips in their own binders;
+    /// every clip the port added (Gundyr's 30001/30002 kneel and 3014, the High Wall hollows' 700s, phase changes
+    /// 1500/1600) did nothing, because the referenced character has no such file. Proven on Gundyr (rows
+    /// 71120000/71120001: RetargetReferenceChrId 3060, normalChangeTexChrId 3060): other bytes in our c7112_div00 3012
+    /// changed nothing, the same in a copy of vanilla c3060_div00 did, and with both fields -1 he kneels on load and
+    /// swings DS3's swing (probes 11-13, reports/boss-start).
     /// </summary>
     internal static readonly string[] ResourceSwapFields =
         ["normalChangeAnimChrId", "RetargetReferenceChrId", "normalChangeModelId", "normalChangeTexChrId", "normalChangeResouceId"];
