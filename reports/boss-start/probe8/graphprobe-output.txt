@@ -1,0 +1,2 @@
+Attack3012 a000 clip: 'a000_003012_hkx_AutoSet_00' a000_003012 id 33 speed 1
+  now: a000_003014 id 213 speed 0.4
