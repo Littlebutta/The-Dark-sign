@@ -23,6 +23,7 @@
 #include "music.h"
 #include "sound.h"
 #include "spawn.h"
+#include "hide.h"
 #include "perf.h"
 
 extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND, UINT, WPARAM, LPARAM);
@@ -690,6 +691,13 @@ void draw_menu()
         ImGui::SameLine();
         ImGui::TextDisabled("PgUp/PgDn up/down, Home/End forward/back");
     }
+    bool hide = dks_hide_on() != 0;
+    if (ImGui::Checkbox("Enemies ignore player (no aggro)", &hide))
+        dks_hide_set(hide);
+    ImGui::SameLine();
+    ImGui::TextDisabled("Ctrl+Shift+F9");
+    ImGui::SameLine();
+    ImGui::TextDisabled("%s", dks_hide_status());
 
     bool perf = dks_perf_on() != 0;
     if (ImGui::Checkbox("Record frame times", &perf))
@@ -1302,6 +1310,7 @@ void render(IDXGISwapChain3 *swap_chain)
     g_f1_was_down = down;
     dks_spawn_update(); // spawns queued from the menu go on while it's closed
     dks_god_update();   // god mode stays on while the menu is closed
+    dks_hide_update();  // so does "enemies ignore player"
     // Fly keys count while the game has focus and the menu isn't taking the keyboard (a text box, a list).
     dks_fly_update(GetForegroundWindow() == g_hwnd && (!g_open || !ImGui::GetIO().WantCaptureKeyboard));
     update_preview();
