@@ -1,0 +1,19 @@
+==== D:/The Dark sign/TheDarkSign/Mods/ER/chr/c7112.anibnd.dcx (5 files)
+==== D:/The Dark sign/TheDarkSign/Mods/ER/chr/c7112_div00.anibnd.dcx (110 files)
+  a000_003012.hkx (binder ID 1000003012, 50364 bytes): ER: duration 2.033 s, frames 62, class hkaSplineCompressedAnimation, type HK_SPLINE_COMPRESSED_ANIMATION, tracks 193, blend hint NORMAL, bound bones 193
+  a000_003014.hkx (binder ID 1000003014, 57548 bytes): ER: duration 3.133 s, frames 95, class hkaSplineCompressedAnimation, type HK_SPLINE_COMPRESSED_ANIMATION, tracks 193, blend hint NORMAL, bound bones 193
+  a001_003014.hkx (binder ID 1001003014, 73636 bytes): ER: duration 2.7 s, frames 82, class hkaSplineCompressedAnimation, type HK_SPLINE_COMPRESSED_ANIMATION, tracks 260, blend hint NORMAL, bound bones 260
+==== D:/The Dark sign/TheDarkSign/Mods/ER/chr/c7112_div01.anibnd.dcx (122 files)
+  a000_030000.hkx (binder ID 1000030000, 24284 bytes): ER: duration 0.333 s, frames 2, class hkaSplineCompressedAnimation, type HK_SPLINE_COMPRESSED_ANIMATION, tracks 193, blend hint NORMAL, bound bones 193
+  a000_030001.hkx (binder ID 1000030001, 37524 bytes): ER: duration 0.033 s, frames 2, class hkaSplineCompressedAnimation, type HK_SPLINE_COMPRESSED_ANIMATION, tracks 260, blend hint NORMAL, bound bones 260
+  a000_030002.hkx (binder ID 1000030002, 24284 bytes): ER: duration 0.333 s, frames 2, class hkaSplineCompressedAnimation, type HK_SPLINE_COMPRESSED_ANIMATION, tracks 193, blend hint NORMAL, bound bones 193
+  a000_030003.hkx (binder ID 1000030003, 24284 bytes): ER: duration 0.333 s, frames 2, class hkaSplineCompressedAnimation, type HK_SPLINE_COMPRESSED_ANIMATION, tracks 193, blend hint NORMAL, bound bones 193
+  a001_003012.hkx (binder ID 1001003012, 108676 bytes): ER: duration 5 s, frames 151, class hkaSplineCompressedAnimation, type HK_SPLINE_COMPRESSED_ANIMATION, tracks 260, blend hint NORMAL, bound bones 260
+==== D:/The Dark sign/TheDarkSign/Work/extract/ER/chr/c3061.anibnd (1 files)
+==== D:/The Dark sign/TheDarkSign/Work/extract/DS3/chr/c5110.anibnd (108 files)
+  a000_003012.hkx (binder ID 1000003012, 40432 bytes): DS3: duration 2.033 s, frames 62, class HKASplineCompressedAnimation, type HK_SPLINE_COMPRESSED_ANIMATION, tracks 193, blend hint NORMAL
+  a000_003014.hkx (binder ID 1000003014, 47616 bytes): DS3: duration 3.133 s, frames 95, class HKASplineCompressedAnimation, type HK_SPLINE_COMPRESSED_ANIMATION, tracks 193, blend hint NORMAL
+  a000_030000.hkx (binder ID 1000030000, 14544 bytes): DS3: duration 0.333 s, frames 2, class HKASplineCompressedAnimation, type HK_SPLINE_COMPRESSED_ANIMATION, tracks 193, blend hint NORMAL
+  a000_030002.hkx (binder ID 1000030002, 14544 bytes): DS3: duration 0.333 s, frames 2, class HKASplineCompressedAnimation, type HK_SPLINE_COMPRESSED_ANIMATION, tracks 193, blend hint NORMAL
+  a001_003012.hkx (binder ID 1001003012, 99536 bytes): DS3: duration 5 s, frames 151, class HKASplineCompressedAnimation, type HK_SPLINE_COMPRESSED_ANIMATION, tracks 268, blend hint NORMAL
+  a001_003014.hkx (binder ID 1001003014, 64496 bytes): DS3: duration 2.7 s, frames 82, class HKASplineCompressedAnimation, type HK_SPLINE_COMPRESSED_ANIMATION, tracks 268, blend hint NORMAL
