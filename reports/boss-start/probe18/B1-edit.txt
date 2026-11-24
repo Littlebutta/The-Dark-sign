@@ -1,0 +1,1 @@
+45005811: 3[24] -> 3[00] flag 45000802 OFF, player anim 60750 at the start
