@@ -503,6 +503,10 @@ public static partial class MapPortChecks
         Expect(spot.Parameters.Select(p => p.Name).SequenceEqual(["DiffuseColor", "FovH", "FovV"]) && (float)spot.Parameters[1].Value == 30f, "a spot light's Width/Height become FovH/FovV");
         var odd = new MQB.Event { Parameters = [P("DiffuseColor", F, 1f), P("A", I, 0), P("B", I, 0)] };
         Expect(CutscenePort.KeepFittingParams(odd, 243, catalog) == 0 && odd.Parameters.Count == 3, "an event mostly of unknown parameters is left for the filter");
+        catalog.Events[243]["ScatteringScale"] = F;
+        var lit = new MQB.Event { Parameters = [P("DiffuseColor", F, 1f), P("Radius", F, 5f), P("ShadingModel", I, 1)] };
+        CutscenePort.KeepFittingParams(lit, 243, catalog);
+        Expect(lit.Parameters.FirstOrDefault(p => p.Name == "ScatteringScale") is { Value: float sc } && sc == 0f, "a DS3 light gets no volumetric glow (ScatteringScale 0, not Elden Ring's usual 1)");
         var none = new MQB.Event { Parameters = [P("X", I, 0)] };
         Expect(CutscenePort.KeepFittingParams(none, 999, catalog) == 0, "a kind Elden Ring lacks is left alone");
     }
