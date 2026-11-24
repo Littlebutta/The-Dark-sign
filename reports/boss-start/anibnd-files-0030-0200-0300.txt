@@ -1,0 +1,47 @@
+== D:/The Dark sign/TheDarkSign/Mods/ER/chr\c7112_div00.anibnd.dcx: 110 files, 27 matching
+  1000003000	65404	N:\GR\data\INTERROOT_win64\chr\c7112\hkx_div00_compendium\a000_003000.hkx
+  1000003001	76492	N:\GR\data\INTERROOT_win64\chr\c7112\hkx_div00_compendium\a000_003001.hkx
+  1000003002	79164	N:\GR\data\INTERROOT_win64\chr\c7112\hkx_div00_compendium\a000_003002.hkx
+  1000003003	61948	N:\GR\data\INTERROOT_win64\chr\c7112\hkx_div00_compendium\a000_003003.hkx
+  1000003004	66556	N:\GR\data\INTERROOT_win64\chr\c7112\hkx_div00_compendium\a000_003004.hkx
+  1000003005	56444	N:\GR\data\INTERROOT_win64\chr\c7112\hkx_div00_compendium\a000_003005.hkx
+  1000003006	58492	N:\GR\data\INTERROOT_win64\chr\c7112\hkx_div00_compendium\a000_003006.hkx
+  1000003007	69276	N:\GR\data\INTERROOT_win64\chr\c7112\hkx_div00_compendium\a000_003007.hkx
+  1000003008	83276	N:\GR\data\INTERROOT_win64\chr\c7112\hkx_div00_compendium\a000_003008.hkx
+  1000003009	55740	N:\GR\data\INTERROOT_win64\chr\c7112\hkx_div00_compendium\a000_003009.hkx
+  1000003010	66636	N:\GR\data\INTERROOT_win64\chr\c7112\hkx_div00_compendium\a000_003010.hkx
+  1000003011	61900	N:\GR\data\INTERROOT_win64\chr\c7112\hkx_div00_compendium\a000_003011.hkx
+  1000003012	50364	N:\GR\data\INTERROOT_win64\chr\c7112\hkx_div00_compendium\a000_003012.hkx
+  1000003013	51228	N:\GR\data\INTERROOT_win64\chr\c7112\hkx_div00_compendium\a000_003013.hkx
+  1000003014	57548	N:\GR\data\INTERROOT_win64\chr\c7112\hkx_div00_compendium\a000_003014.hkx
+  1000003020	61196	N:\GR\data\INTERROOT_win64\chr\c7112\hkx_div00_compendium\a000_003020.hkx
+  1000003021	49164	N:\GR\data\INTERROOT_win64\chr\c7112\hkx_div00_compendium\a000_003021.hkx
+  1000003022	56908	N:\GR\data\INTERROOT_win64\chr\c7112\hkx_div00_compendium\a000_003022.hkx
+  1000003023	44284	N:\GR\data\INTERROOT_win64\chr\c7112\hkx_div00_compendium\a000_003023.hkx
+  1000003024	54252	N:\GR\data\INTERROOT_win64\chr\c7112\hkx_div00_compendium\a000_003024.hkx
+  1000003025	54252	N:\GR\data\INTERROOT_win64\chr\c7112\hkx_div00_compendium\a000_003025.hkx
+  1000003026	61948	N:\GR\data\INTERROOT_win64\chr\c7112\hkx_div00_compendium\a000_003026.hkx
+  1000003027	56444	N:\GR\data\INTERROOT_win64\chr\c7112\hkx_div00_compendium\a000_003027.hkx
+  1000003028	76492	N:\GR\data\INTERROOT_win64\chr\c7112\hkx_div00_compendium\a000_003028.hkx
+  1000003029	66556	N:\GR\data\INTERROOT_win64\chr\c7112\hkx_div00_compendium\a000_003029.hkx
+  1000003035	54252	N:\GR\data\INTERROOT_win64\chr\c7112\hkx_div00_compendium\a000_003035.hkx
+  1000003036	61948	N:\GR\data\INTERROOT_win64\chr\c7112\hkx_div00_compendium\a000_003036.hkx
+== D:/The Dark sign/TheDarkSign/Mods/ER/chr\c7112_div01.anibnd.dcx: 122 files, 16 matching
+  1000020000	26956	N:\GR\data\INTERROOT_win64\chr\c7112\hkx_div01_compendium\a000_020000.hkx
+  1000020001	27212	N:\GR\data\INTERROOT_win64\chr\c7112\hkx_div01_compendium\a000_020001.hkx
+  1000020002	107244	N:\GR\data\INTERROOT_win64\chr\c7112\hkx_div01_compendium\a000_020002.hkx
+  1000020003	26540	N:\GR\data\INTERROOT_win64\chr\c7112\hkx_div01_compendium\a000_020003.hkx
+  1000020004	26540	N:\GR\data\INTERROOT_win64\chr\c7112\hkx_div01_compendium\a000_020004.hkx
+  1000020007	26540	N:\GR\data\INTERROOT_win64\chr\c7112\hkx_div01_compendium\a000_020007.hkx
+  1000020010	26956	N:\GR\data\INTERROOT_win64\chr\c7112\hkx_div01_compendium\a000_020010.hkx
+  1000020015	26540	N:\GR\data\INTERROOT_win64\chr\c7112\hkx_div01_compendium\a000_020015.hkx
+  1000020018	26540	N:\GR\data\INTERROOT_win64\chr\c7112\hkx_div01_compendium\a000_020018.hkx
+  1000030000	24284	N:\GR\data\INTERROOT_win64\chr\c7112\hkx_div01_compendium\a000_030000.hkx
+  1000030001	37524	N:\GR\data\INTERROOT_win64\chr\c7112\hkx_div01_compendium\a000_030001.hkx
+  1000030002	24284	N:\GR\data\INTERROOT_win64\chr\c7112\hkx_div01_compendium\a000_030002.hkx
+  1000030003	24284	N:\GR\data\INTERROOT_win64\chr\c7112\hkx_div01_compendium\a000_030003.hkx
+  1000030008	24284	N:\GR\data\INTERROOT_win64\chr\c7112\hkx_div01_compendium\a000_030008.hkx
+  1000030016	24284	N:\GR\data\INTERROOT_win64\chr\c7112\hkx_div01_compendium\a000_030016.hkx
+  1000030018	24284	N:\GR\data\INTERROOT_win64\chr\c7112\hkx_div01_compendium\a000_030018.hkx
+== D:/The Dark sign/TheDarkSign/Mods/ER/chr\c7112.anibnd.dcx: 5 files, 0 matching
+== /chr/c3061.anibnd.dcx: 1 files, 0 matching
