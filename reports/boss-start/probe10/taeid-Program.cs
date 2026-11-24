@@ -15,7 +15,7 @@ if (args[0] == "mkdiv") // offline self-test only: a div binder from loose files
 {
     var b = new BND4(); int i = 0;
     foreach (var f in args.Skip(2)) b.Files.Add(new BinderFile(Binder.FileFlags.Flag1, f.EndsWith(".compendium") ? 7000000 : 1000000000 + i++, @"N:\GR\data\INTERROOT_win64\chr\c7112\hkx_div00_compendium\" + Leaf(f), File.ReadAllBytes(f)));
-    File.WriteAllBytes(args[1], b.Write());
+    File.WriteAllBytes(args[1], DCX.Compress(b.Write(), new DCX.DcxDfltCompressionInfo(DCX.DfltCompressionPreset.DCX_DFLT_11000_44_9)));
     return;
 }
 if (args[0] == "clips") // taeid clips <anibnd(.dcx) or folder of extracted div binders> <id>...: each clip's length
@@ -44,6 +44,17 @@ if (args[0] == "clips") // taeid clips <anibnd(.dcx) or folder of extracted div 
             catch (Exception ex) { Console.WriteLine($"{Leaf(path)}\t{f.ID}\t{Leaf(f.Name)}\tunreadable ({ex.Message})"); }
         }
     }
+    return;
+}
+if (args[0] == "swap") // probe 11: taeid swap <cXXXX_divNN.anibnd.dcx> <target id> <source id>: target clip's bytes := source clip's
+{
+    var raw0 = File.ReadAllBytes(args[1]);
+    var div = BND4.Read(DCX.Decompress(raw0, out var divComp));
+    BinderFile Clip(string id) => div.Files.Single(f => Leaf(f.Name).Equals($"a000_{int.Parse(id):D6}.hkx", StringComparison.OrdinalIgnoreCase));
+    var target = Clip(args[2]); var source = Clip(args[3]);
+    Console.WriteLine($"{Leaf(target.Name)} ({target.Bytes.Length} bytes) now holds {Leaf(source.Name)} ({source.Bytes.Length} bytes)");
+    target.Bytes = source.Bytes.ToArray();
+    File.WriteAllBytes(args[1], DCX.Compress(div.Write(), divComp));
     return;
 }
 if (args[0] == "survey")
