@@ -1,0 +1,1 @@
+45005811: player anim at start, instr 12 now 3[0] FF00000062A8AE02; 23 instructions
