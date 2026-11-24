@@ -22,8 +22,10 @@ namespace DarkSign.Porter.Maps;
 /// a part whose set the draw params still lack goes back to -1 (<see cref="Finish"/>). The host's own sets (0, 100,
 /// 1000, 1100) stay the host's: Elden Ring's floors name 100 (92 of Stormveil's 111 collisions), as DS3's outdoor
 /// floors and characters do.</para>
-/// <para>Unproven until tested: Elden Ring's own map pieces name only 0 and -1, so that the game reads other set IDs
-/// from a map piece is taken from DS3 and Sekiro, whose draw params Elden Ring's format follows.</para>
+/// <para>2026-11-24: proven wrong in game. Elden Ring lights the whole frame with one light set, so parts naming
+/// different sets made the sun flicker on and off (<see cref="Carry"/>). Ported parts now name Elden Ring's own sets
+/// again; <see cref="Add"/> still writes any other set something names (cutscenes pick theirs for the whole frame,
+/// which is how Elden Ring uses them).</para>
 /// </summary>
 public static class MapLightSets
 {
@@ -46,11 +48,37 @@ public static class MapLightSets
         _ => null,
     };
 
-    /// <summary>The ported part names the DS3 part's light set.</summary>
+    /// <summary>
+    /// The light set Elden Ring's own maps give a part of this kind (Stormveil, m10_00_00_00: map pieces and assets
+    /// set 0, floors 100). Characters keep their template's.
+    /// </summary>
+    public static int? ErSet(MSBE.Part part) => part switch
+    {
+        MSBE.Part.Collision => HostCharacterSet,
+        MSBE.Part.MapPiece or MSBE.Part.Asset or MSBE.Part.DummyAsset => 0,
+        _ => null,
+    };
+
+    /// <summary>
+    /// The ported part names the light set Elden Ring's own part of its kind names (<see cref="ErSet"/>), never DS3's
+    /// own set. 2026-11-24 playtest on 1.0.614: "a lot of flickering from the lighting, as well as poorer
+    /// performance", on map 1 and map 2: the sun and every sun shadow went off and on over the whole screen about once
+    /// a second. Proven on Devin's PC (1.0.620, map 1 in front of the shrine, the same scripted 15 s run each time,
+    /// reports/flicker-ab on the reports/boss-start branch): with the map's draw params as built the picture had 8
+    /// brightness jumps while moving and a mean brightness of 34; with the same file but every light set given the
+    /// colosseum's values it had 1 jump and 89; with no file at all 0 and 91; putting the fog back changed nothing
+    /// (7 jumps, 31). So it is not the light sets' values but that they differ: Elden Ring lights the whole frame with
+    /// one light set at a time, it does not light each part with its own as DS3 does. With DS3's sets on the parts
+    /// (since PR #227: m40 has 13 sets besides 0, 398 of its pieces on set 40 "MAP 暗闇用" with no sun, m30 28 sets)
+    /// the frame switched between a set with the sun and one without as the parts in view changed. Elden Ring's own
+    /// pieces name only 0 and -1, which was the unproven assumption #227 noted. DS3's darker rooms come from the light
+    /// areas (<see cref="MapLightAreas"/>), the roofs' sun shadows and the per-place draw params collisions switch to
+    /// (<see cref="MapAtmosphere.WriteScenes"/>), which is how Elden Ring darkens its own interiors.
+    /// </summary>
     public static void Carry(MSB3.Part src, MSBE.Part part)
     {
-        if (Ds3(src) is { } from && Er(part) is { } to)
-            to.LightSetID = from.LightSetID;
+        if (Er(part) is { } to && ErSet(part) is { } id)
+            to.LightSetID = id;
     }
 
     /// <summary>Every light set a part of the layout names (-1, the default, left out).</summary>
@@ -308,7 +336,7 @@ public static class MapLightSets
             kept[g.LightSetID] = kept.GetValueOrDefault(g.LightSetID) + 1;
         }
         var own = kept.Where(k => k.Key != 0).Select(k => $"{k.Key} x{k.Value}").ToList();
-        return $"light sets: {kept.Values.Sum()} of {parts} parts name DS3's light set ({kept.GetValueOrDefault(0)} on set 0"
+        return $"light sets: {kept.Values.Sum()} of {parts} parts name a light set, as Elden Ring's own parts do ({kept.GetValueOrDefault(0)} on set 0"
                + (own.Count > 0 ? $"; {string.Join(", ", own.Take(24))}{(own.Count > 24 ? ", ..." : "")}" : "") + ")"
                + (reset > 0 ? $"; {reset} on sets the draw params lack went back to the default" : "");
     }
