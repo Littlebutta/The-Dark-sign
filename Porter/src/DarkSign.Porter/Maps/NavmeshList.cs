@@ -96,7 +96,9 @@ public static class NavmeshList
             if (ds3.Navmeshes[i].NameID != -1 && !position.TryAdd(ds3.Navmeshes[i].NameID, i))
                 notes.Add($"DS3 NameID {ds3.Navmeshes[i].NameID} is used twice; connections go to the first");
 
-        int gates = 0, droppedGates = 0;
+        int gates = 0, droppedGates = 0, gatesToFaceless = 0;
+        // An entry DS3 gave faces that came out of the conversion with none (its file failed or is missing).
+        bool LostFaces(int index) => entries[index].Faces == 0 && ds3.Navmeshes[index].FaceCount > 0;
         foreach (bool oSet in new[] { false, true })
             for (int i = 0; i < count; i++)
             {
@@ -119,10 +121,12 @@ public static class NavmeshList
                 };
                 foreach (var gate in source.GateNodes)
                 {
-                    // A gate leads to a navmesh by its position in the list; one that leads nowhere, or to an entry
-                    // without faces, would send a character to a navmesh that isn't there.
+                    // A gate leads to a navmesh by its position in the list. DS3's own lists have gates that lead to
+                    // navmeshes without faces (2 of 78 on the High Wall, 4 of 144 / 158 / 160 elsewhere), and DS3's
+                    // game reads them so: they are kept as they are. Only a gate that leads outside the list, or on or
+                    // to a navmesh that lost its faces in the conversion (DS3 had faces there), is bad.
                     int target = gate.ConnectedNavmeshIndex;
-                    if (entries[i].Faces == 0 || target < 0 || target >= count || entries[target].Faces == 0)
+                    if (target < 0 || target >= count || LostFaces(i) || LostFaces(target))
                     {
                         if (!oSet)
                             droppedGates++;
@@ -137,19 +141,25 @@ public static class NavmeshList
                         Unk14 = gate.Unk14,
                     });
                     if (!oSet)
+                    {
                         gates++;
+                        if (entries[target].Faces == 0)
+                            gatesToFaceless++;
+                    }
                 }
-                // Dropping a gate moves the ones after it up, so a list that lost any has no gates at all: the game
-                // then joins navmeshes by their connections alone, as it does in JortPob's maps.
+                // A gate's costs to the other gates of its navmesh, and its partner gate, are named by position, so
+                // dropping one would shift the rest: a list that lost any is written without gate nodes.
                 list.Navmeshes.Add(entry);
             }
         if (droppedGates > 0)
         {
             foreach (var entry in list.Navmeshes)
                 entry.GateNodes.Clear();
-            notes.Add($"{droppedGates} of {gates + droppedGates} gate nodes lead to a navmesh without faces; the list is written without gate nodes");
+            notes.Add($"{droppedGates} of {gates + droppedGates} gate nodes lead outside the list or to a navmesh that lost its faces in the conversion; the list is written without gate nodes");
             gates = 0;
         }
+        else if (gatesToFaceless > 0)
+            notes.Add($"{gatesToFaceless} of {gates} gate nodes lead to a navmesh without faces, as in DS3's own list; kept");
 
         int total = 0;
         foreach (var entry in list.Navmeshes)

@@ -1037,6 +1037,20 @@ public sealed class AiPort
         foreach (var name in new[] { "searchEye_dist", "searchEye_angX", "searchEye_angY", "isUpdateBattleSight", "battleEye_updateDist", "battleEye_updateAngX", "battleEye_updateAngY" })
             SetCell(row, name, 0);
         SetCell(row, "disableDark", 1);
+        // What the enemy does when it has half noticed the player and isn't fighting yet. Both games' ai_define.lua
+        // number the think fields the scripts read (AI_EXCEL_THINK_PARAM_TYPE__), and both games' common_logic_func.lua
+        // turn the same action numbers into the same goals (0-5: stay, turn, walk over, back off...). DS3's target
+        // states rise NONE, CAUTION, FIND, BATTLE, with goalAction_ToCaution (25) and goalAction_ToFind (27); Elden
+        // Ring dropped FIND for two search levels (SEARCH, SEARCH2) read as goalAction_ToSearchLv1 / Lv2 (29, 30). The
+        // ported row kept the template's search actions (Elden Ring's, 15 / 16 on the 50 rows built on trolls and
+        // dragons), so a DS3 enemy that half noticed the player went searching the way its Elden Ring template does.
+        // Now the first search level takes DS3's caution action and the second DS3's find action.
+        double? Action(string name) => Cell(ds3, name)?.Value is { } v and not byte[]
+            ? System.Convert.ToDouble(v, System.Globalization.CultureInfo.InvariantCulture) : null;
+        if (Action("goalAction_ToCaution") is { } caution)
+            SetCell(row, "goalAction_ToSearchLv1", caution);
+        if (Action("goalAction_ToFind") is { } find)
+            SetCell(row, "goalAction_ToSearchLv2", find);
     }
 
     private static PARAM.Cell? Cell(PARAM.Row row, string name) =>
