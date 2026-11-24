@@ -139,6 +139,19 @@ public static partial class CutscenePort
     };
 
     /// <summary>
+    /// Elden Ring light parameters DS3 has no such thing for, set to what DS3 does instead of Elden Ring's usual value.
+    /// ScatteringScale makes a cutscene light glow in Elden Ring's volumetric fog; DS3 cutscene lights have none, and its
+    /// spot lights run at 20-30 where Elden Ring's run at 0.05-8. With the shape conform's usual ScatteringScale (1),
+    /// the Dancer intro's cyan spot lights (233,255,255, intensity 20-30) filled the hall with flat teal sheets cut
+    /// along the screen's quarters (1.0.61x scratch build with #275-#279, s45_01_0010).
+    /// </summary>
+    public static readonly IReadOnlyDictionary<int, (string Name, float Value)[]> Ds3LacksParams = new Dictionary<int, (string, float)[]>
+    {
+        [243] = [("ScatteringScale", 0f)],
+        [244] = [("ScatteringScale", 0f)],
+    };
+
+    /// <summary>
     /// Keeps an event Elden Ring knows the kind of when most of its parameters are Elden Ring's: the parameters Elden
     /// Ring doesn't have for the kind are taken off (after <see cref="EventParamRenames"/>), and the shape conform
     /// adds the ones only Elden Ring has with their usual values. Up to 1.0.60x one parameter Elden Ring lacks left the
@@ -149,8 +162,12 @@ public static partial class CutscenePort
     /// </summary>
     public static int KeepFittingParams(MQB.Event ev, int kind, Catalog catalog)
     {
-        if (!catalog.Events.ContainsKey(kind) || ev.Parameters.Count == 0)
+        if (!catalog.Events.TryGetValue(kind, out var erParams) || ev.Parameters.Count == 0)
             return 0;
+        if (Ds3LacksParams.TryGetValue(kind, out var lacks))
+            foreach (var (name, value) in lacks)
+                if (erParams.TryGetValue(name, out var type) && type == MQB.Parameter.DataType.Float && ev.Parameters.All(p => p.Name != name))
+                    ev.Parameters.Add(new MQB.Parameter { Name = name, Type = type, Value = value, MemberCount = 1 });
         if (EventParamRenames.TryGetValue(kind, out var renames))
             foreach (var (ds3, er) in renames)
                 if (ev.Parameters.FirstOrDefault(p => p.Name == ds3) is { } p && ev.Parameters.All(q => q.Name != er))
