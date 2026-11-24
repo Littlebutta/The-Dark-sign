@@ -1,0 +1,1 @@
+c3060_div00.anibnd: 82 files; a000_003012.hkx (51732 bytes) now holds our a000_003014.hkx (57548 bytes) -> D:\The Dark sign\TheDarkSign\Mods\ER\chr\c3060_div00.anibnd.dcx
