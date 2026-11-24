@@ -1,0 +1,12 @@
+events:30003=30000
+  before 30003: file a000_030003.hkt imports False src -1, 6 events: t224[0-25] t0[0-25] t0[0-25] t0[0-25] t0[0-0.442] t791[0-8.2]
+  after  30003: file a000_030003.hkt imports False src -1, 11 events: t224[0-0.083] t0[0-0.325] t0[0-0.083] t0[0-0.083] t0[0-0.083] t0[0-25] t791[0-0.8] t233[0-0.3] t67[0-1.633] t67[0-10] t16[0-0.233]
+blendonly:30008
+  before 30008: file a000_030008.hkt imports False src -1, 7 events: t224[0-3.333] t0[0-58] t0[0-3.333] t0[0-3.333] t0[0-3.333] t0[0-100] t791[0-8.2]
+  after  30008: file a000_030008.hkt imports False src -1, 0 events: 
+file:30000=30002
+  before 30000: file a000_030000.hkt imports False src -1, 11 events: t224[0-0.083] t0[0-0.325] t0[0-0.083] t0[0-0.083] t0[0-0.083] t0[0-25] t791[0-0.8] t233[0-0.3] t67[0-1.633] t67[0-10] t16[0-0.233]
+  after  30000: file a000_030002.hkt imports False src -1, 11 events: t224[0-0.083] t0[0-0.325] t0[0-0.083] t0[0-0.083] t0[0-0.083] t0[0-25] t791[0-0.8] t233[0-0.3] t67[0-1.633] t67[0-10] t16[0-0.233]
+reread 30003: file a000_030003.hkt imports False src -1, 11 events: t224[0-0.083] t0[0-0.325] t0[0-0.083] t0[0-0.083] t0[0-0.083] t0[0-25] t791[0-0.8] t233[0-0.3] t67[0-1.633] t67[0-10] t16[0-0.233]
+reread 30008: file a000_030008.hkt imports False src -1, 0 events: 
+reread 30000: file a000_030002.hkt imports False src -1, 11 events: t224[0-0.083] t0[0-0.325] t0[0-0.083] t0[0-0.083] t0[0-0.083] t0[0-25] t791[0-0.8] t233[0-0.3] t67[0-1.633] t67[0-10] t16[0-0.233]
