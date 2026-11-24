@@ -1,0 +1,10 @@
+== built c7112 (live Mods\ER, v1.0.606)
+c7112_div01.anibnd.dcx clip a000_020002.hkx ids 1000020002
+c7112_div01.anibnd.dcx clip a000_020003.hkx ids 1000020003
+c7112_div01.anibnd.dcx clip a000_030002.hkx ids 1000030002
+c7112.anibnd.dcx c7112.tae anim 20002: 20 events, types 0 16 67 96 129 224 231 791
+   type 231 3.667-4.633 params 40 0 0 0
+c7112.anibnd.dcx c7112.tae anim 20003: 14 events, types 0 16 67 96 112 231 233 791
+   type 231 6.467-6.567 params 20 0 0 0
+c7112.anibnd.dcx c7112.tae anim 30002: 6 events, types 0 224 791
+== template c3061 (vanilla extract)

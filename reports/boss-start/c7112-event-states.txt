@@ -1,0 +1,60 @@
+## N:\GR\data\INTERROOT_win64\action\c7112\Export\Behaviors\c9997.hkx: 243 animation names, 1374 event names
+# EventSingle_SM: 12 states
+  state 7 'Event20000' gen CustomManualSelectorGenerator 'Event20000_CMSG' animId 20000 | clip a000_020000 internal 154 -> ..\..\..\..\Model\chr\c7112\hkx\a000_020000.hkx | clip a001_020000 internal 239 -> ..\..\..\..\Model\chr\c7112\hkx\a001_020000.hkx
+     wildcard event 101 'W_Event20000'
+  state 8 'Event20001' gen CustomManualSelectorGenerator 'Event20001_CMSG' animId 20001 | clip a000_020001 internal 155 -> ..\..\..\..\Model\chr\c9997\hkx\a000\a000_020001.hkx | clip a001_020001 internal 238 -> ..\..\..\..\Model\chr\c9997\hkx\a000\a001_020001.hkx
+     wildcard event 102 'W_Event20001'
+  state 9 'Event20002' gen CustomManualSelectorGenerator 'Event20002_CMSG' animId 20002 | clip a000_020002 internal 156 -> ..\..\..\..\Model\chr\c7112\hkx\a000_020002.hkx
+     wildcard event 103 'W_Event20002'
+  state 10 'Event20003' gen CustomManualSelectorGenerator 'Event20003_CMSG' animId 20003 | clip a000_020003 internal 157 -> ..\..\..\..\Model\chr\c7112\hkx\a000_020003.hkx
+     wildcard event 104 'W_Event20003'
+  state 11 'Event20004' gen CustomManualSelectorGenerator 'Event20004_CMSG' animId 20004 | clip a000_020004 internal 158 -> ..\..\..\..\Model\chr\c7112\hkx\a000_020004.hkx
+     wildcard event 105 'W_Event20004'
+  state 14 'Event20007' gen CustomManualSelectorGenerator 'Event20007_CMSG' animId 20007 | clip a000_020007 internal 159 -> ..\..\..\..\Model\chr\c7112\hkx\a000_020007.hkx
+     wildcard event 108 'W_Event20007'
+  state 21 'Event20010' gen CustomManualSelectorGenerator 'Event20010_CMSG' animId 20010 | clip a000_020010 internal 160 -> ..\..\..\..\Model\chr\c7112\hkx\a000_020010.hkx
+     wildcard event 111 'W_Event20010'
+  state 26 'Event20015' gen CustomManualSelectorGenerator 'Event20015_CMSG' animId 20015 | clip a000_020015 internal 161 -> ..\..\..\..\Model\chr\c7112\hkx\a000_020015.hkx
+     wildcard event 147 'W_Event20015'
+  state 27 'Event20016' gen CustomManualSelectorGenerator 'Event20016_CMSG' animId 20016 | clip a000_020016 internal 162 -> ..\..\..\..\Model\chr\c9997\hkx\a000\a000_020016.hkx
+     wildcard event 148 'W_Event20016'
+  state 28 'Event20017' gen CustomManualSelectorGenerator 'Event20017_CMSG' animId 20017 | clip a000_020017 internal 163 -> ..\..\..\..\Model\chr\c9997\hkx\a000\a000_020017.hkx
+     wildcard event 149 'W_Event20017'
+  state 29 'Event20018' gen CustomManualSelectorGenerator 'Event20018_CMSG' animId 20018 | clip a000_020018 internal 164 -> ..\..\..\..\Model\chr\c7112\hkx\a000_020018.hkx
+     wildcard event 150 'W_Event20018'
+  state 30 'Event20019' gen CustomManualSelectorGenerator 'Event20019_CMSG' animId 20019 | clip a000_020019 internal 153 -> ..\..\..\..\Model\chr\c9997\hkx\a000\a000_020019.hkx
+     wildcard event 151 'W_Event20019'
+# EventLoop_SM: 11 states
+  state 17 'Event30000' gen CustomManualSelectorGenerator 'Event30000_CMSG' animId 30000 | clip a000_030000 internal 145 -> ..\..\..\..\Model\chr\c9997\hkx\a000\a000_030000.hkx
+     wildcard event 112 'W_Event30000'
+     wildcard event 1335 'W_Event930000'
+  state 20 'Event30003' gen CustomManualSelectorGenerator 'Event30003_CMSG' animId 30003 | clip a000_030003 internal 146 -> ..\..\..\..\Model\chr\c7112\hkx\a000_030003.hkx
+     wildcard event 233 'W_Event30003'
+     wildcard event 1338 'W_Event930003'
+  state 23 'Event30006' gen CustomManualSelectorGenerator 'Event30006_CMSG' animId 30006 | clip a000_030006 internal 147 -> ..\..\..\..\Model\chr\c9997\hkx\a000\a000_030006.hkx
+     wildcard event 572 'W_Event30006'
+     wildcard event 1341 'W_Event930006'
+  state 25 'Event30008' gen CustomManualSelectorGenerator 'Event30008_CMSG' animId 30008 | clip a000_030008 internal 148 -> ..\..\..\..\Model\chr\c7112\hkx\a000_030008.hkx
+     wildcard event 574 'W_Event30008'
+     wildcard event 1343 'W_Event930008'
+  state 32 'Event30015' gen CustomManualSelectorGenerator 'Event30015_CMSG' animId 30015 | clip a000_030015 internal 149 -> ..\..\..\..\Model\chr\c9997\hkx\a000\a000_030015.hkx
+     wildcard event 1072 'W_Event30015'
+     wildcard event 1350 'W_Event930015'
+  state 33 'Event30016' gen CustomManualSelectorGenerator 'Event30016_CMSG' animId 30016 | clip a000_030016 internal 150 -> ..\..\..\..\Model\chr\c7112\hkx\a000_030016.hkx
+     wildcard event 1073 'W_Event30016'
+     wildcard event 1351 'W_Event930016'
+  state 34 'Event30017' gen CustomManualSelectorGenerator 'Event30017_CMSG' animId 30017 | clip a000_030017 internal 151 -> ..\..\..\..\Model\chr\c9997\hkx\a000\a000_030017.hkx
+     wildcard event 1074 'W_Event30017'
+     wildcard event 1352 'W_Event930017'
+  state 35 'Event30018' gen CustomManualSelectorGenerator 'Event30018_CMSG' animId 30018 | clip a000_030018 internal 152 -> ..\..\..\..\Model\chr\c7112\hkx\a000_030018.hkx
+     wildcard event 1075 'W_Event30018'
+     wildcard event 1353 'W_Event930018'
+  state 36 'Event30019' gen CustomManualSelectorGenerator 'Event30019_CMSG' animId 30019 | clip a000_030019 internal 144 -> ..\..\..\..\Model\chr\c9997\hkx\a000\a000_030019.hkx
+     wildcard event 1076 'W_Event30019'
+     wildcard event 1354 'W_Event930019'
+  state 37 'Event30001' gen CustomManualSelectorGenerator 'Event30001_CMSG' animId 30001 | clip a000_030001 internal 223 -> ..\..\..\..\Model\chr\c7112\hkx\a000_030001.hkx
+     wildcard event 113 'W_Event30001'
+     wildcard event 1336 'W_Event930001'
+  state 38 'Event30002' gen CustomManualSelectorGenerator 'Event30002_CMSG' animId 30002 | clip a000_030002 internal 224 -> ..\..\..\..\Model\chr\c7112\hkx\a000_030002.hkx
+     wildcard event 232 'W_Event30002'
+     wildcard event 1337 'W_Event930002'
