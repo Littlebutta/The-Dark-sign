@@ -582,6 +582,47 @@ public static class EnemySelfTest
         Check("DS3's capsule size replaces the template's; the character capsule scales with it, an unset one stays unset",
             Size("hitHeight") == 1.7f && Size("hitRadius") == 0.55f && Math.Abs(Size("chrHitHeight") - 0.85f) < 1e-5f && Size("chrHitRadius") == 0f);
 
+        // DS3's values in every shared NpcParam field; the template's where another step owns the field or the games
+        // number it differently; Elden Ring-only fields that describe the template back to their default.
+        var ds3All = new PARAMDEF { ParamType = "NPC_PARAM_ST", Fields = [] };
+        var erAll = new PARAMDEF { ParamType = "NPC_PARAM_ST", Fields = [] };
+        foreach (var (t, f) in new[] { (PARAMDEF.DefType.s16, "material"), (PARAMDEF.DefType.s16, "subMaterialSfx_weak"), (PARAMDEF.DefType.s16, "guardAngle"),
+                     (PARAMDEF.DefType.s32, "weight"), (PARAMDEF.DefType.s16, "defPhys"), (PARAMDEF.DefType.s16, "SuperArmorDurability"),
+                     (PARAMDEF.DefType.u8, "teamType"), (PARAMDEF.DefType.s32, "spEffectId0"), (PARAMDEF.DefType.s16, "DeactivateDistance"),
+                     (PARAMDEF.DefType.s32, "basicToughnessValue"), (PARAMDEF.DefType.s16, "normalChangeModelId"), (PARAMDEF.DefType.s32, "Hp"),
+                     (PARAMDEF.DefType.f32, "itemSearchRadius"), (PARAMDEF.DefType.u8, "parryDefense") })
+            ds3All.Fields.Add(new PARAMDEF.Field(ds3All, t, f));
+        foreach (var (t, f, d) in new (PARAMDEF.DefType, string, object?)[] { (PARAMDEF.DefType.u16, "materialSe1", null), (PARAMDEF.DefType.u16, "materialSfx_Weak2", null),
+                     (PARAMDEF.DefType.s16, "guardAngle", null), (PARAMDEF.DefType.u32, "weight", null), (PARAMDEF.DefType.u16, "def_phys", null),
+                     (PARAMDEF.DefType.f32, "superArmorDurability", null), (PARAMDEF.DefType.u8, "teamType", null), (PARAMDEF.DefType.s32, "spEffectID0", -1),
+                     (PARAMDEF.DefType.s16, "deactivateDist", -1), (PARAMDEF.DefType.u32, "toughness", null), (PARAMDEF.DefType.s16, "normalChangeModelId", -1),
+                     (PARAMDEF.DefType.u32, "hp", null), (PARAMDEF.DefType.u8, "itemSearchRadius", null), (PARAMDEF.DefType.u8, "parryDefence", null),
+                     (PARAMDEF.DefType.u32, "chrActivateConditionParamId", null), (PARAMDEF.DefType.s32, "loadAssetId", -1),
+                     (PARAMDEF.DefType.u8, "isWeakC", null), (PARAMDEF.DefType.s32, "autoFootEffectSfxId", -1) })
+            erAll.Fields.Add(new PARAMDEF.Field(erAll, t, f) { Default = d ?? 0 });
+        var ds3NpcRow = new PARAM.Row(1, "ds3 knight", ds3All);
+        foreach (var (f, val) in new (string, object)[] { ("material", (short)7), ("subMaterialSfx_weak", (short)139), ("guardAngle", (short)60), ("weight", 120),
+                     ("defPhys", (short)100), ("SuperArmorDurability", (short)35), ("teamType", (byte)6), ("spEffectId0", 30030), ("DeactivateDistance", (short)0),
+                     ("basicToughnessValue", 40), ("normalChangeModelId", (short)1100), ("Hp", 900), ("itemSearchRadius", 1.5f), ("parryDefense", (byte)30) })
+            ds3NpcRow[f]!.Value = val;
+        var erTemplateRow = new PARAM.Row(2, "er template", erAll);
+        foreach (var (f, val) in new (string, object)[] { ("materialSe1", (ushort)101), ("materialSfx_Weak2", (ushort)101), ("guardAngle", (short)0), ("weight", 400u),
+                     ("def_phys", (ushort)120), ("superArmorDurability", 80f), ("teamType", (byte)26), ("spEffectID0", 5000), ("deactivateDist", (short)-1),
+                     ("toughness", 10u), ("normalChangeModelId", (short)-1), ("hp", 2000u), ("itemSearchRadius", (byte)3), ("parryDefence", (byte)0),
+                     ("chrActivateConditionParamId", 3u), ("loadAssetId", 1234), ("isWeakC", (byte)1), ("autoFootEffectSfxId", 910) })
+            erTemplateRow[f]!.Value = val;
+        int sharedCopied = ChrPort.CopyDs3Fields(ds3NpcRow, erTemplateRow);
+        int templateCleared = ChrPort.ClearTemplateOnly(erTemplateRow);
+        object Npc(string f) => erTemplateRow[f]!.Value;
+        Check("NpcParam: DS3's value in every shared field (renamed hit materials, guard, weight, defence, poise as float, toughness, parry)",
+            sharedCopied == 8 && Npc("materialSe1") is (ushort)7 && Npc("materialSfx_Weak2") is (ushort)139 && Npc("guardAngle") is (short)60 && Npc("weight") is 120u
+            && Npc("def_phys") is (ushort)100 && Npc("superArmorDurability") is 35f && Npc("toughness") is 40u && Npc("parryDefence") is (byte)30);
+        Check("NpcParam: team, resident effects, model swaps, health, DS3's 0 deactivate distance and a float into a byte field stay the template's",
+            Npc("teamType") is (byte)26 && Npc("spEffectID0") is 5000 && Npc("normalChangeModelId") is (short)-1 && Npc("hp") is 2000u
+            && Npc("deactivateDist") is (short)-1 && Npc("itemSearchRadius") is (byte)3);
+        Check("NpcParam: the template's appear condition, carried asset, footprint effect and Elden Ring weakness go back to the defaults",
+            templateCleared == 4 && Npc("chrActivateConditionParamId") is 0u && Npc("loadAssetId") is -1 && Npc("isWeakC") is (byte)0 && Npc("autoFootEffectSfxId") is -1);
+
         // DS3's damage taken on the template's row: the template's weaknesses go, the Pus of Man is weak to fire.
         var rateDef = new PARAMDEF { ParamType = "NPC_PARAM_ST", Fields = [] };
         foreach (var f in ChrPort.DamageRateFields)
