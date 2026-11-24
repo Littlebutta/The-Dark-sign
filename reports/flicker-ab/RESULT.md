@@ -25,3 +25,16 @@ Capture ran at about 25 ms per frame in every run. That's the screenshot loop ra
 | (B, first round) | no file | 87.4 | 0.60 | 2 |
 
 The original was restored afterwards (hash C9D620B90D5C1276).
+
+## Round 3: 4 s stand-still (no input) at the start of each 15 s capture, then the same moves
+| run | file | mean brightness | still 0-4 s: change / jumps > 8 | moving: change / jumps > 8 |
+|---|---|---|---|---|
+| E3 | E-hostfog (fog group = colosseum's) | 30.9 | 0.71 / 0 | 1.18 / 7 |
+| **F3** | **F-hostlightsets (light sets = colosseum's)** | **89.1** | **0.21 / 0** | **0.81 / 1** |
+| B3 | no file | 91.1 | 0.20 / 0 | 0.51 / 0 |
+| A3 | as built (original) | 33.6 | 0.96 / 1 | 1.43 / 8 |
+
+Putting the **light sets** back to the colosseum's values gives nearly the no-file result: about 3 times brighter, and
+the jumps go from 8 to 1. Putting the fog back changes almost nothing. Standing still, the built file shows 1 jump
+and the most frame-to-frame change (0.96), against 0.2 for F and B. Most jumps come while moving. The original
+file was restored (C9D620B90D5C1276).
