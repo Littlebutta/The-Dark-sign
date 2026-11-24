@@ -22,6 +22,7 @@ public static partial class MapPortChecks
         yield return ("navmesh list: the Elden Ring and DS3 layouts write and read back", NavmeshListRoundTrip);
         yield return ("navmesh list: DS3 entries get Elden Ring's NameIDs, an o set, their gates and renumbered connections", NavmeshListConvert);
         yield return ("navmesh list: connections and gates that lead to a navmesh without faces are left out", NavmeshListMissing);
+        yield return ("navmesh list: gates DS3's own list has to a navmesh without faces are kept (the other gates stay)", NavmeshListFacelessGates);
         yield return ("navmesh: the binder holds every listed navmesh as an n and an o file, named by ModelID, with the host's compendium", NavmeshBinder);
         yield return ("navmesh: without a DS3 list the files are converted as before and no list is made", NavmeshBinderNoList);
     }
@@ -277,6 +278,25 @@ public static partial class MapPortChecks
         Expect(list.Connectors.Count == 0 && list.Navmeshes.All(e => e.GateNodes.Count == 0), "connections and gates");
         Expect(list.Navmeshes.Select(e => e.FaceDataIndex).SequenceEqual([0, 2, 2, 4, 6, 6]), "face data index");
         Expect(result.Notes.Any(n => n.Contains("without gate nodes")) && result.Notes.Any(n => n.Contains("2 connections")), string.Join(" | ", result.Notes));
+    }
+
+    private static void NavmeshListFacelessGates()
+    {
+        // DS3's own list: the third navmesh has no faces, and the first has a gate to it besides its gate to the second
+        // (High Wall: 2 of 78 gates, the rest of the maps 4 of 144-160). Up to 1.0.6xx one such gate cleared every
+        // gate of the map, so enemies on 4 of 5 ported maps pathed without DS3's gate graph.
+        var source = SyntheticDs3List();
+        source.Navmeshes[2].FaceCount = 0;
+        source.Navmeshes[0].GateNodes.Add(new Nva.GateNode { Position = new Vector3(0, 0, 10), ConnectedNavmeshIndex = 2, NodeSubID = 0,
+            NeighbourGateNodeCosts = [500, 0, .. Enumerable.Repeat((short)-1, 14)] });
+        var ds3 = Nva.Read(source.Write());
+        var result = NavmeshList.Convert(ds3, ErId, [new(1, 2, 6), new(200, 2, 6), new(300, 0, 0)], Matrix4x4.Identity, null);
+        var list = Nva.Read(result.List.Write());
+        Expect(list.Navmeshes[0].GateNodes.Count == 2 && list.Navmeshes[1].GateNodes.Count == 1, $"gates kept: {list.Navmeshes[0].GateNodes.Count}, {list.Navmeshes[1].GateNodes.Count}");
+        Expect(list.Navmeshes[0].GateNodes[1].ConnectedNavmeshIndex == 2 && list.Navmeshes[3].GateNodes[1].ConnectedNavmeshIndex == 5
+               && list.Navmeshes[0].GateNodes[1].NeighbourGateNodeCosts[0] == 500, "the gate to the faceless navmesh, as DS3 has it");
+        Expect(result.Notes.Any(n => n.Contains("1 of 3 gate nodes lead to a navmesh without faces")) && !result.Notes.Any(n => n.Contains("without gate nodes")),
+            string.Join(" | ", result.Notes));
     }
 
     private static (BND4 Ds3, BND4 Host) SyntheticNavmeshBinders()
