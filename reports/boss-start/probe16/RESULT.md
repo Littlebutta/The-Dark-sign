@@ -21,3 +21,23 @@ ends at once: his bar shows empty and the coiled-sword bonfire appears. This tes
 count him as defeated, or he spawns with 0 HP. That needs checking.
 
 Restored: m45_00_00_00.emevd (dd26e653...); the save is back. Run C (test prompt on a nearby asset) not done yet.
+
+## Read-only dumps (params-speffect-npc.txt holds the full rows)
+HP-related fields of **built SpEffectParam 700005800**: conditionHp -1, maxHpRate 1, changeHpRate 0, changeHpPoint 0,
+lifeReductionRate 1, hpRecoverRate 1, noDead 0, conditionHpRate -1, changeHpEstusFlask* 0/1, extend/contractLifeRate 1.
+**DS3 SpEffectParam 5800**: conditionHp -1, maxHpRate 1, maxHpChangeRate 0, changeHpRate 0, changeHpPoint 0,
+lifeReductionRate 1, hpRecoverRate 1, noDead 0, instaDeath 0, subChangeHpRate 0, subHpPoint 0,
+DeathOccurenceSpEffectId 0. Nothing in either changes HP.
+**Built NpcParam 71120000**: hp 1037, **disableInitializeDead 1**, attachHitInitializeDead 0. **71120001**: hp 1451,
+disableInitializeDead 1, attachHitInitializeDead 0.
+
+## Runs C + D (same session)
+Nearest asset with an entity ID (nearest-assets.txt): **AEG920_000_9001, entity 45001952**, model AEG920_000, at
+(142.66, -68.90, 594.84), **0.3 m from Gundyr** (c7112_9000 at 142.87, -68.89, 594.63). The rest are 19 m or more
+away with no entity.
+Test events from event 0 (runCD-events.txt): 45005996 waits 3[24] group 0, **button 74000007** on 45001952, then the
+player plays 60750; 45005997 waits 3[24] group 0, **button 6000 (vanilla ER)** on 45001952, then Gundyr plays 3012.
+Result: walked up about 2 m from the sword and him (runCD-near.png). **No prompt of either kind.** Pressed E, then a
+12 s burst (runCD-after-E.png): **nothing**. No player anim, no Gundyr attack.
+So neither our row nor vanilla row 6000 gives a prompt on that asset. The 3[24] check doesn't fire here for either.
+Restored: emevd dd26e653...; the save is back.
