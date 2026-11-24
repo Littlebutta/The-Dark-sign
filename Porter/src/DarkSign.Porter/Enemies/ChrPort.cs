@@ -782,6 +782,7 @@ public static partial class ChrPort
         TemplateEffects? templateFx = null;
         try { templateFx = new TemplateEffects(regulation.Get("NpcParam")!, regulation.Get("SpEffectParam")); }
         catch (Exception ex) when (ex is not OutOfMemoryException) { result.Notes.Add($"template effects: kept ({Describe(ex)})"); }
+        Ds3FieldsCopied = TemplateFieldsCleared = RowsWithDs3Fields = 0;
         foreach (var (plan, npcRows) in result.Params)
         {
             try
@@ -863,7 +864,8 @@ public static partial class ChrPort
             result.Notes.Add($"materials: failed ({ex.Message}); ported models may render untextured");
         }
         WriteReport(ctx, result);
-        return $"enemies: {rows + fallback} NpcParam rows ({fallback} plain template copies), {thinkRows} NpcThinkParam rows (DS3 AI), {attacks.Summary}" +
+        return $"enemies: {rows + fallback} NpcParam rows ({fallback} plain template copies; {RowsWithDs3Fields} with DS3's own values in " +
+               $"{Ds3FieldsCopied} shared fields and {TemplateFieldsCleared} template-only fields cleared), {thinkRows} NpcThinkParam rows (DS3 AI), {attacks.Summary}" +
                $"{(failed > 0 ? $", {failed} characters' params failed (first: {result.Notes.FirstOrDefault(n => n.Contains("params failed")) ?? ""})" : "")}" +
                $"{(result.Notes.FirstOrDefault(n => n.Contains("attacks not ported")) is { } a ? $"; {a}" : "")}" + effects + dropSummary;
     }
@@ -2013,9 +2015,17 @@ public static partial class ChrPort
             // DS3's damage taken, not the template's weaknesses (Pus of Man took the Giant Beast Skeleton's).
             if (plan.Stage == Stage.All)
                 SetDamageRates(plan.Ds3.Chr, row);
-            // DS3's own stats where both games' NpcParams have the field (CopyDs3Stats).
+            // DS3's own values in every field both games' NpcParams have (CopyDs3Fields), then DS3's stats with
+            // special rules (CopyDs3Stats), and the Elden Ring-only fields that only describe the template cleared.
             if (plan.Stage == Stage.All && ds3Npc?[ds3Id] is { } statSource)
+            {
+                int fields = CopyDs3Fields(statSource, row);
                 CopyDs3Stats(statSource, row);
+                int cleared = ClearTemplateOnly(row);
+                Interlocked.Add(ref Ds3FieldsCopied, fields);
+                Interlocked.Add(ref TemplateFieldsCleared, cleared);
+                Interlocked.Increment(ref RowsWithDs3Fields);
+            }
             // DS3's body on a template's row: the body capsule is DS3's size (Ariandel's wolf kept the Elden Ring wolf's).
             if (newModel && plan.Stage != Stage.Clone && ds3Npc?[ds3Id] is { } sizeSource)
                 CopyBodySize(sizeSource, row);
@@ -2085,6 +2095,126 @@ public static partial class ChrPort
         ("poisonGuardResist", "poisonGuardResist"), ("bloodGuardResist", "bloodGuardResist"), ("curseGuardResist", "curseGuardResist"),
         ("turnVellocity", "turnVellocity"),
     ];
+
+    /// <summary>
+    /// DS3 NpcParam fields whose Elden Ring name differs by more than case and underscores (Paramdex DS3
+    /// NPC_PARAM_ST vs Elden Ring NpcParam, compared field by field 2026-11-24). Keys and values are normalised
+    /// (<see cref="NormField"/>).
+    /// </summary>
+    internal static readonly IReadOnlyDictionary<string, string> Ds3NpcRenames = new Dictionary<string, string>
+    {
+        ["networkwarpdisp"] = "networkwarpdist", ["staminarecoverbaseval"] = "staminarecoverbasevel",
+        ["mprecoverbaseval"] = "mprecoverbasevel", ["falldamagedamp"] = "falldamagedump", ["parrydefense"] = "parrydefence",
+        ["disableintiliazedead"] = "disableinitializedead", ["basictoughnessvalue"] = "toughness",
+        ["resistfrost"] = "resistfreeze",
+        // DS3's defence materials (the hit sound and spark of whatever strikes the character) are Elden Ring's first
+        // and second SE/SFX materials; both games number them alike (the attack port already copies DS3's attack
+        // materials straight into defSeMaterial1/defSfxMaterial1).
+        ["material"] = "materialse1", ["materialsfx"] = "materialsfx1", ["materialweak"] = "materialseweak1",
+        ["materialsfxweak"] = "materialsfxweak1", ["submaterial"] = "materialse2", ["submaterialsfx"] = "materialsfx2",
+        ["submaterialweak"] = "materialseweak2", ["submaterialsfxweak"] = "materialsfxweak2",
+    };
+
+    /// <summary>
+    /// Shared fields that keep the template's value (normalised names; a trailing '*' is a prefix): the ones another
+    /// step sets (health and souls by stage, attacks, variant offset, effects, name, body capsule, display masks, drops),
+    /// ones that number something differently in the two games (teams: Elden Ring's people are team 26; LOD, knockback
+    /// and model-swap rows; DS3's resident SpEffect IDs), and ones tied to what the body still borrows from the
+    /// template (hit shapes and their damage groups, ragdoll, cloth). DS3's 0 deactivate distance would mean 0 m in
+    /// Elden Ring, whose "use the default" is -1. DS3's hitOffset is left out: Paramdex doesn't say whether it is
+    /// Elden Ring's display offset (hitYOffset) or a capsule offset, and a wrong guess floats or sinks the model.
+    /// </summary>
+    internal static readonly string[] TemplateKeptFields =
+    [
+        "behaviorvariationid", "aithinkid", "nameid", "hp", "mp", "getsoul", "stamina", "humanitylotid", "gameclearspeffectid",
+        "animidoffset", "ghostmodelid", "defaultlodparamid", "knockbackparamid", "teamtype", "npctype", "movetype", "drawtype",
+        "vowtype0", "partsdamagetype", "weakpartsdamagerate", "hitheight", "hitradius", "useragdollcamhit", "disableclothrigidhit",
+        "clothupdateoffset", "deactivatedistance", "lockcamparamid", "resisttoxic", "toxicguardresist",
+        "speffectid*", "dbgbehavior*", "normalchange*", "partsdamagerate*", "modeldispmask*", "itemlotid*",
+    ];
+
+    /// <summary>A field name without case or underscores ("resist_poison" = DS3 "resistPoison").</summary>
+    internal static string NormField(string name) => name.Replace("_", "").ToLowerInvariant();
+
+    internal static bool TemplateKept(string normalised) =>
+        TemplateKeptFields.Any(k => k.EndsWith('*') ? normalised.StartsWith(k[..^1], StringComparison.Ordinal) : normalised == k);
+
+    /// <summary>Totals over the port (for the summary line): DS3 fields copied, template-only fields cleared, rows.</summary>
+    public static int Ds3FieldsCopied, TemplateFieldsCleared, RowsWithDs3Fields;
+
+    /// <summary>
+    /// Every field both games' NpcParams have, by name ignoring case and underscores plus <see cref="Ds3NpcRenames"/>,
+    /// takes DS3's value, except <see cref="TemplateKeptFields"/>. Up to 1.0.6xx only the dozen fields of
+    /// <see cref="Ds3StatFields"/> did: the other ~110 shared fields stayed the Elden Ring template's, so a ported enemy
+    /// sounded and sparked like the template when hit (defence materials), guarded, parried, staggered and fell like it
+    /// (guard angle and cut rates, parry and flick values, knockback, toughness, fall damage), weighed what it weighed,
+    /// locked on from its distance and burned with its fire size. A value that doesn't fit the Elden Ring field
+    /// (a DS3 -1 in an unsigned field) leaves the template's. Returns how many fields were copied.
+    /// </summary>
+    public static int CopyDs3Fields(PARAM.Row ds3, PARAM.Row er)
+    {
+        var targets = er.Cells.GroupBy(c => NormField(c.Def.InternalName)).Where(g => g.Count() == 1).ToDictionary(g => g.Key, g => g.Single());
+        int copied = 0;
+        foreach (var group in ds3.Cells.GroupBy(c => NormField(c.Def.InternalName)).Where(g => g.Count() == 1))
+        {
+            var key = Ds3NpcRenames.GetValueOrDefault(group.Key, group.Key);
+            if (key.StartsWith("pad", StringComparison.Ordinal) || key.Contains("reserve") || TemplateKept(group.Key) || TemplateKept(key)
+                || !targets.TryGetValue(key, out var to))
+                continue;
+            var from = group.Single();
+            if (from.Value is null or byte[] || to.Value is null or byte[])
+                continue;
+            // Whole numbers go into whole-number fields only (a float rate into a byte would round to 0 or 1); a whole
+            // number may go into a float field (DS3's s16 super armour is Elden Ring's f32).
+            if (IsFloat(from.Value) && !IsFloat(to.Value))
+                continue;
+            try
+            {
+                var value = Convert.ChangeType(from.Value, to.Value.GetType());
+                if (!Equals(value, to.Value))
+                    to.Value = value;
+                copied++;
+            }
+            catch (Exception e) when (e is InvalidCastException or OverflowException or FormatException) { }
+        }
+        return copied;
+    }
+
+    private static bool IsFloat(object v) => v is float or double;
+
+    /// <summary>
+    /// Elden Ring-only NpcParam fields that only describe the template character: when it appears (time of day,
+    /// weather), an asset it carries, its spirit shader, its footprint effects and decals, its resident material
+    /// effects, its summon icon and role name, the item a Sleep hit drops, a tutorial flag its death sets, and the
+    /// weaknesses Elden Ring added (isWeakC-F). DS3 has none of these, so the ported row goes back to the field's
+    /// default instead of keeping the template's. Returns how many fields changed.
+    /// </summary>
+    internal static readonly string[] TemplateOnlyFields =
+    [
+        "chrActivateConditionParamId", "loadAssetId", "phantomShaderId", "WanderGhostPhantomId",
+        "autoFootEffectSfxId", "autoFootEffectDecalBaseId1", "autoFootEffectDecalBaseId2", "autoFootEffectDecalBaseId3",
+        "residentMaterialExParamId00", "residentMaterialExParamId01", "residentMaterialExParamId02", "residentMaterialExParamId03",
+        "residentMaterialExParamId04", "faceIconId", "roleNameId", "sleepCollectorItemLotId_enemy", "sleepCollectorItemLotId_map",
+        "chrDeadTutorialFlagId", "isWeakC", "isWeakD", "isWeakE", "isWeakF",
+    ];
+
+    public static int ClearTemplateOnly(PARAM.Row er)
+    {
+        int cleared = 0;
+        foreach (var name in TemplateOnlyFields)
+        {
+            if (Cell(er, name) is not { Value: not null and not byte[] } cell)
+                continue;
+            object? value;
+            try { value = Convert.ChangeType(cell.Def.Default ?? 0, cell.Value.GetType()); }
+            catch (Exception e) when (e is InvalidCastException or OverflowException or FormatException) { continue; }
+            if (Equals(value, cell.Value))
+                continue;
+            cell.Value = value;
+            cleared++;
+        }
+        return cleared;
+    }
 
     /// <summary>Copies <see cref="Ds3StatFields"/> and the name (NameId -> nameId at MapText.Name) from the DS3 row.</summary>
     public static int CopyDs3Stats(PARAM.Row ds3, PARAM.Row er)

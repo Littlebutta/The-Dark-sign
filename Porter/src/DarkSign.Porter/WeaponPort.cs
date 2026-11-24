@@ -60,6 +60,55 @@ public static class WeaponPort
         ("isSlashAttackType", "isSlashAttackType"), ("isThrustAttackType", "isThrustAttackType"),
     ];
 
+    /// <summary>
+    /// More fields both games' weapon params have with the same meaning (Paramdex DS3 EQUIP_PARAM_WEAPON_ST vs Elden
+    /// Ring EquipParamWeapon, compared 2026-11-24), copied into every affinity row. Up to 1.0.6xx they stayed the Elden
+    /// Ring template's: a ported weapon broke poise, critted, parried, guarded and sounded on hit and on block like the
+    /// Elden Ring weapon it was built on. The template keeps what the port chose it for: class, motion and guard
+    /// categories, hand slots, reinforcement and affinity rows, IDs, effects and inventory flags.
+    /// </summary>
+    internal static readonly (string Ds3, string Er)[] SharedFields =
+    [
+        ("weaponWeightRate", "weaponWeightRate"), ("attackThrowEscape", "attackThrowEscape"), ("parryDamageLife", "parryDamageLife"),
+        ("saWeaponDamage", "saWeaponDamage"), ("saDurability", "saDurability"), ("guardAngle", "guardAngle"),
+        ("throwAtkRate", "throwAtkRate"), ("bowDistRate", "bowDistRate"), ("atkMaterial", "atkMaterial"),
+        ("defMaterial", "defSeMaterial1"), ("defSfxMaterial", "defSfxMaterial1"), ("overStrength", "overStrength"),
+        ("guardCutCancelRate", "guardCutCancelRate"), ("guardLevel", "guardLevel"),
+        ("slashGuardCutRate", "slashGuardCutRate"), ("blowGuardCutRate", "blowGuardCutRate"), ("thrustGuardCutRate", "thrustGuardCutRate"),
+        ("poisonGuardResist", "poisonGuardResist"), ("bloodGuardResist", "bloodGuardResist"), ("curseGuardResist", "curseGuardResist"),
+        ("enableGuard", "enableGuard"), ("enableParry", "enableParry"), ("enableMagic", "enableMagic"), ("enableMiracle", "enableMiracle"),
+        ("enableVowMagic", "enableVowMagic"), ("isEnhance", "isEnhance"), ("isVersusGhostWep", "isVersusGhostWep"),
+        ("isDragonSlayer", "isDragonSlayer"),
+        // Not DS3's StaminaConsumeRate: Paramdex's name for it is a guess among unknown fields, and a wrong 0 in Elden
+        // Ring's multiplier (default 1) would make every swing free.
+    ];
+
+    /// <summary>
+    /// Elden Ring's per-kind enemy bonus rates (weakA-F_DamageRate). DS3's own (antiDemon/Undead/Hollow/Abyssal) don't
+    /// line up with them, so a ported weapon has none rather than the template's.
+    /// </summary>
+    internal static readonly string[] TemplateWeakRates =
+        ["weakA_DamageRate", "weakB_DamageRate", "weakC_DamageRate", "weakD_DamageRate", "weakE_DamageRate", "weakF_DamageRate"];
+
+    /// <summary>Copies <see cref="SharedFields"/> from the DS3 row and resets <see cref="TemplateWeakRates"/>; returns fields copied.</summary>
+    public static int CopyShared(PARAM.Row ds3, PARAM.Row er)
+    {
+        int copied = 0;
+        foreach (var (from, to) in SharedFields)
+            if (Field(ds3, from)?.Value is { } v and not byte[] && Field(er, to)?.Value is not (null or byte[]))
+            {
+                Set(er, to, Convert.ToDouble(v));
+                copied++;
+            }
+        foreach (var rate in TemplateWeakRates)
+            if (Field(er, rate) is { Value: float } cell)
+                cell.Value = 1f;
+        return copied;
+    }
+
+    // A field the def may not have (Paramdex names differ between versions): null instead of the indexer's throw.
+    private static PARAM.Cell? Field(PARAM.Row row, string name) => row.Cells.FirstOrDefault(c => c.Def.InternalName == name);
+
     // Attack and scaling stats differ per affinity; these are scaled by DS3 / template rather than copied.
     private static readonly HashSet<string> ScaledFields =
     [
@@ -219,6 +268,8 @@ public static class WeaponPort
                     }
                     Set(row, erField, value);
                 }
+
+                CopyShared(source, row);
 
                 // References to the template's own rows (originEquipWep..originEquipWep25: the weapon an affinity or
                 // reinforcement reverts to) follow the copy, else removing an affinity handed out the template weapon.

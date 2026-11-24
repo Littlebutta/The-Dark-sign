@@ -220,13 +220,13 @@ public static class AiSelfTest
         }
         var chrAi = ai.Port(2230, 7071, "Jailer", ds3Think, erThink.Rows.Select(r => r.ID).ToHashSet().Contains);
         Check("AI: a think row per DS3 row of the character, the first with a ported goal is the one the spawn list uses",
-            chrAi is { Rows.Count: 2 } && chrAi.Primary == 7071 * 10000 + AiPort.ThinkOffset && chrAi.Rows[1].Battle is null);
+            chrAi is { Rows.Count: 2 } && chrAi.Primary == 7071 * 10000 + AiPort.ThinkOffset && chrAi.Rows[1].Battle == AiPort.NoBattleGoal);
         int rows = chrAi is null ? 0 : AiPort.ApplyParams(erThink, ds3Think, 39010000, chrAi);
         var row = erThink[70719000];
-        Check("AI: the think row is the template's with DS3's senses and the ported goal and logic",
+        Check("AI: the think row is the template's with DS3's senses and the ported goal and logic; a goal no DS3 script defines is no goal, not the template's",
             rows == 2 && row is not null && Convert.ToInt32(row["battleGoalID"]!.Value) == AiPort.FirstRemapped && Convert.ToInt32(row["logicId"]!.Value) == 10000
             && Convert.ToInt32(row["eye_dist"]!.Value) == 18
-            && erThink[70719005] is { } kept && Convert.ToInt32(kept["battleGoalID"]!.Value) == 390000);
+            && erThink[70719005] is { } kept && Convert.ToInt32(kept["battleGoalID"]!.Value) == AiPort.NoBattleGoal);
 
         Check("AI: DS3's hearing and forget times come from the fields Paramdex's DS3 def mislabels; no Elden Ring search sight, battle sight or darkness",
             row is not null && (float)row["ear_dist"]!.Value == 0.1f && (float)row["SightTargetForgetTime"]!.Value == 8f && (float)row["SoundTargetForgetTime"]!.Value == 3f

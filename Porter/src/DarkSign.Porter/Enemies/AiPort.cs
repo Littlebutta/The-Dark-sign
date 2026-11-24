@@ -329,6 +329,14 @@ public sealed class AiPort
             _thinkIds[row.ID] = erThink;
             int battle = IntCell(row, "battleGoalId"), logic = IntCell(row, "logicId");
             var (erBattle, battleNote) = battle > 0 ? PortBattle(battle) : (battle, "");
+            // A goal no DS3 script defines did nothing in DS3 either (the rows numbered x50/x90/x98/x99 that map
+            // scripts switch to): no battle goal (Elden Ring's -1), not the template's Elden Ring battle AI, which
+            // up to 1.0.6xx ran on 29 DS3 think rows and asked the DS3 body for the template's attacks.
+            if (erBattle is null && battleNote.StartsWith(NoScriptNote, StringComparison.Ordinal))
+            {
+                erBattle = NoBattleGoal;
+                battleNote += ": no battle goal, as in DS3";
+            }
             var (erLogic, logicNote) = logic > 0 ? PortLogic(logic) : (logic, "");
             var note = string.Join("; ", new[] { battleNote, logicNote }.Where(n => n.Length > 0));
             rows.Add(new Think(row.ID, erThink, erBattle, erLogic, note));
@@ -342,6 +350,11 @@ public sealed class AiPort
 
     private static string Line(int chr, string name, int ds3Think, int erThink, string battle, string logic, string note) =>
         string.Join('\t', $"c{chr:D4}", name.Replace('\t', ' '), ds3Think, erThink, battle, logic, note);
+
+    private const string NoScriptNote = "no DS3 script registers goal";
+
+    /// <summary>Elden Ring's "no battle goal" (Paramdex default of NpcThinkParam.battleGoalID).</summary>
+    public const int NoBattleGoal = -1;
 
     /// <summary>A DS3 battle goal in Elden Ring: its new number, or null with the reason (the template's stays).</summary>
     public (int? Er, string Note) PortBattle(int ds3Goal)
@@ -359,7 +372,7 @@ public sealed class AiPort
         var script = _ds3.FirstOrDefault(s => s.Registers.Any(names.Contains))
                      ?? _ds3.FirstOrDefault(s => s.Leaf.Equals($"{ds3Goal:D6}_battle.lua", StringComparison.OrdinalIgnoreCase));
         if (script is null)
-            return (null, $"no DS3 script registers goal {ds3Goal}");
+            return (null, $"{NoScriptNote} {ds3Goal}");
         // Elden Ring has this very goal (same name, same number, its own script): use Elden Ring's.
         var mine = script.Registers.Where(names.Contains).ToList();
         if (mine.Count > 0 && mine.All(n => _erGoals.TryGetValue(n, out var v) && (int)v == ds3Goal)
