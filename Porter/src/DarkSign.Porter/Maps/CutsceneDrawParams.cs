@@ -26,6 +26,12 @@ public static class CutsceneDrawParams
 {
     public const int ErKind = 197;
     public const int Ds3LightKind = 199;
+
+    /// <summary>
+    /// Every DS3 kind that picks a light set with beginLightBank/Id: 199 (all-in-one), 183 (the same fields; the Dancer's
+    /// intro s30_00_0010 lights all its cuts with set 120 through it) and 187 (light set only, s30_00_0000 cuts 0030-0050).
+    /// </summary>
+    public static readonly IReadOnlySet<int> Ds3LightKinds = new HashSet<int> { 183, 187, Ds3LightKind };
     public const int Ds3PostKind = 215;
 
     /// <summary>DS3 199's light-set fields under Elden Ring 197's names.</summary>
@@ -62,7 +68,7 @@ public static class CutsceneDrawParams
             return result;
         var known = erFields.Select(f => f.Name).ToHashSet(StringComparer.Ordinal);
         int KindOf(MQB.Event e) => e.ResourceIndex >= 0 && e.ResourceIndex < mqb.Resources.Count ? mqb.Resources[e.ResourceIndex].Unk48 : -1;
-        bool IsDraw(MQB.Event e) => KindOf(e) is Ds3LightKind or Ds3PostKind;
+        bool IsDraw(MQB.Event e) => Ds3LightKinds.Contains(KindOf(e)) || KindOf(e) == Ds3PostKind;
 
         void Fill(Dictionary<string, int> values, MQB.Event e)
         {
@@ -71,7 +77,7 @@ public static class CutsceneDrawParams
             {
                 if (!TryInt(p.Value, out int v))
                     continue;
-                string? name = kind == Ds3LightKind ? LightRenames.GetValueOrDefault(p.Name) : known.Contains(p.Name) && !LightRenames.Values.Contains(p.Name) ? p.Name : null;
+                string? name = Ds3LightKinds.Contains(kind) ? LightRenames.GetValueOrDefault(p.Name) : known.Contains(p.Name) && !LightRenames.Values.Contains(p.Name) ? p.Name : null;
                 if (name is not null)
                     values.TryAdd(name, v);
             }
@@ -107,7 +113,7 @@ public static class CutsceneDrawParams
         foreach (var (e, ps) in rewrites)
             e.Parameters = ps;
         result.Events = rewrites.Count;
-        foreach (var r in mqb.Resources.Where(r => r.Unk48 is Ds3LightKind or Ds3PostKind))
+        foreach (var r in mqb.Resources.Where(r => Ds3LightKinds.Contains(r.Unk48) || r.Unk48 == Ds3PostKind))
         {
             r.Unk48 = ErKind;
             r.Parameters.Clear();
