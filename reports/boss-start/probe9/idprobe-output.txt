@@ -1,0 +1,3 @@
+Attack3012 a000 clip: a000_003012 id 33
+  now: a000_003014 id 33
+Event30002 clip: a000_030002 id 224 -> id 146
