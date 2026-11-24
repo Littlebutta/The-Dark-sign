@@ -684,6 +684,21 @@ Code: `Maps/Bonfires.cs`, a port-maps step after the events.
   which only her DS3 character's behaviour sets; such handshake flags read as on (Firelink also has 74000391/392 and
   74000432/433).
 
+#### 2026-11-24: dying sent the player to the Chapel of Anticipation (release 1.0.626, probe 22)
+
+- **Cause.** Elden Ring respawns the player at a saved return point that only a grace rest or the script line "Set
+  Player Respawn Point" (2003[23]) changes. Every way into a DS3 map (the run start, the F1 map, boss and cutscene
+  warps, bonfire Travel) is a script Warp Player, which leaves it alone, so until the first DS3 rest a death went to
+  the last Elden Ring grace, or the Chapel for a character that never rested at one. Travel never moved it either.
+- **Fix (`Maps/BonfireRespawn.cs`, every ported map).** Each Warp Player into a ported map in common.emevd first turns
+  the saved flag 1039290101 off. Each map's script gets an event started on every load: if the flag is off and the
+  player is in this map, it sets the respawn point to the nearest bonfire standing point (980+n; the map's start point
+  990 where it has no bonfire) and turns the flag on. Nearest is found in rings of 10/40/120/300/800 m (EMEVD can't
+  compare distances), past that the map's first bonfire. After that only the engine's own rest moves it, as in DS3.
+- **Unproven.** That Elden Ring's 2003[23] takes a player part and survives quitting (DS3's own respawn lines were
+  already ported this way). Look for the `bonfire respawn:` line of the port log and the `run events:` count of
+  covered warps.
+
 ### Doors, lifts and levers (objects that move)
 
 2026-11-12, not yet playtested; checked offline by `map-selftest` ("doors: ...") and on DS3's o300310, o300320,

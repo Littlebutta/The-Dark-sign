@@ -10,6 +10,7 @@ public static partial class MapPortChecks
         yield return ("bonfires: DS3's rows with a talker in the base state are the map's bonfires (leftover rows, the other state and other maps are not)", BonfiresFound);
         yield return ("bonfires: each gets Elden Ring's talker and standing point under Elden Ring's numbers; DS3's sword is the registered asset (a grace asset where there is none)", BonfiresPlaced);
         yield return ("bonfires: the script registers what DS3's lines don't and lights the sword's flame from the lit flag", BonfireEvents);
+        yield return ("bonfires: a death respawns at the nearest bonfire until the player rests, and every warp into a ported map clears the respawn flag first", BonfireRespawnEvents);
     }
 
     private static readonly MapId BonfireDs3 = MapId.Parse("m30_00_00_00"), BonfireEr = MapId.Parse("m45_01_00_00");
@@ -153,5 +154,72 @@ public static partial class MapPortChecks
         Expect(script.Events.Single(e => e.ID == 0).Instructions.Any(i => i.Bank == 2000 && i.ID == 0 && BitConverter.ToUInt32(i.ArgData, 4) == flame.ID), "event 0 starts it");
         var (again, noFlame) = Bonfires.AddEvents(script, common, BonfireEr, placed, Flag, 0);
         Expect(again == 0 && noFlame == 0, "nothing is registered twice, and an unconverted effect adds no flame event");
+    }
+
+    private static void BonfireRespawnEvents()
+    {
+        uint flag = BonfireRespawn.FollowsFlag;
+        Expect(flag == 1039290101, $"the respawn flag is saved (block 0-999): {flag}");
+        static uint U(EMEVD.Instruction i, int at) => BitConverter.ToUInt32(i.ArgData, at);
+
+        // Nine points: two groups of seven at most per ring.
+        var script = new EMEVD();
+        script.Events.Add(new EMEVD.Event(0, EMEVD.Event.RestBehaviorType.Default));
+        script.Events.Add(new EMEVD.Event(BonfireEr.EntityBase + BonfireRespawn.FirstEvent, EMEVD.Event.RestBehaviorType.Default));
+        var points = Enumerable.Range(0, 9).Select(n => (uint)(BonfireEr.EntityBase + Bonfires.PointNumber + n)).ToList();
+        int added = BonfireRespawn.AddEvents(script, BonfireEr, points);
+        script = EMEVD.Read(script.Write());
+        Expect(added == 1 + BonfireRespawn.Rings.Length * 2, $"arrival + 2 per ring: {added}");
+        var ours = script.Events.Where(e => e.ID > BonfireEr.EntityBase + BonfireRespawn.FirstEvent).OrderBy(e => e.ID).ToList();
+        Expect(ours.Count == added, "a taken event number is skipped, not replaced");
+        var arrival = ours[0];
+        Expect(script.Events.Single(e => e.ID == 0).Instructions.Any(i => i is { Bank: 2000, ID: 0 } && U(i, 4) == arrival.ID), "event 0 starts the arrival event");
+        Expect(arrival.Instructions[0] is { Bank: 1003, ID: 2 } && arrival.Instructions[0].ArgData[1] == 1 && U(arrival.Instructions[0], 4) == flag,
+            "it ends when the flag is on (the respawn point was already set since the last warp in)");
+        Expect(arrival.Instructions[2] is { Bank: 1003, ID: 8 } && arrival.Instructions[2].ArgData[1] == 0 && arrival.Instructions[2].ArgData[2] == 45
+               && arrival.Instructions[2].ArgData[3] == 1, "and when the player is outside this map (a neighbour map loading)");
+        for (int k = 0; k < ours.Count - 1; k++)
+            Expect(ours[k].Instructions[^1] is { Bank: 2000, ID: 0 } && U(ours[k].Instructions[^1], 4) == ours[k + 1].ID, $"step {k} starts step {k + 1}");
+        var first = ours[1];
+        Expect(first.Instructions.Count == 7 * 5 + 1, $"the first step checks seven points: {first.Instructions.Count} lines");
+        var check = first.Instructions[0];
+        Expect(check is { Bank: 3, ID: 3 } && (sbyte)check.ArgData[0] == 1 && check.ArgData[1] == 1 && U(check, 4) == 10000 && U(check, 8) == points[0]
+               && BitConverter.ToSingle(check.ArgData, 12) == BonfireRespawn.Rings[0] && check.ArgData.Length == 20,
+            "player within the first ring of point 0, in AND group 1");
+        Expect(first.Instructions[1] is { Bank: 1000, ID: 1 } && first.Instructions[1].ArgData[0] == 3 && first.Instructions[1].ArgData[1] == 0
+               && (sbyte)first.Instructions[1].ArgData[2] == 1, "skips the three lines when it isn't");
+        Expect(first.Instructions[2] is { Bank: 2003, ID: 23 } && U(first.Instructions[2], 0) == points[0]
+               && first.Instructions[3] is { Bank: 2003, ID: 66 } && U(first.Instructions[3], 4) == flag && first.Instructions[3].ArgData[8] == 1
+               && first.Instructions[4] is { Bank: 1000, ID: 4 }, "else sets the respawn point, turns the flag on and ends");
+        Expect((sbyte)first.Instructions[30].ArgData[0] == 7 && (sbyte)ours[2].Instructions[0].ArgData[0] == 1 && U(ours[2].Instructions[0], 8) == points[7],
+            "groups 1-7 per event; points 7-8 go in the next event");
+        var last = ours[^1];
+        Expect(BitConverter.ToSingle(last.Instructions[0].ArgData, 12) == BonfireRespawn.Rings[^1]
+               && last.Instructions[^2] is { Bank: 2003, ID: 23 } && U(last.Instructions[^2], 0) == points[0] && U(last.Instructions[^1], 4) == flag,
+            "past the last ring: the map's first bonfire");
+
+        // A map with only its start point needs no search.
+        var lone = new EMEVD();
+        Expect(BonfireRespawn.AddEvents(lone, BonfireEr, [45010990u]) == 1 && lone.Events.Single(e => e.ID != 0).Instructions.Count == 5
+               && BonfireRespawn.AddEvents(new EMEVD(), BonfireEr, []) == 0, "one point: one event; no point: none");
+
+        // common.emevd: warps into ported maps get the clear line before them, once; other warps and parameter targets don't.
+        var common = new EMEVD();
+        var travel = new EMEVD.Event(1039291110, EMEVD.Event.RestBehaviorType.Default);
+        travel.Instructions.Add(RunEvents.Make(2003, 66, (byte)0, 1039292110u, (byte)0));
+        travel.Instructions.Add(RunEvents.Make(2003, 14, (byte)45, (byte)1, (byte)0, (byte)0, 45010980u, 0));
+        travel.Instructions.Add(RunEvents.Make(2003, 14, (byte)11, (byte)10, (byte)0, (byte)0, 11102020u, 0));
+        travel.Instructions.Add(RunEvents.Make(2003, 14, (byte)0, (byte)0, (byte)0, (byte)0, 0u, 0));
+        travel.Instructions.Add(RunEvents.Make(1001, 0, 1f));
+        travel.Parameters.Add(new EMEVD.Parameter(3, 0, 0, 4));
+        travel.Parameters.Add(new EMEVD.Parameter(4, 0, 0, 4));
+        common.Events.Add(travel);
+        var maps = new HashSet<MapId> { BonfireEr, MapId.Parse("m00_00_00_00") };
+        int covered = BonfireRespawn.ClearBeforeWarps(common, maps);
+        Expect(covered == 1 && travel.Instructions.Count == 6 && travel.Instructions[1] is { Bank: 2003, ID: 66 } && U(travel.Instructions[1], 4) == flag
+               && travel.Instructions[1].ArgData[8] == 0 && travel.Instructions[2] is { Bank: 2003, ID: 14 },
+            $"the warp into the ported map is preceded by flag off ({covered} covered, {travel.Instructions.Count} lines)");
+        Expect(travel.Parameters[0].InstructionIndex == 4 && travel.Parameters[1].InstructionIndex == 5, "parameters after the new line move with their lines");
+        Expect(BonfireRespawn.ClearBeforeWarps(common, maps) == 1 && travel.Instructions.Count == 6, "running again adds nothing");
     }
 }

@@ -567,7 +567,10 @@ public static class Bonfires
             lines.AddRange(notes.Select(n => "bonfires: " + n));
         }
         if (work.Count == 0)
-            return lines.Count == 0 ? "bonfires: no ported map has one" : string.Join(Environment.NewLine, lines);
+        {
+            lines.Add("bonfire respawn: " + StartPointRespawns(ctx, slots));
+            return lines.Count == 1 ? "bonfires: no ported map has one; " + lines[0] : string.Join(Environment.NewLine, lines);
+        }
 
         if (places is not null && placeFile is not null)
         {
@@ -598,7 +601,8 @@ public static class Bonfires
         // Scripts: the common events the maps call are in the mod's common_func.
         var commonPath = ctx.ModPath(MapPorter.ModParts(MapEvents.CommonFunc));
         var common = File.Exists(commonPath) ? EMEVD.Read(DCX.Decompress(File.ReadAllBytes(commonPath))) : null;
-        int registered = 0, flames = 0, noScript = 0;
+        int registered = 0, flames = 0, noScript = 0, respawnEvents = 0, respawnMaps = 0;
+        var startOnly = StartPointRespawns(ctx, slots.Where(s => work.All(w => w.Slot != s)));
         foreach (var w in work)
         {
             var scriptPath = ctx.ModPath(MapPorter.ModParts(MapEvents.ScriptPath(w.Slot.Er)));
@@ -614,6 +618,9 @@ public static class Bonfires
                 : (flameTable.GetValueOrDefault(LitEffect), LitDummy));
             registered += r;
             flames += f;
+            // A death here returns to the last DS3 bonfire rested at, or the one nearest to where the player came in.
+            respawnEvents += BonfireRespawn.AddEvents(script, w.Slot.Er, w.Placed.Select(p => p.Point).ToList());
+            respawnMaps++;
             File.WriteAllBytes(scriptPath, DCX.Compress(script.Write(), scriptCompression));
             File.WriteAllBytes(w.MsbPath, DCX.Compress(w.Msb.Write(), w.MsbCompression));
         }
@@ -622,6 +629,40 @@ public static class Bonfires
                   + $"; DS3's swords are the registered bonfires, {ownFire} burn by their own animations (DS3 effects "
                   + string.Join(", ", OwnEffects.Select(e => flameTable.TryGetValue(e, out var c) ? $"{e} -> {c}" : $"{e} not converted")) + ")"
                   + (noScript > 0 ? $"; {noScript} maps have no script and stay without bonfires" : ""));
+        lines.Add($"bonfire respawn: {respawnMaps} maps send a death to their nearest bonfire until the player rests ({respawnEvents} events; "
+                  + $"flag {BonfireRespawn.FollowsFlag}, cleared by every warp in); " + startOnly);
         return string.Join(Environment.NewLine, lines);
+    }
+
+    /// <summary>
+    /// Maps with no bonfire of their own (or whose layout didn't read back) respawn the player at the map's start
+    /// point (<see cref="MsbPort.StartEntityId"/>, where the F1 warp lands) until they rest somewhere.
+    /// </summary>
+    private static string StartPointRespawns(PorterContext ctx, IEnumerable<MapSlots.Slot> slots)
+    {
+        var done = new List<string>();
+        var none = new List<string>();
+        foreach (var slot in slots)
+        {
+            var msbPath = ctx.ModPath(MapPorter.ModParts(MapPorter.MsbPath(slot.Er)));
+            var scriptPath = ctx.ModPath(MapPorter.ModParts(MapEvents.ScriptPath(slot.Er)));
+            if (!File.Exists(msbPath) || !File.Exists(scriptPath))
+                continue;
+            uint start = (uint)MsbPort.StartEntityId(slot.Er);
+            bool has;
+            try { has = MSBE.Read(DCX.Decompress(File.ReadAllBytes(msbPath))).Parts.Players.Any(p => p.EntityID == start); }
+            catch (Exception ex) when (ex is not OutOfMemoryException) { has = false; _ = ex; }
+            if (!has)
+            {
+                none.Add(slot.Er.ToString());
+                continue;
+            }
+            var script = EMEVD.Read(DCX.Decompress(File.ReadAllBytes(scriptPath), out var compression));
+            BonfireRespawn.AddEvents(script, slot.Er, [start]);
+            File.WriteAllBytes(scriptPath, DCX.Compress(script.Write(), compression));
+            done.Add(slot.Er.ToString());
+        }
+        return $"{done.Count} maps without a bonfire use their start point ({string.Join(", ", done)})"
+               + (none.Count > 0 ? $"; WARN {none.Count} have neither, a death there keeps the last respawn point ({string.Join(", ", none)})" : "");
     }
 }

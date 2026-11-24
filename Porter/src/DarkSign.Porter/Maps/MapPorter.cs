@@ -1803,6 +1803,9 @@ public static class MapPorter
         var flagPort = new EventPort(defs, defs, slots, flags);
         BossArenas.AddWarps(common, arenas, f => flagPort.Move(f, EventPort.Kind.Flag));
         CutsceneMenu.AddEvents(common, cutscenes);
+        // Every warp into a ported map (these, and the bonfire menu's Travel written by the bonfires step) lets the map
+        // warped to set the respawn point (BonfireRespawn): a script warp alone leaves it at the last Elden Ring grace.
+        int respawnWarps = BonfireRespawn.ClearBeforeWarps(common, warps.Select(w => w.Map).ToHashSet());
         // DS3's new-game flags (Ds3Setup): DS3's common event 50 sets them; the maps' scripts read them.
         string setupNote;
         try
@@ -1826,6 +1829,7 @@ public static class MapPorter
                + $"{warps.Count} per-map warps ({string.Join(", ", warps.Select(w => $"{w.Map} flag {RunEvents.WarpRequestFlag(w.Index)}"))}); "
                + $"{arenas.Count} boss arena warps ({string.Join(", ", arenas.Select(a => $"{a.Name} flag {BossArenas.RequestFlag(a.Index)}"))}); "
                + $"{cutscenes.Count} F1 cutscene events ({string.Join(", ", cutscenes.Select(c => $"{c.ErName} {c.Label} flag {CutsceneMenu.RequestFlag(c.Index)}"))})"
+               + $"; {respawnWarps} warps into ported maps clear the respawn flag {BonfireRespawn.FollowsFlag} first"
                + "\n  " + setupNote;
     }
 }
