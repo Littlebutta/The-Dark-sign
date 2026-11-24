@@ -1,0 +1,78 @@
+row	uses	targets	category	textId	regionType	radius	dummyPoly1	name
+(param)	36	paramx36	-
+10000	15	Assetx6 paramx9	cat 5	text 3200	region 1	radius 0	dmy 101	Traverse the mist
+9140	13	paramx11 Assetx2	cat 5	text 1000	region 0	radius 1.5	dmy -1	Examine
+9000	11	Assetx4 paramx6 unresolvedx1	cat 5	text 1000	region 0	radius 1	dmy -1	Examine
+9320	8	Assetx5 unresolvedx2 paramx1	cat 5	text 9320	region 0	radius 1.5	dmy -1	Examine
+9310	6	paramx6	cat 5	text 9310	region 0	radius 2	dmy -1	Examine
+209525	6	Assetx6	cat 5	text 209525	region 0	radius 2	dmy 100	Examine altar
+9210	6	Assetx6	cat 5	text 9210	region 0	radius 1.5	dmy 100	Examine
+9523	5	paramx5	cat 5	text 1000	region 0	radius 1	dmy 191	Examine
+209200	5	Assetx4 paramx1	cat 5	text 209200	region 0	radius 2.5	dmy -1	Examine altar
+209524	4	Assetx4	cat 5	text 2000	region 0	radius 2	dmy 100	Pick up item
+9710	4	Assetx3 unresolvedx1	cat 5	text 9710	region 1	radius 0	dmy 110	Rest in coffin
+209526	4	Assetx4	cat 5	text 209526	region 0	radius 2	dmy 100	Examine altar
+9290	4	paramx4	cat 5	text 9290	region 0	radius 1.5	dmy -1	Return to entrance
+9220	3	paramx3	cat 5	text 1000	region 0	radius 0.8	dmy 191	Examine
+9230	3	paramx3	cat 5	text 1000	region 0	radius 1.5	dmy 100	Examine
+8301	3	paramx3	cat 5	text 3000	region 0	radius 1.5	dmy 192	Pull lever
+8320	3	Assetx1 paramx2	cat 5	text 3000	region 0	radius 1.5	dmy 192	Pull lever
+9260	3	paramx3	cat 5	text 1000	region 0	radius 1.8	dmy -1	Examine
+9521	3	Assetx3	cat 5	text 9521	region 0	radius 1.5	dmy -1	Touch phantom
+9520	3	paramx3	cat 5	text 9520	region 0	radius 1.5	dmy -1	Light flame
+9503	2	Assetx1 unresolvedx1	cat 5	text 9503	region 0	radius 1.5	dmy -1	Examine seal
+7200	2	Assetx1 paramx1	cat 5	text 3100	region 0	radius 1.2	dmy 100	Open
+7101	2	Assetx1 paramx1	cat 5	text 3100	region 0	radius 1.2	dmy 101	Open
+9524	2	paramx2	cat 5	text 9524	region 0	radius 2	dmy 201	Light flame
+9525	2	Assetx2	cat 5	text 9525	region 0	radius 3.5	dmy 201	Touch horned remains
+9711	2	Assetx2	cat 5	text 9710	region 1	radius 0	dmy 110	Rest in coffin
+9505	2	Assetx2	cat 5	text 9505	region 0	radius 1.5	dmy -1	Examine seal
+4250	2	paramx1 commonx1	cat 2	text 2000	region 0	radius 1.5	dmy -1	Pick up item
+9526	2	Assetx2	cat 5	text 9526	region 0	radius 2	dmy 100	Go back
+209610	2	commonx2	cat 5	text 209610	region 0	radius 3.5	dmy 200	Examine sealing tree
+9240	1	Assetx1	cat 5	text 9240	region 0	radius 3	dmy -1	Stargaze
+9533	1	Assetx1	cat 5	text 1000	region 0	radius 1.5	dmy 200	Examine
+9610	1	Assetx1	cat 5	text 9610	region 0	radius 1.5	dmy -1	Summon Ranni
+9620	1	Assetx1	cat 5	text 9620	region 0	radius 2.2	dmy -1	Become the Lord of Frenzied Flame
+9501	1	Assetx1	cat 5	text 9501	region 1	radius 0	dmy 101	Touch golden light
+209500	1	Assetx1	cat 5	text 209500	region 0	radius 1.5	dmy -1	Touch withered arm
+209529	1	Assetx1	cat 5	text 209529	region 0	radius 1	dmy -1	Examine monument
+209522	1	Assetx1	cat 5	text 209522	region 0	radius 1	dmy -1	Touch gold summon sign
+209060	1	paramx1	cat 5	text 209060	region 0	radius 1	dmy -1	Touch gold summon sign
+209600	1	Assetx1	cat 5	text 209600	region 0	radius 1.5	dmy -1	Touch memory
+9506	1	Assetx1	cat 5	text 9506	region 1	radius 0	dmy 101	Examine seal
+9527	1	paramx1	cat 5	text 1000	region 0	radius 2	dmy -1	Examine
+9528	1	paramx1	cat 5	text 9528	region 0	radius 2	dmy -1	Light flame
+9529	1	Assetx1	cat 5	text 9529	region 0	radius 1.5	dmy -1	Examine seal
+9532	1	paramx1	cat 5	text 2010	region 0	radius 1.5	dmy 200	Pillage corpse
+6519	1	paramx1	cat 4	text 7250	region 0	radius 11	dmy -1	Return Unalloyed Gold Needle
+209502	1	Assetx1	cat 5	text 209502	region 0	radius 1.5	dmy -1	Examine
+9512	1	unresolvedx1	cat 5	text 9510	region 0	radius 1.5	dmy -1	
+6472	1	paramx1	cat 2	text 7162	region 0	radius 1.5	dmy -1	Dye cloth with maiden's blood
+209520	1	Assetx1	cat 5	text 209520	region 0	radius 1	dmy -1	Touch gold summon sign
+9740	1	Assetx1	cat 5	text 9740	region 0	radius 1.5	dmy -1	Lie down
+9630	1	Assetx1	cat 5	text 9630	region 0	radius 2	dmy -1	Wear ring
+9500	1	Assetx1	cat 5	text 9500	region 0	radius 1.5	dmy -1	Touch wall of thorns
+9531	1	unresolvedx1	cat 5	text 1000	region 0	radius 1.5	dmy -1	Examine
+7100	1	paramx1	cat 5	text 3100	region 0	radius 1.2	dmy 100	Open
+9250	1	Assetx1	cat 5	text 9250	region 0	radius 1.5	dmy -1	
+6471	1	Enemyx1	cat 2	text 7161	region 0	radius 1.5	dmy -1	Dye cloth with maiden's blood
+9980	1	Assetx1	cat 5	text 1000	region 0	radius 1.5	dmy -1	Examine
+6511	1	paramx1	cat 8	text 50000100	region 0	radius 1.5	dmy -1	Touch bloodstain
+6590	1	paramx1	cat 4	text 7280	region 0	radius 2.5	dmy -1	Examine grave
+6340	1	paramx1	cat 4	text 7130	region 0	radius 2.5	dmy -1	Summon Latenna
+6321	1	paramx1	cat 4	text 7120	region 0	radius 3	dmy -1	Touch the Two Fingers
+9640	1	Assetx1	cat 5	text 9640	region 0	radius 1.5	dmy -1	Open door
+9062	1	Assetx1	cat 5	text 1000	region 0	radius 1	dmy -1	
+209620	1	unresolvedx1	cat 5	text 209620	region 1	radius 0	dmy 110	Rest in coffin
+9200	1	paramx1	cat 5	text 3310	region 0	radius 1.5	dmy 194	Kick ladder
+4300	1	paramx1	cat 2	text 2030	region 0	radius 1.5	dmy -1	Search treasure chest
+4200	1	paramx1	cat 2	text 2020	region 0	radius 1.5	dmy -1	Pillage remains
+9270	1	paramx1	cat 5	text 9270	region 0	radius 1.8	dmy 101	Use Birdseye Telescope
+9330	1	paramx1	cat 5	text 9330	region 0	radius 3	dmy 200	Examine
+9300	1	paramx1	cat 5	text 1000	region 0	radius 1.5	dmy -1	Examine
+6000	1	paramx1	cat 4	text 7000	region 0	radius 2.5	dmy -1	Talk
+209504	1	Assetx1	cat 5	text 209504	region 0	radius 1.5	dmy -1	Examine seal
+9720	1	Assetx1	cat 5	text 9720	region 0	radius 1.5	dmy -1	Examine pedestal
+9721	1	Assetx1	cat 5	text 9721	region 0	radius 1.5	dmy -1	Remove inverted statue
+9730	1	Assetx1	cat 5	text 9730	region 0	radius 1.5	dmy -1	Open door

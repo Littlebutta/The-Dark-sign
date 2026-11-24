@@ -1,0 +1,72 @@
+row	category	textId	regionType	radius	dummyPoly1	name
+74000000	cat 4	text 74000000	region 0	radius 2.4	dmy 0	DS3 action button row 9353
+74000001	cat 4	text 2000	region 0	radius 1.5	dmy -1	DS3 action button row 4000 (Pick up Items)
+74000002	cat 4	text 74000001	region 0	radius 2	dmy 190	DS3 action button row 9351
+74000003	cat 4	text 7010	region 0	radius 1.5	dmy -1	DS3 action button row 9101 (Warp from event base to Las Boss)
+74000004	cat 4	text 2020	region 0	radius 1.5	dmy 90	DS3 action button row 9355 (Pillage remains)
+74000005	cat 4	text 1000	region 0	radius 2	dmy 190	DS3 action button row 9350
+74000006	cat 4	text 74000002	region 0	radius 1.5	dmy 0	DS3 action button row 9356 (Read Engraving)
+74000007	cat 4	text 74000003	region 0	radius 1.5	dmy 100	DS3 action button row 8900 (Pull out a sword from the Segunda grave)
+74000008	cat 5	text 74000004	region 1	radius 0	dmy 101	DS3 action button row 4001800 (Fogwall - Iudex Gundyr)
+74000009	cat 5	text 74000004	region 1	radius 0	dmy 101	DS3 action button row 4001830 (Fogwall - Champion Gundyr)
+74000010	cat 5	text 74000004	region 1	radius 0	dmy 101	DS3 action button row 10000 (Interaction - Traverse the fog)
+74000011	cat 4	text 74000005	region 0	radius 6.5	dmy -1	DS3 action button row 3001810
+74000012	cat 5	text 74000004	region 1	radius 0	dmy 101	DS3 action button row 3001800 (Fogwall - Vordt of the Boreal Valley)
+74000013	cat 5	text 74000004	region 1	radius 0	dmy 101	DS3 action button row 3001830 (Fogwall - Oceiros)
+74000014	cat 4	text 74000006	region 0	radius 1	dmy 10	DS3 action button row 3001895
+74000015	cat 5	text 74000004	region 1	radius 0	dmy 101	DS3 action button row 3001890 (Fogwall - Dancer of the Boreal Valley)
+74000016	cat 4	text 2020	region 0	radius 1.5	dmy 90	DS3 action button row 4200 (They take a memento)
+74000017	cat 4	text 74000007	region 0	radius 1.5	dmy 0	DS3 action button row 9360
+74000018	cat 4	text 74000008	region 0	radius 1.5	dmy 1	DS3 action button row 9600
+74000019	cat 4	text 1000	region 1	radius 0	dmy 50	DS3 action button row 3100000 (Should probably rely to servant -- 下男にオンブしてもらう)
+74000020	cat 5	text 74000004	region 1	radius 0	dmy 101	DS3 action button row 3101800 (Fogwall - Curse-rotted Greatwood)
+74000021	cat 4	text 74000009	region 0	radius 1.7	dmy 200	DS3 action button row 9370
+74000022	cat 4	text 74000010	region 0	radius 1.5	dmy -1	DS3 action button row 9344
+74000023	cat 4	text 7000	region 0	radius 5.5	dmy 203	DS3 action button row 9373
+74000024	cat 5	text 74000004	region 1	radius 0	dmy 101	DS3 action button row 4501800 (Fogwall - Sister Friede)
+74000025	cat 4	text 74000011	region 0	radius 1.5	dmy 0	DS3 action button row 9334
+74000026	cat 5	text 74000004	region 1	radius 0	dmy 101	DS3 action button row 4501860
+74000027	cat 5	text 74000004	region 1	radius 0	dmy 101	DS3 action button row 3011800 (Fogwall - Dragonslayer Armour)
+74000028	cat 4	text 74000012	region 0	radius 1.5	dmy 100	DS3 action button row 9400 (Messenger Tombstone (not ignited))
+74000029	cat 4	text 74000013	region 0	radius 1.5	dmy 100	DS3 action button row 9401 (Messenger Tombstone (already ignited) * Text difference)
+74000030	cat 4	text 74000012	region 0	radius 1.5	dmy 100	DS3 action button row 9410 (Messenger Tombstone (not ignited))
+74000031	cat 4	text 74000013	region 0	radius 1.5	dmy 100	DS3 action button row 9411 (Messenger Tombstone (already ignited) * Text difference)
+74000032	cat 4	text 74000014	region 0	radius 1.5	dmy 100	DS3 action button row 9330 (M33 Poison swamp forest fire Jigitai)
+74000033	cat 4	text 74000008	region 0	radius 1.5	dmy 200	DS3 action button row 9333
+74000034	cat 5	text 74000004	region 1	radius 0	dmy 101	DS3 action button row 3301800 (Fogwall - Abyss Watchers)
+74000035	cat 5	text 74000004	region 1	radius 0	dmy 101	DS3 action button row 3301850 (Fogwall - Crystal Sage)
+74000036	cat 4	text 2020	region 0	radius 2.5	dmy 90	DS3 action button row 6190
+74000037	cat 4	text 3310	region 0	radius 1.5	dmy 194	DS3 action button row 9200 (Examining (for basilica brought))
+74000038	cat 5	text 74000004	region 1	radius 0	dmy 101	DS3 action button row 3501800 (Fogwall - Deacons of the Deep)
+74000039	cat 4	text 74000015	region 0	radius 1.5	dmy -1	DS3 action button row 6600
+74000040	cat 4	text 3010	region 0	radius 1.5	dmy 103	DS3 action button row 9321 (M38 (left))
+74000041	cat 4	text 3010	region 0	radius 1.5	dmy 101	DS3 action button row 9320 (M38 (right))
+74000042	cat 4	text 74000016	region 0	radius 2.6	dmy 200	DS3 action button row 9322
+74000043	cat 5	text 74000004	region 1	radius 0	dmy 101	DS3 action button row 3801830 (Fogwall - Old Demon King)
+74000044	cat 4	text 3010	region 0	radius 1.5	dmy 103	DS3 action button row 9301 (M37_ Anole Revolving Bridge _ Lever (left))
+74000045	cat 4	text 3010	region 0	radius 1.5	dmy 101	DS3 action button row 9300 (M37_ Anole Revolving Bridge _ Lever (right))
+74000046	cat 4	text 3010	region 0	radius 1.5	dmy 101	DS3 action button row 3701000
+74000047	cat 4	text 3100	region 0	radius 1.2	dmy 100	DS3 action button row 7100 (Open Doors _ General purpose)
+74000048	cat 4	text 74000017	region 1	radius 0	dmy 101	DS3 action button row 9310
+74000049	cat 5	text 74000004	region 1	radius 0	dmy 101	DS3 action button row 3701800 (Fogwall - Aldrich)
+74000050	cat 5	text 74000004	region 1	radius 0	dmy 101	DS3 action button row 3701850 (Fogwall - Pontiff Sulyvahn)
+74000051	cat 4	text 74000018	region 0	radius 1.5	dmy -1	DS3 action button row 6290
+74000052	cat 4	text 74000019	region 1	radius 0	dmy 101	DS3 action button row 3901800 (Fogwall - Yhorm the Giant)
+74000053	cat 5	text 74000004	region 1	radius 0	dmy 101	DS3 action button row 3411830 (Fogwall - Twin Princes)
+74000054	cat 5	text 74000004	region 1	radius 0	dmy 101	DS3 action button row 3201800 (Fogwall - Ancient Wyvern)
+74000055	cat 5	text 74000004	region 1	radius 0	dmy 101	DS3 action button row 3201850 (Fogwall - Nameless King)
+74000056	cat 4	text 74000020	region 0	radius 1.5	dmy 0	DS3 action button row 9341
+74000057	cat 4	text 74000021	region 0	radius 1.5	dmy -1	DS3 action button row 9342
+74000058	cat 4	text 74000022	region 0	radius 1.5	dmy -1	DS3 action button row 9343
+74000059	cat 5	text 74000004	region 1	radius 0	dmy 101	DS3 action button row 4101800 (Fogwall - Soul of Cinder)
+74000060	cat 4	text 74000023	region 0	radius 6.5	dmy -1	DS3 action button row 9380
+74000061	cat 5	text 74000004	region 1	radius 0	dmy 101	DS3 action button row 5001800 (Fogwall - Demon Prince)
+74000062	cat 4	text 1000	region 0	radius 1.5	dmy 90	DS3 action button row 9701
+74000063	cat 4	text 74000024	region 0	radius 3	dmy 80	DS3 action button row 9390
+74000064	cat 4	text 74000002	region 0	radius 1.5	dmy 0	DS3 action button row 9391
+74000065	cat 5	text 74000004	region 1	radius 0	dmy 101	DS3 action button row 5101800 (Fogwall - Halflight)
+74000066	cat 5	text 74000004	region 1	radius 0	dmy 101	DS3 action button row 5101850 (Fogwall - Darkeater Midir)
+74000067	cat 4	text 3100	region 0	radius 1.2	dmy -1	DS3 action button row 8010 (Open Treasure Chest)
+74000068	cat 4	text 1000	region 0	radius 1.5	dmy 90	DS3 action button row 9700
+74000069	cat 4	text 3100	region 0	radius 1.2	dmy 101	DS3 action button row 7101 (Open Doors _ General-purpose 101 standards)
+74000070	cat 4	text 3000	region 0	radius 1.5	dmy 192	DS3 action button row 8300 (Launch lever)
