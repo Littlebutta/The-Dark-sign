@@ -10,6 +10,9 @@ using SoulsFormats;
 // p18 bypass <in.emevd.dcx> <out.emevd.dcx> [nosp]
 //     Probe 16 run B again (45005811's 3[24] -> 3[00] flag 45000802 OFF, the player plays 60750 at the start).
 //     With "nosp", 45005810's 2004[08] SpEffect 700005800 becomes a 0 s wait, to split the instant defeat.
+// p18 drop <in.emevd.dcx> <out.emevd.dcx> <event>:<index> [...]
+//     Replaces those instructions with a 0 s wait (probe 19: 45005810:11 = Gundyr's hitmask bit 0 off,
+//     45005810:9 = his invincibility on).
 static byte[] Le(params object[] parts)
 {
     var ms = new MemoryStream();
@@ -75,6 +78,21 @@ switch (args[0])
             if (i < 0) throw new InvalidDataException("45005810 has no 2004[08] 700005800");
             boss.Instructions[i] = new EMEVD.Instruction(1001, 0, Le(0f));
             Console.WriteLine($"45005810: instruction {i} (SpEffect 700005800) -> wait 0 s");
+        }
+        File.WriteAllBytes(args[2], DCX.Compress(em.Write(), comp));
+        break;
+    }
+    case "drop":
+    {
+        var em = EMEVD.Read(DCX.Decompress(File.ReadAllBytes(args[1]), out var comp));
+        foreach (var pair in args.Skip(3))
+        {
+            var (id, index) = (long.Parse(pair.Split(':')[0]), int.Parse(pair.Split(':')[1]));
+            var ev = em.Events.First(e => e.ID == id);
+            var old = ev.Instructions[index];
+            ev.Instructions[index] = new EMEVD.Instruction(1001, 0, Le(0f));
+            ev.Parameters.RemoveAll(p => p.InstructionIndex == index);
+            Console.WriteLine($"{id}:{index} {old.Bank}[{old.ID:D2}] {Convert.ToHexString(old.ArgData)} -> wait 0 s");
         }
         File.WriteAllBytes(args[2], DCX.Compress(em.Write(), comp));
         break;
