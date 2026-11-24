@@ -1,0 +1,4 @@
+# D:/The Dark sign/TheDarkSign/Mods/ER/chr/c7112_div00.anibnd.dcx
+7000000	9640	hkx_div00_compendium/c7112_div00.compendium	N:\GR\data\INTERROOT_win64\chr\c7112\hkx_div00_compendium\c7112_div00.compendium
+1000003012	50364	hkx_div00_compendium/a000_003012.hkx	N:\GR\data\INTERROOT_win64\chr\c7112\hkx_div00_compendium\a000_003012.hkx
+1000003014	57548	hkx_div00_compendium/a000_003014.hkx	N:\GR\data\INTERROOT_win64\chr\c7112\hkx_div00_compendium\a000_003014.hkx

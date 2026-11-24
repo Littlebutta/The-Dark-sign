@@ -1,0 +1,3 @@
+# D:/The Dark sign/TheDarkSign/Work/extract/ER/chr/c3060.anibnd
+4000000	19592	hkx/skeleton.hkx	N:\GR\data\INTERROOT_win64\chr\c3060\hkx\skeleton.hkx
+5000000	536720	tae/c3060.tae	N:\GR\data\INTERROOT_win64\chr\c3060\tae\c3060.tae

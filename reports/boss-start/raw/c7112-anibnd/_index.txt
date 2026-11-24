@@ -1,0 +1,2 @@
+# D:/The Dark sign/TheDarkSign/Mods/ER/chr/c7112.anibnd.dcx
+5000000	600992	tae/c7112.tae	N:\GR\data\INTERROOT_win64\chr\c7112\tae\c7112.tae

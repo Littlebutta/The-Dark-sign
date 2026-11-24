@@ -1,0 +1,5 @@
+# D:/The Dark sign/TheDarkSign/Work/extract/ER/chr/c3061.behbnd
+7000300	3316	Export/c3061.hkx	N:\GR\data\INTERROOT_win64\action\c3061\Export\c3061.hkx
+7000400	11316	Export/Characters/c3061.hkx	N:\GR\data\INTERROOT_win64\action\c3061\Export\Characters\c3061.hkx
+7000500	21776	Export/Behaviors/c3061.hkx	N:\GR\data\INTERROOT_win64\action\c3061\Export\Behaviors\c3061.hkx
+7000501	4570000	Export/Behaviors/c9997.hkx	N:\GR\data\INTERROOT_win64\action\c3061\Export\Behaviors\c9997.hkx
