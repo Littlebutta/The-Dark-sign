@@ -1,0 +1,8 @@
+== built c7112 clips
+c7112_div01.anibnd.dcx clip a000_020000.hkx ids 1000020000
+c7112_div01.anibnd.dcx clip a000_020004.hkx ids 1000020004
+c7112_div01.anibnd.dcx clip a000_030003.hkx ids 1000030003
+c7112_div01.anibnd.dcx clip a000_020002.hkx ids 1000020002
+c7112_div01.anibnd.dcx clip a000_020003.hkx ids 1000020003
+c7112_div01.anibnd.dcx clip a000_030002.hkx ids 1000030002
+== template c3061 (vanilla extract, main anibnd only)
