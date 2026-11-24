@@ -57,6 +57,18 @@ if (args[0] == "swap") // probe 11: taeid swap <cXXXX_divNN.anibnd.dcx> <target 
     File.WriteAllBytes(args[1], DCX.Compress(div.Write(), divComp));
     return;
 }
+if (args[0] == "plant") // probe 12: taeid plant <vanilla cXXXX_divNN.anibnd(.dcx)> <our div .anibnd.dcx> <out .anibnd.dcx> <target id> <source id>
+{   // writes the vanilla binder with its target clip holding OUR source clip's bytes, DCX-compressed like our binder
+    var vRaw = File.ReadAllBytes(args[1]);
+    var van = BND4.Read(DCX.Is(vRaw) ? DCX.Decompress(vRaw) : vRaw);
+    var ours = BND4.Read(DCX.Decompress(File.ReadAllBytes(args[2]), out var ourComp));
+    var target = van.Files.Single(f => Leaf(f.Name).Equals($"a000_{int.Parse(args[4]):D6}.hkx", StringComparison.OrdinalIgnoreCase));
+    var source = ours.Files.Single(f => Leaf(f.Name).Equals($"a000_{int.Parse(args[5]):D6}.hkx", StringComparison.OrdinalIgnoreCase));
+    Console.WriteLine($"{Leaf(args[1])}: {van.Files.Count} files; {Leaf(target.Name)} ({target.Bytes.Length} bytes) now holds our {Leaf(source.Name)} ({source.Bytes.Length} bytes) -> {args[3]}");
+    target.Bytes = source.Bytes.ToArray();
+    File.WriteAllBytes(args[3], DCX.Compress(van.Write(), ourComp));
+    return;
+}
 if (args[0] == "survey")
 {
     var rows = new List<(string Chr, string Tae, int Id, string Sib)>();
