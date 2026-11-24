@@ -795,6 +795,8 @@ public static partial class CutscenePort
         public CutsceneCast.CastStats Cast { get; } = new();
         /// <summary>Events' timeline numbers after the port took timelines out and added some.</summary>
         public CutsceneTimelineLinks.Result? Links;
+        /// <summary>DS3 draw-setting events turned into Elden Ring's (<see cref="CutsceneDrawParams"/>).</summary>
+        public CutsceneDrawParams.Result Draw { get; set; } = new();
         public int OtherFiles;
         /// <summary>Effect events pointed at a converted DS3 effect, and ones left out because theirs didn't convert.</summary>
         public int EffectsMapped, EffectsLeftOut;
@@ -896,6 +898,8 @@ public static partial class CutscenePort
             if (effects is not null)
                 MapEffects(mqb, effects, stats);
             sound?.Invoke(mqb);
+            // Before the cast drops DS3's other draw kinds: 199 and 215 become Elden Ring's 197.
+            stats.Draw = CutsceneDrawParams.ConvertEvents(mqb, CutsceneDrawParams.ErFields(side.Catalog));
             if (cast is not null)
             {
                 cutFiles = CutsceneCast.CutFiles(mqb);
@@ -1077,6 +1081,7 @@ public static partial class CutscenePort
                     assets.TryAdd(cols[0], cols[1]);
         lines.Add($"cast: parts resolved to Elden Ring models (map part names, {(chrMap is null ? "no enemy model list" : "the enemy port's model list")}, "
                   + $"{assets.Count} object port assets); DS3 draw settings and unplayed cut files left out");
+        var ds3Msbs = new Dictionary<MapId, MSB3>();
         foreach (var map in maps.Where(m => !m.Slot.Probe))
         {
             var rename = Renamer(map.PartNames);
@@ -1121,6 +1126,18 @@ public static partial class CutscenePort
                     var path = ctx.ModPath(MapPorter.ModParts(ErPath(erName)));
                     Directory.CreateDirectory(Path.GetDirectoryName(path)!);
                     File.WriteAllBytes(path, DCX.Compress(bnd.Write(), side.Compression));
+                    // The cutscene's own draw params, which its converted draw-setting events pick from.
+                    try
+                    {
+                        if (!ds3Msbs.TryGetValue(map.Slot.Ds3, out var ds3Msb))
+                            ds3Msbs[map.Slot.Ds3] = ds3Msb = MSB3.Read(ds3.Read(MapPorter.MsbPath(map.Slot.Ds3)));
+                        if (CutsceneDrawParams.Write(ctx, ds3, er, name, erName, map.Slot.Host, ds3Msb, stats.Draw.LightSets) is { } drawLine)
+                            lines.Add($"{drawLine}; {stats.Draw.Events} DS3 draw-setting events as Elden Ring's kind {CutsceneDrawParams.ErKind}");
+                    }
+                    catch (Exception ex)
+                    {
+                        lines.Add($"{name} draw params: FAILED: {ex.Message}");
+                    }
                     ported[ds3Id] = erId;
                     rows.Add((erId, map.Slot.Er));
                     subtitleLines.AddRange(said);

@@ -22,6 +22,7 @@ public static partial class MapPortChecks
         yield return ("cutscenes: bones carry the Elden Ring part's name, effect events play converted DS3 effects, a solid model under the decal shader is drawn", CutsceneBonesAndEffects);
         yield return ("cutscenes: a cutscene warp to a player part gets an Elden Ring warp region (Other sphere at the part) and the script points at it", CutsceneWarpRegions);
         yield return ("cutscenes: DS3 light events keep the parameters Elden Ring has (ShadingModel dropped, a spot light's Width/Height become FovH/FovV); events mostly unknown are left out", CutsceneLightParams);
+        yield return ("cutscenes: DS3 draw-setting events (199 light set, 215 post-process) become Elden Ring's 197 with both events' choices; light sets in the cutscene's file are listed", CutsceneDrawSettings);
         yield return ("cutscenes: Clear played cutscenes lists each cutscene's seen flags (set and checked by its event, parameters followed) and its event's own flag", CutsceneReplayFlags);
     }
 
@@ -504,6 +505,37 @@ public static partial class MapPortChecks
         Expect(CutscenePort.KeepFittingParams(odd, 243, catalog) == 0 && odd.Parameters.Count == 3, "an event mostly of unknown parameters is left for the filter");
         var none = new MQB.Event { Parameters = [P("X", I, 0)] };
         Expect(CutscenePort.KeepFittingParams(none, 999, catalog) == 0, "a kind Elden Ring lacks is left alone");
+    }
+
+    private static void CutsceneDrawSettings()
+    {
+        const MQB.Parameter.DataType I = MQB.Parameter.DataType.Int;
+        var mqb = new MQB { Version = MQB.MQBVersion.DarkSouls3, Name = "s30_00_0000", Framerate = 30, ResourceDirectory = "", Resources = [], Cuts = [] };
+        mqb.Resources.Add(new MQB.Resource { Name = "light", ParentIndex = -1, Unk48 = 199 });
+        mqb.Resources.Add(new MQB.Resource { Name = "post", ParentIndex = -1, Unk48 = 215 });
+        var cut = new MQB.Cut { Name = "cut0010", Duration = 221, Timelines = [] };
+        var light = new MQB.Timeline();
+        light.Events.Add(new MQB.Event { ResourceIndex = 0, Duration = 221, Parameters = [P("forChr", MQB.Parameter.DataType.Bool, true),
+            P("beginLightBank", I, 0), P("beginLightId", I, 10), P("endLightBank", I, -1), P("endLightId", I, -1), P("beginFogBank", I, 1), P("beginFogId", I, 0)] });
+        var post = new MQB.Timeline();
+        post.Events.Add(new MQB.Event { ResourceIndex = 1, Duration = 221, Parameters = [P("beginShadowBank", I, 0), P("beginShadowId", I, 10),
+            P("beginToneMapBank", I, 1), P("beginToneMapId", I, 0), P("beginDofBank", I, 0), P("beginDofId", I, 10)] });
+        cut.Timelines.AddRange([light, post]);
+        mqb.Cuts.Add(cut);
+        string[] names = ["beginLightSetAllBank", "beginLightSetAllId", "endLighSetAlltBank", "endLightSetAllId", "beginShadowBank", "beginShadowId",
+            "beginToneMapBank", "beginToneMapId", "beginBloomBank", "beginBloomId", "endBloomBank", "endBloomId"];
+        var result = CutsceneDrawParams.ConvertEvents(mqb, names.Select(n => (n, I)).ToList());
+        Expect(mqb.Resources.All(r => r.Unk48 == 197), "both DS3 kinds become 197");
+        Expect(result.Events == 2 && result.LightSets.SequenceEqual([10]), $"two events, light set 10 listed ({result.Events}, {string.Join(" ", result.LightSets)})");
+        int V(MQB.Event e, string n) => (int)e.Parameters.First(p => p.Name == n).Value;
+        foreach (var e in new[] { light.Events[0], post.Events[0] })
+        {
+            Expect(e.Parameters.Select(p => p.Name).SequenceEqual(names), "every 197 field in Elden Ring's order, DS3-only fields gone");
+            Expect(V(e, "beginLightSetAllBank") == 0 && V(e, "beginLightSetAllId") == 10, "the light set from the 199 event, on both");
+            Expect(V(e, "beginShadowBank") == 0 && V(e, "beginShadowId") == 0, "a bank-0 post-process choice takes the file's base");
+            Expect(V(e, "beginToneMapBank") == 1 && V(e, "beginToneMapId") == 0, "a bank-1 choice is kept");
+            Expect(V(e, "beginBloomBank") == 1 && V(e, "beginBloomId") == 0 && V(e, "endBloomBank") == -1, "fields neither sets take the default");
+        }
     }
 
     private static CutscenePort.Catalog CutsceneCatalog()
