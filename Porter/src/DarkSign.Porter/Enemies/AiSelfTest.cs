@@ -306,6 +306,17 @@ public static class AiSelfTest
             && sm.m_wildcardTransitions!.m_transitions.Where(t => t.m_toStateId == added.m_stateId).Select(t => strings.m_eventNames[t.m_eventId]).Order()
                 .SequenceEqual(["W_Attack3033", "W_Event3033"])
             && all.OfType<hkbBehaviorGraphData>().First().m_eventInfos.Count == strings.m_eventNames.Count);
+        var twoGraph = Graph();
+        ChrMoves.AddStates(twoGraph, [new ChrMoves.Added(3033, 3001), new ChrMoves.Added(3034, 3001)]);
+        var twoSm = HavokGraph.All(twoGraph).OfType<hkbStateMachine>().First();
+        Check("extra attacks: each added state's selector carries the number of its own place (machine << 16 | index), not its donor's",
+            twoSm.m_states.Select(st => ((CustomManualSelectorGenerator)st.m_generator!).m_userData).SequenceEqual([0x11B0000UL, 0x11B0001UL, 0x11B0002UL])
+            && !ChrMoves.MisnumberedSelectors(twoGraph).Any());
+        var shared = Graph();
+        ChrMoves.AddStates(shared, [new ChrMoves.Added(3033, 3001)]);
+        ((CustomManualSelectorGenerator)HavokGraph.All(shared).OfType<hkbStateMachine>().First().m_states[1].m_generator!).m_userData = 0x11B0000;
+        Check("validator: a selector carrying another state's number (as up to 1.0.610) is reported",
+            ChrMoves.MisnumberedSelectors(shared).SequenceEqual(["Attack_SM [1] Attack3033: 11B0000"]));
 
         var phaseGraph = Graph();
         int phaseStates = ChrMoves.AddStates(phaseGraph, [new ChrMoves.Added(1500, 3001)]);
@@ -343,7 +354,8 @@ public static class AiSelfTest
             idleStates == 1 && pose?.m_generator is CustomManualSelectorGenerator { m_name: "IdleUnique702_CMSG", m_animId: 702 } ps
             && ps.m_generators.OfType<hkbClipGenerator>().Single().m_animationName == "a000_000702"
             && idles.m_wildcardTransitions!.m_transitions.Where(t => t.m_toStateId == pose.m_stateId).Select(t => idleStrings.m_eventNames[t.m_eventId]).SequenceEqual(["W_IdleUnique702"])
-            && idleAll.OfType<hkbStateMachine>().First(m => m.m_name == "Attack_SM").m_states.Count == 1);
+            && idleAll.OfType<hkbStateMachine>().First(m => m.m_name == "Attack_SM").m_states.Count == 1
+            && ps.m_userData == 0x14A0001);
 
         // ---- TemplateEffects ----
         var npcDef = new PARAMDEF { ParamType = "NPC_PARAM_ST", Fields = [] };
@@ -397,7 +409,7 @@ public static class AiSelfTest
                     m_name = "IdleUnique700", m_stateId = 0,
                     m_generator = new CustomManualSelectorGenerator
                     {
-                        m_name = "IdleUnique700_CMSG", m_animId = 700,
+                        m_name = "IdleUnique700_CMSG", m_animId = 700, m_userData = 0x14A0000,
                         m_generators = [new hkbClipGenerator { m_animationName = "a000_000700", m_name = "a000_000700_hkx_AutoSet_00", m_animationInternalId = 2 }],
                     },
                 },
@@ -426,7 +438,7 @@ public static class AiSelfTest
         var data = new hkbBehaviorGraphData { m_stringData = strings, m_eventInfos = [new hkbEventInfo(), new hkbEventInfo()] };
         var selector = new CustomManualSelectorGenerator
         {
-            m_name = "Attack3001_CMSG", m_animId = 3001,
+            m_name = "Attack3001_CMSG", m_animId = 3001, m_userData = 0x11B0000,
             m_generators =
             [
                 new hkbClipGenerator { m_animationName = "a000_003001", m_name = "a000_003001_hkx_AutoSet_01", m_animationInternalId = 0 },

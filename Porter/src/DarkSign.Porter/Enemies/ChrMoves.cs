@@ -256,6 +256,31 @@ public static partial class ChrMoves
         return 0;
     }
 
+    /// <summary>
+    /// The number Elden Ring gives the selector of the state at <paramref name="index"/> in a state machine: every
+    /// CustomManualSelectorGenerator's m_userData is (the machine's number &lt;&lt; 16) | the state's index in m_states
+    /// (866 of 866 selectors in vanilla c3061's c9997.hkx, 2026-11-24). Up to 1.0.610 an added state kept its donor's
+    /// number, so two states shared one: none of the added states played when a script or the AI asked for them
+    /// (Gundyr's kneel 30002 showed nothing and Event30003, whose number it copied, a stiff pose; the High Wall
+    /// hollows' waiting poses 702-710 carried 701's). The machine's number is taken from its states' selectors.
+    /// </summary>
+    public static ulong SelectorNumber(hkbStateMachine sm, int index, ulong fallback)
+    {
+        ulong machine = sm.m_states.Select(s => s.m_generator).OfType<CustomManualSelectorGenerator>()
+            .Select(g => g.m_userData & ~0xFFFFUL).GroupBy(h => h).OrderByDescending(g => g.Count()).Select(g => (ulong?)g.Key).FirstOrDefault()
+            ?? fallback & ~0xFFFFUL;
+        return machine | checked((ushort)index);
+    }
+
+    /// <summary>
+    /// The selectors whose number doesn't match their place (see <see cref="SelectorNumber"/>), as "machine [index]
+    /// state: number"; empty for a graph Elden Ring would number the same way. Used by the validator.
+    /// </summary>
+    public static IEnumerable<string> MisnumberedSelectors(IHavokObject root) =>
+        HavokGraph.All(root).OfType<hkbStateMachine>().SelectMany(sm => sm.m_states.Select((s, i) => (s, i))
+            .Where(p => p.s.m_generator is CustomManualSelectorGenerator g && (g.m_userData & 0xFFFF) != (ulong)p.i)
+            .Select(p => $"{sm.m_name} [{p.i}] {p.s.m_name}: {((CustomManualSelectorGenerator)p.s.m_generator!).m_userData:X}"));
+
     /// <summary>The states for a graph already read; -1 when it has no Attack_SM (not the character's main graph).</summary>
     public static int AddStates(IHavokObject root, IReadOnlyList<Added> added)
     {
@@ -285,6 +310,8 @@ public static partial class ChrMoves
                 name is not null && name.Contains(a.Donor.ToString(), StringComparison.Ordinal) ? name.Replace(a.Donor.ToString(), a.Id.ToString(), StringComparison.Ordinal) : fallback;
             var selector = HavokGraph.ShallowCopy(donorSelector);
             selector.m_animId = a.Id;
+            // The new state is the machine's last; its selector takes the number Elden Ring gives that place.
+            selector.m_userData = SelectorNumber(sm, sm.m_states.Count, donorSelector.m_userData);
             selector.m_name = Renamed(donorSelector.m_name, $"Attack{a.Id}_CMSG");
             selector.m_generators = [];
             var name = $"a000_{a.Id:D6}";

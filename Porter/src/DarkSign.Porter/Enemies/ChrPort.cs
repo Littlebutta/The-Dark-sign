@@ -940,13 +940,27 @@ public static partial class ChrPort
             {
                 // The game resolves the project's Characters\cXXXX.hkx and Behaviors\cXXXX.hkx by name: a template's ID
                 // left inside means a crash at spawn.
-                var foreign = BND4.Read(DCX.Decompress(File.ReadAllBytes(behbnd))).Files
+                var behFiles = BND4.Read(DCX.Decompress(File.ReadAllBytes(behbnd))).Files;
+                var foreign = behFiles
                     .Where(f => f.Name.EndsWith(".hkx", StringComparison.OrdinalIgnoreCase))
                     .SelectMany(f => Regex.Matches(System.Text.Encoding.Latin1.GetString(f.Bytes), @"(?:Characters|Behaviors)\\(c\d{4})\.hkx", RegexOptions.IgnoreCase)
                         .Select(m => m.Groups[1].Value.ToLowerInvariant()))
                     .Where(id => id != model.ToLowerInvariant()).Distinct().ToList();
                 if (foreign.Count > 0)
                     problems.Add($"behbnd still names {string.Join(", ", foreign)} inside");
+                // Each state's selector must carry the number of its own place (ChrMoves.SelectorNumber): two states
+                // sharing one play nothing when asked for.
+                if (behFiles.FirstOrDefault(f => f.Name.EndsWith("c9997.hkx", StringComparison.OrdinalIgnoreCase)) is { } graphFile)
+                {
+                    List<string> misnumbered;
+                    lock (AnimPort.HavokLock)
+                    {
+                        try { misnumbered = ChrMoves.MisnumberedSelectors(AnimPort.ReadEr(graphFile.Bytes, null)).ToList(); }
+                        catch (Exception ex) when (ex is not OutOfMemoryException) { misnumbered = [$"graph unreadable ({ex.GetType().Name})"]; }
+                    }
+                    if (misnumbered.Count > 0)
+                        problems.Add($"{misnumbered.Count} behaviour selectors numbered for another state's place ({string.Join("; ", misnumbered.Take(3))})");
+                }
             }
             if (problems.Count > 0 && bad++ < 8)
                 lines.Add($"FAIL check: {model}: {string.Join(", ", problems)}");
