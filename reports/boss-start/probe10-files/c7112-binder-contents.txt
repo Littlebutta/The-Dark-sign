@@ -1,0 +1,10 @@
+# c7112.anibnd.dcx (ID, size decompressed, name)
+4000000	38100	N:\GR\data\INTERROOT_win64\chr\c7112\hkx\skeleton.hkx
+5000000	600992	N:\GR\data\INTERROOT_win64\chr\c7112\tae\c7112.tae
+6300000	508	N:\GR\data\Model\chr\c7112\blf\c7112_div00.blf
+6300001	637	N:\GR\data\Model\chr\c7112\blf\c7112_div01.blf
+9999999	0	N:\GR\data\Model\chr\blf\ver_0001.txt
+# c7112.chrbnd.dcx (ID, size decompressed, name)
+200	5829856	N:\GR\data\INTERROOT_win64\chr\c7112\c7112.flver
+300	93116	N:\GR\data\INTERROOT_win64\chr\c7112\c7112.hkx
+500	1312	N:\GR\data\INTERROOT_win64\chr\c7112\c7112.hkxpwv
