@@ -300,34 +300,6 @@ public static partial class ChrPort
         return ids;
     }
 
-    /// <summary>The TAE ID Elden Ring gives a character's own TAE: 200000 + the character (c3060.tae is 203060).</summary>
-    public static int TaeId(int chr) => 200_000 + chr;
-
-    /// <summary>
-    /// Gives a cloned TAE the new character's identity: ID <see cref="TaeId"/> and sib name c&lt;new&gt;.sib, in place of the
-    /// template's. The clone used to keep both (Gundyr's c7112.tae said 203060 / c3060.sib, like vanilla c3060.tae), and
-    /// the game then played the template's own vanilla clips for every ported enemy: Gundyr's forced 3012 was the
-    /// Giant Skeleton's 5 s swing and lunge, not DS3's 2.03 s clip in our binder, and every clip the port added
-    /// (3014, 30001, 30002, the hollows' 700s, phase changes 1500/1600) did nothing, because c3060 has no such file
-    /// (probes 6-10, reports/boss-start). The player moveset port always gave its TAEs their own ID (MovesetPort).
-    /// A TAE whose ID isn't a character's (outside 200000-209999) is left as it is. Returns the old ID and sib when
-    /// the file changed, else null.
-    /// </summary>
-    public static (int Id, string? Sib)? OwnTae(BinderFile file, int chr)
-    {
-        TAE tae;
-        try { tae = TAE.Read(file.Bytes); }
-        catch (Exception ex) when (ex is not OutOfMemoryException) { return null; }
-        var sib = tae.SibName is { } s && Regex.IsMatch(s, @"^c\d{4}\.sib$", RegexOptions.IgnoreCase) ? $"c{chr:D4}.sib" : tae.SibName;
-        if (tae.ID is < 200_000 or >= 210_000 || (tae.ID == TaeId(chr) && sib == tae.SibName))
-            return null;
-        var was = (tae.ID, tae.SibName);
-        tae.ID = TaeId(chr);
-        tae.SibName = sib;
-        file.Bytes = tae.Write();
-        return was;
-    }
-
     /// <summary>An archive or binder path under the new character ID: every "c&lt;template&gt;" becomes "c&lt;new&gt;".</summary>
     public static string Rename(string path, int from, int to) =>
         Regex.Replace(path, $"c{from:D4}", $"c{to:D4}", RegexOptions.IgnoreCase);
@@ -960,15 +932,6 @@ public static partial class ChrPort
                     .SelectMany(f => BND4.Read(DCX.Decompress(File.ReadAllBytes(f))).Files).ToList();
                 if (!files.Any(f => f.Name.EndsWith(".tae", StringComparison.OrdinalIgnoreCase)))
                     problems.Add("no TAE");
-                // A TAE under another character's ID makes the game play that character's clips, not this one's.
-                foreach (var tae in files.Where(f => f.Name.EndsWith(".tae", StringComparison.OrdinalIgnoreCase)))
-                {
-                    int id;
-                    try { id = TAE.Read(tae.Bytes).ID; }
-                    catch (Exception ex) when (ex is not OutOfMemoryException) { continue; }
-                    if (id is >= 200_000 and < 210_000 && id != TaeId(ChrId(model)))
-                        problems.Add($"TAE ID {id} is c{id - 200_000:D4}'s, not its own");
-                }
                 if (!files.Any(f => AnimLeaf().IsMatch(ItemText.Leaf(f.Name))))
                     problems.Add("no animations");
             }
@@ -1510,8 +1473,6 @@ public static partial class ChrPort
                         f.Name = Rename(f.Name, from, n);
                         if (f.Name.EndsWith(".hkx", StringComparison.OrdinalIgnoreCase))
                             renamedInside += RenameInside(f.Bytes, from, n);
-                        else if (f.Name.EndsWith(".tae", StringComparison.OrdinalIgnoreCase) && OwnTae(f, n) is { } was)
-                            notes.Add($"TAE {ItemText.Leaf(f.Name)} made the character's own (was ID {was.Id}, {was.Sib})");
                     }
                     binders[path] = (bnd, compression);
                 }

@@ -821,19 +821,6 @@ public static class EnemySelfTest
         AiSelfTest.Run(Check);
         ChrVariantsSelfTest.Run(Check);
 
-        // A cloned TAE takes the new character's identity (Gundyr's c7112.tae kept c3060's 203060 / c3060.sib).
-        var ownTae = new TAE { Format = TAE.TAEFormat.SDT, Animations = [], Flags = new byte[8], SkeletonName = "skeleton.hkt", SibName = "c3060.sib", ID = 203060 };
-        ownTae.Animations.Add(new TAE.Animation(3012, new TAE.Animation.AnimMiniHeader.Standard(), "a000_003012.hkt"));
-        ownTae.Animations[0].Events.Add(new TAE.Event(0, 1, 1, 0, new byte[16], false));
-        var ownFile = new BinderFile(Binder.FileFlags.Flag1, 5000000, @"N:\GR\data\INTERROOT_win64\chr\c7112\tae\c7112.tae", ownTae.Write());
-        var was = ChrPort.OwnTae(ownFile, 7112);
-        var ownAfter = TAE.Read(ownFile.Bytes);
-        var player = new TAE { Format = TAE.TAEFormat.SDT, Animations = [], Flags = new byte[8], SkeletonName = "skeleton.hkt", SibName = "c0000.sib", ID = 2256 };
-        var playerFile = new BinderFile(Binder.FileFlags.Flag1, 5000000, "a256.tae", player.Write());
-        Check("TAE: a cloned TAE gets the new character's ID (200000 + chr) and sib, events kept; done once; a non-character ID is left alone",
-            was == (203060, "c3060.sib") && ownAfter is { ID: 207112, SibName: "c7112.sib" } && ownAfter.Animations.Single().Events.Count == 1
-            && ChrPort.OwnTae(ownFile, 7112) is null && ChrPort.OwnTae(playerFile, 7112) is null && TAE.Read(playerFile.Bytes).ID == 2256);
-
         Console.WriteLine(failures == 0 ? "enemy-selftest: all checks passed" : $"enemy-selftest: {failures} check(s) FAILED");
         return failures == 0 ? 0 : 1;
     }
