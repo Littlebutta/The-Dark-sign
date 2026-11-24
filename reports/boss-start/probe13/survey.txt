@@ -1,0 +1,586 @@
+c7003	70030000	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Skeleton - Scimitar - Catacombs of Carthus
+c7003	70030001	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Skeleton - Falchion - Catacombs of Carthus
+c7003	70030002	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Skeleton - Bow - Catacombs of Carthus
+c7003	70030003	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Skeleton - Scimitar - Catacombs of Carthus
+c7003	70030004	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Skeleton - Falchion - Catacombs of Carthus
+c7003	70030005	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Skeleton - Scimitar - Wolnir - Catacombs of Carthus
+c7003	70030006	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Skeleton - Falchion - Wolnir - Catacombs of Carthus
+c7003	70030007	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Skeleton - Scimitar - Wolnir - Catacombs of Carthus
+c7003	70030008	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Skeleton - Scimitar - Headless - Catacombs of Carthus
+c7003	70030009	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Skeleton - Scimitar - Catacombs of Carthus
+c7003	70030010	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Skeleton - Ball - Catacombs of Carthus
+c7003	70030011	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Skeleton - Ball - Catacombs of Carthus
+c7003	70030012	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Skeleton - Ball - Catacombs of Carthus
+c7003	70030013	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Overgrown Skeleton - Scimitar - Undead Settlement
+c7003	70030014	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Overgrown Skeleton - Scimitar - Undead Settlement
+c7003	70030015	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Overgrown Skeleton - Falchion - Undead Settlement
+c7003	70030016	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Overgrown Skeleton - Falchion - Undead Settlement
+c7003	70030017	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Skeleton - Falchion - Smouldering Lake
+c7004	70040000	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Skeleton - Falchion - Ringed City
+c7004	70040001	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Skeleton - Falchion - Ringed City
+c7004	70040002	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Skeleton - Scimitar - Ringed City
+c7004	70040003	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Skeleton - Scimitar - Ringed City
+c7005	70050000	normalChangeAnimChrId=-1	RetargetReferenceChrId=3060	normalChangeModelId=-1	normalChangeTexChrId=3060	normalChangeResouceId=-1	[DS3] Pus of Man - High Wall of Lothric
+c7005	70050001	normalChangeAnimChrId=-1	RetargetReferenceChrId=3060	normalChangeModelId=-1	normalChangeTexChrId=3060	normalChangeResouceId=-1	[DS3] Pus of Man - High Wall of Lothric
+c7005	70050002	normalChangeAnimChrId=-1	RetargetReferenceChrId=3060	normalChangeModelId=-1	normalChangeTexChrId=3060	normalChangeResouceId=-1	[DS3] Pus of Man - Lothric Castle
+c7005	70050003	normalChangeAnimChrId=-1	RetargetReferenceChrId=3060	normalChangeModelId=-1	normalChangeTexChrId=3060	normalChangeResouceId=-1	[DS3] Pus of Man - Lothric Castle
+c7005	70050004	normalChangeAnimChrId=-1	RetargetReferenceChrId=3060	normalChangeModelId=-1	normalChangeTexChrId=3060	normalChangeResouceId=-1	[DS3] Pus of Man - Grand Archives
+c7006	70060000	normalChangeAnimChrId=-1	RetargetReferenceChrId=3060	normalChangeModelId=-1	normalChangeTexChrId=3060	normalChangeResouceId=-1	[DS3] Hollow Soldier - Sword - High Wall of Lothric
+c7006	70060001	normalChangeAnimChrId=-1	RetargetReferenceChrId=3060	normalChangeModelId=-1	normalChangeTexChrId=3060	normalChangeResouceId=-1	[DS3] Hollow Soldier - Sword - High Wall of Lothric
+c7006	70060002	normalChangeAnimChrId=-1	RetargetReferenceChrId=3060	normalChangeModelId=-1	normalChangeTexChrId=3060	normalChangeResouceId=-1	[DS3] Hollow Soldier - Naked - High Wall of Lothric
+c7006	70060003	normalChangeAnimChrId=-1	RetargetReferenceChrId=3060	normalChangeModelId=-1	normalChangeTexChrId=3060	normalChangeResouceId=-1	[DS3] Hollow Soldier - Linen - High Wall of Lothric
+c7006	70060004	normalChangeAnimChrId=-1	RetargetReferenceChrId=3060	normalChangeModelId=-1	normalChangeTexChrId=3060	normalChangeResouceId=-1	[DS3] Hollow Soldier - White Linen - High Wall of Lothric
+c7006	70060005	normalChangeAnimChrId=-1	RetargetReferenceChrId=3060	normalChangeModelId=-1	normalChangeTexChrId=3060	normalChangeResouceId=-1	[DS3] Hollow Soldier - Waistcoat - High Wall of Lothric
+c7006	70060006	normalChangeAnimChrId=-1	RetargetReferenceChrId=3060	normalChangeModelId=-1	normalChangeTexChrId=3060	normalChangeResouceId=-1	[DS3] Hollow Soldier - Sword and Shield - High Wall of Lothric
+c7006	70060007	normalChangeAnimChrId=-1	RetargetReferenceChrId=3060	normalChangeModelId=-1	normalChangeTexChrId=3060	normalChangeResouceId=-1	[DS3] Hollow Soldier - Sword and Shield - High Wall of Lothric
+c7006	70060008	normalChangeAnimChrId=-1	RetargetReferenceChrId=3060	normalChangeModelId=-1	normalChangeTexChrId=3060	normalChangeResouceId=-1	[DS3] Hollow Soldier - Lantern - High Wall of Lothric
+c7006	70060009	normalChangeAnimChrId=-1	RetargetReferenceChrId=3060	normalChangeModelId=-1	normalChangeTexChrId=3060	normalChangeResouceId=-1	[DS3] Hollow Soldier - Crossbow - High Wall of Lothric
+c7006	70060010	normalChangeAnimChrId=-1	RetargetReferenceChrId=3060	normalChangeModelId=-1	normalChangeTexChrId=3060	normalChangeResouceId=-1	[DS3] Hollow Soldier - Spear and Shield - High Wall of Lothric
+c7006	70060011	normalChangeAnimChrId=-1	RetargetReferenceChrId=3060	normalChangeModelId=-1	normalChangeTexChrId=3060	normalChangeResouceId=-1	[DS3] Hollow Soldier - Naked - High Wall of Lothric
+c7006	70060012	normalChangeAnimChrId=-1	RetargetReferenceChrId=3060	normalChangeModelId=-1	normalChangeTexChrId=3060	normalChangeResouceId=-1	[DS3] Hollow Soldier - Assassin - High Wall of Lothric
+c7006	70060013	normalChangeAnimChrId=-1	RetargetReferenceChrId=3060	normalChangeModelId=-1	normalChangeTexChrId=3060	normalChangeResouceId=-1	[DS3] Hollow Soldier - Naked - Undead Settlement
+c7006	70060014	normalChangeAnimChrId=-1	RetargetReferenceChrId=3060	normalChangeModelId=-1	normalChangeTexChrId=3060	normalChangeResouceId=-1	[DS3] Hollow Soldier - Naked - Fireless Shrine
+c7006	70060015	normalChangeAnimChrId=-1	RetargetReferenceChrId=3060	normalChangeModelId=-1	normalChangeTexChrId=3060	normalChangeResouceId=-1	[DS3] Hollow Soldier - Sword - Lothric Castle
+c7006	70060016	normalChangeAnimChrId=-1	RetargetReferenceChrId=3060	normalChangeModelId=-1	normalChangeTexChrId=3060	normalChangeResouceId=-1	[DS3] Hollow Soldier - Sword - Lothric Castle
+c7006	70060017	normalChangeAnimChrId=-1	RetargetReferenceChrId=3060	normalChangeModelId=-1	normalChangeTexChrId=3060	normalChangeResouceId=-1	[DS3] Hollow Soldier - Sword - Lothric Castle
+c7006	70060018	normalChangeAnimChrId=-1	RetargetReferenceChrId=3060	normalChangeModelId=-1	normalChangeTexChrId=3060	normalChangeResouceId=-1	[DS3] Hollow Soldier - Sword - Lothric Castle
+c7006	70060019	normalChangeAnimChrId=-1	RetargetReferenceChrId=3060	normalChangeModelId=-1	normalChangeTexChrId=3060	normalChangeResouceId=-1	[DS3] Hollow Soldier - Lantern - Lothric Castle
+c7006	70060020	normalChangeAnimChrId=-1	RetargetReferenceChrId=3060	normalChangeModelId=-1	normalChangeTexChrId=3060	normalChangeResouceId=-1	[DS3] Hollow Soldier - Sword - Farron Keep
+c7006	70060021	normalChangeAnimChrId=-1	RetargetReferenceChrId=3060	normalChangeModelId=-1	normalChangeTexChrId=3060	normalChangeResouceId=-1	[DS3] Hollow Soldier - Lantern - Farron Keep
+c7006	70060022	normalChangeAnimChrId=-1	RetargetReferenceChrId=3060	normalChangeModelId=-1	normalChangeTexChrId=3060	normalChangeResouceId=-1	[DS3] Hollow Soldier - Crossbow - Farron Keep
+c7006	70060023	normalChangeAnimChrId=-1	RetargetReferenceChrId=3060	normalChangeModelId=-1	normalChangeTexChrId=3060	normalChangeResouceId=-1	[DS3] Hollow Soldier - Spear and Shield - Farron Keep
+c7006	70060024	normalChangeAnimChrId=-1	RetargetReferenceChrId=3060	normalChangeModelId=-1	normalChangeTexChrId=3060	normalChangeResouceId=-1	[DS3] Hollow Soldier - Assassin - Farron Keep
+c7007	70070000	normalChangeAnimChrId=-1	RetargetReferenceChrId=3060	normalChangeModelId=-1	normalChangeTexChrId=3060	normalChangeResouceId=-1	[DS3] Hollow Soldier - Sword - Lothric Castle
+c7007	70070001	normalChangeAnimChrId=-1	RetargetReferenceChrId=3060	normalChangeModelId=-1	normalChangeTexChrId=3060	normalChangeResouceId=-1	[DS3] Hollow Soldier - Sword and Shield - Lothric Castle
+c7007	70070002	normalChangeAnimChrId=-1	RetargetReferenceChrId=3060	normalChangeModelId=-1	normalChangeTexChrId=3060	normalChangeResouceId=-1	[DS3] Hollow Soldier - Crossbow - Lothric Castle
+c7007	70070003	normalChangeAnimChrId=-1	RetargetReferenceChrId=3060	normalChangeModelId=-1	normalChangeTexChrId=3060	normalChangeResouceId=-1	[DS3] Hollow Soldier - Spear and Shield - Lothric Castle
+c7007	70070004	normalChangeAnimChrId=-1	RetargetReferenceChrId=3060	normalChangeModelId=-1	normalChangeTexChrId=3060	normalChangeResouceId=-1	[DS3] Hollow Soldier - Assassin - Lothric Castle
+c7008	70080000	normalChangeAnimChrId=-1	RetargetReferenceChrId=3060	normalChangeModelId=-1	normalChangeTexChrId=3060	normalChangeResouceId=-1	[DS3] Hollow Soldier - Sword - Grand Archives
+c7008	70080001	normalChangeAnimChrId=-1	RetargetReferenceChrId=3060	normalChangeModelId=-1	normalChangeTexChrId=3060	normalChangeResouceId=-1	[DS3] Hollow Soldier - Sword and Shield - Grand Archives
+c7008	70080002	normalChangeAnimChrId=-1	RetargetReferenceChrId=3060	normalChangeModelId=-1	normalChangeTexChrId=3060	normalChangeResouceId=-1	[DS3] Hollow Soldier - Crossbow - Grand Archives
+c7008	70080003	normalChangeAnimChrId=-1	RetargetReferenceChrId=3060	normalChangeModelId=-1	normalChangeTexChrId=3060	normalChangeResouceId=-1	[DS3] Hollow Soldier - Spear and Shield - Grand Archives
+c7009	70090000	normalChangeAnimChrId=-1	RetargetReferenceChrId=3060	normalChangeModelId=-1	normalChangeTexChrId=3060	normalChangeResouceId=-1	[DS3] Large Hollow Soldier - Greataxe - High Wall of Lothric
+c7009	70090001	normalChangeAnimChrId=-1	RetargetReferenceChrId=3060	normalChangeModelId=-1	normalChangeTexChrId=3060	normalChangeResouceId=-1	[DS3] Large Hollow Soldier - Halberd - High Wall of Lothric
+c7010	70100000	normalChangeAnimChrId=-1	RetargetReferenceChrId=3060	normalChangeModelId=-1	normalChangeTexChrId=3060	normalChangeResouceId=-1	[DS3] Large Hollow Soldier - Greataxe - Lothric Castle
+c7010	70100001	normalChangeAnimChrId=-1	RetargetReferenceChrId=3060	normalChangeModelId=-1	normalChangeTexChrId=3060	normalChangeResouceId=-1	[DS3] Large Hollow Soldier - Halberd - Lothric Castle
+c7011	70110000	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Rotten Slug - Lothric Castle
+c7011	70110001	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Rotten Slug - Farron Keep
+c7012	70120000	normalChangeAnimChrId=-1	RetargetReferenceChrId=3660	normalChangeModelId=-1	normalChangeTexChrId=3661	normalChangeResouceId=-1	[DS3] Carthus Swordsman - Sword - Catacombs of Carthus
+c7012	70120001	normalChangeAnimChrId=-1	RetargetReferenceChrId=3660	normalChangeModelId=-1	normalChangeTexChrId=3661	normalChangeResouceId=-1	[DS3] Carthus Swordsman - Greatsword - Catacombs of Carthus
+c7012	70120002	normalChangeAnimChrId=-1	RetargetReferenceChrId=3660	normalChangeModelId=-1	normalChangeTexChrId=3661	normalChangeResouceId=-1	[DS3] Carthus Swordsman - Greatsword - Catacombs of Carthus
+c7012	70120003	normalChangeAnimChrId=-1	RetargetReferenceChrId=3660	normalChangeModelId=-1	normalChangeTexChrId=3661	normalChangeResouceId=-1	[DS3] Carthus Swordsman - Greatsword - Wolnir - Catacombs of Carthus
+c7012	70120004	normalChangeAnimChrId=-1	RetargetReferenceChrId=3660	normalChangeModelId=-1	normalChangeTexChrId=3661	normalChangeResouceId=-1	[DS3] Carthus Swordsman - Greatsword - Catacombs of Carthus
+c7012	70120005	normalChangeAnimChrId=-1	RetargetReferenceChrId=3660	normalChangeModelId=-1	normalChangeTexChrId=3661	normalChangeResouceId=-1	[DS3] Carthus Swordsman - Greatsword - Catacombs of Carthus
+c7012	70120006	normalChangeAnimChrId=-1	RetargetReferenceChrId=3660	normalChangeModelId=-1	normalChangeTexChrId=3661	normalChangeResouceId=-1	[DS3] Carthus Swordsman - Bow - Catacombs of Carthus
+c7013	70130000	normalChangeAnimChrId=-1	RetargetReferenceChrId=3660	normalChangeModelId=-1	normalChangeTexChrId=3661	normalChangeResouceId=-1	[DS3] Carthus Swordsman - Shotel - Catacombs of Carthus
+c7013	70130001	normalChangeAnimChrId=-1	RetargetReferenceChrId=3660	normalChangeModelId=-1	normalChangeTexChrId=3661	normalChangeResouceId=-1	[DS3] Carthus Swordsman - Shotel - Catacombs of Carthus
+c7013	70130002	normalChangeAnimChrId=-1	RetargetReferenceChrId=3660	normalChangeModelId=-1	normalChangeTexChrId=3661	normalChangeResouceId=-1	[DS3] Carthus Swordsman - Twin Shotel - Catacombs of Carthus
+c7013	70130003	normalChangeAnimChrId=-1	RetargetReferenceChrId=3660	normalChangeModelId=-1	normalChangeTexChrId=3661	normalChangeResouceId=-1	[DS3] Carthus Swordsman - Twin Shotel - Wolnir - Catacombs of Carthus
+c7013	70130004	normalChangeAnimChrId=-1	RetargetReferenceChrId=3660	normalChangeModelId=-1	normalChangeTexChrId=3661	normalChangeResouceId=-1	[DS3] Carthus Swordsman - Shotel - Smouldering Lake
+c7013	70130005	normalChangeAnimChrId=-1	RetargetReferenceChrId=3660	normalChangeModelId=-1	normalChangeTexChrId=3661	normalChangeResouceId=-1	[DS3] Carthus Swordsman - Twin Shotel - Smouldering Lake
+c7014	70140000	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Cathedral Knight - Mace - Cathedral of the Deep
+c7014	70140001	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Cathedral Knight - Greatsword - Cathedral of the Deep
+c7014	70140002	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Cathedral Knight - Crossbow - Cathedral of the Deep
+c7014	70140003	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Cathedral Knight - Greatsword - Lothric Castle
+c7014	70140004	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Cathedral Knight - Mace - Lothric Castle
+c7014	70140005	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Cathedral Knight - Greatsword - Lothric Castle
+c7015	70150000	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Hollow Slave - Axe - Cathedral of the Deep
+c7015	70150001	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Hollow Slave - Pick - Cathedral of the Deep
+c7015	70150002	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Hollow Slave - Flamberge - Cathedral of the Deep
+c7015	70150003	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Hollow Slave - Axe - Grand Archives
+c7015	70150004	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Hollow Slave - Pick - Grand Archives
+c7015	70150005	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Hollow Slave - Flamberge - Grand Archives
+c7015	70150006	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Hollow Slave - Axe - Undead Settlement
+c7015	70150007	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Hollow Slave - Pick - Undead Settlement
+c7015	70150008	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Hollow Slave - Flamberge - Undead Settlement
+c7015	70150009	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Hollow Slave - Axe - Lothric Castle
+c7015	70150010	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Hollow Slave - Pick - Lothric Castle
+c7016	70160000	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Hollow Slave - Axe - Dreg Heap
+c7016	70160001	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Hollow Slave - Axe - Dreg Heap
+c7016	70160002	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Hollow Slave - Pick - Dreg Heap
+c7016	70160003	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Hollow Slave - Flamberge - Dreg Heap
+c7016	70160004	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Hollow Slave - Flamberge - Dreg Heap
+c7016	70160005	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Hollow Slave - Flamberge - Dreg Heap
+c7017	70170000	normalChangeAnimChrId=-1	RetargetReferenceChrId=3450	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Ghru - Spear - Farron Keep
+c7017	70170001	normalChangeAnimChrId=-1	RetargetReferenceChrId=3450	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Ghru - Spear - Farron Keep
+c7017	70170002	normalChangeAnimChrId=-1	RetargetReferenceChrId=3450	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Ghru - Spear - Road of Sacrifices
+c7017	70170003	normalChangeAnimChrId=-1	RetargetReferenceChrId=3450	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Ghru - Curved Sword - Farron Keep
+c7017	70170004	normalChangeAnimChrId=-1	RetargetReferenceChrId=3450	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Ghru - Curved Sword - Road of Sacrifices
+c7017	70170005	normalChangeAnimChrId=-1	RetargetReferenceChrId=3450	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Ghru - Dagger and Talisman - Farron Keep
+c7017	70170006	normalChangeAnimChrId=-1	RetargetReferenceChrId=3450	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Ghru - Dagger and Talisman - Road of Sacrifices
+c7017	70170007	normalChangeAnimChrId=-1	RetargetReferenceChrId=3450	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Ghru - Mad and Horned - Farron Keep
+c7017	70170008	normalChangeAnimChrId=-1	RetargetReferenceChrId=3450	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Ghru - Mad with Beard - Farron Keep
+c7018	70180000	normalChangeAnimChrId=-1	RetargetReferenceChrId=3450	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Smouldering Ghru - Spear - Smouldering Lake
+c7018	70180001	normalChangeAnimChrId=-1	RetargetReferenceChrId=3450	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Smouldering Ghru - Curved Sword - Smouldering Lake
+c7018	70180002	normalChangeAnimChrId=-1	RetargetReferenceChrId=3450	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Smouldering Ghru - Dagger and Talisman - Smouldering Lake
+c7018	70180003	normalChangeAnimChrId=-1	RetargetReferenceChrId=3450	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Smouldering Ghru - Mad and Horned - Smouldering Lake
+c7018	70180004	normalChangeAnimChrId=-1	RetargetReferenceChrId=3450	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Smouldering Ghru - Mad with Beard - Smouldering Lake
+c7019	70190000	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Infested Corpse - Cathedral of the Deep
+c7019	70190001	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Infested Corpse - Chest Beast - Cathedral of the Deep
+c7019	70190002	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Infested Corpse - Irithyll Dungeon
+c7020	70200000	normalChangeAnimChrId=-1	RetargetReferenceChrId=3900	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Cathedral Evangelist - Tome - Undead Settlement
+c7020	70200001	normalChangeAnimChrId=-1	RetargetReferenceChrId=3900	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Cathedral Evangelist - Tome
+c7020	70200002	normalChangeAnimChrId=-1	RetargetReferenceChrId=3900	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Cathedral Evangelist - Tome - Cathedral of the Deep
+c7020	70200003	normalChangeAnimChrId=-1	RetargetReferenceChrId=3900	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Cathedral Evangelist - Tome - Road of Sacrifices
+c7020	70200004	normalChangeAnimChrId=-1	RetargetReferenceChrId=3900	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Cathedral Evangelist - Tome - Anor Londo/Lothric Castle
+c7021	70210000	normalChangeAnimChrId=-1	RetargetReferenceChrId=4310	normalChangeModelId=-1	normalChangeTexChrId=4310	normalChangeResouceId=-1	[DS3] Peasant Hollow - Axe - Undead Settlement
+c7021	70210001	normalChangeAnimChrId=-1	RetargetReferenceChrId=4310	normalChangeModelId=-1	normalChangeTexChrId=4310	normalChangeResouceId=-1	[DS3] Peasant Hollow - Axe - Cursed Greatwood
+c7021	70210002	normalChangeAnimChrId=-1	RetargetReferenceChrId=4310	normalChangeModelId=-1	normalChangeTexChrId=4310	normalChangeResouceId=-1	[DS3] Peasant Hollow - Lantern - Undead Settlement
+c7021	70210003	normalChangeAnimChrId=-1	RetargetReferenceChrId=4310	normalChangeModelId=-1	normalChangeTexChrId=4310	normalChangeResouceId=-1	[DS3] Peasant Hollow - Lantern - Undead Settlement
+c7021	70210004	normalChangeAnimChrId=-1	RetargetReferenceChrId=4310	normalChangeModelId=-1	normalChangeTexChrId=4310	normalChangeResouceId=-1	[DS3] Peasant Hollow - Lantern - Undead Settlement
+c7021	70210005	normalChangeAnimChrId=-1	RetargetReferenceChrId=4310	normalChangeModelId=-1	normalChangeTexChrId=4310	normalChangeResouceId=-1	[DS3] Peasant Hollow - Sickle - Undead Settlement
+c7021	70210006	normalChangeAnimChrId=-1	RetargetReferenceChrId=4310	normalChangeModelId=-1	normalChangeTexChrId=4310	normalChangeResouceId=-1	[DS3] Peasant Hollow - Sickle - Cursed Greatwood
+c7021	70210007	normalChangeAnimChrId=-1	RetargetReferenceChrId=4310	normalChangeModelId=-1	normalChangeTexChrId=4310	normalChangeResouceId=-1	[DS3] Peasant Hollow - Mallet - Undead Settlement
+c7021	70210008	normalChangeAnimChrId=-1	RetargetReferenceChrId=4310	normalChangeModelId=-1	normalChangeTexChrId=4310	normalChangeResouceId=-1	[DS3] Peasant Hollow - Mallet - Cursed Greatwood
+c7021	70210009	normalChangeAnimChrId=-1	RetargetReferenceChrId=4310	normalChangeModelId=-1	normalChangeTexChrId=4310	normalChangeResouceId=-1	[DS3] Peasant Hollow - Hoe - Undead Settlement
+c7021	70210010	normalChangeAnimChrId=-1	RetargetReferenceChrId=4310	normalChangeModelId=-1	normalChangeTexChrId=4310	normalChangeResouceId=-1	[DS3] Peasant Hollow - Hoe - Cursed Greatwood
+c7022	70220000	normalChangeAnimChrId=-1	RetargetReferenceChrId=3000	normalChangeModelId=-1	normalChangeTexChrId=3000	normalChangeResouceId=-1	[DS3] Jailer Hollow - Axe
+c7022	70220001	normalChangeAnimChrId=-1	RetargetReferenceChrId=3000	normalChangeModelId=-1	normalChangeTexChrId=3000	normalChangeResouceId=-1	[DS3] Jailer Hollow - Lantern
+c7022	70220002	normalChangeAnimChrId=-1	RetargetReferenceChrId=3000	normalChangeModelId=-1	normalChangeTexChrId=3000	normalChangeResouceId=-1	[DS3] Jailer Hollow - Sickle
+c7022	70220003	normalChangeAnimChrId=-1	RetargetReferenceChrId=3000	normalChangeModelId=-1	normalChangeTexChrId=3000	normalChangeResouceId=-1	[DS3] Jailer Hollow - Mallet
+c7022	70220004	normalChangeAnimChrId=-1	RetargetReferenceChrId=3000	normalChangeModelId=-1	normalChangeTexChrId=3000	normalChangeResouceId=-1	[DS3] Jailer Hollow
+c7023	70230000	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Cathedral Grave Warden - Cathedral of the Deep
+c7023	70230001	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Cathedral Grave Warden - Untended Graves
+c7024	70240000	normalChangeAnimChrId=-1	RetargetReferenceChrId=4310	normalChangeModelId=-1	normalChangeTexChrId=4310	normalChangeResouceId=-1	[DS3] Hollow Manservant - Saw with Board - Undead Settlement
+c7024	70240001	normalChangeAnimChrId=-1	RetargetReferenceChrId=4310	normalChangeModelId=-1	normalChangeTexChrId=4310	normalChangeResouceId=-1	[DS3] Hollow Manservant - Saw with Cage - Undead Settlement
+c7024	70240002	normalChangeAnimChrId=-1	RetargetReferenceChrId=4310	normalChangeModelId=-1	normalChangeTexChrId=4310	normalChangeResouceId=-1	[DS3] Hollow Manservant - Pot with Board - Undead Settlement
+c7024	70240003	normalChangeAnimChrId=-1	RetargetReferenceChrId=4310	normalChangeModelId=-1	normalChangeTexChrId=4310	normalChangeResouceId=-1	[DS3] Hollow Manservant - Pot with Board - Road of Sacrifices
+c7025	70250000	normalChangeAnimChrId=-1	RetargetReferenceChrId=4350	normalChangeModelId=-1	normalChangeTexChrId=4350	normalChangeResouceId=-1	[DS3] Lothric Knight - Sword - High Wall of Lothric
+c7025	70250001	normalChangeAnimChrId=-1	RetargetReferenceChrId=4350	normalChangeModelId=-1	normalChangeTexChrId=4350	normalChangeResouceId=-1	[DS3] Lothric Knight - Spear - High Wall of Lothric
+c7026	70260000	normalChangeAnimChrId=-1	RetargetReferenceChrId=4350	normalChangeModelId=-1	normalChangeTexChrId=4350	normalChangeResouceId=-1	[DS3] Lothric Knight - Sword - Lothric Castle
+c7026	70260001	normalChangeAnimChrId=-1	RetargetReferenceChrId=4350	normalChangeModelId=-1	normalChangeTexChrId=4350	normalChangeResouceId=-1	[DS3] Lothric Knight - Sword - Lothric Castle - Red-eyed
+c7026	70260002	normalChangeAnimChrId=-1	RetargetReferenceChrId=4350	normalChangeModelId=-1	normalChangeTexChrId=4350	normalChangeResouceId=-1	[DS3] Lothric Knight - Spear - Lothric Castle
+c7026	70260003	normalChangeAnimChrId=-1	RetargetReferenceChrId=4350	normalChangeModelId=-1	normalChangeTexChrId=4350	normalChangeResouceId=-1	[DS3] Lothric Knight - Spear - Lothric Castle - Red-eyed
+c7026	70260004	normalChangeAnimChrId=-1	RetargetReferenceChrId=4350	normalChangeModelId=-1	normalChangeTexChrId=4350	normalChangeResouceId=-1	[DS3] Lothric Knight - Sword - Lothric Castle
+c7026	70260005	normalChangeAnimChrId=-1	RetargetReferenceChrId=4350	normalChangeModelId=-1	normalChangeTexChrId=4350	normalChangeResouceId=-1	[DS3] Lothric Knight - Sword - Lothric Castle - Red-eyed
+c7026	70260006	normalChangeAnimChrId=-1	RetargetReferenceChrId=4350	normalChangeModelId=-1	normalChangeTexChrId=4350	normalChangeResouceId=-1	[DS3] Lothric Knight - Sword - Grand Archives
+c7026	70260007	normalChangeAnimChrId=-1	RetargetReferenceChrId=4350	normalChangeModelId=-1	normalChangeTexChrId=4350	normalChangeResouceId=-1	[DS3] Lothric Knight - Spear - Grand Archives
+c7026	70260008	normalChangeAnimChrId=-1	RetargetReferenceChrId=4350	normalChangeModelId=-1	normalChangeTexChrId=4350	normalChangeResouceId=-1	[DS3] Lothric Knight - Sword - Grand Archives
+c7027	70270000	normalChangeAnimChrId=-1	RetargetReferenceChrId=4350	normalChangeModelId=-1	normalChangeTexChrId=4350	normalChangeResouceId=-1	[DS3] Lothric Knight - Sword - Exposed Face - High Wall of Lothric - Red-eyed
+c7027	70270001	normalChangeAnimChrId=-1	RetargetReferenceChrId=4350	normalChangeModelId=-1	normalChangeTexChrId=4350	normalChangeResouceId=-1	[DS3] Lothric Knight - Sword - Exposed Face - Grand Archives - Red-eyed
+c7027	70270002	normalChangeAnimChrId=-1	RetargetReferenceChrId=4350	normalChangeModelId=-1	normalChangeTexChrId=4350	normalChangeResouceId=-1	[DS3] Lothric Knight - Spear - Exposed Face - Grand Archives - Red-eyed
+c7027	70270003	normalChangeAnimChrId=-1	RetargetReferenceChrId=4350	normalChangeModelId=-1	normalChangeTexChrId=4350	normalChangeResouceId=-1	[DS3] Lothric Knight - Sword - Exposed Face - Grand Archives - Red-eyed
+c7028	70280000	normalChangeAnimChrId=-1	RetargetReferenceChrId=4350	normalChangeModelId=-1	normalChangeTexChrId=4350	normalChangeResouceId=-1	[DS3] Overgrown Lothric Knight - Sword - Dreg Heap
+c7028	70280001	normalChangeAnimChrId=-1	RetargetReferenceChrId=4350	normalChangeModelId=-1	normalChangeTexChrId=4350	normalChangeResouceId=-1	[DS3] Overgrown Lothric Knight - War Banner - Dreg Heap
+c7028	70280002	normalChangeAnimChrId=-1	RetargetReferenceChrId=4350	normalChangeModelId=-1	normalChangeTexChrId=4350	normalChangeResouceId=-1	[DS3] Overgrown Lothric Knight - War Banner - Dreg Heap - Red-eyed
+c7028	70280003	normalChangeAnimChrId=-1	RetargetReferenceChrId=4350	normalChangeModelId=-1	normalChangeTexChrId=4350	normalChangeResouceId=-1	[DS3] Overgrown Lothric Knight - Greatsword - Dreg Heap
+c7029	70290000	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Winged Knight - Halberd - High Wall of Lothric
+c7029	70290001	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Winged Knight - Halberd - Lothric Castle
+c7029	70290002	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Winged Knight - Twinaxes - Lothric Castle
+c7029	70290003	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Winged Knight - Halberd - Grand Archives
+c7029	70290004	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Winged Knight - Twinaxes - Grand Archives
+c7030	70300000	normalChangeAnimChrId=-1	RetargetReferenceChrId=4350	normalChangeModelId=-1	normalChangeTexChrId=4350	normalChangeResouceId=-1	[DS3] Black Knight - Greatsword - Cemetery of Ash
+c7030	70300001	normalChangeAnimChrId=-1	RetargetReferenceChrId=4350	normalChangeModelId=-1	normalChangeTexChrId=4350	normalChangeResouceId=-1	[DS3] Black Knight - Greataxe - Cemetery of Ash
+c7030	70300002	normalChangeAnimChrId=-1	RetargetReferenceChrId=4350	normalChangeModelId=-1	normalChangeTexChrId=4350	normalChangeResouceId=-1	[DS3] Black Knight - Greatsword - Smouldering Lake
+c7030	70300003	normalChangeAnimChrId=-1	RetargetReferenceChrId=4350	normalChangeModelId=-1	normalChangeTexChrId=4350	normalChangeResouceId=-1	[DS3] Black Knight - Greataxe - Smouldering Lake
+c7030	70300004	normalChangeAnimChrId=-1	RetargetReferenceChrId=4350	normalChangeModelId=-1	normalChangeTexChrId=4350	normalChangeResouceId=-1	[DS3] Black Knight - Greatsword - Farron Keep
+c7031	70310000	normalChangeAnimChrId=-1	RetargetReferenceChrId=3060	normalChangeModelId=-1	normalChangeTexChrId=3060	normalChangeResouceId=-1	[DS3] Boreal Outrider Knight - Undead Settlement
+c7031	70310001	normalChangeAnimChrId=-1	RetargetReferenceChrId=3060	normalChangeModelId=-1	normalChangeTexChrId=3060	normalChangeResouceId=-1	[DS3] Boreal Outrider Knight - Grand Archives
+c7031	70310002	normalChangeAnimChrId=-1	RetargetReferenceChrId=3060	normalChangeModelId=-1	normalChangeTexChrId=3060	normalChangeResouceId=-1	[DS3] Boreal Outrider Knight - Lothric Castle
+c7032	70320000	normalChangeAnimChrId=-1	RetargetReferenceChrId=4310	normalChangeModelId=-1	normalChangeTexChrId=4310	normalChangeResouceId=-1	[DS3] Crystal Sage
+c7032	70320001	normalChangeAnimChrId=-1	RetargetReferenceChrId=4310	normalChangeModelId=-1	normalChangeTexChrId=4310	normalChangeResouceId=-1	[DS3] Crystal Sage - Road of Sacrifices
+c7033	70330000	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Crystal Sage - Grand Archives
+c7034	70340000	normalChangeAnimChrId=-1	RetargetReferenceChrId=3900	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Archive Scholar - Grand Archives
+c7034	70340001	normalChangeAnimChrId=-1	RetargetReferenceChrId=3900	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Archive Scholar - Grand Archives
+c7035	70350000	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Irithyllian Slave - Irithyll of the Boreal Valley
+c7035	70350001	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Irithyllian Slave - Irithyll of the Boreal Valley
+c7035	70350002	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Irithyllian Slave - Irithyll of the Boreal Valley
+c7035	70350003	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Irithyllian Slave - Irithyll of the Boreal Valley
+c7035	70350004	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Irithyllian Slave - Irithyll of the Boreal Valley
+c7035	70350005	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Irithyllian Slave - Irithyll of the Boreal Valley
+c7035	70350006	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Irithyllian Slave - Irithyll of the Boreal Valley
+c7035	70350007	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Irithyllian Slave - Irithyll of the Boreal Valley
+c7035	70350008	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Irithyllian Slave - Irithyll of the Boreal Valley
+c7035	70350009	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Irithyllian Slave - Irithyll of the Boreal Valley
+c7035	70350010	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Irithyllian Slave - Irithyll of the Boreal Valley
+c7035	70350011	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Irithyllian Slave - Irithyll of the Boreal Valley
+c7036	70360000	normalChangeAnimChrId=-1	RetargetReferenceChrId=3660	normalChangeModelId=-1	normalChangeTexChrId=3661	normalChangeResouceId=-1	[DS3] Lycanthrope - Road of Sacrifices
+c7036	70360001	normalChangeAnimChrId=-1	RetargetReferenceChrId=3660	normalChangeModelId=-1	normalChangeTexChrId=3661	normalChangeResouceId=-1	[DS3] Lycanthrope - Road of Sacrifices
+c7036	70360002	normalChangeAnimChrId=-1	RetargetReferenceChrId=3660	normalChangeModelId=-1	normalChangeTexChrId=3661	normalChangeResouceId=-1	[DS3] Lycanthrope - Road of Sacrifices
+c7036	70360003	normalChangeAnimChrId=-1	RetargetReferenceChrId=3660	normalChangeModelId=-1	normalChangeTexChrId=3661	normalChangeResouceId=-1	[DS3] Lycanthrope - Irithyll Dungeon
+c7037	70370000	normalChangeAnimChrId=-1	RetargetReferenceChrId=3060	normalChangeModelId=-1	normalChangeTexChrId=3060	normalChangeResouceId=-1	[DS3] Lycanthrope Hunter - Road of Sacrifices
+c7037	70370001	normalChangeAnimChrId=-1	RetargetReferenceChrId=3060	normalChangeModelId=-1	normalChangeTexChrId=3060	normalChangeResouceId=-1	[DS3] Lycanthrope Hunter - Road of Sacrifices
+c7037	70370002	normalChangeAnimChrId=-1	RetargetReferenceChrId=3060	normalChangeModelId=-1	normalChangeTexChrId=3060	normalChangeResouceId=-1	[DS3] Lycanthrope Hunter - Road of Sacrifices
+c7037	70370003	normalChangeAnimChrId=-1	RetargetReferenceChrId=3060	normalChangeModelId=-1	normalChangeTexChrId=3060	normalChangeResouceId=-1	[DS3] Lycanthrope Hunter - Road of Sacrifices
+c7038	70380000	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Serpent-man Summoner - Archdragon Peak
+c7039	70390000	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Serpent-man - Dagger - Archdragon Peak
+c7039	70390001	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Serpent-man - Hatchet - Archdragon Peak
+c7039	70390002	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Serpent-man - Axe - Archdragon Peak
+c7039	70390003	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Serpent-man - Double-bit Hatchet - Archdragon Peak
+c7039	70390004	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Serpent-man - Hatchet - Consumed King's Garden
+c7040	70400000	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Giant Serpent-man - Chainaxe - Archdragon Peak
+c7040	70400001	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Giant Serpent-man - Greataxe - Archdragon Peak
+c7041	70410000	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Fire Keeper - Firelink Shrine
+c7041	70410001	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Fire Keeper - Firelink Shrine
+c7042	70420000	normalChangeAnimChrId=-1	RetargetReferenceChrId=4350	normalChangeModelId=-1	normalChangeTexChrId=4350	normalChangeResouceId=-1	[DS3] Silver Knight - Sword and Shield - Anor Londo
+c7042	70420001	normalChangeAnimChrId=-1	RetargetReferenceChrId=4350	normalChangeModelId=-1	normalChangeTexChrId=4350	normalChangeResouceId=-1	[DS3] Silver Knight - Sword and Shield - Red-eyed - Anor Londo
+c7042	70420002	normalChangeAnimChrId=-1	RetargetReferenceChrId=4350	normalChangeModelId=-1	normalChangeTexChrId=4350	normalChangeResouceId=-1	[DS3] Silver Knight - Spear and Shield - Anor Londo
+c7042	70420003	normalChangeAnimChrId=-1	RetargetReferenceChrId=4350	normalChangeModelId=-1	normalChangeTexChrId=4350	normalChangeResouceId=-1	[DS3] Silver Knight - Greatbow - Anor Londo
+c7042	70420004	normalChangeAnimChrId=-1	RetargetReferenceChrId=4350	normalChangeModelId=-1	normalChangeTexChrId=4350	normalChangeResouceId=-1	[DS3] Silver Knight - Greatbow - Anor Londo
+c7042	70420005	normalChangeAnimChrId=-1	RetargetReferenceChrId=4350	normalChangeModelId=-1	normalChangeTexChrId=4350	normalChangeResouceId=-1	[DS3] Silver Knight - Sword and Shield - Irithyll
+c7042	70420006	normalChangeAnimChrId=-1	RetargetReferenceChrId=4350	normalChangeModelId=-1	normalChangeTexChrId=4350	normalChangeResouceId=-1	[DS3] Silver Knight - Sword and Shield - Red-eyed - Anor Londo
+c7042	70420007	normalChangeAnimChrId=-1	RetargetReferenceChrId=4350	normalChangeModelId=-1	normalChangeTexChrId=4350	normalChangeResouceId=-1	[DS3] Silver Knight - Sword and Shield - Anor Londo
+c7043	70430000	normalChangeAnimChrId=-1	RetargetReferenceChrId=3060	normalChangeModelId=-1	normalChangeTexChrId=3060	normalChangeResouceId=-1	[DS3] Undead Cleric 1 - Cemetery of Ash
+c7043	70430001	normalChangeAnimChrId=-1	RetargetReferenceChrId=3060	normalChangeModelId=-1	normalChangeTexChrId=3060	normalChangeResouceId=-1	[DS3] Undead Cleric 3 - Cemetery of Ash
+c7043	70430002	normalChangeAnimChrId=-1	RetargetReferenceChrId=3060	normalChangeModelId=-1	normalChangeTexChrId=3060	normalChangeResouceId=-1	[DS3] Undead Cleric 4 - Cemetery of Ash
+c7043	70430003	normalChangeAnimChrId=-1	RetargetReferenceChrId=3060	normalChangeModelId=-1	normalChangeTexChrId=3060	normalChangeResouceId=-1	[DS3] Undead Cleric 5 - Cemetery of Ash
+c7043	70430004	normalChangeAnimChrId=-1	RetargetReferenceChrId=3060	normalChangeModelId=-1	normalChangeTexChrId=3060	normalChangeResouceId=-1	[DS3] Undead Cleric 1 - Untended Graves
+c7043	70430005	normalChangeAnimChrId=-1	RetargetReferenceChrId=3060	normalChangeModelId=-1	normalChangeTexChrId=3060	normalChangeResouceId=-1	[DS3] Undead Cleric 3 - Untended Graves
+c7043	70430006	normalChangeAnimChrId=-1	RetargetReferenceChrId=3060	normalChangeModelId=-1	normalChangeTexChrId=3060	normalChangeResouceId=-1	[DS3] Undead Cleric 4 - Untended Graves
+c7043	70430007	normalChangeAnimChrId=-1	RetargetReferenceChrId=3060	normalChangeModelId=-1	normalChangeTexChrId=3060	normalChangeResouceId=-1	[DS3] Undead Cleric 7 - Untended Graves
+c7044	70440000	normalChangeAnimChrId=-1	RetargetReferenceChrId=3060	normalChangeModelId=-1	normalChangeTexChrId=3060	normalChangeResouceId=-1	[DS3] Devout of the Deep #1 - Cathedral of the Deep
+c7044	70440001	normalChangeAnimChrId=-1	RetargetReferenceChrId=3060	normalChangeModelId=-1	normalChangeTexChrId=3060	normalChangeResouceId=-1	[DS3] Devout of the Deep #1 - Cathedral of the Deep
+c7044	70440002	normalChangeAnimChrId=-1	RetargetReferenceChrId=3060	normalChangeModelId=-1	normalChangeTexChrId=3060	normalChangeResouceId=-1	[DS3] Devout of the Deep #2 - Cathedral of the Deep
+c7044	70440003	normalChangeAnimChrId=-1	RetargetReferenceChrId=3060	normalChangeModelId=-1	normalChangeTexChrId=3060	normalChangeResouceId=-1	[DS3] Devout of the Deep #3 - Cathedral of the Deep
+c7044	70440004	normalChangeAnimChrId=-1	RetargetReferenceChrId=3060	normalChangeModelId=-1	normalChangeTexChrId=3060	normalChangeResouceId=-1	[DS3] Devout of the Deep #3 - Cathedral of the Deep
+c7044	70440005	normalChangeAnimChrId=-1	RetargetReferenceChrId=3060	normalChangeModelId=-1	normalChangeTexChrId=3060	normalChangeResouceId=-1	[DS3] Devout of the Deep #5 - Cathedral of the Deep
+c7044	70440006	normalChangeAnimChrId=-1	RetargetReferenceChrId=3060	normalChangeModelId=-1	normalChangeTexChrId=3060	normalChangeResouceId=-1	[DS3] Devout of the Deep #5 - Cathedral of the Deep
+c7044	70440007	normalChangeAnimChrId=-1	RetargetReferenceChrId=3060	normalChangeModelId=-1	normalChangeTexChrId=3060	normalChangeResouceId=-1	[DS3] Devout of the Deep #7 - Cathedral of the Deep
+c7044	70440008	normalChangeAnimChrId=-1	RetargetReferenceChrId=3060	normalChangeModelId=-1	normalChangeTexChrId=3060	normalChangeResouceId=-1	[DS3] Devout of the Deep #8 - Cathedral of the Deep
+c7044	70440009	normalChangeAnimChrId=-1	RetargetReferenceChrId=3060	normalChangeModelId=-1	normalChangeTexChrId=3060	normalChangeResouceId=-1	[DS3] Devout of the Deep #8 - Cathedral of the Deep
+c7044	70440010	normalChangeAnimChrId=-1	RetargetReferenceChrId=3060	normalChangeModelId=-1	normalChangeTexChrId=3060	normalChangeResouceId=-1	[DS3] Devout of the Deep #8 - Cathedral of the Deep
+c7045	70450000	normalChangeAnimChrId=-1	RetargetReferenceChrId=3060	normalChangeModelId=-1	normalChangeTexChrId=3060	normalChangeResouceId=-1	[DS3] Sage Prentice #1
+c7045	70450001	normalChangeAnimChrId=-1	RetargetReferenceChrId=3060	normalChangeModelId=-1	normalChangeTexChrId=3060	normalChangeResouceId=-1	[DS3] Sage Prentice #2
+c7045	70450002	normalChangeAnimChrId=-1	RetargetReferenceChrId=3060	normalChangeModelId=-1	normalChangeTexChrId=3060	normalChangeResouceId=-1	[DS3] Sage Prentice #3
+c7045	70450003	normalChangeAnimChrId=-1	RetargetReferenceChrId=3060	normalChangeModelId=-1	normalChangeTexChrId=3060	normalChangeResouceId=-1	[DS3] Sage Prentice #6
+c7046	70460000	normalChangeAnimChrId=-1	RetargetReferenceChrId=3060	normalChangeModelId=-1	normalChangeTexChrId=3060	normalChangeResouceId=-1	[DS3] Lothric Priest
+c7046	70460001	normalChangeAnimChrId=-1	RetargetReferenceChrId=3060	normalChangeModelId=-1	normalChangeTexChrId=3060	normalChangeResouceId=-1	[DS3] Lothric Priest
+c7047	70470000	normalChangeAnimChrId=-1	RetargetReferenceChrId=3060	normalChangeModelId=-1	normalChangeTexChrId=3060	normalChangeResouceId=-1	[DS3] Large Devout of the Deep #1
+c7047	70470001	normalChangeAnimChrId=-1	RetargetReferenceChrId=3060	normalChangeModelId=-1	normalChangeTexChrId=3060	normalChangeResouceId=-1	[DS3] Large Devout of the Deep #2
+c7048	70480000	normalChangeAnimChrId=-1	RetargetReferenceChrId=3060	normalChangeModelId=-1	normalChangeTexChrId=3060	normalChangeResouceId=-1	[DS3] Sage's Devout
+c7048	70480001	normalChangeAnimChrId=-1	RetargetReferenceChrId=3060	normalChangeModelId=-1	normalChangeTexChrId=3060	normalChangeResouceId=-1	[DS3] Sage's Devout
+c7049	70490000	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Ludleth of Courland
+c7050	70500000	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Bonewheel Skeleton
+c7050	70500001	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Bonewheel Skeleton - Wolnir
+c7050	70500002	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Bonewheel Skeleton
+c7051	70510000	normalChangeAnimChrId=-1	RetargetReferenceChrId=3060	normalChangeModelId=-1	normalChangeTexChrId=3060	normalChangeResouceId=-1	[DS3] Irithyll Knight - Regular - Ghost
+c7052	70520000	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Irithyll Knight - Dancer - Ghost
+c7053	70530000	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Undead Dog
+c7053	70530001	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Undead Dog
+c7053	70530002	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Large Undead Dog
+c7053	70530003	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Large Undead Dog
+c7053	70530004	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Undead Dog
+c7053	70530005	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Undead Dog
+c7054	70540000	normalChangeAnimChrId=-1	RetargetReferenceChrId=4160	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Undead Dog
+c7054	70540001	normalChangeAnimChrId=-1	RetargetReferenceChrId=4160	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Small Undead Dog - High Wall of Lothric
+c7054	70540002	normalChangeAnimChrId=-1	RetargetReferenceChrId=4160	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Small Undead Dog - Undead Settlement
+c7054	70540003	normalChangeAnimChrId=-1	RetargetReferenceChrId=4160	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Undead Dog
+c7055	70550000	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Pontiff Knight - Curved Sword
+c7055	70550001	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Pontiff Knight - Curved Sword
+c7055	70550002	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Pontiff Knight - Scythe
+c7056	70560000	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Monstrosity of Sin
+c7056	70560001	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Monstrosity of Sin
+c7057	70570000	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Writhing Infested Corpse
+c7057	70570001	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Writhing Infested Corpse
+c7058	70580000	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Wretch
+c7058	70580001	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Wretch - Spear
+c7058	70580002	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Wretch - Dagger
+c7059	70590000	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Pregnant Undead Dog
+c7060	70600000	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=8000	normalChangeResouceId=-1	[DS3] Oceiros, the Consumed King
+c7061	70610000	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Sewer Centipede - Irithyll
+c7061	70610001	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Sewer Centipede - Profaned Capital
+c7061	70610002	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Sewer Centipede - Ariandel
+c7062	70620000	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Hound-rat - Undead Settlement
+c7062	70620001	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Hound-rat - Irithyll Dungeon
+c7062	70620002	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Hound-rat - Smouldering Lake
+c7063	70630000	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Mimic - High Wall of Lothric
+c7063	70630001	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Mimic - Undead Settlement
+c7063	70630002	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Mimic _ Exorcist Ojo 2 -- ????_?????? ??2
+c7063	70630003	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Mimic - Road of Sacrifices/Farron Keep
+c7063	70630004	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Mimic - Cathedral of the Deep
+c7063	70630005	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Mimic - Cathedral of the Deep
+c7063	70630006	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Mimic - Cathedral of the Deep
+c7063	70630007	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Mimic - Cathedral of the Deep
+c7063	70630008	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Mimic - Cathedral of the Deep
+c7063	70630009	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] 
+c7063	70630010	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Mimic _ Exorcist Dungeon -- ????_?????? ???
+c7063	70630011	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Mimic - Catacombs of Carthus/Smouldering Lake
+c7063	70630012	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Mimic - Cemetery of Ash/Untended Graves UNUSED
+c7063	70630013	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Mimic - Ariandel
+c7064	70640000	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Writhing Rotten Flesh
+c7065	70650000	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Writhing Rotten Flesh
+c7065	70650001	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Writhing Rotten Flesh
+c7066	70660000	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Smouldering Rotten Flesh
+c7067	70670000	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Basilisk - Farron Keep
+c7067	70670001	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Basilisk - Farron Keep
+c7067	70670002	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Basilisk - Farron Keep
+c7068	70680000	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Crystal Lizard
+c7068	70680001	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Crystal Lizard Town -- ????? ?
+c7068	70680002	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Crystal Lizard Ojo 2 -- ????? ??2
+c7068	70680003	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Crystal Lizard Ojo 3 -- ????? ??3
+c7068	70680004	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Crystal Lizard Bridge -- ????? ?
+c7068	70680005	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Crystal Lizard Anole -- ????? ????
+c7068	70680006	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Crystal Lizard Dungeon -- ????? ???
+c7068	70680007	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Crystal Lizard Poison Swamp -- ?????  ??
+c7068	70680008	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] 
+c7068	70680009	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] 
+c7068	70680010	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Crystal Lizard Cathedral Church -- ????? ????
+c7068	70680011	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Crystal Lizard Dungeon -- ????? ?????
+c7068	70680012	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] 
+c7068	70680013	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Crystal Lizard Base -- ????? ??
+c7068	70680014	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] 
+c7068	70680015	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] 
+c7069	70690000	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Yoel of Londor
+c7069	70690001	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Londor Pilgrim
+c7069	70690002	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Stone-humped Hag
+c7069	70690003	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Londor Pilgrim
+c7070	70700000	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Company Captain Yorshka
+c7071	70710000	normalChangeAnimChrId=2040	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Grub - Yellowfinger Heysel	BORROWS ANIMATIONS
+c7071	70710001	normalChangeAnimChrId=2040	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Grub - Yellowfinger Heysel	BORROWS ANIMATIONS
+c7071	70710002	normalChangeAnimChrId=2040	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Grub - Witch	BORROWS ANIMATIONS
+c7071	70710003	normalChangeAnimChrId=2040	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Grub - Witch	BORROWS ANIMATIONS
+c7071	70710004	normalChangeAnimChrId=2040	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Grub	BORROWS ANIMATIONS
+c7072	70720000	normalChangeAnimChrId=-1	RetargetReferenceChrId=3450	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Gargoyle - Hammer - Grand Archives
+c7072	70720001	normalChangeAnimChrId=-1	RetargetReferenceChrId=3450	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Gargoyle - Spear - Grand Archives
+c7073	70730000	normalChangeAnimChrId=-1	RetargetReferenceChrId=3450	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Gargoyle - Hammer - Profaned Capital
+c7073	70730001	normalChangeAnimChrId=-1	RetargetReferenceChrId=3450	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Gargoyle - Spear - Profaned Capital
+c7073	70730002	normalChangeAnimChrId=-1	RetargetReferenceChrId=3450	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Gargoyle - Spear - Profaned Capital
+c7074	70740000	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Carthus Sandworm - Smoldering Lake
+c7075	70750000	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Corvian - Dagger - Road of Sacrifices
+c7075	70750001	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Corvian - Storyteller Staff - Road of Sacrifices
+c7075	70750002	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Corvian - Dagger - Untended Graves
+c7075	70750003	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Corvian - Scythe - Untended Graves
+c7075	70750004	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Corvian - Storyteller Staff - Untended Graves
+c7075	70750005	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Corvian - Dagger - Road of Sacrifices
+c7075	70750006	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Corvian - Scythe - Road of Sacrifices
+c7075	70750007	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Corvian - Scythe - Road of Sacrifices
+c7075	70750008	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Corvian - Storyteller Staff - Road of Sacrifices
+c7075	70750009	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Corvian - Scythe - Irithyll
+c7075	70750010	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Corvian - Storyteller Staff - Irithyll
+c7075	70750011	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Corvian - Dagger
+c7075	70750012	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Corvian - Dagger - Ariandel
+c7075	70750013	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Dying Corvian - Ariandel
+c7076	70760000	normalChangeAnimChrId=-1	RetargetReferenceChrId=3900	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Jailer
+c7076	70760001	normalChangeAnimChrId=-1	RetargetReferenceChrId=3900	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Jailer Handmaid
+c7077	70770000	normalChangeAnimChrId=-1	RetargetReferenceChrId=4310	normalChangeModelId=-1	normalChangeTexChrId=4310	normalChangeResouceId=-1	[DS3] Vordt of the Boreal Valley
+c7078	70780000	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Sulyvahn's Beast - Pontiff's Right Eye
+c7078	70780001	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Sulyvahn's Beast - Ring of Favor
+c7079	70790000	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Ballista
+c7080	70800000	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Giant Crab - Road of Sacrifices
+c7080	70800001	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Giant Crab - Road of Sacrifices
+c7080	70800002	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Giant Crab - Farron Keep
+c7080	70800003	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Giant Crab - Smouldering Lake
+c7081	70810000	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Lesser Crab - Road of Sacrifices
+c7081	70810001	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Lesser Crab - Catacombs of Carthus
+c7082	70820000	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Giant Rat
+c7082	70820001	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Giant Rat
+c7082	70820002	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Giant Rat
+c7083	70830000	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Irithyll Dog
+c7083	70830001	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Irithyll Dog
+c7084	70840000	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=8000	normalChangeResouceId=-1	[DS3] Giant Slave - Irithyll
+c7084	70840001	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=8000	normalChangeResouceId=-1	[DS3] Tower Giant - Undead Settlement
+c7085	70850000	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=8000	normalChangeResouceId=-1	[DS3] Massive Giant Slave - Cathedral of the Deep
+c7085	70850001	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=8000	normalChangeResouceId=-1	[DS3] Massive Giant Slave - Cathedral of the Deep
+c7085	70850002	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=8000	normalChangeResouceId=-1	[DS3] Massive Giant Slave - Irithyll Dungeon
+c7086	70860000	normalChangeAnimChrId=-1	RetargetReferenceChrId=4310	normalChangeModelId=-1	normalChangeTexChrId=4310	normalChangeResouceId=-1	[DS3] Abyss Watcher - Main
+c7086	70860001	normalChangeAnimChrId=-1	RetargetReferenceChrId=4310	normalChangeModelId=-1	normalChangeTexChrId=4310	normalChangeResouceId=-1	[DS3] Abyss Watcher - Add
+c7086	70860002	normalChangeAnimChrId=-1	RetargetReferenceChrId=4310	normalChangeModelId=-1	normalChangeTexChrId=4310	normalChangeResouceId=-1	[DS3] Abyss Watcher - Red-eye - Add
+c7087	70870000	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Old Demon King
+c7088	70880000	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Demon - Undead Settlement
+c7088	70880001	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Demon - Catacombs of Carthus
+c7089	70890000	normalChangeAnimChrId=-1	RetargetReferenceChrId=3700	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Demon Cleric
+c7091	70910000	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Pilgrim Butterfly
+c7092	70920000	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Caged Hollow - Undead Settlement
+c7092	70920001	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Caged Hollow
+c7092	70920002	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Caged Hollow
+c7093	70930000	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Ravenous Crystal Lizard - Cathedral of the Deep
+c7093	70930001	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Ravenous Crystal Lizard - Farron Keep
+c7093	70930002	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Ravenous Crystal Lizard - Cemetery of Ash
+c7093	70930003	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Ravenous Crystal Lizard - Untended Graves
+c7093	70930004	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Ravenous Crystal Lizard - Untended Graves
+c7094	70940000	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Deep Acursed
+c7094	70940001	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Deep Acursed
+c7095	70950000	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Elder Ghru - Farron Keep
+c7095	70950001	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Elder Ghru - Farron Keep
+c7095	70950002	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Elder Ghru - Farron Keep
+c7096	70960000	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Ancient Wyvern - Archdragon Peak
+c7097	70970000	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Ancient Wyvern
+c7097	70970001	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Ancient Wyvern - High Wall of Lothric
+c7097	70970002	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Ancient Wyvern - Lothric Castle
+c7097	70970003	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Ancient Wyvern - Lothric Castle
+c7098	70980000	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Dragonslayer Armour
+c7098	70980001	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Dragonslayer Armour - The Ringed City
+c7099	70990000	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Darkwraith - Farron Keep
+c7099	70990001	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Darkwraith - Farron Keep
+c7099	70990002	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Darkwraith - Farron Keep
+c7101	71010000	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Blacksmith Andre
+c7102	71020000	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Shrine Handmaid
+c7102	71020001	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Shrine Handmaid
+c7103	71030000	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Poisonhorn Bug - Road of Sacrifices
+c7103	71030001	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Poisonhorn Bug - Dreg Heap
+c7104	71040000	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Rock Lizard
+c7105	71050000	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Demon Statue
+c7106	71060000	normalChangeAnimChrId=-1	RetargetReferenceChrId=3700	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] High Priestess Emma
+c7107	71070000	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Nameless King
+c7108	71080000	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Demon Prince - HP Dummy
+c7108	71080001	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Demon in Pain
+c7108	71080002	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Demon from Below
+c7111	71110000	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] King of the Storm
+c7112	71120000	normalChangeAnimChrId=-1	RetargetReferenceChrId=3060	normalChangeModelId=-1	normalChangeTexChrId=3060	normalChangeResouceId=-1	[DS3] Corrupted Gundyr
+c7112	71120001	normalChangeAnimChrId=-1	RetargetReferenceChrId=3060	normalChangeModelId=-1	normalChangeTexChrId=3060	normalChangeResouceId=-1	[DS3] Champion Gundyr
+c7113	71130000	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Pontiff Sulyvahn
+c7113	71130001	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Pontiff Sulyvahn - Spirit Clone
+c7114	71140000	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Aldrich, Devourer of Gods
+c7115	71150000	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] High Lord Wolnir
+c7116	71160000	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Curse-rotted Greatwood
+c7117	71170000	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Stray Demon - Farron Keep
+c7117	71170001	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Stray Demon - Heat Up
+c7118	71180000	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Rosaria, Mother of Rebirth
+c7119	71190000	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Deacons of the Deep
+c7120	71200000	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Fat Deacon - Priest Dagger
+c7120	71200001	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Fat Deacon - Candlestick
+c7120	71200002	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Fat Deacon - Priest Dagger
+c7121	71210000	normalChangeAnimChrId=-1	RetargetReferenceChrId=3900	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Tall Deacon - Priest Dagger
+c7121	71210001	normalChangeAnimChrId=-1	RetargetReferenceChrId=3900	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Tall Deacon - Cleric's Candlestick
+c7122	71220000	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Deacon - Priest Dagger
+c7122	71220001	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Deacon - Candlestick
+c7122	71220002	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Deacon - Priest Dagger
+c7122	71220003	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Deacon - Priest Dagger - Cathedral of the Deep
+c7123	71230000	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Fat Deacon - Priest Dagger - Irithyll
+c7123	71230001	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Fat Deacon - Candlestick - Irithyll
+c7124	71240000	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Tall Deacon - Cleric's Candlestick - Irithyll
+c7125	71250000	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Deacon - Priest Dagger - Anor Londo
+c7125	71250001	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Deacon - Candlestick - Anor Londo
+c7126	71260000	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Irithyll Fire Witch - Irithyll
+c7127	71270000	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Lorian, Elder Prince
+c7127	71270001	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Lorian, Elder Prince - Heatup
+c7129	71290000	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=8000	normalChangeResouceId=-1	[DS3] Yhorm the Giant
+c7130	71300000	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Dancer of the Boreal Valley
+c7131	71310000	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Soul of Cinder
+c7132	71320000	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Farron Follower - Torch - Ariandel
+c7132	71320001	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Farron Follower - Torch - Ariandel
+c7132	71320002	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Farron Follower - Torch - Ariandel
+c7132	71320003	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Farron Follower - Torch - Ariandel
+c7132	71320004	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Farron Follower - Torch - Ariandel
+c7132	71320005	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Farron Follower - Sabre - Ariandel
+c7132	71320006	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Farron Follower - Sabre - Ariandel
+c7132	71320007	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Farron Follower - Sabre - Ariandel
+c7132	71320008	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Farron Follower - Javelin - Ariandel
+c7132	71320009	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Farron Follower - Javelin - Ariandel
+c7132	71320010	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Farron Follower - Javelin - Ariandel
+c7132	71320011	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Farron Follower - Javelin - Ariandel
+c7132	71320012	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Farron Follower - Javelin - Ariandel
+c7132	71320013	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Farron Follower - Javelin - Ariandel
+c7133	71330000	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Father Ariandel
+c7133	71330001	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Father Ariandel - Heat Up
+c7134	71340000	normalChangeAnimChrId=-1	RetargetReferenceChrId=4310	normalChangeModelId=-1	normalChangeTexChrId=4310	normalChangeResouceId=-1	[DS3] Sister Friede - First Stage
+c7134	71340001	normalChangeAnimChrId=-1	RetargetReferenceChrId=4310	normalChangeModelId=-1	normalChangeTexChrId=4310	normalChangeResouceId=-1	[DS3] Sister Friede - Second/Final Stage
+c7135	71350000	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Gravetender's Greatwolf
+c7135	71350001	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Gravetender's Greatwolf - Heatup
+c7136	71360000	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Wolf - Ariandel
+c7136	71360001	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Wolf - Ariandel
+c7136	71360002	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Wolf - Ariandel
+c7136	71360003	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Wolf - Ariandel
+c7136	71360004	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Wolf - Ariandel
+c7137	71370000	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Skittish Wolf - Ariandel
+c7137	71370001	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Skittish Wolf - Ariandel
+c7137	71370002	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Skittish Wolf - Ariandel
+c7137	71370003	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Skittish Wolf - Ariandel
+c7137	71370004	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Skittish Wolf - Ariandel
+c7137	71370005	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Skittish Wolf - Ariandel
+c7137	71370006	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Skittish Wolf - Ariandel
+c7137	71370007	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Skittish Wolf - Ariandel
+c7138	71380000	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Tree Woman - Ariandel
+c7138	71380001	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Tree Woman - Ariandel
+c7138	71380002	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Tree Woman - Ariandel
+c7138	71380003	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Tree Woman - Ariandel
+c7139	71390000	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Corvian Knight - Rapier - Ariandel
+c7139	71390001	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Corvian Knight - Rapier - Ariandel
+c7139	71390002	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Corvian Knight - Talons - Ariandel
+c7140	71400000	normalChangeAnimChrId=-1	RetargetReferenceChrId=4370	normalChangeModelId=-1	normalChangeTexChrId=4370	normalChangeResouceId=-1	[DS3] Corvian Villager - Ariandel
+c7140	71400001	normalChangeAnimChrId=-1	RetargetReferenceChrId=4370	normalChangeModelId=-1	normalChangeTexChrId=4370	normalChangeResouceId=-1	[DS3] Corvian Villager - Stick - Ariandel
+c7140	71400002	normalChangeAnimChrId=-1	RetargetReferenceChrId=4370	normalChangeModelId=-1	normalChangeTexChrId=4370	normalChangeResouceId=-1	[DS3] Corvian Villager - Stick - Ariandel
+c7140	71400003	normalChangeAnimChrId=-1	RetargetReferenceChrId=4370	normalChangeModelId=-1	normalChangeTexChrId=4370	normalChangeResouceId=-1	[DS3] Corvian Villager - Ariandel
+c7140	71400004	normalChangeAnimChrId=-1	RetargetReferenceChrId=4370	normalChangeModelId=-1	normalChangeTexChrId=4370	normalChangeResouceId=-1	[DS3] Corvian Villager - Ariandel
+c7140	71400005	normalChangeAnimChrId=-1	RetargetReferenceChrId=4370	normalChangeModelId=-1	normalChangeTexChrId=4370	normalChangeResouceId=-1	[DS3] Corvian Villager - Ariandel
+c7140	71400006	normalChangeAnimChrId=-1	RetargetReferenceChrId=4370	normalChangeModelId=-1	normalChangeTexChrId=4370	normalChangeResouceId=-1	[DS3] Corvian Villager - Ariandel
+c7140	71400007	normalChangeAnimChrId=-1	RetargetReferenceChrId=4370	normalChangeModelId=-1	normalChangeTexChrId=4370	normalChangeResouceId=-1	[DS3] Corvian Villager - Ariandel
+c7140	71400008	normalChangeAnimChrId=-1	RetargetReferenceChrId=4370	normalChangeModelId=-1	normalChangeTexChrId=4370	normalChangeResouceId=-1	[DS3] Corvian Villager - Ariandel
+c7141	71410000	normalChangeAnimChrId=-1	RetargetReferenceChrId=3000	normalChangeModelId=-1	normalChangeTexChrId=3000	normalChangeResouceId=-1	[DS3] Corvian Villager - Vomit - Ariandel
+c7141	71410001	normalChangeAnimChrId=-1	RetargetReferenceChrId=3000	normalChangeModelId=-1	normalChangeTexChrId=3000	normalChangeResouceId=-1	[DS3] Corvian Villager - Vomit - Ariandel
+c7141	71410002	normalChangeAnimChrId=-1	RetargetReferenceChrId=3000	normalChangeModelId=-1	normalChangeTexChrId=3000	normalChangeResouceId=-1	[DS3] Corvian Villager - Vomit - Ariandel
+c7142	71420000	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Giant Fly - Ariandel
+c7142	71420001	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Giant Fly - Ariandel
+c7142	71420002	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Giant Fly - Ariandel
+c7143	71430000	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Millwood Knight - Earthseeker - Ariandel
+c7143	71430001	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Millwood Knight - Quake Hammer - Ariandel
+c7143	71430002	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Millwood Knight - Quake Hammer - Ariandel
+c7143	71430003	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Millwood Knight - Battle Axe and Shield - Ariandel
+c7143	71430004	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Millwood Knight - Battle Axe and Shield - Ariandel
+c7143	71430005	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Millwood Knight - Greatbow - Ariandel
+c7143	71430006	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Millwood Knight - Greatbow - Ariandel
+c7143	71430007	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Millwood Knight - Greatbow - Ariandel
+c7143	71430008	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Millwood Knight - Greatbow - Ariandel
+c7143	71430009	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Millwood Knight - Greatbow - Ariandel
+c7143	71430010	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Millwood Knight - Greatbow - Ariandel
+c7143	71430011	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Millwood Knight - Greatbow - Ariandel
+c7143	71430012	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Millwood Knight - Greatbow - Ariandel
+c7144	71440000	normalChangeAnimChrId=-1	RetargetReferenceChrId=4350	normalChangeModelId=-1	normalChangeTexChrId=4350	normalChangeResouceId=-1	[DS3] Painting Woman - Loft - Ariandel
+c7145	71450000	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Painting Woman - Table - Ariandel
+c7146	71460000	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Great Crab - Ariandel
+c7147	71470000	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Slave Knight Gael - Main
+c7148	71480000	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Slave Knight Gael
+c7149	71490000	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Darkeater Midir - Bridge Encounter
+c7150	71500000	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Darkeater Midir
+c7151	71510000	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Murkman - Staff - Dreg Heap
+c7151	71510001	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Murkman - Staff - Dreg Heap
+c7151	71510002	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Murkman - Staff - Dreg Heap
+c7151	71510003	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Murkman - Staff - Dreg Heap
+c7151	71510004	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Murkman - Staff - Dreg Heap
+c7151	71510005	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Murkman - Staff - Dreg Heap
+c7151	71510006	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Murkman - Staff - Dreg Heap
+c7151	71510007	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Murkman - Staff - Dreg Heap
+c7151	71510008	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Murkman - Staff - Dreg Heap
+c7151	71510009	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Murkman - Staff - Dreg Heap
+c7152	71520000	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Crawling Murkman - Harpe - Dreg Heap
+c7152	71520001	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Crawling Murkman - Harpe - Dreg Heap
+c7152	71520002	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Crawling Murkman - Harpe - Dreg Heap
+c7152	71520003	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Crawling Murkman - Harpe - Dreg Heap
+c7152	71520004	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Crawling Murkman - Harpe - Dreg Heap
+c7152	71520005	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Crawling Murkman - Harpe - Dreg Heap
+c7152	71520006	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Crawling Murkman - Harpe - Dreg Heap
+c7153	71530000	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Murkman Spirit - Dreg Heap
+c7153	71530001	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Murkman Spirit - Dreg Heap
+c7154	71540000	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Pilgrim Pulpa - Path - Dreg Heap
+c7154	71540001	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Pilgrim Pulpa - Rooftop - Dreg Heap
+c7154	71540002	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Pilgrim Pulpa - Cliffside - Dreg Heap
+c7155	71550000	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Pilgrim Angel - Dreg Heap
+c7155	71550001	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Pilgrim Angel - Dreg Heap
+c7155	71550002	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Pilgrim Angel - Dreg Heap
+c7155	71550003	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Pilgrim Angel - Stone-humped Hag - Dreg Heap
+c7156	71560000	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Ringed Knight - Straight Sword and Shield - Ringed City
+c7156	71560001	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Ringed Knight - Straight Sword and Shield - Ringed City
+c7156	71560002	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Ringed Knight - Spear and Greatshield - Ringed City
+c7156	71560003	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Ringed Knight - Spear and Greatshield - Ringed City
+c7156	71560004	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Ringed Knight - Paired Greatswords - Ringed City
+c7156	71560005	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Ringed Knight - Paired Greatswords - Filianore's Rest
+c7157	71570000	normalChangeAnimChrId=-1	RetargetReferenceChrId=3000	normalChangeModelId=-1	normalChangeTexChrId=3000	normalChangeResouceId=-1	[DS3] Hollow Vagabond - Ringed City
+c7157	71570001	normalChangeAnimChrId=-1	RetargetReferenceChrId=3000	normalChangeModelId=-1	normalChangeTexChrId=3000	normalChangeResouceId=-1	[DS3] Hollow Vagabond - Ringed City
+c7157	71570002	normalChangeAnimChrId=-1	RetargetReferenceChrId=3000	normalChangeModelId=-1	normalChangeTexChrId=3000	normalChangeResouceId=-1	[DS3] Hollow Vagabond - Ringed City
+c7157	71570003	normalChangeAnimChrId=-1	RetargetReferenceChrId=3000	normalChangeModelId=-1	normalChangeTexChrId=3000	normalChangeResouceId=-1	[DS3] Hollow Vagabond - Ringed City
+c7157	71570004	normalChangeAnimChrId=-1	RetargetReferenceChrId=3000	normalChangeModelId=-1	normalChangeTexChrId=3000	normalChangeResouceId=-1	[DS3] Hollow Vagabond - Ringed City
+c7157	71570005	normalChangeAnimChrId=-1	RetargetReferenceChrId=3000	normalChangeModelId=-1	normalChangeTexChrId=3000	normalChangeResouceId=-1	[DS3] Hollow Vagabond - Ringed City
+c7157	71570006	normalChangeAnimChrId=-1	RetargetReferenceChrId=3000	normalChangeModelId=-1	normalChangeTexChrId=3000	normalChangeResouceId=-1	[DS3] Hollow Vagabond - Ringed City
+c7157	71570007	normalChangeAnimChrId=-1	RetargetReferenceChrId=3000	normalChangeModelId=-1	normalChangeTexChrId=3000	normalChangeResouceId=-1	[DS3] Hollow Vagabond - Ringed City
+c7157	71570008	normalChangeAnimChrId=-1	RetargetReferenceChrId=3000	normalChangeModelId=-1	normalChangeTexChrId=3000	normalChangeResouceId=-1	[DS3] Hollow Vagabond - Ringed City
+c7157	71570009	normalChangeAnimChrId=-1	RetargetReferenceChrId=3000	normalChangeModelId=-1	normalChangeTexChrId=3000	normalChangeResouceId=-1	[DS3] Hollow Vagabond - Ringed City
+c7158	71580000	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=8000	normalChangeResouceId=-1	[DS3] Judicator - Ringed City
+c7158	71580001	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=8000	normalChangeResouceId=-1	[DS3] Judicator - Ringed City
+c7158	71580002	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=8000	normalChangeResouceId=-1	[DS3] Judicator - Ringed City
+c7158	71580003	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=8000	normalChangeResouceId=-1	[DS3] Judicator - Ringed City
+c7160	71600000	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Hollow Cleric - Ringed City
+c7160	71600001	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Hollow Cleric - Ringed City
+c7160	71600002	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Hollow Cleric - Ringed City
+c7161	71610000	normalChangeAnimChrId=2040	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Mad Pilgrim - No Crown - Ringed City	BORROWS ANIMATIONS
+c7161	71610001	normalChangeAnimChrId=2040	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Mad Pilgrim - Crown - Ringed City	BORROWS ANIMATIONS
+c7162	71620000	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Filianore - Alive
+c7162	71620001	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Filianore - Hollow
+c7163	71630000	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Harald Knight - Cloak
+c7163	71630001	normalChangeAnimChrId=-1	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Harald Knight - No Cloak
+c7164	71640000	normalChangeAnimChrId=-1	RetargetReferenceChrId=3700	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Big Locust
+c7164	71640001	normalChangeAnimChrId=-1	RetargetReferenceChrId=3700	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Big Locust
+c7164	71640002	normalChangeAnimChrId=-1	RetargetReferenceChrId=3700	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Big Locust
+c7165	71650000	normalChangeAnimChrId=2040	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Small Locust	BORROWS ANIMATIONS
+c7165	71650001	normalChangeAnimChrId=2040	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Small Locust	BORROWS ANIMATIONS
+c7165	71650002	normalChangeAnimChrId=2040	RetargetReferenceChrId=-1	normalChangeModelId=-1	normalChangeTexChrId=-1	normalChangeResouceId=-1	[DS3] Small Locust	BORROWS ANIMATIONS
+585 ported rows; 10 take another character's anibnd (normalChangeAnimChrId != -1); models: 3

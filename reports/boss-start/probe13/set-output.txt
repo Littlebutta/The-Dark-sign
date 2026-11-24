@@ -1,0 +1,12 @@
+c7112 71120000 normalChangeAnimChrId: -1 -> -1
+c7112 71120000 RetargetReferenceChrId: 3060 -> -1
+c7112 71120000 normalChangeModelId: -1 -> -1
+c7112 71120000 normalChangeTexChrId: 3060 -> -1
+c7112 71120000 normalChangeResouceId: -1 -> -1
+c7112 71120001 normalChangeAnimChrId: -1 -> -1
+c7112 71120001 RetargetReferenceChrId: 3060 -> -1
+c7112 71120001 normalChangeModelId: -1 -> -1
+c7112 71120001 normalChangeTexChrId: 3060 -> -1
+c7112 71120001 normalChangeResouceId: -1 -> -1
+read back 71120000: normalChangeAnimChrId=-1 RetargetReferenceChrId=-1 normalChangeModelId=-1 normalChangeTexChrId=-1 normalChangeResouceId=-1
+read back 71120001: normalChangeAnimChrId=-1 RetargetReferenceChrId=-1 normalChangeModelId=-1 normalChangeTexChrId=-1 normalChangeResouceId=-1
