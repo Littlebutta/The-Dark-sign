@@ -918,6 +918,13 @@ public static partial class ChrPort
         lines.Add(missing.Count == 0
             ? $"check: ok   all {rows.Select(p => p[3]).Distinct().Count()} NpcParam rows the maps and spawn list use are in regulation.bin"
             : $"FAIL check: {missing.Count} NpcParam rows missing from regulation.bin (the game crashes loading them): {string.Join(", ", missing.Take(8))}");
+        // A row that refers to another character's animations or textures plays that character's vanilla clips (OwnResources).
+        var borrowing = rows.Where(p => int.TryParse(p[3], out var id) && ChrId(p[2]) is >= FirstNewChr and <= LastNewChr && !gameHas(p[2])
+                                        && npc[id] is { } r && ResourceSwapFields.Any(f => Cell(r, f) is { Value: not null and not byte[] } c && Convert.ToInt64(c.Value) != -1))
+            .Select(p => $"{p[3]} ({p[2]})").Distinct().ToList();
+        lines.Add(borrowing.Count == 0
+            ? "check: ok   no ported model's NpcParam row refers to another character's animations, model or textures"
+            : $"FAIL check: {borrowing.Count} ported NpcParam rows refer to another character's animations, model or textures ({string.Join(", ", ResourceSwapFields)}): {string.Join(", ", borrowing.Take(8))}");
         int bad = 0;
         foreach (var model in rows.Select(p => p[2]).Where(m => ChrId(m) is >= FirstNewChr and <= LastNewChr && !gameHas(m)).Distinct())
         {
@@ -2032,6 +2039,11 @@ public static partial class ChrPort
             // DS3's model hides and shows its "#NN#" meshes (weapon and armour variants) by DS3's display masks.
             if (newModel && plan.Stage != Stage.Clone && ds3Npc?[ds3Id] is { } maskSource)
                 CopyDisplayMasks(maskSource, row);
+            // The new model's own animations, model and textures, not those of the character the template's row
+            // refers to (OwnResources): Gundyr played the Giant Skeleton's (c3060) vanilla clips.
+            if (newModel && OwnResources(row) is { Count: > 0 } swaps && notes is not null
+                && !notes.Any(x => x.StartsWith($"c{plan.NewChr:D4} resources:", StringComparison.Ordinal)))
+                notes.Add($"c{plan.NewChr:D4} resources: the template row's {string.Join(", ", swaps)} cleared (the model plays its own anibnd)");
             // DS3's variant (the section of moves its weapon set plays), not the template's (ChrVariants).
             if (plan.Method == Method.Full && plan.Stage == Stage.All && ds3Npc?[ds3Id] is { } variantSource)
             {
@@ -2197,6 +2209,42 @@ public static partial class ChrPort
         "residentMaterialExParamId04", "faceIconId", "roleNameId", "sleepCollectorItemLotId_enemy", "sleepCollectorItemLotId_map",
         "chrDeadTutorialFlagId", "isWeakC", "isWeakD", "isWeakE", "isWeakF",
     ];
+
+    /// <summary>
+    /// NpcParam fields that make a character use another character's resources (Paramdex: normalChangeAnimChrId
+    /// "replace the animations with the anibnd of this ID", RetargetReferenceChrId "the character referenced for motion
+    /// retargeting", normalChangeTexChrId / normalChangeModelId / normalChangeResouceId the same for textures, model and
+    /// resources; -1 = the character's own, the vanilla default). The port copied the template's row, so 221 of 585
+    /// ported rows inherited a RetargetReferenceChrId (3060 x82, 4350 x33, 4310 x23, 3450 x19, 3000 x18, 3660 x17...),
+    /// and those enemies played the referenced character's vanilla clips instead of the DS3 clips in their own binders;
+    /// every clip the port added (Gundyr's 30001/30002 kneel and 3014, the High Wall hollows' 700s, phase changes
+    /// 1500/1600) did nothing, because the referenced character has no such file. Proven on Gundyr (rows
+    /// 71120000/71120001: RetargetReferenceChrId 3060, normalChangeTexChrId 3060): other bytes in our c7112_div00 3012
+    /// changed nothing, the same in a copy of vanilla c3060_div00 did, and with both fields -1 he kneels on load and
+    /// swings DS3's swing (probes 11-13, reports/boss-start).
+    /// </summary>
+    internal static readonly string[] ResourceSwapFields =
+        ["normalChangeAnimChrId", "RetargetReferenceChrId", "normalChangeModelId", "normalChangeTexChrId", "normalChangeResouceId"];
+
+    /// <summary>
+    /// A ported model ships its own anibnd, skeleton, model and textures: every <see cref="ResourceSwapFields"/> field
+    /// that points at another character goes back to -1. Returns "field=old" for each one changed.
+    /// </summary>
+    public static List<string> OwnResources(PARAM.Row row)
+    {
+        var changed = new List<string>();
+        foreach (var name in ResourceSwapFields)
+        {
+            if (Cell(row, name) is not { Value: not null and not byte[] } cell)
+                continue;
+            long value = Convert.ToInt64(cell.Value);
+            if (value == -1)
+                continue;
+            changed.Add($"{name}={value}");
+            Set(cell, -1);
+        }
+        return changed;
+    }
 
     public static int ClearTemplateOnly(PARAM.Row er)
     {
