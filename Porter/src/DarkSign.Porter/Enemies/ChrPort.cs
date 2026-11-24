@@ -1867,6 +1867,7 @@ public static partial class ChrPort
         int merged = 0;
         var signals = new Dictionary<int, int>();
         var unlaid = new Dictionary<int, int>();
+        var lethal = new Dictionary<int, int>();
         // Each event type's layout over all of the template's TAE files and all of DS3's (ChrTae.Layout): one file's
         // first event of a type is no measure of it.
         Dictionary<int, int>? pooledLengths = null, ds3Lengths = null;
@@ -1909,7 +1910,7 @@ public static partial class ChrPort
                         continue;
                     var source = ChooseMove(AnimKey(anim.ID, section), ds3Additive.Contains(moves[content].Hkx) ? additiveKeys : wholeKeys) is { } own
                                  && moves[own].Hkx == moves[content].Hkx ? own : content;
-                    anim.Events = ChrTae.Merge(moves[source].Events, anim, lengths, groups, d.Ds3, d.Er, session, fx?.Groups, signals, unlaid, ds3Lengths);
+                    anim.Events = ChrTae.Merge(moves[source].Events, anim, lengths, groups, d.Ds3, d.Er, session, fx?.Groups, signals, unlaid, ds3Lengths, lethal);
                     changed = true;
                     merged++;
                 }
@@ -1918,7 +1919,8 @@ public static partial class ChrPort
             }
         notes.Add($"{replaced} DS3 animations ({failed} failed; {filled} are the nearest DS3 move in place of a template move DS3 has no match for, {kept} template animations kept; {additive} additive flinch files matched with DS3 additive clips only), {merged} moves with DS3 events"
                   + (signals.Count > 0 ? $"; DS3 events kept that the template has no event of (231 map-script signal, 233 display mask change): {string.Join(" ", signals.OrderBy(p => p.Key).Select(p => $"{p.Key}x{p.Value}"))}" : "")
-                  + (unlaid.Count > 0 ? $"; DS3 event types the template lays out differently or lacks, dropped: {string.Join(" ", unlaid.OrderByDescending(p => p.Value).ThenBy(p => p.Key).Take(8).Select(p => $"{p.Key}x{p.Value}"))}" : ""));
+                  + (unlaid.Count > 0 ? $"; DS3 event types the template lays out differently or lacks, dropped: {string.Join(" ", unlaid.OrderByDescending(p => p.Value).ThenBy(p => p.Key).Take(8).Select(p => $"{p.Key}x{p.Value}"))}" : "")
+                  + (lethal.Count > 0 ? $"; template kill/disappear JumpTables left off DS3 moves that don't die: {string.Join(" ", lethal.OrderBy(p => p.Key).Select(p => $"JT{p.Key}x{p.Value}"))}" : ""));
         // RULE 4: DS3's own moves that found no place (no template move of their ID, no family ChrMoves adds states
         // for): the character can't play them, whatever DS3's AI or map scripts ask for.
         if (stage == Stage.All && LostMoves(moves, wholeKeys, chosen.Values) is { Count: > 0 } lost)
