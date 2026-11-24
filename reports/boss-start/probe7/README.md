@@ -8,7 +8,7 @@ selector with its number:
 - EventLoop_SM: Event30001 and Event30002 both carry 0x14B0002, the number of Event30003.
 - Attack_SM: 1500/1600 carry 3000's, 3014 carries 3013's, 3025-3029 carry 3024's, 6000-6003 carry 3036's.
 c7006 (High Wall hollow): IdleUnique702-710 all carry 701's number, IdleUniqueToIdle1702-1710 carry 1701's, and
-13 added attacks / 5 event states share numbers the same way.
+14 added attacks and 5 event states share numbers the same way.
 
 That matches every probe: the added states (30001, 30002) show nothing; 30003, whose number they share, shows a
 stiff pose; states with a number of their own (30000, 30008, 3012) play.
