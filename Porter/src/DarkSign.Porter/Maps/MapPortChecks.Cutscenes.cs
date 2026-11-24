@@ -522,11 +522,19 @@ public static partial class MapPortChecks
             P("beginToneMapBank", I, 1), P("beginToneMapId", I, 0), P("beginDofBank", I, 0), P("beginDofId", I, 10)] });
         cut.Timelines.AddRange([light, post]);
         mqb.Cuts.Add(cut);
+        // The Dancer's intro picks its light set through kind 183, which has 199's fields.
+        mqb.Resources.Add(new MQB.Resource { Name = "light183", ParentIndex = -1, Unk48 = 183 });
+        var cut2 = new MQB.Cut { Name = "cut0020", Duration = 400, Timelines = [] };
+        var dancer = new MQB.Timeline();
+        dancer.Events.Add(new MQB.Event { ResourceIndex = 2, Duration = 400, Parameters = [P("beginLightBank", I, 0), P("beginLightId", I, 120), P("endLightBank", I, -1), P("endLightId", I, -1)] });
+        cut2.Timelines.Add(dancer);
+        mqb.Cuts.Add(cut2);
         string[] names = ["beginLightSetAllBank", "beginLightSetAllId", "endLighSetAlltBank", "endLightSetAllId", "beginShadowBank", "beginShadowId",
             "beginToneMapBank", "beginToneMapId", "beginBloomBank", "beginBloomId", "endBloomBank", "endBloomId"];
         var result = CutsceneDrawParams.ConvertEvents(mqb, names.Select(n => (n, I)).ToList());
-        Expect(mqb.Resources.All(r => r.Unk48 == 197), "both DS3 kinds become 197");
-        Expect(result.Events == 2 && result.LightSets.SequenceEqual([10]), $"two events, light set 10 listed ({result.Events}, {string.Join(" ", result.LightSets)})");
+        Expect(mqb.Resources.All(r => r.Unk48 == 197), "DS3 kinds 199, 215 and 183 become 197");
+        Expect((int)dancer.Events[0].Parameters.First(p => p.Name == "beginLightSetAllId").Value == 120, "a 183 event's light set is kept");
+        Expect(result.Events == 3 && result.LightSets.SequenceEqual([10, 120]), $"three events, light sets 10 and 120 listed ({result.Events}, {string.Join(" ", result.LightSets)})");
         int V(MQB.Event e, string n) => (int)e.Parameters.First(p => p.Name == n).Value;
         foreach (var e in new[] { light.Events[0], post.Events[0] })
         {
