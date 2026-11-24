@@ -241,6 +241,12 @@ public static partial class MapPortChecks
         var (floor, _) = BossArenas.ArrivalPoint(ds3, area, null, boss);
         Expect(floor == new Vector3(100, -49.5f, 100), $"the boss's floor + 0.5 m, not inside the floor: {floor}");
         Expect(BossArenas.ArrivalPoint(ds3, area).Point == new Vector3(100, -50.5f, 100), "without a boss: the area's bottom + 1.5 m");
+        // A boss below the area (Gundyr: the area is a strip at the way in): his floor, 8 m from him toward the area.
+        var strip = new MSB3.Region.Event { Name = "way in", EntityID = 4002831, Position = new Vector3(102, -46f, 118), Shape = new MSB.Shape.Box(10, 4, 6) };
+        var (near, why) = BossArenas.ArrivalPoint(ds3, strip, null, boss);
+        Expect(Vector3.Distance(near, new Vector3(102, -49.5f, 106)) < 0.001f, $"on the boss's floor, 8 m toward the way in: {near} ({why})");
+        var close = new MSB3.Region.Event { Name = "close", EntityID = 4002832, Position = new Vector3(102, -46f, 101), Shape = new MSB.Shape.Box(10, 4, 6) };
+        Expect(Vector3.Distance(BossArenas.ArrivalPoint(ds3, close, null, boss).Point, new Vector3(102, -49.5f, 101)) < 0.001f, "never past the area");
         ds3.Regions.Add(new MSB3.Region.Event { Name = "warp", EntityID = 4002812, Position = new Vector3(95, -50f, 95) });
         Expect(BossArenas.ArrivalPoint(ds3, area, new HashSet<int> { 4002812 }, boss).Point == new Vector3(95, -49.9f, 95), "a DS3 warp point in the area wins");
         ds3.Parts.Players.Add(new MSB3.Part.Player { Name = "c0000_0030", ModelName = "c0000", Position = new Vector3(105, -50f, 105) });
