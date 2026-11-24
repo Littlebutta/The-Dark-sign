@@ -1,0 +1,3 @@
+c3060_div00.anibnd	1000003012	a000_003012.hkx	5.1 s	101 tracks	51732 bytes
+c3060_div01.anibnd	1000020003	a000_020003.hkx	7 s	105 tracks	80724 bytes
+c3060_div01.anibnd	1000030003	a000_030003.hkx	1.333 s	105 tracks	10004 bytes
