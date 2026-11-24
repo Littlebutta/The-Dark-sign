@@ -27,6 +27,12 @@ public sealed class SpEffectPort
     private static readonly string[] Ds3VfxFields = [.. Enumerable.Range(0, 8).Select(k => $"EffectVfx{k}")];
     private static string ErVfxField(int k) => k == 0 ? "vfxId" : $"vfxId{k}";
 
+    /// <summary>
+    /// DS3 effects the ported maps' scripts set, clear or check (MapEvents.ScriptSpEffects), set by port-weapons before
+    /// the weapons are ported: a weapon effect that is only such a marker names the scripts' row (PortNew).
+    /// </summary>
+    public static IReadOnlySet<int> ScriptMarkers { get; set; } = new HashSet<int>();
+
     /// <summary>First ID of the ported effects; each takes a block of 100.</summary>
     public const int FirstNewId = 690_000_000;
 
@@ -214,6 +220,16 @@ public sealed class SpEffectPort
         }
         if (kind is null && !HasValues(source) && !HasVisuals(source) && ErBase(source.Name) < 0)
         {
+            // A marker the map scripts check (the Storm Ruler's Storm King hit puts 11421 on Yhorm, and his fight's
+            // script waits for it): the weapon names the row the enemy port writes for the scripts' effects
+            // (700,000,000 + the DS3 ID), so the hit and the script meet on one row. Up to 1.0.58x it was skipped and
+            // the Storm King never weakened Yhorm.
+            if (_idOf is null && ScriptMarkers.Contains(ds3Id))
+            {
+                int marker = Enemies.ChrEffects.SpEffectId(ds3Id);
+                Note(ds3Id, source.Name, marker, "script marker", "a state the map scripts check; its row is the enemy port's for the scripts");
+                return marker;
+            }
             Note(ds3Id, source.Name, -1, "skipped", "nothing Elden Ring can use (state, visuals or fields without an equivalent)");
             return -1;
         }
@@ -526,6 +542,24 @@ public sealed class SpEffectPort
             }
         }
         Console.WriteLine($"weapon effects: {weapons} weapons got DS3 effects ({slots} slots over their affinity rows); {Summary}");
+    }
+
+    /// <summary>
+    /// DS3 effect -> the row the weapon port gave it, read from the report port-weapons wrote (empty when there is
+    /// none). The map scripts name an effect the player's ported weapon carries by this row (MapEvents), not by the
+    /// enemy port's 700,000,000 + ID: the Storm Ruler's charge (11421, "Applied by Storm King") is the one DS3 effect
+    /// both a weapon and the scripts use (census of the ported maps' scripts, 2026-11-23), and the Yhorm fight's
+    /// script checked a row the sword never put on.
+    /// </summary>
+    public static Dictionary<long, long> ReadWeaponTable(PorterContext ctx, string file = "weapon-effects.tsv")
+    {
+        var map = new Dictionary<long, long>();
+        var path = ctx.WorkPath("reports", file);
+        if (File.Exists(path))
+            foreach (var line in File.ReadLines(path).Skip(1))
+                if (line.Split('\t') is { Length: >= 3 } cols && long.TryParse(cols[0], out var ds3) && long.TryParse(cols[2], out var er) && er > 0)
+                    map.TryAdd(ds3, er);
+        return map;
     }
 
     public void WriteReport(PorterContext ctx, string file = "weapon-effects.tsv")

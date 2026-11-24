@@ -808,6 +808,15 @@ public static partial class ChrPort
             Maps.Ds3Ids.WriteTable(ctx, Maps.Ds3Ids.ScriptBehaviorsFile, "BehaviorParam", moved);
             result.Notes.Add($"script behaviours: {moved.Count} of the {result.ScriptBehaviors.Count} behaviour rows the DS3 scripts fire ported (BehaviorParam {AttackParamPort.ScriptRowBase:N0} + the DS3 row)");
         }
+        // Backstabs, ripostes and grabs: ThrowParam rows under the new character IDs (ThrowRows).
+        if (regulation.Get("ThrowParam") is { } erThrow)
+            try
+            {
+                var throws = ThrowRows.Port(erThrow, ds3.Get("ThrowParam"),
+                    result.Params.Where(p => p.Plan.Method != Method.Stats && p.Plan.NewChr > 0).Select(p => (p.Plan.TemplateChr, p.Plan.NewChr, p.Plan.Ds3.Chr)));
+                result.Notes.Add($"throws: {throws.Copied} template backstab, riposte and grab rows and {throws.Ds3Grabs} DS3 grabs for {throws.Characters} ported characters (ThrowParam {ThrowRows.Base:N0}+)");
+            }
+            catch (Exception ex) when (ex is not OutOfMemoryException) { result.Notes.Add($"throws: not ported ({Describe(ex)}); ported enemies can't be backstabbed, riposted or grab"); }
         int friendly = MakePeopleFriendly(regulation.Get("NpcParam")!, result.Params);
         if (friendly > 0)
             result.Notes.Add($"people: {friendly} NpcParam rows of DS3's people with a body of their own put on Elden Ring's friendly team ({FriendlyTeam(regulation.Get("NpcParam")!)})");
