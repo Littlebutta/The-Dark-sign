@@ -16,3 +16,8 @@ means an NPC. Our ported rows are mostly category 4 (48 of 71), because the port
 74000007. Probe 16 also failed with 6000 (category 4) on an asset, which fits category 4 being the talk-to-character
 kind. Worth testing: 74000007 as category 5, the kind ER's world actions on assets use. Counts of the category column
 in 1-vanilla-3-24-uses.tsv:
+
+## In-game follow-up: 74000007 set to category 5 (release 1.0.620)
+Only the category changed (4 -> 5), in the built regulation. Walked up beside Gundyr and the sword (cat5-near.png):
+**no prompt**. Pressed E, then a 20 s burst (cat5-after-E-20s.png): **nothing**, and he stays kneeling. So the category alone
+isn't it. The regulation was restored (26412e47...) and the save put back.
