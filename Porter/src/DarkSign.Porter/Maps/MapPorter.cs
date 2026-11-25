@@ -600,7 +600,7 @@ public static class MapPorter
         if (Directory.Exists(musicFolder))
             foreach (var file in Directory.GetFiles(musicFolder))
                 Delete(file);
-        foreach (var file in new[] { MapEvents.FlagFile, "darksign_maps.tsv", BossArenas.ListFile, CutsceneMenu.ListFile, BossKits.FileName, "darksign_maps_check.txt", FlagAlloc.ProbeFile, MapMusic.ListFile, BonfireTravel.ListFile,
+        foreach (var file in new[] { MapEvents.FlagFile, "darksign_maps.tsv", BossArenas.ListFile, CutsceneMenu.ListFile, BossKits.FileName, "darksign_maps_check.txt", FlagAlloc.ProbeFile, PeopleFlags.ListFile, MapMusic.ListFile, BonfireTravel.ListFile,
                      DarkSign.Randomizer.Data.EnemyTables.PlacedFile, DarkSign.Randomizer.Data.EnemyTables.ErFile })
             Delete(Path.Combine(root, file));
     }

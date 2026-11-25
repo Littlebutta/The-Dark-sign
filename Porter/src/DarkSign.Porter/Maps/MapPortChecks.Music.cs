@@ -16,6 +16,7 @@ public static partial class MapPortChecks
         yield return ("music: ported enemies get the threat level most Elden Ring enemies have (no Elden Ring battle music)", MusicThreat);
         yield return ("music: stand-ins and plain fallback rows get the quiet threat level too, on copies of Elden Ring's rows", MusicQuietStandIns);
         yield return ("people: a DS3 person stands on a copy of its Elden Ring row with DS3's team, quiet, and DS3's senses", PeopleOnDs3Team);
+        yield return ("people: the in-game flag log lists each person's event flags, passed-in ones from the start line, ranges flag by flag", PeopleFlagList);
         yield return ("music: every templated map gets its template's field music and ambience area (no row-0 Limgrave music)", MusicSoundPlaces);
     }
 
@@ -507,5 +508,56 @@ public static partial class MapPortChecks
         var back = PARAM.Read(param.Write());
         back.ApplyParamdef(def);
         Expect(back[19700000] is { } r && Convert.ToInt32(r["BgmPlaceInfo"].Value) == 180, "the added row survives a write");
+    }
+
+    // Elden Ring's layouts (DarkScript3 er-common) of the lines the people flag list reads.
+    private const string ErPeopleDefs = """
+    { "main_classes": [
+      { "index": 1003, "instrs": [
+        { "name": "END/RESTART IF Event Flag", "index": 2, "args": [
+          { "name": "Execution End Type", "type": 0 }, { "name": "Desired Flag State", "type": 0 },
+          { "name": "Target Event Flag Type", "type": 0 }, { "name": "Target Event Flag ID", "type": 2 } ] } ] },
+      { "index": 2000, "instrs": [
+        { "name": "Initialize Event", "index": 0, "args": [ { "name": "Event Slot Number", "type": 5 }, { "name": "Event ID", "type": 2 } ] } ] },
+      { "index": 2003, "instrs": [
+        { "name": "Batch Set Event Flags", "index": 22, "args": [
+          { "name": "Event Flag ID Start", "type": 2 }, { "name": "Event Flag ID End", "type": 2 }, { "name": "Flag State", "type": 0 } ] },
+        { "name": "Set Event Flag", "index": 66, "args": [
+          { "name": "Target Event Flag Type", "type": 0 }, { "name": "Target Event Flag ID", "type": 2 }, { "name": "Desired Flag State", "type": 0 } ] } ] }
+    ] }
+    """;
+
+    private static void PeopleFlagList()
+    {
+        static EMEVD.Instruction M(int bank, int id, params object[] args) => new(bank, id, args);
+        var msb = new MSBE();
+        msb.Parts.Enemies.Add(new MSBE.Part.Enemy { Name = "c0000_9000", ModelName = "c0000", EntityID = 45000780, NPCParamID = 1500025200 });
+        msb.Parts.Enemies.Add(new MSBE.Part.Enemy { Name = "c1100_9000", ModelName = "c1100", EntityID = 45000100, NPCParamID = 1 });
+        // A quest-state event in the map script (flag range, a literal flag) and a common hostility event whose
+        // hostile flag is passed in, like DS3's 20006000 started with Sirris.
+        var quest = new EMEVD.Event(45005570, EMEVD.Event.RestBehaviorType.Default);
+        quest.Instructions.AddRange([M(1003, 2, (byte)0, (byte)1, (byte)0, 1030290268u), M(2003, 22, 1030290255u, 1030290259u, (byte)0)]);
+        var hostile = new EMEVD.Event(1038291046, EMEVD.Event.RestBehaviorType.Default);
+        hostile.Instructions.Add(M(2003, 66, (byte)0, 0u, (byte)1));
+        hostile.Parameters.Add(new EMEVD.Parameter(0, 4, 4, 4));
+        var enemyOnly = new EMEVD.Event(45005000, EMEVD.Event.RestBehaviorType.Default);
+        enemyOnly.Instructions.Add(M(2003, 66, (byte)0, 45000999u, (byte)1));
+        var load = new EMEVD.Event(0, EMEVD.Event.RestBehaviorType.Default);
+        load.Instructions.AddRange([
+            M(2000, 0, 0, 45005570u, 45000780u),
+            M(2000, 0, 0, 1038291046u, 45000780u, 1030290269u, 1030290270u),
+            M(2000, 0, 0, 45005000u, 45000100u)]);
+        var script = new EMEVD(EMEVD.Game.Sekiro);
+        script.Events.AddRange([load, quest, enemyOnly]);
+        var common = new EMEVD(EMEVD.Game.Sekiro);
+        common.Events.Add(hostile);
+
+        var lines = PeopleFlags.Lines(msb, script, common, Emedf.Parse(ErPeopleDefs), "m45_00_00_00", id => id == 1500025200 ? "[DS3 person] Sirris" : "");
+        var flags = lines.Select(l => long.Parse(l[..l.IndexOf('\t')])).ToList();
+        Expect(flags.SequenceEqual(new long[] { 1030290268, 1030290255, 1030290256, 1030290257, 1030290258, 1030290259, 1030290269 }),
+            "flags listed: " + string.Join(",", flags));
+        Expect(lines.All(l => l.Contains("c0000_9000 Sirris (45000780), m45_00_00_00 event")), "each line names the person and event: " + lines[0]);
+        Expect(lines.Last().Contains("event 1038291046") && lines.Last().Contains("(X4)"), "the passed-in hostile flag says where it came from: " + lines.Last());
+        Expect(!flags.Contains(45000999), "an enemy's events aren't listed");
     }
 }
