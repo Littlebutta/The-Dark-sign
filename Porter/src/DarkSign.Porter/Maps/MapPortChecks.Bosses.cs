@@ -100,6 +100,7 @@ public static partial class MapPortChecks
         // A player point inside the area is where FromSoftware put the player on the floor.
         ds3.Parts.Players.Add(new MSB3.Part.Player { Name = "c0000_0010", ModelName = "c0000", Position = new Vector3(-195, 27.4f, -231) });
         Expect(BossArenas.Find(ds3, FriedeLikeScript(), Ds3Id)[0].Point == new Vector3(-195, 27.4f, -231), "a player point inside the area wins");
+        Expect(BossArenas.Find(ds3, FriedeLikeScript(), Ds3Id)[0].ArrivesInArea, "an arrival at a player point inside the area is in the area");
         var unnamed = BossArenas.Find(ds3, FriedeLikeScript(), Ds3Id);
         Expect(unnamed[0].Name == "Boss 14000800", $"without names: '{unnamed[0].Name}'");
         // A second fight starting at 830 cuts the first fight's events there.
@@ -172,6 +173,19 @@ public static partial class MapPortChecks
         var plain = common.Events.Single(e => e.ID == BossArenas.EventId(3)).Instructions;
         Expect(plain.Count(i => i.Bank == 2003 && i.ID == 66 && BitConverter.ToUInt32(i.ArgData, 4) == 0) == 0, "no flag 0 for a fight without a first encounter");
         Expect(plain.Any(i => i.Bank == 2003 && i.ID == 66 && BitConverter.ToUInt32(i.ArgData, 4) == 45005835 && i.ArgData[8] == 1), "still sets the entry flag");
+        Expect(!ins.Any(i => i.Bank == 3 && i.ID == 2), "an arrival outside the fight area doesn't wait for the area (Gundyr lands 8 m from him)");
+
+        // Deacons of the Deep: the arrival lies in the doorway box 3502800, which DS3's 13505810 and the boss music
+        // check together with the entry flag. The warp turns the entry flag on only while the player stands in it.
+        var inArea = arena with { Name = "Deacons of the Deep", Index = 4, AreaEntity = 45002800, ArrivesInArea = true };
+        var deacons = SyntheticCommon();
+        BossArenas.AddWarps(deacons, [inArea]);
+        var d = EMEVD.Read(deacons.Write()).Events.Single(e => e.ID == BossArenas.EventId(4)).Instructions;
+        int areaWait = d.FindIndex(i => i.Bank == 3 && i.ID == 2 && i.ArgData[0] == 0 && i.ArgData[1] == 1
+                                        && BitConverter.ToUInt32(i.ArgData, 4) == 10000 && BitConverter.ToUInt32(i.ArgData, 8) == 45002800);
+        int entryOn = d.FindIndex(i => i.Bank == 2003 && i.ID == 66 && BitConverter.ToUInt32(i.ArgData, 4) == 45005805 && i.ArgData[8] == 1);
+        int dInMap = d.FindIndex(i => i.Bank == 3 && i.ID == 8);
+        Expect(areaWait > dInMap && entryOn > areaWait, $"waits for the player in the fight area before the entry flag (in map {dInMap}, area {areaWait}, entry {entryOn})");
     }
 
     // Vordt's 13005810 in miniature: reads the first-encounter flag once, waits for the player in the gate box, then
