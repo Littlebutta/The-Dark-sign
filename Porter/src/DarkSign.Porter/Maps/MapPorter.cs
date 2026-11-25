@@ -406,6 +406,10 @@ public static class MapPorter
             Step(report, "map treasure", () => MapTreasure.Apply(ctx, ds3, ported.Select(p => p.Slot),
                 id => _partNames.GetValueOrDefault(id), lot => Ds3Ids.Current?.ItemLot(lot)));
             Step(report, "events", () => MapEvents.Port(ctx, ds3, er, ported.Select(p => p.Slot).ToList(), cutscenes, f => playedFlags = f, music));
+        // DS3's weapon hiding in the player animations the ported scripts play (PlayerSceneWeapons): after port-weapons
+        // has written c0000.anibnd (WaitForWeapons above).
+        if (ported.Count > 0)
+            Step(report, "player scene weapons", () => PlayerSceneWeapons.Run(ctx, ds3, ported.Select(p => p.Slot).ToList()));
         if (music is not null)
             Step(report, "music", () => MapMusic.WriteAudio(ctx, ds3, music));
         // DS3's bonfires as sites of grace (Bonfires): after the events, whose scripts register them.
