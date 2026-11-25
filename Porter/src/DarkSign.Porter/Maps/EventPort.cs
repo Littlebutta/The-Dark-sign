@@ -446,7 +446,14 @@ public sealed class EventPort
                 if (Music is not null && ins.Bank == 2010 && ins.ID is MapMusic.SetMapSoundState or MapMusic.EnableBossMapSound or MapMusic.EnableMapSoundWithFade or 7
                     && def.Args[arg].Name.Equals("Entity ID", StringComparison.OrdinalIgnoreCase))
                     kind = Kind.MusicRegion;
-                if (!kinds.TryAdd(p.SourceStartByte, kind) && kinds[p.SourceStartByte] != kind
+                // A use that says nothing about what the value is (a comparison's side, a count) gives way to one that
+                // does, in whichever order they come: DS3's 20005800 first asks "X24 == 0?" (1000[105]) and only then
+                // reads X24 as the first-encounter flag, so up to 1.0.640 every boss's first-encounter flag (and
+                // 20005800's arena area X28) was passed on in DS3's numbering, which nothing in the slot sets, and the
+                // entry flag the fight's music waits for never turned on (Darkeater Midir, Vordt, Friede...).
+                if (kind != Kind.Other && kinds.TryGetValue(p.SourceStartByte, out var had) && had == Kind.Other)
+                    kinds[p.SourceStartByte] = kind;
+                else if (!kinds.TryAdd(p.SourceStartByte, kind) && kinds[p.SourceStartByte] != kind
                     && (kind == Kind.MusicRegion || kinds[p.SourceStartByte] == Kind.MusicRegion))
                 {
                     // Used as a music region and as something else: it moves as the something else, and the music

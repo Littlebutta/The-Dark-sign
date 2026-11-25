@@ -11,6 +11,7 @@ public static partial class MapPortChecks
         yield return ("event port: map entities, map flags and global flags move; warps go to the DS3 map's slot", EventIdMoves);
         yield return ("event port: unknown commands become no-ops, unknown conditions drop the event and its start", EventDrops);
         yield return ("event port: event parameters follow their argument and values passed in move by kind", EventParameters);
+        yield return ("event port: a value first compared, then read as a flag, moves as a flag (20005800's first-encounter flag)", EventParameterComparedFirst);
         yield return ("event port: DS3 common events are ported once, under saved IDs, with Elden Ring's slot argument", EventCommon);
         yield return ("event port: flag ranges stay consecutive and the flag table reads back the same", EventFlagTable);
         yield return ("event port: overlapping flag ranges and ranges passed in are placed whole before any flag moves; no line spans blocks (1.0.630 Deacons crash)", EventFlagRangesJoined);
@@ -89,6 +90,9 @@ public static partial class MapPortChecks
       ] },
       { "index": 1000, "instrs": [
         { "name": "WAIT For Network Approval", "index": 9, "args": [ { "name": "Timeout (s)", "type": 6, "default": 3.0 } ] },
+        { "name": "GOTO IF Comparison", "index": 105, "args": [
+          { "name": "Label", "type": 0 }, { "name": "Comparison Type", "type": 0 },
+          { "name": "Left-hand Side", "type": 5 }, { "name": "Right-hand Side", "type": 5 } ] },
       ] },
       { "index": 1003, "instrs": [
         { "name": "GOTO IF Player Is Not In Own World (Excludes Arena)", "index": 12, "args": [
@@ -144,6 +148,9 @@ public static partial class MapPortChecks
         { "name": "SKIP Unconditionally", "index": 3, "args": [ { "name": "Number Of Skipped Lines", "type": 0, "default": 1 } ] },
         { "name": "END Unconditionally", "index": 4, "args": [ { "name": "Execution End Type", "type": 0 } ] },
         { "name": "GOTO Unconditionally", "index": 103, "args": [ { "name": "Label", "type": 0 } ] },
+        { "name": "GOTO IF Comparison", "index": 105, "args": [
+          { "name": "Label", "type": 0 }, { "name": "Comparison Type", "type": 0 },
+          { "name": "Left-hand Side", "type": 5 }, { "name": "Right-hand Side", "type": 5 } ] },
       ] },
       { "index": 1003, "instrs": [
         { "name": "SKIP IF Number of Co-op Clients", "index": 9, "args": [
@@ -342,6 +349,32 @@ public static partial class MapPortChecks
         Expect(ps.Count == 2 && ps[0].TargetStartByte == assetArg.Offset, $"entity parameter targets byte {ps.FirstOrDefault()?.TargetStartByte}, expected {assetArg.Offset}");
         var flagArg = er.Get(2003, 66)!.Args.First(a => a.Name == "Target Event Flag ID");
         Expect(ps[1].TargetStartByte == flagArg.Offset && ps[1].SourceStartByte == 4, "flag parameter didn't follow its argument");
+    }
+
+    /// <summary>
+    /// DS3's 20005800 (every boss fight's entry) first asks "X24 == 0?" (1000[105], a comparison: no kind) and only
+    /// then reads X24 as the first-encounter flag. Up to 1.0.640 the first use decided, so the flag was passed on in
+    /// DS3's numbering (Darkeater Midir's 15105851) and the entry flag the boss music waits for never turned on.
+    /// </summary>
+    private static void EventParameterComparedFirst()
+    {
+        var ds3Defs = Emedf.Parse(Ds3Defs);
+        var ds3 = new EMEVD(EMEVD.Game.DarkSouls3);
+        var constructor = new EMEVD.Event(0, EMEVD.Event.RestBehaviorType.Default);
+        constructor.Instructions.Add(Ins(2000, 0, 0, 14000200u, 14000801u));
+        ds3.Events.Add(constructor);
+        var e = new EMEVD.Event(14000200, EMEVD.Event.RestBehaviorType.Default);
+        var compare = ds3Defs.Get(1000, 105)!;
+        e.Instructions.Add(new EMEVD.Instruction(1000, 105, Emedf.Defaults(compare)));
+        e.Parameters.Add(new EMEVD.Parameter(0, compare.Args.First(a => a.Name == "Left-hand Side").Offset, 0, 4));
+        e.Instructions.Add(Ins(3, 0, (sbyte)0, (byte)1, (byte)0, 0u)); // IF Event Flag X0 on
+        e.Parameters.Add(new EMEVD.Parameter(1, ds3Defs.Get(3, 0)!.Args.First(a => a.Name == "Target Event Flag ID").Offset, 0, 4));
+        ds3.Events.Add(e);
+
+        var port = NewEventPort();
+        port.Learn(ds3);
+        var init = port.Convert(ds3, EMEVD.Game.Sekiro, MoveToSlot).Events[0].Instructions[0];
+        Expect(BitConverter.ToInt32(init.ArgData, 8) == 45000801, $"flag passed in became {BitConverter.ToInt32(init.ArgData, 8)}, not the moved 45000801");
     }
 
     private static void EventCommon()
