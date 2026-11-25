@@ -94,6 +94,18 @@ public static class RunEvents
         constructor.Instructions.Add(InitializeEvent(0, LeaveEventId));
     }
 
+    /// <summary>
+    /// The run block's events in <paramref name="common"/> that do anything but wait or end after a Warp Player.
+    /// The warp's map load starts common.emevd's events over, so such steps never run (1.0.636: the F1 boss warp's
+    /// "begin the fight" never happened); a step meant for after the load belongs in an event that waits for a saved
+    /// pending flag (<see cref="BossArenas"/>, <see cref="CutsceneMenu"/>).
+    /// </summary>
+    public static List<long> StepsAfterWarp(EMEVD common) =>
+        common.Events.Where(e => e.ID >= FlagBlock && e.ID < FlagBlock + 10000)
+            .Where(e => e.Instructions.SkipWhile(i => !(i.Bank == 2003 && i.ID == 14)).Skip(1)
+                .Any(i => !(i.Bank == 1001 && i.ID == 0) && !(i.Bank == 1000 && i.ID == 4)))
+            .Select(e => e.ID).ToList();
+
     private static bool IsOurInit(EMEVD.Instruction i) =>
         i.Bank == 2000 && i.ID == 0 && i.ArgData.Length >= 8
         && (BitConverter.ToUInt32(i.ArgData, 4) is StartEventId or LeaveEventId or AutoStartEventId || IsWarpEvent(BitConverter.ToUInt32(i.ArgData, 4)));

@@ -11,7 +11,7 @@ public static partial class MapPortChecks
         yield return ("bosses: a talking boss and its other stages in the boss group are bosses, the same body elsewhere is a person", BossTalkers);
         yield return ("boss arenas: found from DS3's boss fight calls, named, landing in the arena, with the fight's own events", BossArenaFind);
         yield return ("boss arenas: placed only where the boss was placed, with a fresh arrival point, IDs moved to the slot", BossArenaPlace);
-        yield return ("boss arenas: the warp event resets the fight, warps, waits for the map and begins the fight", BossArenaEvents);
+        yield return ("boss arenas: the warp event resets the fight and warps; a second event begins the fight after the load (nothing runs after a warp)", BossArenaEvents);
         yield return ("boss arenas: a boss shown only once the player walks through its intro area (Vordt) is warped to in that area", BossArenaIntro);
         foreach (var check in KitChecks())
             yield return check;
@@ -152,35 +152,63 @@ public static partial class MapPortChecks
         BossArenas.AddWarps(common, [arena, noFirst]);
         BossArenas.AddWarps(common, [arena, noFirst]);
         common = EMEVD.Read(common.Write());
-        Expect(common.Events.Count(e => BossArenas.IsArenaEvent(e.ID)) == 2, "one event per arena after a rerun");
+        Expect(common.Events.Count(e => BossArenas.IsArenaEvent(e.ID)) == 4, "a warp and an arrive event per arena after a rerun");
         int Inits(long id) => common.Events.Single(e => e.ID == 0).Instructions.Count(i => i.Bank == 2000 && BitConverter.ToUInt32(i.ArgData, 4) == id);
-        Expect(Inits(BossArenas.EventId(2)) == 1 && Inits(BossArenas.EventId(3)) == 1, "each started once from the constructor");
+        Expect(Inits(BossArenas.EventId(2)) == 1 && Inits(BossArenas.EventId(3)) == 1 && Inits(BossArenas.ArriveEventId(2)) == 1 && Inits(BossArenas.ArriveEventId(3)) == 1,
+            "each started once from the constructor");
+        Expect(BossArenas.PendingFlag(2) == 1039290402 && BossArenas.ArriveEventId(2) == 1039293402 && !BossKits.IsKitEvent(BossArenas.ArriveEventId(99))
+               && !CutsceneMenu.IsMenuEvent(BossArenas.ArriveEventId(0)) && BossArenas.PendingFlag(99) != CutsceneMenu.PendingFlag(0),
+            "pending flags in the saved range (0-999), arrive events clear of the kits' and cutscenes' numbers");
 
         var ins = common.Events.Single(e => e.ID == BossArenas.EventId(2)).Instructions;
         uint U(EMEVD.Instruction i, int at) => BitConverter.ToUInt32(i.ArgData, at);
-        int Flag(uint flag, byte state) => ins.FindIndex(i => i.Bank == 2003 && i.ID == 66 && U(i, 4) == flag && i.ArgData[8] == state);
+        int Flag(List<EMEVD.Instruction> list, uint flag, byte state) => list.FindIndex(i => i.Bank == 2003 && i.ID == 66 && U(i, 4) == flag && i.ArgData[8] == state);
         int warp = ins.FindIndex(i => i.Bank == 2003 && i.ID == 14);
-        int inMap = ins.FindIndex(i => i.Bank == 3 && i.ID == 8);
         Expect(ins[0].Bank == 1003 && ins[0].ID == 0 && U(ins[0], 4) == BossArenas.RequestFlag(2), "waits for its request flag");
-        Expect(Flag(BossArenas.RequestFlag(2), 0) > 0 && Flag(RunEvents.Ds3RunActive, 1) > 0, "clears the request and marks the run active");
+        Expect(Flag(ins, BossArenas.RequestFlag(2), 0) > 0 && Flag(ins, RunEvents.Ds3RunActive, 1) > 0, "clears the request and marks the run active");
         Expect(warp > 0 && ins[warp].ArgData[0] == ErId.Area && ins[warp].ArgData[1] == ErId.Block && U(ins[warp], 4) == 45009970, "warps to the arrival point");
         foreach (var off in new uint[] { 45000800, 45005805, 45000801, 45005811, 45005812 })
-            Expect(Flag(off, 0) is >= 0 and var at && at < warp, $"flag {off} is cleared before the warp");
-        Expect(inMap > warp && ins[inMap].ArgData[1] == 1 && ins[inMap].ArgData[2] == ErId.Area && ins[inMap].ArgData[3] == ErId.Block, "waits for the player in the map");
-        Expect(Flag(45000801, 1) > inMap && Flag(45005805, 1) > inMap, "begins the fight once in the map: first encounter, then entry");
-        Expect(ins[^1].Bank == 1000 && ins[^1].ID == 4 && ins[^1].ArgData[0] == 1, "ends and restarts, so it can be used again");
+            Expect(Flag(ins, off, 0) is >= 0 and var at && at < warp, $"flag {off} is cleared before the warp");
+        Expect(Flag(ins, BossArenas.PendingFlag(2), 1) is > 0 and var pend && pend < warp, "marks the fight pending before the warp");
+        // The warp's load starts common.emevd's events over, so nothing may follow the warp but the end (1.0.636).
+        Expect(warp == ins.Count - 2 && ins[^1].Bank == 1000 && ins[^1].ID == 4 && ins[^1].ArgData[0] == 1, "only end-and-restart after the warp");
+        Expect(Flag(ins, 45005805, 1) < 0 && Flag(ins, 45000801, 1) < 0, "the warp event itself never begins the fight");
+        Expect(RunEvents.StepsAfterWarp(common).Count == 0, "no run event has a step after its warp");
+        var bad = new EMEVD.Event(RunEvents.FlagBlock + 1999, EMEVD.Event.RestBehaviorType.Default);
+        bad.Instructions.Add(RunEvents.Make(2003, 14, (byte)45, (byte)0, (byte)0, (byte)0, 45009970u, 0));
+        bad.Instructions.Add(RunEvents.Make(1001, 0, 1f));
+        bad.Instructions.Add(RunEvents.Make(2003, 66, (byte)0, 45005805u, (byte)1));
+        var withBad = EMEVD.Read(common.Write());
+        withBad.Events.Add(bad);
+        Expect(RunEvents.StepsAfterWarp(withBad).SequenceEqual([(long)bad.ID]), "a flag set after a warp is caught");
 
-        var plain = common.Events.Single(e => e.ID == BossArenas.EventId(3)).Instructions;
+        var arr = common.Events.Single(e => e.ID == BossArenas.ArriveEventId(2)).Instructions;
+        int inMap = arr.FindIndex(i => i.Bank == 3 && i.ID == 8), loaded = arr.FindIndex(i => i.Bank == 3 && i.ID == 30);
+        Expect(arr[0].Bank == 1003 && arr[0].ID == 0 && U(arr[0], 4) == BossArenas.PendingFlag(2), "the arrive event waits for the pending flag");
+        Expect(loaded > 0 && inMap > loaded && arr[inMap].ArgData[1] == 1 && arr[inMap].ArgData[2] == ErId.Area && arr[inMap].ArgData[3] == ErId.Block,
+            "then for the map loaded and the player in it");
+        Expect(Flag(arr, BossArenas.PendingFlag(2), 0) > inMap, "clears the pending flag");
+        Expect(Flag(arr, 45000801, 1) > inMap && Flag(arr, 45005805, 1) > Flag(arr, 45000801, 1), "begins the fight once in the map: first encounter, then entry");
+        Expect(arr[^1].Bank == 1000 && arr[^1].ID == 4 && arr[^1].ArgData[0] == 1, "ends and restarts, so it can be used again");
+
+        var plain = common.Events.Single(e => e.ID == BossArenas.ArriveEventId(3)).Instructions;
         Expect(plain.Count(i => i.Bank == 2003 && i.ID == 66 && BitConverter.ToUInt32(i.ArgData, 4) == 0) == 0, "no flag 0 for a fight without a first encounter");
         Expect(plain.Any(i => i.Bank == 2003 && i.ID == 66 && BitConverter.ToUInt32(i.ArgData, 4) == 45005835 && i.ArgData[8] == 1), "still sets the entry flag");
-        Expect(!ins.Any(i => i.Bank == 3 && i.ID == 2), "an arrival outside the fight area doesn't wait for the area (Gundyr lands 8 m from him)");
+        Expect(!arr.Any(i => i.Bank == 3 && i.ID == 2), "an arrival outside the fight area doesn't wait for the area (Gundyr lands 8 m from him)");
+
+        // Landing in an intro area, the map's own event begins the fight: no pending flag, no arrive event.
+        var intro = SyntheticCommon();
+        BossArenas.AddWarps(intro, [arena with { Name = "Vordt", Index = 5, LandsAtIntro = true }]);
+        intro = EMEVD.Read(intro.Write());
+        Expect(!intro.Events.Any(e => e.ID == BossArenas.ArriveEventId(5))
+               && Flag(intro.Events.Single(e => e.ID == BossArenas.EventId(5)).Instructions, BossArenas.PendingFlag(5), 1) < 0, "an intro landing has no arrive step");
 
         // Deacons of the Deep: the arrival lies in the doorway box 3502800, which DS3's 13505810 and the boss music
-        // check together with the entry flag. The warp turns the entry flag on only while the player stands in it.
+        // check together with the entry flag. The arrive event turns the entry flag on only while the player stands in it.
         var inArea = arena with { Name = "Deacons of the Deep", Index = 4, AreaEntity = 45002800, ArrivesInArea = true };
         var deacons = SyntheticCommon();
         BossArenas.AddWarps(deacons, [inArea]);
-        var d = EMEVD.Read(deacons.Write()).Events.Single(e => e.ID == BossArenas.EventId(4)).Instructions;
+        var d = EMEVD.Read(deacons.Write()).Events.Single(e => e.ID == BossArenas.ArriveEventId(4)).Instructions;
         int areaWait = d.FindIndex(i => i.Bank == 3 && i.ID == 2 && i.ArgData[0] == 0 && i.ArgData[1] == 1
                                         && BitConverter.ToUInt32(i.ArgData, 4) == 10000 && BitConverter.ToUInt32(i.ArgData, 8) == 45002800);
         int entryOn = d.FindIndex(i => i.Bank == 2003 && i.ID == 66 && BitConverter.ToUInt32(i.ArgData, 4) == 45005805 && i.ArgData[8] == 1);

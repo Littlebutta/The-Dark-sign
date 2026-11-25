@@ -1827,6 +1827,8 @@ public static class MapPorter
         {
             setupNote = $"DS3 setup: FAILED ({ex.Message}); DS3's new-game flags stay off";
         }
+        if (RunEvents.StepsAfterWarp(common) is { Count: > 0 } lost)
+            throw new InvalidDataException($"common.emevd events with steps after their Warp Player, which the warp's load never runs: {string.Join(", ", lost)}");
         flags.Save(ctx.ModPath(MapEvents.FlagFile));
         File.WriteAllBytes(modCommon, DCX.Compress(common.Write(), compression));
         return $"run events: start warps to {host} entity {startEntity}; leave warps to {back.Map} entity {back.EntityId}; "
