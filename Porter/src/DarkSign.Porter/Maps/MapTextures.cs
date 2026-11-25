@@ -137,8 +137,8 @@ public sealed class MapTextures
                 {
                     // Its DS3 albedo wasn't found: a fully see-through stand-in, never a solid grey sheet in the sky.
                     bakeFailed.Add(name);
-                    textures[name] = new TPF.Texture(name, 0, 0, WeaponTextures.Encode(new byte[4 * 4 * 4], 4, 4,
-                        BCnEncoder.Shared.CompressionFormat.Bc3, 77), TPF.TPFPlatform.PC);
+                    textures[name] = new TPF.Texture(name, MapSkyFades.TpfAlphaFormat, 0, WeaponTextures.Encode(new byte[4 * 4 * 4], 4, 4,
+                        BCnEncoder.Shared.CompressionFormat.Bc7, 98), TPF.TPFPlatform.PC);
                     continue;
                 }
                 baked++;
