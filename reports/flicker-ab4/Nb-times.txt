@@ -1,0 +1,4 @@
+perf-start	282
+move-start	4000
+move-end	11993
+perf-end	12274
