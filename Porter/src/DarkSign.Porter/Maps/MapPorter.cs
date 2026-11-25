@@ -365,7 +365,7 @@ public static class MapPorter
         if (_armour is { StandIns.Count: > 0 } armour && ported.Count > 0)
             Step(report, "people armour", () => PortArmour(ctx, ds3, er, armour, ported.Select(p => p.Slot).ToList()));
         // Quiet copies of the stand-ins' Elden Ring rows (no Elden Ring battle music on DS3 maps).
-        if (_quiet is { Copies.Count: > 0 } quiet && ported.Count > 0)
+        if (_quiet is { HasRows: true } quiet && ported.Count > 0)
             Step(report, "stand-in battle music", () => PortQuietRows(ctx, quiet, ported.Select(p => p.Slot).ToList()));
         // Each ported map's Elden Ring field music and ambience area: its template colosseum's (MapSoundPlace).
         if (ported.Count > 0)
@@ -861,7 +861,7 @@ public static class MapPorter
                 var seats = EnemyPort.Seats(ds3Msb, EnemyPort.EventWarps(scripts));
                 var placed = EnemyPort.Place(ds3Msb, layout.Msb, ds3Id, erId,
                     enemies.Chooser, e => enemies.Describe(e, bosses), EnemyPort.AnyEnemyPart(enemies.Catalog), _placedEnemies, partNames,
-                    enemies.People, seats, armour: _armour, talk: _talk, quiet: _quiet);
+                    enemies.People, seats, armour: _armour, talk: _talk, quiet: _quiet, ds3Team: id => EnemyPort.TeamOf(enemies.Ds3Npc, id));
                 enemiesPlaced = placed;
                 report.AppendLine($"  enemies: {placed.Placed} placed ({placed.Ported} ported DS3 characters, {placed.StandIns} Elden Ring stand-ins, "
                                   + $"{placed.People} people{(_armour is null ? ", DS3's own people only" : ", DS3's own people and DS3 humans in their DS3 armour")}), {placed.Npcs} people left out, {placed.Skipped} with nothing to stand in; {bosses.Count} DS3 boss entities");
@@ -1466,6 +1466,9 @@ public static class MapPorter
         catch (Exception ex) { notes.Add($"DS3 NpcParam names unavailable ({ex.Message}); every DS3 enemy gets the most common stand-in"); }
         var catalog = EnemyPort.BuildCatalog(er, erNpc, notes, out var people, erCharaInit);
         _quiet = QuietStandIns.Create(erNpc);
+        if (_quiet is not null)
+            try { _quiet.Ds3Think = ctx.LoadParams(PorterGame.DarkSouls3).Get("NpcThinkParam"); }
+            catch (Exception ex) when (ex is not OutOfMemoryException) { notes.Add($"people: DS3 NpcThinkParam unavailable ({ex.Message}); DS3's people keep their stand-in's senses"); }
         notes.Add(_quiet is not null ? $"stand-in battle music: stand-ins whose Elden Ring row has a threat level other than {_quiet.QuietLevel} get a quiet copy of it"
             : "stand-in battle music: Elden Ring's NpcParam threat levels unreadable; stand-ins keep their own (Elden Ring battle music possible)");
         _armour = null;

@@ -15,6 +15,7 @@ public static partial class MapPortChecks
         yield return ("music: layers mix into one track, the DLL's list names flag, file and loop points", MusicMixAndList);
         yield return ("music: ported enemies get the threat level most Elden Ring enemies have (no Elden Ring battle music)", MusicThreat);
         yield return ("music: stand-ins and plain fallback rows get the quiet threat level too, on copies of Elden Ring's rows", MusicQuietStandIns);
+        yield return ("people: a DS3 person stands on a copy of its Elden Ring row with DS3's team, quiet, and DS3's senses", PeopleOnDs3Team);
         yield return ("music: every templated map gets its template's field music and ambience area (no row-0 Limgrave music)", MusicSoundPlaces);
     }
 
@@ -381,6 +382,68 @@ public static partial class MapPortChecks
         var npc = ThreatParam((1, 1u), (2, 1u), (3, 1u), (5, 6u));
         Expect(Enemies.ChrPort.EnsureNpcRows(npc, [(5, 50010000)]) == 1 && Convert.ToInt64(npc[50010000]!["threatLv"].Value) == 1,
             "a plain copy of a field boss's row is quiet");
+    }
+
+    private static PARAM ThinkParam(params (int Id, float Eye, int Logic)[] rows)
+    {
+        var def = new PARAMDEF { ParamType = "NPC_THINK_PARAM_ST", DataVersion = 1, FormatVersion = 203, Unicode = true, Fields = [] };
+        def.Fields.Add(new PARAMDEF.Field(def, PARAMDEF.DefType.f32, "eye_dist"));
+        def.Fields.Add(new PARAMDEF.Field(def, PARAMDEF.DefType.s32, "logicId"));
+        def.Fields.Add(new PARAMDEF.Field(def, PARAMDEF.DefType.f32, "searchEye_dist"));
+        var param = new PARAM { ParamType = def.ParamType, Rows = [] };
+        param.ApplyParamdef(def);
+        foreach (var (id, eye, logic) in rows)
+        {
+            var row = new PARAM.Row(id, $"think {id}", def);
+            row["eye_dist"].Value = eye;
+            row["logicId"].Value = logic;
+            row["searchEye_dist"].Value = 35f;
+            param.Rows.Add(row);
+        }
+        return param;
+    }
+
+    private static void PeopleOnDs3Team()
+    {
+        // Elden Ring: a person on team 27 (hostile NPC, as Witch-Hunter Jerren) and an invader on team 6 with a far sight.
+        PARAM Npc()
+        {
+            var p = ThreatParam((523120024, 3u), (523600034, 3u));
+            var def = p.AppliedParamdef;
+            def.Fields.Add(new PARAMDEF.Field(def, PARAMDEF.DefType.u8, "teamType"));
+            var q = new PARAM { ParamType = def.ParamType, Rows = [] };
+            q.ApplyParamdef(def);
+            foreach (var (id, team) in new[] { (523120024, (byte)27), (523600034, (byte)6), (1, (byte)6) })
+            {
+                var row = new PARAM.Row(id, $"row {id}", def);
+                row["threatLv"].Value = id == 1 ? 1u : 3u;
+                row["teamType"].Value = team;
+                q.Rows.Add(row);
+            }
+            return q;
+        }
+        var quiet = QuietStandIns.Create(Npc())!;
+        quiet.Ds3Think = ThinkParam((27300, 8f, 999));
+        // Horace (DS3 26301, team 26) on Jerren's row; the Sword Master (27300, team 6) on Vargram's, with DS3's think row.
+        int horace = quiet.ForPerson(523120024, 26301, 26), sword = quiet.ForPerson(523600034, 27300, 6);
+        Expect(horace == QuietStandIns.PersonRowBase + 26301 && sword == QuietStandIns.PersonRowBase + 27300, $"copy IDs {horace}, {sword}");
+        Expect(quiet.ForPerson(523120024, 26301, 26) == horace, "the same DS3 row on the same stand-in: the same copy");
+        Expect(quiet.ForPerson(523600034, 26301, 26) == horace + QuietStandIns.PersonStep, "one DS3 row on another stand-in: the next copy ID");
+        int think = quiet.ForPersonThink(523600000, 27300);
+        Expect(think == QuietStandIns.PersonRowBase + 27300 && quiet.ForPersonThink(523120000, 99999) == 523120000,
+            "DS3's think row gets a copy; one DS3 doesn't have keeps the stand-in's");
+        var npc = Npc();
+        var erThink = ThinkParam((523600000, 200f, 523600000), (523120000, 30f, 523120000));
+        var line = quiet.WritePeople(npc, erThink);
+        Expect(npc[horace] is { } h && Convert.ToInt32(h["teamType"].Value) == 26 && Convert.ToInt64(h["threatLv"].Value) == quiet.QuietLevel
+               && npc[sword] is { } s && Convert.ToInt32(s["teamType"].Value) == 6, line);
+        Expect(Convert.ToInt32(npc[523120024]!["teamType"].Value) == 27, "Elden Ring's own row keeps its team");
+        Expect(erThink[think] is { } t && (float)t["eye_dist"].Value == 8f && (int)t["logicId"].Value == 523600000 && (float)t["searchEye_dist"].Value == 0f,
+            "the think copy has DS3's sight, no Elden Ring search sight, and keeps the stand-in's AI script");
+        Expect(line.Contains("27->26 x1") && line.Contains("1 think copies"), line);
+        var msb = new MSBE();
+        msb.Parts.Enemies.Add(new MSBE.Part.Enemy { Name = "c0000_9000", NPCParamID = horace, ThinkParamID = think });
+        Expect(QuietStandIns.Revert(msb, new Dictionary<int, int> { [horace] = 523120024 }) == 1 && msb.Parts.Enemies[0].NPCParamID == 523120024, "revert");
     }
 
     private static void MusicThreat()

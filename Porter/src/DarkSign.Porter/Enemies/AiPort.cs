@@ -968,7 +968,6 @@ public sealed class AiPort
             notes?.Add($"c{ai.Ds3Chr:D4}: template NpcThinkParam {templateThink} is missing; the template's AI stays");
             return 0;
         }
-        static string Norm(string s) => s.Replace("_", "").ToLowerInvariant();
         var targets = erThink.AppliedParamdef.Fields.Select((f, i) => (f, i)).GroupBy(x => Norm(x.f.InternalName)).ToDictionary(g => g.Key, g => g.First().i);
         int added = 0;
         foreach (var t in ai.Rows)
@@ -981,20 +980,9 @@ public sealed class AiPort
             if (ds3Think?[t.Ds3Think] is { } source)
             {
                 row.Name = $"[DS3] {source.Name}";
-                foreach (var cell in source.Cells)
-                {
-                    var key = Norm(cell.Def.InternalName);
-                    if (key is "logicid" or "battlegoalid" || key.StartsWith("pad") || key.Contains("reserve") || !targets.TryGetValue(key, out var at))
-                        continue;
-                    var to = row.Cells[at];
-                    if (cell.Value is byte[] || to.Value is byte[] || IsDecimal(cell.Value) != IsDecimal(to.Value))
-                        continue;
-                    try { to.Value = Convert.ChangeType(cell.Value, to.Value.GetType()); }
-                    catch (Exception e) when (e is InvalidCastException or OverflowException or FormatException) { }
-                }
+                CopyFields(row, source, targets);
+                ApplySenses(row, source);
             }
-            if (ds3Think?[t.Ds3Think] is { } senses)
-                ApplySenses(row, senses);
             if (t.Battle is { } battle)
                 SetInt(row, "battleGoalID", battle);
             if (t.Logic is { } logic)
@@ -1004,6 +992,34 @@ public sealed class AiPort
         }
         erThink.Rows.Sort((a, b) => a.ID.CompareTo(b.ID));
         return added;
+    }
+
+    /// <summary>
+    /// DS3's think values on an Elden Ring think row, as a ported character's row gets them (<see cref="ApplyParams"/>):
+    /// every field both games have under the same name and kind, except the goals and logic (the row keeps its own
+    /// AI scripts), then the senses the copy by name misses (<see cref="ApplySenses"/>).
+    /// </summary>
+    public static void CopyDs3Think(PARAM erThink, PARAM.Row row, PARAM.Row ds3)
+    {
+        CopyFields(row, ds3, erThink.AppliedParamdef.Fields.Select((f, i) => (f, i)).GroupBy(x => Norm(x.f.InternalName)).ToDictionary(g => g.Key, g => g.First().i));
+        ApplySenses(row, ds3);
+    }
+
+    private static string Norm(string s) => s.Replace("_", "").ToLowerInvariant();
+
+    private static void CopyFields(PARAM.Row row, PARAM.Row source, IReadOnlyDictionary<string, int> targets)
+    {
+        foreach (var cell in source.Cells)
+        {
+            var key = Norm(cell.Def.InternalName);
+            if (key is "logicid" or "battlegoalid" || key.StartsWith("pad") || key.Contains("reserve") || !targets.TryGetValue(key, out var at))
+                continue;
+            var to = row.Cells[at];
+            if (cell.Value is byte[] || to.Value is byte[] || IsDecimal(cell.Value) != IsDecimal(to.Value))
+                continue;
+            try { to.Value = Convert.ChangeType(cell.Value, to.Value.GetType()); }
+            catch (Exception e) when (e is InvalidCastException or OverflowException or FormatException) { }
+        }
     }
 
     /// <summary>

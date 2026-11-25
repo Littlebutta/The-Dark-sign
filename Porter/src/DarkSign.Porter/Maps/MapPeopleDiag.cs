@@ -29,6 +29,8 @@ public static class MapPeopleDiag
         var ds3Defs = Emedf.Parse(File.ReadAllText(ctx.Data.Emedf("ds3-common")));
         var erDefs = Emedf.Parse(File.ReadAllText(ctx.Data.Emedf("er-common")));
         using var ds3 = ctx.OpenArchives(PorterGame.DarkSouls3);
+        // Opening Elden Ring's archives registers its Oodle library, which the mod's map and script files need.
+        using var erArchives = ctx.OpenArchives(PorterGame.EldenRing);
         PARAM? ds3Npc = null, modNpc = null;
         try { ds3Npc = ctx.LoadParams(PorterGame.DarkSouls3).Get("NpcParam"); }
         catch (Exception ex) when (ex is not OutOfMemoryException) { Line($"DS3 NpcParam unreadable: {ex.Message}"); }
