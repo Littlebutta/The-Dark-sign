@@ -50,6 +50,9 @@ public static class BossArenas
 
         /// <summary>The area the boss's own first-encounter event waits for (<see cref="IntroArea"/>), or 0.</summary>
         public int IntroArea { get; init; }
+
+        /// <summary>The arrival point lies inside the fight's area (<see cref="Area"/>; <see cref="Arena.ArrivesInArea"/>).</summary>
+        public bool ArrivesInArea { get; init; }
     }
 
     /// <summary>A fight placed in an Elden Ring map: its IDs moved to the slot and its arrival point.</summary>
@@ -78,6 +81,19 @@ public static class BossArenas
         /// encounter and turns its flag on, so the warp doesn't.
         /// </summary>
         public bool LandsAtIntro { get; init; }
+
+        /// <summary>The fight's area (20005800's arena area), moved to the slot, or 0.</summary>
+        public uint AreaEntity { get; init; }
+
+        /// <summary>
+        /// The arrival point lies inside <see cref="AreaEntity"/>. DS3's own fight events and its boss music wait for the
+        /// entry flag and the player inside that area at the same time (Deacons of the Deep's 13505810 and every fight's
+        /// music event 20005831 ask "entry flag on AND player in 3502800"). In DS3 the fog wall walks the player into
+        /// that area as the entry flag turns on; Deacons' is a 5 x 3.6 m box in the doorway. The warp turned the flag on
+        /// 5 s after arrival, by when a player walking to the altar had left the box, and the fight never started
+        /// (1.0.632). So the warp now turns the entry flag on only while the player stands in the area.
+        /// </summary>
+        public bool ArrivesInArea { get; init; }
     }
 
     /// <summary>The event that stands in for a fight's unported talk (1500+i in the run's block).</summary>
@@ -144,6 +160,7 @@ public static class BossArenas
                 TalkFlags = talkFlags,
                 TalkEntity = talkEntity > 0 ? talkEntity : boss,
                 IntroArea = introId,
+                ArrivesInArea = Contains(introId > 0 && intro is not null ? intro : region, point),
             });
         }
         return fights;
@@ -425,12 +442,15 @@ public static class BossArenas
                 Ds3FirstEncounter = f.FirstEncounter,
                 Ds3Events = f.Events,
                 LandsAtIntro = f.IntroArea > 0,
+                AreaEntity = f.Area > 0 ? (uint)ds3.MoveEntity(f.Area, er) : 0,
+                ArrivesInArea = f.ArrivesInArea && f.IntroArea <= 0,
             });
             if (f.TalkFlags.Count > 0)
                 notes.Add($"boss arenas: {f.Name}'s first encounter waits for {string.Join(", ", f.TalkFlags)}, which only a talk sets: "
                           + $"turned on within {TalkReach} m of {f.TalkEntity}");
             notes.Add($"boss arenas: {f.Name} lands at {f.Point.X:0.#} {f.Point.Y:0.#} {f.Point.Z:0.#} ({f.PointFrom}), entity {entity}; "
-                      + $"flags: defeated {Move(f.Defeated)}, entry {Move(f.Entry)}, first encounter {Move(f.FirstEncounter)}; {f.Events.Count} fight events reset");
+                      + $"flags: defeated {Move(f.Defeated)}, entry {Move(f.Entry)}, first encounter {Move(f.FirstEncounter)}; {f.Events.Count} fight events reset"
+                      + (f.ArrivesInArea && f.IntroArea <= 0 ? $"; entry set once the player stands in area {(f.Area > 0 ? ds3.MoveEntity(f.Area, er) : 0)}" : ""));
         }
         return arenas;
     }
@@ -492,6 +512,10 @@ public static class BossArenas
             // (after its intro cutscene); turning it on here would begin the fight before the boss appears.
             if (!a.LandsAtIntro)
             {
+                // The fight's events and music need the player in the fight area when the entry flag turns on
+                // (ArrivesInArea): wait for that (at once when the player hasn't moved; else when they step back in).
+                if (a.ArrivesInArea && a.AreaEntity > 0)
+                    e.Instructions.Add(RunEvents.Make(3, 2, (sbyte)0, On, 10000u, a.AreaEntity, 1));
                 if (a.FirstEncounter > 0)
                     e.Instructions.Add(SetFlag(a.FirstEncounter, On));
                 e.Instructions.Add(SetFlag(a.Entry, On));
