@@ -25,7 +25,7 @@ public sealed class MapModelPort
     /// <see cref="Layout"/>.
     /// </summary>
     public sealed record MaterialTemplate(string Kind, string Matbin, BinderFile File, FLVER2.Material Material, FLVER2.GXList GxList,
-        FLVER2.BufferLayout Layout, int Rank = 0);
+        FLVER2.BufferLayout Layout, int Rank = 0, bool Legacy = false);
 
     /// <summary>The kinds of template, in the order their GX lists and layouts are written.</summary>
     public static readonly string[] Kinds = ["opaque", "edge", "alpha", "nolight", "water", "nolight-blend", "nolight-edge", "nolight-add", "nolight-opacity"];
@@ -99,6 +99,83 @@ public sealed class MapModelPort
         }
         return missing;
     }
+
+    /// <summary>
+    /// Elden Ring's own DS3-style see-through unlit material, the template for DS3's see-through sky layers
+    /// (nolight-blend, nolight-add, nolight-opacity) when allmaterial ships it.
+    /// <para>
+    /// <b>Why (measured 2026-11-25 on 1.0.636 and Elden Ring's allmaterial, sfx and map binders):</b> up to the 1.0.63x
+    /// builds those layers took the unlit map template (m10_00_003, shader M[A]_NoLight) with g_BlendMode 2 or 4, and
+    /// High Wall still showed its sky_02 ring, sun glow and horizon haze as hard solid shapes, with the fade baked into
+    /// the texture's alpha (#284) and with that texture as BC7 under Elden Ring's alpha format byte (#287). No vanilla
+    /// model draws M[A]_NoLight blended: its one blended matbin, m15_00_865, is used by no map piece. The GX list and
+    /// vertex layout were ruled out: vanilla blended unlit map materials use the same GX00 list and layout as the port
+    /// (JortPob's MaterialInfo.xml, a whole-game dump of every material's GX list and layout). Elden Ring does ship
+    /// DS3's own sky shader: map\matxml\M[A]_al_NoLight (shader GXFlver_Col, g_BlendMode 2, no depth write, sampler
+    /// g_DiffuseTexture, the DS3 name and shader of these layers). The shader is compiled and used: vanilla effect model
+    /// s83200 (S[A]_add_GXFlver, the same GXFlver_Col shader) draws with exactly DS3's sky vertex layout (position,
+    /// normal, vertex colour, one short UV) and GX list (GX14 then GX20), and Eclipsesun_M[A]_al_NoLight is the same
+    /// shader for Elden Ring's own eclipse sun. GXFlver_Col is DS3's "vertex colour" shader: DS3 fades these layers by
+    /// the vertex colour's alpha.
+    /// </para>
+    /// <para>
+    /// <b>What it does:</b> those kinds are written with this matbin (renamed per material), GX14/GX20 as s83200 and
+    /// DS3's sky models have them, and DS3's layout. Cloud bands, haze and glows keep DS3's own texture, UVs and fade
+    /// (vertex colour white, alpha = DS3's fade; see <see cref="MapSkyFades"/>); the soft cloud cards keep their baked
+    /// texture, whose alpha holds their UV fade and masks. Without the matbin the old M[A]_NoLight path is used and the
+    /// template summary in the port log says so.
+    /// </para>
+    /// </summary>
+    public const string LegacyBlendMatbin = "M[A]_al_NoLight";
+
+    /// <summary>The albedo sampler of Elden Ring's legacy GXFlver matbins (<see cref="LegacyBlendMatbin"/>).</summary>
+    public const string LegacyAlbedoSampler = "g_DiffuseTexture";
+
+    /// <summary>GX14 of vanilla s83200 and of DS3's m30 sky models: colour 1, 1, 1, power 1, then three zeros.</summary>
+    public static byte[] LegacyGx14()
+    {
+        var data = new byte[28];
+        for (int i = 0; i < 4; i++)
+            BitConverter.GetBytes(1f).CopyTo(data, i * 4);
+        return data;
+    }
+
+    /// <summary>
+    /// The <see cref="LegacyBlendMatbin"/> template, or null when the matbins don't have it on GXFlver_Col with its
+    /// <see cref="LegacyAlbedoSampler"/>. <paramref name="terminatorFrom"/> gives the GX list terminator (a vanilla map
+    /// material's).
+    /// </summary>
+    public static MaterialTemplate? LegacyTemplate(IReadOnlyDictionary<string, BinderFile> matbins, FLVER2.GXList terminatorFrom)
+    {
+        if (!matbins.TryGetValue(LegacyBlendMatbin, out var file))
+            return null;
+        MATBIN matbin;
+        try { matbin = MATBIN.Read(file.Bytes); }
+        catch (Exception ex) when (ex is not OutOfMemoryException) { return null; }
+        if (!Path.GetFileNameWithoutExtension(ItemText.Leaf(matbin.ShaderPath ?? "")).Equals("GXFlver_Col", StringComparison.OrdinalIgnoreCase)
+            || !matbin.Samplers.Any(x => x.Type == LegacyAlbedoSampler) || string.IsNullOrEmpty(matbin.SourcePath))
+            return null;
+        var gx = new FLVER2.GXList { TerminatorID = terminatorFrom.TerminatorID, TerminatorLength = terminatorFrom.TerminatorLength };
+        gx.Add(new FLVER2.GXItem("GX14", 101, LegacyGx14()));
+        gx.Add(new FLVER2.GXItem("GX20", 100, new byte[12]));
+        var material = new FLVER2.Material
+        {
+            Name = LegacyBlendMatbin, MTD = matbin.SourcePath, GXIndex = 0, Index = 0,
+            Textures = matbin.Samplers.Select(x => new FLVER2.Texture { ParamName = x.Type, Path = "" }).ToList(),
+        };
+        var layout = new FLVER2.BufferLayout
+        {
+            new FLVER.LayoutMember(FLVER.LayoutType.Float3, FLVER.LayoutSemantic.Position, 0),
+            new FLVER.LayoutMember(FLVER.LayoutType.UByte4, FLVER.LayoutSemantic.Normal, 0),
+            new FLVER.LayoutMember(FLVER.LayoutType.UByte4Norm, FLVER.LayoutSemantic.VertexColor, 1),
+            new FLVER.LayoutMember(FLVER.LayoutType.Short2, FLVER.LayoutSemantic.UV, 0),
+        };
+        return new MaterialTemplate("nolight-blend", LegacyBlendMatbin, file, material, gx, layout, 0, Legacy: true);
+    }
+
+    /// <summary>True when a kind keeps DS3's fade in the vertex colour alpha (drawn by <see cref="LegacyBlendMatbin"/>).</summary>
+    public bool VertexFade(string kind) =>
+        kind is "nolight-blend" or "nolight-add" && _templates.TryGetValue(kind, out var t) && t.Legacy;
 
     /// <summary>True when a water template was found.</summary>
     public bool HasWater => _templates.ContainsKey("water");
@@ -274,6 +351,13 @@ public sealed class MapModelPort
             // DS3's additive sun glows and soft cloud cards, their fade baked into a texture (MapSkyFades).
             templates["nolight-add"] = unlit with { Kind = "nolight-add" };
             templates["nolight-opacity"] = unlit with { Kind = "nolight-opacity" };
+        }
+        // ... unless Elden Ring ships DS3's own see-through sky material (LegacyBlendMatbin), which they then take.
+        if (LegacyTemplate(matbins, templates["opaque"].GxList) is { } legacy)
+        {
+            templates["nolight-blend"] = legacy with { Kind = "nolight-blend" };
+            templates["nolight-add"] = legacy with { Kind = "nolight-add" };
+            templates["nolight-opacity"] = legacy with { Kind = "nolight-opacity" };
         }
         return new MapModelPort(templates, headerFlver ?? flvers[0]);
     }
@@ -929,11 +1013,12 @@ public sealed class MapModelPort
             MapTerrainBlends.ApplySky(flver, stats);
             Skies.Add(stats);
         }
-        // DS3's see-through sky layers get their fade baked into a texture (MapSkyFades), while DS3's colours and UVs
-        // are here; a layer too wide to bake keeps the old half-visible cut (MapUnlitBlends).
+        // DS3's see-through sky layers, while DS3's colours and UVs are here: under Elden Ring's legacy sky material
+        // the cloud bands and glows keep DS3's vertex fade; the rest get their fade baked into a texture (MapSkyFades).
+        // A layer too wide to bake keeps the old half-visible cut (MapUnlitBlends).
         {
             var fadeStats = new MapSkyFades.Stats();
-            var tooWide = MapSkyFades.Apply(flver, fadeStats);
+            var tooWide = MapSkyFades.Apply(flver, fadeStats, VertexFade, keepAlpha);
             SkyFades.Add(fadeStats);
             var stats = new MapUnlitBlends.Stats();
             keepAlpha.UnionWith(MapUnlitBlends.Apply(flver, stats, tooWide));
@@ -1059,7 +1144,7 @@ public sealed class MapModelPort
             var template = meshTemplates[mesh];
             var sourceLayouts = mesh.VertexBuffers.Where(b => b.LayoutIndex >= 0 && b.LayoutIndex < ds3Layouts.Count)
                 .SelectMany(b => ds3Layouts[b.LayoutIndex]).ToList();
-            Conform(mesh, template.Layout, kinds.IndexOf(template.Kind), sourceLayouts, keepAlpha.Contains(mesh));
+            Conform(mesh, template.Layout, kinds.IndexOf(template.Kind), sourceLayouts, keepAlpha.Contains(mesh), template.Legacy);
             SetBoundingBox(mesh, flver.Header.Version);
         }
     }
@@ -1086,8 +1171,10 @@ public sealed class MapModelPort
     /// channel still out of range is moved by whole tiles, which a tiling texture doesn't show.
     /// </summary>
     /// <param name="keepAlpha">Keep the vertex's own colour alpha (a DS3 overlay's fade, see <see cref="MapOverlays"/>).</param>
+    /// <param name="white">Colour white (red, green and blue 1), for <see cref="LegacyBlendMatbin"/>, whose shader
+    /// multiplies the vertex colour in as DS3's did; Elden Ring's map pieces' red 1, green and blue 0 would tint it.</param>
     public static void Conform(FLVER2.Mesh mesh, FLVER2.BufferLayout layout, int layoutIndex, IReadOnlyList<FLVER.LayoutMember>? source = null,
-        bool keepAlpha = false)
+        bool keepAlpha = false, bool white = false)
     {
         int uvs = layout.Where(m => m.Semantic == FLVER.LayoutSemantic.UV).Sum(m => UvCount(m.Type));
         int tangents = layout.Count(m => m.Semantic == FLVER.LayoutSemantic.Tangent);
@@ -1125,7 +1212,7 @@ public sealed class MapModelPort
             for (int i = 0; i < colors; i++)
                 // What vanilla map piece vertices hold in this channel: red 1, green and blue 0, alpha 1 (all 67,000
                 // vertices of two Stormveil pieces and the colosseum's; alpha alone varies, fading edges out).
-                v.Colors.Add(new FLVER.VertexColor(alpha, 1f, 0f, 0f));
+                v.Colors.Add(white ? new FLVER.VertexColor(alpha, 1f, 1f, 1f) : new FLVER.VertexColor(alpha, 1f, 0f, 0f));
             if (v.UVs.Count == 0)
                 v.UVs.Add(Vector3.Zero);
             // Only the first channel means the same in both games (DS3's others are lightmap and blend channels).
@@ -1242,7 +1329,8 @@ public sealed class MapModelPort
             var matbin = MATBIN.Read(material.Template.File.Bytes);
             foreach (var sampler in material.TemplateTextures ? [] : matbin.Samplers)
             {
-                var texture = Role(sampler.Type) switch
+                var role = material.Template.Legacy && sampler.Type == LegacyAlbedoSampler ? ("albedo", 0) : Role(sampler.Type);
+                var texture = role switch
                 {
                     ("albedo", 0) => material.Albedo,
                     ("normal", 0) => material.Normal,
@@ -1256,7 +1344,7 @@ public sealed class MapModelPort
                     sampler.Path = texture;
                 // DS3 tiles a texture per material (a sky dome's 3 x 1); Elden Ring's sampler carries the same scale
                 // (JortPob sets it for its terrain). Left alone at 1 x 1, as vanilla materials have it.
-                if (Role(sampler.Type) is ("albedo" or "normal", 0) && material.Scale != default && material.Scale != Vector2.One)
+                if (role is ("albedo" or "normal", 0) && material.Scale != default && material.Scale != Vector2.One)
                     sampler.Unk14 = material.Scale;
             }
             if (material.Template.Kind is "nolight-blend" or "nolight-opacity")
@@ -1268,7 +1356,8 @@ public sealed class MapModelPort
             if (material.Template.Kind == "nolight-add")
                 foreach (var param in SetUnlitAdd(matbin))
                     Notes.Add($"{material.Template.Matbin} has no {param}: {material.Name} (an additive unlit sky glow) may draw solid");
-            if (material.Template.Kind is "nolight" or "nolight-blend" or "nolight-edge" or "nolight-add" or "nolight-opacity")
+            // The legacy sky material has no shadow switch: it is blended and unlit, which casts none.
+            if (material.Template.Kind is "nolight" or "nolight-blend" or "nolight-edge" or "nolight-add" or "nolight-opacity" && !material.Template.Legacy)
             {
                 if (matbin.Params.FirstOrDefault(p => p.Name == NoShadowParam && p.Value is bool) is { } noShadow)
                     noShadow.Value = true;
