@@ -248,9 +248,9 @@ public static class EnemyPort
     public static Result Place(MSB3 ds3, MSBE msb, MapId ds3Id, MapId erId, Chooser chooser,
         Func<MSB3.Part.Enemy, Ds3Enemy> describe, MSBE.Part.Enemy? fallbackTemplate = null, List<string>? table = null,
         Dictionary<string, string>? partNames = null, People? people = null, IReadOnlyDictionary<string, Seat>? seats = null,
-        PeopleArmour? armour = null, TalkPort? talk = null, QuietStandIns? quiet = null)
+        PeopleArmour? armour = null, TalkPort? talk = null, QuietStandIns? quiet = null, Func<int, int>? ds3Team = null)
     {
-        int talking = 0, quieted = 0;
+        int talking = 0, quieted = 0, onDs3Team = 0;
         int dressed = 0, borrowedBefore = chooser.BorrowedThinks;
         int placed = 0, ported = 0, standIns = 0, npcs = 0, skipped = 0, peoplePlaced = 0, seated = 0, sameSeat = 0;
         var takenSeats = new List<Vector3>();
@@ -341,13 +341,21 @@ public static class EnemyPort
             partNames?.TryAdd(src.Name, part.Name);
             part.ModelName = who.Model;
             part.NPCParamID = who.NpcParam;
+            part.ThinkParamID = chooser.ThinkFor(who, src.ThinkParamID);
+            // A DS3 person on an Elden Ring person's rows: copies with DS3's team and DS3's senses (QuietStandIns.ForPerson),
+            // so nobody DS3 has on the player's side fights for Elden Ring's (1.0.636: Firelink's people attacked).
+            if (quiet is not null && what.Npc && who.Source != "ported DS3 character" && ds3Team?.Invoke(src.NPCParamID) is int team and >= 0)
+            {
+                part.NPCParamID = quiet.ForPerson(who.NpcParam, src.NPCParamID, team);
+                part.ThinkParamID = quiet.ForPersonThink(part.ThinkParamID, src.ThinkParamID);
+                onDs3Team++;
+            }
             // An Elden Ring row with a louder threat level starts Elden Ring's battle music: a quiet copy (QuietStandIns).
-            if (quiet is not null && who.Source != "ported DS3 character" && quiet.For(who.NpcParam) is var quietRow && quietRow != who.NpcParam)
+            else if (quiet is not null && who.Source != "ported DS3 character" && quiet.For(who.NpcParam) is var quietRow && quietRow != who.NpcParam)
             {
                 part.NPCParamID = quietRow;
                 quieted++;
             }
-            part.ThinkParamID = chooser.ThinkFor(who, src.ThinkParamID);
             // DS3's own talk script, converted (TalkPort); a person whose script can't be converted stays silent.
             part.TalkID = what.Npc && talk is not null ? talk.For(ds3Id, src.TalkID) : 0;
             if (part.TalkID > 0)
@@ -407,6 +415,8 @@ public static class EnemyPort
             if (what.Boss)
                 notes.Add($"boss {what.Name} (entity {part.EntityID}) -> {who.Name} ({who.Model}, {who.Source})");
         }
+        if (onDs3Team > 0)
+            notes.Add($"people: {onDs3Team} on copies of their Elden Ring rows with DS3's team and DS3's senses (QuietStandIns.ForPerson)");
         if (quieted > 0)
             notes.Add($"{quieted} stand-ins placed on quiet copies of their Elden Ring rows (their threat level starts Elden Ring's battle music, QuietStandIns)");
         if (standInUse.Count > 0)
