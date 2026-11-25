@@ -584,7 +584,7 @@ public static partial class MapPortChecks
         Expect(port.Textures.All(t => !t.Contains("water")), "the DS3 water texture isn't asked for");
     }
 
-    private static (MapModelPort Port, BND4 HostBnd) VisualPort(bool plain = false, bool water = false)
+    private static (MapModelPort Port, BND4 HostBnd) VisualPort(bool plain = false, bool water = false, bool legacy = false)
     {
         var matbins = new Dictionary<string, BinderFile>();
         var flvers = new List<FLVER2>();
@@ -608,6 +608,17 @@ public static partial class MapPortChecks
         Add("m10_00_185", "M[AMSN_V]_Grass", "M_AMSN_V__Grass_snp_Texture2D_0_AlbedoMap_0", "M_AMSN_V__Grass_snp_Texture2D_1_NormalMap_0");
         if (water)
             Add("m22_00_110", "M[MuddyWater]", "M_MuddyWater__snp_Texture2D_0_NormalMap_0", "M_MuddyWater__snp_Texture2D_2_NormalMap_0");
+        if (legacy)
+        {
+            // Elden Ring's map\matxml\M[A]_al_NoLight as allmaterial has it (2026-11-25): GXFlver_Col, blended, one sampler,
+            // no shadow switch; no vanilla map piece uses it, so it is a matbin only (no model of its own).
+            var bin = new MATBIN { ShaderPath = @"N:\GR\data\Material\spx\GXFlver_Col.spx", SourcePath = @"N:\GR\data\Material\mtd\map\matxml\M[A]_al_NoLight.matxml" };
+            bin.Params.Add(new MATBIN.Param { Name = "g_GX_bDisableDepthWrite", Type = MATBIN.ParamType.Bool, Value = true });
+            bin.Params.Add(new MATBIN.Param { Name = "g_BlendMode", Type = MATBIN.ParamType.Int, Value = 2 });
+            bin.Params.Add(new MATBIN.Param { Name = "g_AlphaRef", Type = MATBIN.ParamType.Int2, Value = new[] { 0, 0 } });
+            bin.Samplers.Add(new MATBIN.Sampler { Type = MapModelPort.LegacyAlbedoSampler, Path = "", Unk14 = Vector2.One });
+            matbins["M[A]_al_NoLight"] = new(Binder.FileFlags.Flag1, matbins.Count, @"N:\GR\data\INTERROOT_win64\material\matbin\map\matxml\M[A]_al_NoLight.matbin", MATBIN.Read(bin.Write()).Write());
+        }
         var hostBnd = new BND4();
         hostBnd.Files.Add(new BinderFile(Binder.FileFlags.Flag1, 200, @"N:\GR\data\Model\map\m45_00_00_00\m45_00_00_00_001000\sib\m45_00_00_00_001000.flver", flvers[0].Write()));
         return (MapModelPort.Create(flvers, matbins, flvers[0], plain), hostBnd);
@@ -863,6 +874,42 @@ public static partial class MapPortChecks
             int Mode(string albedo) => bins.Where(b => b.Bin.Samplers.Any(x => x.Path == albedo)).Select(b => b.Bin.Params.FirstOrDefault(p => p.Name == "g_BlendMode")?.Value is int i ? i : -1).FirstOrDefault(-1);
             if (cardMat is not null && glowMat is not null && bins.Any(b => b.Bin.Params.Any(p => p.Name == "g_BlendMode")))
                 Expect(Mode(cardMat.Albedo) == 2 && Mode(glowMat.Albedo) == 4, $"the card blends (2) and the glow adds (4): {Mode(cardMat.Albedo)} {Mode(glowMat.Albedo)}");
+        }
+        // With Elden Ring's own DS3-style sky material (M[A]_al_NoLight on GXFlver_Col, see MapModelPort.LegacyBlendMatbin):
+        // cloud bands and glows keep DS3's texture, tiling (moved into the UVs) and vertex fade, in a white vertex
+        // colour; nothing is baked or cut; GX14/GX20 and DS3's layout as vanilla s83200; cloud cards stay baked.
+        {
+            var (legacyPort, legacyBnd) = VisualPort(legacy: true);
+            Expect(legacyPort.TemplateSummary.Contains("nolight-blend=M[A]_al_NoLight") && legacyPort.TemplateSummary.Contains("nolight-add=M[A]_al_NoLight")
+                   && legacyPort.TemplateSummary.Contains("nolight-opacity=M[A]_al_NoLight") && legacyPort.TemplateSummary.Contains("nolight=m10_00_003")
+                   && legacyPort.TemplateSummary.Contains("nolight-edge=m10_00_003"),
+                $"the see-through sky kinds take the legacy sky material, the dome and cut-out cards keep the unlit template: {legacyPort.TemplateSummary}");
+            Expect(legacyPort.VertexFade("nolight-blend") && legacyPort.VertexFade("nolight-add") && !legacyPort.VertexFade("nolight-opacity") && !cloudPort.VertexFade("nolight-blend"),
+                "cloud bands and glows keep the vertex fade; cards (UV fade and masks) and the M[A]_NoLight path are baked");
+            var legacyOut = ConvertOne(legacyPort, legacyBnd, FLVER2.Read(cloud.Write()));
+            Expect(legacyOut.Meshes.Count == 2 && legacyPort.SkyFades is { Meshes: 3, VertexFaded: 2, Baked: 0, Empty: 1 } && legacyPort.UnlitBlends.TrianglesCut == 0,
+                $"both visible layers drawn whole, the empty one left out, nothing baked or cut: {legacyOut.Meshes.Count} / {legacyPort.SkyFades.Summary}");
+            var strongMesh = legacyOut.Meshes.FirstOrDefault(m => m.Vertices.Any(v => v.Colors.Count > 0 && v.Colors[0].A > 0.5f));
+            Expect(strongMesh is not null && strongMesh.Vertices.Select(v => v.Colors.Single()).Zip(new[] { 0.8f, 0.3f, 0.3f }).All(p => Math.Abs(p.First.A - p.Second) <= 1.5f / 255)
+                   && legacyOut.Meshes.SelectMany(m => m.Vertices).All(v => v.Colors.Single() is { R: 1f, G: 1f, B: 1f }),
+                $"DS3's fade (0.8, 0.3, 0.3) in a white vertex colour: {string.Join("; ", legacyOut.Meshes.Select(m => string.Join(",", m.Vertices.Select(v => v.Colors.FirstOrDefault()))))}");
+            var srcUv = cloud.Meshes[0].Vertices.Select(v => v.UVs[0]).ToList();
+            Expect(strongMesh is not null && strongMesh.Vertices.Select(v => v.UVs[0]).Zip(srcUv).All(p => Math.Abs(p.First.X - p.Second.X * 2) < 2e-3f && Math.Abs(p.First.Y - p.Second.Y) < 2e-3f),
+                $"DS3's 2 x 1 tiling moved into the UVs: {string.Join(" ", strongMesh?.Vertices.Select(v => v.UVs[0]) ?? [])} from {string.Join(" ", srcUv)}");
+            var legacyMats = legacyPort.Materials.ToList();
+            Expect(legacyMats.Count == 1 && legacyMats[0] is { Albedo: "m30_00_sky_02_a", Template.Legacy: true, Template.Kind: "nolight-blend" } && legacyMats[0].Scale == Vector2.One,
+                $"one material on DS3's own texture at 1 x 1: {string.Join(", ", legacyMats.Select(m => m.Template.Kind + " " + m.Albedo + " " + m.Scale))}");
+            var mat = legacyOut.Materials[legacyOut.Meshes[0].MaterialIndex];
+            var gx = legacyOut.GXLists[mat.GXIndex];
+            Expect(mat.MTD.EndsWith(@"\map\matxml\" + legacyMats[0].Name + ".matxml", StringComparison.Ordinal)
+                   && string.Join(" ", gx.Select(g => $"{g.ID}:{g.Unk04}:{Convert.ToHexString(g.Data)}")) == "GX14:101:0000803F0000803F0000803F0000803F000000000000000000000000 GX20:100:000000000000000000000000",
+                $"the legacy material path and s83200's GX list: {mat.MTD} / {string.Join(" ", gx.Select(g => $"{g.ID}:{g.Unk04}:{Convert.ToHexString(g.Data)}"))}");
+            Expect(LayoutText(legacyOut.BufferLayouts[legacyOut.Meshes[0].VertexBuffers[0].LayoutIndex]) == "Position0:Float3 Normal0:UByte4 VertexColor1:UByte4Norm UV0:Short2",
+                $"DS3's (and s83200's) vertex layout: {LayoutText(legacyOut.BufferLayouts[legacyOut.Meshes[0].VertexBuffers[0].LayoutIndex])}");
+            var legacyBin = MATBIN.Read(legacyPort.MatbinFiles(0).Single().Bytes);
+            Expect(legacyBin.ShaderPath.EndsWith("GXFlver_Col.spx") && legacyBin.Samplers.Single().Path == "m30_00_sky_02_a" && legacyBin.Samplers.Single().Unk14 == Vector2.One
+                   && (int)legacyBin.Params.First(p => p.Name == "g_BlendMode").Value == 2 && !legacyPort.Notes.Any(n => n.Contains(MapModelPort.NoShadowParam)),
+                $"its MATBIN: GXFlver_Col, DS3's texture in g_DiffuseTexture, blended, no shadow note: {legacyBin.ShaderPath} {string.Join(",", legacyBin.Samplers.Select(x => x.Path + " " + x.Unk14))} {string.Join("; ", legacyPort.Notes)}");
         }
         var addBin = new MATBIN();
         addBin.Params.Add(new MATBIN.Param { Name = "g_BlendMode", Type = MATBIN.ParamType.Int, Value = 0 });

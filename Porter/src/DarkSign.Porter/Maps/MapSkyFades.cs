@@ -24,9 +24,11 @@ namespace DarkSign.Porter.Maps;
 /// <item>The Kiln's grey triangle and the Ringed City's flat blue and pink panels.</item>
 /// <item>The High Wall horizon seam: its sky_05 haze (alpha at most 0.11) was cut away whole.</item>
 /// </list>
-/// Elden Ring also ships matbins named after the DS3 shaders (map\matxml\M[A]_al_NoLight, M[A]_add, both on
-/// GXFlver_Col / GXFlver_ColDif). No vanilla model uses those, and the legacy GXFlver_*DOL shaders were proven missing
-/// from the shader binders (map-diag lightvol), so they aren't used here.
+/// Baking didn't help either (1.0.636 still drew High Wall's layers solid): no vanilla model draws M[A]_NoLight blended
+/// at all. Since 2026-11-25 the cloud bands, haze and glows are drawn by Elden Ring's own DS3-style sky material
+/// instead (map\matxml\M[A]_al_NoLight on GXFlver_Col, the shader vanilla effect model s83200 uses with DS3's sky
+/// layout; see <see cref="MapModelPort.LegacyBlendMatbin"/>), which multiplies in DS3's vertex fade as DS3 did. They
+/// aren't baked then; only the Opacity cards (UV fade and masks) still are, onto that material.
 /// </para>
 /// <para>
 /// <b>What it does:</b> each such mesh gets a texture of its own that covers the mesh's UV range once. Its RGB is the
@@ -63,7 +65,7 @@ public static class MapSkyFades
     /// <summary>What <see cref="Apply"/> did, for the port log.</summary>
     public sealed class Stats
     {
-        public int Meshes, Baked, Empty, TooWide;
+        public int Meshes, Baked, Empty, TooWide, VertexFaded;
         public readonly SortedDictionary<string, int> Kinds = new(StringComparer.Ordinal);
         public readonly List<string> Textures = [];
 
@@ -75,6 +77,7 @@ public static class MapSkyFades
                 Baked += other.Baked;
                 Empty += other.Empty;
                 TooWide += other.TooWide;
+                VertexFaded += other.VertexFaded;
                 foreach (var (k, n) in other.Kinds)
                     Kinds[k] = Kinds.GetValueOrDefault(k) + n;
                 Textures.AddRange(other.Textures);
@@ -83,6 +86,7 @@ public static class MapSkyFades
 
         public string Summary =>
             $"sky fades: {Meshes} see-through sky meshes ({string.Join(", ", Kinds.Select(k => $"{k.Key} {k.Value}"))}); "
+            + (VertexFaded > 0 ? $"{VertexFaded} drawn by Elden Ring's legacy sky material ({MapModelPort.LegacyBlendMatbin}) with DS3's own vertex fade, " : "")
             + $"{Baked} drawn with DS3's fade baked into a texture of their own, {Empty} wholly faded out in DS3 and left out"
             + (TooWide > 0 ? $", {TooWide} with UVs over {MaxSpan:0} tiles (al_NoLight keeps the half-visible cut, others left out)" : "")
             + (Textures.Count > 0 ? " (" + string.Join(", ", Textures.Distinct().OrderBy(t => t, StringComparer.Ordinal).Take(16)) + ")" : "");
@@ -116,9 +120,14 @@ public static class MapSkyFades
     /// baked mesh gets its own copy of its material, naming its derived texture. Returns the al_NoLight meshes too
     /// wide to bake, which are left to <see cref="MapUnlitBlends"/>.
     /// </summary>
-    public static HashSet<FLVER2.Mesh> Apply(FLVER2 flver, Stats stats)
+    /// <param name="vertexFade">The kinds drawn by <see cref="MapModelPort.LegacyBlendMatbin"/>, which multiplies in the
+    /// vertex colour alpha as DS3 does: those meshes aren't baked. They keep DS3's texture and fade, their UVs take the
+    /// material's tiling (set to 1 x 1), and they're added to <paramref name="keepFade"/>. Null bakes every kind.</param>
+    public static HashSet<FLVER2.Mesh> Apply(FLVER2 flver, Stats stats, Func<string, bool>? vertexFade = null,
+        HashSet<FLVER2.Mesh>? keepFade = null)
     {
         var tooWide = new HashSet<FLVER2.Mesh>();
+        var tiled = new HashSet<FLVER2.Material>();
         foreach (var mesh in flver.Meshes.ToList())
         {
             if (mesh.MaterialIndex < 0 || mesh.MaterialIndex >= flver.Materials.Count || mesh.Vertices.Count == 0)
@@ -136,6 +145,20 @@ public static class MapSkyFades
             {
                 flver.Meshes.Remove(mesh);
                 stats.Empty++;
+                continue;
+            }
+            if (vertexFade?.Invoke(kind) == true && kind != "nolight-opacity")
+            {
+                stats.VertexFaded++;
+                stats.Textures.Add(Path.GetFileNameWithoutExtension(ItemText.Leaf(albedoTexture.Path)));
+                keepFade?.Add(mesh);
+                // DS3's tiling into the UVs: the legacy sampler's scale isn't known to apply (vanilla leaves it at 1).
+                var tiling = albedoTexture.TilingScale.X > 0 && albedoTexture.TilingScale.Y > 0 ? albedoTexture.TilingScale : Vector2.One;
+                if (tiling != Vector2.One)
+                    foreach (var v in mesh.Vertices)
+                        if (v.UVs.Count > 0)
+                            v.UVs[0] = new Vector3(v.UVs[0].X * tiling.X, v.UVs[0].Y * tiling.Y, v.UVs[0].Z);
+                tiled.Add(material);
                 continue;
             }
 
@@ -193,6 +216,9 @@ public static class MapSkyFades
             }
             mesh.MaterialIndex = index;
         }
+        foreach (var material in tiled)
+            if (MapModelPort.Ds3Texture(material, "albedo") is { } t)
+                t.TilingScale = Vector2.One;
         return tooWide;
     }
 
