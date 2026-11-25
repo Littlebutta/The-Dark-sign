@@ -46,7 +46,11 @@ public static class SoundPort
 
     /// <summary>The Stop event of a ported sound: its ID, DS3's fade-out, and Elden Ring's Stop action to copy.</summary>
     internal static WwiseBank.StopEvent StopOf(char letter, int id, Fev.Event? ds3Event, WwiseBank.HircObject? template) =>
-        new(FxSoundExplore.Fnv1($"Stop_{letter}{IdBase + id:D9}"), ds3Event?.FadeOutMs ?? 0, template);
+        StopOfNumber(letter, IdBase + id, ds3Event, template);
+
+    /// <summary>The Stop event of a sound ported under its own number (see ChrSounds.Numbering).</summary>
+    internal static WwiseBank.StopEvent StopOfNumber(char letter, int number, Fev.Event? ds3Event, WwiseBank.HircObject? template) =>
+        new(FxSoundExplore.Fnv1($"Stop_{letter}{number:D9}"), ds3Event?.FadeOutMs ?? 0, template);
 
     /// <summary>Where the edited index goes (me3 serves it in place of the game's).</summary>
     public static string IndexPath(PorterContext ctx) => ctx.ModPath("sound", "soundbanksinfo.mobnkinfo");
