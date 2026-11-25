@@ -208,6 +208,10 @@ public static class ChrEffectsSelfTest
         var floor = new TAE.Event(0, 1, 131, 0, Ints(8, 511001001, 0, 0), false);
         Check("enemy sounds: a DS3 floor-material sound event (kind 8, Corrupted Gundyr's steps) is ported as the c-sound of its ID, not left with DS3's kind",
             fx.PortedSound(floor) == (1, 511001001) && fx.PortedSound(ds3Events[5]) == (1, 128000100) && ChrEffects.IsOwnSoundKind(ChrEffects.FloorSoundKind));
+        var numbers = ChrSounds.Numbering(7113, [(1, 514001001), (1, 514001001), (1, 790001001), (1, 514008000), (5, 525503), (1, 128000100)]);
+        Check($"enemy sounds: every ported sound plays under a nine-digit number, DS3 creature sounds in the character's own range ({string.Join(", ", numbers.Select(kv => $"{kv.Key.Kind}:{kv.Key.Id}->{kv.Value}"))})",
+            numbers[(1, 514001001)] == 711301001 && numbers[(1, 790001001)] == 711399999 && numbers[(1, 514008000)] == 711308000
+            && numbers[(5, 525503)] == 900_525_503 && numbers[(1, 128000100)] == 711300100 && numbers.Values.All(n => n <= ChrSounds.MaxNumber));
         var sound = fx.SoundEvent(1, 900_128_000);
         Check("enemy sounds: a ported sound plays through Elden Ring's one-shot sound event, naming itself as the sound to play",
             sound is { Type: 129 } && BitConverter.ToInt32(sound.Value.Bytes, 4) == 900_128_000 && BitConverter.ToInt32(sound.Value.Bytes, 24) == 900_128_000

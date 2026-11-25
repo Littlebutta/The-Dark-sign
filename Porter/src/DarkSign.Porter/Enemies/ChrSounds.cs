@@ -46,7 +46,10 @@ public sealed class ChrSounds
         public List<string> Media = [];
         public Dictionary<string, int> Reasons = [];
 
-        public int? Map(int kind, int id) => Ported.Contains((kind, id)) ? SoundPort.IdBase + id : null;
+        /// <summary>The number each ported sound plays under (Play_c&lt;number&gt;), see <see cref="Numbers"/>.</summary>
+        public Dictionary<(int Kind, int Id), int> Numbers = [];
+
+        public int? Map(int kind, int id) => Ported.Contains((kind, id)) && Numbers.TryGetValue((kind, id), out var n) ? n : null;
 
         /// <summary>The ported sounds that loop until their Stop event is posted (see SoundPort.Result.Loops).</summary>
         public HashSet<(int Kind, int Id)> Looping = [];
@@ -74,6 +77,50 @@ public sealed class ChrSounds
             if (_events.ContainsKey($"c{baseId + v:D9}"))
                 return baseId + v;
         return id;
+    }
+
+    /// <summary>Elden Ring's sound numbers have at most nine digits (c431001000, s000525503).</summary>
+    public const int MaxNumber = 999_999_999;
+
+    /// <summary>
+    /// The numbers one character's ported sounds play under. A DS3 sound whose port number (SoundPort.IdBase + ID,
+    /// as the weapon and effect ports use) still has nine digits keeps it, so an effect that plays it (FxrPort, which
+    /// only ports sounds below 100,000,000) and the character's moves agree. Every other one, which is every DS3
+    /// creature sound (c514001001 -> c1414001001), gets a number in the character's own range the way Elden Ring
+    /// numbers its characters' sounds: new character ID * 100,000 + the DS3 sound's last five digits (Pontiff c7113:
+    /// c514001001 -> c711301001), the next free one below c&lt;chr&gt;99999 when two DS3 sounds share those digits.
+    /// <para>Why: Devin's 1.0.567 and 1.0.640 playtests. Every ported sound he heard had nine digits (weapons,
+    /// enemies' effect sounds: fire, ground smashes); every one he didn't had ten (every enemy's own c-sounds: voices,
+    /// steps, body sounds), although bank, sound index, NpcParam and TAE checked out on his files
+    /// (Work\reports\boss-sounds\REPORT.md, 2026-11-21).</para>
+    /// </summary>
+    public static Dictionary<(int Kind, int Id), int> Numbering(int newChr, IEnumerable<(int Kind, int Id)> sounds)
+    {
+        var numbers = new Dictionary<(int Kind, int Id), int>();
+        var taken = new HashSet<(char, int)>();
+        var todo = sounds.Distinct().OrderBy(s => s.Kind).ThenBy(s => s.Id).ToList();
+        foreach (var s in todo)
+            if ((long)SoundPort.IdBase + s.Id <= MaxNumber && SoundPort.Letter(s.Kind) is { } l && taken.Add((l, SoundPort.IdBase + s.Id)))
+                numbers[s] = SoundPort.IdBase + s.Id;
+        int first = newChr * 100_000, last = first + 99_999;
+        int spare = last;
+        foreach (var s in todo.Where(s => !numbers.ContainsKey(s)))
+        {
+            if (SoundPort.Letter(s.Kind) is not { } letter)
+                continue;
+            int n = first + s.Id % 100_000;
+            if (taken.Contains((letter, n)))
+            {
+                while (spare >= first && taken.Contains((letter, spare)))
+                    spare--;
+                if (spare < first)
+                    continue; // over 100,000 sounds: left out
+                n = spare;
+            }
+            taken.Add((letter, n));
+            numbers[s] = n;
+        }
+        return numbers;
     }
 
     private static string Staging(PorterContext ctx) => ctx.WorkPath("enemy-sounds", "wem");
@@ -147,6 +194,7 @@ public sealed class ChrSounds
         if (wanted.Count == 0)
             return result;
         void Left(string why) => result.Reasons[why] = result.Reasons.GetValueOrDefault(why) + 1;
+        result.Numbers = Numbering(plan.NewChr, wanted);
 
         // Which bank holds which sample names: the bank of the sound's DS3 event file, else (no event, the name
         // rule) the character's own banks.
@@ -212,10 +260,11 @@ public sealed class ChrSounds
             if (layers.Count == 0 && Suffixes.Select(v => Pick(name + v, own.Prepend(eventBank))).OfType<Fsb5.Sample>().ToList() is { Count: > 0 } named)
                 layers.Add((named, null));
             if (layers.Count == 0) { Left(eventBank is null ? "no DS3 event or sample" : "no DS3 sample"); continue; }
-            uint eventId = FxSoundExplore.Fnv1($"Play_{letter}{SoundPort.IdBase + id:D9}");
+            if (!result.Numbers.TryGetValue((kind, id), out int number)) { Left("no free sound number"); continue; }
+            uint eventId = FxSoundExplore.Fnv1($"Play_{letter}{number:D9}");
             if (bank.Has(eventId)) { Left("event ID taken"); continue; }
             // A sound that can't get a Stop event must not loop: nothing could end it.
-            var stop = SoundPort.StopOf(letter, id, ds3Event.Event, stopTemplate);
+            var stop = SoundPort.StopOfNumber(letter, number, ds3Event.Event, stopTemplate);
             if (stop is not null && bank.Has(stop.EventId))
                 stop = null;
             // Nor must a sound an effect plays without holding it.
