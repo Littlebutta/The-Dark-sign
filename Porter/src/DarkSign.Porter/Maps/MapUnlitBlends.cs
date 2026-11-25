@@ -57,7 +57,9 @@ public static class MapUnlitBlends
     /// Readies every see-through unlit mesh of a DS3 FLVER (still with DS3's materials and vertex colours): leaves out
     /// its wholly faded triangles and returns the meshes whose vertex alpha the ported mesh keeps.
     /// </summary>
-    public static HashSet<FLVER2.Mesh> Apply(FLVER2 flver, Stats stats)
+    /// <param name="only">The meshes to treat; null for every see-through unlit mesh. Since PR "sky fades" only the ones
+    /// <see cref="MapSkyFades"/> can't bake (UVs over <see cref="MapSkyFades.MaxSpan"/> tiles) come here.</param>
+    public static HashSet<FLVER2.Mesh> Apply(FLVER2 flver, Stats stats, IReadOnlySet<FLVER2.Mesh>? only = null)
     {
         var keepAlpha = new HashSet<FLVER2.Mesh>();
         foreach (var mesh in flver.Meshes.ToList())
@@ -65,7 +67,7 @@ public static class MapUnlitBlends
             if (mesh.MaterialIndex < 0 || mesh.MaterialIndex >= flver.Materials.Count || mesh.Vertices.Count == 0)
                 continue;
             var material = flver.Materials[mesh.MaterialIndex];
-            if (MapModelPort.Ds3Kind(material) != "nolight-blend")
+            if (MapModelPort.Ds3Kind(material) != "nolight-blend" || (only is not null && !only.Contains(mesh)))
                 continue;
             var under = mesh.Vertices.Select(v => MapOverlays.Alpha(v) < Cut).ToArray();
             var (cut, total) = MapOverlays.Keep(mesh, tri => !tri.All(i => under[i]));

@@ -23,7 +23,7 @@ public static class MapSelfTest
             catch (Exception ex)
             {
                 failures++;
-                Console.WriteLine($"FAIL  {name}: {ex.Message}");
+                Console.WriteLine($"FAIL  {name}: {ex.Message}{(Environment.GetEnvironmentVariable("DKS_SELFTEST_STACK") == "1" ? "\n" + ex : "")}");
                 if (Environment.GetEnvironmentVariable("DKSIGN_SELFTEST_TRACE") == "1")
                     Console.WriteLine(ex);
             }
