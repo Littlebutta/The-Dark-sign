@@ -25,6 +25,7 @@ const string Usage = """
       binder-diff <file a> <file b>            compare two binder files on disk (compression, files, TAE events)
       check-sound-bank                         check Elden Ring's main sound bank round-trips and how it stores media
       sound-probe [all|undo]                   point the ported sounds at an Elden Ring swing in the built bank (one-launch test)
+      sound-limits [fxr ids...]                how many copies of a sound may play at once: DS3 event headers, Elden Ring bank limits
       explore-fx-sound                         report both games' effect and sound files and the TAE events that use them
       matbin-info <name filter>                show Elden Ring material definitions
       effect-models [DS3 fxr id...]            report the DS3 effects that use models (and their materials) next to Elden Ring's effect models
@@ -183,6 +184,7 @@ try
         "effect-refs" => EffectRefsReport.Run(ctx, argList[1..]),
         "check-sound-bank" => SoundBankCheck.Run(ctx),
         "sound-probe" => SoundProbe.Run(ctx, argList[1..]),
+        "sound-limits" => SoundLimits.Run(ctx, argList[1..]),
         "chr-roundtrip" => ChrRoundTrip.Run(ctx),
         "binder-diff" when argList.Count == 3 => BinderDiff.Run(argList[1], argList[2]),
         "chr-survey" when argList.Count >= 3 => ChrSurvey.Run(ctx, PorterGame.Parse(argList[1]), argList[2..]),

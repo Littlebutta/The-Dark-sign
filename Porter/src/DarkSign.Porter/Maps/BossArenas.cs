@@ -67,6 +67,9 @@ public static class BossArenas
 
         /// <summary>The arrival point lies inside the fight's area (<see cref="Area"/>; <see cref="Arena.ArrivesInArea"/>).</summary>
         public bool ArrivesInArea { get; init; }
+
+        /// <summary>The map's own flags the fight's events turn on (<see cref="FightFlags"/>), reset with the events.</summary>
+        public IReadOnlyList<uint> StateFlags { get; init; } = [];
     }
 
     /// <summary>A fight placed in an Elden Ring map: its IDs moved to the slot and its arrival point.</summary>
@@ -168,9 +171,11 @@ public static class BossArenas
             if (named is not null && named.IndexOf(" - ", StringComparison.Ordinal) is > 0 and var dash)
                 named = named[..dash];
             var (talkFlags, talkEntity) = first > 0 ? TalkGate(mapScript, allScripts, first) : ([], 0);
+            var events = FightEvents(mapScript, ds3, defeated, defeatedLocals);
             fights.Add(new Fight(named?.Trim() ?? $"Boss {defeated}", (uint)defeated, (uint)entry, first > 0 ? (uint)first : 0, area, boss,
-                FightEvents(mapScript, ds3, defeated, defeatedLocals), point, from)
+                events, point, from)
             {
+                StateFlags = FightFlags(mapScript, ds3, events, defeated),
                 TalkFlags = talkFlags,
                 TalkEntity = talkEntity > 0 ? talkEntity : boss,
                 IntroArea = introId,
@@ -296,6 +301,55 @@ public static class BossArenas
         return mapScript.Events.Select(e => e.ID).Where(id => ds3.OwnsDs3Id(id) && id != defeated)
             .Where(id => Local(ds3, id) is var l && (l >= from && l < to || l >= from + 5000 && l < to + 5000))
             .Select(id => (uint)id).Distinct().ToList();
+    }
+
+    /// <summary>
+    /// The map's own flags the fight's events turn on (or toggle, or pick at random), literal or passed in by the map's
+    /// InitializeEvent calls: the fight's state. Resetting only the events' own flags left these on after a first
+    /// fight. Deacons of the Deep (1.0.640): phase 2 (13505812) turns 13505802 on; on every later F1 fight it was still
+    /// on, so 13505820 ended at once and 13505821 never passed, and no deacon was picked to carry the Archdeacon's
+    /// curse (the one to hit). The defeated flag is left to the warp's own reset; other maps' and global flags stay.
+    /// <para>DS3 forms (DarkScript3 ds3-common.emedf): 2003[02] Set Event Flag and 2003[62] Set Network-Connected Event
+    /// Flag (flag, state); 2003[17] Randomly Set Event Flag In Range, 2003[22] Batch Set Event Flags and 2003[63] Batch
+    /// Set Network-Connected Event Flags (first, last, state). State 0 is off, which needs no reset.</para>
+    /// </summary>
+    public static List<uint> FightFlags(EMEVD mapScript, MapId ds3, IReadOnlyCollection<uint> events, int defeated)
+    {
+        var wanted = events.Select(e => (long)e).ToHashSet();
+        // Every InitializeEvent (2000[00]: slot, event ID, then the arguments) of the map's script, by event.
+        var inits = mapScript.Events.SelectMany(e => e.Instructions)
+            .Where(i => i.Bank == 2000 && i.ID == 0 && i.ArgData.Length >= 8)
+            .GroupBy(i => (long)BitConverter.ToUInt32(i.ArgData, 4)).ToDictionary(g => g.Key, g => g.ToList());
+        var flags = new SortedSet<uint>();
+        foreach (var e in mapScript.Events.Where(e => wanted.Contains(e.ID)))
+            for (int k = 0; k < e.Instructions.Count; k++)
+            {
+                var ins = e.Instructions[k];
+                if (ins.Bank != 2003)
+                    continue;
+                bool range = ins.ID is 17 or 22 or 63;
+                if (!range && ins.ID is not (2 or 62))
+                    continue;
+                int stateAt = range ? 8 : 4;
+                if (ins.ArgData.Length <= stateAt || ins.ArgData[stateAt] == 0)
+                    continue;
+                // The value at a byte: literal, or each value the map's InitializeEvent calls pass in for it.
+                List<int> Values(int at)
+                {
+                    var p = e.Parameters.FirstOrDefault(p => p.InstructionIndex == k && p.TargetStartByte == at);
+                    if (p is null)
+                        return [BitConverter.ToInt32(ins.ArgData, at)];
+                    return inits.GetValueOrDefault(e.ID, []).Where(i => i.ArgData.Length >= 8 + p.SourceStartByte + 4)
+                        .Select(i => BitConverter.ToInt32(i.ArgData, 8 + (int)p.SourceStartByte)).ToList();
+                }
+                var firsts = Values(0);
+                var lasts = range ? Values(4) : firsts;
+                for (int n = 0; n < firsts.Count && n < lasts.Count; n++)
+                    for (long f = firsts[n], last = lasts[n]; f <= last && last - f < 1000; f++)
+                        if (f != defeated && f >= ds3.Ds3FlagBase && f < ds3.Ds3FlagBase + 10_000)
+                            flags.Add((uint)f);
+            }
+        return flags.ToList();
     }
 
     /// <summary>A DS3 ID's map-local number (0-9999), or -1 for an ID of another map.</summary>
@@ -446,15 +500,17 @@ public static class BossArenas
             part.Position = f.Point;
             msb.Parts.Players.Add(part);
             uint Move(uint id) => id == 0 ? 0 : (uint)ds3.MoveEntity((int)id, er);
+            // The fight's events and the flags they turn on are both reset by turning their flag off.
+            var reset = f.Events.Concat(f.StateFlags).Distinct().ToList();
             arenas.Add(new Arena(ds3, er, slot.Name, f.Name, Move(f.Defeated), Move(f.Entry), Move(f.FirstEncounter),
-                f.Events.Select(Move).ToList(), entity)
+                reset.Select(Move).ToList(), entity)
             {
                 TalkFlags = f.TalkFlags,
                 TalkEntity = Move((uint)f.TalkEntity),
                 Ds3Defeated = f.Defeated,
                 Ds3Entry = f.Entry,
                 Ds3FirstEncounter = f.FirstEncounter,
-                Ds3Events = f.Events,
+                Ds3Events = reset,
                 LandsAtIntro = f.IntroArea > 0,
                 AreaEntity = f.Area > 0 ? (uint)ds3.MoveEntity(f.Area, er) : 0,
                 ArrivesInArea = f.ArrivesInArea && f.IntroArea <= 0,
@@ -463,7 +519,7 @@ public static class BossArenas
                 notes.Add($"boss arenas: {f.Name}'s first encounter waits for {string.Join(", ", f.TalkFlags)}, which only a talk sets: "
                           + $"turned on within {TalkReach} m of {f.TalkEntity}");
             notes.Add($"boss arenas: {f.Name} lands at {f.Point.X:0.#} {f.Point.Y:0.#} {f.Point.Z:0.#} ({f.PointFrom}), entity {entity}; "
-                      + $"flags: defeated {Move(f.Defeated)}, entry {Move(f.Entry)}, first encounter {Move(f.FirstEncounter)}; {f.Events.Count} fight events reset"
+                      + $"flags: defeated {Move(f.Defeated)}, entry {Move(f.Entry)}, first encounter {Move(f.FirstEncounter)}; {f.Events.Count} fight events and {f.StateFlags.Count} fight flags reset"
                       + (f.ArrivesInArea && f.IntroArea <= 0 ? $"; entry set once the player stands in area {(f.Area > 0 ? ds3.MoveEntity(f.Area, er) : 0)}" : ""));
         }
         return arenas;

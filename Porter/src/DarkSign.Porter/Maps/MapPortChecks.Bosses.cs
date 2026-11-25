@@ -11,6 +11,7 @@ public static partial class MapPortChecks
         yield return ("bosses: a talking boss and its other stages in the boss group are bosses, the same body elsewhere is a person", BossTalkers);
         yield return ("boss arenas: found from DS3's boss fight calls, named, landing in the arena, with the fight's own events", BossArenaFind);
         yield return ("boss arenas: placed only where the boss was placed, with a fresh arrival point, IDs moved to the slot", BossArenaPlace);
+        yield return ("boss arenas: flags the fight's events turn on are reset with them, literal or passed in (Deacons' phase flag)", BossFightFlags);
         yield return ("boss arenas: the warp event resets the fight and warps; a second event begins the fight after the load (nothing runs after a warp)", BossArenaEvents);
         yield return ("boss arenas: a boss shown only once the player walks through its intro area (Vordt) is warped to in that area", BossArenaIntro);
         foreach (var check in KitChecks())
@@ -142,6 +143,43 @@ public static partial class MapPortChecks
         var back = MSBE.Read(layout.Msb.Write());
         Expect(back.Parts.Players.Count(p => p.EntityID == a.PointEntity) == 1, "the point reads back");
         Expect(BossArenas.ListLines([a with { Index = 3 }]).Last() == $"{Ds3Id}\t{ErId}\tTest map\tSister Friede\t{BossArenas.RequestFlag(3)}", "list line");
+    }
+
+    // Deacons of the Deep in miniature (m40 numbers): phase 2 turns 5802 on; the curse pick (5820) clears and picks
+    // one of the passed-in range 4810-4842; 5821 per deacon turns its passed-in flag on. All must be reset, or a second
+    // fight never picks a deacon (1.0.640).
+    private static void BossFightFlags()
+    {
+        var script = new EMEVD(EMEVD.Game.DarkSouls3);
+        var phase = new EMEVD.Event(14005812, EMEVD.Event.RestBehaviorType.Default);
+        phase.Instructions.Add(RunEvents.Make(2003, 2, 14005802, (byte)1));
+        phase.Instructions.Add(RunEvents.Make(2003, 2, 14000800, (byte)1));   // the defeated flag: left to the warp
+        phase.Instructions.Add(RunEvents.Make(2003, 2, 50002000, (byte)1));   // a global flag: not the map's
+        phase.Instructions.Add(RunEvents.Make(2003, 2, 14005803, (byte)0));   // turned off: nothing to reset
+        script.Events.Add(phase);
+        var pick = new EMEVD.Event(14005820, EMEVD.Event.RestBehaviorType.Restart);
+        pick.Instructions.Add(RunEvents.Make(2003, 63, 0, 0, (byte)0));
+        pick.Instructions.Add(RunEvents.Make(2003, 17, 0, 0, (byte)1));
+        pick.Parameters.Add(new EMEVD.Parameter(1, 0, 0, 4));
+        pick.Parameters.Add(new EMEVD.Parameter(1, 4, 4, 4));
+        script.Events.Add(pick);
+        var deacon = new EMEVD.Event(14005821, EMEVD.Event.RestBehaviorType.Restart);
+        deacon.Instructions.Add(RunEvents.Make(2003, 62, 0, (byte)1));
+        deacon.Parameters.Add(new EMEVD.Parameter(0, 0, 0, 4));
+        script.Events.Add(deacon);
+        var unrelated = new EMEVD.Event(14005900, EMEVD.Event.RestBehaviorType.Default);
+        unrelated.Instructions.Add(RunEvents.Make(2003, 2, 14005901, (byte)1));
+        script.Events.Add(unrelated);
+        var ctor = new EMEVD.Event(0, EMEVD.Event.RestBehaviorType.Default);
+        ctor.Instructions.Add(RunEvents.Make(2000, 0, 0, 14005820u, 14004810, 14004812));
+        ctor.Instructions.Add(RunEvents.Make(2000, 0, 0, 14005821u, 14004810));
+        ctor.Instructions.Add(RunEvents.Make(2000, 0, 1, 14005821u, 14004811));
+        script.Events.Insert(0, ctor);
+        script = EMEVD.Read(script.Write());
+
+        var flags = BossArenas.FightFlags(script, Ds3Id, [14005812, 14005820, 14005821], 14000800);
+        Expect(flags.SequenceEqual(new uint[] { 14004810, 14004811, 14004812, 14005802 }),
+            "the phase flag and the passed-in curse flags, not the defeated, global, turned-off or other events' flags: " + string.Join(" ", flags));
     }
 
     private static void BossArenaEvents()
