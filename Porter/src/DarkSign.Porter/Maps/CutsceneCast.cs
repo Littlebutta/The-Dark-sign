@@ -179,11 +179,20 @@ public static partial class CutsceneCast
     /// <summary>First instance number of an anchor part (<see cref="PlaceAnchors"/>).</summary>
     public const int AnchorInstance = 9950;
 
+    /// <summary>How far below the map's player part the anchor parts stand (out of sight; see <see cref="PlaceAnchors"/>).</summary>
+    public const float AnchorDepth = 1000;
+
     /// <summary>
     /// One part of each asset model in <paramref name="models"/> the map doesn't place yet, so the map loads the model
-    /// and its cutscenes can spawn their copies: at the map's first player part (or the origin), in no draw or display
-    /// group (never drawn in play; the cutscene draws its own copies), no entity ID. The models DS3's cutscenes alone
-    /// use are built without collision (#264). Returns the parts placed.
+    /// and its cutscenes can spawn their copies: <see cref="AnchorDepth"/> metres below the map's first player part (or
+    /// the origin), no entity ID. The models DS3's cutscenes alone use are built without collision (#264). Returns the
+    /// parts placed.
+    /// <para>Until 1.0.640 the anchors stood at the player part itself "in no draw or display group", taken to mean never
+    /// drawn; but an Elden Ring part with no groups at all is drawn from everywhere (<see cref="MapDrawGroups.Set"/>), so
+    /// every anchor showed in play. One of them is DS3's o990200, a red "仮カットシーン" ("temporary cutscene") sign that
+    /// DS3's placeholder cutscenes cast: it floated at the start of Cemetery of Ash and in the 7 other maps whose
+    /// cutscenes cast it (1.0.640 playtest, 2026-11-25). Far below the map nothing sees them, while the map still loads
+    /// their models; the cutscene's copies take the cutscene's own places.</para>
     /// </summary>
     public static List<string> PlaceAnchors(MSBE msb, IEnumerable<string> models)
     {
@@ -201,7 +210,7 @@ public static partial class CutsceneCast
             part.Name = $"{model}_{instance:D4}";
             part.InstanceID = instance;
             part.ModelName = model;
-            part.Position = at;
+            part.Position = at - new System.Numerics.Vector3(0, AnchorDepth, 0);
             part.Scale = System.Numerics.Vector3.One;
             part.UnkT54PartName = part.Name;
             part.UnkPartNames[4] = part.Name;

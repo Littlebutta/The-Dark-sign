@@ -763,6 +763,42 @@ public static class EnemySelfTest
             ChrPort.MergeSkeleton(merged2, ds3Sk, addBones: false) == new ChrPort.SkeletonMerge(5, 0, 0) && merged2.m_bones.Count == 6
             && merged2.m_referencePose[3].m_translation.X == 4);
 
+        // Cloth bones (ClothBones): Gundyr's shoulder plate hangs off a helper under the root; it moves under the nearest
+        // bone its cloth is skinned to and keeps its rest place; its child follows it; a bone later in the list is no parent.
+        {
+            var sk = new HKLib.hk2018.hkaSkeleton();
+            foreach (var (name, parent, x, y) in new[] { ("Master", -1, 0f, 0f), ("Clav", 0, 0.2f, 2.5f), ("Arm", 1, 0.3f, 0f), ("XXX_cloth", 0, 0f, 1.7f),
+                         ("XXX_pad", 3, 0.6f, 1.0f), ("XXX_pad2", 4, 0.1f, 0f), ("Late", 0, 0.7f, 2.7f) })
+            {
+                sk.m_bones.Add(new HKLib.hk2018.hkaBone { m_name = name });
+                sk.m_parentIndices.Add((short)parent);
+                sk.m_referencePose.Add(new HKLib.hk2018.hkQsTransform { m_translation = new System.Numerics.Vector4(x, y, 0, 0), m_rotation = System.Numerics.Quaternion.Identity, m_scale = System.Numerics.Vector4.One });
+            }
+            var before = ClothBones.World(sk);
+            var moved = ClothBones.Reparent(sk, [("shoulder", new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "XXX_pad", "XXX_pad2" }, ["Clav", "Arm", "Late"])]);
+            var after = ClothBones.World(sk);
+            Check($"cloth bones: a piece DS3's cloth moves rides on the nearest earlier bone its cloth is skinned to, rest place kept, its child follows it ({string.Join(", ", moved.Select(m => m.Bone + "->" + m.To))})",
+                moved.Count == 1 && moved[0].Bone == "XXX_pad" && moved[0].To == "Arm" && sk.m_parentIndices[4] == 2 && sk.m_parentIndices[5] == 4
+                && Enumerable.Range(0, before.Length).All(i => (before[i].Translation - after[i].Translation).Length() < 1e-5f));
+        }
+        Check("hit shapes: Elden Ring's hkxpwv part flags (trunk 0x80, calves and feet 0x20, arms and head 0x10)",
+            ChrHitShapes.PartFlag("Collidable_Bip001 Spine001") == 0x80 && ChrHitShapes.PartFlag("Collidable_Bip001 L Calf001") == 0x20
+            && ChrHitShapes.PartFlag("Ragdoll_Soul_Head001") == 0x10 && ChrHitShapes.PartFlag("Ragdoll_Soul_Tail003") == 0x80);
+        {
+            var rag = new HKX2.hknpRagdollData { m_bodyCinfos = [new HKX2.hknpBodyCinfo { m_name = "Collidable_Bip001 Head001" }, new HKX2.hknpBodyCinfo { m_name = "Pelvis" }] };
+            var ds3Pwv = new byte[32 + 2 * 4 + 3 * 8 + 2 * 16];
+            BitConverter.GetBytes((ushort)2).CopyTo(ds3Pwv, 6);
+            BitConverter.GetBytes((ushort)3).CopyTo(ds3Pwv, 8);
+            new byte[] { 0xE8, 0x03, 0xFF, 0xFF, 0x1F, 0x09 }.CopyTo(ds3Pwv, 32 + 8 + 24);
+            var pwv = ChrHitShapes.Pwv(rag, 5, ds3Pwv);
+            int tail = 32 + 2 * 4 + 5 * 8;
+            Check("hit shapes: the hkxpwv is Elden Ring's version 2 for DS3's body count and the ported bone count, each body's record from DS3",
+                pwv.Length == tail + 2 * 16 && BitConverter.ToUInt16(pwv, 0) == 2 && BitConverter.ToUInt16(pwv, 6) == 2 && BitConverter.ToUInt16(pwv, 8) == 5
+                && BitConverter.ToUInt32(pwv, 32) == 0xFFFF && BitConverter.ToUInt16(pwv, tail) == 1000 && BitConverter.ToUInt16(pwv, tail + 4) == 0x091F
+                && BitConverter.ToUInt16(pwv, tail + 6) == 0x10 && pwv[tail + 8] == 0xFF && BitConverter.ToUInt32(pwv, tail + 16) == 0
+                && BitConverter.ToUInt16(pwv, tail + 16 + 6) == 0x80);
+        }
+
         // Limb IK (ChrIk): Placidusax pins four limbs to target bones; Ariandel has the foot targets, not the hand ones.
         {
             HKLib.hk2018.hkbVariableBindingSet Bind(params (string Path, int Variable)[] to) => new()

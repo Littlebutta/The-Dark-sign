@@ -1639,8 +1639,12 @@ public static partial class ChrPort
 
         if (plan.Method == Method.Full && plan.Stage > Stage.Model)
         {
-            var animated = PortAnimations(ds3, x, binders, n, notes, t, plan.Stage, plan.Stage == Stage.All ? fx : null, plan);
+            var ds3Cloth = ds3Chrbnd.Files.FirstOrDefault(f => IsClothFile(f.Name) && f.Name.EndsWith(".hkx", StringComparison.OrdinalIgnoreCase))?.Bytes;
+            var animated = PortAnimations(ds3, x, binders, n, notes, t, plan.Stage, plan.Stage == Stage.All ? fx : null, plan, ds3Cloth);
             files.Animations = animated;
+
+            // DS3's own hit shapes on the ported skeleton, in place of the template's (ChrHitShapes).
+            notes.Add(PortHitShapes(binders, ds3Chrbnd, n));
 
             // The scripted moves hand over to the states DS3's behaviour script names (Gundyr's sword pull 20003 on to
             // his stand-up 20002, which starts his fight), not the template's (EventChains).
@@ -1669,7 +1673,7 @@ public static partial class ChrPort
     /// DS3 move's length; DS3's attacks and the rest where both games lay the event out the same).
     /// </summary>
     private static int PortAnimations(GameArchives ds3, int x, Dictionary<string, (BND4 Bnd, DCX.CompressionInfo Compression)> binders, int n, List<string> notes,
-        int templateChr = 0, Stage stage = Stage.All, ChrEffects? fx = null, Plan? plan = null)
+        int templateChr = 0, Stage stage = Stage.All, ChrEffects? fx = null, Plan? plan = null, byte[]? ds3Cloth = null)
     {
         // A DS3 variant (c2191) plays its base's animations (c2190): its own files first, then the base's.
         var ds3Files = Ds3AnimationSources(x).SelectMany(chr => ds3.Entries
@@ -1724,6 +1728,18 @@ public static partial class ChrPort
             var root = (hkRootLevelContainer)AnimPort.ReadEr(skeletonFile.Bytes, compendium);
             var skeleton = AnimPort.Container(root).m_skeletons.First()!;
             var merge = MergeSkeleton(skeleton, ds3Skeleton);
+            // Armour DS3's cloth moves (the port has no cloth) rides on the bone that cloth followed (ClothBones).
+            if (ds3Cloth is not null)
+                try
+                {
+                    var moved = ClothBones.Reparent(skeleton, ClothBones.Read(ds3Cloth));
+                    if (moved.Count > 0)
+                        notes.Add($"cloth bones: {moved.Count} pieces DS3's cloth moves now ride on their body bone ({string.Join(", ", moved.Take(8).Select(m => $"{m.Bone} -> {m.To}"))}{(moved.Count > 8 ? ", ..." : "")})");
+                }
+                catch (Exception ex) when (ex is not OutOfMemoryException)
+                {
+                    notes.Add($"cloth bones: left where they rest ({Describe(ex)})");
+                }
             using var output = new MemoryStream();
             new HavokBinarySerializer().Write(root, output);
             skeletonFile.Bytes = output.ToArray();
@@ -1771,7 +1787,11 @@ public static partial class ChrPort
                 var templateEntries = anibnds.SelectMany(b => b.Value.Bnd.Files)
                     .Where(f => f.Name.EndsWith(".tae", StringComparison.OrdinalIgnoreCase) && TaeSection(f.Name) == 0)
                     .SelectMany(f => TAE.Read(f.Bytes).Animations.Select(a => (int)a.ID)).ToHashSet();
-                var wanted = ChrMoves.Plan(wholeKeys.Where(k => k.Item1 == 0 && ChrMoves.Wanted(k.Item2, true)).Select(k => k.Item2),
+                // A move DS3 has only in a variant section (Iudex Gundyr's Pus of Man attack a001_003015, which his
+                // phase-two AI asks for) gets its base slot too: ChrVariants only gives a section its own clip next to a
+                // base move, so until 1.0.640 such moves had no state at all and the second phase played the first's.
+                var wanted = ChrMoves.Plan(wholeKeys.Where(k => (k.Item1 == 0 || !moves.ContainsKey((0, k.Item2))) && ChrMoves.Wanted(k.Item2, true))
+                        .Select(k => k.Item2).Distinct(),
                     templateEntries, templateFiles, templateAdditive);
                 // A new file copies one of the template's own whole clips of these families (the animation port
                 // then fills it with DS3's move), so a family whose entries all borrow another clip still gets files.
@@ -1971,6 +1991,44 @@ public static partial class ChrPort
 
     /// <summary>Which template animation files are additive, read once per template (many characters share one).</summary>
     private static readonly ConcurrentDictionary<(int Chr, string Leaf, int Length), bool> TemplateAdditive = new();
+
+    /// <summary>
+    /// Replaces the new character's physics file (chrbnd cXXXX.hkx: ragdoll, hit shapes, mappers) and its hkxpwv with
+    /// DS3's, mapped onto the merged skeleton the anibnd now carries (<see cref="ChrHitShapes"/>). Keeps the template's
+    /// when anything is missing or doesn't convert, and says why.
+    /// </summary>
+    private static string PortHitShapes(Dictionary<string, (BND4 Bnd, DCX.CompressionInfo Compression)> binders, BND4 ds3Chrbnd, int n)
+    {
+        try
+        {
+            if (!binders.TryGetValue($"/chr/c{n:D4}.chrbnd.dcx", out var chr) || !binders.TryGetValue($"/chr/c{n:D4}.anibnd.dcx", out var ani))
+                return "hit shapes: the template's kept (no chrbnd or anibnd)";
+            static bool Physics(string name) => name.EndsWith(".hkx", StringComparison.OrdinalIgnoreCase) && !ChrPort.IsClothFile(name);
+            var hkx = chr.Bnd.Files.FirstOrDefault(f => Physics(f.Name));
+            var ds3Hkx = ds3Chrbnd.Files.FirstOrDefault(f => Physics(f.Name));
+            var skeletonFile = ani.Bnd.Files.FirstOrDefault(f => ItemText.Leaf(f.Name).Equals("skeleton.hkx", StringComparison.OrdinalIgnoreCase));
+            if (hkx is null || ds3Hkx is null || skeletonFile is null)
+                return $"hit shapes: the template's kept ({(hkx is null ? "template" : ds3Hkx is null ? "DS3" : "anibnd")} has no {(skeletonFile is null ? "skeleton" : "physics file")})";
+            var ds3Pwv = ds3Chrbnd.Files.FirstOrDefault(f => f.Name.EndsWith(".hkxpwv", StringComparison.OrdinalIgnoreCase));
+            ChrHitShapes.Result result;
+            lock (AnimPort.HavokLock)
+            {
+                var merged = AnimPort.Container((hkRootLevelContainer)AnimPort.ReadEr(skeletonFile.Bytes, Compendium(ani.Bnd))).m_skeletons.First()!;
+                result = ChrHitShapes.Convert(hkx.Bytes, ds3Hkx.Bytes, merged, ds3Pwv?.Bytes);
+            }
+            hkx.Bytes = result.Hkx;
+            var pwv = chr.Bnd.Files.FirstOrDefault(f => f.Name.EndsWith(".hkxpwv", StringComparison.OrdinalIgnoreCase));
+            if (pwv is not null)
+                pwv.Bytes = result.Pwv;
+            else
+                chr.Bnd.Files.Add(new BinderFile(hkx.Flags, 500, hkx.Name[..^4] + ".hkxpwv", result.Pwv));
+            return result.Note;
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            return $"hit shapes: the template's kept ({Describe(ex)})";
+        }
+    }
 
     private static byte[]? Compendium(BND4 bnd) =>
         bnd.Files.FirstOrDefault(f => f.Name.EndsWith(".compendium", StringComparison.OrdinalIgnoreCase))?.Bytes;
