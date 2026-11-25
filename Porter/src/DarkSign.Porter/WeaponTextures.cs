@@ -17,7 +17,7 @@ namespace DarkSign.Porter;
 /// </summary>
 public static class WeaponTextures
 {
-    // Reflectance (linear luminance) at and below which a pixel is plain dielectric (DS3 paints non-metals ~0.04),
+    // Reflectance (linear, strongest channel) at and below which a pixel is plain dielectric (DS3 paints non-metals ~0.04),
     // and at and above which it is fully metal.
     private const float DielectricMax = 0.06f, MetalMin = 0.25f;
 
@@ -87,11 +87,18 @@ public static class WeaponTextures
         tpf.Textures.AddRange(added);
     }
 
-    /// <summary>0 (dielectric) to 1 (metal) from a DS3 reflectance texel (sRGB).</summary>
+    /// <summary>
+    /// 0 (dielectric) to 1 (metal) from a DS3 reflectance texel (sRGB), by its strongest channel (linear). A dielectric
+    /// reflects about 4% on every channel alike, so any channel above <see cref="DielectricMax"/> is the colour of a
+    /// metal. Up to 1.0.640 this read the luminance, which a coloured reflectance keeps low: Darkeater Midir's crystals
+    /// (c6211_crystal_r, lavender 97 99 142: the purple DS3 shows) came out about a third metal, so nearly all of their
+    /// purple was dropped and only the teal glow map was left (Devin: "supposed to be purple not glowing blue"). A grey
+    /// reflectance reads the same either way.
+    /// </summary>
     public static float Metalness(ColorRgba32 spec)
     {
-        float lum = 0.2126f * ToLinear(spec.r) + 0.7152f * ToLinear(spec.g) + 0.0722f * ToLinear(spec.b);
-        float t = Math.Clamp((lum - DielectricMax) / (MetalMin - DielectricMax), 0f, 1f);
+        float peak = Math.Max(ToLinear(spec.r), Math.Max(ToLinear(spec.g), ToLinear(spec.b)));
+        float t = Math.Clamp((peak - DielectricMax) / (MetalMin - DielectricMax), 0f, 1f);
         return t * t * (3f - 2f * t);
     }
 
@@ -177,6 +184,8 @@ public static class WeaponTextures
         void Check(bool ok, string what) { Console.WriteLine($"{(ok ? "ok  " : "FAIL")} {what}"); if (!ok) fails++; }
         Check(Metalness(new ColorRgba32(56, 56, 56, 255)) == 0f, "DS3 dielectric reflectance (56) is not metal");
         Check(Metalness(new ColorRgba32(164, 159, 145, 255)) > 0.95f, "Lothric blade reflectance (164) is metal");
+        Check(Metalness(new ColorRgba32(97, 99, 142, 255)) > 0.95f, "Midir's lavender crystal reflectance (97 99 142) is metal, so its colour is kept");
+        Check(Metalness(new ColorRgba32(70, 65, 60, 255)) < 0.01f, "a dull, slightly warm dielectric reflectance (70 65 60) stays dielectric");
 
         // 8x8 albedo: left half dark diffuse over bright reflectance (metal), right half coloured diffuse over dull.
         const int n = 8;
