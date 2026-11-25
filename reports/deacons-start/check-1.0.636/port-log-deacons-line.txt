@@ -1,0 +1,1 @@
+  boss arenas: Deacons of the Deep lands at -457.3 -196.5 -621.6 (area 領域_ボス部屋侵入（枢機卿団） at the boss's floor + 0.5 m), entity 45059970; flags: defeated 45050800, entry 45055805, first encounter 0; 8 fight events reset; entry set once the player stands in area 45052800

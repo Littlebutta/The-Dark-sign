@@ -1,0 +1,82 @@
+23:48:05 session started 2026-11-24 (local time; earlier sessions: dksign_testmenu.1.log to .5.log)
+23:48:05 test menu loaded
+23:48:05 items: 3953
+23:48:05 hotkeys: on (Ctrl+Shift+F1 start DS3 run, F2 leave, 1-9 warp, F3 give DS3 weapons, F4 clear spawned enemies, F5 god mode, F6 fly, F7 no-clip, F8 record frame times, F9 enemies ignore player)
+23:48:05 motion: no weapons on categories above 255
+23:48:05 music: 98 DS3 music regions listed, level 70%
+23:48:05 scan 1: EventFlagMan +3d6f4d8, SetEventFlag +5d3410, IsEventFlag +5d2630
+23:48:05 scan 1: base 00007ff66b0e0000, GameDataMan +3d64fb8, MapItemMan +3d6eae0, ItemGive +5618b0
+23:48:06 overlay: hooks in place; press F1 in game
+23:48:06 spawn: WorldChrMan +3d6d018, main player +1e508, debug creator +1e658, RemoveChrIns +50b5c0
+23:48:06 overlay: ready (3 buffers, format 24)
+23:48:06 god mode: on at launch (DKSIGN_GOD=1)
+23:48:06 bonfires: 74 bonfires in the travel menu, 74 with a picture
+23:48:20 flag: 45000999 -> 1 (reads 1)
+23:48:20 flag: 45000999 -> 0 (reads 0)
+23:48:20 flag: 45001999 -> 1 (reads 1)
+23:48:20 flag: 45001999 -> 0 (reads 0)
+23:48:20 flag: 45002999 -> 1 (reads 1)
+23:48:20 flag: 45002999 -> 0 (reads 0)
+23:48:20 flag: 45003999 -> 1 (reads 1)
+23:48:20 flag: 45003999 -> 0 (reads 0)
+23:48:20 flag: 45004999 -> 1 (reads 1)
+23:48:20 flag: 45004999 -> 0 (reads 0)
+23:48:20 flag: 45005999 -> 1 (reads 1)
+23:48:20 flag: 45005999 -> 0 (reads 0)
+23:48:20 flag: 45007999 -> 1 (reads 1)
+23:48:20 flag: 45007999 -> 0 (reads 0)
+23:48:20 flag: 45008999 -> 1 (reads 1)
+23:48:20 flag: 45008999 -> 0 (reads 0)
+23:48:20 flag: 45009999 -> 1 (reads 1)
+23:48:20 flag: 45009999 -> 0 (reads 0)
+23:48:20 flag: 45010999 -> 1 (reads 1)
+23:48:20 flag: 45010999 -> 0 (reads 0)
+23:48:20 flag: 45011999 -> 1 (reads 1)
+23:48:20 flag: 45011999 -> 0 (reads 0)
+23:48:20 flag: 45012999 -> 1 (reads 1)
+23:48:20 flag: 45012999 -> 0 (reads 0)
+23:48:20 flag: 45013999 -> 1 (reads 1)
+23:48:20 flag: 45013999 -> 0 (reads 0)
+23:48:20 flag: 45014999 -> 1 (reads 1)
+23:48:20 flag: 45014999 -> 0 (reads 0)
+23:48:20 flag: 45015999 -> 1 (reads 1)
+23:48:20 flag: 45015999 -> 0 (reads 0)
+23:48:20 flag: 45017999 -> 1 (reads 1)
+23:48:20 flag: 45017999 -> 0 (reads 0)
+23:48:20 flag: 45018999 -> 1 (reads 1)
+23:48:20 flag: 45018999 -> 0 (reads 0)
+23:48:20 flag: 45019999 -> 1 (reads 1)
+23:48:20 flag: 45019999 -> 0 (reads 0)
+23:48:20 flag: 45020999 -> 1 (reads 1)
+23:48:20 flag: 45020999 -> 0 (reads 0)
+23:48:20 flag: 45021999 -> 1 (reads 1)
+23:48:20 flag: 45021999 -> 0 (reads 0)
+23:48:20 flag: 45022999 -> 1 (reads 1)
+23:48:20 flag: 45022999 -> 0 (reads 0)
+23:48:20 flag: 45023999 -> 1 (reads 1)
+23:48:20 flag: 45023999 -> 0 (reads 0)
+23:48:20 flag: 45024999 -> 1 (reads 1)
+23:48:20 flag: 45024999 -> 0 (reads 0)
+23:48:20 flag: 45025999 -> 1 (reads 1)
+23:48:20 flag: 45025999 -> 0 (reads 0)
+23:48:20 flag: 45027999 -> 1 (reads 1)
+23:48:20 flag: 45027999 -> 0 (reads 0)
+23:48:20 flag: 45028999 -> 1 (reads 1)
+23:48:20 flag: 45028999 -> 0 (reads 0)
+23:48:20 flag: 45029999 -> 1 (reads 1)
+23:48:20 flag: 45029999 -> 0 (reads 0)
+23:48:20 flagcheck: 37 blocks ok, 0 missing
+23:49:32 god mode: applied to the player (debug flags 00 -> 02, HP 1450 / 1450)
+23:50:22 maps: porter check: 0 FAIL, 54 WARN
+23:50:22 maps: 15 ported
+23:50:22 maps: 17 boss arenas
+23:50:44 bosses: warp to Deacons of the Deep in Cathedral of the Deep (m35_00_00_00 as m45_05_00_00), request flag 1039292408
+23:50:44 flag: 1039292408 -> 1 (reads 1)
+23:50:44 ds3 run: set request flag 1039292408
+23:50:45 ds3 run: request flag 1039292408 cleared by the event after 984 ms
+23:50:46 god mode: applied to the player (debug flags 00 -> 02, HP 1450 / 1450)
+23:52:50 bosses: warp to Deacons of the Deep in Cathedral of the Deep (m35_00_00_00 as m45_05_00_00), request flag 1039292408
+23:52:50 flag: 1039292408 -> 1 (reads 1)
+23:52:50 ds3 run: set request flag 1039292408
+23:52:52 god mode: applied to the player (debug flags 00 -> 02, HP 1450 / 1450)
+23:52:57 ds3 run: request flag 1039292408 cleared by the event after 7203 ms
