@@ -40,6 +40,27 @@ if (args.Length == 3 && args[0] == "warp")
     Console.WriteLine($"1039291408: banner 13 before 3[08] (index {inMap}), banner 22 after it; wrote {args[2]}");
     return;
 }
+if (args.Length == 3 && args[0] == "split")
+{
+    // Probe 25: the fix design, patched by hand. 1039291408 turns pending flag 1039292990 on just before its warp;
+    // a new event 1039291990 (started from event 0, so it starts again with every load) waits for that flag AND the
+    // player in area 45052800, turns the flag off, sets entry 1039291408 would have set (1030297714), banner 20.
+    var cm = EMEVD.Read(DCX.Decompress(File.ReadAllBytes(args[1]), out var cc));
+    var w = cm.Events.First(e => e.ID == 1039291408);
+    int warp = w.Instructions.FindIndex(i => i.Bank == 2003 && i.ID == 14);
+    if (warp < 0) throw new InvalidDataException("1039291408 has no warp");
+    static EMEVD.Instruction Set(uint flag, byte on) => new(2003, 66, Le((byte)0, (byte)0, (byte)0, (byte)0, flag, on, (byte)0, (byte)0, (byte)0));
+    w.Instructions.Insert(warp, Set(1039292990, 1));
+    foreach (var p in w.Parameters) if (p.InstructionIndex >= warp) p.InstructionIndex++;
+    cm.Events.RemoveAll(e => e.ID == 1039291990);
+    var ev = new EMEVD.Event(1039291990, EMEVD.Event.RestBehaviorType.Default);
+    ev.Instructions.AddRange([Flag(1, 1039292990), InArea(1, 45052800), Group(1), Set(1039292990, 0), Set(1030297714, 1), Wait(1), Banner(20)]);
+    cm.Events.Add(ev);
+    cm.Events.First(e => e.ID == 0).Instructions.Add(new EMEVD.Instruction(2000, 0, Le(0, 1039291990u, 0u)));
+    File.WriteAllBytes(args[2], DCX.Compress(cm.Write(), cc));
+    Console.WriteLine($"1039291408: pending flag on before the warp (index {warp}); event 1039291990 sets the entry flag after the load; wrote {args[2]}");
+    return;
+}
 if (args.Length != 3 || args[0] != "watch") { Console.WriteLine("p23 watch|warp <in.emevd.dcx> <out.emevd.dcx>"); return; }
 var em = EMEVD.Read(DCX.Decompress(File.ReadAllBytes(args[1]), out var comp));
 var init = em.Events.First(e => e.ID == 0);
