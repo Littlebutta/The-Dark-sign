@@ -386,7 +386,7 @@ public sealed class TalkPort
 
     public sealed class Stats
     {
-        public int Flags, Lines, Texts, Shops, Buttons, CommandsLeftOut, CommandsReshaped, FunctionsZeroed, EngineFlags;
+        public int Flags, Lines, Texts, Shops, Buttons, CommandsLeftOut, CommandsReshaped, FunctionsZeroed, EngineFlags, PoseEffects, EffectsMoved;
         public SortedDictionary<string, int> LeftOutCommands = new(StringComparer.Ordinal), ZeroedFunctions = new(StringComparer.Ordinal);
     }
 
@@ -403,8 +403,11 @@ public sealed class TalkPort
     /// left out and its person stays silent).
     /// </summary>
     /// <param name="engineDone">DS3 flags that only DS3's engine turns on (<see cref="EngineFlags"/>): read as on.</param>
+    /// <param name="poseEffect">DS3 SpEffects that only DS3's people animations put on the speaker (<see cref="PoseEffects"/>):
+    /// "does the speaker have it" reads as yes.</param>
+    /// <param name="moveEffect">Any other SpEffect the speaker is asked about: its ported number (<see cref="Enemies.ChrEffects.SpEffectId"/>).</param>
     public static Stats Convert(ESD esd, Vocabulary er, Func<long, long> moveFlag, Func<int, bool> hasButton, Needs needs,
-        Func<long, bool>? engineDone = null)
+        Func<long, bool>? engineDone = null, Func<long, bool>? poseEffect = null, Func<long, long>? moveEffect = null)
     {
         var stats = new Stats();
         // Every expression of every group, parsed once: (the command it is an argument of, its nodes).
@@ -466,6 +469,19 @@ public sealed class TalkPort
                 case Call { Func: Lit { Value: 15 }, Args: [var a] } when engineDone is not null && Core(a) is Lit l && engineDone(l.Value):
                     stats.EngineFlags++;
                     return new Lit(1);
+                case Call { Func: Lit { Value: SelfSpEffect }, Args: [var a] } when poseEffect is not null && Core(a) is Lit l && poseEffect(l.Value):
+                    stats.PoseEffects++;
+                    return new Lit(1);
+                case Call { Func: Lit { Value: SelfSpEffect }, Args: [var a] } c when moveEffect is not null && Core(a) is Lit { Value: > 0 } l:
+                    {
+                        long moved = moveEffect(l.Value);
+                        if (moved > 0 && moved != l.Value)
+                        {
+                            l.Value = moved;
+                            stats.EffectsMoved++;
+                        }
+                        return c;
+                    }
                 case Call c:
                     for (int i = 0; i < c.Args.Count; i++)
                         c.Args[i] = Engine(c.Args[i]);
@@ -645,6 +661,65 @@ public sealed class TalkPort
         return read;
     }
 
+    /// <summary>
+    /// Talk function 60: does the speaker have this SpEffect (Elden Ring's scripts ask it of 9625-9627 the same way).
+    /// </summary>
+    public const int SelfSpEffect = 60;
+
+    /// <summary>
+    /// The SpEffects DS3's people event animations put on whoever plays them (TAE events 66/67 in DS3's c0000 binder,
+    /// animations 90000-99999). DS3's
+    /// talk scripts wait for them before a menu goes on: the Fire Keeper's level-up asks only once she has 150 or 152
+    /// (t400120 group 0x7FFFFFE6, "f60(150) or f60(152)", then 74000136), and 14 more of Firelink's, Undead
+    /// Settlement's and the Ringed City's scripts greet or answer only with 150 or 151 (the standing/sitting talk
+    /// poses a90250-a91170 cast them for their whole length; 159 likewise). The ported people stand on Elden Ring's
+    /// bodies and animations, which never cast them, so those menus waited forever and the person just stood there
+    /// (1.0.640, "Fire Keeper doesn't let me level up"). Read off DS3's own animations, 2026-11-25: 35, 150, 151,
+    /// 152, 153, 155, 158, 159, 100200; talk scripts ask about 150, 151, 152 and 159.
+    /// </summary>
+    public static HashSet<long> PoseEffects(BND4 peopleAnimations)
+    {
+        var found = new HashSet<long>();
+        foreach (var f in peopleAnimations.Files.Where(f => f.Name.EndsWith(".tae", StringComparison.OrdinalIgnoreCase)))
+        {
+            TAE tae;
+            try { tae = TAE.Read(f.Bytes); }
+            catch (Exception ex) when (ex is not OutOfMemoryException) { _ = ex; continue; }
+            // Only DS3's event animations (a?_09xxxx: the poses people talk in, play when spoken to, sit or kneel in).
+            foreach (var e in tae.Animations.Where(a => a.ID % 1_000_000 is >= 90_000 and < 100_000).SelectMany(a => a.Events).Where(e => e.Type is 66 or 67))
+            {
+                var p = e.GetParameterBytes(false);
+                if (p.Length >= 4 && BitConverter.ToInt32(p, 0) is > 0 and var id)
+                    found.Add(id);
+            }
+        }
+        return found;
+    }
+
+    /// <summary>
+    /// The dialogue rows a talk script's lines stand for. A script names only the first row of a speech; the game
+    /// goes on through the rows numbered after it (12000000, 12000001 ... 12000011 is one speech of Greirat's) for as
+    /// long as they exist. Both games do this: of the rows their talk scripts name, DS3's 417 and Elden Ring's 552 are
+    /// all first rows, and 2,012 of DS3's 3,114 rows (7,135 of Elden Ring's 10,309) follow on from the one before
+    /// (counted on both games' params and talk binders, 2026-11-25). Up to 1.0.64x only the named rows were ported,
+    /// so every person said the first line of each speech and stopped. <paramref name="exists"/> says whether DS3
+    /// has a row.
+    /// </summary>
+    public static SortedDictionary<int, int> Chains(IEnumerable<int> named, Func<int, bool> exists, int longest = 99)
+    {
+        // row -> the named row whose speech it belongs to
+        var rows = new SortedDictionary<int, int>();
+        var heads = named.ToHashSet();
+        foreach (var head in heads.Order())
+        {
+            rows[head] = head;
+            // A row a script names itself starts a speech of its own.
+            for (int next = head + 1, n = 0; n < longest && exists(next) && !heads.Contains(next); next++, n++)
+                rows[next] = head;
+        }
+        return rows;
+    }
+
     // ---- The plan and the files ----
 
     /// <summary>DS3 map -> the talk scripts its binder holds that can be read.</summary>
@@ -735,7 +810,17 @@ public sealed class TalkPort
         // Which voice bank (talk script prefix) speaks each line: the first script that says it.
         var lineBank = new Dictionary<int, int>();
         var report = new StringBuilder("DS3 map\tDS3 talk script\tElden Ring map\tElden Ring talk script\tstate groups\tflags moved\tlines\tmenu texts\tshops\tcommands left out\tcommands reshaped\tfunctions read as 0\n");
-        int written = 0, failed = 0;
+        int written = 0, failed = 0, poseReads = 0, effectsMoved = 0;
+        HashSet<long> poses = [];
+        try
+        {
+            poses = PoseEffects(BND4.Read(ds3.Read(PeopleAnimations)));
+            lines.Add($"people talk: {poses.Count} SpEffects DS3's people animations cast (talk poses), read as on when a script asks the speaker: {string.Join(" ", poses.Order().Take(16))}");
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            lines.Add($"people talk: DS3's people animations not read ({ex.GetType().Name}: {ex.Message}); menus that wait for a talk pose may hang");
+        }
         var leftOut = new SortedDictionary<string, int>(StringComparer.Ordinal);
         var zeroed = new SortedDictionary<string, int>(StringComparer.Ordinal);
         var templatePath = er.Entries.Select(e => e.Path).Where(p => p?.StartsWith("/script/talk/") == true && p.EndsWith(".talkesdbnd.dcx"))
@@ -774,7 +859,10 @@ public sealed class TalkPort
                 {
                     var esd = ESD.Read(file.Bytes);
                     var before = needs.Lines.ToHashSet();
-                    var stats = Convert(esd, vocabulary, moveFlag, buttons.Contains, needs, engine.Contains);
+                    var stats = Convert(esd, vocabulary, moveFlag, buttons.Contains, needs, engine.Contains, poses.Contains,
+                        e => Enemies.ChrEffects.SpEffectId((int)Math.Clamp(e, 0, int.MaxValue)));
+                    poseReads += stats.PoseEffects;
+                    effectsMoved += stats.EffectsMoved;
                     foreach (var line in needs.Lines.Where(l => !before.Contains(l)))
                         lineBank.TryAdd(line, id / 1_000_000);
                     esd.Name = $"t{id}";
@@ -801,7 +889,8 @@ public sealed class TalkPort
         }
         lines.Insert(1, $"people talk: {written} DS3 talk scripts converted for {_used.Count(u => u.Value.Count > 0)} maps{(failed > 0 ? $", {failed} failed" : "")}"
                         + (leftOut.Count > 0 ? $"; commands left out: {string.Join(", ", leftOut.Select(kv => $"{kv.Key} x{kv.Value}"))}" : "")
-                        + (zeroed.Count > 0 ? $"; functions Elden Ring lacks read as 0: {string.Join(", ", zeroed.Select(kv => $"{kv.Key} x{kv.Value}"))}" : ""));
+                        + (zeroed.Count > 0 ? $"; functions Elden Ring lacks read as 0: {string.Join(", ", zeroed.Select(kv => $"{kv.Key} x{kv.Value}"))}" : "")
+                        + $"; {poseReads} talk-pose checks read as on, {effectsMoved} speaker SpEffect checks moved to the ported effects ({Enemies.ChrEffects.SpEffectBase}+)");
         lines.AddRange(WriteLines(ctx, ds3, er, regulation, ds3Params, needs, lineBank));
         lines.Add(WriteShops(regulation, ds3Params, needs, items, moveFlag));
         regulation.Save(ctx.ModPath("regulation.bin"));
@@ -811,6 +900,9 @@ public sealed class TalkPort
     }
 
     // ---- Lines and text ----
+
+    /// <summary>DS3's people animations (<see cref="PoseEffects"/>).</summary>
+    public const string PeopleAnimations = "/chr/c0000.anibnd.dcx";
 
     private const string Ds3Menu = "/msg/engus/menu_dlc2.msgbnd.dcx", Ds3MenuBase = "/msg/engus/menu.msgbnd.dcx";
 
@@ -868,7 +960,10 @@ public sealed class TalkPort
         int rows = 0, noRow = 0, noWords = 0;
         // Each bank's lines: (row, voiceId, DS3 line number, reading time).
         var banks = new SortedDictionary<int, List<(PARAM.Row Row, int Voice, int Ds3Line, float Seconds)>>();
-        foreach (var id in needs.Lines)
+        // The rows each named line goes on through (Chains); without DS3's params, its text numbers stand for them.
+        var speech = Chains(needs.Lines, ds3TalkParam is not null ? r => ds3TalkParam[r] is not null : ds3Talk.ContainsKey);
+        int following = speech.Count - needs.Lines.Count;
+        foreach (var (id, head) in speech)
         {
             // DS3's row names the text; without DS3's params the line's number is the text's (as DS3's rows have it).
             int message = id;
@@ -903,7 +998,7 @@ public sealed class TalkPort
             talkParam.Rows.Add(row);
             talkMsg.Entries.Add(new FMG.Entry(TextBase + id, words));
             rows++;
-            if (lineBank.TryGetValue(id, out var prefix))
+            if (lineBank.TryGetValue(head, out var prefix))
             {
                 var list = banks.TryGetValue(prefix, out var l) ? l : banks[prefix] = [];
                 list.Add((row, prefix * 1_000_000 + list.Count + 1, id, ReadingTime(words)));
@@ -915,7 +1010,7 @@ public sealed class TalkPort
         eventFile.Bytes = eventText.Write();
         Directory.CreateDirectory(Path.GetDirectoryName(modMenuPath)!);
         File.WriteAllBytes(modMenuPath, DCX.Compress(menu.Write(), compression));
-        yield return $"people talk: {rows} dialogue lines (TalkParam {TextBase}+){(noRow > 0 ? $", {noRow} without a DS3 row" : "")}"
+        yield return $"people talk: {rows} dialogue lines (TalkParam {TextBase}+; {needs.Lines.Count} named by scripts, {following} following on in their speeches){(noRow > 0 ? $", {noRow} without a DS3 row" : "")}"
                + $"{(noWords > 0 ? $", {noWords} without DS3 text" : "")}{(ds3TalkParam is null ? " (DS3's TalkParam unreadable: line numbers used as text numbers)" : "")}; "
                + $"{texts} menu and dialog texts{(noText > 0 ? $", {noText} without DS3 text" : "")}";
         foreach (var v in voiceLog)

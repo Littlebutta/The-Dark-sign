@@ -8,6 +8,8 @@ public static partial class MapPortChecks
     {
         yield return ("talk: script expressions read and write back byte for byte", TalkExpressions);
         yield return ("talk: a DS3 talk script's flags, lines and shops move (through state group arguments too), commands and functions Elden Ring lacks go", TalkConvert);
+        yield return ("talk: a talk pose DS3's people animations cast reads as on; any other SpEffect asked of the speaker moves to the ported effects", TalkPoses);
+        yield return ("talk: a named line brings the rows of its speech that follow it (12000000 -> 12000001...), up to the first gap", TalkChains);
         yield return ("talk: each converted script has a prefix (voice bank vc900-vc998) of its own, never Elden Ring's vc999; speech is halved to 22 kHz", TalkVoices);
     }
 
@@ -24,6 +26,50 @@ public static partial class MapPortChecks
         Expect(rate == 22050 && half.SequenceEqual(new short[] { 50, 250, -200 }), "44.1 kHz speech is averaged down to 22.05 kHz");
         var (same, keep) = CutsceneSound.Halve([1, 2], 1, 22050);
         Expect(keep == 22050 && same.Length == 2, "lower rates are kept");
+    }
+
+    private static void TalkPoses()
+    {
+        // The Fire Keeper's level-up handshake: (f60(150) == 1 || f60(152) == 1) -> ask; and Friede's f60(13133) == 1.
+        static TalkPort.Node Has(int effect) =>
+            new TalkPort.Op(0x95, [new TalkPort.Call(new TalkPort.Lit(TalkPort.SelfSpEffect), [new TalkPort.Lit(effect)]), new TalkPort.Lit(1)]);
+        var pose = TalkPort.Emit([new TalkPort.Op(0xA1, [new TalkPort.Op(0x99, [Has(150), Has(152)])])]);
+        var boss = TalkPort.Emit([new TalkPort.Op(0xA1, [Has(13133)])]);
+        var esd = new ESD(false, 1) { StateGroups = new() { [0x7FFFFFE6] = new() { [0] = new ESD.State(), [1] = new ESD.State() } } };
+        esd.StateGroups[0x7FFFFFE6][0].Conditions.Add(new ESD.Condition(1, pose));
+        esd.StateGroups[0x7FFFFFE6][1].Conditions.Add(new ESD.Condition(0, boss));
+        var er = new ESD(true, 3) { StateGroups = new() { [1] = new() { [0] = new ESD.State() } } };
+        er.StateGroups[1][0].Conditions.Add(new ESD.Condition(0, TalkPort.Emit([new TalkPort.Op(0xA1, [Has(9626)])])));
+        var vocabulary = new TalkPort.Vocabulary();
+        vocabulary.Add(er);
+        var stats = TalkPort.Convert(esd, vocabulary, f => f, _ => true, new TalkPort.Needs(), null, id => id is 150 or 151 or 152 or 159,
+            id => Enemies.ChrEffects.SpEffectId((int)id));
+        var poseOut = TalkPort.Parse(esd.StateGroups[0x7FFFFFE6][0].Conditions[0].Evaluator).SelectMany(Walk).ToList();
+        var bossOut = TalkPort.Parse(esd.StateGroups[0x7FFFFFE6][1].Conditions[0].Evaluator).SelectMany(Walk).ToList();
+        Expect(stats.PoseEffects == 2 && !poseOut.OfType<TalkPort.Call>().Any(), "the talk poses 150/152 read as on (no SpEffect call left)");
+        Expect(stats.EffectsMoved == 1 && bossOut.OfType<TalkPort.Call>().Any(c => c.Args is [TalkPort.Lit { Value: 700_013_133 }]),
+            "a DS3 character effect asked of the speaker is its ported number 700,013,133");
+    }
+
+    private static IEnumerable<TalkPort.Node> Walk(TalkPort.Node n)
+    {
+        yield return n;
+        var kids = n switch { TalkPort.Call c => c.Args.Prepend(c.Func), TalkPort.Op p => p.Kids, _ => Enumerable.Empty<TalkPort.Node>() };
+        foreach (var k in kids)
+            foreach (var d in Walk(k))
+                yield return d;
+    }
+
+    private static void TalkChains()
+    {
+        // Greirat's first speech is 12000000-12000011, his next 12000100-12000103; a script names 12000000 and 12000100.
+        var ds3Rows = Enumerable.Range(12000000, 12).Concat(Enumerable.Range(12000100, 4)).Append(12000200).ToHashSet();
+        var rows = TalkPort.Chains([12000100, 12000000], ds3Rows.Contains);
+        Expect(rows.Count == 16 && rows[12000011] == 12000000 && rows[12000103] == 12000100 && !rows.ContainsKey(12000200),
+            "speeches: " + string.Join(" ", rows.Keys));
+        Expect(TalkPort.Chains([5], _ => true, longest: 3).Keys.SequenceEqual([5, 6, 7, 8]), "a speech stops after the longest allowed run");
+        var shared = TalkPort.Chains([10, 12], id => id is >= 10 and <= 14);
+        Expect(shared[12] == 12 && shared[11] == 10 && shared[14] == 12, "a row a script names itself starts its own speech");
     }
 
     private static byte[] TalkInt(int v) => EsdExpr.WriteInt(v);
