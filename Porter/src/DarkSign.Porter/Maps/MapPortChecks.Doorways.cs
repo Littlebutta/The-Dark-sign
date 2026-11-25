@@ -8,6 +8,82 @@ public static partial class MapPortChecks
     private static IEnumerable<(string Name, Action Test)> DoorwayChecks()
     {
         yield return ("world: a neighbour shows from each doorway only what DS3's doorway list shows; own stand-ins over the neighbour hide on that doorway only", Doorways);
+        yield return ("rooms: a far view standing around every collision that shows it (Midir's arena walls) is kept and drawn only there, and the room shows only what DS3 shows from it", Backdrops);
+    }
+
+    /// <summary>
+    /// Darkeater Midir's arena as m51_00 has it, in small: arena collision h012100 (group 1) and city collision h001000
+    /// (group 2). The arena surround m040001 (group 1) is a box around the whole map; inside it stand 12 city pieces
+    /// (group 2), 3 arena pieces (group 1) and a city stand-in m900100 (group 3, drawn from a second city collision
+    /// h002000). The surround passes the far view test (the city inside it is never drawn with it), but its only
+    /// collision stands inside it, so it is a backdrop: kept, drawn from the arena only; and from the arena the city
+    /// and its stand-in are hidden, as in DS3. A far view whose collision stands outside it is still left out.
+    /// </summary>
+    private static void Backdrops()
+    {
+        var ds3 = new MSB3();
+        MSB3.Part.Collision Hit(string name, int bit)
+        {
+            var c = new MSB3.Part.Collision { Name = name, ModelName = name };
+            Array.Clear(c.DrawGroups);
+            Array.Clear(c.DispGroups);
+            c.DispGroups[0] = 1u << bit;
+            ds3.Parts.Collisions.Add(c);
+            return c;
+        }
+        Hit("h012100", 1);
+        Hit("h001000", 2);
+        Hit("h002000", 3);
+        Hit("h003000", 4);
+        var meshes = new Dictionary<string, List<MapModelPort.MeshInfo>>(StringComparer.OrdinalIgnoreCase);
+        var boxes = new List<MapStandIns.PieceBox>();
+        void Piece(string model, Vector3 at, float half, int vertices, uint groups)
+        {
+            var p = new MSB3.Part.MapPiece { Name = model + "_7000", ModelName = model, Position = at };
+            Array.Clear(p.DrawGroups);
+            p.DrawGroups[0] = groups;
+            ds3.Parts.MapPieces.Add(p);
+            var min = new Vector3(-half, -half / 4, -half);
+            var max = new Vector3(half, half / 4, half);
+            meshes[MapPorter.ModelNumber(model)] = [new MapModelPort.MeshInfo("M[ARSN]_l", "opaque", vertices, max - min, "m51_00_rock_wall_00_a") { Min = min, Max = max }];
+            boxes.Add(new MapStandIns.PieceBox(p.Name, at + min, at + max, vertices, false));
+        }
+        Piece("m040001", Vector3.Zero, 900, 100, 0b0010);
+        for (int i = 0; i < 12; i++)
+            Piece($"m0010{i:00}", new Vector3(-300 + i * 50, 0, 200), 10, 1000, 0b0100);
+        for (int i = 0; i < 3; i++)
+            Piece($"m04010{i}", new Vector3(i * 20, -150, 0), 10, 500, 0b0010);
+        Piece("m900100", new Vector3(0, 0, 300), 100, 1000, 0b1000);
+        // A far view of the same city drawn only from a lookout far outside it (h003000, group 4).
+        Piece("m901000", new Vector3(0, 0, 200), 350, 100, 0b10000);
+        static IEnumerable<MapWorldFloor.Cell> Floor(string collision, Vector3 at) =>
+            Enumerable.Range(-1, 3).SelectMany(i => Enumerable.Range(-1, 3).Select(k => new MapWorldFloor.Cell(collision, at + new Vector3(4 * i, 0, 4 * k))));
+        var floor = Floor("h012100", new Vector3(0, -155, 0)).Concat(Floor("h001000", new Vector3(0, -2, 200)))
+            .Concat(Floor("h002000", new Vector3(0, -2, 260))).Concat(Floor("h003000", new Vector3(3000, 0, 0))).ToList();
+
+        var noFloor = MapStandIns.Find(ds3, meshes, new HashSet<string>());
+        Expect(noFloor.FarViews.Contains("m040001_7000") && noFloor.Backdrops.Count == 0, "without the floor the surround is a far view, as up to 1.0.640: " + string.Join(" | ", noFloor.Lines));
+        var judged = MapStandIns.Find(ds3, meshes, new HashSet<string>(), floor);
+        Expect(!judged.LeftOut.Contains("m040001_7000") && judged.Backdrops.TryGetValue("m040001_7000", out var from) && from.SequenceEqual(["h012100"]),
+            "the arena surround is a backdrop shown from the arena: " + string.Join(" | ", judged.Lines));
+        Expect(judged.FarViews.Contains("m901000_7000"), "a far view whose collision stands outside it is still left out: " + string.Join(" | ", judged.Lines));
+        Expect(MapStandIns.IsBackdrop([(10, 10)]) && MapStandIns.IsBackdrop([(5, 10), (12, 12)]) && !MapStandIns.IsBackdrop([(10, 10), (0, 30)])
+               && !MapStandIns.IsBackdrop([(0, 0)]) && !MapStandIns.IsBackdrop([]), "the backdrop thresholds");
+
+        var maps = new List<MapConnectDisplay.MapData>
+        {
+            new(MapId.Parse("m51_00_00_00"), MapId.Parse("m11_72_00_00"), ds3, boxes, floor) { Backdrops = judged.Backdrops },
+        };
+        var plan = MapConnectDisplay.Build(maps);
+        var mp = plan.Maps[MapId.Parse("m11_72_00_00")];
+        bool From(string piece, string collision) => MapConnectDisplay.Drawn(mp.PieceDraw[piece], mp.CollisionDisplay[collision]);
+        Expect(From("m040001_7000", "h012100") && !From("m040001_7000", "h001000") && !From("m040001_7000", "h002000"), "the backdrop is drawn from its room only");
+        Expect(From("m040100_7000", "h012100") && From("m040100_7000", "h001000"), "the arena's own pieces are drawn from the arena and, as before, from everywhere else");
+        Expect(!From("m001000_7000", "h012100") && !From("m900100_7000", "h012100"), "from the arena the city and its stand-in are hidden, as in DS3");
+        Expect(From("m001000_7000", "h001000") && From("m900100_7000", "h001000"), "away from the arena every own piece is drawn, as before");
+        Expect(mp.Rooms.SequenceEqual(["h012100"]), "the room is reported: " + string.Join(",", mp.Rooms));
+        var check = MapConnectDisplay.Verify(maps, plan);
+        Expect(check.HiddenButShown == 0, $"{check.HiddenButShown} cells hide what DS3 shows: {string.Join(" | ", check.WronglyHidden)}");
     }
 
     /// <summary>

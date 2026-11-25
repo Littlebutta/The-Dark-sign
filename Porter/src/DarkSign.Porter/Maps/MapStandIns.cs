@@ -36,6 +36,16 @@ namespace DarkSign.Porter.Maps;
 /// too, but DS3 draws them from 57 to 60 of m31_00's collisions, so only 1 to 3% of the map is never drawn with them).</item>
 /// </list>
 /// </para>
+/// <para>
+/// Backdrops (<see cref="IsBackdrop"/>): a piece that passes the far view test but that DS3 draws only from
+/// collisions whose floor lies inside its own box is not a far copy of the map but the surroundings of a closed room
+/// seen from inside it: Darkeater Midir's arena (m51_00, m040001_7000: the abyss rock wall, the aurora and the
+/// waterfalls, drawn only from the arena's 6 collisions, none of the city). Left out, the arena showed holes onto the
+/// sky (1.0.640 playtest). A backdrop is kept, and <see cref="MapConnectDisplay"/> shows it only from those
+/// collisions, which in turn show only what DS3 shows from them (the city's stand-ins no longer float in the arena).
+/// m31_00's lookout far views (one collision, h023000, standing inside them) are backdrops by the same test: DS3 shows
+/// them from the lookout instead of the settlement, and the port now does the same.
+/// </para>
 /// </summary>
 public static class MapStandIns
 {
@@ -55,6 +65,9 @@ public static class MapStandIns
 
         /// <summary>Vertices of all the detailed pieces inside its box, drawn with it or not.</summary>
         public long InsideVertices { get; init; }
+
+        /// <summary>A far view kept as a room's surroundings: the collisions DS3 draws it from (all standing inside it).</summary>
+        public IReadOnlyList<string> BackdropFrom { get; init; } = [];
     }
 
     /// <summary>A drawn DS3 map piece's box in DS3's world space and its vertex count; Low = mostly "low" textures.</summary>
@@ -73,6 +86,10 @@ public static class MapStandIns
         /// <summary>The far views left out (a subset of <see cref="LeftOut"/>).</summary>
         public HashSet<string> FarViews { get; } = Verdicts.Where(v => v.LeftOut && v.FarView).Select(v => v.Part).ToHashSet(StringComparer.Ordinal);
 
+        /// <summary>Backdrops (kept): each with the collisions DS3 draws it from, the only ones that should show it.</summary>
+        public Dictionary<string, IReadOnlyList<string>> Backdrops { get; } = Verdicts.Where(v => v.BackdropFrom.Count > 0)
+            .ToDictionary(v => v.Part, v => v.BackdropFrom, StringComparer.Ordinal);
+
         public string Summary
         {
             get
@@ -83,7 +100,8 @@ public static class MapStandIns
                 return $"low-detail stand-ins: {lowOut.Count} left out, {low.Count - lowOut.Count} kept"
                        + (lowOut.Count > 0 ? $" (left out: {string.Join(", ", lowOut.Take(20))}{(lowOut.Count > 20 ? ", ..." : "")})" : "")
                        + $"; far views: {far.Count} left out"
-                       + (far.Count > 0 ? $" ({string.Join(", ", far.Take(20))}{(far.Count > 20 ? ", ..." : "")})" : "");
+                       + (far.Count > 0 ? $" ({string.Join(", ", far.Take(20))}{(far.Count > 20 ? ", ..." : "")})" : "")
+                       + (Backdrops.Count > 0 ? $"; backdrops kept: {Backdrops.Count} ({string.Join(", ", Backdrops.Select(b => $"{b.Key} from {string.Join("/", b.Value)}"))})" : "");
             }
         }
 
@@ -100,9 +118,14 @@ public static class MapStandIns
     /// <summary>
     /// Judges every DS3 map piece that is mostly low-detail texture. <paramref name="meshes"/> holds each model's meshes
     /// by model number; <paramref name="skip"/> names pieces already left out for another reason (helpers, no model).
+    /// <paramref name="floor"/> is the map's walkable floor (<see cref="MapWorldFloor"/>); without it no backdrop is found
+    /// and every far view is left out.
     /// </summary>
-    public static Result Find(MSB3 ds3, IReadOnlyDictionary<string, List<MapModelPort.MeshInfo>> meshes, IReadOnlySet<string> skip)
+    public static Result Find(MSB3 ds3, IReadOnlyDictionary<string, List<MapModelPort.MeshInfo>> meshes, IReadOnlySet<string> skip,
+        IReadOnlyList<MapWorldFloor.Cell>? floor = null)
     {
+        var cellsOf = (floor ?? []).GroupBy(c => c.Collision, StringComparer.Ordinal)
+            .ToDictionary(g => g.Key, g => g.Select(c => c.At).ToList(), StringComparer.Ordinal);
         var collisions = ds3.Parts.Collisions;
         var pieces = new List<(MSB3.Part.MapPiece Part, int Vertices, int LowVertices, Vector3 Min, Vector3 Max, ulong[] Shown)>();
         foreach (var p in ds3.Parts.MapPieces)
@@ -152,10 +175,24 @@ public static class MapStandIns
                 continue;
             }
             var (farView, reason) = IsFarView(s.Vertices, covered, coveredVertices, insideVertices);
+            IReadOnlyList<string> backdrop = [];
+            if (farView)
+            {
+                var from = Enumerable.Range(0, collisions.Count).Where(i => (s.Shown[i / 64] & (1UL << (i % 64))) != 0)
+                    .Select(i => collisions[i].Name).ToList();
+                var inside = from.Select(c => cellsOf.TryGetValue(c, out var cells) ? (cells.Count(at => Vector3.Clamp(at, s.Min, s.Max) == at), cells.Count) : (0, 0)).ToList();
+                if (IsBackdrop(inside))
+                {
+                    backdrop = from;
+                    farView = false;
+                    reason = $"DS3 draws it only from {from.Count} collisions standing inside it ({inside.Sum(x => x.Item1)} of their {inside.Sum(x => x.Item2)} floor cells): "
+                             + "a room's surroundings, kept and shown only from them";
+                }
+            }
             // Ordinary pieces are only listed when they come near the test, so the port log stays readable.
-            if (farView || covered >= MinFarCovered)
+            if (farView || backdrop.Count > 0 || covered >= MinFarCovered)
                 verdicts.Add(new Verdict(s.Part.Name, farView, s.Vertices, shownFrom, covered, coveredVertices, reason)
-                    { FarView = true, InsideVertices = insideVertices });
+                    { FarView = true, InsideVertices = insideVertices, BackdropFrom = backdrop });
         }
         return new Result(verdicts)
         {
@@ -183,6 +220,16 @@ public static class MapStandIns
             return (false, "DS3 draws it together with most of the detail inside it");
         return (true, "DS3 draws it only from where the detail it covers is not drawn");
     }
+
+    /// <summary>
+    /// The backdrop test for a far view: <paramref name="floorInside"/> holds, for each collision DS3 draws it from, its
+    /// floor cells inside the piece's box and all its floor cells. A backdrop stands around every one of them: each has
+    /// floor, and at least half of it is inside. Measured on Devin's files (map-diag world, 15 maps): Midir's arena
+    /// m040001_7000 6 of 6 collisions, 40,955 of 40,955 cells; the Dreg Heap's m040001_3000 2 of 2; m31_00's lookout 1
+    /// of 1 (10 cells); far views over the map such as m51_00's m000010_9092 0 of 29.
+    /// </summary>
+    public static bool IsBackdrop(IReadOnlyList<(int Inside, int Cells)> floorInside) =>
+        floorInside.Count > 0 && floorInside.All(c => c.Cells > 0 && c.Inside * 2 >= c.Cells);
 
     /// <summary>The collisions (bit per collision index) that draw a piece: DS3 shows it when its draw groups meet the collision's display groups.</summary>
     public static ulong[] ShownFrom(MSB3.Part piece, IReadOnlyList<MSB3.Part.Collision> collisions)

@@ -37,6 +37,10 @@ namespace DarkSign.Porter.Maps;
 /// that stand over the floor of the map the doorway opens onto, where DS3 never shows them, when DS3 hides them on
 /// this collision too (High Wall h004000 hides its castle stand-ins m980001/2/8 while the castle is shown). Each
 /// distinct hidden set gets one bit; every other piece of the map has it, and the collision shows only it.</item>
+/// <item>Room bits (the same pool as border bits): a collision that DS3 draws a backdrop from
+/// (<see cref="MapStandIns.IsBackdrop"/>, the walls around Darkeater Midir's arena) shows only what DS3 shows from it,
+/// so standing in a closed room the rest of the map, its stand-ins and its far views are hidden as in DS3. A backdrop
+/// has no own bit: it is drawn only from those collisions (and through a neighbour's doorway where DS3 shows it).</item>
 /// </list>
 /// Collisions keep no draw groups of their own (enemies standing on a collision with draw groups can fall through,
 /// MsbPort.ApplyCollisionGroups). Objects and characters keep none either and are drawn as before.
@@ -53,7 +57,11 @@ public static class MapConnectDisplay
     public const int MinCells = 3;
 
     /// <summary>One ported map: its DS3 layout, the boxes of its judged pieces and its walkable floor.</summary>
-    public sealed record MapData(MapId Ds3, MapId Er, MSB3 Msb, IReadOnlyList<MapStandIns.PieceBox> Pieces, IReadOnlyList<MapWorldFloor.Cell> Floor);
+    public sealed record MapData(MapId Ds3, MapId Er, MSB3 Msb, IReadOnlyList<MapStandIns.PieceBox> Pieces, IReadOnlyList<MapWorldFloor.Cell> Floor)
+    {
+        /// <summary>The map's backdrops (<see cref="MapStandIns.Result.Backdrops"/>): piece -> the collisions DS3 draws it from.</summary>
+        public IReadOnlyDictionary<string, IReadOnlyList<string>> Backdrops { get; init; } = new Dictionary<string, IReadOnlyList<string>>();
+    }
 
     /// <summary>The groups to write into one ported layout.</summary>
     public sealed class MapPlan
@@ -65,6 +73,8 @@ public static class MapConnectDisplay
         /// <summary>Own pieces hidden on at least one border collision, with the maps whose floor they stand over.</summary>
         public Dictionary<string, List<MapId>> BorderHidden { get; } = new(StringComparer.Ordinal);
         public int DoorwayLists { get; set; }
+        /// <summary>Collisions that show only what DS3 shows from them (a backdrop is drawn from them).</summary>
+        public List<string> Rooms { get; } = [];
     }
 
     public sealed record Plan(Dictionary<MapId, MapPlan> Maps, List<string> Notes);
@@ -196,23 +206,36 @@ public static class MapConnectDisplay
             }
         }
 
-        // Border classes: the own pieces each doorway collision hides, numbered across all maps.
+        // Border classes: the own pieces each doorway collision hides, numbered across all maps. Room collisions (a
+        // backdrop is drawn from them) hide every own piece DS3 hides there, and share the same bits.
         var borderBits = new Dictionary<(MapId, string), int>();
         var classes = new Dictionary<(MapId, string), HashSet<string>>();
         var classIds = new List<(MapId Map, HashSet<string> Hidden)>();
+        var roomClasses = new HashSet<int>();
+        var rooms = new HashSet<(MapId, string)>();
         int borderDropped = 0;
         foreach (var m in maps)
         {
             var draws = m.Msb.Parts.MapPieces.ToDictionary(p => p.Name, p => p.DrawGroups, StringComparer.Ordinal);
+            var roomCollisions = m.Backdrops.Values.SelectMany(v => v).ToHashSet(StringComparer.Ordinal);
             foreach (var c in m.Msb.Parts.Collisions)
             {
-                if (!doorways.TryGetValue((m.Ds3, c.Name), out var list))
+                bool room = roomCollisions.Contains(c.Name);
+                bool door = doorways.TryGetValue((m.Ds3, c.Name), out var list);
+                if (!room && !door)
                     continue;
-                var targets = list.Select(l => l.Target).ToHashSet();
                 var hide = new HashSet<string>(StringComparer.Ordinal);
-                foreach (var ((map, name), over) in overNeighbour)
-                    if (map == m.Ds3 && over.Any(targets.Contains) && draws.TryGetValue(name, out var draw) && !Empty(draw) && !Meet(draw, c.DispGroups))
-                        hide.Add(name);
+                if (door)
+                {
+                    var targets = list!.Select(l => l.Target).ToHashSet();
+                    foreach (var ((map, name), over) in overNeighbour)
+                        if (map == m.Ds3 && over.Any(targets.Contains) && draws.TryGetValue(name, out var draw) && !Empty(draw) && !Meet(draw, c.DispGroups))
+                            hide.Add(name);
+                }
+                if (room)
+                    foreach (var p in m.Msb.Parts.MapPieces)
+                        if (!Empty(p.DrawGroups) && !Meet(p.DrawGroups, c.DispGroups))
+                            hide.Add(p.Name);
                 if (hide.Count == 0)
                     continue;
                 int index = classIds.FindIndex(k => k.Map == m.Ds3 && k.Hidden.SetEquals(hide));
@@ -228,10 +251,16 @@ public static class MapConnectDisplay
                 }
                 borderBits[(m.Ds3, c.Name)] = BorderFirstWord * 32 + index;
                 classes[(m.Ds3, c.Name)] = hide;
+                if (room)
+                {
+                    roomClasses.Add(BorderFirstWord * 32 + index);
+                    rooms.Add((m.Ds3, c.Name));
+                }
             }
         }
         if (borderDropped > 0)
-            notes.Add($"{borderDropped} doorway collisions had more hidden sets than the {BorderWords * 32} border bits; they hide nothing of their own map");
+            notes.Add($"{borderDropped} doorway or room collisions had more hidden sets than the {BorderWords * 32} border bits; they hide nothing of their own map"
+                      + " (a backdrop is not drawn from such a room)");
 
         var plans = new Dictionary<MapId, MapPlan>();
         foreach (var m in maps)
@@ -269,9 +298,12 @@ public static class MapConnectDisplay
             foreach (var p in m.Msb.Parts.MapPieces)
             {
                 var g = new uint[8];
-                SetBit(g, OwnWord * 32 + own);
+                // A backdrop is drawn only from the rooms DS3 draws it from.
+                bool backdrop = m.Backdrops.ContainsKey(p.Name);
+                if (!backdrop)
+                    SetBit(g, OwnWord * 32 + own);
                 foreach (var (bit, hidden) in myBorders)
-                    if (!hidden.Contains(p.Name))
+                    if (!hidden.Contains(p.Name) && (!backdrop || roomClasses.Contains(bit)))
                         SetBit(g, bit);
                 for (int i = 0; i < lists.Count; i++)
                     if (Empty(p.DrawGroups) || Meet(p.DrawGroups, lists[i]))
@@ -285,6 +317,8 @@ public static class MapConnectDisplay
                 var g = new uint[8];
                 SetBit(g, borderBits.TryGetValue((m.Ds3, c.Name), out var bit) ? bit : OwnWord * 32 + own);
                 plan.CollisionDisplay[c.Name] = g;
+                if (rooms.Contains((m.Ds3, c.Name)))
+                    plan.Rooms.Add(c.Name);
             }
             foreach (var c in m.Msb.Parts.ConnectCollisions)
             {
@@ -311,7 +345,8 @@ public static class MapConnectDisplay
                 plan.ConnectDisplay[c.Name] = g;
             }
         }
-        notes.Add($"over a neighbour's floor where DS3 never shows them: {overNeighbour.Count} pieces; border bits used {classIds.Count} of {BorderWords * 32}");
+        notes.Add($"over a neighbour's floor where DS3 never shows them: {overNeighbour.Count} pieces; border bits used {classIds.Count} of {BorderWords * 32} "
+                  + $"({roomClasses.Count} by {rooms.Count} room collisions around {maps.Sum(m => m.Backdrops.Count)} backdrops)");
         return new Plan(plans, notes);
     }
 

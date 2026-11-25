@@ -247,7 +247,8 @@ public static class MapPorter
                 : $"maps: {order.Count} ported, one at a time");
             Time(report, "all maps", mapsClock);
         }
-        if (_standInWorld.Count > 1)
+        // One map alone still needs the step when it has a backdrop (shown only from its room).
+        if (_standInWorld.Count > 1 || _standInWorld.Values.Any(v => v.Judged.Backdrops.Count > 0))
             Step(report, "world stand-ins", () => WorldDoorways(ctx, ds3));
         // The objects' materials and textures: shared by every map, so they are added once, to every area's binder.
         if (_objects is not null && ported.Count > 0)
@@ -982,8 +983,16 @@ public static class MapPorter
                 var skip = ds3Msb.Parts.MapPieces
                     .Where(p => missingModels.Contains(p.ModelName) || MsbPort.HelperKind(p, layerOk) is not null)
                     .Select(p => p.Name).ToHashSet(StringComparer.Ordinal);
-                var judged = MapStandIns.Find(ds3Msb, models.ModelMeshes, skip);
-                _standInWorld[ds3Id] = (erId, judged, ds3Msb.Parts.ConnectCollisions.Select(c => c.MapID.ToArray()).ToList(), ds3Msb);
+                // The walkable floor tells a room's backdrop from a far view; the world step reuses it.
+                List<MapWorldFloor.Cell>? floor;
+                try { floor = MapWorldFloor.Sample(ds3, ds3Id, ds3Msb); }
+                catch (Exception ex) when (ex is not OutOfMemoryException)
+                {
+                    floor = null;
+                    report.AppendLine($"  low-detail stand-ins: floor not read ({ex.Message}); no backdrops, every far view left out");
+                }
+                var judged = MapStandIns.Find(ds3Msb, models.ModelMeshes, skip, floor);
+                _standInWorld[ds3Id] = (erId, judged, ds3Msb.Parts.ConnectCollisions.Select(c => c.MapID.ToArray()).ToList(), ds3Msb, floor);
                 standIns = judged.LeftOut;
                 farViews = judged.FarViews;
                 report.AppendLine("  " + judged.Summary);
@@ -1385,7 +1394,7 @@ public static class MapPorter
     private static readonly List<MapCoverage.Row> _coverage = [];
 
     // Each ported DS3 map's judged pieces and its connect collisions' map numbers, for "world stand-ins".
-    private static readonly System.Collections.Concurrent.ConcurrentDictionary<MapId, (MapId Er, MapStandIns.Result Judged, List<byte[]> Connects, MSB3 Msb)> _standInWorld = new();
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<MapId, (MapId Er, MapStandIns.Result Judged, List<byte[]> Connects, MSB3 Msb, List<MapWorldFloor.Cell>? Floor)> _standInWorld = new();
 
     /// <summary>
     /// The "world stand-ins" step: DS3's doorway display lists
@@ -1402,14 +1411,15 @@ public static class MapPorter
         var failed = new System.Collections.Concurrent.ConcurrentBag<string>();
         Parallel.ForEach(entries, new ParallelOptions { MaxDegreeOfParallelism = Math.Max(1, Math.Min(4, Environment.ProcessorCount / 2)) }, e =>
         {
-            try { floors[e.Key] = MapWorldFloor.Sample(ds3, e.Key, e.Value.Msb); }
+            try { floors[e.Key] = e.Value.Floor ?? MapWorldFloor.Sample(ds3, e.Key, e.Value.Msb); }
             catch (Exception ex) when (ex is not OutOfMemoryException)
             {
                 floors[e.Key] = [];
                 failed.Add($"{e.Key}: {ex.Message}");
             }
         });
-        var data = entries.Select(e => new MapConnectDisplay.MapData(e.Key, e.Value.Er, e.Value.Msb, e.Value.Judged.Pieces, floors[e.Key])).ToList();
+        var data = entries.Select(e => new MapConnectDisplay.MapData(e.Key, e.Value.Er, e.Value.Msb, e.Value.Judged.Pieces, floors[e.Key])
+            { Backdrops = e.Value.Judged.Backdrops }).ToList();
         var plan = MapConnectDisplay.Build(data);
         var check = MapConnectDisplay.Verify(data, plan);
         var lines = new List<string>
@@ -1435,7 +1445,8 @@ public static class MapPorter
             written++;
             lines.Add($"  {d.Ds3} -> {d.Er}: {pieces} pieces, {collisions} collisions, {connects} doorways written; {mp.DoorwayLists} DS3 doorway lists into it; "
                       + $"{d.Floor.Count:N0} floor cells; {mp.BorderHidden.Count} own pieces over a neighbour hidden on its doorways"
-                      + (mp.BorderHidden.Count > 0 ? $" ({string.Join(", ", mp.BorderHidden.Keys.Take(12))}{(mp.BorderHidden.Count > 12 ? ", ..." : "")})" : ""));
+                      + (mp.BorderHidden.Count > 0 ? $" ({string.Join(", ", mp.BorderHidden.Keys.Take(12))}{(mp.BorderHidden.Count > 12 ? ", ..." : "")})" : "")
+                      + (mp.Rooms.Count > 0 ? $"; rooms showing only what DS3 shows there (around backdrops {string.Join(", ", d.Backdrops.Keys)}): {string.Join(", ", mp.Rooms)}" : ""));
             foreach (var (piece, over) in mp.BorderHidden.OrderBy(b => b.Key, StringComparer.Ordinal))
                 tsv.Append($"{d.Ds3}\t{d.Er}\t{piece}\t{string.Join(",", over)}\tyes\n");
         }
