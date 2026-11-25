@@ -65,7 +65,8 @@ public static class MapWorldDiag
         foreach (var l in result.WronglyHidden)
             check.AppendLine($"  wrongly hidden: {l}");
         foreach (var (er, mp) in plan.Maps.OrderBy(p => p.Key.ToString()))
-            check.AppendLine($"  {er}: {mp.DoorwayLists} doorway lists into it; own pieces hidden on its doorways: {string.Join(", ", mp.BorderHidden.Select(b => $"{b.Key} (over {string.Join("/", b.Value)})"))}");
+            check.AppendLine($"  {er}: {mp.DoorwayLists} doorway lists into it; own pieces hidden on its doorways: {string.Join(", ", mp.BorderHidden.Select(b => $"{b.Key} (over {string.Join("/", b.Value)})"))}"
+                             + (mp.Rooms.Count > 0 ? $"; rooms (show only what DS3 shows there): {string.Join(", ", mp.Rooms)}" : ""));
         File.WriteAllText(Path.Combine(dir, "world-check.txt"), check.ToString());
         Console.Write(check.ToString());
         Console.WriteLine($"reports: {dir}\\world-*.tsv, world-check.txt");
@@ -130,6 +131,9 @@ public static class MapWorldDiag
         var cells = MapWorldFloor.Sample(ds3, map, msb);
         foreach (var cell in cells)
             floor.Append($"{map}\t{cell.Collision}\t{F(cell.At.X)}\t{F(cell.At.Y)}\t{F(cell.At.Z)}\n");
-        return new MapConnectDisplay.MapData(map, slot.Er, msb, boxes, cells);
+        // The backdrops, judged as the port judges them, so the plan below is the one a build writes.
+        var skip = msb.Parts.MapPieces.Where(p => MsbPort.HelperKind(p, layerOk) is not null).Select(p => p.Name).ToHashSet(StringComparer.Ordinal);
+        var judged = MapStandIns.Find(msb, models.ToDictionary(m => m.Key, m => m.Value.Meshes, StringComparer.OrdinalIgnoreCase), skip, cells);
+        return new MapConnectDisplay.MapData(map, slot.Er, msb, boxes, cells) { Backdrops = judged.Backdrops };
     }
 }

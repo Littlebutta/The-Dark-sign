@@ -66,7 +66,9 @@ public static class MapStandInsDiag
         var skip = msb.Parts.MapPieces.Where(p => MsbPort.HelperKind(p, layerOk) is not null).Select(p => p.Name).ToHashSet(StringComparer.Ordinal);
         line($"{msb.Parts.MapPieces.Count} map pieces, {meshes.Count} models read, {unread.Count} not in the archives"
              + (unread.Count > 0 ? $" ({string.Join(", ", unread.Take(10))})" : "") + $", {skip.Count} helper pieces not judged");
-        var result = MapStandIns.Find(msb, meshes, skip);
+        var floor = MapWorldFloor.Sample(ds3, map, msb);
+        line($"{floor.Count:N0} walkable floor cells (a far view standing around every collision that shows it is a room's backdrop)");
+        var result = MapStandIns.Find(msb, meshes, skip, floor);
         line(result.Summary);
         foreach (var l in result.Lines)
             line("  " + l);
