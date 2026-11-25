@@ -25,7 +25,22 @@ static EMEVD.Instruction Group(sbyte target) => new(0, 0, Le((sbyte)0, (byte)1, 
 static EMEVD.Instruction Wait(float s) => new(1001, 0, Le(s));
 static EMEVD.Instruction Banner(byte type) => new(2007, 2, Le(type, (byte)0, (byte)0, (byte)0));
 
-if (args.Length != 3 || args[0] != "watch") { Console.WriteLine("p23 watch <in.emevd.dcx> <out.emevd.dcx>"); return; }
+if (args.Length == 3 && args[0] == "warp")
+{
+    // Probe 24: banners inside the F1 warp event (common.emevd, 1039291408): 13 after its 3 s wait (before 3[08]
+    // IF Player In Map), 22 after 3[08] passed. Plus, with "watch", a watcher in the map script on 3[08] alone.
+    var cm = EMEVD.Read(DCX.Decompress(File.ReadAllBytes(args[1]), out var cc));
+    var w = cm.Events.First(e => e.ID == 1039291408);
+    int inMap = w.Instructions.FindIndex(i => i.Bank == 3 && i.ID == 8);
+    if (inMap < 1 || w.Instructions[inMap - 1] is not { Bank: 1001, ID: 0 }) throw new InvalidDataException("1039291408 layout");
+    w.Instructions.Insert(inMap + 1, Banner(22));
+    w.Instructions.Insert(inMap, Banner(13));
+    foreach (var p in w.Parameters) if (p.InstructionIndex >= inMap) p.InstructionIndex += p.InstructionIndex > inMap ? 2 : 1;
+    File.WriteAllBytes(args[2], DCX.Compress(cm.Write(), cc));
+    Console.WriteLine($"1039291408: banner 13 before 3[08] (index {inMap}), banner 22 after it; wrote {args[2]}");
+    return;
+}
+if (args.Length != 3 || args[0] != "watch") { Console.WriteLine("p23 watch|warp <in.emevd.dcx> <out.emevd.dcx>"); return; }
 var em = EMEVD.Read(DCX.Decompress(File.ReadAllBytes(args[1]), out var comp));
 var init = em.Events.First(e => e.ID == 0);
 uint id = 45059950;
@@ -44,6 +59,7 @@ Add("in area -> banner 31", InArea(1, Area), Group(1), Banner(31));
 Add("entry flag -> +1 s banner 20", Flag(1, Entry), Group(1), Wait(1), Banner(20));
 Add("entry flag AND in area -> +3 s banner 33", Flag(1, Entry), InArea(1, Area), Group(1), Wait(3), Banner(33));
 Add("13505810 passed (flag 1030297749) -> +6 s banner 18", Flag(1, Passed), Group(1), Wait(6), Banner(18));
-Add("defeated flag -> banner 13", Flag(1, Defeated), Group(1), Banner(13));
+Add("defeated flag -> banner 2", Flag(1, Defeated), Group(1), Banner(2));
+Add("3[08] player in map 45 5 0 0 -> +2 s banner 16", new EMEVD.Instruction(3, 8, Le((sbyte)1, (byte)1, (sbyte)45, (sbyte)5, (sbyte)0, (sbyte)0, (byte)0, (byte)0)), Group(1), Wait(2), Banner(16));
 File.WriteAllBytes(args[2], DCX.Compress(em.Write(), comp));
 Console.WriteLine($"wrote {args[2]}");
