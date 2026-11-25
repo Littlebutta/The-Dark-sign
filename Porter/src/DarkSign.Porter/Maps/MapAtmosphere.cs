@@ -10,14 +10,8 @@ namespace DarkSign.Porter.Maps;
 /// thick fog out to 2 km (map 1's mountains hidden). This writes the slot's own gparam from the host's, so every
 /// format detail and every setting not named here stays Elden Ring's, with:
 /// <list type="bullet">
-/// <item>LightSet: the sun's angle and the colour (red, green, blue) of the sun and the second directional light from
-/// DS3's light set 0, the one nearly every DS3 map piece names (m30_00: 2,049 of 2,273; m31_00: 2,808; m40_00:
-/// 3,502). How strong the sun is (the fourth value) stays Elden Ring's: DS3's strengths are on another scale.
-/// The sun's direction is turned by DS3's map offset (<see cref="SunTurn"/>).</item>
-/// <item>LightSet, the lights without shadows (<see cref="FillLights"/>): the second directional light and the two
-/// "local" directional lights take DS3's strength in DS3's proportion to its sun, and the sun and second light are
-/// dimmed by screen-space occlusion as on Stormveil. The colosseums light their open arenas with these far more than
-/// DS3 or a legacy dungeon does.</item>
+/// <item>LightSet: only the sun's direction, from DS3's light set 0 (the one nearly every DS3 map piece names),
+/// turned by DS3's map offset (<see cref="SunTurn"/>). Every other value stays the host's (<see cref="Lights"/>).</item>
 /// <item>VolumetricFog: the colours from DS3's fog 0 (Fog-Color for the sunward glow, heightColor for the rest), each
 /// scaled by its own DS3 strength (<see cref="FogColours"/>); how
 /// far the fog reaches and how strongly it is lit come from Stormveil Castle (m10_00, an outdoor castle like DS3's
@@ -217,64 +211,20 @@ public static class MapAtmosphere
         return angle with { Y = yaw };
     }
 
-    /// <summary>Stormveil Castle's screen-space occlusion weights for the sun, the second directional light and the
-    /// fourth weight (m10_00_0000.gparam: 1, 1, 0, 1; the third stays the host's).</summary>
-    public const float SsaoWeight = 1;
-
     /// <summary>
-    /// The lights of a light set that cast no shadow, brought to DS3's proportion (2026-11-19 playtest: "lighting
-    /// across all the maps looks like it could use baked lighting"; 2026-11-13: map 3's roofs and objects cast little
-    /// shade). The port kept the host's strength for every light, and the colosseums fill their open arenas with
-    /// light that has no shadow:
-    /// <list type="bullet">
-    /// <item>The second directional light, a blue light straight down from the sky (Angle1 -1.571 in the hosts and
-    /// in DS3): m45_00 0.10 beside a sun of 0.6, m45_01 0.25 beside 0.5, m45_02 0.40 beside 0.4 (as strong as the
-    /// sun). Stormveil Castle's is 0. DS3's own is 0.1 beside a sun of 0.8 (Firelink), 0.1 beside 1.23 (High Wall)
-    /// and 0.2 beside 1.5 (Undead Settlement): 8 to 13% of the sun, where the port had 17%, 50% and 100%. Only the
-    /// sun casts shadows, so on map 3 every shadow was filled back in with light as strong as the sun's, and rooms
-    /// were lit from above through their roofs.</item>
-    /// <item>The "local" directional lights 1 and 2: m45_00 has the first switched on at 0.10 (reflections 0.23);
-    /// DS3's light set 0 leaves both without light on all three maps (black, or strength 0).</item>
-    /// <item>How far screen-space occlusion (the shade in corners and under things) dims the sun and the second
-    /// light: m45_00 0.5 and 0, m45_01 1 and 0; Stormveil and m45_02 1 and 1.</item>
-    /// </list>
-    /// So each of these lights takes DS3's colour and DS3's strength times the host's sun strength over DS3's (the
-    /// scale the lamps take, <see cref="MapLampStrength.SunScale"/>), the local lights are on where DS3 has them on,
-    /// and the occlusion weights are Stormveil's. The hemisphere light stays the host's (the hosts and Stormveil
-    /// agree on it). Returns what changed, for the log; nothing when either file lacks a sun strength.
+    /// Why the light set keeps the host's values (2026-11-25): Devin's map 1 and map 2 flickered over the whole screen
+    /// with Elden Ring's ray tracing on (1.0.614 to 1.0.640). Up to then the port gave the light sets DS3's colours for
+    /// the sun and second light, DS3's share of the sun for the lights without shadows (the second directional light
+    /// and the two local lights), Stormveil's occlusion weights (1, 1, 1 where m45_00 has 0.5, 0, 0) and, for DS3's
+    /// extra sets, DS3's lights scaled to the slot. Proven on Devin's PC with map 1's draw params swapped in, no
+    /// rebuild (reports/flicker-ab2..5 on reports/boss-start): ray tracing off, steady; ray tracing on with the host's
+    /// light-set values and DS3's sun direction, steady (scripted capture, 0 jumps, and Devin by eye after a restart)
+    /// and brighter; as built, or with only the occlusion weights or only the local lights put back, still
+    /// flickering; the sun's direction and the per-part light sets (#281) made no difference. Which value the ray
+    /// tracer reacts to is not known, so none of them is changed. The sun's direction is kept, because the shadows
+    /// must fall the way DS3's baked light expects.
     /// </summary>
-    public static string? FillLights(GPARAM.Group light, GPARAM.Group ds3Light, float sunScale)
-    {
-        var inv = CultureInfo.InvariantCulture;
-        var notes = new List<string>();
-        foreach (var (name, label) in new[]
-                 {
-                     ("Directional Light DiffColor1", "second light"), ("Directional Light SpecColor1", ""),
-                     ("Directional Light LocalLight DiffColor1", "local light 1"), ("Directional Light LocalLight SpecColor1", ""),
-                     ("Directional Light LocalLight DiffColor2", "local light 2"), ("Directional Light LocalLight SpecColor2", ""),
-                 })
-        {
-            if (Value<Vector4>(ds3Light, name) is not { } ds3Colour || Value<Vector4>(light, name) is not { } old)
-                continue;
-            var value = new Vector4(ds3Colour.X, ds3Colour.Y, ds3Colour.Z, ds3Colour.W * sunScale);
-            SetAll(light, name, v => v is Vector4 ? value : v);
-            // What the light gives: its strength times its brightest channel (DS3 switches a light off by making it black).
-            static float Gives(Vector4 c) => c.W * Math.Max(c.X, Math.Max(c.Y, c.Z));
-            if (label.Length > 0)
-                notes.Add(string.Create(inv, $"{label} {Gives(old):0.###} -> {Gives(value):0.###}")
-                          + (Gives(ds3Colour) <= 0 ? " (DS3 has it dark)" : string.Create(inv, $" (DS3's {Gives(ds3Colour):0.###})")));
-        }
-        foreach (var name in new[] { "Directional Enable LocalLight1", "Directional Enable LocalLight2" })
-            if (Value<bool>(ds3Light, name) is { } on)
-                SetAll(light, name, v => v is bool ? on : v);
-        int weights = 0;
-        foreach (var name in new[] { "Directional Light SsaoWeight0", "Directional Light SsaoWeight1", "Directional Light SsaoWeight3" })
-            weights += SetAll(light, name, v => v is float ? SsaoWeight : v);
-        if (notes.Count == 0 && weights == 0)
-            return null;
-        return string.Create(inv, $"lights without shadows at DS3's share of the sun (x{sunScale:0.##}): ") + string.Join(", ", notes)
-               + (weights > 0 ? "; corner shade (SSAO) on the sun and second light as on Stormveil" : "");
-    }
+    public const string Lights = "the host's light-set values, DS3's sun direction";
 
     /// <summary>Changes the host's draw params in place. Returns what changed, for the log.</summary>
     /// <param name="lightSets">The light sets the layout's parts name: DS3's sets among them that the host lacks are
@@ -288,29 +238,21 @@ public static class MapAtmosphere
         var changes = new List<string>();
 
         var ds3Light = Group(ds3, "LightSet");
-        var sunColour = Value<Vector4>(ds3Light, "Directional Light DiffColor0");
         var sunAngle = Value<Vector2>(ds3Light, "Directional Light Angle0");
         var light = Group(gparam, "LightSet");
-        // Before anything is changed: the host's sun strength over DS3's.
-        float sunScale = MapLampStrength.SunScale(gparam, ds3);
-        bool sunStrengths = Value<Vector4>(light, "Directional Light DiffColor0") is { W: > 0 } && sunColour is { W: > 0 };
         if (light is not null && ds3Light is not null)
         {
-            int set = 0;
-            foreach (var name in new[] { "Directional Light DiffColor0", "Directional Light SpecColor0", "Directional Light DiffColor1", "Directional Light SpecColor1" })
-                if (Value<Vector4>(ds3Light, name) is { } colour)
-                    set += SetAll(light, name, v => v is Vector4 old ? new Vector4(colour.X, colour.Y, colour.Z, old.W) : v);
+            // Only the sun's direction comes from DS3; every other light-set value stays the host's (see Lights).
             var turned = sunAngle is { } a0 ? SunTurn(a0, sunTurnDegrees) : (Vector2?)null;
             if (turned is { } angle)
-                set += SetAll(light, "Directional Light Angle0", v => v is Vector2 ? angle : v);
-            changes.Add(sunColour is { } sc && sunAngle is { } sa && turned is { } ta
-                ? string.Create(inv, $"sun colour {C(sc)} at {sa.X:F2},{sa.Y:F2} from DS3 light set 0 ({set} values)")
+                SetAll(light, "Directional Light Angle0", v => v is Vector2 ? angle : v);
+            changes.Add(sunAngle is { } sa && turned is { } ta
+                ? string.Create(inv, $"sun direction {sa.X:F2},{sa.Y:F2} from DS3 light set 0")
                   + (sunTurnDegrees != 0 ? string.Create(inv, $", turned {sunTurnDegrees:0.#} degrees with the map to {ta.X:F2},{ta.Y:F2} (sun yaw {ta.Y * 180 / MathF.PI:0} degrees, {SunHeight(ta):0} above the horizon)") : "")
-                : $"light set: {set} values from DS3");
-            if (sunStrengths && FillLights(light, ds3Light, sunScale) is { } fill)
-                changes.Add(fill);
+                  + "; the light colours, strengths and occlusion weights stay the host's"
+                : "light set: DS3 has no sun direction; the host's kept");
             // After set 0 is done: the other sets start from it.
-            if (lightSets is not null && MapLightSets.Add(gparam, ds3, lightSets, sunScale, sunTurnDegrees, characterSets).Note is { } sets)
+            if (lightSets is not null && MapLightSets.Add(gparam, ds3, lightSets, sunTurnDegrees, characterSets).Note is { } sets)
                 changes.Add(sets);
         }
         else
