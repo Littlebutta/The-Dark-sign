@@ -806,7 +806,8 @@ public static partial class MapPortChecks
             }
             var albedo = new TPF.Texture("m30_00_sky_02_a", 0, 0, WeaponTextures.Encode(px, sz, sz, BCnEncoder.Shared.CompressionFormat.Bc1, 72), TPF.TPFPlatform.PC);
             var bakedTex = MapSkyFades.Build("baked", weak, t => t == "m30_00_sky_02_a" ? albedo : null);
-            Expect(bakedTex is not null && MapSkyFades.IsSrgb(bakedTex.Bytes), "an sRGB albedo bakes into an sRGB BC3");
+            Expect(bakedTex is not null && MapSkyFades.IsSrgb(bakedTex.Bytes) && BitConverter.ToInt32(bakedTex.Bytes, 128) == 99 && bakedTex.Format == 102,
+                $"an sRGB albedo bakes into an sRGB BC7 (DXGI 99) under Elden Ring's alpha format byte 102: {(bakedTex is null ? "none" : $"{BitConverter.ToInt32(bakedTex.Bytes, 128)} / {bakedTex.Format}")}");
             var (bp, bw, bh) = MapSkyFades.Decode(bakedTex!.Bytes);
             Expect(bp is not null && bw == 16 && bh == 8, $"the bake covers the UV range at the albedo's density x tiling (16 x 8), got {bw} x {bh}");
             if (bp is not null)

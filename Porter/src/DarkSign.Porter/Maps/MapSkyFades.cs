@@ -302,7 +302,7 @@ public static class MapSkyFades
     }
 
     /// <summary>
-    /// The largest baked texture: 2048 x 1024 (2 MB as BC3 plus mips). The layers are soft clouds and haze seen
+    /// The largest baked texture: 2048 x 1024 (2 MB as BC7 plus mips). The layers are soft clouds and haze seen
     /// kilometres away, and a map can have 20 of them (Archdragon Peak's cloud cards). DS3's own 4096 panoramas
     /// (m45 kumo_30 at 4 x 1 tiling) would otherwise bake at 16 MB each.
     /// </summary>
@@ -354,11 +354,22 @@ public static class MapSkyFades
                 rgba[i + 2] = (byte)Math.Clamp(MathF.Round(c.Z * 255), 0, 255);
                 rgba[i + 3] = (byte)Math.Clamp(MathF.Round(a * 255), 0, 255);
             }
-        // BC3 keeps a smooth alpha; sRGB when DS3's albedo was (BC1_UNORM_SRGB 72 and the like).
-        int dxgi = IsSrgb(albedoTex.Bytes) ? 78 : 77;
-        var dds = WeaponTextures.Encode(rgba, w, h, CompressionFormat.Bc3, dxgi);
-        return new TPF.Texture(name, 0, 0, dds, TPF.TPFPlatform.PC);
+        // BC7 keeps a smooth alpha; sRGB when DS3's albedo was (BC1_UNORM_SRGB 72 and the like).
+        int dxgi = IsSrgb(albedoTex.Bytes) ? 99 : 98;
+        var dds = WeaponTextures.Encode(rgba, w, h, CompressionFormat.Bc7, dxgi);
+        return new TPF.Texture(name, TpfAlphaFormat, 0, dds, TPF.TPFPlatform.PC);
     }
+
+    /// <summary>
+    /// The TPF format byte of a baked texture: 102, Elden Ring's own byte for BC7 colour textures with alpha
+    /// (c3000_em_a, DXGI 99; read from Elden Ring's chr, effect and menu texture binders 2026-11-25). The game takes
+    /// the byte, not the DDS header, as what the texture holds: up to 1.0.632 the bakes were BC3 under byte 0
+    /// (Elden Ring's BC1 without alpha, c3000_am_a) and drew solid wherever they weren't fully clear, under every
+    /// unlit shader tried (M[A]_NoLight, S[A]_Soft_NoLight, S[A]_NoLight, M[DistantClouds]_001): the High Wall
+    /// ring's hard edge and the white sheet of cloud cards. Elden Ring's sample has no BC3 at all (no DXGI 77/78),
+    /// and BC1 with one-bit alpha is byte 1 (c3000_Thorn_a), so the byte means "alpha used", hence BC7 at 102.
+    /// </summary>
+    public const byte TpfAlphaFormat = 102;
 
     /// <summary>Whether a DDS is a DX10 sRGB block format.</summary>
     public static bool IsSrgb(byte[] dds)
