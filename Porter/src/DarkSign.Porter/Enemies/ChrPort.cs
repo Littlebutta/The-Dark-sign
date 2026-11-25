@@ -2079,6 +2079,13 @@ public static partial class ChrPort
             // The template's own effects (a skeleton's revival) don't come with its body (TemplateEffects).
             if (templateFx is not null && plan.Method == Method.Full && plan.Stage == Stage.All)
                 templateFx.Strip(row, plan.Template.NpcParam, plan.Template.Name);
+            // Nor its sheathed weapon: the weapon on/off SpEffects its think row names (13065 "weapon off" on the
+            // Soldier of Godrick that Crystal Sage, Vordt, the Abyss Watchers and Friede are built on). The ported
+            // think row has weapon on/off turned off (AiPort.ClearTemplateThink), so nothing would ever lift it.
+            if (plan.Method == Method.Full && plan.Stage == Stage.All && er.Get("NpcThinkParam")?[plan.Template.ThinkParam] is { } templateThink
+                && StripEffects(row, AiPort.WeaponStateEffects(templateThink).ToHashSet()) is { Count: > 0 } sheathed && notes is not null
+                && !notes.Any(x => x.StartsWith($"c{plan.NewChr:D4} weapon state:", StringComparison.Ordinal)))
+                notes.Add($"c{plan.NewChr:D4} weapon state: the template's weapon on/off effects {string.Join(",", sheathed.Distinct())} taken off its rows (DS3 has no sheathed weapon)");
             if (newModel && Cell(row, "SoundAddBankId") is { } bank && Convert.ToInt32(bank.Value) < 0)
                 Set(bank, plan.TemplateChr);
             // The row goes in first: a placed or spawned character whose NpcParam row is missing crashes the game, a
@@ -2260,6 +2267,29 @@ public static partial class ChrPort
             Set(cell, -1);
         }
         return changed;
+    }
+
+    /// <summary>Takes the given SpEffects off a row's spEffectID slots (the rest move up); returns those taken.</summary>
+    public static List<int> StripEffects(PARAM.Row row, IReadOnlySet<int> effects)
+    {
+        var taken = new List<int>();
+        if (effects.Count == 0)
+            return taken;
+        var kept = new List<int>();
+        for (int k = 0; k < TemplateEffects.Slots; k++)
+        {
+            int id = ParamDefaults.Int(row, $"spEffectID{k}");
+            if (id <= 0)
+                continue;
+            if (effects.Contains(id))
+                taken.Add(id);
+            else
+                kept.Add(id);
+        }
+        if (taken.Count > 0)
+            for (int k = 0; k < TemplateEffects.Slots; k++)
+                ParamDefaults.Set(row, $"spEffectID{k}", k < kept.Count ? kept[k] : 0);
+        return taken;
     }
 
     public static int ClearTemplateOnly(PARAM.Row er)

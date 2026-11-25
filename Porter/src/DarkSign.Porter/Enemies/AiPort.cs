@@ -983,6 +983,8 @@ public sealed class AiPort
                 CopyFields(row, source, targets);
                 ApplySenses(row, source);
             }
+            if (ClearTemplateThink(row) > 0 && notes is not null && !notes.Any(n => n.StartsWith($"c{ai.Ds3Chr:D4} think:", StringComparison.Ordinal)))
+                notes.Add($"c{ai.Ds3Chr:D4} think: the template's weapon on/off, sound reactions or ranged-attack moves turned off (template row {templateThink})");
             if (t.Battle is { } battle)
                 SetInt(row, "battleGoalID", battle);
             if (t.Logic is { } logic)
@@ -1003,6 +1005,43 @@ public sealed class AiPort
     {
         CopyFields(row, ds3, erThink.AppliedParamdef.Fields.Select((f, i) => (f, i)).GroupBy(x => Norm(x.f.InternalName)).ToDictionary(g => g.Key, g => g.First().i));
         ApplySenses(row, ds3);
+    }
+
+    /// <summary>
+    /// Elden Ring-only NpcThinkParam fields that name the template's own moves, effects and reactions, with the value
+    /// that turns each off. DS3's think row has none of them, so the ported row kept its template's (1.0.640 playtest:
+    /// Crystal Sage looped a small move in place and the Abyss Watchers stood with their swords down, never attacking).
+    /// Both are on the Soldier of Godrick (c4311), whose row has enableWeaponOnOff 1 with weapon-off SpEffect 13065 and
+    /// draw / sheathe moves 20021 / 20020: Elden Ring's AI waits for the sheathed weapon to be drawn by the template's
+    /// own draw move before it attacks, and a DS3 character has no such move (its 20021 is a DS3 clip that never casts
+    /// 13064). The sound reactions (soundBehaviorId, 431000-431002 there, 397000 on the Azula Beastman the Demon
+    /// Prince is built on), the surprise move and the ranged-attack shift are the template's too. Only ported characters
+    /// (DS3 model and moves) lose them: a stand-in keeps its Elden Ring body and moves, so its own draw move still works.
+    /// </summary>
+    internal static readonly (string Field, int Off)[] TemplateThinkFields =
+    [
+        ("enableWeaponOnOff", 0), ("weaponOffSpecialEffectId", -1), ("weaponOnSpecialEffectId", -1),
+        ("weaponOffAnimId", -1), ("weaponOnAnimId", -1), ("surpriseAnimId", -1),
+        ("soundBehaviorId01", -1), ("soundBehaviorId02", -1), ("soundBehaviorId03", -1), ("soundBehaviorId04", -1),
+        ("soundBehaviorId05", -1), ("soundBehaviorId06", -1), ("soundBehaviorId07", -1), ("soundBehaviorId08", -1),
+        ("spEffectId_RangedAttack", -1), ("shiftAnimeId_RangedAttack", -1), ("rangedAttackId", -1),
+    ];
+
+    /// <summary>The SpEffects a think row turns on and off with the weapon (weapon on/off), which its character carries from the start.</summary>
+    public static IEnumerable<int> WeaponStateEffects(PARAM.Row think) =>
+        new[] { IntCell(think, "weaponOffSpecialEffectId"), IntCell(think, "weaponOnSpecialEffectId") }.Where(id => id > 0);
+
+    /// <summary>Turns <see cref="TemplateThinkFields"/> off on a ported think row; returns how many changed.</summary>
+    public static int ClearTemplateThink(PARAM.Row row)
+    {
+        int changed = 0;
+        foreach (var (field, off) in TemplateThinkFields)
+            if (Cell(row, field) is { Value: not null and not byte[] } cell && Convert.ToInt32(cell.Value) != off)
+            {
+                SetInt(row, field, off);
+                changed++;
+            }
+        return changed;
     }
 
     private static string Norm(string s) => s.Replace("_", "").ToLowerInvariant();

@@ -195,7 +195,9 @@ public static class AiSelfTest
         foreach (var (name, type) in new[] { ("battleGoalID", PARAMDEF.DefType.s32), ("logicId", PARAMDEF.DefType.s32), ("eye_dist", PARAMDEF.DefType.u16), ("ear_dist", PARAMDEF.DefType.f32),
                      ("SightTargetForgetTime", PARAMDEF.DefType.f32), ("SoundTargetForgetTime", PARAMDEF.DefType.f32), ("MemoryTargetForgetTime", PARAMDEF.DefType.f32),
                      ("searchEye_dist", PARAMDEF.DefType.u16), ("searchEye_angY", PARAMDEF.DefType.u8), ("isUpdateBattleSight", PARAMDEF.DefType.u8), ("disableDark", PARAMDEF.DefType.u8),
-                     ("goalAction_ToSearchLv1", PARAMDEF.DefType.u8), ("goalAction_ToSearchLv2", PARAMDEF.DefType.u8) })
+                     ("goalAction_ToSearchLv1", PARAMDEF.DefType.u8), ("goalAction_ToSearchLv2", PARAMDEF.DefType.u8),
+                     ("enableWeaponOnOff", PARAMDEF.DefType.u8), ("weaponOffSpecialEffectId", PARAMDEF.DefType.s32), ("weaponOnSpecialEffectId", PARAMDEF.DefType.s32),
+                     ("weaponOffAnimId", PARAMDEF.DefType.s32), ("weaponOnAnimId", PARAMDEF.DefType.s32), ("soundBehaviorId01", PARAMDEF.DefType.s32) })
             erDef.Fields.Add(new PARAMDEF.Field(erDef, type, name));
         var ds3Def = new PARAMDEF { ParamType = "NPC_THINK_PARAM_ST", Fields = [] };
         foreach (var (name, type) in new[] { ("battleGoalId", PARAMDEF.DefType.s32), ("logicId", PARAMDEF.DefType.s32), ("eye_dist", PARAMDEF.DefType.s16), ("ear_dist", PARAMDEF.DefType.s16),
@@ -210,6 +212,9 @@ public static class AiSelfTest
         template["SightTargetForgetTime"]!.Value = 20f; template["SoundTargetForgetTime"]!.Value = 5f; template["MemoryTargetForgetTime"]!.Value = 7f;
         template["searchEye_dist"]!.Value = (ushort)35; template["searchEye_angY"]!.Value = (byte)20; template["isUpdateBattleSight"]!.Value = (byte)1;
         template["goalAction_ToSearchLv1"]!.Value = (byte)15; template["goalAction_ToSearchLv2"]!.Value = (byte)16;
+        // The Soldier of Godrick's (c4311) sheathed weapon and sound reactions, as Crystal Sage's and the Abyss Watchers' rows had them in 1.0.640.
+        template["enableWeaponOnOff"]!.Value = (byte)1; template["weaponOffSpecialEffectId"]!.Value = 13065; template["weaponOnSpecialEffectId"]!.Value = 13064;
+        template["weaponOffAnimId"]!.Value = 20020; template["weaponOnAnimId"]!.Value = 20021; template["soundBehaviorId01"]!.Value = 431000;
         erThink.Rows.Add(template);
         var ds3Think = new PARAM { Rows = [] };
         ds3Think.ApplyParamdef(ds3Def);
@@ -234,6 +239,11 @@ public static class AiSelfTest
             row is not null && (float)row["ear_dist"]!.Value == 0.1f && (float)row["SightTargetForgetTime"]!.Value == 8f && (float)row["SoundTargetForgetTime"]!.Value == 3f
             && (float)row["MemoryTargetForgetTime"]!.Value == 2f && Convert.ToInt32(row["searchEye_dist"]!.Value) == 0 && Convert.ToInt32(row["searchEye_angY"]!.Value) == 0
             && Convert.ToInt32(row["isUpdateBattleSight"]!.Value) == 0 && Convert.ToInt32(row["disableDark"]!.Value) == 1);
+        Check("AI: no template weapon on/off (draw move 20021, weapon-off effect 13065) or template sound reactions on a ported think row",
+            row is not null && Convert.ToInt32(row["enableWeaponOnOff"]!.Value) == 0 && Convert.ToInt32(row["weaponOffSpecialEffectId"]!.Value) == -1
+            && Convert.ToInt32(row["weaponOnSpecialEffectId"]!.Value) == -1 && Convert.ToInt32(row["weaponOnAnimId"]!.Value) == -1
+            && Convert.ToInt32(row["weaponOffAnimId"]!.Value) == -1 && Convert.ToInt32(row["soundBehaviorId01"]!.Value) == -1
+            && AiPort.WeaponStateEffects(template).Order().SequenceEqual([13064, 13065]));
         Check("AI: Elden Ring's search levels take DS3's caution and find actions, not the template's search",
             row is not null && Convert.ToInt32(row["goalAction_ToSearchLv1"]!.Value) == 1 && Convert.ToInt32(row["goalAction_ToSearchLv2"]!.Value) == 3);
 
