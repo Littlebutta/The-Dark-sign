@@ -82,6 +82,15 @@ public static class MapPeopleDiag
             var people = msb.Parts.Enemies.Where(e => EnemyPort.People.IsHuman(e.ModelName) || e.TalkID > 0).Select(e => (long)e.EntityID).Where(id => id > 0).ToHashSet();
             if (script is not null)
                 Dump(script, common, ds3Defs, people, "DS3 " + slot.Ds3, Line);
+            // The people's DS3 talk scripts and their converted ones, state by state (what turns a flag on, and when).
+            var talkIds = msb.Parts.Enemies.Where(e => EnemyPort.People.IsHuman(e.ModelName) || e.TalkID > 0).Select(e => e.TalkID).Where(t => t > 0).ToHashSet();
+            if (ds3.Contains(TalkPort.TalkPath(slot.Ds3)))
+                foreach (var f in BND4.Read(ds3.Read(TalkPort.TalkPath(slot.Ds3))).Files.Where(f => TalkPort.ScriptId(f.Name) is int id && talkIds.Contains(id)))
+                    DumpTalk(ESD.Read(f.Bytes), $"DS3 talk {f.Name}", Line);
+            var modTalk = ctx.ModPath(MapPorter.ModParts(TalkPort.TalkPath(slot.Er)));
+            if (File.Exists(modTalk))
+                foreach (var f in BND4.Read(DCX.Decompress(File.ReadAllBytes(modTalk))).Files.Where(f => TalkPort.ScriptId(f.Name) is int id && id >= 900_000_000 && talkIds.Contains(id % 1_000_000)))
+                    DumpTalk(ESD.Read(f.Bytes), $"mod talk {f.Name}", Line);
             var modPeople = er.Parts.Enemies.Where(e => EnemyPort.People.IsHuman(e.ModelName) || e.TalkID > 0).Select(e => (long)e.EntityID).Where(id => id > 0).ToHashSet();
             var modCommonPath = ctx.ModPath("event", "common_func.emevd.dcx");
             var modCommon = File.Exists(modCommonPath) ? EMEVD.Read(modCommonPath) : null;
@@ -147,7 +156,8 @@ public static class MapPeopleDiag
             {
                 var data = ins.ArgData;
                 var ints = Enumerable.Range(0, data.Length / 4).Select(k => (long)BitConverter.ToInt32(data, k * 4)).ToList();
-                int idAt = ins.ID == 0 ? 1 : 0;
+                // DS3's 2000[06] starts with the event ID; Elden Ring's with a slot, then the event ID.
+                int idAt = defs.Get(2000, ins.ID)?.Args.FirstOrDefault(a => a.Name.Contains("Event ID", StringComparison.OrdinalIgnoreCase)) is { } idArg ? idArg.Offset / 4 : (ins.ID == 0 ? 1 : 0);
                 if (ints.Count <= idAt + 1 || !ints.Skip(idAt + 1).Any(people.Contains))
                     continue;
                 wanted.Add(ints[idAt]);
@@ -173,4 +183,50 @@ public static class MapPeopleDiag
             }
         }
     }
+
+    /// <summary>A talk script state by state: entry/exit/while commands, and each condition with its commands and target.</summary>
+    private static void DumpTalk(ESD esd, string what, Action<string> line)
+    {
+        line($"  {what}:");
+        foreach (var (groupId, group) in esd.StateGroups.OrderBy(g => g.Key))
+            foreach (var (stateId, state) in group.OrderBy(s => s.Key))
+            {
+                line($"    group {groupId} state {stateId}");
+                foreach (var (name, list) in new[] { ("entry", state.EntryCommands), ("exit", state.ExitCommands), ("while", state.WhileCommands) })
+                    foreach (var c in list)
+                        line($"      {name} {Command(c)}");
+                foreach (var cond in state.Conditions)
+                    Condition(cond, 0);
+            }
+
+        void Condition(ESD.Condition c, int depth)
+        {
+            line($"      {new string(' ', depth * 2)}if {Expr(c.Evaluator)}{(c.TargetState is { } t ? $" -> {t}" : "")}");
+            foreach (var cmd in c.PassCommands)
+                line($"      {new string(' ', depth * 2)}  do {Command(cmd)}");
+            foreach (var sub in c.Subconditions)
+                Condition(sub, depth + 1);
+        }
+        string Command(ESD.CommandCall c) => $"{c.CommandBank}:{c.CommandID}({string.Join(", ", c.Arguments.Select(Expr))})";
+    }
+
+    private static string Expr(byte[] bytes)
+    {
+        try { return string.Join(" ; ", TalkPort.Parse(bytes).Select(Node)); }
+        catch (Exception ex) when (ex is not OutOfMemoryException) { return "raw " + Convert.ToHexString(bytes); }
+    }
+
+    private static string Node(TalkPort.Node n) => n switch
+    {
+        TalkPort.Lit l => l.Value.ToString(CultureInfo.InvariantCulture),
+        TalkPort.Raw r => r.Bytes.Length == 5 && r.Bytes[0] == 0xA5 ? BitConverter.ToSingle(r.Bytes, 1).ToString(CultureInfo.InvariantCulture) : "raw" + Convert.ToHexString(r.Bytes),
+        TalkPort.Call c => $"f{Node(c.Func)}({string.Join(", ", c.Args.Select(Node))})",
+        TalkPort.Op o => o.Code switch
+        {
+            0xA1 or 0xA6 when o.Kids.Count == 1 => Node(o.Kids[0]),
+            0xB8 => $"arg[{string.Join(",", o.Kids.Select(Node))}]",
+            _ => $"op{o.Code:X2}({string.Join(", ", o.Kids.Select(Node))})",
+        },
+        _ => "?",
+    };
 }
