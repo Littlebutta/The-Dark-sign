@@ -31,6 +31,34 @@ public sealed class WwiseNode
     /// <summary>A random/sequence container's u16 avoid-repeat count, or -1.</summary>
     public int AvoidRepeatAt { get; init; } = -1;
     public Dictionary<byte, uint> Props { get; init; } = [];
+    /// <summary>Offset of the 6-byte advanced settings (AdvSettingsParams, bank version 135; wwiser): u8 bits
+    /// (0 kill newest, 1 use virtual behaviour, 2 global limit, 3 ignore the parent's instance limit, 4 virtual
+    /// voice options override the parent), u8 virtual queue behaviour, u16 maximum instances (0 = no limit), u8
+    /// below-threshold behaviour, u8 HDR/loudness bits. wwiser leaves bit 2 unnamed; that it is the "global limit"
+    /// (Wwise's "Limit sound instances to N globally" rather than per game object) is the order of the older
+    /// layouts (bKillNewest, bUseVirtualBehavior, u16MaxNumInstance, bIsGlobalLimit). Elden Ring's 602 banks
+    /// (sound-limits, 2026-11-25): 9,045 of 98,337 nodes set a limit; bits 0x04 is their commonest pattern (2,363)
+    /// and 0x0C, the one written here, is on 635.</summary>
+    public int AdvancedAt { get; init; } = -1;
+
+    public const byte LimitKillNewest = 0x01, LimitGlobal = 0x04, LimitOverridesParent = 0x08;
+
+    /// <summary>The node's instance limit: how many may play at once (0 = none) and the bits byte.</summary>
+    public (int Max, byte Bits) Limit(byte[] data) =>
+        AdvancedAt < 0 ? (0, (byte)0) : (BitConverter.ToUInt16(data, AdvancedAt + 2), data[AdvancedAt]);
+
+    /// <summary>A copy of the data with an instance limit of <paramref name="max"/> playing at once over the whole
+    /// game (global), the oldest one stopped when another starts (FMOD's default "steal oldest"), overriding what
+    /// the parents limit.</summary>
+    public byte[] WithLimit(byte[] data, int max)
+    {
+        var copy = (byte[])data.Clone();
+        if (AdvancedAt < 0 || max <= 0)
+            return copy;
+        copy[AdvancedAt] = (byte)((copy[AdvancedAt] & ~LimitKillNewest) | LimitGlobal | LimitOverridesParent);
+        BitConverter.GetBytes((ushort)Math.Min(max, ushort.MaxValue)).CopyTo(copy, AdvancedAt + 2);
+        return copy;
+    }
     /// <summary>The ranged part of the property bundle: what Wwise adds at random to a property each time the node
     /// plays, between Min and Max. Elden Ring's Volume ranges go down only (Min below 0, Max 0, in 3,774 of its
     /// 3,882 nodes with one); its Pitch ranges mostly go both ways (Min below 0, Max above, in 13,749 of 15,297).</summary>
@@ -120,6 +148,7 @@ public sealed class WwiseNode
         if ((r.U8() & 8) != 0) // aux sends
             r.Skip(16);
         r.U32(); // reflections aux bus
+        int advancedAt = r.At;
         r.Skip(6); // advanced settings
         uint stateProps = r.Var();
         for (int i = 0; i < stateProps; i++) { r.Var(); r.Skip(2); }
@@ -190,6 +219,7 @@ public sealed class WwiseNode
         {
             Type = o.Type, ParentAt = parentAt, PropsAt = propsAt, PropsEnd = propsEnd, ChildrenAt = childrenAt, Children = children,
             PlaylistAt = playlistAt, Playlist = playlist, AvoidRepeatAt = avoidAt, Props = props, Ranges = ranges,
+            AdvancedAt = advancedAt,
         };
     }
 
