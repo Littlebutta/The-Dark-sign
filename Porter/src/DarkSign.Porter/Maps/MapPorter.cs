@@ -1039,7 +1039,7 @@ public static class MapPorter
         materials.AddRange(models.MatbinFiles(0));
         foreach (var note in models.Notes.Skip(notesSoFar).Distinct().Take(5))
             report.AppendLine($"  note: {note}");
-        report.AppendLine($"  sunlight: {models.Materials.Count(m => m.Template.Kind is "nolight" or "nolight-blend" or "nolight-edge")} unlit materials (sky domes and the layers around them) cast no shadow");
+        report.AppendLine($"  sunlight: {models.Materials.Count(m => m.Template.Kind is "nolight" or "nolight-blend" or "nolight-edge" or "nolight-add" or "nolight-opacity")} unlit materials (sky domes and the layers around them) cast no shadow");
         if (test != PieceTest.VanillaModel && copied == 0)
         {
             report.AppendLine($"  load: {models.LoadSummary}");
@@ -1050,6 +1050,7 @@ public static class MapPorter
             report.AppendLine("  " + models.Overlays.Summary);
             report.AppendLine("  " + models.Blends.Summary);
             report.AppendLine("  " + models.Skies.Summary);
+            report.AppendLine("  " + models.SkyFades.Summary);
             report.AppendLine("  " + models.UnlitBlends.Summary);
             report.AppendLine("  " + models.HalfNormalStats.Summary);
         }

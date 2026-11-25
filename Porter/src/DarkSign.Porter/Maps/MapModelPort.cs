@@ -28,7 +28,7 @@ public sealed class MapModelPort
         FLVER2.BufferLayout Layout, int Rank = 0);
 
     /// <summary>The kinds of template, in the order their GX lists and layouts are written.</summary>
-    public static readonly string[] Kinds = ["opaque", "edge", "alpha", "nolight", "water", "nolight-blend", "nolight-edge"];
+    public static readonly string[] Kinds = ["opaque", "edge", "alpha", "nolight", "water", "nolight-blend", "nolight-edge", "nolight-add", "nolight-opacity"];
 
     /// <summary>The kinds the template search looks for in the template maps (water comes from <see cref="WaterBinders"/>).</summary>
     public static readonly string[] SearchedKinds = ["opaque", "edge", "alpha", "nolight"];
@@ -68,6 +68,18 @@ public sealed class MapModelPort
     /// </summary>
     public static readonly (string Name, object Value)[] UnlitEdgeParams =
         [("g_BlendMode", 0), ("g_GX_bDisableDepthWrite", false), ("g_AlphaRef", new[] { 160, 0 })];
+
+    /// <summary>
+    /// What an additive unlit glow ("nolight-add": DS3's M[A]_add sun glow, M[A]_Add_NoLight shafts) sets in its copy of
+    /// the unlit template's MATBIN: added (g_BlendMode 4), no depth write and alpha 1/255 cut, as vanilla Elden Ring's
+    /// additive unlit light shafts (m11_00_900, M[LightShaft]_NoLight_Alpha: g_BlendMode 4, g_AlphaRef [1 0]) and its own
+    /// legacy M[A]_add matbin (g_BlendMode 4); read from allmaterial 2026-11-25.
+    /// </summary>
+    public static readonly (string Name, object Value)[] UnlitAddParams =
+        [("g_BlendMode", 4), ("g_GX_bDisableDepthWrite", true), ("g_AlphaRef", new[] { 1, 0 })];
+
+    /// <summary>Sets <see cref="UnlitAddParams"/> in a MATBIN; returns the names it doesn't have.</summary>
+    public static List<string> SetUnlitAdd(MATBIN matbin) => SetParams(matbin, UnlitAddParams);
 
     /// <summary>Sets <see cref="UnlitEdgeParams"/> in a MATBIN; returns the names it doesn't have.</summary>
     public static List<string> SetUnlitEdge(MATBIN matbin) => SetParams(matbin, UnlitEdgeParams);
@@ -173,6 +185,9 @@ public sealed class MapModelPort
     /// <summary>What <see cref="MapUnlitBlends"/> did to this port's models, for the port log.</summary>
     public MapUnlitBlends.Stats UnlitBlends { get; } = new();
 
+    /// <summary>What <see cref="MapSkyFades"/> did to this port's models, for the port log.</summary>
+    public MapSkyFades.Stats SkyFades { get; } = new();
+
     /// <summary>What <see cref="MapOverlays"/> did to this port's models, for the port log.</summary>
     public MapOverlays.Stats Overlays { get; } = new();
 
@@ -256,6 +271,9 @@ public sealed class MapModelPort
             templates["nolight-blend"] = unlit with { Kind = "nolight-blend" };
             // DS3's alpha-tested unlit cards take it with Elden Ring's alpha cut (UnlitEdgeParams).
             templates["nolight-edge"] = unlit with { Kind = "nolight-edge" };
+            // DS3's additive sun glows and soft cloud cards, their fade baked into a texture (MapSkyFades).
+            templates["nolight-add"] = unlit with { Kind = "nolight-add" };
+            templates["nolight-opacity"] = unlit with { Kind = "nolight-opacity" };
         }
         return new MapModelPort(templates, headerFlver ?? flvers[0]);
     }
@@ -343,12 +361,16 @@ public sealed class MapModelPort
         // which are flowing cards with their own textures.
         if (Regex.IsMatch(mtd, @"water(?!fall)", RegexOptions.IgnoreCase) && !Regex.IsMatch(mtd, @"_add|decal|_mul|sfx", RegexOptions.IgnoreCase))
             return "water";
+        // DS3's unlit additive glows (M[A]_add: High Wall's and Lothric Castle's sun glow m30_00_sky_06_a in the sky
+        // piece m009000; M[A]_Add_NoLight light shafts): added, with their vertex fade baked in (MapSkyFades).
+        if (Regex.IsMatch(mtd, @"^M\[A\]_add$|^M\[A\]_Add_NoLight$", RegexOptions.IgnoreCase))
+            return "nolight-add";
         if (Regex.IsMatch(mtd, @"_add|decal|fog|shadow|_mul|water|sfx|ghost", RegexOptions.IgnoreCase))
             return "none";
         if (Regex.IsMatch(mtd, @"_al(?![a-z])", RegexOptions.IgnoreCase))
             return !noLight ? "alpha"
                 : !mtd.Contains("Opacity", StringComparison.OrdinalIgnoreCase) ? "nolight-blend"
-                : "none";
+                : "nolight-opacity";
         // An alpha-tested unlit card (M[A]_NoLight_e: the far forest rings of the Painted World, Irithyll and the Ringed
         // City, a tree atlas whose one-bit alpha cuts the trees out). Up to 1.0.53x it was "nolight" (no cut) and each
         // card stood as a grey rectangle: the Painted World's "cloud tower" (m002110, enkei_70).
@@ -400,7 +422,7 @@ public sealed class MapModelPort
     private MaterialTemplate? TemplateFor(string kind) =>
         kind == "none" ? null
         : _templates.TryGetValue(kind, out var t) ? t
-        : kind is "alpha" or "water" or "nolight-blend" or "nolight-edge" ? null
+        : kind is "alpha" or "water" or "nolight-blend" or "nolight-edge" or "nolight-add" or "nolight-opacity" ? null
         : _templates["opaque"];
 
     /// <summary>
@@ -907,10 +929,14 @@ public sealed class MapModelPort
             MapTerrainBlends.ApplySky(flver, stats);
             Skies.Add(stats);
         }
-        // DS3's see-through unlit layers around the sky keep their fade (MapUnlitBlends), while DS3's colours are here.
+        // DS3's see-through sky layers get their fade baked into a texture (MapSkyFades), while DS3's colours and UVs
+        // are here; a layer too wide to bake keeps the old half-visible cut (MapUnlitBlends).
         {
+            var fadeStats = new MapSkyFades.Stats();
+            var tooWide = MapSkyFades.Apply(flver, fadeStats);
+            SkyFades.Add(fadeStats);
             var stats = new MapUnlitBlends.Stats();
-            keepAlpha.UnionWith(MapUnlitBlends.Apply(flver, stats));
+            keepAlpha.UnionWith(MapUnlitBlends.Apply(flver, stats, tooWide));
             UnlitBlends.Add(stats);
         }
         if (TintMaterials)
@@ -1005,7 +1031,8 @@ public sealed class MapModelPort
                         Textures.Add(t);
 
             // The unlit kinds share one template MATBIN; a cut-out card is its own material even on a shared texture.
-            var key = string.Join("|", template.Kind == "nolight-edge" ? template.Matbin + "#edge" : template.Matbin, albedo, normal, scale.X.ToString("R", System.Globalization.CultureInfo.InvariantCulture),
+            var key = string.Join("|", template.Kind is "nolight-edge" ? template.Matbin + "#edge"
+                : template.Kind is "nolight-blend" or "nolight-add" or "nolight-opacity" ? template.Matbin + "#" + template.Kind : template.Matbin, albedo, normal, scale.X.ToString("R", System.Globalization.CultureInfo.InvariantCulture),
                 scale.Y.ToString("R", System.Globalization.CultureInfo.InvariantCulture));
             if (!_materials.TryGetValue(key, out var material))
             {
@@ -1232,13 +1259,16 @@ public sealed class MapModelPort
                 if (Role(sampler.Type) is ("albedo" or "normal", 0) && material.Scale != default && material.Scale != Vector2.One)
                     sampler.Unk14 = material.Scale;
             }
-            if (material.Template.Kind == "nolight-blend")
+            if (material.Template.Kind is "nolight-blend" or "nolight-opacity")
                 foreach (var param in SetUnlitBlend(matbin))
                     Notes.Add($"{material.Template.Matbin} has no {param}: {material.Name} (a see-through unlit sky layer) may draw solid");
             if (material.Template.Kind == "nolight-edge")
                 foreach (var param in SetUnlitEdge(matbin))
                     Notes.Add($"{material.Template.Matbin} has no {param}: {material.Name} (an alpha-tested unlit far card) may draw as a solid rectangle");
-            if (material.Template.Kind is "nolight" or "nolight-blend" or "nolight-edge")
+            if (material.Template.Kind == "nolight-add")
+                foreach (var param in SetUnlitAdd(matbin))
+                    Notes.Add($"{material.Template.Matbin} has no {param}: {material.Name} (an additive unlit sky glow) may draw solid");
+            if (material.Template.Kind is "nolight" or "nolight-blend" or "nolight-edge" or "nolight-add" or "nolight-opacity")
             {
                 if (matbin.Params.FirstOrDefault(p => p.Name == NoShadowParam && p.Value is bool) is { } noShadow)
                     noShadow.Value = true;

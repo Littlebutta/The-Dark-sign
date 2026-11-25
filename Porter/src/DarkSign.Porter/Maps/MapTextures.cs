@@ -111,12 +111,39 @@ public sealed class MapTextures
         if (File.Exists(bhdPath) && File.Exists(bdtPath))
             Keep(File.ReadAllBytes(bhdPath), File.ReadAllBytes(bdtPath));
 
-        int added = 0;
+        // A DS3 texture by name, for the sky layers' baked textures (MapSkyFades), which are made from one or three.
+        TPF.Texture? FindSource(string n)
+        {
+            if (_provided.TryGetValue(n, out var g) || borrowed.TryGetValue(n, out g))
+                return g;
+            if (!sources.ContainsKey(n) && n.Length > 3 && (n[0] is 'm' or 'M') && char.IsDigit(n[1]) && char.IsDigit(n[2]))
+                ReadArea("m" + n[1..3]);
+            if (!sources.TryGetValue(n, out var s))
+                return null;
+            var tpf = TPF.Read(DCX.Is(s.Bytes) ? DCX.Decompress(s.Bytes) : s.Bytes);
+            return tpf.Textures.FirstOrDefault(t => t.Name.Equals(n, StringComparison.OrdinalIgnoreCase)) ?? tpf.Textures.FirstOrDefault();
+        }
+
+        int added = 0, baked = 0;
         var missing = new List<string>();
+        var bakeFailed = new List<string>();
         foreach (var name in _needed.Keys)
         {
             TPF.Texture? texture = null;
-            if (_provided.TryGetValue(name, out var given) || borrowed.TryGetValue(name, out given))
+            if (MapSkyFades.Recipes.TryGetValue(name, out var recipe))
+            {
+                texture = MapSkyFades.Build(name, recipe, FindSource);
+                if (texture is null)
+                {
+                    // Its DS3 albedo wasn't found: a fully see-through stand-in, never a solid grey sheet in the sky.
+                    bakeFailed.Add(name);
+                    textures[name] = new TPF.Texture(name, 0, 0, WeaponTextures.Encode(new byte[4 * 4 * 4], 4, 4,
+                        BCnEncoder.Shared.CompressionFormat.Bc3, 77), TPF.TPFPlatform.PC);
+                    continue;
+                }
+                baked++;
+            }
+            else if (_provided.TryGetValue(name, out var given) || borrowed.TryGetValue(name, out given))
                 texture = new TPF.Texture(name, given.Format, given.Flags1, given.Bytes, TPF.TPFPlatform.PC) { Type = given.Type, Mipmaps = given.Mipmaps };
             else if (sources.TryGetValue(name, out var source))
             {
@@ -150,6 +177,9 @@ public sealed class MapTextures
         var summary = $"textures {area}: {added} DS3 textures, {textures.Count} in all, in {target.TrimStart('/')}";
         if (borrowed.Count > 0)
             summary += $"; {borrowed.Count} borrowed from DS3 character or object binders";
+        if (baked > 0 || bakeFailed.Count > 0)
+            summary += $"; {baked} sky layer textures with DS3's fade baked in"
+                       + (bakeFailed.Count > 0 ? $" ({bakeFailed.Count} whose DS3 albedo wasn't found, written see-through: {string.Join(", ", bakeFailed.Take(20))})" : "");
         if (missing.Count > 0)
             summary += $"; {missing.Count} not found in DS3 and given a grey stand-in ({string.Join(", ", missing.Take(60))}{(missing.Count > 60 ? ", ..." : "")})";
         // What the textures take in graphics memory, per DS3 map: the low detail copy of every texture the map's

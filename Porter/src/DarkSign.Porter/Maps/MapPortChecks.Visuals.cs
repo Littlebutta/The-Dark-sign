@@ -694,7 +694,7 @@ public static partial class MapPortChecks
     private static void MeshLayoutAndBox()
     {
         var (port, hostBnd) = VisualPort();
-        Expect(port.TemplateSummary == "opaque=m10_00_004, edge=m10_00_207, alpha=m10_00_218, nolight=m10_00_003, nolight-blend=m10_00_003, nolight-edge=m10_00_003"
+        Expect(port.TemplateSummary == "opaque=m10_00_004, edge=m10_00_207, alpha=m10_00_218, nolight=m10_00_003, nolight-blend=m10_00_003, nolight-edge=m10_00_003, nolight-add=m10_00_003, nolight-opacity=m10_00_003"
                || MapModelPort.Kinds.All(k => port.TemplateSummary.Contains(k + "=")), $"templates {port.TemplateSummary}");
         Expect(port.TemplateSummary.Contains("opaque=m10_00_004"), $"the normal-mapped shader wins over albedo-only and overlay ones: {port.TemplateSummary}");
         Expect(port.Complete(false), "every kind found");
@@ -749,41 +749,127 @@ public static partial class MapPortChecks
                  {
                      ("M[ARSN]", "opaque"), ("M[ARSN]_l", "opaque"), ("M[ARSN]_4m_et1_l", "opaque"), ("M[ARSN]_e", "edge"), ("M[ARSN]_l_e", "edge"),
                      ("M[ARSN]_e_grass", "edge"), ("M[ARSN]_Alp", "edge"), ("M[A]_NoLight", "nolight"), ("M[A]_2m_NoLight_scroll", "nolight"), ("M[A]_NoLight_e", "nolight-edge"),
-                     ("M[A]_al_NoLight", "nolight-blend"), ("M[A]_al_m_NoLight_Opacity", "none"), ("M[A]_add", "none"), ("M[ARSN]_al", "alpha"), ("M[A]_Add_NoLight", "none"),
+                     ("M[A]_al_NoLight", "nolight-blend"), ("M[A]_al_m_NoLight_Opacity", "nolight-opacity"), ("M[A]_add", "nolight-add"), ("M[ARSN]_al", "alpha"), ("M[A]_Add_NoLight", "nolight-add"),
                      ("M[ARSN]_Decal", "none"), ("M[Shadow]", "none"), ("M[ARSN]_Water_3normaltet", "water"), ("M[ARSN]_Water_DL", "water"), ("M[A]_Waterfall_add", "none"), ("M[Fog]", "none"),
                  })
             Expect(Kind(mtd) == kind, $"{mtd} is {Kind(mtd)}, expected {kind}");
 
-        // A model with a wall and a light shaft keeps the wall; one with only the shaft is left out as a whole.
+        // A model with a wall and a fog card keeps the wall; one with only the fog card is left out as a whole.
         var (port, hostBnd) = VisualPort();
         var both = SyntheticFlver(0x20014, @"N:\FDP\data\Material\mtd\map\M[ARSN].mtd", ("g_DiffuseTexture", @"N:\x\m40_00_wall_a.tif"));
-        both.Materials.Add(new FLVER2.Material("shaft", @"N:\FDP\data\Material\mtd\map\M[A]_Add_NoLight.mtd", 0) { GXIndex = 0 });
+        both.Materials.Add(new FLVER2.Material("fog", @"N:\FDP\data\Material\mtd\map\M[Fog].mtd", 0) { GXIndex = 0 });
         var shaft = FLVER2.Read(both.Write()).Meshes[0];
         shaft.MaterialIndex = 1;
         both.Meshes.Add(shaft);
         var kept = ConvertOne(port, hostBnd, both);
-        Expect(kept.Meshes.Count == 1 && kept.Meshes[0].MaterialIndex == 0, "the additive mesh is left out, the wall stays");
-        Expect(port.LeftOut.TryGetValue("M[A]_Add_NoLight", out var n) && n == 1, "left-out meshes are counted by DS3 material");
+        Expect(kept.Meshes.Count == 1 && kept.Meshes[0].MaterialIndex == 0, "the fog mesh is left out, the wall stays");
+        Expect(port.LeftOut.TryGetValue("M[Fog]", out var n) && n == 1, "left-out meshes are counted by DS3 material");
 
         // DS3's see-through unlit layers (M[A]_al_NoLight: High Wall's sky_02 rings, Firelink's horizon cloud band and
-        // far mountain ring) are drawn unlit and blended with DS3's fade; a triangle under half everywhere is left out.
+        // far mountain ring) are drawn unlit and blended, with DS3's vertex fade baked into a texture of their own
+        // (MapSkyFades). Nothing is cut: a layer DS3 shows at 20% is drawn at 20%, not left out or drawn solid.
         var (cloudPort, cloudBnd) = VisualPort();
         var cloud = SyntheticFlver(0x20014, @"N:\FDP\data\Material\mtd\map\M[A]_al_NoLight.mtd", ("g_DiffuseTexture", @"N:\x\m30_00_sky_02_a.tif"));
+        cloud.Materials[0].Textures[0].TilingScale = new Vector2(2, 1);
         cloud.BufferLayouts[0].Insert(1, new FLVER.LayoutMember(FLVER.LayoutType.UByte4Norm, FLVER.LayoutSemantic.VertexColor));
         float[] fades = [0.8f, 0.3f, 0.3f];
         for (int i = 0; i < 3; i++)
             cloud.Meshes[0].Vertices[i].Colors.Add(new FLVER.VertexColor(fades[i], 1f, 0f, 1f));
+        var faint = FLVER2.Read(cloud.Write()).Meshes[0];
+        foreach (var v in faint.Vertices)
+            v.Colors[0] = new FLVER.VertexColor(0.2f, 1f, 0f, 1f);
+        cloud.Meshes.Add(faint);
         var gone = FLVER2.Read(cloud.Write()).Meshes[0];
         foreach (var v in gone.Vertices)
-            v.Colors[0] = new FLVER.VertexColor(0.2f, 1f, 0f, 1f);
+            v.Colors[0] = new FLVER.VertexColor(0f, 1f, 0f, 1f);
         cloud.Meshes.Add(gone);
         var drawn = ConvertOne(cloudPort, cloudBnd, FLVER2.Read(cloud.Write()));
-        Expect(drawn.Meshes.Count == 1 && drawn.Meshes[0].Vertices.Select(v => MathF.Round(v.Colors.Single().A, 1)).SequenceEqual([0.8f, 0.3f, 0.3f]),
-            $"the layer keeps DS3's fade, the wholly faded triangle is left out: {string.Join("; ", drawn.Meshes.Select(m => string.Join(",", m.Vertices.Select(v => v.Colors.FirstOrDefault().A))))}");
-        Expect(cloudPort.Materials.Single().Template.Kind == "nolight-blend" && cloudPort.Materials.Single().Albedo == "m30_00_sky_02_a",
-            $"drawn on the unlit template, blended: {string.Join(", ", cloudPort.Materials.Select(m => m.Template.Kind + " " + m.Albedo))}");
-        Expect(cloudPort.UnlitBlends is { Meshes: 2, Triangles: 2, TrianglesCut: 1, Empty: 1 }, $"counted: {cloudPort.UnlitBlends.Summary}");
+        Expect(drawn.Meshes.Count == 2 && drawn.Meshes.All(m => m.Vertices.Count == 3 && m.Vertices.All(v => v.Colors.Single().A == 1f)),
+            $"both visible layers drawn whole, their fade in the texture, not the vertex colour: {string.Join("; ", drawn.Meshes.Select(m => m.Vertices.Count + " " + string.Join(",", m.Vertices.Select(v => v.Colors.FirstOrDefault().A))))}");
+        Expect(cloudPort.Materials.All(m => m.Template.Kind == "nolight-blend" && m.Albedo.StartsWith("m30_00_sky_02_a" + MapSkyFades.Suffix) && m.Scale == Vector2.One)
+               && cloudPort.Materials.Count() == 2,
+            $"drawn on the unlit template, blended, each on its own baked texture at 1 x 1: {string.Join(", ", cloudPort.Materials.Select(m => m.Template.Kind + " " + m.Albedo + " " + m.Scale))}");
+        Expect(cloudPort.SkyFades is { Meshes: 3, Baked: 2, Empty: 1, TooWide: 0 } && cloudPort.UnlitBlends.TrianglesCut == 0,
+            $"counted: {cloudPort.SkyFades.Summary} / {cloudPort.UnlitBlends.Summary}");
         Expect(cloudPort.LeftOut.Count == 0, $"nothing left out: {string.Join(", ", cloudPort.LeftOut.Keys)}");
+        var strong = MapSkyFades.Recipes[cloudPort.Materials.Select(m => m.Albedo).First(a => MapSkyFades.Recipes[a].Fade.Max() > 100)];
+        var weak = MapSkyFades.Recipes[cloudPort.Materials.Select(m => m.Albedo).First(a => MapSkyFades.Recipes[a].Fade.Max() < 100)];
+        Expect(Math.Abs(strong.Fade.Max() - 204) <= 3 && Math.Abs(weak.Fade.Max() - 51) <= 2 && weak.Fade.Count(f => f == 51) > MapSkyFades.FadeSize * MapSkyFades.FadeSize / 2 && strong.AlbedoScale == new Vector2(2, 1),
+            $"the fade rasterised from DS3's vertex alpha (0.8 -> 204; 0.2 -> 51 over the triangle and its edge), DS3's tiling kept for the bake: {strong.Fade.Max()} {weak.Fade.Min()}..{weak.Fade.Max()} {strong.AlbedoScale}");
+        // The bake itself: RGB from the albedo at DS3's tiling, alpha = albedo alpha x fade.
+        {
+            const int sz = 8;
+            var px = new byte[sz * sz * 4];
+            for (int i = 0; i < sz * sz; i++)
+            {
+                px[i * 4] = (byte)(i % sz < sz / 2 ? 200 : 40); px[i * 4 + 1] = 120; px[i * 4 + 2] = 60; px[i * 4 + 3] = 255;
+            }
+            var albedo = new TPF.Texture("m30_00_sky_02_a", 0, 0, WeaponTextures.Encode(px, sz, sz, BCnEncoder.Shared.CompressionFormat.Bc1, 72), TPF.TPFPlatform.PC);
+            var bakedTex = MapSkyFades.Build("baked", weak, t => t == "m30_00_sky_02_a" ? albedo : null);
+            Expect(bakedTex is not null && MapSkyFades.IsSrgb(bakedTex.Bytes), "an sRGB albedo bakes into an sRGB BC3");
+            var (bp, bw, bh) = MapSkyFades.Decode(bakedTex!.Bytes);
+            Expect(bp is not null && bw == 16 && bh == 8, $"the bake covers the UV range at the albedo's density x tiling (16 x 8), got {bw} x {bh}");
+            if (bp is not null)
+            {
+                Expect(bp.All(c => c.a <= 55) && bp.Count(c => Math.Abs(c.a - 51) <= 4) >= bp.Length / 2, $"alpha = 255 x 0.2 over the triangle, 0 beyond it: {string.Join(",", bp.Select(c => c.a).Distinct().Take(6))}");
+                Expect(bp[0].r > 170 && bp[5].r < 70 && bp[8].r > 170 && bp[13].r < 70, $"the albedo repeats twice across (DS3's 2 x 1 tiling): {bp[0].r} {bp[5].r} {bp[8].r} {bp[13].r}");
+            }
+            Expect(MapSkyFades.Build("x", weak, _ => null) is null, "no albedo, no bake (the texture writer puts a see-through stand-in)");
+        }
+
+        // DS3's soft cloud cards (M[A]_al_m_NoLight_Opacity, m45 m091020): float UVs in short units (1..2047), the
+        // fade in UV channel 3, both opacity masks multiplied in; and DS3's additive sun glow (M[A]_add, m30_00_sky_06_a).
+        {
+            var (cardsPort, cardsBnd) = VisualPort();
+            var cards = SyntheticFlver(0x20014, @"N:\FDP\data\Material\mtd\map\M[A]_al_m_NoLight_Opacity.mtd",
+                ("Fujir_Nolight_OpacityBlend_snp_Texture2D_1_GSBlendMap_AlbedoMap_0", @"N:\x\m45_00_kumo_30_a.tif"),
+                ("Fujir_Nolight_OpacityBlend_snp_Texture2D_4_GSBlendMap_OpacityTexture1", @"N:\x\m45_00_kumo_33_m.tif"),
+                ("Fujir_Nolight_OpacityBlend_snp_Texture2D_5_GSBlendMap_OpacityTexture2", @"N:\x\m45_00_kumo_60_m.tif"));
+            cards.BufferLayouts[0].Add(new FLVER.LayoutMember(FLVER.LayoutType.UByte4Norm, FLVER.LayoutSemantic.UV, 3));
+            float[] cardFade = [1f, 0.5f, 0f];
+            for (int i = 0; i < 3; i++)
+            {
+                var v = cards.Meshes[0].Vertices[i];
+                v.UVs[0] = new Vector3(1 + v.UVs[0].X * 2046, 1 + v.UVs[0].Y * 2046, 0);
+                v.UVs.Add(new Vector3(cardFade[i], cardFade[i], 0));
+                v.UVs.Add(Vector3.Zero);
+            }
+            cards.Materials.Add(new FLVER2.Material("glow", @"N:\FDP\data\Material\mtd\map\M[A]_add.mtd", 0) { GXIndex = 0 });
+            cards.Materials[1].Textures.Add(new FLVER2.Texture("g_DiffuseTexture", @"N:\x\m30_00_sky_06_a.tif", Vector2.One, 0, 0, 0, 0, 0));
+            var glow = FLVER2.Read(SyntheticFlver(0x20014, @"N:\FDP\data\Material\mtd\map\M[A]_add.mtd").Write()).Meshes[0];
+            glow.MaterialIndex = 1;
+            foreach (var v in glow.Vertices)
+            {
+                v.UVs.Add(Vector3.Zero); // the shared layout's UV3 (unused by an add mesh; its fade is the vertex alpha, 1 here)
+                v.UVs.Add(Vector3.Zero);
+            }
+            cards.Meshes.Add(glow);
+            var cardsOut = ConvertOne(cardsPort, cardsBnd, FLVER2.Read(cards.Write()));
+            Expect(cardsOut.Meshes.Count == 2 && cardsPort.LeftOut.Count == 0, $"the cloud card and the sun glow are drawn: {cardsOut.Meshes.Count}, left out {string.Join(",", cardsPort.LeftOut.Keys)}");
+            var cardMat = cardsPort.Materials.FirstOrDefault(m => m.Template.Kind == "nolight-opacity");
+            var glowMat = cardsPort.Materials.FirstOrDefault(m => m.Template.Kind == "nolight-add");
+            Expect(cardMat is not null && glowMat is not null && cardMat.Albedo.StartsWith("m45_00_kumo_30_a" + MapSkyFades.Suffix) && glowMat.Albedo.StartsWith("m30_00_sky_06_a" + MapSkyFades.Suffix),
+                $"kinds and baked textures: {string.Join(", ", cardsPort.Materials.Select(m => m.Template.Kind + " " + m.Albedo))}");
+            if (cardMat is not null)
+            {
+                var r = MapSkyFades.Recipes[cardMat.Albedo];
+                Expect(r.Mask1 == "m45_00_kumo_33_m" && r.Mask2 == "m45_00_kumo_60_m" && Math.Abs(r.UvSpan.X - 2046f / 2048) < 1e-3f && r.Fade.Max() >= 250 && r.Fade.Min() <= 5,
+                    $"both masks named, UVs read in short units, fade from UV 3 (1 .. 0): span {r.UvSpan} fade {r.Fade.Min()}..{r.Fade.Max()} masks {r.Mask1} {r.Mask2}");
+                Expect(cardsOut.Meshes.SelectMany(m => m.Vertices).All(v => v.UVs[0].X is >= -0.01f and <= 1.01f && v.UVs[0].Y is >= -0.01f and <= 1.01f),
+                    "the baked meshes' UVs run 0..1 over their own texture");
+            }
+            var bins = cardsPort.MatbinFiles(0).Select(f => (f.Name, Bin: MATBIN.Read(f.Bytes))).ToList();
+            int Mode(string albedo) => bins.Where(b => b.Bin.Samplers.Any(x => x.Path == albedo)).Select(b => b.Bin.Params.FirstOrDefault(p => p.Name == "g_BlendMode")?.Value is int i ? i : -1).FirstOrDefault(-1);
+            if (cardMat is not null && glowMat is not null && bins.Any(b => b.Bin.Params.Any(p => p.Name == "g_BlendMode")))
+                Expect(Mode(cardMat.Albedo) == 2 && Mode(glowMat.Albedo) == 4, $"the card blends (2) and the glow adds (4): {Mode(cardMat.Albedo)} {Mode(glowMat.Albedo)}");
+        }
+        var addBin = new MATBIN();
+        addBin.Params.Add(new MATBIN.Param { Name = "g_BlendMode", Type = MATBIN.ParamType.Int, Value = 0 });
+        addBin.Params.Add(new MATBIN.Param { Name = "g_GX_bDisableDepthWrite", Type = MATBIN.ParamType.Bool, Value = false });
+        addBin.Params.Add(new MATBIN.Param { Name = "g_AlphaRef", Type = MATBIN.ParamType.Int2, Value = new[] { 0, 0 } });
+        Expect(MapModelPort.SetUnlitAdd(addBin).Count == 0 && MATBIN.Read(addBin.Write()) is var addRead
+               && (int)addRead.Params[0].Value == 4 && (bool)addRead.Params[1].Value && ((int[])addRead.Params[2].Value).SequenceEqual([1, 0]),
+            "the unlit template's copy adds as vanilla m11_00_900 light shafts (g_BlendMode 4, no depth write, alpha cut 1)");
         var blendBin = new MATBIN();
         blendBin.Params.Add(new MATBIN.Param { Name = "g_BlendMode", Type = MATBIN.ParamType.Int, Value = 0 });
         blendBin.Params.Add(new MATBIN.Param { Name = "g_GX_bDisableDepthWrite", Type = MATBIN.ParamType.Bool, Value = false });
