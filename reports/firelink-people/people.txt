@@ -1,0 +1,215 @@
+=== DS3 m40_00_00_00 -> m45_00_00_00: people (c0000 or talkers)
+  name	entity	NpcParam	DS3 name	DS3 team	talk	think	CharaInit	other state	position
+  c0000_0003	4000726	25702	Irina of Carim - Firelink Shrine	26	400261	25702	25702	no	273.0,-98.4,602.6
+  c0000_0004	4000727	25703	Irina of Carim - Firelink Shrine	26	400262	25703	25703	no	273.0,-98.4,602.6
+  c0000_0005	4000756	25802	Eygon of Carim - Enemy - Firelink Shrine	6	400271	25802	25802	no	273.0,-98.4,602.6
+  c0000_0006	4000780	25200	Sirris of the Sunless Realms - Firelink Shrine	26	400180	25200	25200	no	273.0,-98.4,602.6
+  c0000_0008	4000765	26001	Anri of Astora - Firelink Shrine	26	400290	26001	26001	no	273.0,-98.4,602.6
+  c0000_0009	4000770	26001	Anri of Astora - Firelink Shrine	26	400295	26001	26051	no	273.0,-98.4,602.6
+  c0000_0010	4000775	26301	Horace the Hushed - Firelink Shrine	26	400360	26301	26301	no	273.0,-98.4,602.6
+  c0000_0012	4000500	27300	Sword Master - Hostile - Firelink Shrine	6	0	27300	27300	no	279.0,-37.4,638.4
+  c0000_0013	4000190	27321	Sword Master - White Phantom - Untended Graves	2	0	27321	27321	yes	124.9,-64.2,547.3
+  c0000_0014	4000781	25204	Sirris of the Sunless Realms - Firelink Shrine	27	0	25204	25204	no	273.0,-98.4,602.6
+  c0000_0015	4000197	28040	Daughter of Crystal Kriemhild - Red Phantom - Cemetery of Ash	16	0	28040	28040	yes	112.4,-49.2,498.5
+  c0000_0018	4000735	25501	Cornyx of the Great Swamp - Firelink Shrine	26	400240	25501	25501	no	273.0,-98.4,602.6
+  c0000_0020	4000720	24801	Greirat of the Undead Settlement - Firelink Shrine	26	400220	24801	24801	no	273.0,-98.4,602.6
+  c0000_0021	4000725	25701	Irina of Carim - Firelink Shrine	26	400260	25701	25701	no	273.0,-98.4,602.6
+  c0000_0022	4000740	25601	Karla - Firelink Shrine	26	400250	25601	25601	no	273.0,-98.4,602.6
+  c0000_0024	4000745	25401	Orbeck of Vinheim - Firelink Shrine	26	400230	25401	25401	no	273.0,-98.4,602.6
+  c0000_0025	4000750	25000	Yuria of Londor - Firelink Shrine	26	400140	25000	25000	no	273.0,-98.4,602.6
+  c0000_0027	4000755	25801	Eygon of Carim - Firelink Shrine	26	400270	25801	25801	no	273.0,-98.4,602.6
+  c0000_0030	4000785	25300	Ringfinger Leonhard - Firelink Shrine	26	400190	25300	25300	no	285.7,-47.5,606.9
+  c0000_0031	4000790	26103	Unbreakable Patches - Firelink Shrine	26	400300	26103	26103	no	301.1,-12.8,629.3
+  c0000_0032	4000791	26104	Unbreakable Patches - Firelink Shrine	26	400301	26104	26104	no	273.0,-98.4,602.6
+  c0000_0033	4000760	25100	Hawkwood the Deserter - Firelink Shrine	26	400170	25100	25100	no	273.0,-98.4,602.6
+  c0000_0034	4000761	25100	Hawkwood the Deserter - Firelink Shrine	26	400171	25100	25100	no	273.0,-98.4,602.6
+  c1000_0000	4000950	100000	Bonfire	8	400000	0	-1	no	271.2,-56.2,605.7
+  c1000_0001	4000951	100000	Bonfire	8	400001	0	-1	no	104.8,-49.7,507.3
+  c1000_0002	4000706	145000	Ludleth of Courland	26	400131	0	0	no	277.9,-49.5,614.1
+  c1000_0003	4000795	100000	Bonfire	8	400390	0	-1	no	269.6,-22.2,605.5
+  c1000_0004	4000953	100000	Bonfire	8	400003	0	-1	yes	-10.5,-62.6,520.2
+  c1000_0005	4000952	100000	Bonfire	8	400002	0	-1	no	142.7,-68.9,594.8
+  c1000_0006	4000954	100000	Bonfire	8	400004	0	-1	yes	142.7,-68.9,594.8
+  c1400_0000	4000700	140000	Fire Keeper - Firelink Shrine	26	400120	140000	-1	no	267.9,-56.0,607.4
+  c1450_0000	4000705	145000	Ludleth of Courland	26	400130	145000	0	no	277.9,-49.5,614.1
+  c2160_0000	4000730	216000	Yoel of Londor	26	400150	1	-1	no	273.0,-98.4,602.6
+  c3190_0000	4000710	319000	Blacksmith Andre	26	400200	319000	-1	no	230.8,-56.4,596.7
+  c3200_0000	4000715	320000	Shrine Handmaid	26	400210	320000	0	no	251.5,-54.6,604.7
+  c3200_0001	4000716	320100	Shrine Handmaid	26	400211	320000	0	yes	251.5,-54.6,604.7
+  DS3 teams of every other enemy row in the map: team 33 x4, team 6 x57, team 7 x3
+  DS3 common_func event 20005493 line 8: Set Character Team Type(Entity ID 0, Team Type 28) passed in: byte 0 <- param byte 0
+  DS3 common_func event 20005493 line 9: Set Character Team Type(Entity ID 0, Team Type 28) passed in: byte 0 <- param byte 4
+  DS3 common_func event 20005493 line 15: Set Character Team Type(Entity ID 0, Team Type 29) passed in: byte 0 <- param byte 0
+  DS3 common_func event 20005493 line 16: Set Character Team Type(Entity ID 0, Team Type 29) passed in: byte 0 <- param byte 4
+  DS3 common_func event 20005495 line 15: Set Character Team Type(Entity ID 0, Team Type 28) passed in: byte 0 <- param byte 0
+  DS3 common_func event 20005495 line 16: Set Character Team Type(Entity ID 0, Team Type 28) passed in: byte 0 <- param byte 4
+  DS3 common_func event 20005495 line 18: Set Character Team Type(Entity ID 0, Team Type 29) passed in: byte 0 <- param byte 0
+  DS3 common_func event 20005495 line 19: Set Character Team Type(Entity ID 0, Team Type 29) passed in: byte 0 <- param byte 4
+  DS3 common_func event 20006000 line 15: Set Character Team Type(Entity ID 0, Team Type 27) passed in: byte 0 <- param byte 0
+  DS3 m40_00_00_00 event 14005500 line 42: Set Character Team Type(Entity ID 0, Team Type 27) passed in: byte 0 <- param byte 0
+  DS3 m40_00_00_00 event 14005520 line 79: Set Character Team Type(Entity ID 0, Team Type 27) passed in: byte 0 <- param byte 0
+  DS3 m40_00_00_00 event 14005521 line 14: Set Character Team Type(Entity ID 0, Team Type 27) passed in: byte 0 <- param byte 0
+  DS3 m40_00_00_00 event 14005540 line 72: Set Character Team Type(Entity ID 0, Team Type 27) passed in: byte 0 <- param byte 0
+  DS3 m40_00_00_00 event 14005540 line 85: Set Character Team Type(Entity ID 0, Team Type 27) passed in: byte 0 <- param byte 4
+  DS3 m40_00_00_00 event 14005541 line 8: Set Character Team Type(Entity ID 0, Team Type 27) passed in: byte 0 <- param byte 0
+  DS3 m40_00_00_00 event 14005542 line 26: Set Character Team Type(Entity ID 0, Team Type 27) passed in: byte 0 <- param byte 4
+  DS3 m40_00_00_00 event 14005542 line 32: Set Character Team Type(Entity ID 0, Team Type 0) passed in: byte 0 <- param byte 12
+  DS3 m40_00_00_00 event 14005560 line 83: Set Character Team Type(Entity ID 0, Team Type 27) passed in: byte 0 <- param byte 0
+  DS3 m40_00_00_00 event 14005560 line 84: Set Character Team Type(Entity ID 0, Team Type 27) passed in: byte 0 <- param byte 4
+  DS3 m40_00_00_00 event 14005570 line 130: Set Character Team Type(Entity ID 0, Team Type 27) passed in: byte 0 <- param byte 0
+  DS3 m40_00_00_00 event 14005580 line 65: Set Character Team Type(Entity ID 0, Team Type 27) passed in: byte 0 <- param byte 0
+  DS3 m40_00_00_00 event 14005580 line 70: Set Character Team Type(Entity ID 0, Team Type 27) passed in: byte 0 <- param byte 4
+  DS3 m40_00_00_00 event 14005580 line 76: Set Character Team Type(Entity ID 0, Team Type 27) passed in: byte 0 <- param byte 0
+  DS3 m40_00_00_00 event 14005580 line 83: Set Character Team Type(Entity ID 0, Team Type 27) passed in: byte 0 <- param byte 4
+  DS3 m40_00_00_00 event 14005581 line 26: Set Character Team Type(Entity ID 0, Team Type 27) passed in: byte 0 <- param byte 0
+  DS3 m40_00_00_00 event 14005581 line 27: Set Character Team Type(Entity ID 0, Team Type 27) passed in: byte 0 <- param byte 4
+  DS3 m40_00_00_00 event 14005581 line 28: Set Character Team Type(Entity ID 0, Team Type 27) passed in: byte 0 <- param byte 8
+  DS3 m40_00_00_00 event 14005582 line 13: Set Character Team Type(Entity ID 0, Team Type 27) passed in: byte 0 <- param byte 0
+  DS3 m40_00_00_00 event 14000583 line 10: Set Character Team Type(Entity ID 0, Team Type 27) passed in: byte 0 <- param byte 0
+  DS3 m40_00_00_00 event 14000583 line 11: Set Character Team Type(Entity ID 0, Team Type 27) passed in: byte 0 <- param byte 4
+  DS3 m40_00_00_00 event 14000585 line 11: Set Character Team Type(Entity ID 0, Team Type 27) passed in: byte 0 <- param byte 0
+  DS3 m40_00_00_00 event 14005586 line 43: Set Character Team Type(Entity ID 0, Team Type 27) passed in: byte 0 <- param byte 0
+  DS3 m40_00_00_00 event 14005620 line 75: Set Character Team Type(Entity ID 0, Team Type 27) passed in: byte 0 <- param byte 4
+  DS3 m40_00_00_00 event 14005620 line 89: Set Character Team Type(Entity ID 0, Team Type 27) passed in: byte 0 <- param byte 0
+  DS3 m40_00_00_00 event 14005620 line 90: Set Character Team Type(Entity ID 0, Team Type 27) passed in: byte 0 <- param byte 4
+  DS3 m40_00_00_00 event 14000624 line 9: Set Character Team Type(Entity ID 0, Team Type 27) passed in: byte 0 <- param byte 0
+  DS3 m40_00_00_00 event 14005640 line 43: Set Character Team Type(Entity ID 0, Team Type 26) passed in: byte 0 <- param byte 0
+  DS3 m40_00_00_00 event 14005640 line 48: Set Character Team Type(Entity ID 0, Team Type 26) passed in: byte 0 <- param byte 0
+  DS3 m40_00_00_00 event 14005660 line 29: Set Character Team Type(Entity ID 0, Team Type 26) passed in: byte 0 <- param byte 0
+  DS3 m40_00_00_00 event 14005700 line 85: Set Character Team Type(Entity ID 0, Team Type 27) passed in: byte 0 <- param byte 0
+  DS3 m40_00_00_00 event 14005750 line 61: Set Character Team Type(Entity ID 0, Team Type 27) passed in: byte 0 <- param byte 0
+  DS3 m40_00_00_00 event 14005760 line 27: Set Character Team Type(Entity ID 0, Team Type 27) passed in: byte 0 <- param byte 0
+  DS3 m40_00_00_00 event 0 starts: 2000[06] 20006000 4000720 1216 1217 74000330 1059481190 1215 1219 0
+  DS3 m40_00_00_00 event 0 starts: 2000[06] 20006000 4000735 1256 1257 74000470 1059481190 1255 1259 0
+  DS3 m40_00_00_00 event 0 starts: 2000[06] 20006000 4000745 1236 1237 74000580 1059481190 1235 1239 0
+  DS3 m40_00_00_00 event 0 starts: 2000[00] 0 14005521 4000750 1056 1057 74000630 1059481190 1055 1059 0
+  DS3 m40_00_00_00 event 0 starts: 2000[06] 20006000 4000755 1316 1317 74000680 1059481190 1315 1319 0
+  DS3 m40_00_00_00 event 0 starts: 2000[00] 0 14005541 4000755 1316 1317 1281 1284 1298 1315 1319 1302
+  DS3 m40_00_00_00 event 0 starts: 2000[00] 0 14005542 4000755 4000756 4000725 4000726 90640
+  DS3 m40_00_00_00 event 0 starts: 2000[00] 0 14005581 4000765 4000770 4000775 74000730 74000731 1059481190
+  DS3 m40_00_00_00 event 0 starts: 2000[00] 0 14000583 4000765 4000770 1356 1357 4000775 1355 1359 1342
+  DS3 m40_00_00_00 event 0 starts: 2000[00] 0 14000585 4000775 1496 1497 4000765 4000770 1495 1499 1482
+  DS3 m40_00_00_00 event 0 starts: 2000[06] 20006000 4000760 1116 1117 74000830 1059481190 1115 1119 0
+  DS3 m40_00_00_00 event 0 starts: 2000[06] 20006000 4000761 1116 1117 74000831 1059481190 1115 1119 0
+  DS3 m40_00_00_00 event 0 starts: 2000[06] 20006000 4000785 1156 1157 74000880 1059481190 1155 1159 0
+  DS3 m40_00_00_00 event 0 starts: 2000[06] 20006000 4000791 1376 1377 73500290 1059481190 1375 1379 0
+  DS3 m40_00_00_00 event 0 starts: 2000[00] 0 14000624 4000791
+  DS3 m40_00_00_00 event 50 starts: 2000[00] 0 14005640 4000705 4001115 4000706
+  DS3 m40_00_00_00 event 50 starts: 2000[00] 0 14005660 4000710
+  DS3 m40_00_00_00 event 50 starts: 2000[00] 0 14005760 4000735 4006735
+  DS3 m40_00_00_00 event 50 starts: 2000[00] 0 14005500 4000745 90420 4001745 4004745
+  DS3 m40_00_00_00 event 50 starts: 2000[00] 0 14005520 4000750 90300 4004750 4001751
+  DS3 m40_00_00_00 event 50 starts: 2000[00] 0 14005540 4000755 4000756 90660 4004755 4004756
+  DS3 m40_00_00_00 event 50 starts: 2000[00] 0 14005560 4000760 4000761 4004760 4004761
+  DS3 m40_00_00_00 event 50 starts: 2000[00] 0 14005580 4000765 4000770 90750 90800 4004765 4004770
+  DS3 m40_00_00_00 event 50 starts: 2000[00] 0 14005586 4000775 90900 4004775
+  DS3 m40_00_00_00 event 50 starts: 2000[00] 0 14005570 4000780 4000781 4004780 4004781
+  DS3 m40_00_00_00 event 50 starts: 2000[00] 0 14005750 4000785 90710 4004785
+  DS3 m40_00_00_00 event 50 starts: 2000[00] 0 14005620 4000790 4000791 4004791
+  DS3 m40_00_00_00 event 50 starts: 2000[00] 0 14005700 4000720 4004720
+  DS3 m40_00_00_00 event 14005570 starts: 2000[06] 20006000 4000780 1136 1137 74000770 1060320051 1135 1139 0
+=== mod m45_00_00_00: every enemy part
+  name	model	entity	NpcParam	mod row name	mod team	think	talk	CharaInit	position
+  c0000_9000	c0000	45000780	523480056	Millicent	26	523480000	900400180	3025200	259.9,-53.5,607.0
+  c0000_9001	c0000	45000765	523140038	Knight Diallos	0	523140000	901400290	3026001	266.9,-51.2,618.5
+  c0000_9002	c0000	45000775	523120024	Witch-Hunter Jerren	27	523120000	902400360	3026301	269.1,-50.9,620.3
+  c0000_9003	c0000	45000500	523600034	Vargram the Raging Wolf	6	523600000	0	3027300	279.0,-37.4,638.4
+  c0000_9004	c0000	45000735	523250114	Sorcerer Rogier	0	523250000	903400240	3025501	233.9,-59.8,613.7
+  c0000_9005	c0000	45000720	523190065	D, Beholder of Death	0	523190000	904400220	3024801	242.5,-59.6,581.3
+  c0000_9006	c0000	45000725	523130138	Zorayas the Scout	26	523130000	905400260	3025701	269.1,-59.8,630.6
+  c0000_9007	c0000	45000740	523230035	Dung Eater	26	523230000	906400250	3025601	236.8,-59.8,591.8
+  c0000_9008	c0000	45000745	523160124	Sorceress Sellen	27	523161000	907400230	3025401	248.7,-59.2,612.8
+  c0000_9009	c0000	45000750	533120024	Witch-Hunter Jerren	2	533120000	908400140	3025000	271.5,-59.8,581.9
+  c0000_9010	c0000	45000755	523480056	Millicent	26	523480000	909400270	3025801	270.2,-54.6,617.1
+  c0000_9011	c0000	45000785	533260034	Recusant Bernahl	2	533260000	910400190	3025300	285.7,-47.5,606.9
+  c0000_9012	c0000	45000790	523120024	Witch-Hunter Jerren	27	523120000	911400300	3026103	301.1,-12.8,629.3
+  c0000_9013	c0000	45000760	523340014	Nepheli Loux, Warrior	26	523340000	912400170	3025100	270.3,-52.7,593.2
+  c7049_9000	c7049	45000706	70490000	[DS3] Ludleth of Courland	26	30800000	913400131	-1	277.9,-49.5,614.1
+  c7041_9000	c7041	45000700	70410000	[DS3] Fire Keeper - Firelink Shrine	26	70419000	914400120	-1	267.9,-56.0,607.4
+  c7043_9000	c7043	45000202	70430003	[DS3] Undead Cleric 5 - Cemetery of Ash	6	70439041	0	-1	17.9,-62.4,525.8
+  c7043_9001	c7043	45000204	70430003	[DS3] Undead Cleric 5 - Cemetery of Ash	6	70439041	0	-1	33.5,-62.3,521.5
+  c7043_9002	c7043	45000205	70430002	[DS3] Undead Cleric 4 - Cemetery of Ash	6	70439031	0	-1	71.6,-60.4,500.4
+  c7043_9003	c7043	45000206	70430001	[DS3] Undead Cleric 3 - Cemetery of Ash	6	70069010	0	-1	200.4,-65.4,613.2
+  c7043_9004	c7043	45000207	70430000	[DS3] Undead Cleric 1 - Cemetery of Ash	6	70069005	0	-1	106.7,-64.1,542.8
+  c7043_9005	c7043	45000209	70430002	[DS3] Undead Cleric 4 - Cemetery of Ash	6	70439030	0	-1	123.2,-64.1,553.0
+  c7043_9006	c7043	45000210	70430000	[DS3] Undead Cleric 1 - Cemetery of Ash	6	70069005	0	-1	119.3,-61.9,536.2
+  c7043_9007	c7043	45000211	70430002	[DS3] Undead Cleric 4 - Cemetery of Ash	6	70439030	0	-1	123.3,-70.3,542.0
+  c7043_9008	c7043	45000212	70430000	[DS3] Undead Cleric 1 - Cemetery of Ash	6	70069005	0	-1	111.8,-57.7,524.8
+  c7043_9009	c7043	45000213	70430000	[DS3] Undead Cleric 1 - Cemetery of Ash	6	70069005	0	-1	117.5,-57.8,515.9
+  c7043_9010	c7043	45000214	70430003	[DS3] Undead Cleric 5 - Cemetery of Ash	6	70069050	0	-1	200.2,-65.9,617.5
+  c7043_9011	c7043	45000215	70430000	[DS3] Undead Cleric 1 - Cemetery of Ash	6	70069051	0	-1	197.4,-61.8,587.2
+  c7043_9012	c7043	45000216	70430000	[DS3] Undead Cleric 1 - Cemetery of Ash	6	70069005	0	-1	209.5,-57.0,603.0
+  c7043_9013	c7043	45000217	70430000	[DS3] Undead Cleric 1 - Cemetery of Ash	6	70069005	0	-1	211.0,-56.5,601.1
+  c7043_9014	c7043	45000218	70430001	[DS3] Undead Cleric 3 - Cemetery of Ash	6	70069010	0	-1	221.2,-53.4,611.2
+  c7043_9015	c7043	45000219	70430002	[DS3] Undead Cleric 4 - Cemetery of Ash	6	70439030	0	-1	219.3,-53.5,609.1
+  c7043_9016	c7043	45000220	70430003	[DS3] Undead Cleric 5 - Cemetery of Ash	6	70069050	0	-1	250.1,-42.9,619.4
+  c7043_9017	c7043	45000221	70430000	[DS3] Undead Cleric 1 - Cemetery of Ash	6	70069005	0	-1	250.1,-42.2,617.1
+  c7043_9018	c7043	45000239	70430000	[DS3] Undead Cleric 1 - Cemetery of Ash	6	70069005	0	-1	113.5,-58.1,528.8
+  c7043_9019	c7043	45000240	70430003	[DS3] Undead Cleric 5 - Cemetery of Ash	6	70439041	0	-1	65.7,-58.5,524.1
+  c7043_9020	c7043	45000241	70430003	[DS3] Undead Cleric 5 - Cemetery of Ash	6	70439041	0	-1	49.2,-62.5,490.3
+  c7043_9021	c7043	45000242	70430003	[DS3] Undead Cleric 5 - Cemetery of Ash	6	70439041	0	-1	40.5,-60.9,500.7
+  c7043_9022	c7043	45000243	70430003	[DS3] Undead Cleric 5 - Cemetery of Ash	6	70439041	0	-1	57.6,-61.5,492.4
+  c7043_9023	c7043	45000244	70430000	[DS3] Undead Cleric 1 - Cemetery of Ash	6	70069005	0	-1	101.3,-54.1,532.2
+  c7043_9024	c7043	45000247	70430001	[DS3] Undead Cleric 3 - Cemetery of Ash	6	70069010	0	-1	124.1,-70.1,537.4
+  c7049_9001	c7049	45000705	70490000	[DS3] Ludleth of Courland	26	30800000	915400130	-1	277.9,-49.5,614.1
+  c7054_9000	c7054	45000366	70540003	[DS3] Undead Dog	6	70549001	0	-1	250.6,-49.3,572.2
+  c7068_9000	c7068	45000390	70680013	[DS3] Crystal Lizard Base -- 結晶トカゲ　拠点	6	70689000	0	-1	309.3,-35.4,617.0
+  c7069_9000	c7069	45000730	70690000	[DS3] Yoel of Londor	26	70699000	916400150	-1	280.4,-59.8,580.5
+  c7093_9000	c7093	45000380	70930002	[DS3] Ravenous Crystal Lizard - Cemetery of Ash	6	70939000	0	-1	-12.3,-54.9,467.3
+  c7101_9000	c7101	45000710	71010000	[DS3] Blacksmith Andre	26	36600000	917400200	-1	230.8,-56.4,596.7
+  c7102_9000	c7102	45000715	71020000	[DS3] Shrine Handmaid	26	39700000	918400210	-1	251.5,-54.6,604.7
+  c7112_9000	c7112	45000800	71120000	[DS3] Corrupted Gundyr	6	71129000	0	-1	142.9,-68.9,594.6
+  c1000_9000	c1000	45000950	10000000	Bonfire	0	1	899001000	-1	271.2,-56.2,605.7
+  c1000_9001	c1000	45000951	10000000	Bonfire	0	1	899001000	-1	104.8,-49.7,507.3
+  c1000_9002	c1000	45000952	10000000	Bonfire	0	1	899001000	-1	142.7,-68.9,594.8
+  mod m45_00_00_00 event 45005500 line 42: Set Character Team Type(Entity ID 0, Team Type 27) passed in: byte 0 <- param byte 0
+  mod m45_00_00_00 event 45005521 line 14: Set Character Team Type(Entity ID 0, Team Type 27) passed in: byte 0 <- param byte 0
+  mod m45_00_00_00 event 45005540 line 72: Set Character Team Type(Entity ID 0, Team Type 27) passed in: byte 0 <- param byte 0
+  mod m45_00_00_00 event 45005540 line 85: Set Character Team Type(Entity ID 0, Team Type 27) passed in: byte 0 <- param byte 4
+  mod m45_00_00_00 event 45005541 line 8: Set Character Team Type(Entity ID 0, Team Type 27) passed in: byte 0 <- param byte 0
+  mod m45_00_00_00 event 45005542 line 26: Set Character Team Type(Entity ID 0, Team Type 27) passed in: byte 0 <- param byte 4
+  mod m45_00_00_00 event 45005542 line 32: Set Character Team Type(Entity ID 0, Team Type 0) passed in: byte 0 <- param byte 12
+  mod m45_00_00_00 event 45005560 line 83: Set Character Team Type(Entity ID 0, Team Type 27) passed in: byte 0 <- param byte 0
+  mod m45_00_00_00 event 45005560 line 84: Set Character Team Type(Entity ID 0, Team Type 27) passed in: byte 0 <- param byte 4
+  mod m45_00_00_00 event 45005570 line 130: Set Character Team Type(Entity ID 0, Team Type 27) passed in: byte 0 <- param byte 0
+  mod m45_00_00_00 event 45005580 line 65: Set Character Team Type(Entity ID 0, Team Type 27) passed in: byte 0 <- param byte 0
+  mod m45_00_00_00 event 45005580 line 70: Set Character Team Type(Entity ID 0, Team Type 27) passed in: byte 0 <- param byte 4
+  mod m45_00_00_00 event 45005580 line 76: Set Character Team Type(Entity ID 0, Team Type 27) passed in: byte 0 <- param byte 0
+  mod m45_00_00_00 event 45005580 line 83: Set Character Team Type(Entity ID 0, Team Type 27) passed in: byte 0 <- param byte 4
+  mod m45_00_00_00 event 45005581 line 26: Set Character Team Type(Entity ID 0, Team Type 27) passed in: byte 0 <- param byte 0
+  mod m45_00_00_00 event 45005581 line 27: Set Character Team Type(Entity ID 0, Team Type 27) passed in: byte 0 <- param byte 4
+  mod m45_00_00_00 event 45005581 line 28: Set Character Team Type(Entity ID 0, Team Type 27) passed in: byte 0 <- param byte 8
+  mod m45_00_00_00 event 45005582 line 13: Set Character Team Type(Entity ID 0, Team Type 27) passed in: byte 0 <- param byte 0
+  mod m45_00_00_00 event 45000583 line 10: Set Character Team Type(Entity ID 0, Team Type 27) passed in: byte 0 <- param byte 0
+  mod m45_00_00_00 event 45000583 line 11: Set Character Team Type(Entity ID 0, Team Type 27) passed in: byte 0 <- param byte 4
+  mod m45_00_00_00 event 45000585 line 11: Set Character Team Type(Entity ID 0, Team Type 27) passed in: byte 0 <- param byte 0
+  mod m45_00_00_00 event 45005586 line 43: Set Character Team Type(Entity ID 0, Team Type 27) passed in: byte 0 <- param byte 0
+  mod m45_00_00_00 event 45005620 line 75: Set Character Team Type(Entity ID 0, Team Type 27) passed in: byte 0 <- param byte 4
+  mod m45_00_00_00 event 45005620 line 89: Set Character Team Type(Entity ID 0, Team Type 27) passed in: byte 0 <- param byte 0
+  mod m45_00_00_00 event 45005620 line 90: Set Character Team Type(Entity ID 0, Team Type 27) passed in: byte 0 <- param byte 4
+  mod m45_00_00_00 event 45000624 line 9: Set Character Team Type(Entity ID 0, Team Type 27) passed in: byte 0 <- param byte 0
+  mod m45_00_00_00 event 45005640 line 43: Set Character Team Type(Entity ID 0, Team Type 26) passed in: byte 0 <- param byte 0
+  mod m45_00_00_00 event 45005640 line 48: Set Character Team Type(Entity ID 0, Team Type 26) passed in: byte 0 <- param byte 0
+  mod m45_00_00_00 event 45005660 line 29: Set Character Team Type(Entity ID 0, Team Type 26) passed in: byte 0 <- param byte 0
+  mod m45_00_00_00 event 45005700 line 85: Set Character Team Type(Entity ID 0, Team Type 27) passed in: byte 0 <- param byte 0
+  mod m45_00_00_00 event 45005750 line 61: Set Character Team Type(Entity ID 0, Team Type 27) passed in: byte 0 <- param byte 0
+  mod m45_00_00_00 event 45005760 line 27: Set Character Team Type(Entity ID 0, Team Type 27) passed in: byte 0 <- param byte 0
+  mod m45_00_00_00 event 0 starts: 2000[00] 0 45005521 45000750 1030290189 1030290190 1031290068 1059481190 1030290188 1030290192 0
+  mod m45_00_00_00 event 0 starts: 2000[00] 0 45005541 45000755 1030290449 1030290450 1030290414 1030290417 1030290431 1030290448 1030290452 1030290435
+  mod m45_00_00_00 event 0 starts: 2000[00] 0 45005542 45000755 45000756 45000725 45000726 90640
+  mod m45_00_00_00 event 0 starts: 2000[00] 0 45005581 45000765 45000770 45000775 1031290071 1031290072 1059481190
+  mod m45_00_00_00 event 0 starts: 2000[00] 0 45000583 45000765 45000770 1030290469 1030290470 45000775 1030290468 1030290472 1030290455
+  mod m45_00_00_00 event 0 starts: 2000[00] 0 45000585 45000775 1030290589 1030290590 45000765 45000770 1030290588 1030290592 1030290575
+  mod m45_00_00_00 event 0 starts: 2000[00] 0 45000624 45000791
+  mod m45_00_00_00 event 50 starts: 2000[00] 0 45005640 45000705 45001115 45000706
+  mod m45_00_00_00 event 50 starts: 2000[00] 0 45005660 45000710
+  mod m45_00_00_00 event 50 starts: 2000[00] 0 45005760 45000735 45006735
+  mod m45_00_00_00 event 50 starts: 2000[00] 0 45005500 45000745 90420 45001745 45004745
+  mod m45_00_00_00 event 50 starts: 2000[00] 0 45005540 45000755 45000756 90660 45004755 45004756
+  mod m45_00_00_00 event 50 starts: 2000[00] 0 45005560 45000760 45000761 45004760 45004761
+  mod m45_00_00_00 event 50 starts: 2000[00] 0 45005580 45000765 45000770 90750 90800 45004765 45004770
+  mod m45_00_00_00 event 50 starts: 2000[00] 0 45005586 45000775 90900 45004775
+  mod m45_00_00_00 event 50 starts: 2000[00] 0 45005570 45000780 45000781 45004780 45004781
+  mod m45_00_00_00 event 50 starts: 2000[00] 0 45005750 45000785 90710 45004785
+  mod m45_00_00_00 event 50 starts: 2000[00] 0 45005620 45000790 45000791 45004791
+  mod m45_00_00_00 event 50 starts: 2000[00] 0 45005700 45000720 45004720

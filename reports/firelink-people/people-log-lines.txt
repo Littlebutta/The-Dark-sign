@@ -1,0 +1,862 @@
+=== port-maps-20261124-231859.txt
+3:m40_00_00_00 -> m45_00_00_00: 4055 map pieces, 45 collisions, 10 player points
+12:  note: people: left out of the pools: no body armour x7 (Boc the Seamster (523420024/23420), Silver Tear (523680062/23682), Silver Tear (523680062/23683), Silver Tear (523680065/23680), Silver Tear (523680065/23681), Silver Tear (523680065/23682), Silver Tear (523680065/23683))
+13:  note: people: 33 Elden Ring people with a talk script and 20 hostile humans found to stand in for DS3's (of 64 human placements; enemy teams 0,6,7,9,11,24,27,30,33)
+14:  note: people: hostile humans: Finger Maiden (523380016, m10_01_00_00); Moongrum, Carian Knight (523590024, m14_00_00_00); Inquisitor Ghiza (523840038, m16_00_00_00); Vargram the Raging Wolf (523600034, m11_00_00_00); Errant Sorcerer Wilhelm (523800034, m11_00_00_00);  (544710000, m11_00_00_00); Sir Gideon Ofnir, the All-Knowing (523240070, m11_05_00_00); Sir Gideon Ofnir, the All-Knowing (523240070, m11_05_00_00); Sir Gideon Ofnir, the All-Knowing (523240070, m11_05_00_00); Sir Gideon Ofnir, the All-Knowing (523240070, m11_05_00_00); Sir Gideon Ofnir, the All-Knowing (523240070, m11_05_00_00); Sir Gideon Ofnir, the All-Knowing (523240070, m11_05_00_00); Sir Gideon Ofnir, the All-Knowing (523240070, m11_05_00_00); Esgar, Priest of Blood (Boss) (523860000, m35_00_00_00); Mary, Eldest Sister (533870056, m15_00_00_00); Mary, Eldest Sister (523870056, m15_00_00_00); Maureen, Second Sister (523880056, m15_00_00_00); Amy, Third Sister (523890056, m15_00_00_00); Polyanna, Youngest Sister (523900056, m15_00_00_00); Mimic Tear (526100965, m12_02_00_00)
+16:  note: people armour: 134 DS3 people's looks planned, 44 DS3 armour sets to convert
+17:  note: people talk: m40_00_00_00: 47 DS3 talk scripts readable
+18:  note: people talk: m30_00_00_00: 15 DS3 talk scripts readable
+19:  note: people talk: m31_00_00_00: 17 DS3 talk scripts readable
+20:  note: people talk: m45_00_00_00: 20 DS3 talk scripts readable
+21:  note: people talk: m30_01_00_00: 4 DS3 talk scripts readable
+22:  note: people talk: m33_00_00_00: 16 DS3 talk scripts readable
+23:  note: people talk: m35_00_00_00: 15 DS3 talk scripts readable
+24:  note: people talk: m38_00_00_00: 11 DS3 talk scripts readable
+25:  note: people talk: m37_00_00_00: 21 DS3 talk scripts readable
+26:  note: people talk: m39_00_00_00: 6 DS3 talk scripts readable
+27:  note: people talk: m34_01_00_00: 3 DS3 talk scripts readable
+28:  note: people talk: m32_00_00_00: 4 DS3 talk scripts readable
+29:  note: people talk: m41_00_00_00: 6 DS3 talk scripts readable
+30:  note: people talk: m50_00_00_00: 9 DS3 talk scripts readable
+31:  note: people talk: m51_00_00_00: 17 DS3 talk scripts readable
+32:  enemies: 49 placed (29 ported DS3 characters, 0 Elden Ring stand-ins, 20 people, DS3's own people and DS3 humans in their DS3 armour), 11 people left out, 0 with nothing to stand in; 2 DS3 boss entities
+33:  enemies: boss Corrupted Gundyr (entity 45000800) -> Corrupted Gundyr (c7112, ported DS3 character)
+34:  enemies: 40 left out that belong to another state of the map (off DS3's layer bit 0, e.g. the Untended Graves): Undead Dog x6; Undead Cleric 7 - Untended Graves x5; Undead Cleric 4 - Untended Graves x4; Undead Cleric 1 - Untended Graves x4; Undead Cleric 3 - Untended Graves x3; Corvian - Scythe - Irithyll x3; Bonfire x2; Cathedral Grave Warden - Untended Graves x2; Black Knight - Greataxe - Cemetery of Ash x2; Black Knight - Greatsword - Cemetery of Ash x2; Ravenous Crystal Lizard - Untended Graves x2; Sword Master - White Phantom - Untended Graves x1
+35:  enemies: people: 7 later quest versions of a person left out (DS3 places every version and its scripts show one; the first, lowest talk script, stands): Anri of Astora - Firelink Shrine x1; Eygon of Carim - Enemy - Firelink Shrine x1; Hawkwood the Deserter - Firelink Shrine x1; Irina of Carim - Firelink Shrine x2; Sirris of the Sunless Realms - Firelink Shrine x1; Unbreakable Patches - Firelink Shrine x1
+36:  enemies: people: 12 moved from DS3's holding spot to the seat DS3's scripts warp them to
+37:  enemies: people: Anri of Astora - Firelink Shrine -> Knight Diallos (talks, t400290) x1; Blacksmith Andre -> Blacksmith Andre (talks, t400200) x1; Cornyx of the Great Swamp - Firelink Shrine -> Sorcerer Rogier (talks, t400240) x1; Eygon of Carim - Firelink Shrine -> Millicent (talks, t400270) x1; Fire Keeper - Firelink Shrine -> Fire Keeper - Firelink Shrine (talks, t400120) x1; Greirat of the Undead Settlement - Firelink Shrine -> D, Beholder of Death (talks, t400220) x1; Hawkwood the Deserter - Firelink Shrine -> Nepheli Loux, Warrior (talks, t400170) x1; Horace the Hushed - Firelink Shrine -> Witch-Hunter Jerren (talks, t400360) x1; Irina of Carim - Firelink Shrine -> Zorayas the Scout (talks, t400260) x1; Karla - Firelink Shrine -> Dung Eater (talks, t400250) x1; Ludleth of Courland -> Ludleth of Courland (talks, t400130) x1; Ludleth of Courland -> Ludleth of Courland (talks, t400131) x1; Orbeck of Vinheim - Firelink Shrine -> Sorceress Sellen (talks, t400230) x1; Ringfinger Leonhard - Firelink Shrine -> Recusant Bernahl (talks, t400190) x1; Shrine Handmaid -> Shrine Handmaid (talks, t400210) x1; Sirris of the Sunless Realms - Firelink Shrine -> Millicent (talks, t400180) x1; Sword Master - Hostile - Firelink Shrine -> Vargram the Raging Wolf (hostile) x1; Unbreakable Patches - Firelink Shrine -> Witch-Hunter Jerren (talks, t400300) x1; Yoel of Londor -> Yoel of Londor (talks, t400150) x1; Yuria of Londor - Firelink Shrine -> Witch-Hunter Jerren (talks, t400140) x1
+38:  enemies: people: 14 DS3 people wear their DS3 armour (CharaInit 3000000+, on an Elden Ring person's face and AI)
+39:  enemies: people: 19 DS3 people have their DS3 talk script (TalkID 900000000+)
+40:  enemies: AI: 15 placements run a DS3 think row ported with another character (DS3 places them with that family's AI)
+66:  sky fades: 6 see-through sky meshes (nolight-blend 6); 5 drawn with DS3's fade baked into a texture of their own, 0 wholly faded out in DS3 and left out, 1 with UVs over 8 tiles (al_NoLight keeps the half-visible cut, others left out) (m40_00_kumo_40_a, m40_00_mountain_04_382_a, m40_00_sky_50_a)
+67:  see-through sky layers: 1 unlit blended meshes (M[A]_al_NoLight: cloud bands, haze, far mountain rings) drawn with their DS3 fade, 672 of 1,931 triangles left out where DS3 has them under half visible (m40_00_kumo_40_a)
+122:  baked light: m40_00_00_00_0000.btpb.dcx: 144,974 DS3 probes (88,840 without sun) baked into a 416 x 120 x 278 m volume at -77,-81,387, 208 x 60 x 139 texels (2.0 m); DS3 open sky 877 = alpha 56, median probe at 0.35 of it; open sky at DS3's share of the sun: DS3's 877 x sun scale 0.75 x 0.085 = alpha 55.9 (the colosseum's own is 56; the even light past the probes and the reflections are dimmed to 1.00 of the colosseum's); moved by DS3's map offset (-203.6, 7.3, 33.5, turned 28 degrees); 91 of 110 enemies and start points inside the probes' box; first-order terms against order 0 under open sky: 0.31 -0.06 0.41; up = term 1, x = term 3, z = term 2 (DS3's order; the old guess would have taken term 3 as up); DS3's baked sunlight leans towards yaw 128 degrees (strength 0.23; the sun line of 'atmosphere:' should be near it when the strength is 0.2 or more)
+126:  lamps: 44 DS3 lights (38 point, 6 spot) from m40_00_00_00_0000.btl.dcx replace the host's 35; 1 directional left out (the sun is the host's); 1 light files of other map states left out (m40_00_00_00_0001.btl.dcx); moved by DS3's map offset (-203.6, 7.3, 33.5, turned 28 degrees); strengths times 0.75 (the host's sun over DS3's); 7 of 44 turned down to what Elden Ring's own lamps do (on a surface 3.8, along its reach 72): Spot_冒頭_002 12 -> 3 (light along its reach; reach 39 m, sharpness 1.6), Spot_冒頭_003 7 -> 2.44 (light along its reach; reach 48 m, sharpness 1.6), Spot_冒頭_004 5 -> 2.34 (light along its reach; reach 50 m, sharpness 1.6), 動的_スタート地点_004 7 -> 3.93 (light on surfaces; reach 6 m, sharpness 20), Spot_冒頭_001 4 -> 2.34 (light along its reach; reach 50 m, sharpness 1.6), Spot_冒頭_006 5 -> 3.44 (light along its reach; reach 34 m, sharpness 1.6), Spot_冒頭_007 5 -> 3.44 (light along its reach; reach 34 m, sharpness 1.6)
+132:time: map m40_00_00_00 -> m45_00_00_00 156.7 s
+141:  enemies: 146 placed (144 ported DS3 characters, 0 Elden Ring stand-ins, 2 people, DS3's own people and DS3 humans in their DS3 armour), 9 people left out, 1 with nothing to stand in; 3 DS3 boss entities
+142:  enemies: boss Oceiros, the Consumed King (entity 45010830) -> Oceiros, the Consumed King (c7060, ported DS3 character)
+143:  enemies: boss Vordt of the Boreal Valley (entity 45010800) -> Vordt of the Boreal Valley (c7077, ported DS3 character)
+144:  enemies: boss Dancer of the Boreal Valley (entity 45010899) -> Dancer of the Boreal Valley (c7130, ported DS3 character)
+145:  enemies: 1 DS3 logic characters left out (talk dummy c1000, platoon leader c0100, target dummies): DS3 shows nothing there
+146:  enemies: people: 3 DS3 summons and invaders (White/Mad Phantom, Dark Spirit) left out: they only appear when summoned or invading
+147:  enemies: people: Greirat of the Undead Settlement - High Wall of Lothric -> Sorceress Sellen (talks, t300220) x1; High Priestess Emma -> High Priestess Emma (talks, t300330) x1
+148:  enemies: people: 1 DS3 people wear their DS3 armour (CharaInit 3000000+, on an Elden Ring person's face and AI)
+149:  enemies: people: 2 DS3 people have their DS3 talk script (TalkID 900000000+)
+150:  enemies: AI: 4 placements run a DS3 think row ported with another character (DS3 places them with that family's AI)
+280:  enemies: 157 placed (148 ported DS3 characters, 0 Elden Ring stand-ins, 9 people, DS3's own people and DS3 humans in their DS3 armour), 10 people left out, 6 with nothing to stand in; 1 DS3 boss entities
+281:  enemies: boss Curse-rotted Greatwood (entity 45020800) -> Curse-rotted Greatwood (c7116, ported DS3 character)
+282:  enemies: 2 left out that belong to another state of the map (off DS3's layer bit 0, e.g. the Untended Graves): Sirris of the Sunless Realms - Undead Settlement x1; Holy Knight Hodrick - Undead Settlement x1
+283:  enemies: 6 DS3 logic characters left out (talk dummy c1000, platoon leader c0100, target dummies): DS3 shows nothing there
+284:  enemies: people: 1 DS3 summons and invaders (White/Mad Phantom, Dark Spirit) left out: they only appear when summoned or invading
+285:  enemies: people: 2 later quest versions of a person left out (DS3 places every version and its scripts show one; the first, lowest talk script, stands): Eygon of Carim - Undead Settlement x1; Siegward of Catarina - Ledge - Undead Settlement x1
+286:  enemies: people: Caged Hollow -> Caged Hollow - Undead Settlement (talks, t310380) x1; Cornyx of the Great Swamp - Undead Settlement -> Scribe Corhyn (talks, t310240) x1; Eygon of Carim - Undead Settlement -> Nepheli Loux, Warrior (talks, t310270) x1; Holy Knight Hodrick - Undead Settlement -> Nepheli Loux, Warrior (talks, t310410) x1; Irina of Carim - Undead Settlement -> Witch-Hunter Jerren (talks, t310260) x1; Siegward of Catarina - Lift - Undead Settlement -> Finger Maiden Hyetta (talks, t310310) x1; Sirris of the Sunless Realms - Enemy - Undead Settlement -> Maureen, Second Sister (hostile) x1; Tower Giant - Undead Settlement -> Tower Giant - Undead Settlement (talks, t310610) x1; Yoel of Londor -> Yoel of Londor (talks, t310150) x1
+287:  enemies: people: 6 DS3 people wear their DS3 armour (CharaInit 3000000+, on an Elden Ring person's face and AI)
+288:  enemies: people: 8 DS3 people have their DS3 talk script (TalkID 900000000+)
+392:  enemies: 287 placed (279 ported DS3 characters, 0 Elden Ring stand-ins, 8 people, DS3's own people and DS3 humans in their DS3 armour), 12 people left out, 9 with nothing to stand in; 6 DS3 boss entities
+393:  enemies: boss 21300: [Multi-NPC] Warrior fell in mid-★: Bridge White Spirit 2 -- 21300：【マルチNPC】志半ばで倒れた戦士：橋★白霊2 (entity 19700860) -> Inquisitor Ghiza (c0000, m16_00_00_00)
+394:  enemies: boss Father Ariandel - Heat Up (entity 19700802) -> Father Ariandel - Heat Up (c7133, ported DS3 character)
+395:  enemies: boss Father Ariandel (entity 19700803) -> Father Ariandel - Heat Up (c7133, ported DS3 character)
+396:  enemies: boss Sister Friede - Second/Final Stage (entity 19700800) -> Sister Friede - Second/Final Stage (c7134, ported DS3 character)
+397:  enemies: boss Sister Friede - First Stage (entity 19700801) -> Sister Friede - Second/Final Stage (c7134, ported DS3 character)
+398:  enemies: boss Gravetender's Greatwolf - Heatup (entity 19700861) -> Gravetender's Greatwolf (c7135, ported DS3 character)
+399:  enemies: 9 DS3 logic characters left out (talk dummy c1000, platoon leader c0100, target dummies): DS3 shows nothing there
+400:  enemies: people: 2 DS3 summons and invaders (White/Mad Phantom, Dark Spirit) left out: they only appear when summoned or invading
+401:  enemies: people: 1 later quest versions of a person left out (DS3 places every version and its scripts show one; the first, lowest talk script, stands): Sir Vilhelm - Enemy - Ariandel x1
+402:  enemies: people: 21300: [Multi-NPC] Warrior fell in mid-★: Bridge White Spirit 2 -- 21300：【マルチNPC】志半ばで倒れた戦士：橋★白霊2 -> Inquisitor Ghiza (hostile) x1; Corvian Villager - Ariandel -> Corvian Villager - Ariandel (talks, t450540) x1; Corvian Villager - Ariandel -> Corvian Villager - Ariandel (talks, t450541) x1; Dying Corvian - Ariandel -> Corvian - Storyteller Staff - Road of Sacrifices (talks, t450590) x1; Painting Woman - Loft - Ariandel -> Painting Woman - Loft - Ariandel (talks, t450531) x1; Painting Woman - Table - Ariandel -> Painting Woman - Table - Ariandel (talks, t450530) x1; Sir Vilhelm - Ariandel -> Recusant Bernahl (talks, t450520) x1; Slave Knight Gael - Illusion - Ariandel ->  (hostile) x1
+403:  enemies: people: 3 DS3 people wear their DS3 armour (CharaInit 3000000+, on an Elden Ring person's face and AI)
+404:  enemies: people: 6 DS3 people have their DS3 talk script (TalkID 900000000+)
+493:  enemies: 78 placed (78 ported DS3 characters, 0 Elden Ring stand-ins, 0 people, DS3's own people and DS3 humans in their DS3 armour), 6 people left out, 0 with nothing to stand in; 1 DS3 boss entities
+494:  enemies: boss Dragonslayer Armour (entity 45030800) -> Dragonslayer Armour (c7098, ported DS3 character)
+495:  enemies: people: 2 DS3 summons and invaders (White/Mad Phantom, Dark Spirit) left out: they only appear when summoned or invading
+496:  enemies: AI: 40 placements run a DS3 think row ported with another character (DS3 places them with that family's AI)
+638:  enemies: 253 placed (246 ported DS3 characters, 0 Elden Ring stand-ins, 7 people, DS3's own people and DS3 humans in their DS3 armour), 21 people left out, 7 with nothing to stand in; 7 DS3 boss entities
+639:  enemies: boss Crystal Sage (entity 45040850) -> Crystal Sage (c7032, ported DS3 character)
+640:  enemies: boss Crystal Sage - Road of Sacrifices (entity 45040851) -> Crystal Sage (c7032, ported DS3 character)
+641:  enemies: boss Crystal Sage - Road of Sacrifices (entity 45040852) -> Crystal Sage (c7032, ported DS3 character)
+642:  enemies: boss Crystal Sage - Road of Sacrifices (entity 45040853) -> Crystal Sage (c7032, ported DS3 character)
+643:  enemies: boss Abyss Watcher - Main (entity 45040801) -> Abyss Watcher - Main (c7086, ported DS3 character)
+644:  enemies: boss Abyss Watcher - Add (entity 45040802) -> Abyss Watcher - Main (c7086, ported DS3 character)
+645:  enemies: boss Abyss Watcher - Red-eye - Add (entity 45040803) -> Abyss Watcher - Main (c7086, ported DS3 character)
+646:  enemies: 7 DS3 logic characters left out (talk dummy c1000, platoon leader c0100, target dummies): DS3 shows nothing there
+647:  enemies: people: 10 DS3 summons and invaders (White/Mad Phantom, Dark Spirit) left out: they only appear when summoned or invading
+648:  enemies: people: 1 later quest versions of a person left out (DS3 places every version and its scripts show one; the first, lowest talk script, stands): Anri of Astora - Road of Sacrifices x1
+649:  enemies: people: Anri of Astora - Road of Sacrifices -> Sorceress Sellen (talks, t330290) x1; Butcher - Enemy - Road of Sacrifices -> Amy, Third Sister (hostile) x1; Exile Watchdog - Exile Greatsword - Enemy - Farron Keep -> Sir Gideon Ofnir, the All-Knowing (hostile) x1; Exile Watchdog - Great Club - Enemy - Farron Keep -> Sir Gideon Ofnir, the All-Knowing (hostile) x1; Hawkwood the Deserter - Farron Keep -> Witch-Hunter Jerren (talks, t330170) x1; Horace the Hushed - Road of Sacrifices -> Tanith, Volcano Manor Proprietress (talks, t330360) x1; Orbeck of Vinheim - Road of Sacrifices -> Rya the Scout (talks, t330230) x1
+650:  enemies: people: 7 DS3 people wear their DS3 armour (CharaInit 3000000+, on an Elden Ring person's face and AI)
+651:  enemies: people: 4 DS3 people have their DS3 talk script (TalkID 900000000+)
+652:  enemies: AI: 18 placements run a DS3 think row ported with another character (DS3 places them with that family's AI)
+766:  enemies: 266 placed (258 ported DS3 characters, 0 Elden Ring stand-ins, 8 people, DS3's own people and DS3 humans in their DS3 armour), 12 people left out, 11 with nothing to stand in; 1 DS3 boss entities
+767:  enemies: boss Deacons of the Deep (entity 45050800) -> Deacons of the Deep (c7119, ported DS3 character)
+768:  enemies: 11 DS3 logic characters left out (talk dummy c1000, platoon leader c0100, target dummies): DS3 shows nothing there
+769:  enemies: people: 5 DS3 summons and invaders (White/Mad Phantom, Dark Spirit) left out: they only appear when summoned or invading
+770:  enemies: people: 2 later quest versions of a person left out (DS3 places every version and its scripts show one; the first, lowest talk script, stands): Unbreakable Patches - Cathedral of the Deep x2
+771:  enemies: people: Anri of Astora - Enemy - Cathedral of the Deep -> Mimic Tear (hostile) x2; Ringfinger Leonhard - Cathedral of the Deep -> Rya the Scout (talks, t350190) x1; Rosaria, Mother of Rebirth -> Rosaria, Mother of Rebirth (talks, t350020) x1; Slave Knight Gael - Cathedral of the Deep -> Dung Eater (talks, t350510) x1; Unbreakable Patches - Cathedral of the Deep -> Millicent (talks, t350300) x1; Unkindled Brigand - Enemy - Cathedral of the Deep -> Sir Gideon Ofnir, the All-Knowing (hostile) x1; Unkindled Thief - Enemy - Cathedral of the Deep -> Vargram the Raging Wolf (hostile) x1
+772:  enemies: people: 7 DS3 people wear their DS3 armour (CharaInit 3000000+, on an Elden Ring person's face and AI)
+773:  enemies: people: 4 DS3 people have their DS3 talk script (TalkID 900000000+)
+774:  enemies: AI: 18 placements run a DS3 think row ported with another character (DS3 places them with that family's AI)
+883:  enemies: 215 placed (194 ported DS3 characters, 18 Elden Ring stand-ins, 3 people, DS3's own people and DS3 humans in their DS3 armour), 17 people left out, 15 with nothing to stand in; 2 DS3 boss entities
+884:  enemies: boss Old Demon King (entity 38100830) -> Old Demon King (c7087, ported DS3 character)
+885:  enemies: boss High Lord Wolnir (entity 38100800) -> High Lord Wolnir (c7115, ported DS3 character)
+886:  enemies: stand-ins: Demon Cleric - Orb -> Juvenile Scholar x18
+887:  enemies: 15 DS3 logic characters left out (talk dummy c1000, platoon leader c0100, target dummies): DS3 shows nothing there
+888:  enemies: people: 3 DS3 summons and invaders (White/Mad Phantom, Dark Spirit) left out: they only appear when summoned or invading
+889:  enemies: people: 7 later quest versions of a person left out (DS3 places every version and its scripts show one; the first, lowest talk script, stands): Anri of Astora - Catacombs of Carthus x5; Anri of Astora - Enemy - Catacombs of Carthus x2
+890:  enemies: people: Anri of Astora - Catacombs of Carthus -> Finger Maiden Hyetta (talks, t380290) x1; Horace the Hushed - Enemy - Smouldering Lake -> Vargram the Raging Wolf (hostile) x1; Knight Slayer Tsorig - Enemy - Smouldering Lake -> Esgar, Priest of Blood (Boss) (hostile) x1
+891:  enemies: people: 3 DS3 people wear their DS3 armour (CharaInit 3000000+, on an Elden Ring person's face and AI)
+892:  enemies: people: 1 DS3 people have their DS3 talk script (TalkID 900000000+)
+893:  enemies: AI: 17 placements run a DS3 think row ported with another character (DS3 places them with that family's AI)
+988:  enemies: 173 placed (165 ported DS3 characters, 0 Elden Ring stand-ins, 8 people, DS3's own people and DS3 humans in their DS3 armour), 19 people left out, 7 with nothing to stand in; 3 DS3 boss entities
+989:  enemies: boss Pontiff Sulyvahn (entity 38110850) -> Pontiff Sulyvahn (c7113, ported DS3 character)
+990:  enemies: boss Pontiff Sulyvahn - Spirit Clone (entity 38110851) -> Pontiff Sulyvahn (c7113, ported DS3 character)
+991:  enemies: boss Aldrich, Devourer of Gods (entity 38110800) -> Aldrich, Devourer of Gods (c7114, ported DS3 character)
+992:  enemies: 5 left out that belong to another state of the map (off DS3's layer bit 0, e.g. the Untended Graves): Anri of Astora - Irithyll x2; Ringfinger Leonhard - Irithyll x1; Sirris of the Sunless Realms - Irithyll x1; Creighton the Wanderer - Red Phantom - Irithyll x1
+993:  enemies: 7 DS3 logic characters left out (talk dummy c1000, platoon leader c0100, target dummies): DS3 shows nothing there
+994:  enemies: people: 6 DS3 summons and invaders (White/Mad Phantom, Dark Spirit) left out: they only appear when summoned or invading
+995:  enemies: people: 3 later quest versions of a person left out (DS3 places every version and its scripts show one; the first, lowest talk script, stands): Anri of Astora - Irithyll x3
+996:  enemies: people: Anri of Astora - Irithyll -> Millicent (talks, t370290) x1; Company Captain Yorshka -> Company Captain Yorshka (talks, t370160) x1; Drang Knight - Hammers - Enemy - Irithyll -> Polyanna, Youngest Sister (hostile) x1; Drang Knight - Spears - Enemy - Irithyll -> Mary, Eldest Sister (hostile) x1; Greirat of the Undead Settlement - Irithyll -> Polyanna, Youngest Sister (hostile) x1; Londor Pilgrim -> Yoel of Londor (talks, t370400) x1; Londor Pilgrim -> Yoel of Londor (talks, t370401) x1; Siegward of Catarina - Irithyll -> Recusant Bernahl (talks, t370310) x1
+997:  enemies: people: 5 DS3 people wear their DS3 armour (CharaInit 3000000+, on an Elden Ring person's face and AI)
+998:  enemies: people: 5 DS3 people have their DS3 talk script (TalkID 900000000+)
+999:  enemies: AI: 15 placements run a DS3 think row ported with another character (DS3 places them with that family's AI)
+1109:  enemies: 139 placed (136 ported DS3 characters, 0 Elden Ring stand-ins, 3 people, DS3's own people and DS3 humans in their DS3 armour), 5 people left out, 1 with nothing to stand in; 1 DS3 boss entities
+1110:  enemies: boss Yhorm the Giant (entity 38120800) -> Yhorm the Giant (c7129, ported DS3 character)
+1111:  enemies: 1 DS3 logic characters left out (talk dummy c1000, platoon leader c0100, target dummies): DS3 shows nothing there
+1112:  enemies: people: 1 DS3 summons and invaders (White/Mad Phantom, Dark Spirit) left out: they only appear when summoned or invading
+1113:  enemies: people: 1 later quest versions of a person left out (DS3 places every version and its scripts show one; the first, lowest talk script, stands): Siegward of Catarina - Profaned Capital x1
+1114:  enemies: people: Court Sorcerer - Enemy - Profaned Capital -> Mary, Eldest Sister (hostile) x1; Karla - Irithyll Dungeon -> Tanith, Volcano Manor Proprietress (talks, t390250) x1; Siegward of Catarina - Profaned Capital -> Nepheli Loux, Warrior (talks, t390310) x1
+1115:  enemies: people: 3 DS3 people wear their DS3 armour (CharaInit 3000000+, on an Elden Ring person's face and AI)
+1116:  enemies: people: 2 DS3 people have their DS3 talk script (TalkID 900000000+)
+1117:  enemies: AI: 16 placements run a DS3 think row ported with another character (DS3 places them with that family's AI)
+1206:  enemies: 80 placed (73 ported DS3 characters, 1 Elden Ring stand-ins, 6 people, DS3's own people and DS3 humans in their DS3 armour), 4 people left out, 2 with nothing to stand in; 3 DS3 boss entities
+1207:  enemies: boss Lorian, Elder Prince - Heatup (entity 38130830) -> Lorian, Elder Prince - Heatup (c7127, ported DS3 character)
+1208:  enemies: boss Lorian, Elder Prince (entity 38130832) -> Lorian, Elder Prince - Heatup (c7127, ported DS3 character)
+1209:  enemies: boss Lothric, Younger Prince (entity 38130831) -> Soldier of Godrick (Boss) (c4311, m18_00_00_00)
+1210:  enemies: stand-ins: Lothric, Younger Prince -> Soldier of Godrick (Boss) x1
+1211:  enemies: 2 DS3 logic characters left out (talk dummy c1000, platoon leader c0100, target dummies): DS3 shows nothing there
+1212:  enemies: people: 2 DS3 summons and invaders (White/Mad Phantom, Dark Spirit) left out: they only appear when summoned or invading
+1213:  enemies: people: Black Hand Kamui - Enemy - Grand Archives -> Esgar, Priest of Blood (Boss) (hostile) x1; Daughter of Crystal Kriemhild - Enemy - Grand Archives -> Mary, Eldest Sister (hostile) x1; Do not erase -> Finger Maiden (hostile) x1; Greirat of the Undead Settlement - Grand Archives -> Sir Gideon Ofnir, the All-Knowing (hostile) x1; Lion Knight Albert - Enemy - Grand Archives -> Inquisitor Ghiza (hostile) x1; Orbeck of Vinheim - Grand Archives -> Amy, Third Sister (hostile) x1
+1214:  enemies: people: 6 DS3 people wear their DS3 armour (CharaInit 3000000+, on an Elden Ring person's face and AI)
+1215:  enemies: AI: 20 placements run a DS3 think row ported with another character (DS3 places them with that family's AI)
+1318:  enemies: 59 placed (59 ported DS3 characters, 0 Elden Ring stand-ins, 0 people, DS3's own people and DS3 humans in their DS3 armour), 5 people left out, 5 with nothing to stand in; 3 DS3 boss entities
+1319:  enemies: boss Ancient Wyvern (entity 38140800) -> Ancient Wyvern - High Wall of Lothric (c7097, ported DS3 character)
+1320:  enemies: boss Nameless King (entity 38140851) -> Nameless King (c7107, ported DS3 character)
+1321:  enemies: boss King of the Storm (entity 38140850) -> King of the Storm (c7111, ported DS3 character)
+1322:  enemies: 5 DS3 logic characters left out (talk dummy c1000, platoon leader c0100, target dummies): DS3 shows nothing there
+1323:  enemies: people: 1 DS3 summons and invaders (White/Mad Phantom, Dark Spirit) left out: they only appear when summoned or invading
+1324:  enemies: AI: 1 placements run a DS3 think row ported with another character (DS3 places them with that family's AI)
+1425:  enemies: 3 placed (2 ported DS3 characters, 0 Elden Ring stand-ins, 1 people, DS3's own people and DS3 humans in their DS3 armour), 6 people left out, 0 with nothing to stand in; 1 DS3 boss entities
+1426:  enemies: boss Soul of Cinder (entity 38150800) -> Soul of Cinder (c7131, ported DS3 character)
+1427:  enemies: people: 2 DS3 summons and invaders (White/Mad Phantom, Dark Spirit) left out: they only appear when summoned or invading
+1428:  enemies: people: Fire Keeper - Firelink Shrine -> Fire Keeper - Firelink Shrine (talks, t410120) x1
+1429:  enemies: people: 1 DS3 people have their DS3 talk script (TalkID 900000000+)
+1592:  sky fades: 8 see-through sky meshes (nolight-blend 8); 8 drawn with DS3's fade baked into a texture of their own, 0 wholly faded out in DS3 and left out (m41_00_m40_00_kumo_10_a, m41_00_m40_00_kumo_11_a, m41_00_m40_00_mountain_04_382_a, m41_00_m40_00_sky_01_a, m41_00_m40_00_sky_05_392_a)
+1652:  enemies: 176 placed (166 ported DS3 characters, 0 Elden Ring stand-ins, 10 people, DS3's own people and DS3 humans in their DS3 armour), 8 people left out, 8 with nothing to stand in; 3 DS3 boss entities
+1653:  enemies: boss Demon in Pain (entity 11700801) -> Demon Prince - HP Dummy (c7108, ported DS3 character)
+1654:  enemies: boss Demon from Below (entity 11700802) -> Demon Prince - HP Dummy (c7108, ported DS3 character)
+1655:  enemies: 8 DS3 logic characters left out (talk dummy c1000, platoon leader c0100, target dummies): DS3 shows nothing there
+1656:  enemies: people: 2 DS3 summons and invaders (White/Mad Phantom, Dark Spirit) left out: they only appear when summoned or invading
+1657:  enemies: people: 2 later quest versions of a person left out (DS3 places every version and its scripts show one; the first, lowest talk script, stands): Amnesiac Lapp - Dreg Heap x2
+1658:  enemies: people: Amnesiac Lapp - Dreg Heap -> Tanith, Volcano Manor Proprietress (talks, t500730) x1; Desert Pyromancer Zoey - Enemy - Dreg Heap ->  (hostile) x1; Slave Knight Gael - Illusion ->  (hostile) x7; Stone-humped Hag -> Yoel of Londor (talks, t500760) x1
+1659:  enemies: people: 9 DS3 people wear their DS3 armour (CharaInit 3000000+, on an Elden Ring person's face and AI)
+1660:  enemies: people: 2 DS3 people have their DS3 talk script (TalkID 900000000+)
+1661:  enemies: AI: 13 placements run a DS3 think row ported with another character (DS3 places them with that family's AI)
+2390:  sky fades: 15 see-through sky meshes (nolight-blend 7, nolight-opacity 8); 15 drawn with DS3's fade baked into a texture of their own, 0 wholly faded out in DS3 and left out (m50_00_Test_sun_000_a, m50_00_enkei_kumo_01_a, m50_00_kumo_30_a, m50_00_m40_00_sky_05_392_a, m50_00_magicsighn_00_a, m50_00_sky_91_a)
+2462:  enemies: 166 placed (155 ported DS3 characters, 0 Elden Ring stand-ins, 11 people, DS3's own people and DS3 humans in their DS3 armour), 15 people left out, 8 with nothing to stand in; 3 DS3 boss entities
+2463:  enemies: boss Halflight - Enemy - The Ringed City (entity 11720800) -> Errant Sorcerer Wilhelm (c0000, m11_00_00_00)
+2464:  enemies: boss Darkeater Midir (entity 11720850) -> Darkeater Midir (c7150, ported DS3 character)
+2465:  enemies: 8 DS3 logic characters left out (talk dummy c1000, platoon leader c0100, target dummies): DS3 shows nothing there
+2466:  enemies: people: 5 DS3 summons and invaders (White/Mad Phantom, Dark Spirit) left out: they only appear when summoned or invading
+2467:  enemies: people: 2 later quest versions of a person left out (DS3 places every version and its scripts show one; the first, lowest talk script, stands): Amnesiac Lapp - Room on Ramparts - The Ringed City x1; Amnesiac Lapp - Shared Grave - The Ringed City x1
+2468:  enemies: people: Amnesiac Lapp - Ringed Inner Wall - The Ringed City -> Millicent (talks, t510730) x1; Big Locust -> Big Locust (talks, t510750) x1; Big Locust -> Big Locust (talks, t510751) x1; Big Locust -> Big Locust (talks, t510752) x1; Halflight - Enemy - The Ringed City -> Errant Sorcerer Wilhelm (hostile) x1; Judicator - Ringed City -> Judicator - Ringed City (talks, t510780) x1; Mad Pilgrim - No Crown - Ringed City -> Mad Pilgrim - No Crown - Ringed City (talks, t510770) x1; Painting Guardian - Enemy - The Ringed City -> Sir Gideon Ofnir, the All-Knowing (hostile) x3; Shira, Knight of Filianore - The Ringed City -> Sorceress Sellen (talks, t510740) x1
+2469:  enemies: people: 6 DS3 people wear their DS3 armour (CharaInit 3000000+, on an Elden Ring person's face and AI)
+2470:  enemies: people: 7 DS3 people have their DS3 talk script (TalkID 900000000+)
+2471:  enemies: AI: 8 placements run a DS3 think row ported with another character (DS3 places them with that family's AI)
+2598:  m40_00_00_00 -> m45_00_00_00: 4051 pieces, 45 collisions, 3 doorways written; 3 DS3 doorway lists into it; 16,136 floor cells; 3 own pieces over a neighbour hidden on its doorways (m900220_9001, m900282_9000, m900290_9000)
+2618:  texture memory m40_00_00_00: 2629 textures, 2126 MB full detail + 532 MB low detail (28 are 4096 pixels or wider; 1 in a format the porter can't size, kept whole in both copies)
+2622:  texture memory m40_00_00_00: 2306 textures, 1911 MB full detail + 478 MB low detail (28 are 4096 pixels or wider)
+2632:  texture memory m40_00_00_00: 2306 textures, 1908 MB full detail + 477 MB low detail (28 are 4096 pixels or wider)
+2637:  texture memory m40_00_00_00: 2306 textures, 1911 MB full detail + 478 MB low detail (28 are 4096 pixels or wider)
+2652:map effects: m40_00_00_00 -> m45_00_00_00: 24 SFX regions added
+2668:object effects: m40_00_00_00 -> m45_00_00_00: 201 object parts carry DS3's own effects (3 asset effect rows); 1 name a DS3 row that isn't there
+2684:flame lights: m40_00_00_00 -> m45_00_00_00: 0 lamps for 0 flames; object effects: 800022 x10 carries its own light, 800050 x1 carries its own light, 839010 x190 carries its own light
+2700:enemies: 590 NpcParam rows (0 plain template copies; 585 with DS3's own values in 40365 shared fields and 8805 template-only fields cleared), 523 NpcThinkParam rows (DS3 AI), 4489 behaviour rows (6880 more from the templates, 19 casting ported DS3 effects, 937 firing ported DS3 bullets), 3728 attack rows; effects: 1491 DS3 effects in 154 character effect binders (108 new), 648 NpcParam effects, 1146 DS3 effects ported (43 status, 1103 other, 0 visual only), 28 skipped; status templates: freezeAttackPower 107500, poizonAttackPower 106000, bloodAttackPower 6401, diseaseAttackPower 6603, sleepAttackPower 6454, madnessAttackPower 6753, 1293 DS3 bullets ported, 1008 of their effects shown, 137 left empty (effect not converted), 239 follow-up conditions DS3-only (254/255) made Elden Ring's 0; sounds: 5691 DS3 sounds in 153 character banks (2224 MB), 11382 events of 153 banks listed in the game's sound index, 8226 loose media files, 1 encrypted DS3 banks read (Work\reports\enemy-effects.tsv)
+2704:people armour: 580 armour binders written for 152 DS3 armour pieces (148 converted, 4 DS3 models failed)
+2705:  people weapons: 47 weapons Elden Ring has by name are held as look-only copies with DS3's model
+2706:people armour: 148 EquipParamProtector rows, 59 CharaInitParam rows (DS3 people in their armour); weapons: 108 DS3 weapons held, 128 slots emptied as in DS3, 0 DS3 weapons not ported (stand-in's kept)
+2707:  people armour: armour hd_2250 (Sunless Veil): not converted (InvalidDataException: the template or the DS3 model has nothing to draw); people wearing it go without that piece
+2708:  people armour: armour am_2250 (Sunless Gauntlets): not converted (InvalidDataException: the template or the DS3 model has nothing to draw); people wearing it go without that piece
+2709:  people armour: armour hd_7950 (Maiden Hood): not converted (InvalidDataException: the DS3 binder has no model); people wearing it go without that piece
+2710:  people armour: armour am_7950 (Maiden Gloves): not converted (InvalidDataException: the DS3 binder has no model); people wearing it go without that piece
+2711:  people armour: armour Slave Knight Hood (55500000): hides the body as Elden Ring's Elden Lord Crown (460000) does, 7 of 96 flags off DS3's
+2712:  people armour: armour Slave Knight Armor (55501000): hides the body as Elden Ring's Blue Silver Mail Armor (Altered) (241100) does, 21 of 96 flags off DS3's
+2713:  people armour: armour Slave Knight Gauntlets (55502000): hides the body as Elden Ring's Godskin Apostle Bracelets (520200) does, 3 of 96 flags off DS3's
+2714:  people armour: armour Slave Knight Leggings (55503000): hides the body as Elden Ring's Brave's Legwraps (700300) does, 5 of 96 flags off DS3's
+2715:  people armour: armour Dingy Hood (400000): hides the body as Elden Ring's Winged Serpent Helm (5183000) does, 9 of 96 flags off DS3's
+2716:  people armour: armour Dingy Robe (401000): hides the body as Elden Ring's Lusat's Robe (580100) does, 21 of 96 flags off DS3's
+2717:  people armour: armour Dingy Gloves (402000): hides the body as Elden Ring's  (5040200) does, 3 of 96 flags off DS3's
+2718:  people armour: armour Blood-Stained Skirt (403000): hides the body as Elden Ring's Leather Trousers (40300) does, 5 of 96 flags off DS3's
+2719:  people armour: armour Vilhelm's Helm (20000000): hides the body as Elden Ring's Winged Serpent Helm (5183000) does, 9 of 96 flags off DS3's
+2720:  people armour: armour Vilhelm's Armor (20001000): hides the body as Elden Ring's Lusat's Robe (580100) does, 20 of 96 flags off DS3's
+2721:  people armour: armour Vilhelm's Gauntlets (20002000): hides the body as Elden Ring's  (5040200) does, 3 of 96 flags off DS3's
+2722:  people armour: armour Vilhelm's Leggings (20003000): hides the body as Elden Ring's Leather Trousers (40300) does, 5 of 96 flags off DS3's
+2723:  people armour: armour Old Sage's Blindfold (26500000): hides the body as Elden Ring's Fire Monk Hood (350000) does, 6 of 96 flags off DS3's
+2724:  people armour: armour Cornyx's Garb (26501000): hides the body as Elden Ring's Nox Swordstress Armor (292100) does, 21 of 96 flags off DS3's
+2725:  people armour: armour Cornyx's Wrap (26502000): hides the body as Elden Ring's Godskin Apostle Bracelets (520200) does, 3 of 96 flags off DS3's
+2726:  people armour: armour Cornyx's Skirt (26503000): hides the body as Elden Ring's  (5102300) does, 4 of 96 flags off DS3's
+2727:  people armour: armour Dark Mask (54500000): hides the body as Elden Ring's Hierodas Glintstone Crown (990000) does, 9 of 96 flags off DS3's
+2728:  people armour: armour Chain Armor (70001000): hides the body as Elden Ring's Fire Monk Armor (350100) does, 22 of 96 flags off DS3's
+2729:  people armour: armour Leather Gloves (76002000): hides the body as Elden Ring's Godskin Apostle Bracelets (520200) does, 4 of 96 flags off DS3's
+2730:  people armour: armour Loincloth (76503000): hides the body as Elden Ring's  (5102300) does, 4 of 96 flags off DS3's
+2731:  people armour: armour Lapp's Helm (32000000): hides the body as Elden Ring's Elden Lord Crown (460000) does, 10 of 96 flags off DS3's
+2732:  people armour: armour Lapp's Armor (32001000): hides the body as Elden Ring's Tree Sentinel Armor (270100) does, 22 of 96 flags off DS3's
+2733:  people armour: armour Lapp's Gauntlets (32002000): hides the body as Elden Ring's Godskin Apostle Bracelets (520200) does, 3 of 96 flags off DS3's
+2734:  people armour: armour Lapp's Leggings (32003000): hides the body as Elden Ring's Malenia's Greaves (770300) does, 4 of 96 flags off DS3's
+2735:  people armour: armour Black Leather Armor (78001000): hides the body as Elden Ring's Consort's Robe (960100) does, 22 of 96 flags off DS3's
+2736:  people armour: armour Black Leather Gloves (78002000): hides the body as Elden Ring's Godskin Apostle Bracelets (520200) does, 4 of 96 flags off DS3's
+2737:  people armour: armour Black Leather Boots (78003000): hides the body as Elden Ring's Leather Trousers (40300) does, 5 of 96 flags off DS3's
+2738:  people armour: armour Shira's Crown (29500000): hides the body as Elden Ring's Great Horned Headband (300000) does, 9 of 96 flags off DS3's
+2739:  people armour: armour Shira's Armor (29501000): hides the body as Elden Ring's Lusat's Robe (580100) does, 21 of 96 flags off DS3's
+2740:  people armour: armour Shira's Gloves (29502000): hides the body as Elden Ring's  (1960200) does, 4 of 96 flags off DS3's
+2741:  people armour: armour Shira's Trousers (29503000): hides the body as Elden Ring's Leather Trousers (40300) does, 5 of 96 flags off DS3's
+2742:  people armour: armour Painting Guardian Hood (91000000): hides the body as Elden Ring's Hierodas Glintstone Crown (990000) does, 9 of 96 flags off DS3's
+2743:  people armour: armour Painting Guardian Gown (91001000): hides the body as Elden Ring's Fire Monk Armor (350100) does, 21 of 96 flags off DS3's
+2744:  people armour: armour Painting Guardian Gloves (91002000): hides the body as Elden Ring's  (5040200) does, 3 of 96 flags off DS3's
+2745:  people armour: armour Painting Guardian Waistcloth (91003000): hides the body as Elden Ring's Leather Trousers (40300) does, 5 of 96 flags off DS3's
+2746:  people armour: armour Antiquated Plain Garb (28501000): hides the body as Elden Ring's Prisoner Clothing (890100) does, 24 of 96 flags off DS3's
+2747:  people armour: armour Violet Wrappings (28502000): hides the body as Elden Ring's  (5040200) does, 3 of 96 flags off DS3's
+2748:  people armour: armour Desert Pyromancer Hood (81500000): hides the body as Elden Ring's Champion Headband (730000) does, 7 of 96 flags off DS3's
+2749:  people armour: armour Desert Pyromancer Garb (81501000): hides the body as Elden Ring's Cleanrot Armor (340100) does, 23 of 96 flags off DS3's
+2750:  people armour: armour Desert Pyromancer Gloves (81502000): hides the body as Elden Ring's Godskin Apostle Bracelets (520200) does, 4 of 96 flags off DS3's
+2751:  people armour: armour Desert Pyromancer Skirt (81503000): hides the body as Elden Ring's Brave's Legwraps (700300) does, 5 of 96 flags off DS3's
+2752:  people armour: armour Silver Knight Helm (85000000): hides the body as Elden Ring's Hierodas Glintstone Crown (990000) does, 9 of 96 flags off DS3's
+2753:  people armour: armour Silver Knight Armor (85001000): hides the body as Elden Ring's Lusat's Robe (580100) does, 21 of 96 flags off DS3's
+2754:  people armour: armour Silver Knight Gauntlets (85002000): hides the body as Elden Ring's Godskin Apostle Bracelets (520200) does, 4 of 96 flags off DS3's
+2755:  people armour: armour Silver Knight Leggings (85003000): hides the body as Elden Ring's Leather Trousers (40300) does, 5 of 96 flags off DS3's
+2756:  people armour: armour Alva Helm (80000000): hides the body as Elden Ring's Hierodas Glintstone Crown (990000) does, 9 of 96 flags off DS3's
+2757:  people armour: armour Alva Armor (80001000): hides the body as Elden Ring's Fire Monk Armor (350100) does, 22 of 96 flags off DS3's
+2758:  people armour: armour Alva Gauntlets (80002000): hides the body as Elden Ring's Godskin Apostle Bracelets (520200) does, 3 of 96 flags off DS3's
+2759:  people armour: armour Alva Leggings (80003000): hides the body as Elden Ring's Leather Trousers (40300) does, 5 of 96 flags off DS3's
+2760:  people armour: armour Morne's Helm (24500000): hides the body as Elden Ring's Hierodas Glintstone Crown (990000) does, 9 of 96 flags off DS3's
+2761:  people armour: armour Morne's Armor (24501000): hides the body as Elden Ring's Fire Monk Armor (350100) does, 22 of 96 flags off DS3's
+2762:  people armour: armour Morne's Gauntlets (24502000): hides the body as Elden Ring's Godskin Apostle Bracelets (520200) does, 3 of 96 flags off DS3's
+2763:  people armour: armour Morne's Leggings (24503000): hides the body as Elden Ring's Leather Trousers (40300) does, 5 of 96 flags off DS3's
+2764:  people armour: armour Worker Hat (47000000): hides the body as Elden Ring's Fire Monk Hood (350000) does, 6 of 96 flags off DS3's
+2765:  people armour: armour Master's Attire (76501000): hides the body as Elden Ring's Commoner's Garb (Altered) (811100) does, 25 of 96 flags off DS3's
+2766:  people armour: armour Master's Gloves (76502000): hides the body as Elden Ring's  (5040200) does, 2 of 96 flags off DS3's
+2767:  people armour: armour Thrall Hood (47500000): hides the body as Elden Ring's Elden Lord Crown (460000) does, 10 of 96 flags off DS3's
+2768:  people armour: armour Deserter Armor (40001000): hides the body as Elden Ring's Marionette Soldier Armor (840100) does, 22 of 96 flags off DS3's
+2769:  people armour: armour Deserter Trousers (40003000): hides the body as Elden Ring's Old Aristocrat Shoes (390300) does, 5 of 96 flags off DS3's
+2770:  people armour: armour Billed Mask (27500000): hides the body as Elden Ring's Festive Hood (800000) does, 9 of 96 flags off DS3's
+2771:  people armour: armour Black Dress (27501000): hides the body as Elden Ring's Marais Robe (963100) does, 22 of 96 flags off DS3's
+2772:  people armour: armour Black Gauntlets (27502000): hides the body as Elden Ring's Godskin Apostle Bracelets (520200) does, 3 of 96 flags off DS3's
+2773:  people armour: armour Black Leggings (27503000): hides the body as Elden Ring's Leather Trousers (40300) does, 5 of 96 flags off DS3's
+2774:  people armour: armour Chain Helm (70000000): hides the body as Elden Ring's Sanguine Noble Hood (320000) does, 7 of 96 flags off DS3's
+2775:  people armour: armour Undead Legion Armor (58001000): hides the body as Elden Ring's Lusat's Robe (580100) does, 23 of 96 flags off DS3's
+2776:  people armour: armour Undead Legion Gauntlet (58002000): hides the body as Elden Ring's Godskin Apostle Bracelets (520200) does, 4 of 96 flags off DS3's
+2777:  people armour: armour Undead Legion Leggings (58003000): hides the body as Elden Ring's Leather Trousers (40300) does, 5 of 96 flags off DS3's
+2778:  people armour: armour Sunless Armor (22501000): hides the body as Elden Ring's Marionette Soldier Armor (840100) does, 22 of 96 flags off DS3's
+2779:  people armour: armour Sunless Leggings (22503000): hides the body as Elden Ring's Leather Trousers (40300) does, 5 of 96 flags off DS3's
+2780:  people armour: armour Silver Mask (25000000): hides the body as Elden Ring's Hierodas Glintstone Crown (990000) does, 9 of 96 flags off DS3's
+2781:  people armour: armour Leonhard's Garb (25001000): hides the body as Elden Ring's Leather Armor (1400100) does, 20 of 96 flags off DS3's
+2782:  people armour: armour Leonhard's Gauntlets (25002000): hides the body as Elden Ring's Godskin Apostle Bracelets (520200) does, 3 of 96 flags off DS3's
+2783:  people armour: armour Leonhard's Trousers (25003000): hides the body as Elden Ring's Leather Trousers (40300) does, 5 of 96 flags off DS3's
+2784:  people armour: armour Clandestine Coat (30101000): hides the body as Elden Ring's Marionette Soldier Armor (840100) does, 21 of 96 flags off DS3's
+2785:  people armour: armour Old Sorcerer Gauntlets (77002000): hides the body as Elden Ring's Godskin Apostle Bracelets (520200) does, 4 of 96 flags off DS3's
+2786:  people armour: armour Old Sorcerer Boots (77003000): hides the body as Elden Ring's Leather Trousers (40300) does, 5 of 96 flags off DS3's
+2787:  people armour: armour Karla's Pointed Hat (99000000): hides the body as Elden Ring's Fire Monk Hood (350000) does, 8 of 96 flags off DS3's
+2788:  people armour: armour Karla's Coat (99001000): hides the body as Elden Ring's Marais Robe (963100) does, 22 of 96 flags off DS3's
+2789:  people armour: armour Karla's Gloves (99002000): hides the body as Elden Ring's Godskin Apostle Bracelets (520200) does, 3 of 96 flags off DS3's
+2790:  people armour: armour Karla's Trousers (99003000): hides the body as Elden Ring's Leather Trousers (40300) does, 5 of 96 flags off DS3's
+2791:  people armour: armour Maiden Robe (79501000): hides the body as Elden Ring's Fia's Robe (Altered) (1941100) does, 21 of 96 flags off DS3's
+2792:  people armour: armour Maiden Skirt (79503000): hides the body as Elden Ring's Leather Trousers (40300) does, 5 of 96 flags off DS3's
+2793:  people armour: armour Elite Knight Helm (72000000): hides the body as Elden Ring's Hierodas Glintstone Crown (990000) does, 7 of 96 flags off DS3's
+2794:  people armour: armour Elite Knight Armor (72001000): hides the body as Elden Ring's Fire Monk Armor (350100) does, 22 of 96 flags off DS3's
+2795:  people armour: armour Elite Knight Gauntlets (72002000): hides the body as Elden Ring's Godskin Apostle Bracelets (520200) does, 4 of 96 flags off DS3's
+2796:  people armour: armour Elite Knight Leggings (72003000): hides the body as Elden Ring's Leather Trousers (40300) does, 5 of 96 flags off DS3's
+2797:  people armour: armour Catarina Helm (74000000): hides the body as Elden Ring's Champion Headband (730000) does, 9 of 96 flags off DS3's
+2798:  people armour: armour Catarina Armor (74001000): hides the body as Elden Ring's Lusat's Robe (580100) does, 21 of 96 flags off DS3's
+2799:  people armour: armour Catarina Gauntlets (74002000): hides the body as Elden Ring's Godskin Apostle Bracelets (520200) does, 3 of 96 flags off DS3's
+2800:  people armour: armour Catarina Leggings (74003000): hides the body as Elden Ring's Leather Trousers (40300) does, 5 of 96 flags off DS3's
+2801:  people armour: armour Executioner Helm (27000000): hides the body as Elden Ring's Elden Lord Crown (460000) does, 8 of 96 flags off DS3's
+2802:  people armour: armour Executioner Armor (27001000): hides the body as Elden Ring's Ansbach's Attire (Altered) (5111100) does, 19 of 96 flags off DS3's
+2803:  people armour: armour Executioner Gauntlets (27002000): hides the body as Elden Ring's Godskin Apostle Bracelets (520200) does, 3 of 96 flags off DS3's
+2804:  people armour: armour Executioner Leggings (27003000): hides the body as Elden Ring's Leather Trousers (40300) does, 5 of 96 flags off DS3's
+2805:  people armour: armour Xanthous Crown (23500000): hides the body as Elden Ring's All-Knowing Helm (590000) does, 10 of 96 flags off DS3's
+2806:  people armour: armour Xanthous Overcoat (23501000): hides the body as Elden Ring's Lusat's Robe (580100) does, 21 of 96 flags off DS3's
+2807:  people armour: armour Xanthous Gloves (23502000): hides the body as Elden Ring's Kaiden Gauntlets (50200) does, 4 of 96 flags off DS3's
+2808:  people armour: armour Xanthous Trousers (23503000): hides the body as Elden Ring's Leather Trousers (40300) does, 5 of 96 flags off DS3's
+2809:  people armour: armour Black Hand Hat (23000000): hides the body as Elden Ring's Dancer's Hood (5080000) does, 7 of 96 flags off DS3's
+2810:  people armour: armour Black Hand Armor (23001000): hides the body as Elden Ring's Drake Knight Armor (60100) does, 21 of 96 flags off DS3's
+2811:  people armour: armour Assassin Gloves (23002000): hides the body as Elden Ring's Godskin Apostle Bracelets (520200) does, 3 of 96 flags off DS3's
+2812:  people armour: armour Assassin Trousers (23003000): hides the body as Elden Ring's Leather Trousers (40300) does, 5 of 96 flags off DS3's
+2813:  people armour: armour Sunset Helm (26000000): hides the body as Elden Ring's Elden Lord Crown (460000) does, 9 of 96 flags off DS3's
+2814:  people armour: armour Sunset Armor (26001000): hides the body as Elden Ring's Blue Silver Mail Armor (Altered) (241100) does, 21 of 96 flags off DS3's
+2815:  people armour: armour Sunset Gauntlets (26002000): hides the body as Elden Ring's Iron Rivet Gauntlets (5020200) does, 3 of 96 flags off DS3's
+2816:  people armour: armour Sunset Leggings (26003000): hides the body as Elden Ring's Leather Trousers (40300) does, 5 of 96 flags off DS3's
+2817:  people armour: armour Sneering Mask (25500000): hides the body as Elden Ring's Winged Serpent Helm (5183000) does, 9 of 96 flags off DS3's
+2818:  people armour: armour Pale Shade Robe (25501000): hides the body as Elden Ring's Fire Monk Armor (350100) does, 21 of 96 flags off DS3's
+2819:  people armour: armour Pale Shade Gloves (25502000): hides the body as Elden Ring's Godskin Apostle Bracelets (520200) does, 4 of 96 flags off DS3's
+2820:  people armour: armour Pale Shade Trousers (25503000): hides the body as Elden Ring's Leather Trousers (40300) does, 5 of 96 flags off DS3's
+2821:  people armour: armour Faraam Helm (73000000): hides the body as Elden Ring's Hierodas Glintstone Crown (990000) does, 9 of 96 flags off DS3's
+2822:  people armour: armour Faraam Armor (73001000): hides the body as Elden Ring's Fire Monk Armor (350100) does, 22 of 96 flags off DS3's
+2823:  people armour: armour Faraam Gauntlets (73002000): hides the body as Elden Ring's Godskin Apostle Bracelets (520200) does, 3 of 96 flags off DS3's
+2824:  people armour: armour Faraam Boots (73003000): hides the body as Elden Ring's Leather Trousers (40300) does, 5 of 96 flags off DS3's
+2825:  people armour: armour Fire Keeper Robe (68001000): hides the body as Elden Ring's Lusat's Robe (580100) does, 20 of 96 flags off DS3's
+2826:  people armour: armour Fire Keeper Gloves (68002000): hides the body as Elden Ring's Godskin Apostle Bracelets (520200) does, 3 of 96 flags off DS3's
+2827:  people armour: armour Fire Keeper Skirt (68003000): hides the body as Elden Ring's Prophet Trousers (620300) does, 5 of 96 flags off DS3's
+2828:  people armour: armour Exile Mask (55000000): hides the body as Elden Ring's Hierodas Glintstone Crown (990000) does, 9 of 96 flags off DS3's
+2829:  people armour: armour Exile Armor (55001000): hides the body as Elden Ring's Lusat's Robe (580100) does, 21 of 96 flags off DS3's
+2830:  people armour: armour Exile Gauntlets (55002000): hides the body as Elden Ring's Godskin Apostle Bracelets (520200) does, 3 of 96 flags off DS3's
+2831:  people armour: armour Exile Leggings (55003000): hides the body as Elden Ring's Leather Trousers (40300) does, 5 of 96 flags off DS3's
+2832:  people armour: armour Brigand Hood (75500000): hides the body as Elden Ring's Dancer's Hood (5080000) does, 7 of 96 flags off DS3's
+2833:  people armour: armour Brigand Armor (75501000): hides the body as Elden Ring's Malformed Dragon Armor (260100) does, 22 of 96 flags off DS3's
+2834:  people armour: armour Brigand Gauntlets (75502000): hides the body as Elden Ring's  (5040200) does, 3 of 96 flags off DS3's
+2835:  people armour: armour Brigand Trousers (75503000): hides the body as Elden Ring's Leather Trousers (40300) does, 5 of 96 flags off DS3's
+2836:  people armour: armour Fallen Knight Helm (19000000): hides the body as Elden Ring's Elden Lord Crown (460000) does, 10 of 96 flags off DS3's
+2837:  people armour: armour Fallen Knight Armor (19001000): hides the body as Elden Ring's Lusat's Robe (580100) does, 20 of 96 flags off DS3's
+2838:  people armour: armour Fallen Knight Gauntlets (19002000): hides the body as Elden Ring's Godskin Apostle Bracelets (520200) does, 3 of 96 flags off DS3's
+2839:  people armour: armour Fallen Knight Trousers (19003000): hides the body as Elden Ring's Leather Trousers (40300) does, 5 of 96 flags off DS3's
+2840:  people armour: armour Court Sorcerer Hood (29000000): hides the body as Elden Ring's Common Soldier Helm (5240000) does, 6 of 96 flags off DS3's
+2841:  people armour: armour Court Sorcerer Robe (29001000): hides the body as Elden Ring's Lusat's Robe (580100) does, 21 of 96 flags off DS3's
+2842:  people armour: armour Court Sorcerer Gloves (29002000): hides the body as Elden Ring's Sorcerer Manchettes (830200) does, 4 of 96 flags off DS3's
+2843:  people armour: armour Court Sorcerer Trousers (29003000): hides the body as Elden Ring's Leather Trousers (40300) does, 5 of 96 flags off DS3's
+2844:  people armour: armour Drang Armor (89001000): hides the body as Elden Ring's Leather Armor (1400100) does, 21 of 96 flags off DS3's
+2845:  people armour: armour Drang Gauntlets (89002000): hides the body as Elden Ring's Godskin Apostle Bracelets (520200) does, 4 of 96 flags off DS3's
+2846:  people armour: armour Drang Shoes (89003000): hides the body as Elden Ring's Leather Trousers (40300) does, 5 of 96 flags off DS3's
+2847:  people armour: armour Black Iron Helm (90000000): hides the body as Elden Ring's Elden Lord Crown (460000) does, 10 of 96 flags off DS3's
+2848:  people armour: armour Black Iron Armor (90001000): hides the body as Elden Ring's Marionette Soldier Armor (840100) does, 22 of 96 flags off DS3's
+2849:  people armour: armour Black Iron Gauntlets (90002000): hides the body as Elden Ring's Godskin Apostle Bracelets (520200) does, 3 of 96 flags off DS3's
+2850:  people armour: armour Black Iron Leggings (90003000): hides the body as Elden Ring's Leather Trousers (40300) does, 5 of 96 flags off DS3's
+2851:  people armour: armour Creighton's Steel Mask (79000000): hides the body as Elden Ring's Hierodas Glintstone Crown (990000) does, 9 of 96 flags off DS3's
+2852:  people armour: armour Mirrah Chain Mail (79001000): hides the body as Elden Ring's Nox Swordstress Armor (292100) does, 22 of 96 flags off DS3's
+2853:  people armour: armour Mirrah Chain Gloves (79002000): hides the body as Elden Ring's Godskin Apostle Bracelets (520200) does, 4 of 96 flags off DS3's
+2854:  people armour: armour Mirrah Chain Leggings (79003000): hides the body as Elden Ring's Leather Trousers (40300) does, 5 of 96 flags off DS3's
+2855:  people armour: armour Helm of Thorns (96000000): hides the body as Elden Ring's Elden Lord Crown (460000) does, 10 of 96 flags off DS3's
+2856:  people armour: armour Armor of Thorns (96001000): hides the body as Elden Ring's Fire Monk Armor (350100) does, 22 of 96 flags off DS3's
+2857:  people armour: armour Gauntlets of Thorns (96002000): hides the body as Elden Ring's Godskin Apostle Bracelets (520200) does, 4 of 96 flags off DS3's
+2858:  people armour: armour Leggings of Thorns (96003000): hides the body as Elden Ring's Leather Trousers (40300) does, 5 of 96 flags off DS3's
+2859:time: people armour 352.1 s
+3266:  m45_00_00_00 (from m40_00_00_00): 98/103 events, 2827/2879 instructions converted, 47 no-ops, 20 DS3 action button rows pointed at their copies, 10 messages and area names pointed at DS3's text, item lots, AI rows, items, behaviours, effects and cameras: 81 to ported rows, 23 kept, SpEffects: 50 to ported rows, 0 kept, cutscenes: 2 lines play a ported cutscene, 0 left out, 1 flag range lines NOT consecutive; not converted: Initialize Crow Trade x30, Set Map Sound State x6, Set Character Animation State x6, IF Map Ceremony State x2, Disable Loading Screen Tips x2, Initialize Crow Trade Area x2, IF Player Remaining Yoel Level Count x2, Set Bonfire Warping State x1, IF Multiplayer Network Penalized x1, 7 music events
+3292:    m40_00_00_00: Boss 14000800 (3 events, 0 companions); Boss 14000830 (1 events, 0 companions)
+3306:  music: per map, tracks with a flag/tracks: m11_70_00_00 (m50_00_00_00) 2/2; m11_72_00_00 (m51_00_00_00) 4/4; m19_70_00_00 (m45_00_00_00) 4/4; m38_10_00_00 (m38_00_00_00) 4/4; m38_11_00_00 (m37_00_00_00) 4/4; m38_12_00_00 (m39_00_00_00) 2/2; m38_13_00_00 (m34_01_00_00) 2/2; m38_14_00_00 (m32_00_00_00) 3/3; m38_15_00_00 (m41_00_00_00) 3/3; m45_00_00_00 (m40_00_00_00) 7/7; m45_01_00_00 (m30_00_00_00) 6/6; m45_02_00_00 (m31_00_00_00) 2/2; m45_03_00_00 (m30_01_00_00) 2/2; m45_04_00_00 (m33_00_00_00) 4/4; m45_05_00_00 (m35_00_00_00) 3/3
+3340:  music: m400000000 89 s 2 ch 48000 Hz, loops 688309-4297681, fade-out 3500 ms (event in fdp_sm40, 1/1 layers)
+3341:  music: m400000001 138 s 2 ch 48000 Hz, loops 315891-6558192, fade-out 3000 ms (event in fdp_sm40, 1/1 layers)
+3342:  music: m400000002 89 s 2 ch 48000 Hz, loops 688309-4297681, fade-out 3500 ms (event in fdp_sm40, 1/1 layers)
+3343:  music: m400000003 138 s 2 ch 48000 Hz, loops 315891-6558192, fade-out 3000 ms (event in fdp_sm40, 1/1 layers)
+3344:  music: m400100000 191 s 2 ch 44100 Hz, loops 447821-8465317, fade-out 3000 ms (event in fdp_sm40, 1/1 layers)
+3345:  music: m400100001 173 s 2 ch 48000 Hz, loops 433271-8338550, fade-out 3000 ms (event in fdp_sm40, 1/1 layers)
+3358:  music: 49/52 tracks decoded (1098 MB in Mods\ER\darksign_music), 49 lines in darksign_music.tsv; FAIL no DS3 audio for: m350000002, m400000010, m410000010
+3359:  music: m40_00_00_00 ボス戦闘BGM_グンダ: m400000000 (entity 4004800), 1 zones, off at load, 2 lines turn it on, 3 off, a boss track; flags switch 1039295000 play 1039295050, event 1039291000
+3360:  music: m40_00_00_00 ボス戦闘BGM_グンダHU: m400000001 (entity 4004801), 1 zones, off at load, 2 lines turn it on, 3 off, a boss track; flags switch 1039295001 play 1039295051, event 1039291001
+3361:  music: m40_00_00_00 ボス戦闘BGM_ラスボス: m400000010 (entity 4004860), 1 zones, on at load; flags switch 0 play 1039295052, event 1039291002 (no audio)
+3362:  music: m40_00_00_00 ボス戦闘BGM_邪霊: m400000002 (entity 4004830), 1 zones, off at load, 2 lines turn it on, 3 off, a boss track; flags switch 1039295002 play 1039295053, event 1039291003
+3363:  music: m40_00_00_00 ボス戦闘BGM_邪霊（HU）: m400000003 (entity 4004831), 1 zones, off at load, 2 lines turn it on, 3 off, a boss track; flags switch 1039295003 play 1039295054, event 1039291004
+3364:  music: m40_00_00_00 火防女BGM: m400100001 (entity 4004460), 2 zones, off at load, 1 lines turn it on, 4 off; flags switch 1039295047 play 1039295055, event 1039291005
+3365:  music: m40_00_00_00 拠点BGM: m400100000 (entity 4004450), 2 zones, off at load, 1 lines turn it on, 4 off; flags switch 1039295048 play 1039295056, event 1039291006
+3412:bonfires: m40_00_00_00 -> m45_00_00_00: 3 of 3 DS3 bonfires are sites of grace (Firelink Shrine 4001950->45001950 sword, Cemetery of Ash 4001951->45001951 sword, Overgrown Sanctum 4001952->45001952 sword)
+3440:people talk: Elden Ring's 365 talk scripts use 204 commands and 82 functions
+3441:people talk: 61 DS3 talk scripts converted for 12 maps; commands left out: c1_104 x27, c1_106 x2, c1_107 x1, c1_112 x1, c1_23 x1, c1_53 x1, c1_62 x1, c1_65 x14, c1_66 x14; functions Elden Ring lacks read as 0: f105 x3, f108 x1, f31 x119, f35 x2
+3442:  people talk: m40_00_00_00: 6 flags only DS3's characters set, read as on (74000137 74000138 74000391 74000392 74000432 74000433)
+3443:  people talk: m31_00_00_00: 1 flags only DS3's characters set, read as on (73100132)
+3444:people talk: 649 dialogue lines (TalkParam 1000000000+), 2 without a DS3 row, 150 without DS3 text; 188 menu and dialog texts
+3445:people talk: voices: 649 lines in 54 voice banks (sd\vc9PP.bnk, Play_v<voiceId>; a line DS3 has no voice for is silence of its reading time); index: 0 events of 0 cutscene banks listed (beside s12_01_0000), 1298 events of 54 voice banks listed (with Elden Ring's voice banks)
+3446:  people talk: voice banks built on Elden Ring's NPC voice bank /enus/vc227.bnk (its voice actor-mixers: room reverb, distance, position; its Stop action)
+3447:  people talk: voice template not used: /vc700.bnk: 0 events, 0 with a Play chain, 0 with a readable Sound, none builds
+3448:  people talk: voice bank vc900.bnk 3590 KB, 21 spoken, 0 silent
+3449:  people talk: voice bank vc901.bnk 1900 KB, 8 spoken, 0 silent
+3450:  people talk: voice bank vc903.bnk 4168 KB, 20 spoken, 0 silent
+3451:  people talk: voice bank vc904.bnk 5209 KB, 29 spoken, 0 silent
+3452:  people talk: voice bank vc905.bnk 5220 KB, 22 spoken, 0 silent
+3453:  people talk: voice bank vc906.bnk 3339 KB, 17 spoken, 0 silent
+3454:  people talk: voice bank vc907.bnk 4262 KB, 27 spoken, 0 silent
+3455:  people talk: voice bank vc908.bnk 6280 KB, 32 spoken, 0 silent
+3456:  people talk: voice bank vc909.bnk 2136 KB, 9 spoken, 0 silent
+3457:  people talk: voice bank vc910.bnk 3023 KB, 14 spoken, 0 silent
+3458:  people talk: voice bank vc911.bnk 807 KB, 5 spoken, 0 silent
+3459:  people talk: voice bank vc912.bnk 4028 KB, 21 spoken, 0 silent
+3460:  people talk: voice bank vc914.bnk 4419 KB, 25 spoken, 0 silent
+3461:  people talk: voice bank vc915.bnk 5752 KB, 23 spoken, 0 silent
+3462:  people talk: voice bank vc916.bnk 2181 KB, 10 spoken, 0 silent
+3463:  people talk: voice bank vc917.bnk 2661 KB, 15 spoken, 0 silent
+3464:  people talk: voice bank vc918.bnk 3234 KB, 16 spoken, 0 silent
+3465:  people talk: voice bank vc919.bnk 1639 KB, 9 spoken, 0 silent
+3466:  people talk: voice bank vc920.bnk 1166 KB, 7 spoken, 0 silent
+3467:  people talk: voice bank vc921.bnk 1189 KB, 8 spoken, 0 silent
+3468:  people talk: voice bank vc922.bnk 1888 KB, 9 spoken, 0 silent
+3469:  people talk: voice bank vc923.bnk 1656 KB, 9 spoken, 0 silent
+3470:  people talk: voice bank vc924.bnk 1357 KB, 7 spoken, 0 silent
+3471:  people talk: voice bank vc925.bnk 3067 KB, 15 spoken, 0 silent
+3472:  people talk: voice bank vc926.bnk 1396 KB, 6 spoken, 0 silent
+3473:  people talk: voice bank vc927.bnk 117 KB, 2 spoken, 0 silent
+3474:  people talk: voice bank vc928.bnk 109 KB, 1 spoken, 0 silent
+3475:  people talk: voice bank vc929.bnk 1640 KB, 9 spoken, 0 silent
+3476:  people talk: voice bank vc930.bnk 606 KB, 3 spoken, 0 silent
+3477:  people talk: voice bank vc932.bnk 2257 KB, 9 spoken, 0 silent
+3478:  people talk: voice bank vc933.bnk 2773 KB, 16 spoken, 0 silent
+3479:  people talk: voice bank vc934.bnk 702 KB, 4 spoken, 0 silent
+3480:  people talk: voice bank vc935.bnk 2261 KB, 15 spoken, 0 silent
+3481:  people talk: voice bank vc936.bnk 1143 KB, 5 spoken, 0 silent
+3482:  people talk: voice bank vc938.bnk 2034 KB, 9 spoken, 0 silent
+3483:  people talk: voice bank vc939.bnk 1353 KB, 8 spoken, 1 silent
+3484:  people talk: voice bank vc940.bnk 1590 KB, 8 spoken, 0 silent
+3485:  people talk: voice bank vc941.bnk 3635 KB, 15 spoken, 0 silent
+3486:  people talk: voice bank vc943.bnk 1723 KB, 11 spoken, 0 silent
+3487:  people talk: voice bank vc944.bnk 1802 KB, 10 spoken, 1 silent
+3488:  people talk: voice bank vc945.bnk 1028 KB, 6 spoken, 0 silent
+3489:  people talk: voice bank vc946.bnk 1025 KB, 3 spoken, 0 silent
+3490:  people talk: voice bank vc947.bnk 937 KB, 4 spoken, 0 silent
+3491:  people talk: voice bank vc948.bnk 4721 KB, 22 spoken, 0 silent
+3492:  people talk: voice bank vc949.bnk 1962 KB, 9 spoken, 0 silent
+3493:  people talk: voice bank vc950.bnk 1454 KB, 10 spoken, 0 silent
+3494:  people talk: voice bank vc952.bnk 6593 KB, 31 spoken, 0 silent
+3495:  people talk: voice bank vc953.bnk 2390 KB, 10 spoken, 0 silent
+3496:  people talk: voice bank vc955.bnk 3861 KB, 21 spoken, 0 silent
+3497:  people talk: voice bank vc956.bnk 3026 KB, 9 spoken, 0 silent
+3498:  people talk: voice bank vc957.bnk 1106 KB, 4 spoken, 0 silent
+3499:  people talk: voice bank vc958.bnk 966 KB, 5 spoken, 0 silent
+3500:  people talk: voice bank vc959.bnk 774 KB, 2 spoken, 0 silent
+3501:  people talk: voice bank vc960.bnk 933 KB, 2 spoken, 0 silent
+3502:people talk: 15 shops, 134 wares on the shelves (13 sold once, as in DS3) (ShopLineupParam 20000000+: ported weapons and Elden Ring items of the same name), 422 DS3 wares with no Elden Ring item yet left off
+3503:time: people talk 29.8 s
+=== porter-port-maps-20261124-222422.log
+1:enemies: 164 DS3 characters in DS3's maps, 504 Elden Ring templates
+15:enemies: DS3 event scripts: 599 SpEffect set/clear instructions in 31 scripts, 375 on enemies of 36 maps, 224 not matched to an enemy
+16:enemies: effects: 388 DS3 and 689 Elden Ring TAE files read for event layouts; SpEffects on, sounds on
+17:enemies: 512 DS3 MTDs read, 128 of them blended
+18:enemies: glowing DS3 materials use Elden Ring's C[c5230]_Eyes (C[AMSN]_Glow; samplers C_AMSN__Glow_snp_Texture2D_2_AlbedoMap_0, C_AMSN__Glow_snp_Texture2D_0_MetallicMap_0, C_AMSN__Glow_snp_Texture2D_7_NormalMap_4, C_AMSN__Glow_snp_Texture2D_1_EmissiveMap; params g_GX_bOverrideCAParam=True, g_GX_bMeshDecal=False, g_GX_bEnabledEnvIDWriting=False, g_GX_PaintDecalSlotNo=0, g_GX_bDisableShadowCasting=True, g_GX_ShadowCullingMode=0, g_GX_DisplayableLodLevel=65535, g_GX_MaterialID=0, g_GX_bDisableDecal=True, g_GX_bDisableDepthWrite=False, g_GX_bEnableSSR=False, g_BlendMode=0, g_AlphaRef=[0 0], g_DiffuseMapColor=[1 1 1], g_GlowScale=[1 1 1 0.8], g_BloodAmount=1, GXFT_PaintDecal_Mat=True, GXFT_ValidWet=True, GXFT_ClothMatching=True, GXFT_Emissive=True, C_AMSN__Glow_snp_0_color_0=[1 1 1 1 1], C_AMSN__Glow_snp_0_color_1=[1 1 1 1 1], C_AMSN__Glow_snp_0_float_0=0, C_AMSN__Glow_snp_0_float_1=0.15, group_1_CommonUV-UVParam=[1 1], g_GX_CameraFadeParamId=0; 107 candidates)
+19:enemies: see-through DS3 materials use Elden Ring's C[c2100]_BD_MeshDecal (samplers C_AMSN__Alpha_snp_Texture2D_2_AlbedoMap_0, C_AMSN__Alpha_snp_Texture2D_0_MetallicMap_0, C_AMSN__Alpha_snp_Texture2D_7_NormalMap_4; 3 candidates)
+20:enemies: test set: 5 staged builds at the top of the F1 spawn list (TEST 1-5), for pinning a fault to one port step
+21:enemies: AI: 523 DS3 NpcThinkParam rows, 206 of 235 battle goals and 19 of 20 logics ported, 46 DS3 common files added, 0 missing names (report: Work\reports\enemy-ai.tsv)
+22:enemies: F1 spawn list: 162 DS3 (161 with their DS3 model), 232 Elden Ring characters
+23:enemies: 157 DS3 characters: 157 with DS3 model and animations, 0 on an Elden Ring body, 0 fell back; 44382 DS3 animations, 585 NpcParam rows (report: Work\reports\enemy-port.tsv)
+24:enemies: note: catalog: 45 wildlife and helper placements left out (deer, eagles, dummies, bonfires)
+25:enemies: note: people: 34 Elden Ring people with a talk script and 26 hostile humans found to stand in for DS3's (of 71 human placements; enemy teams 0,6,7,9,11,24,27,30,33)
+26:enemies: note: people: hostile humans: Finger Maiden (523380016, m10_01_00_00); Moongrum, Carian Knight (523590024, m14_00_00_00); Inquisitor Ghiza (523840038, m16_00_00_00); Vargram the Raging Wolf (523600034, m11_00_00_00); Errant Sorcerer Wilhelm (523800034, m11_00_00_00);  (544710000, m11_00_00_00); Sir Gideon Ofnir, the All-Knowing (523240070, m11_05_00_00); Sir Gideon Ofnir, the All-Knowing (523240070, m11_05_00_00); Sir Gideon Ofnir, the All-Knowing (523240070, m11_05_00_00); Sir Gideon Ofnir, the All-Knowing (523240070, m11_05_00_00); Sir Gideon Ofnir, the All-Knowing (523240070, m11_05_00_00); Sir Gideon Ofnir, the All-Knowing (523240070, m11_05_00_00); Sir Gideon Ofnir, the All-Knowing (523240070, m11_05_00_00); Esgar, Priest of Blood (Boss) (523860000, m35_00_00_00); Mary, Eldest Sister (533870056, m15_00_00_00); Mary, Eldest Sister (523870056, m15_00_00_00); Maureen, Second Sister (523880056, m15_00_00_00); Amy, Third Sister (523890056, m15_00_00_00); Polyanna, Youngest Sister (523900056, m15_00_00_00); Silver Tear (523680062, m12_01_00_00)
+27:enemies: note: c1430 Undead Cleric 5 - Cemetery of Ash: DS3 gives it no animations of its own; it plays c1100 Hollow Soldier - Naked - High Wall of Lothric's (the same skeleton)
+28:enemies: note: c1440 Devout of the Deep #5 - Cathedral of the Deep: DS3 gives it no animations of its own; it plays c1100 Hollow Soldier - Naked - High Wall of Lothric's (the same skeleton)
+29:enemies: note: c1441 Sage Prentice #1: DS3 gives it no animations of its own; it plays c1100 Hollow Soldier - Naked - High Wall of Lothric's (the same skeleton)
+30:enemies: note: c1442 Lothric Priest: DS3 gives it no animations of its own; it plays c1100 Hollow Soldier - Naked - High Wall of Lothric's (the same skeleton)
+31:enemies: note: c1445 Large Devout of the Deep #2: DS3 gives it no animations of its own; it plays c1105 Large Hollow Soldier - Halberd - High Wall of Lothric's (the same skeleton)
+32:enemies: note: c1446 Sage's Devout: DS3 gives it no animations of its own; it plays c1105 Large Hollow Soldier - Halberd - High Wall of Lothric's (the same skeleton)
+33:enemies: note: c2290 Irithyll Dog: DS3 gives it no animations of its own; it plays c2020 Undead Dog's (the same skeleton)
+35:map m40_00_00_00 (Firelink Shrine / Cemetery of Ash) -> Elden Ring m45_00_00_00
+40:time: map m40_00_00_00 -> m45_00_00_00 156.7 s
+86:enemies: materials: 988 added to allmaterial_dlc02.matbinbnd.dcx, 0 replaced; 988 plain character materials, 3024 DS3 textures named
+88:enemies: materials: 958 added to allmaterial_dlc02.matbinbnd.dcx, 0 replaced; 958 plain character materials, 2419 DS3 textures named
+89:time: people armour 352.1 s
+330:time: people talk 29.8 s
+665:m40_00_00_00 -> m45_00_00_00: 4055 map pieces, 45 collisions, 10 player points
+674:  note: people: left out of the pools: no body armour x7 (Boc the Seamster (523420024/23420), Silver Tear (523680062/23682), Silver Tear (523680062/23683), Silver Tear (523680065/23680), Silver Tear (523680065/23681), Silver Tear (523680065/23682), Silver Tear (523680065/23683))
+675:  note: people: 33 Elden Ring people with a talk script and 20 hostile humans found to stand in for DS3's (of 64 human placements; enemy teams 0,6,7,9,11,24,27,30,33)
+676:  note: people: hostile humans: Finger Maiden (523380016, m10_01_00_00); Moongrum, Carian Knight (523590024, m14_00_00_00); Inquisitor Ghiza (523840038, m16_00_00_00); Vargram the Raging Wolf (523600034, m11_00_00_00); Errant Sorcerer Wilhelm (523800034, m11_00_00_00);  (544710000, m11_00_00_00); Sir Gideon Ofnir, the All-Knowing (523240070, m11_05_00_00); Sir Gideon Ofnir, the All-Knowing (523240070, m11_05_00_00); Sir Gideon Ofnir, the All-Knowing (523240070, m11_05_00_00); Sir Gideon Ofnir, the All-Knowing (523240070, m11_05_00_00); Sir Gideon Ofnir, the All-Knowing (523240070, m11_05_00_00); Sir Gideon Ofnir, the All-Knowing (523240070, m11_05_00_00); Sir Gideon Ofnir, the All-Knowing (523240070, m11_05_00_00); Esgar, Priest of Blood (Boss) (523860000, m35_00_00_00); Mary, Eldest Sister (533870056, m15_00_00_00); Mary, Eldest Sister (523870056, m15_00_00_00); Maureen, Second Sister (523880056, m15_00_00_00); Amy, Third Sister (523890056, m15_00_00_00); Polyanna, Youngest Sister (523900056, m15_00_00_00); Mimic Tear (526100965, m12_02_00_00)
+678:  note: people armour: 134 DS3 people's looks planned, 44 DS3 armour sets to convert
+679:  note: people talk: m40_00_00_00: 47 DS3 talk scripts readable
+680:  note: people talk: m30_00_00_00: 15 DS3 talk scripts readable
+681:  note: people talk: m31_00_00_00: 17 DS3 talk scripts readable
+682:  note: people talk: m45_00_00_00: 20 DS3 talk scripts readable
+683:  note: people talk: m30_01_00_00: 4 DS3 talk scripts readable
+684:  note: people talk: m33_00_00_00: 16 DS3 talk scripts readable
+685:  note: people talk: m35_00_00_00: 15 DS3 talk scripts readable
+686:  note: people talk: m38_00_00_00: 11 DS3 talk scripts readable
+687:  note: people talk: m37_00_00_00: 21 DS3 talk scripts readable
+688:  note: people talk: m39_00_00_00: 6 DS3 talk scripts readable
+689:  note: people talk: m34_01_00_00: 3 DS3 talk scripts readable
+690:  note: people talk: m32_00_00_00: 4 DS3 talk scripts readable
+691:  note: people talk: m41_00_00_00: 6 DS3 talk scripts readable
+692:  note: people talk: m50_00_00_00: 9 DS3 talk scripts readable
+693:  note: people talk: m51_00_00_00: 17 DS3 talk scripts readable
+694:  enemies: 49 placed (29 ported DS3 characters, 0 Elden Ring stand-ins, 20 people, DS3's own people and DS3 humans in their DS3 armour), 11 people left out, 0 with nothing to stand in; 2 DS3 boss entities
+695:  enemies: boss Corrupted Gundyr (entity 45000800) -> Corrupted Gundyr (c7112, ported DS3 character)
+696:  enemies: 40 left out that belong to another state of the map (off DS3's layer bit 0, e.g. the Untended Graves): Undead Dog x6; Undead Cleric 7 - Untended Graves x5; Undead Cleric 4 - Untended Graves x4; Undead Cleric 1 - Untended Graves x4; Undead Cleric 3 - Untended Graves x3; Corvian - Scythe - Irithyll x3; Bonfire x2; Cathedral Grave Warden - Untended Graves x2; Black Knight - Greataxe - Cemetery of Ash x2; Black Knight - Greatsword - Cemetery of Ash x2; Ravenous Crystal Lizard - Untended Graves x2; Sword Master - White Phantom - Untended Graves x1
+697:  enemies: people: 7 later quest versions of a person left out (DS3 places every version and its scripts show one; the first, lowest talk script, stands): Anri of Astora - Firelink Shrine x1; Eygon of Carim - Enemy - Firelink Shrine x1; Hawkwood the Deserter - Firelink Shrine x1; Irina of Carim - Firelink Shrine x2; Sirris of the Sunless Realms - Firelink Shrine x1; Unbreakable Patches - Firelink Shrine x1
+698:  enemies: people: 12 moved from DS3's holding spot to the seat DS3's scripts warp them to
+699:  enemies: people: Anri of Astora - Firelink Shrine -> Knight Diallos (talks, t400290) x1; Blacksmith Andre -> Blacksmith Andre (talks, t400200) x1; Cornyx of the Great Swamp - Firelink Shrine -> Sorcerer Rogier (talks, t400240) x1; Eygon of Carim - Firelink Shrine -> Millicent (talks, t400270) x1; Fire Keeper - Firelink Shrine -> Fire Keeper - Firelink Shrine (talks, t400120) x1; Greirat of the Undead Settlement - Firelink Shrine -> D, Beholder of Death (talks, t400220) x1; Hawkwood the Deserter - Firelink Shrine -> Nepheli Loux, Warrior (talks, t400170) x1; Horace the Hushed - Firelink Shrine -> Witch-Hunter Jerren (talks, t400360) x1; Irina of Carim - Firelink Shrine -> Zorayas the Scout (talks, t400260) x1; Karla - Firelink Shrine -> Dung Eater (talks, t400250) x1; Ludleth of Courland -> Ludleth of Courland (talks, t400130) x1; Ludleth of Courland -> Ludleth of Courland (talks, t400131) x1; Orbeck of Vinheim - Firelink Shrine -> Sorceress Sellen (talks, t400230) x1; Ringfinger Leonhard - Firelink Shrine -> Recusant Bernahl (talks, t400190) x1; Shrine Handmaid -> Shrine Handmaid (talks, t400210) x1; Sirris of the Sunless Realms - Firelink Shrine -> Millicent (talks, t400180) x1; Sword Master - Hostile - Firelink Shrine -> Vargram the Raging Wolf (hostile) x1; Unbreakable Patches - Firelink Shrine -> Witch-Hunter Jerren (talks, t400300) x1; Yoel of Londor -> Yoel of Londor (talks, t400150) x1; Yuria of Londor - Firelink Shrine -> Witch-Hunter Jerren (talks, t400140) x1
+700:  enemies: people: 14 DS3 people wear their DS3 armour (CharaInit 3000000+, on an Elden Ring person's face and AI)
+701:  enemies: people: 19 DS3 people have their DS3 talk script (TalkID 900000000+)
+702:  enemies: AI: 15 placements run a DS3 think row ported with another character (DS3 places them with that family's AI)
+728:  sky fades: 6 see-through sky meshes (nolight-blend 6); 5 drawn with DS3's fade baked into a texture of their own, 0 wholly faded out in DS3 and left out, 1 with UVs over 8 tiles (al_NoLight keeps the half-visible cut, others left out) (m40_00_kumo_40_a, m40_00_mountain_04_382_a, m40_00_sky_50_a)
+729:  see-through sky layers: 1 unlit blended meshes (M[A]_al_NoLight: cloud bands, haze, far mountain rings) drawn with their DS3 fade, 672 of 1,931 triangles left out where DS3 has them under half visible (m40_00_kumo_40_a)
+784:  baked light: m40_00_00_00_0000.btpb.dcx: 144,974 DS3 probes (88,840 without sun) baked into a 416 x 120 x 278 m volume at -77,-81,387, 208 x 60 x 139 texels (2.0 m); DS3 open sky 877 = alpha 56, median probe at 0.35 of it; open sky at DS3's share of the sun: DS3's 877 x sun scale 0.75 x 0.085 = alpha 55.9 (the colosseum's own is 56; the even light past the probes and the reflections are dimmed to 1.00 of the colosseum's); moved by DS3's map offset (-203.6, 7.3, 33.5, turned 28 degrees); 91 of 110 enemies and start points inside the probes' box; first-order terms against order 0 under open sky: 0.31 -0.06 0.41; up = term 1, x = term 3, z = term 2 (DS3's order; the old guess would have taken term 3 as up); DS3's baked sunlight leans towards yaw 128 degrees (strength 0.23; the sun line of 'atmosphere:' should be near it when the strength is 0.2 or more)
+788:  lamps: 44 DS3 lights (38 point, 6 spot) from m40_00_00_00_0000.btl.dcx replace the host's 35; 1 directional left out (the sun is the host's); 1 light files of other map states left out (m40_00_00_00_0001.btl.dcx); moved by DS3's map offset (-203.6, 7.3, 33.5, turned 28 degrees); strengths times 0.75 (the host's sun over DS3's); 7 of 44 turned down to what Elden Ring's own lamps do (on a surface 3.8, along its reach 72): Spot_??_002 12 -> 3 (light along its reach; reach 39 m, sharpness 1.6), Spot_??_003 7 -> 2.44 (light along its reach; reach 48 m, sharpness 1.6), Spot_??_004 5 -> 2.34 (light along its reach; reach 50 m, sharpness 1.6), ??_??????_004 7 -> 3.93 (light on surfaces; reach 6 m, sharpness 20), Spot_??_001 4 -> 2.34 (light along its reach; reach 50 m, sharpness 1.6), Spot_??_006 5 -> 3.44 (light along its reach; reach 34 m, sharpness 1.6), Spot_??_007 5 -> 3.44 (light along its reach; reach 34 m, sharpness 1.6)
+794:time: map m40_00_00_00 -> m45_00_00_00 156.7 s
+803:  enemies: 146 placed (144 ported DS3 characters, 0 Elden Ring stand-ins, 2 people, DS3's own people and DS3 humans in their DS3 armour), 9 people left out, 1 with nothing to stand in; 3 DS3 boss entities
+804:  enemies: boss Oceiros, the Consumed King (entity 45010830) -> Oceiros, the Consumed King (c7060, ported DS3 character)
+805:  enemies: boss Vordt of the Boreal Valley (entity 45010800) -> Vordt of the Boreal Valley (c7077, ported DS3 character)
+806:  enemies: boss Dancer of the Boreal Valley (entity 45010899) -> Dancer of the Boreal Valley (c7130, ported DS3 character)
+807:  enemies: 1 DS3 logic characters left out (talk dummy c1000, platoon leader c0100, target dummies): DS3 shows nothing there
+808:  enemies: people: 3 DS3 summons and invaders (White/Mad Phantom, Dark Spirit) left out: they only appear when summoned or invading
+809:  enemies: people: Greirat of the Undead Settlement - High Wall of Lothric -> Sorceress Sellen (talks, t300220) x1; High Priestess Emma -> High Priestess Emma (talks, t300330) x1
+810:  enemies: people: 1 DS3 people wear their DS3 armour (CharaInit 3000000+, on an Elden Ring person's face and AI)
+811:  enemies: people: 2 DS3 people have their DS3 talk script (TalkID 900000000+)
+812:  enemies: AI: 4 placements run a DS3 think row ported with another character (DS3 places them with that family's AI)
+942:  enemies: 157 placed (148 ported DS3 characters, 0 Elden Ring stand-ins, 9 people, DS3's own people and DS3 humans in their DS3 armour), 10 people left out, 6 with nothing to stand in; 1 DS3 boss entities
+943:  enemies: boss Curse-rotted Greatwood (entity 45020800) -> Curse-rotted Greatwood (c7116, ported DS3 character)
+944:  enemies: 2 left out that belong to another state of the map (off DS3's layer bit 0, e.g. the Untended Graves): Sirris of the Sunless Realms - Undead Settlement x1; Holy Knight Hodrick - Undead Settlement x1
+945:  enemies: 6 DS3 logic characters left out (talk dummy c1000, platoon leader c0100, target dummies): DS3 shows nothing there
+946:  enemies: people: 1 DS3 summons and invaders (White/Mad Phantom, Dark Spirit) left out: they only appear when summoned or invading
+947:  enemies: people: 2 later quest versions of a person left out (DS3 places every version and its scripts show one; the first, lowest talk script, stands): Eygon of Carim - Undead Settlement x1; Siegward of Catarina - Ledge - Undead Settlement x1
+948:  enemies: people: Caged Hollow -> Caged Hollow - Undead Settlement (talks, t310380) x1; Cornyx of the Great Swamp - Undead Settlement -> Scribe Corhyn (talks, t310240) x1; Eygon of Carim - Undead Settlement -> Nepheli Loux, Warrior (talks, t310270) x1; Holy Knight Hodrick - Undead Settlement -> Nepheli Loux, Warrior (talks, t310410) x1; Irina of Carim - Undead Settlement -> Witch-Hunter Jerren (talks, t310260) x1; Siegward of Catarina - Lift - Undead Settlement -> Finger Maiden Hyetta (talks, t310310) x1; Sirris of the Sunless Realms - Enemy - Undead Settlement -> Maureen, Second Sister (hostile) x1; Tower Giant - Undead Settlement -> Tower Giant - Undead Settlement (talks, t310610) x1; Yoel of Londor -> Yoel of Londor (talks, t310150) x1
+949:  enemies: people: 6 DS3 people wear their DS3 armour (CharaInit 3000000+, on an Elden Ring person's face and AI)
+950:  enemies: people: 8 DS3 people have their DS3 talk script (TalkID 900000000+)
+1054:  enemies: 287 placed (279 ported DS3 characters, 0 Elden Ring stand-ins, 8 people, DS3's own people and DS3 humans in their DS3 armour), 12 people left out, 9 with nothing to stand in; 6 DS3 boss entities
+1055:  enemies: boss 21300: [Multi-NPC] Warrior fell in mid-?: Bridge White Spirit 2 -- 21300:????NPC??????????:????2 (entity 19700860) -> Inquisitor Ghiza (c0000, m16_00_00_00)
+1056:  enemies: boss Father Ariandel - Heat Up (entity 19700802) -> Father Ariandel - Heat Up (c7133, ported DS3 character)
+1057:  enemies: boss Father Ariandel (entity 19700803) -> Father Ariandel - Heat Up (c7133, ported DS3 character)
+1058:  enemies: boss Sister Friede - Second/Final Stage (entity 19700800) -> Sister Friede - Second/Final Stage (c7134, ported DS3 character)
+1059:  enemies: boss Sister Friede - First Stage (entity 19700801) -> Sister Friede - Second/Final Stage (c7134, ported DS3 character)
+1060:  enemies: boss Gravetender's Greatwolf - Heatup (entity 19700861) -> Gravetender's Greatwolf (c7135, ported DS3 character)
+1061:  enemies: 9 DS3 logic characters left out (talk dummy c1000, platoon leader c0100, target dummies): DS3 shows nothing there
+1062:  enemies: people: 2 DS3 summons and invaders (White/Mad Phantom, Dark Spirit) left out: they only appear when summoned or invading
+1063:  enemies: people: 1 later quest versions of a person left out (DS3 places every version and its scripts show one; the first, lowest talk script, stands): Sir Vilhelm - Enemy - Ariandel x1
+1064:  enemies: people: 21300: [Multi-NPC] Warrior fell in mid-?: Bridge White Spirit 2 -- 21300:????NPC??????????:????2 -> Inquisitor Ghiza (hostile) x1; Corvian Villager - Ariandel -> Corvian Villager - Ariandel (talks, t450540) x1; Corvian Villager - Ariandel -> Corvian Villager - Ariandel (talks, t450541) x1; Dying Corvian - Ariandel -> Corvian - Storyteller Staff - Road of Sacrifices (talks, t450590) x1; Painting Woman - Loft - Ariandel -> Painting Woman - Loft - Ariandel (talks, t450531) x1; Painting Woman - Table - Ariandel -> Painting Woman - Table - Ariandel (talks, t450530) x1; Sir Vilhelm - Ariandel -> Recusant Bernahl (talks, t450520) x1; Slave Knight Gael - Illusion - Ariandel ->  (hostile) x1
+1065:  enemies: people: 3 DS3 people wear their DS3 armour (CharaInit 3000000+, on an Elden Ring person's face and AI)
+1066:  enemies: people: 6 DS3 people have their DS3 talk script (TalkID 900000000+)
+1155:  enemies: 78 placed (78 ported DS3 characters, 0 Elden Ring stand-ins, 0 people, DS3's own people and DS3 humans in their DS3 armour), 6 people left out, 0 with nothing to stand in; 1 DS3 boss entities
+1156:  enemies: boss Dragonslayer Armour (entity 45030800) -> Dragonslayer Armour (c7098, ported DS3 character)
+1157:  enemies: people: 2 DS3 summons and invaders (White/Mad Phantom, Dark Spirit) left out: they only appear when summoned or invading
+1158:  enemies: AI: 40 placements run a DS3 think row ported with another character (DS3 places them with that family's AI)
+1300:  enemies: 253 placed (246 ported DS3 characters, 0 Elden Ring stand-ins, 7 people, DS3's own people and DS3 humans in their DS3 armour), 21 people left out, 7 with nothing to stand in; 7 DS3 boss entities
+1301:  enemies: boss Crystal Sage (entity 45040850) -> Crystal Sage (c7032, ported DS3 character)
+1302:  enemies: boss Crystal Sage - Road of Sacrifices (entity 45040851) -> Crystal Sage (c7032, ported DS3 character)
+1303:  enemies: boss Crystal Sage - Road of Sacrifices (entity 45040852) -> Crystal Sage (c7032, ported DS3 character)
+1304:  enemies: boss Crystal Sage - Road of Sacrifices (entity 45040853) -> Crystal Sage (c7032, ported DS3 character)
+1305:  enemies: boss Abyss Watcher - Main (entity 45040801) -> Abyss Watcher - Main (c7086, ported DS3 character)
+1306:  enemies: boss Abyss Watcher - Add (entity 45040802) -> Abyss Watcher - Main (c7086, ported DS3 character)
+1307:  enemies: boss Abyss Watcher - Red-eye - Add (entity 45040803) -> Abyss Watcher - Main (c7086, ported DS3 character)
+1308:  enemies: 7 DS3 logic characters left out (talk dummy c1000, platoon leader c0100, target dummies): DS3 shows nothing there
+1309:  enemies: people: 10 DS3 summons and invaders (White/Mad Phantom, Dark Spirit) left out: they only appear when summoned or invading
+1310:  enemies: people: 1 later quest versions of a person left out (DS3 places every version and its scripts show one; the first, lowest talk script, stands): Anri of Astora - Road of Sacrifices x1
+1311:  enemies: people: Anri of Astora - Road of Sacrifices -> Sorceress Sellen (talks, t330290) x1; Butcher - Enemy - Road of Sacrifices -> Amy, Third Sister (hostile) x1; Exile Watchdog - Exile Greatsword - Enemy - Farron Keep -> Sir Gideon Ofnir, the All-Knowing (hostile) x1; Exile Watchdog - Great Club - Enemy - Farron Keep -> Sir Gideon Ofnir, the All-Knowing (hostile) x1; Hawkwood the Deserter - Farron Keep -> Witch-Hunter Jerren (talks, t330170) x1; Horace the Hushed - Road of Sacrifices -> Tanith, Volcano Manor Proprietress (talks, t330360) x1; Orbeck of Vinheim - Road of Sacrifices -> Rya the Scout (talks, t330230) x1
+1312:  enemies: people: 7 DS3 people wear their DS3 armour (CharaInit 3000000+, on an Elden Ring person's face and AI)
+1313:  enemies: people: 4 DS3 people have their DS3 talk script (TalkID 900000000+)
+1314:  enemies: AI: 18 placements run a DS3 think row ported with another character (DS3 places them with that family's AI)
+1428:  enemies: 266 placed (258 ported DS3 characters, 0 Elden Ring stand-ins, 8 people, DS3's own people and DS3 humans in their DS3 armour), 12 people left out, 11 with nothing to stand in; 1 DS3 boss entities
+1429:  enemies: boss Deacons of the Deep (entity 45050800) -> Deacons of the Deep (c7119, ported DS3 character)
+1430:  enemies: 11 DS3 logic characters left out (talk dummy c1000, platoon leader c0100, target dummies): DS3 shows nothing there
+1431:  enemies: people: 5 DS3 summons and invaders (White/Mad Phantom, Dark Spirit) left out: they only appear when summoned or invading
+1432:  enemies: people: 2 later quest versions of a person left out (DS3 places every version and its scripts show one; the first, lowest talk script, stands): Unbreakable Patches - Cathedral of the Deep x2
+1433:  enemies: people: Anri of Astora - Enemy - Cathedral of the Deep -> Mimic Tear (hostile) x2; Ringfinger Leonhard - Cathedral of the Deep -> Rya the Scout (talks, t350190) x1; Rosaria, Mother of Rebirth -> Rosaria, Mother of Rebirth (talks, t350020) x1; Slave Knight Gael - Cathedral of the Deep -> Dung Eater (talks, t350510) x1; Unbreakable Patches - Cathedral of the Deep -> Millicent (talks, t350300) x1; Unkindled Brigand - Enemy - Cathedral of the Deep -> Sir Gideon Ofnir, the All-Knowing (hostile) x1; Unkindled Thief - Enemy - Cathedral of the Deep -> Vargram the Raging Wolf (hostile) x1
+1434:  enemies: people: 7 DS3 people wear their DS3 armour (CharaInit 3000000+, on an Elden Ring person's face and AI)
+1435:  enemies: people: 4 DS3 people have their DS3 talk script (TalkID 900000000+)
+1436:  enemies: AI: 18 placements run a DS3 think row ported with another character (DS3 places them with that family's AI)
+1545:  enemies: 215 placed (194 ported DS3 characters, 18 Elden Ring stand-ins, 3 people, DS3's own people and DS3 humans in their DS3 armour), 17 people left out, 15 with nothing to stand in; 2 DS3 boss entities
+1546:  enemies: boss Old Demon King (entity 38100830) -> Old Demon King (c7087, ported DS3 character)
+1547:  enemies: boss High Lord Wolnir (entity 38100800) -> High Lord Wolnir (c7115, ported DS3 character)
+1548:  enemies: stand-ins: Demon Cleric - Orb -> Juvenile Scholar x18
+1549:  enemies: 15 DS3 logic characters left out (talk dummy c1000, platoon leader c0100, target dummies): DS3 shows nothing there
+1550:  enemies: people: 3 DS3 summons and invaders (White/Mad Phantom, Dark Spirit) left out: they only appear when summoned or invading
+1551:  enemies: people: 7 later quest versions of a person left out (DS3 places every version and its scripts show one; the first, lowest talk script, stands): Anri of Astora - Catacombs of Carthus x5; Anri of Astora - Enemy - Catacombs of Carthus x2
+1552:  enemies: people: Anri of Astora - Catacombs of Carthus -> Finger Maiden Hyetta (talks, t380290) x1; Horace the Hushed - Enemy - Smouldering Lake -> Vargram the Raging Wolf (hostile) x1; Knight Slayer Tsorig - Enemy - Smouldering Lake -> Esgar, Priest of Blood (Boss) (hostile) x1
+1553:  enemies: people: 3 DS3 people wear their DS3 armour (CharaInit 3000000+, on an Elden Ring person's face and AI)
+1554:  enemies: people: 1 DS3 people have their DS3 talk script (TalkID 900000000+)
+1555:  enemies: AI: 17 placements run a DS3 think row ported with another character (DS3 places them with that family's AI)
+1650:  enemies: 173 placed (165 ported DS3 characters, 0 Elden Ring stand-ins, 8 people, DS3's own people and DS3 humans in their DS3 armour), 19 people left out, 7 with nothing to stand in; 3 DS3 boss entities
+1651:  enemies: boss Pontiff Sulyvahn (entity 38110850) -> Pontiff Sulyvahn (c7113, ported DS3 character)
+1652:  enemies: boss Pontiff Sulyvahn - Spirit Clone (entity 38110851) -> Pontiff Sulyvahn (c7113, ported DS3 character)
+1653:  enemies: boss Aldrich, Devourer of Gods (entity 38110800) -> Aldrich, Devourer of Gods (c7114, ported DS3 character)
+1654:  enemies: 5 left out that belong to another state of the map (off DS3's layer bit 0, e.g. the Untended Graves): Anri of Astora - Irithyll x2; Ringfinger Leonhard - Irithyll x1; Sirris of the Sunless Realms - Irithyll x1; Creighton the Wanderer - Red Phantom - Irithyll x1
+1655:  enemies: 7 DS3 logic characters left out (talk dummy c1000, platoon leader c0100, target dummies): DS3 shows nothing there
+1656:  enemies: people: 6 DS3 summons and invaders (White/Mad Phantom, Dark Spirit) left out: they only appear when summoned or invading
+1657:  enemies: people: 3 later quest versions of a person left out (DS3 places every version and its scripts show one; the first, lowest talk script, stands): Anri of Astora - Irithyll x3
+1658:  enemies: people: Anri of Astora - Irithyll -> Millicent (talks, t370290) x1; Company Captain Yorshka -> Company Captain Yorshka (talks, t370160) x1; Drang Knight - Hammers - Enemy - Irithyll -> Polyanna, Youngest Sister (hostile) x1; Drang Knight - Spears - Enemy - Irithyll -> Mary, Eldest Sister (hostile) x1; Greirat of the Undead Settlement - Irithyll -> Polyanna, Youngest Sister (hostile) x1; Londor Pilgrim -> Yoel of Londor (talks, t370400) x1; Londor Pilgrim -> Yoel of Londor (talks, t370401) x1; Siegward of Catarina - Irithyll -> Recusant Bernahl (talks, t370310) x1
+1659:  enemies: people: 5 DS3 people wear their DS3 armour (CharaInit 3000000+, on an Elden Ring person's face and AI)
+1660:  enemies: people: 5 DS3 people have their DS3 talk script (TalkID 900000000+)
+1661:  enemies: AI: 15 placements run a DS3 think row ported with another character (DS3 places them with that family's AI)
+1771:  enemies: 139 placed (136 ported DS3 characters, 0 Elden Ring stand-ins, 3 people, DS3's own people and DS3 humans in their DS3 armour), 5 people left out, 1 with nothing to stand in; 1 DS3 boss entities
+1772:  enemies: boss Yhorm the Giant (entity 38120800) -> Yhorm the Giant (c7129, ported DS3 character)
+1773:  enemies: 1 DS3 logic characters left out (talk dummy c1000, platoon leader c0100, target dummies): DS3 shows nothing there
+1774:  enemies: people: 1 DS3 summons and invaders (White/Mad Phantom, Dark Spirit) left out: they only appear when summoned or invading
+1775:  enemies: people: 1 later quest versions of a person left out (DS3 places every version and its scripts show one; the first, lowest talk script, stands): Siegward of Catarina - Profaned Capital x1
+1776:  enemies: people: Court Sorcerer - Enemy - Profaned Capital -> Mary, Eldest Sister (hostile) x1; Karla - Irithyll Dungeon -> Tanith, Volcano Manor Proprietress (talks, t390250) x1; Siegward of Catarina - Profaned Capital -> Nepheli Loux, Warrior (talks, t390310) x1
+1777:  enemies: people: 3 DS3 people wear their DS3 armour (CharaInit 3000000+, on an Elden Ring person's face and AI)
+1778:  enemies: people: 2 DS3 people have their DS3 talk script (TalkID 900000000+)
+1779:  enemies: AI: 16 placements run a DS3 think row ported with another character (DS3 places them with that family's AI)
+1868:  enemies: 80 placed (73 ported DS3 characters, 1 Elden Ring stand-ins, 6 people, DS3's own people and DS3 humans in their DS3 armour), 4 people left out, 2 with nothing to stand in; 3 DS3 boss entities
+1869:  enemies: boss Lorian, Elder Prince - Heatup (entity 38130830) -> Lorian, Elder Prince - Heatup (c7127, ported DS3 character)
+1870:  enemies: boss Lorian, Elder Prince (entity 38130832) -> Lorian, Elder Prince - Heatup (c7127, ported DS3 character)
+1871:  enemies: boss Lothric, Younger Prince (entity 38130831) -> Soldier of Godrick (Boss) (c4311, m18_00_00_00)
+1872:  enemies: stand-ins: Lothric, Younger Prince -> Soldier of Godrick (Boss) x1
+1873:  enemies: 2 DS3 logic characters left out (talk dummy c1000, platoon leader c0100, target dummies): DS3 shows nothing there
+1874:  enemies: people: 2 DS3 summons and invaders (White/Mad Phantom, Dark Spirit) left out: they only appear when summoned or invading
+1875:  enemies: people: Black Hand Kamui - Enemy - Grand Archives -> Esgar, Priest of Blood (Boss) (hostile) x1; Daughter of Crystal Kriemhild - Enemy - Grand Archives -> Mary, Eldest Sister (hostile) x1; Do not erase -> Finger Maiden (hostile) x1; Greirat of the Undead Settlement - Grand Archives -> Sir Gideon Ofnir, the All-Knowing (hostile) x1; Lion Knight Albert - Enemy - Grand Archives -> Inquisitor Ghiza (hostile) x1; Orbeck of Vinheim - Grand Archives -> Amy, Third Sister (hostile) x1
+1876:  enemies: people: 6 DS3 people wear their DS3 armour (CharaInit 3000000+, on an Elden Ring person's face and AI)
+1877:  enemies: AI: 20 placements run a DS3 think row ported with another character (DS3 places them with that family's AI)
+1980:  enemies: 59 placed (59 ported DS3 characters, 0 Elden Ring stand-ins, 0 people, DS3's own people and DS3 humans in their DS3 armour), 5 people left out, 5 with nothing to stand in; 3 DS3 boss entities
+1981:  enemies: boss Ancient Wyvern (entity 38140800) -> Ancient Wyvern - High Wall of Lothric (c7097, ported DS3 character)
+1982:  enemies: boss Nameless King (entity 38140851) -> Nameless King (c7107, ported DS3 character)
+1983:  enemies: boss King of the Storm (entity 38140850) -> King of the Storm (c7111, ported DS3 character)
+1984:  enemies: 5 DS3 logic characters left out (talk dummy c1000, platoon leader c0100, target dummies): DS3 shows nothing there
+1985:  enemies: people: 1 DS3 summons and invaders (White/Mad Phantom, Dark Spirit) left out: they only appear when summoned or invading
+1986:  enemies: AI: 1 placements run a DS3 think row ported with another character (DS3 places them with that family's AI)
+2087:  enemies: 3 placed (2 ported DS3 characters, 0 Elden Ring stand-ins, 1 people, DS3's own people and DS3 humans in their DS3 armour), 6 people left out, 0 with nothing to stand in; 1 DS3 boss entities
+2088:  enemies: boss Soul of Cinder (entity 38150800) -> Soul of Cinder (c7131, ported DS3 character)
+2089:  enemies: people: 2 DS3 summons and invaders (White/Mad Phantom, Dark Spirit) left out: they only appear when summoned or invading
+2090:  enemies: people: Fire Keeper - Firelink Shrine -> Fire Keeper - Firelink Shrine (talks, t410120) x1
+2091:  enemies: people: 1 DS3 people have their DS3 talk script (TalkID 900000000+)
+2254:  sky fades: 8 see-through sky meshes (nolight-blend 8); 8 drawn with DS3's fade baked into a texture of their own, 0 wholly faded out in DS3 and left out (m41_00_m40_00_kumo_10_a, m41_00_m40_00_kumo_11_a, m41_00_m40_00_mountain_04_382_a, m41_00_m40_00_sky_01_a, m41_00_m40_00_sky_05_392_a)
+2314:  enemies: 176 placed (166 ported DS3 characters, 0 Elden Ring stand-ins, 10 people, DS3's own people and DS3 humans in their DS3 armour), 8 people left out, 8 with nothing to stand in; 3 DS3 boss entities
+2315:  enemies: boss Demon in Pain (entity 11700801) -> Demon Prince - HP Dummy (c7108, ported DS3 character)
+2316:  enemies: boss Demon from Below (entity 11700802) -> Demon Prince - HP Dummy (c7108, ported DS3 character)
+2317:  enemies: 8 DS3 logic characters left out (talk dummy c1000, platoon leader c0100, target dummies): DS3 shows nothing there
+2318:  enemies: people: 2 DS3 summons and invaders (White/Mad Phantom, Dark Spirit) left out: they only appear when summoned or invading
+2319:  enemies: people: 2 later quest versions of a person left out (DS3 places every version and its scripts show one; the first, lowest talk script, stands): Amnesiac Lapp - Dreg Heap x2
+2320:  enemies: people: Amnesiac Lapp - Dreg Heap -> Tanith, Volcano Manor Proprietress (talks, t500730) x1; Desert Pyromancer Zoey - Enemy - Dreg Heap ->  (hostile) x1; Slave Knight Gael - Illusion ->  (hostile) x7; Stone-humped Hag -> Yoel of Londor (talks, t500760) x1
+2321:  enemies: people: 9 DS3 people wear their DS3 armour (CharaInit 3000000+, on an Elden Ring person's face and AI)
+2322:  enemies: people: 2 DS3 people have their DS3 talk script (TalkID 900000000+)
+2323:  enemies: AI: 13 placements run a DS3 think row ported with another character (DS3 places them with that family's AI)
+3052:  sky fades: 15 see-through sky meshes (nolight-blend 7, nolight-opacity 8); 15 drawn with DS3's fade baked into a texture of their own, 0 wholly faded out in DS3 and left out (m50_00_Test_sun_000_a, m50_00_enkei_kumo_01_a, m50_00_kumo_30_a, m50_00_m40_00_sky_05_392_a, m50_00_magicsighn_00_a, m50_00_sky_91_a)
+3124:  enemies: 166 placed (155 ported DS3 characters, 0 Elden Ring stand-ins, 11 people, DS3's own people and DS3 humans in their DS3 armour), 15 people left out, 8 with nothing to stand in; 3 DS3 boss entities
+3125:  enemies: boss Halflight - Enemy - The Ringed City (entity 11720800) -> Errant Sorcerer Wilhelm (c0000, m11_00_00_00)
+3126:  enemies: boss Darkeater Midir (entity 11720850) -> Darkeater Midir (c7150, ported DS3 character)
+3127:  enemies: 8 DS3 logic characters left out (talk dummy c1000, platoon leader c0100, target dummies): DS3 shows nothing there
+3128:  enemies: people: 5 DS3 summons and invaders (White/Mad Phantom, Dark Spirit) left out: they only appear when summoned or invading
+3129:  enemies: people: 2 later quest versions of a person left out (DS3 places every version and its scripts show one; the first, lowest talk script, stands): Amnesiac Lapp - Room on Ramparts - The Ringed City x1; Amnesiac Lapp - Shared Grave - The Ringed City x1
+3130:  enemies: people: Amnesiac Lapp - Ringed Inner Wall - The Ringed City -> Millicent (talks, t510730) x1; Big Locust -> Big Locust (talks, t510750) x1; Big Locust -> Big Locust (talks, t510751) x1; Big Locust -> Big Locust (talks, t510752) x1; Halflight - Enemy - The Ringed City -> Errant Sorcerer Wilhelm (hostile) x1; Judicator - Ringed City -> Judicator - Ringed City (talks, t510780) x1; Mad Pilgrim - No Crown - Ringed City -> Mad Pilgrim - No Crown - Ringed City (talks, t510770) x1; Painting Guardian - Enemy - The Ringed City -> Sir Gideon Ofnir, the All-Knowing (hostile) x3; Shira, Knight of Filianore - The Ringed City -> Sorceress Sellen (talks, t510740) x1
+3131:  enemies: people: 6 DS3 people wear their DS3 armour (CharaInit 3000000+, on an Elden Ring person's face and AI)
+3132:  enemies: people: 7 DS3 people have their DS3 talk script (TalkID 900000000+)
+3133:  enemies: AI: 8 placements run a DS3 think row ported with another character (DS3 places them with that family's AI)
+3260:  m40_00_00_00 -> m45_00_00_00: 4051 pieces, 45 collisions, 3 doorways written; 3 DS3 doorway lists into it; 16,136 floor cells; 3 own pieces over a neighbour hidden on its doorways (m900220_9001, m900282_9000, m900290_9000)
+3280:  texture memory m40_00_00_00: 2629 textures, 2126 MB full detail + 532 MB low detail (28 are 4096 pixels or wider; 1 in a format the porter can't size, kept whole in both copies)
+3284:  texture memory m40_00_00_00: 2306 textures, 1911 MB full detail + 478 MB low detail (28 are 4096 pixels or wider)
+3294:  texture memory m40_00_00_00: 2306 textures, 1908 MB full detail + 477 MB low detail (28 are 4096 pixels or wider)
+3299:  texture memory m40_00_00_00: 2306 textures, 1911 MB full detail + 478 MB low detail (28 are 4096 pixels or wider)
+3314:map effects: m40_00_00_00 -> m45_00_00_00: 24 SFX regions added
+3330:object effects: m40_00_00_00 -> m45_00_00_00: 201 object parts carry DS3's own effects (3 asset effect rows); 1 name a DS3 row that isn't there
+3346:flame lights: m40_00_00_00 -> m45_00_00_00: 0 lamps for 0 flames; object effects: 800022 x10 carries its own light, 800050 x1 carries its own light, 839010 x190 carries its own light
+3362:enemies: 590 NpcParam rows (0 plain template copies; 585 with DS3's own values in 40365 shared fields and 8805 template-only fields cleared), 523 NpcThinkParam rows (DS3 AI), 4489 behaviour rows (6880 more from the templates, 19 casting ported DS3 effects, 937 firing ported DS3 bullets), 3728 attack rows; effects: 1491 DS3 effects in 154 character effect binders (108 new), 648 NpcParam effects, 1146 DS3 effects ported (43 status, 1103 other, 0 visual only), 28 skipped; status templates: freezeAttackPower 107500, poizonAttackPower 106000, bloodAttackPower 6401, diseaseAttackPower 6603, sleepAttackPower 6454, madnessAttackPower 6753, 1293 DS3 bullets ported, 1008 of their effects shown, 137 left empty (effect not converted), 239 follow-up conditions DS3-only (254/255) made Elden Ring's 0; sounds: 5691 DS3 sounds in 153 character banks (2224 MB), 11382 events of 153 banks listed in the game's sound index, 8226 loose media files, 1 encrypted DS3 banks read (Work\reports\enemy-effects.tsv)
+3366:people armour: 580 armour binders written for 152 DS3 armour pieces (148 converted, 4 DS3 models failed)
+3367:  people weapons: 47 weapons Elden Ring has by name are held as look-only copies with DS3's model
+3368:people armour: 148 EquipParamProtector rows, 59 CharaInitParam rows (DS3 people in their armour); weapons: 108 DS3 weapons held, 128 slots emptied as in DS3, 0 DS3 weapons not ported (stand-in's kept)
+3369:  people armour: armour hd_2250 (Sunless Veil): not converted (InvalidDataException: the template or the DS3 model has nothing to draw); people wearing it go without that piece
+3370:  people armour: armour am_2250 (Sunless Gauntlets): not converted (InvalidDataException: the template or the DS3 model has nothing to draw); people wearing it go without that piece
+3371:  people armour: armour hd_7950 (Maiden Hood): not converted (InvalidDataException: the DS3 binder has no model); people wearing it go without that piece
+3372:  people armour: armour am_7950 (Maiden Gloves): not converted (InvalidDataException: the DS3 binder has no model); people wearing it go without that piece
+3373:  people armour: armour Slave Knight Hood (55500000): hides the body as Elden Ring's Elden Lord Crown (460000) does, 7 of 96 flags off DS3's
+3374:  people armour: armour Slave Knight Armor (55501000): hides the body as Elden Ring's Blue Silver Mail Armor (Altered) (241100) does, 21 of 96 flags off DS3's
+3375:  people armour: armour Slave Knight Gauntlets (55502000): hides the body as Elden Ring's Godskin Apostle Bracelets (520200) does, 3 of 96 flags off DS3's
+3376:  people armour: armour Slave Knight Leggings (55503000): hides the body as Elden Ring's Brave's Legwraps (700300) does, 5 of 96 flags off DS3's
+3377:  people armour: armour Dingy Hood (400000): hides the body as Elden Ring's Winged Serpent Helm (5183000) does, 9 of 96 flags off DS3's
+3378:  people armour: armour Dingy Robe (401000): hides the body as Elden Ring's Lusat's Robe (580100) does, 21 of 96 flags off DS3's
+3379:  people armour: armour Dingy Gloves (402000): hides the body as Elden Ring's  (5040200) does, 3 of 96 flags off DS3's
+3380:  people armour: armour Blood-Stained Skirt (403000): hides the body as Elden Ring's Leather Trousers (40300) does, 5 of 96 flags off DS3's
+3381:  people armour: armour Vilhelm's Helm (20000000): hides the body as Elden Ring's Winged Serpent Helm (5183000) does, 9 of 96 flags off DS3's
+3382:  people armour: armour Vilhelm's Armor (20001000): hides the body as Elden Ring's Lusat's Robe (580100) does, 20 of 96 flags off DS3's
+3383:  people armour: armour Vilhelm's Gauntlets (20002000): hides the body as Elden Ring's  (5040200) does, 3 of 96 flags off DS3's
+3384:  people armour: armour Vilhelm's Leggings (20003000): hides the body as Elden Ring's Leather Trousers (40300) does, 5 of 96 flags off DS3's
+3385:  people armour: armour Old Sage's Blindfold (26500000): hides the body as Elden Ring's Fire Monk Hood (350000) does, 6 of 96 flags off DS3's
+3386:  people armour: armour Cornyx's Garb (26501000): hides the body as Elden Ring's Nox Swordstress Armor (292100) does, 21 of 96 flags off DS3's
+3387:  people armour: armour Cornyx's Wrap (26502000): hides the body as Elden Ring's Godskin Apostle Bracelets (520200) does, 3 of 96 flags off DS3's
+3388:  people armour: armour Cornyx's Skirt (26503000): hides the body as Elden Ring's  (5102300) does, 4 of 96 flags off DS3's
+3389:  people armour: armour Dark Mask (54500000): hides the body as Elden Ring's Hierodas Glintstone Crown (990000) does, 9 of 96 flags off DS3's
+3390:  people armour: armour Chain Armor (70001000): hides the body as Elden Ring's Fire Monk Armor (350100) does, 22 of 96 flags off DS3's
+3391:  people armour: armour Leather Gloves (76002000): hides the body as Elden Ring's Godskin Apostle Bracelets (520200) does, 4 of 96 flags off DS3's
+3392:  people armour: armour Loincloth (76503000): hides the body as Elden Ring's  (5102300) does, 4 of 96 flags off DS3's
+3393:  people armour: armour Lapp's Helm (32000000): hides the body as Elden Ring's Elden Lord Crown (460000) does, 10 of 96 flags off DS3's
+3394:  people armour: armour Lapp's Armor (32001000): hides the body as Elden Ring's Tree Sentinel Armor (270100) does, 22 of 96 flags off DS3's
+3395:  people armour: armour Lapp's Gauntlets (32002000): hides the body as Elden Ring's Godskin Apostle Bracelets (520200) does, 3 of 96 flags off DS3's
+3396:  people armour: armour Lapp's Leggings (32003000): hides the body as Elden Ring's Malenia's Greaves (770300) does, 4 of 96 flags off DS3's
+3397:  people armour: armour Black Leather Armor (78001000): hides the body as Elden Ring's Consort's Robe (960100) does, 22 of 96 flags off DS3's
+3398:  people armour: armour Black Leather Gloves (78002000): hides the body as Elden Ring's Godskin Apostle Bracelets (520200) does, 4 of 96 flags off DS3's
+3399:  people armour: armour Black Leather Boots (78003000): hides the body as Elden Ring's Leather Trousers (40300) does, 5 of 96 flags off DS3's
+3400:  people armour: armour Shira's Crown (29500000): hides the body as Elden Ring's Great Horned Headband (300000) does, 9 of 96 flags off DS3's
+3401:  people armour: armour Shira's Armor (29501000): hides the body as Elden Ring's Lusat's Robe (580100) does, 21 of 96 flags off DS3's
+3402:  people armour: armour Shira's Gloves (29502000): hides the body as Elden Ring's  (1960200) does, 4 of 96 flags off DS3's
+3403:  people armour: armour Shira's Trousers (29503000): hides the body as Elden Ring's Leather Trousers (40300) does, 5 of 96 flags off DS3's
+3404:  people armour: armour Painting Guardian Hood (91000000): hides the body as Elden Ring's Hierodas Glintstone Crown (990000) does, 9 of 96 flags off DS3's
+3405:  people armour: armour Painting Guardian Gown (91001000): hides the body as Elden Ring's Fire Monk Armor (350100) does, 21 of 96 flags off DS3's
+3406:  people armour: armour Painting Guardian Gloves (91002000): hides the body as Elden Ring's  (5040200) does, 3 of 96 flags off DS3's
+3407:  people armour: armour Painting Guardian Waistcloth (91003000): hides the body as Elden Ring's Leather Trousers (40300) does, 5 of 96 flags off DS3's
+3408:  people armour: armour Antiquated Plain Garb (28501000): hides the body as Elden Ring's Prisoner Clothing (890100) does, 24 of 96 flags off DS3's
+3409:  people armour: armour Violet Wrappings (28502000): hides the body as Elden Ring's  (5040200) does, 3 of 96 flags off DS3's
+3410:  people armour: armour Desert Pyromancer Hood (81500000): hides the body as Elden Ring's Champion Headband (730000) does, 7 of 96 flags off DS3's
+3411:  people armour: armour Desert Pyromancer Garb (81501000): hides the body as Elden Ring's Cleanrot Armor (340100) does, 23 of 96 flags off DS3's
+3412:  people armour: armour Desert Pyromancer Gloves (81502000): hides the body as Elden Ring's Godskin Apostle Bracelets (520200) does, 4 of 96 flags off DS3's
+3413:  people armour: armour Desert Pyromancer Skirt (81503000): hides the body as Elden Ring's Brave's Legwraps (700300) does, 5 of 96 flags off DS3's
+3414:  people armour: armour Silver Knight Helm (85000000): hides the body as Elden Ring's Hierodas Glintstone Crown (990000) does, 9 of 96 flags off DS3's
+3415:  people armour: armour Silver Knight Armor (85001000): hides the body as Elden Ring's Lusat's Robe (580100) does, 21 of 96 flags off DS3's
+3416:  people armour: armour Silver Knight Gauntlets (85002000): hides the body as Elden Ring's Godskin Apostle Bracelets (520200) does, 4 of 96 flags off DS3's
+3417:  people armour: armour Silver Knight Leggings (85003000): hides the body as Elden Ring's Leather Trousers (40300) does, 5 of 96 flags off DS3's
+3418:  people armour: armour Alva Helm (80000000): hides the body as Elden Ring's Hierodas Glintstone Crown (990000) does, 9 of 96 flags off DS3's
+3419:  people armour: armour Alva Armor (80001000): hides the body as Elden Ring's Fire Monk Armor (350100) does, 22 of 96 flags off DS3's
+3420:  people armour: armour Alva Gauntlets (80002000): hides the body as Elden Ring's Godskin Apostle Bracelets (520200) does, 3 of 96 flags off DS3's
+3421:  people armour: armour Alva Leggings (80003000): hides the body as Elden Ring's Leather Trousers (40300) does, 5 of 96 flags off DS3's
+3422:  people armour: armour Morne's Helm (24500000): hides the body as Elden Ring's Hierodas Glintstone Crown (990000) does, 9 of 96 flags off DS3's
+3423:  people armour: armour Morne's Armor (24501000): hides the body as Elden Ring's Fire Monk Armor (350100) does, 22 of 96 flags off DS3's
+3424:  people armour: armour Morne's Gauntlets (24502000): hides the body as Elden Ring's Godskin Apostle Bracelets (520200) does, 3 of 96 flags off DS3's
+3425:  people armour: armour Morne's Leggings (24503000): hides the body as Elden Ring's Leather Trousers (40300) does, 5 of 96 flags off DS3's
+3426:  people armour: armour Worker Hat (47000000): hides the body as Elden Ring's Fire Monk Hood (350000) does, 6 of 96 flags off DS3's
+3427:  people armour: armour Master's Attire (76501000): hides the body as Elden Ring's Commoner's Garb (Altered) (811100) does, 25 of 96 flags off DS3's
+3428:  people armour: armour Master's Gloves (76502000): hides the body as Elden Ring's  (5040200) does, 2 of 96 flags off DS3's
+3429:  people armour: armour Thrall Hood (47500000): hides the body as Elden Ring's Elden Lord Crown (460000) does, 10 of 96 flags off DS3's
+3430:  people armour: armour Deserter Armor (40001000): hides the body as Elden Ring's Marionette Soldier Armor (840100) does, 22 of 96 flags off DS3's
+3431:  people armour: armour Deserter Trousers (40003000): hides the body as Elden Ring's Old Aristocrat Shoes (390300) does, 5 of 96 flags off DS3's
+3432:  people armour: armour Billed Mask (27500000): hides the body as Elden Ring's Festive Hood (800000) does, 9 of 96 flags off DS3's
+3433:  people armour: armour Black Dress (27501000): hides the body as Elden Ring's Marais Robe (963100) does, 22 of 96 flags off DS3's
+3434:  people armour: armour Black Gauntlets (27502000): hides the body as Elden Ring's Godskin Apostle Bracelets (520200) does, 3 of 96 flags off DS3's
+3435:  people armour: armour Black Leggings (27503000): hides the body as Elden Ring's Leather Trousers (40300) does, 5 of 96 flags off DS3's
+3436:  people armour: armour Chain Helm (70000000): hides the body as Elden Ring's Sanguine Noble Hood (320000) does, 7 of 96 flags off DS3's
+3437:  people armour: armour Undead Legion Armor (58001000): hides the body as Elden Ring's Lusat's Robe (580100) does, 23 of 96 flags off DS3's
+3438:  people armour: armour Undead Legion Gauntlet (58002000): hides the body as Elden Ring's Godskin Apostle Bracelets (520200) does, 4 of 96 flags off DS3's
+3439:  people armour: armour Undead Legion Leggings (58003000): hides the body as Elden Ring's Leather Trousers (40300) does, 5 of 96 flags off DS3's
+3440:  people armour: armour Sunless Armor (22501000): hides the body as Elden Ring's Marionette Soldier Armor (840100) does, 22 of 96 flags off DS3's
+3441:  people armour: armour Sunless Leggings (22503000): hides the body as Elden Ring's Leather Trousers (40300) does, 5 of 96 flags off DS3's
+3442:  people armour: armour Silver Mask (25000000): hides the body as Elden Ring's Hierodas Glintstone Crown (990000) does, 9 of 96 flags off DS3's
+3443:  people armour: armour Leonhard's Garb (25001000): hides the body as Elden Ring's Leather Armor (1400100) does, 20 of 96 flags off DS3's
+3444:  people armour: armour Leonhard's Gauntlets (25002000): hides the body as Elden Ring's Godskin Apostle Bracelets (520200) does, 3 of 96 flags off DS3's
+3445:  people armour: armour Leonhard's Trousers (25003000): hides the body as Elden Ring's Leather Trousers (40300) does, 5 of 96 flags off DS3's
+3446:  people armour: armour Clandestine Coat (30101000): hides the body as Elden Ring's Marionette Soldier Armor (840100) does, 21 of 96 flags off DS3's
+3447:  people armour: armour Old Sorcerer Gauntlets (77002000): hides the body as Elden Ring's Godskin Apostle Bracelets (520200) does, 4 of 96 flags off DS3's
+3448:  people armour: armour Old Sorcerer Boots (77003000): hides the body as Elden Ring's Leather Trousers (40300) does, 5 of 96 flags off DS3's
+3449:  people armour: armour Karla's Pointed Hat (99000000): hides the body as Elden Ring's Fire Monk Hood (350000) does, 8 of 96 flags off DS3's
+3450:  people armour: armour Karla's Coat (99001000): hides the body as Elden Ring's Marais Robe (963100) does, 22 of 96 flags off DS3's
+3451:  people armour: armour Karla's Gloves (99002000): hides the body as Elden Ring's Godskin Apostle Bracelets (520200) does, 3 of 96 flags off DS3's
+3452:  people armour: armour Karla's Trousers (99003000): hides the body as Elden Ring's Leather Trousers (40300) does, 5 of 96 flags off DS3's
+3453:  people armour: armour Maiden Robe (79501000): hides the body as Elden Ring's Fia's Robe (Altered) (1941100) does, 21 of 96 flags off DS3's
+3454:  people armour: armour Maiden Skirt (79503000): hides the body as Elden Ring's Leather Trousers (40300) does, 5 of 96 flags off DS3's
+3455:  people armour: armour Elite Knight Helm (72000000): hides the body as Elden Ring's Hierodas Glintstone Crown (990000) does, 7 of 96 flags off DS3's
+3456:  people armour: armour Elite Knight Armor (72001000): hides the body as Elden Ring's Fire Monk Armor (350100) does, 22 of 96 flags off DS3's
+3457:  people armour: armour Elite Knight Gauntlets (72002000): hides the body as Elden Ring's Godskin Apostle Bracelets (520200) does, 4 of 96 flags off DS3's
+3458:  people armour: armour Elite Knight Leggings (72003000): hides the body as Elden Ring's Leather Trousers (40300) does, 5 of 96 flags off DS3's
+3459:  people armour: armour Catarina Helm (74000000): hides the body as Elden Ring's Champion Headband (730000) does, 9 of 96 flags off DS3's
+3460:  people armour: armour Catarina Armor (74001000): hides the body as Elden Ring's Lusat's Robe (580100) does, 21 of 96 flags off DS3's
+3461:  people armour: armour Catarina Gauntlets (74002000): hides the body as Elden Ring's Godskin Apostle Bracelets (520200) does, 3 of 96 flags off DS3's
+3462:  people armour: armour Catarina Leggings (74003000): hides the body as Elden Ring's Leather Trousers (40300) does, 5 of 96 flags off DS3's
+3463:  people armour: armour Executioner Helm (27000000): hides the body as Elden Ring's Elden Lord Crown (460000) does, 8 of 96 flags off DS3's
+3464:  people armour: armour Executioner Armor (27001000): hides the body as Elden Ring's Ansbach's Attire (Altered) (5111100) does, 19 of 96 flags off DS3's
+3465:  people armour: armour Executioner Gauntlets (27002000): hides the body as Elden Ring's Godskin Apostle Bracelets (520200) does, 3 of 96 flags off DS3's
+3466:  people armour: armour Executioner Leggings (27003000): hides the body as Elden Ring's Leather Trousers (40300) does, 5 of 96 flags off DS3's
+3467:  people armour: armour Xanthous Crown (23500000): hides the body as Elden Ring's All-Knowing Helm (590000) does, 10 of 96 flags off DS3's
+3468:  people armour: armour Xanthous Overcoat (23501000): hides the body as Elden Ring's Lusat's Robe (580100) does, 21 of 96 flags off DS3's
+3469:  people armour: armour Xanthous Gloves (23502000): hides the body as Elden Ring's Kaiden Gauntlets (50200) does, 4 of 96 flags off DS3's
+3470:  people armour: armour Xanthous Trousers (23503000): hides the body as Elden Ring's Leather Trousers (40300) does, 5 of 96 flags off DS3's
+3471:  people armour: armour Black Hand Hat (23000000): hides the body as Elden Ring's Dancer's Hood (5080000) does, 7 of 96 flags off DS3's
+3472:  people armour: armour Black Hand Armor (23001000): hides the body as Elden Ring's Drake Knight Armor (60100) does, 21 of 96 flags off DS3's
+3473:  people armour: armour Assassin Gloves (23002000): hides the body as Elden Ring's Godskin Apostle Bracelets (520200) does, 3 of 96 flags off DS3's
+3474:  people armour: armour Assassin Trousers (23003000): hides the body as Elden Ring's Leather Trousers (40300) does, 5 of 96 flags off DS3's
+3475:  people armour: armour Sunset Helm (26000000): hides the body as Elden Ring's Elden Lord Crown (460000) does, 9 of 96 flags off DS3's
+3476:  people armour: armour Sunset Armor (26001000): hides the body as Elden Ring's Blue Silver Mail Armor (Altered) (241100) does, 21 of 96 flags off DS3's
+3477:  people armour: armour Sunset Gauntlets (26002000): hides the body as Elden Ring's Iron Rivet Gauntlets (5020200) does, 3 of 96 flags off DS3's
+3478:  people armour: armour Sunset Leggings (26003000): hides the body as Elden Ring's Leather Trousers (40300) does, 5 of 96 flags off DS3's
+3479:  people armour: armour Sneering Mask (25500000): hides the body as Elden Ring's Winged Serpent Helm (5183000) does, 9 of 96 flags off DS3's
+3480:  people armour: armour Pale Shade Robe (25501000): hides the body as Elden Ring's Fire Monk Armor (350100) does, 21 of 96 flags off DS3's
+3481:  people armour: armour Pale Shade Gloves (25502000): hides the body as Elden Ring's Godskin Apostle Bracelets (520200) does, 4 of 96 flags off DS3's
+3482:  people armour: armour Pale Shade Trousers (25503000): hides the body as Elden Ring's Leather Trousers (40300) does, 5 of 96 flags off DS3's
+3483:  people armour: armour Faraam Helm (73000000): hides the body as Elden Ring's Hierodas Glintstone Crown (990000) does, 9 of 96 flags off DS3's
+3484:  people armour: armour Faraam Armor (73001000): hides the body as Elden Ring's Fire Monk Armor (350100) does, 22 of 96 flags off DS3's
+3485:  people armour: armour Faraam Gauntlets (73002000): hides the body as Elden Ring's Godskin Apostle Bracelets (520200) does, 3 of 96 flags off DS3's
+3486:  people armour: armour Faraam Boots (73003000): hides the body as Elden Ring's Leather Trousers (40300) does, 5 of 96 flags off DS3's
+3487:  people armour: armour Fire Keeper Robe (68001000): hides the body as Elden Ring's Lusat's Robe (580100) does, 20 of 96 flags off DS3's
+3488:  people armour: armour Fire Keeper Gloves (68002000): hides the body as Elden Ring's Godskin Apostle Bracelets (520200) does, 3 of 96 flags off DS3's
+3489:  people armour: armour Fire Keeper Skirt (68003000): hides the body as Elden Ring's Prophet Trousers (620300) does, 5 of 96 flags off DS3's
+3490:  people armour: armour Exile Mask (55000000): hides the body as Elden Ring's Hierodas Glintstone Crown (990000) does, 9 of 96 flags off DS3's
+3491:  people armour: armour Exile Armor (55001000): hides the body as Elden Ring's Lusat's Robe (580100) does, 21 of 96 flags off DS3's
+3492:  people armour: armour Exile Gauntlets (55002000): hides the body as Elden Ring's Godskin Apostle Bracelets (520200) does, 3 of 96 flags off DS3's
+3493:  people armour: armour Exile Leggings (55003000): hides the body as Elden Ring's Leather Trousers (40300) does, 5 of 96 flags off DS3's
+3494:  people armour: armour Brigand Hood (75500000): hides the body as Elden Ring's Dancer's Hood (5080000) does, 7 of 96 flags off DS3's
+3495:  people armour: armour Brigand Armor (75501000): hides the body as Elden Ring's Malformed Dragon Armor (260100) does, 22 of 96 flags off DS3's
+3496:  people armour: armour Brigand Gauntlets (75502000): hides the body as Elden Ring's  (5040200) does, 3 of 96 flags off DS3's
+3497:  people armour: armour Brigand Trousers (75503000): hides the body as Elden Ring's Leather Trousers (40300) does, 5 of 96 flags off DS3's
+3498:  people armour: armour Fallen Knight Helm (19000000): hides the body as Elden Ring's Elden Lord Crown (460000) does, 10 of 96 flags off DS3's
+3499:  people armour: armour Fallen Knight Armor (19001000): hides the body as Elden Ring's Lusat's Robe (580100) does, 20 of 96 flags off DS3's
+3500:  people armour: armour Fallen Knight Gauntlets (19002000): hides the body as Elden Ring's Godskin Apostle Bracelets (520200) does, 3 of 96 flags off DS3's
+3501:  people armour: armour Fallen Knight Trousers (19003000): hides the body as Elden Ring's Leather Trousers (40300) does, 5 of 96 flags off DS3's
+3502:  people armour: armour Court Sorcerer Hood (29000000): hides the body as Elden Ring's Common Soldier Helm (5240000) does, 6 of 96 flags off DS3's
+3503:  people armour: armour Court Sorcerer Robe (29001000): hides the body as Elden Ring's Lusat's Robe (580100) does, 21 of 96 flags off DS3's
+3504:  people armour: armour Court Sorcerer Gloves (29002000): hides the body as Elden Ring's Sorcerer Manchettes (830200) does, 4 of 96 flags off DS3's
+3505:  people armour: armour Court Sorcerer Trousers (29003000): hides the body as Elden Ring's Leather Trousers (40300) does, 5 of 96 flags off DS3's
+3506:  people armour: armour Drang Armor (89001000): hides the body as Elden Ring's Leather Armor (1400100) does, 21 of 96 flags off DS3's
+3507:  people armour: armour Drang Gauntlets (89002000): hides the body as Elden Ring's Godskin Apostle Bracelets (520200) does, 4 of 96 flags off DS3's
+3508:  people armour: armour Drang Shoes (89003000): hides the body as Elden Ring's Leather Trousers (40300) does, 5 of 96 flags off DS3's
+3509:  people armour: armour Black Iron Helm (90000000): hides the body as Elden Ring's Elden Lord Crown (460000) does, 10 of 96 flags off DS3's
+3510:  people armour: armour Black Iron Armor (90001000): hides the body as Elden Ring's Marionette Soldier Armor (840100) does, 22 of 96 flags off DS3's
+3511:  people armour: armour Black Iron Gauntlets (90002000): hides the body as Elden Ring's Godskin Apostle Bracelets (520200) does, 3 of 96 flags off DS3's
+3512:  people armour: armour Black Iron Leggings (90003000): hides the body as Elden Ring's Leather Trousers (40300) does, 5 of 96 flags off DS3's
+3513:  people armour: armour Creighton's Steel Mask (79000000): hides the body as Elden Ring's Hierodas Glintstone Crown (990000) does, 9 of 96 flags off DS3's
+3514:  people armour: armour Mirrah Chain Mail (79001000): hides the body as Elden Ring's Nox Swordstress Armor (292100) does, 22 of 96 flags off DS3's
+3515:  people armour: armour Mirrah Chain Gloves (79002000): hides the body as Elden Ring's Godskin Apostle Bracelets (520200) does, 4 of 96 flags off DS3's
+3516:  people armour: armour Mirrah Chain Leggings (79003000): hides the body as Elden Ring's Leather Trousers (40300) does, 5 of 96 flags off DS3's
+3517:  people armour: armour Helm of Thorns (96000000): hides the body as Elden Ring's Elden Lord Crown (460000) does, 10 of 96 flags off DS3's
+3518:  people armour: armour Armor of Thorns (96001000): hides the body as Elden Ring's Fire Monk Armor (350100) does, 22 of 96 flags off DS3's
+3519:  people armour: armour Gauntlets of Thorns (96002000): hides the body as Elden Ring's Godskin Apostle Bracelets (520200) does, 4 of 96 flags off DS3's
+3520:  people armour: armour Leggings of Thorns (96003000): hides the body as Elden Ring's Leather Trousers (40300) does, 5 of 96 flags off DS3's
+3521:time: people armour 352.1 s
+3928:  m45_00_00_00 (from m40_00_00_00): 98/103 events, 2827/2879 instructions converted, 47 no-ops, 20 DS3 action button rows pointed at their copies, 10 messages and area names pointed at DS3's text, item lots, AI rows, items, behaviours, effects and cameras: 81 to ported rows, 23 kept, SpEffects: 50 to ported rows, 0 kept, cutscenes: 2 lines play a ported cutscene, 0 left out, 1 flag range lines NOT consecutive; not converted: Initialize Crow Trade x30, Set Map Sound State x6, Set Character Animation State x6, IF Map Ceremony State x2, Disable Loading Screen Tips x2, Initialize Crow Trade Area x2, IF Player Remaining Yoel Level Count x2, Set Bonfire Warping State x1, IF Multiplayer Network Penalized x1, 7 music events
+3954:    m40_00_00_00: Boss 14000800 (3 events, 0 companions); Boss 14000830 (1 events, 0 companions)
+3968:  music: per map, tracks with a flag/tracks: m11_70_00_00 (m50_00_00_00) 2/2; m11_72_00_00 (m51_00_00_00) 4/4; m19_70_00_00 (m45_00_00_00) 4/4; m38_10_00_00 (m38_00_00_00) 4/4; m38_11_00_00 (m37_00_00_00) 4/4; m38_12_00_00 (m39_00_00_00) 2/2; m38_13_00_00 (m34_01_00_00) 2/2; m38_14_00_00 (m32_00_00_00) 3/3; m38_15_00_00 (m41_00_00_00) 3/3; m45_00_00_00 (m40_00_00_00) 7/7; m45_01_00_00 (m30_00_00_00) 6/6; m45_02_00_00 (m31_00_00_00) 2/2; m45_03_00_00 (m30_01_00_00) 2/2; m45_04_00_00 (m33_00_00_00) 4/4; m45_05_00_00 (m35_00_00_00) 3/3
+4002:  music: m400000000 89 s 2 ch 48000 Hz, loops 688309-4297681, fade-out 3500 ms (event in fdp_sm40, 1/1 layers)
+4003:  music: m400000001 138 s 2 ch 48000 Hz, loops 315891-6558192, fade-out 3000 ms (event in fdp_sm40, 1/1 layers)
+4004:  music: m400000002 89 s 2 ch 48000 Hz, loops 688309-4297681, fade-out 3500 ms (event in fdp_sm40, 1/1 layers)
+4005:  music: m400000003 138 s 2 ch 48000 Hz, loops 315891-6558192, fade-out 3000 ms (event in fdp_sm40, 1/1 layers)
+4006:  music: m400100000 191 s 2 ch 44100 Hz, loops 447821-8465317, fade-out 3000 ms (event in fdp_sm40, 1/1 layers)
+4007:  music: m400100001 173 s 2 ch 48000 Hz, loops 433271-8338550, fade-out 3000 ms (event in fdp_sm40, 1/1 layers)
+4020:  music: 49/52 tracks decoded (1098 MB in Mods\ER\darksign_music), 49 lines in darksign_music.tsv; FAIL no DS3 audio for: m350000002, m400000010, m410000010
+4021:  music: m40_00_00_00 ????BGM_???: m400000000 (entity 4004800), 1 zones, off at load, 2 lines turn it on, 3 off, a boss track; flags switch 1039295000 play 1039295050, event 1039291000
+4022:  music: m40_00_00_00 ????BGM_???HU: m400000001 (entity 4004801), 1 zones, off at load, 2 lines turn it on, 3 off, a boss track; flags switch 1039295001 play 1039295051, event 1039291001
+4023:  music: m40_00_00_00 ????BGM_????: m400000010 (entity 4004860), 1 zones, on at load; flags switch 0 play 1039295052, event 1039291002 (no audio)
+4024:  music: m40_00_00_00 ????BGM_??: m400000002 (entity 4004830), 1 zones, off at load, 2 lines turn it on, 3 off, a boss track; flags switch 1039295002 play 1039295053, event 1039291003
+4025:  music: m40_00_00_00 ????BGM_??(HU): m400000003 (entity 4004831), 1 zones, off at load, 2 lines turn it on, 3 off, a boss track; flags switch 1039295003 play 1039295054, event 1039291004
+4026:  music: m40_00_00_00 ???BGM: m400100001 (entity 4004460), 2 zones, off at load, 1 lines turn it on, 4 off; flags switch 1039295047 play 1039295055, event 1039291005
+4027:  music: m40_00_00_00 ??BGM: m400100000 (entity 4004450), 2 zones, off at load, 1 lines turn it on, 4 off; flags switch 1039295048 play 1039295056, event 1039291006
+4074:bonfires: m40_00_00_00 -> m45_00_00_00: 3 of 3 DS3 bonfires are sites of grace (Firelink Shrine 4001950->45001950 sword, Cemetery of Ash 4001951->45001951 sword, Overgrown Sanctum 4001952->45001952 sword)
+4102:people talk: Elden Ring's 365 talk scripts use 204 commands and 82 functions
+4103:people talk: 61 DS3 talk scripts converted for 12 maps; commands left out: c1_104 x27, c1_106 x2, c1_107 x1, c1_112 x1, c1_23 x1, c1_53 x1, c1_62 x1, c1_65 x14, c1_66 x14; functions Elden Ring lacks read as 0: f105 x3, f108 x1, f31 x119, f35 x2
+4104:  people talk: m40_00_00_00: 6 flags only DS3's characters set, read as on (74000137 74000138 74000391 74000392 74000432 74000433)
+4105:  people talk: m31_00_00_00: 1 flags only DS3's characters set, read as on (73100132)
+4106:people talk: 649 dialogue lines (TalkParam 1000000000+), 2 without a DS3 row, 150 without DS3 text; 188 menu and dialog texts
+4107:people talk: voices: 649 lines in 54 voice banks (sd\vc9PP.bnk, Play_v<voiceId>; a line DS3 has no voice for is silence of its reading time); index: 0 events of 0 cutscene banks listed (beside s12_01_0000), 1298 events of 54 voice banks listed (with Elden Ring's voice banks)
+4108:  people talk: voice banks built on Elden Ring's NPC voice bank /enus/vc227.bnk (its voice actor-mixers: room reverb, distance, position; its Stop action)
+4109:  people talk: voice template not used: /vc700.bnk: 0 events, 0 with a Play chain, 0 with a readable Sound, none builds
+4110:  people talk: voice bank vc900.bnk 3590 KB, 21 spoken, 0 silent
+4111:  people talk: voice bank vc901.bnk 1900 KB, 8 spoken, 0 silent
+4112:  people talk: voice bank vc903.bnk 4168 KB, 20 spoken, 0 silent
+4113:  people talk: voice bank vc904.bnk 5209 KB, 29 spoken, 0 silent
+4114:  people talk: voice bank vc905.bnk 5220 KB, 22 spoken, 0 silent
+4115:  people talk: voice bank vc906.bnk 3339 KB, 17 spoken, 0 silent
+4116:  people talk: voice bank vc907.bnk 4262 KB, 27 spoken, 0 silent
+4117:  people talk: voice bank vc908.bnk 6280 KB, 32 spoken, 0 silent
+4118:  people talk: voice bank vc909.bnk 2136 KB, 9 spoken, 0 silent
+4119:  people talk: voice bank vc910.bnk 3023 KB, 14 spoken, 0 silent
+4120:  people talk: voice bank vc911.bnk 807 KB, 5 spoken, 0 silent
+4121:  people talk: voice bank vc912.bnk 4028 KB, 21 spoken, 0 silent
+4122:  people talk: voice bank vc914.bnk 4419 KB, 25 spoken, 0 silent
+4123:  people talk: voice bank vc915.bnk 5752 KB, 23 spoken, 0 silent
+4124:  people talk: voice bank vc916.bnk 2181 KB, 10 spoken, 0 silent
+4125:  people talk: voice bank vc917.bnk 2661 KB, 15 spoken, 0 silent
+4126:  people talk: voice bank vc918.bnk 3234 KB, 16 spoken, 0 silent
+4127:  people talk: voice bank vc919.bnk 1639 KB, 9 spoken, 0 silent
+4128:  people talk: voice bank vc920.bnk 1166 KB, 7 spoken, 0 silent
+4129:  people talk: voice bank vc921.bnk 1189 KB, 8 spoken, 0 silent
+4130:  people talk: voice bank vc922.bnk 1888 KB, 9 spoken, 0 silent
+4131:  people talk: voice bank vc923.bnk 1656 KB, 9 spoken, 0 silent
+4132:  people talk: voice bank vc924.bnk 1357 KB, 7 spoken, 0 silent
+4133:  people talk: voice bank vc925.bnk 3067 KB, 15 spoken, 0 silent
+4134:  people talk: voice bank vc926.bnk 1396 KB, 6 spoken, 0 silent
+4135:  people talk: voice bank vc927.bnk 117 KB, 2 spoken, 0 silent
+4136:  people talk: voice bank vc928.bnk 109 KB, 1 spoken, 0 silent
+4137:  people talk: voice bank vc929.bnk 1640 KB, 9 spoken, 0 silent
+4138:  people talk: voice bank vc930.bnk 606 KB, 3 spoken, 0 silent
+4139:  people talk: voice bank vc932.bnk 2257 KB, 9 spoken, 0 silent
+4140:  people talk: voice bank vc933.bnk 2773 KB, 16 spoken, 0 silent
+4141:  people talk: voice bank vc934.bnk 702 KB, 4 spoken, 0 silent
+4142:  people talk: voice bank vc935.bnk 2261 KB, 15 spoken, 0 silent
+4143:  people talk: voice bank vc936.bnk 1143 KB, 5 spoken, 0 silent
+4144:  people talk: voice bank vc938.bnk 2034 KB, 9 spoken, 0 silent
+4145:  people talk: voice bank vc939.bnk 1353 KB, 8 spoken, 1 silent
+4146:  people talk: voice bank vc940.bnk 1590 KB, 8 spoken, 0 silent
+4147:  people talk: voice bank vc941.bnk 3635 KB, 15 spoken, 0 silent
+4148:  people talk: voice bank vc943.bnk 1723 KB, 11 spoken, 0 silent
+4149:  people talk: voice bank vc944.bnk 1802 KB, 10 spoken, 1 silent
+4150:  people talk: voice bank vc945.bnk 1028 KB, 6 spoken, 0 silent
+4151:  people talk: voice bank vc946.bnk 1025 KB, 3 spoken, 0 silent
+4152:  people talk: voice bank vc947.bnk 937 KB, 4 spoken, 0 silent
+4153:  people talk: voice bank vc948.bnk 4721 KB, 22 spoken, 0 silent
+4154:  people talk: voice bank vc949.bnk 1962 KB, 9 spoken, 0 silent
+4155:  people talk: voice bank vc950.bnk 1454 KB, 10 spoken, 0 silent
+4156:  people talk: voice bank vc952.bnk 6593 KB, 31 spoken, 0 silent
+4157:  people talk: voice bank vc953.bnk 2390 KB, 10 spoken, 0 silent
+4158:  people talk: voice bank vc955.bnk 3861 KB, 21 spoken, 0 silent
+4159:  people talk: voice bank vc956.bnk 3026 KB, 9 spoken, 0 silent
+4160:  people talk: voice bank vc957.bnk 1106 KB, 4 spoken, 0 silent
+4161:  people talk: voice bank vc958.bnk 966 KB, 5 spoken, 0 silent
+4162:  people talk: voice bank vc959.bnk 774 KB, 2 spoken, 0 silent
+4163:  people talk: voice bank vc960.bnk 933 KB, 2 spoken, 0 silent
+4164:people talk: 15 shops, 134 wares on the shelves (13 sold once, as in DS3) (ShopLineupParam 20000000+: ported weapons and Elden Ring items of the same name), 422 DS3 wares with no Elden Ring item yet left off
+4165:time: people talk 29.8 s
