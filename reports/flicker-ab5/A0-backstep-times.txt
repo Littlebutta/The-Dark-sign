@@ -1,0 +1,4 @@
+perf-start	295
+pan-start	8004
+pan-end	14011
+perf-end	14791
