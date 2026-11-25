@@ -78,7 +78,20 @@ public static class MapPeopleDiag
             Line("  name\tmodel\tentity\tNpcParam\tmod row name\tmod team\tthink\ttalk\tCharaInit\tposition");
             foreach (var e in er.Parts.Enemies)
                 Line($"  {e.Name}\t{e.ModelName}\t{e.EntityID}\t{e.NPCParamID}\t{Name(modNpc, e.NPCParamID)}\t{Team(modNpc, e.NPCParamID)}\t{e.ThinkParamID}\t{e.TalkID}\t{e.CharaInitID}\t{Pos(e.Position)}");
+            // Every event started with a person (quest states, hostility on damage...), written out line by line.
+            var people = msb.Parts.Enemies.Where(e => EnemyPort.People.IsHuman(e.ModelName) || e.TalkID > 0).Select(e => (long)e.EntityID).Where(id => id > 0).ToHashSet();
+            if (script is not null)
+                Dump(script, common, ds3Defs, people, "DS3 " + slot.Ds3, Line);
+            var modPeople = er.Parts.Enemies.Where(e => EnemyPort.People.IsHuman(e.ModelName) || e.TalkID > 0).Select(e => (long)e.EntityID).Where(id => id > 0).ToHashSet();
+            var modCommonPath = ctx.ModPath("event", "common_func.emevd.dcx");
+            var modCommon = File.Exists(modCommonPath) ? EMEVD.Read(modCommonPath) : null;
             var modScript = ctx.ModPath("event", $"{slot.Er}.emevd.dcx");
+            if (File.Exists(modScript))
+                Dump(EMEVD.Read(modScript), modCommon, erDefs, modPeople, "mod " + slot.Er, Line);
+            var flagFile = ctx.ModPath(MapEvents.FlagFile);
+            if (File.Exists(flagFile))
+                Line($"  flag table {MapEvents.FlagFile}: lines naming {slot.Ds3}'s people flags are in the porter log; first 5 lines: "
+                     + string.Join(" | ", File.ReadLines(flagFile).Take(5)));
             if (File.Exists(modScript))
             {
                 var modPassed = new HashSet<long>();
@@ -122,5 +135,42 @@ public static class MapPeopleDiag
                 if (ints.Count > 1 && ints.Take(3).Any(events.Contains))
                     line($"  {what} event {e.ID} starts: 2000[{ins.ID:D2}] {string.Join(" ", ints)}");
             }
+    }
+
+    /// <summary>Every event a start line (2000[00] / 2000[06]) starts with one of <paramref name="people"/>, from the
+    /// map script or common_func, written out instruction by instruction with argument names and passed-in values.</summary>
+    private static void Dump(EMEVD script, EMEVD? common, Emedf defs, HashSet<long> people, string what, Action<string> line)
+    {
+        var wanted = new SortedSet<long>();
+        foreach (var e in script.Events)
+            foreach (var ins in e.Instructions.Where(x => x.Bank == 2000 && x.ID is 0 or 6))
+            {
+                var data = ins.ArgData;
+                var ints = Enumerable.Range(0, data.Length / 4).Select(k => (long)BitConverter.ToInt32(data, k * 4)).ToList();
+                int idAt = ins.ID == 0 ? 1 : 0;
+                if (ints.Count <= idAt + 1 || !ints.Skip(idAt + 1).Any(people.Contains))
+                    continue;
+                wanted.Add(ints[idAt]);
+                line($"  {what} start (event {e.ID}): 2000[{ins.ID:D2}] {string.Join(" ", ints)}");
+            }
+        foreach (var id in wanted)
+        {
+            var ev = script.Events.FirstOrDefault(x => x.ID == id) ?? common?.Events.FirstOrDefault(x => x.ID == id);
+            if (ev is null)
+            {
+                line($"  {what} event {id}: not found");
+                continue;
+            }
+            line($"  {what} event {id} ({(script.Events.Contains(ev) ? "map script" : "common_func")}, rest {ev.RestBehavior}):");
+            for (int i = 0; i < ev.Instructions.Count; i++)
+            {
+                var ins = ev.Instructions[i];
+                var def = defs.Get(ins.Bank, ins.ID);
+                var args = def is null ? $"raw {Convert.ToHexString(ins.ArgData)}"
+                    : string.Join(", ", def.Args.Select(a => $"{a.Name}={(a.Type == 6 ? BitConverter.Int32BitsToSingle((int)Emedf.Read(ins.ArgData, a)).ToString(CultureInfo.InvariantCulture) : Emedf.Read(ins.ArgData, a).ToString(CultureInfo.InvariantCulture))}"));
+                var passed = ev.Parameters.Where(p => p.InstructionIndex == i).Select(p => $"@{p.TargetStartByte}<-X{p.SourceStartByte}").ToList();
+                line($"    {i,3} {ins.Bank}[{ins.ID:D2}] {def?.Name ?? "?"}({args}){(passed.Count > 0 ? " " + string.Join(" ", passed) : "")}");
+            }
+        }
     }
 }
