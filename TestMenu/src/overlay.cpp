@@ -20,6 +20,7 @@
 #include "motion.h"
 #include "hotkeys.h"
 #include "flagcheck.h"
+#include "peopleflags.h"
 #include "music.h"
 #include "sound.h"
 #include "spawn.h"
@@ -1517,6 +1518,7 @@ DWORD WINAPI start(LPVOID)
     dks_sound_init();
     dks_music_init();
     dks_flagcheck_start();
+    dks_peopleflags_start();
     // DKSIGN_NO_OVERLAY=1: no overlay (if hooking DirectX 12 breaks the game); the hotkeys still work.
     wchar_t no_overlay[8];
     DWORD n = GetEnvironmentVariableW(L"DKSIGN_NO_OVERLAY", no_overlay, 8);

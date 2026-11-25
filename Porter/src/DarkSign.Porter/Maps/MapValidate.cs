@@ -140,6 +140,18 @@ public static class MapValidate
             report.Warn($"flag allocation check didn't run: {ex.Message}");
         }
 
+        // The people's quest and hostility flags, which the in-game watcher (dksign_testmenu.dll) logs on load and on change.
+        try
+        {
+            var erDefs = Emedf.Parse(File.ReadAllText(ctx.Data.Emedf("er-common")));
+            int n = PeopleFlags.Write(ctx, listed.Select(l => l.Er), erDefs);
+            report.Ok($"people flags: {n} quest/hostility flags of the placed people listed in {PeopleFlags.ListFile} for the in-game log");
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            report.Warn($"people flags list wasn't written: {ex.Message}");
+        }
+
         // The enemy port: DS3 models that should have been built and weren't leave every such enemy looking like its
         // Elden Ring template, which the maps and the spawn menu can't tell from a good build on their own.
         var enemyReport = ctx.WorkPath("reports", Enemies.ChrPort.ReportFile);
