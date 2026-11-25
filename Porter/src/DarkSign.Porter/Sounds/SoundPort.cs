@@ -35,9 +35,10 @@ public static class SoundPort
         volumeRandom = Math.Min(0, Clean(Math.Max(-96f, Fev.Decibels(ds3Event.VolumeRandomMin) + Fev.Decibels(layer.VolumeRandomMin)), 0.1f));
         pitchRandom = Math.Max(0, Clean(Fev.Cents(ds3Event.PitchRandom + layer.PitchRandom), 0.5f));
         bool loop = layer.Loops;
-        return volume == 0 && pitch == 0 && volumeRandom == 0 && pitchRandom == 0 && !loop
+        int max = ds3Event.MaxPlaybacks;
+        return volume == 0 && pitch == 0 && volumeRandom == 0 && pitchRandom == 0 && !loop && max == 0
             ? null
-            : new WwiseBank.Tuning(volume, pitch, volumeRandom, pitchRandom, loop);
+            : new WwiseBank.Tuning(volume, pitch, volumeRandom, pitchRandom, loop, max);
     }
 
     /// <summary>The loop points a looping layer's wem gets: the DS3 sample's own, when it has them.</summary>

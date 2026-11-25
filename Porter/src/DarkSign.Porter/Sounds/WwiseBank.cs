@@ -132,7 +132,9 @@ public sealed class WwiseBank
     /// Sounds when it has none. Loop sets the Loop property (0: until stopped) on the layer's Sounds, where Elden
     /// Ring's looping sounds have it.
     /// </summary>
-    public sealed record Tuning(float VolumeDb = 0, float PitchCents = 0, float VolumeRandomDb = 0, float PitchRandomCents = 0, bool Loop = false);
+    /// MaxInstances (above 0) limits how many of the layer may play at once over the whole game, as DS3's event's
+    /// "max playbacks" does (<see cref="WwiseNode.WithLimit"/>), on the same node as the level.
+    public sealed record Tuning(float VolumeDb = 0, float PitchCents = 0, float VolumeRandomDb = 0, float PitchRandomCents = 0, bool Loop = false, int MaxInstances = 0);
 
     /// <summary>
     /// A Stop event for a new sound, as every Play_s/Play_c event of Elden Ring has one of the same number (14,097
@@ -258,7 +260,15 @@ public sealed class WwiseBank
             var (min, max) = node.Ranges.GetValueOrDefault(WwiseNode.PropPitch);
             ranges.Add((WwiseNode.PropPitch, Math.Max(-2400f, min - tuning.PitchRandomCents), Math.Min(2400f, max + tuning.PitchRandomCents)));
         }
-        return props.Count + ranges.Count == 0 ? data : node.WithProps(data, props, ranges);
+        var tuned = props.Count + ranges.Count == 0 ? data : node.WithProps(data, props, ranges);
+        if (tuning.MaxInstances > 0)
+        {
+            // The property bundle sits before the advanced settings: read the node again where its edit moved them.
+            if (WwiseNode.Read(new HircObject(type, BitConverter.ToUInt32(tuned, 0), tuned)) is not { AdvancedAt: >= 0 } limited)
+                return null;
+            tuned = limited.WithLimit(tuned, tuning.MaxInstances);
+        }
+        return tuned;
     }
 
     // One layer's Sounds and container go into the hierarchy; returns its Play action (the caller adds it with the event).

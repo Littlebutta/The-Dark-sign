@@ -137,13 +137,16 @@ public static class SoundSelfTest
         var wemLoop = WwiseBank.PcmWem(new short[100], 1, 44100, (10, 89));
         bank.AddSound(chain, 9301, [new WwiseBank.Layer(9303, 9304, [(9302u, 9305u, wemLoop), (9306u, 9307u, wemL)])
         {
-            Tuning = new WwiseBank.Tuning(-9f, -100f, -5f, 150f, Loop: true), StopActionId = 9308,
+            Tuning = new WwiseBank.Tuning(-9f, -100f, -5f, 150f, Loop: true, MaxInstances: 1), StopActionId = 9308,
         }], false, new WwiseBank.StopEvent(9310, 1500, stopTemplate));
         var b5Bytes = bank.Write();
         var b5 = WwiseBank.Read(b5Bytes);
         var loopCntr = WwiseNode.Read(b5.Get(9304)!)!;
         Check(loopCntr.Props[0] == WwiseNode.Bits(-23f) && loopCntr.Props[2] == WwiseNode.Bits(-100f) && loopCntr.Ranges[0] == (-5f, 0f) && loopCntr.Ranges[2] == (-150f, 150f)
               && !loopCntr.Props.ContainsKey(0x3A), "looping layer: DS3's level, pitch and ranges on the container");
+        Check(loopCntr.Limit(b5.Get(9304)!.Data) is (1, var limitBits) && (limitBits & 0x0D) == 0x0C
+              && WwiseNode.Read(b5.Get(9302)!)!.Limit(b5.Get(9302)!.Data).Max == 0,
+            "DS3's max playbacks: one at a time over the whole game, oldest stopped, on the layer's container only");
         Check(new uint[] { 9302, 9306 }.All(s => WwiseNode.Read(b5.Get(s)!) is { } n && n.Props.TryGetValue(0x3A, out var loop) && loop == 0 && n.Props[0] == WwiseNode.Bits(-2f)),
             "looping layer: Loop property (0 = until stopped) on every Sound, their own volume kept");
         Check(b5.Get(9310)?.Data.SequenceEqual(Cat(U32(9310), [1], U32(9308))) == true, "Stop event lists its Stop action");
@@ -165,6 +168,7 @@ public static class SoundSelfTest
               && b6.Get(9418)!.Data.SequenceEqual(Cat(U32(9418), U16(0x0103), U32(9414), [0], [0], [0], [4, 6, 0])), "two layers: one Stop action each, no fade, default tail");
         var plain = WwiseNode.Read(b6.Get(9404)!)!; var limited = WwiseNode.Read(b6.Get(9414)!)!;
         Check(plain.Props[0] == WwiseNode.Bits(-14f) && !plain.Props.ContainsKey(2) && plain.Ranges.Count == 0 && !WwiseNode.Read(b6.Get(9402)!)!.Props.ContainsKey(0x3A), "untuned one-shot layer as before");
+        Check(plain.Limit(b6.Get(9404)!.Data).Max == 0 && limited.Limit(b6.Get(9414)!.Data).Max == 0, "no max playbacks: no instance limit");
         Check(limited.Props[0] == WwiseNode.Bits(-96f) && limited.Props[2] == WwiseNode.Bits(2400f), "level and pitch kept inside Wwise's limits");
         // Loop points in a PCM wem: a "smpl" chunk with one loop between fmt and data; bad points leave it out.
         Check(Encoding.ASCII.GetString(wemLoop, 44, 4) == "smpl" && BitConverter.ToInt32(wemLoop, 48) == 60 && BitConverter.ToInt32(wemLoop, 52 + 28) == 1
@@ -206,7 +210,7 @@ public static class SoundSelfTest
         static void FevLoopHeader(byte[] head)
         {
             F(0.5012f).CopyTo(head, 24); F(-1 / 48f).CopyTo(head, 28); F(1 / 48f).CopyTo(head, 32); F(0.2921f).CopyTo(head, 36);
-            F(27f).CopyTo(head, 60); U32(0x40000000).CopyTo(head, 72); U32(1500).CopyTo(head, 144);
+            F(27f).CopyTo(head, 60); U32(0x40000000).CopyTo(head, 72); U32(1500).CopyTo(head, 144); U32(1).CopyTo(head, 44);
         }
         string[] fevStrings = ["", "main", "c000000001", "/x/one", "/x/two", "c000000002", "c000000003"];
         var fevText = Cat(fevStrings.Select(s => Cat(Encoding.ASCII.GetBytes(s), [0])).ToArray());
@@ -236,12 +240,13 @@ public static class SoundSelfTest
         // Levels, pitch and loops: the event header's and the definitions' property records.
         static bool Near(float a, float b, float within = 0.05f) => Math.Abs(a - b) <= within;
         Check(fe is not null && Near(Fev.Decibels(fe.Volume), -6) && Near(Fev.Cents(fe.Pitch), -100) && Near(Fev.Cents(fe.PitchRandom), 100)
-              && Near(Fev.Decibels(fe.VolumeRandomMin), -3) && fe.MaxDistance == 27 && !fe.OneShot && fe.FadeOutMs == 1500, "fev event level, pitch, randomisation, distance, one-shot bit and fade-out");
+              && Near(Fev.Decibels(fe.VolumeRandomMin), -3) && fe.MaxDistance == 27 && !fe.OneShot && fe.FadeOutMs == 1500 && fe.MaxPlaybacks == 1,
+            "fev event level, pitch, randomisation, distance, one-shot bit, fade-out and max playbacks");
         Check(fe is not null && fe.Layers[0] is { LoopMode: 0, Loops: true } l0 && Near(Fev.Decibels(l0.Volume), -3) && Near(Fev.Decibels(l0.VolumeRandomMin), -2)
               && l0.Pitch == 0 && Near(Fev.Cents(l0.PitchRandom), 50), "fev looping layer and its definition's level");
         Check(fe is not null && fe.Layers[1] is { LoopMode: 1, Loops: false, Volume: 1, VolumeRandomMin: 1, PitchRandom: 0 } l1 && Near(Fev.Cents(l1.Pitch), 200), "fev one-shot layer and its definition's pitch");
-        Check(fe2 is { Volume: 1, Pitch: 0, PitchRandom: 0, VolumeRandomMin: 1, OneShot: true, FadeOutMs: 0 }, "fev plain event reads as unchanged");
-        Check(fe is not null && SoundPort.TuningOf(fe, fe.Layers[0]) is { Loop: true } t0 && Near(t0.VolumeDb, -9) && Near(t0.PitchCents, -100) && Near(t0.VolumeRandomDb, -5) && Near(t0.PitchRandomCents, 150)
+        Check(fe2 is { Volume: 1, Pitch: 0, PitchRandom: 0, VolumeRandomMin: 1, OneShot: true, FadeOutMs: 0, MaxPlaybacks: 0 }, "fev plain event reads as unchanged");
+        Check(fe is not null && SoundPort.TuningOf(fe, fe.Layers[0]) is { Loop: true, MaxInstances: 1 } t0 && Near(t0.VolumeDb, -9) && Near(t0.PitchCents, -100) && Near(t0.VolumeRandomDb, -5) && Near(t0.PitchRandomCents, 150)
               && SoundPort.TuningOf(fe, fe.Layers[1]) is { Loop: false } t1 && Near(t1.VolumeDb, -6) && Near(t1.PitchCents, 100) && Near(t1.VolumeRandomDb, -3) && Near(t1.PitchRandomCents, 100),
             "event and definition add up to a layer's tuning (dB, cents)");
         Check(fe2 is not null && SoundPort.TuningOf(fe2, new Fev.Layer([])) is null, "a plain layer has no tuning");
