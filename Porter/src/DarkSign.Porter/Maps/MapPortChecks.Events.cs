@@ -20,6 +20,7 @@ public static partial class MapPortChecks
         yield return ("event port: SpEffect IDs go to the enemy port's rows (700,000,000 + DS3 ID) where they exist, written or passed in", EventSpEffects);
         yield return ("event port: DS3 action buttons become IF Action Button in Area with one ActionButtonParam row per prompt", EventActionButtons);
         yield return ("event port: DS3's online checks become Elden Ring's single-player forms (world type, co-op clients, the host check as Elden Ring's own)", EventOnlineChecks);
+        yield return ("event port: phantom-count, DLC and network-penalty conditions become fixed single-player answers, not a dropped event (1.0.640 Demon Prince never died)", EventSoloConditions);
     }
 
     private static void EventKeptFlagBlocks()
@@ -72,6 +73,10 @@ public static partial class MapPortChecks
           { "name": "Result Condition Group", "type": 3 }, { "name": "Desired Flag State", "type": 0 },
           { "name": "Target Event Flag Type", "type": 0 }, { "name": "Target Event Flag ID", "type": 2 } ] },
         { "name": "IF Steam Disconnected", "index": 38, "args": [ { "name": "Result Condition Group", "type": 3 } ] },
+        { "name": "IF Friendly Phantom Count Comparison", "index": 39, "args": [
+          { "name": "Result Condition Group", "type": 3 }, { "name": "Desired Comparison State", "type": 0 },
+          { "name": "Comparison Type", "type": 3 }, { "name": "Target Count", "type": 5 } ] },
+        { "name": "IF Owns DLC", "index": 21, "args": [ { "name": "Result Condition Group", "type": 3 }, { "name": "Owns DLC", "type": 0, "default": 1 } ] },
         { "name": "IF Player Is Not In Own World (Excludes Arena)", "index": 26, "args": [
           { "name": "Result Condition Group", "type": 3 }, { "name": "Is Not In", "type": 0, "default": 1 } ] },
         { "name": "IF Action Button", "index": 5, "args": [
@@ -138,6 +143,9 @@ public static partial class MapPortChecks
         { "name": "IF Damage Type", "index": 23, "args": [
           { "name": "Result Condition Group", "type": 3 }, { "name": "Target Entity ID", "type": 2 },
           { "name": "Attacker Entity ID", "type": 2 }, { "name": "Damage Type", "type": 0 } ] },
+        { "name": "IF Game Cycle", "index": 17, "args": [
+          { "name": "Result Condition Group", "type": 3 }, { "name": "Comparison Type", "type": 0 },
+          { "name": "Completed Game Cycles Threshold", "type": 0 } ] },
         { "name": "IF Player Is In World Type", "index": 26, "args": [
           { "name": "Result Condition Group", "type": 3 }, { "name": "World Type", "type": 0, "default": 1 } ] },
         { "name": "IF Action Button in Area", "index": 24, "args": [
@@ -607,6 +615,38 @@ public static partial class MapPortChecks
         Expect(ins[8].Bank == 1003 && ins[8].ID == 203 && ins[8].ArgData.Length == 8 && ins[8].ArgData[0] == 1 && ins[8].ArgData.Skip(1).All(b => b == 0),
             $"SKIP IF no host -> SKIP IF Map Has Permission To Update(1, 0), as Elden Ring's own lever lift (90005500): the owner runs the flag set behind it, joined players don't (got {ins[8].Bank}[{ins[8].ID}])");
         Expect(ins[9].Bank == 2003, "the flag set behind the host check stays");
+    }
+
+    private static void EventSoloConditions()
+    {
+        var er = Emedf.Parse(ErDefs);
+        // DS3 m50 15005812 (Demon Prince's phase 2: the only event that turns the demons' immortality off) and m51
+        // 15105812 (Halflight's start), shortened.
+        var script = OneEvent(15005812,
+            Ins(3, 39, (sbyte)11, (byte)1, (sbyte)4, 2),   // IF phantoms >= 2: never
+            Ins(3, 39, (sbyte)2, (byte)1, (sbyte)0, 1),    // IF phantoms == 1: never
+            Ins(3, 39, (sbyte)3, (byte)0, (sbyte)0, 1),    // IF NOT phantoms == 1: always
+            Ins(3, 39, (sbyte)4, (byte)1, (sbyte)0, 0),    // IF phantoms == 0: always
+            Ins(3, 21, (sbyte)5, (byte)1),                 // IF owns the DLC: always
+            Ins(2004, 8, 5000801, 15150));
+        var port = NewEventPort();
+        var result = port.Convert(script, EMEVD.Game.Sekiro, MoveToSlot);
+        Expect(result.Events.Count == 1, "the event must survive: its phantom count has a single-player answer");
+        var ins = result.Events[0].Instructions;
+        Expect(ins.Count == 6, $"{ins.Count} instructions, want one per DS3 line");
+        void Fixed(int i, sbyte group, bool holds)
+        {
+            Expect(ins[i].Bank == 3 && ins[i].ID == 17, $"line {i}: IF Game Cycle, got {ins[i].Bank}[{ins[i].ID}]");
+            Expect(Arg(ins[i], "Result Condition Group", er) == group, $"line {i}: keeps its condition group {group}");
+            Expect(Arg(ins[i], "Comparison Type", er) == (holds ? 4 : 3) && Arg(ins[i], "Completed Game Cycles Threshold", er) == 0,
+                $"line {i}: cycles {(holds ? ">= 0 (always)" : "< 0 (never)")}");
+        }
+        Fixed(0, 11, false);
+        Fixed(1, 2, false);
+        Fixed(2, 3, true);
+        Fixed(3, 4, true);
+        Fixed(4, 5, true);
+        Expect(EventPort.Compare(0, 4, 2) == false && EventPort.Compare(0, 5, 0) && EventPort.Compare(0, 1, 3), "comparison types");
     }
 
     // EventPort's no-op: WAIT 0 seconds.

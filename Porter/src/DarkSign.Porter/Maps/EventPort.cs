@@ -966,6 +966,8 @@ public sealed class EventPort
             return ActionButton(ins);
         if (ins.Bank == 1003 && ClientChecks.ContainsKey(ins.ID))
             return ClientCheck(ins, parameterized);
+        if (ins.Bank == 3 && SoloConditions.Contains(ins.ID))
+            return SoloCondition(ins, parameterized);
         // "WAIT For Network Approval": nothing to wait for outside an online session.
         if (ins.Bank == 1000 && ins.ID == 9)
             return (NoOp(), null);
@@ -1228,6 +1230,62 @@ public sealed class EventPort
             4 => present >= count, 5 => present <= count, _ => false,
         };
         return (holds ? RunEvents.Make(1000, alwaysId, first) : NoOp(), null);
+    }
+
+    /// <summary>
+    /// DS3 conditions on the online session that Elden Ring has no form of, but that a ported world answers the same
+    /// way every time (bank 3): 39 "IF Friendly Phantom Count Comparison" (no summoned phantoms: 0), 21 "IF Owns DLC"
+    /// (the DLC maps are ported: owned) and 29 "IF Multiplayer Network Penalized" (never).
+    /// <para>
+    /// Up to 1.0.640 they had no Elden Ring form, and a condition without one drops its whole event. Demon Prince
+    /// (m50 15005812) asks for 2+ phantoms before giving the survivor its co-op damage cut, so the event that ends the
+    /// first phase was dropped: nothing turned the demons' immortality off, they never died at zero health and the
+    /// second phase never began (Devin's 1.0.640 playtest). Halflight's start (m51 15105812, 15105814, 15105920) counts
+    /// phantoms the same way to pick its SpEffect. Each becomes <see cref="Constant"/> with the single-player answer.
+    /// </para>
+    /// </summary>
+    private static readonly HashSet<int> SoloConditions = [21, 29, 39];
+
+    /// <summary>How many friendly phantoms a ported world has: none (Elden Ring's co-op is not DS3's summon signs).</summary>
+    public const int SoloPhantoms = 0;
+
+    /// <summary>A condition in <see cref="SoloConditions"/> as one with the same fixed answer.</summary>
+    private (EMEVD.Instruction?, Mapping?) SoloCondition(EMEVD.Instruction ins, bool parameterized)
+    {
+        if (parameterized || _ds3.Get(ins.Bank, ins.ID) is not { } from || from.Args.Count == 0)
+            return (null, null); // a value passed in decides it: can't be settled here
+        long Value(int i) => i < from.Args.Count ? Emedf.Read(ins.ArgData, from.Args[i]) : 0;
+        var group = (sbyte)Value(0);
+        bool holds = ins.ID switch
+        {
+            // Result group, Desired Comparison State, Comparison Type, Target Count.
+            39 => Compare(SoloPhantoms, (int)Value(2), Value(3)) == (Value(1) != 0),
+            // Result group, Owns DLC (1: owned).
+            21 => Value(1) != 0,
+            _ => false,
+        };
+        return (Constant(group, holds), null);
+    }
+
+    /// <summary>DS3/Elden Ring comparison types: 0 ==, 1 !=, 2 &gt;, 3 &lt;, 4 &gt;=, 5 &lt;=.</summary>
+    public static bool Compare(long left, int comparison, long right) => comparison switch
+    {
+        0 => left == right, 1 => left != right, 2 => left > right, 3 => left < right, 4 => left >= right, 5 => left <= right, _ => false,
+    };
+
+    /// <summary>
+    /// A condition that always holds, or never does, in group <paramref name="group"/>: Elden Ring's "IF Game Cycle"
+    /// (3[17]) asking for at least 0 cycles (always) or fewer than 0 (never). Null when Elden Ring's definitions lack it.
+    /// </summary>
+    public EMEVD.Instruction? Constant(sbyte group, bool holds)
+    {
+        if (_er.Get(3, 17) is not { } cycle || cycle.Args.Count < 3)
+            return null;
+        var data = Emedf.Defaults(cycle);
+        Emedf.Write(data, cycle.Args[0], group);
+        Emedf.Write(data, cycle.Args[1], holds ? 4 : 3);
+        Emedf.Write(data, cycle.Args[2], 0);
+        return new EMEVD.Instruction(3, 17, data);
     }
 
     /// <summary>`event-coverage [ds3.emedf.json er.emedf.json]`: which DS3 instructions convert, and to what.</summary>
