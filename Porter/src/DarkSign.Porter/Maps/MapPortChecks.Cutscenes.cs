@@ -298,10 +298,10 @@ public static partial class MapPortChecks
         anchorMsb.Parts.Assets.Add(new MSBE.Part.Asset { Name = "AEG920_401_9950", ModelName = "AEG920_999" });
         var placedAnchors = CutsceneCast.PlaceAnchors(anchorMsb, anchors);
         var a0 = anchorMsb.Parts.Assets.First(a => a.ModelName == "AEG920_400");
-        Expect(placedAnchors.SequenceEqual(["AEG920_400_9950", "AEG920_401_9951"]) && a0.Position == new Vector3(5, 6, 7) && a0.EntityID == 0
+        Expect(placedAnchors.SequenceEqual(["AEG920_400_9950", "AEG920_401_9951"]) && a0.Position == new Vector3(5, 6 - CutsceneCast.AnchorDepth, 7) && a0.EntityID == 0
                && a0.Unk1.DrawGroups.All(g => g == 0) && a0.Unk1.DisplayGroups.All(g => g == 0) && anchorMsb.Models.Assets.Count == 2
                && anchorMsb.Models.Assets[0].SibPath == @"N:\GR\data\Asset\Environment\geometry\AEG920\AEG920_400\sib\AEG920_400.sib",
-            $"one hidden part per model at the player part, free instance numbers ({string.Join(" ", placedAnchors)})");
+            $"one hidden part per model far below the player part, free instance numbers ({string.Join(" ", placedAnchors)})");
         Expect(CutsceneCast.PlaceAnchors(anchorMsb, anchors).Count == 0, "a model the map already has a part of gets none");
 
         var mqb = new MQB { Version = MQB.MQBVersion.DarkSouls3, Name = "NEW_SCENE", Framerate = 30, ResourceDirectory = "", Resources = [], Cuts = [] };

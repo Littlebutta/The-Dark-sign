@@ -273,7 +273,7 @@ public static class CollisionPort
     // Havok stores these as hkHalf16: the top 16 bits of a float.
     private static float Half(short value) => BitConverter.Int32BitsToSingle(value << 16);
 
-    private static hknpMaterial ConvertMaterial(Ds3.hknpMaterial m) => new()
+    internal static hknpMaterial ConvertMaterial(Ds3.hknpMaterial m) => new()
     {
         m_name = m.m_name,
         m_isExclusive = m.m_isExclusive,
@@ -297,7 +297,7 @@ public static class CollisionPort
         m_userData = m.m_userData,
     };
 
-    private static hknpMotionProperties ConvertMotionProperties(Ds3.hknpMotionProperties m) => new()
+    internal static hknpMotionProperties ConvertMotionProperties(Ds3.hknpMotionProperties m) => new()
     {
         m_isExclusive = m.m_isExclusive,
         m_flags = m.m_flags,
