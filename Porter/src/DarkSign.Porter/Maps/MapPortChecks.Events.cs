@@ -13,6 +13,7 @@ public static partial class MapPortChecks
         yield return ("event port: event parameters follow their argument and values passed in move by kind", EventParameters);
         yield return ("event port: DS3 common events are ported once, under saved IDs, with Elden Ring's slot argument", EventCommon);
         yield return ("event port: flag ranges stay consecutive and the flag table reads back the same", EventFlagTable);
+        yield return ("event port: overlapping flag ranges and ranges passed in are placed whole before any flag moves; no line spans blocks (1.0.630 Deacons crash)", EventFlagRangesJoined);
         yield return ("flags: a ported map's own flags and event IDs (run-once flags, slots together) stay in the slot only in blocks the game keeps (m19_70 has none, 450x6 missing)", EventKeptFlagBlocks);
         yield return ("layout: connect collisions point at the neighbouring map's slot; ones to unported maps are left out", ConnectCollisions);
         yield return ("event port: SpEffect IDs go to the enemy port's rows (700,000,000 + DS3 ID) where they exist, written or passed in", EventSpEffects);
@@ -394,6 +395,7 @@ public static partial class MapPortChecks
         var ds3 = OneEvent(14000102, Ins(3, 1, (sbyte)0, (byte)1, (byte)0, 60000u, 60009u));
         var port = NewEventPort(flags);
         port.Learn(ds3);
+        port.PlaceRanges();
         flags.Flag(70000);
         var start = flags.Flags[60000];
         Expect(Enumerable.Range(0, 10).All(i => flags.Flags[60000 + i] == start + i), "the batch flag range isn't consecutive");
@@ -417,6 +419,63 @@ public static partial class MapPortChecks
         {
             File.Delete(path);
         }
+    }
+
+    private static void EventFlagRangesJoined()
+    {
+        var er = Emedf.Parse(ErDefs);
+        // DS3's common_func 20005491 checks 1460-1461 and 1475-1477; the Cathedral's NPC event then checks 1475-1479.
+        // Placed one script at a time, 1478-1479 went a block away and 1.0.630 set a million flags in one line.
+        var common = OneEvent(20005491, Ins(3, 1, (sbyte)0, (byte)1, (byte)0, 1460u, 1461u), Ins(3, 1, (sbyte)0, (byte)1, (byte)0, 1475u, 1477u));
+        var painted = MapId.Parse("m45_00_00_00");
+        var slot = MapId.Parse("m19_70_00_00"); // keeps no map flags: the map's own ranges go to the saved ranges
+        long crowd = painted.Ds3FlagBase + 4810;
+        var map = new EMEVD(EMEVD.Game.DarkSouls3);
+        var constructor = new EMEVD.Event(0, EMEVD.Event.RestBehaviorType.Default);
+        constructor.Instructions.Add(Ins(2000, 0, 0, (uint)(painted.Ds3FlagBase + 5812), (uint)crowd, (uint)(crowd + 32)));
+        map.Events.Add(constructor);
+        var npc = new EMEVD.Event(painted.Ds3FlagBase + 5700, EMEVD.Event.RestBehaviorType.Default);
+        npc.Instructions.Add(Ins(3, 1, (sbyte)0, (byte)1, (byte)0, 1475u, 1479u));
+        npc.Instructions.Add(Ins(3, 1, (sbyte)0, (byte)1, (byte)0, 1460u, 1474u));
+        map.Events.Add(npc);
+        var deacons = new EMEVD.Event(painted.Ds3FlagBase + 5812, EMEVD.Event.RestBehaviorType.Default);
+        deacons.Instructions.Add(Ins(3, 1, (sbyte)0, (byte)1, (byte)0, 0u, 0u)); // start and end passed in
+        deacons.Parameters.Add(new EMEVD.Parameter(0, 4, 0, 4));
+        deacons.Parameters.Add(new EMEVD.Parameter(0, 8, 4, 4));
+        map.Events.Add(deacons);
+
+        var flags = new FlagMap();
+        var port = new EventPort(Emedf.Parse(Ds3Defs), er, [(painted, slot)], flags);
+        port.Learn(common, common: true);
+        port.Learn(map);
+        port.Move(1476, EventPort.Kind.Flag); // the first move places every range
+        bool Consecutive(long s, long e) => Enumerable.Range(0, (int)(e - s + 1)).All(i => flags.Flags.GetValueOrDefault(s + i) == flags.Flags.GetValueOrDefault(s) + i);
+        Expect(Consecutive(1460, 1479), "1460-1479 (joined from 1460-1461, 1460-1474, 1475-1477, 1475-1479) isn't consecutive");
+        Expect(Consecutive(crowd, crowd + 32) && flags.Flags.ContainsKey(crowd), "the range passed in (Deacons' crowd) isn't consecutive");
+        var result = port.Convert(map, EMEVD.Game.Sekiro, id => id is 0 or 50 || !painted.OwnsDs3Id(id) ? id : port.Move(id, EventPort.Kind.Event));
+        foreach (var ins in result.Events.SelectMany(e => e.Instructions).Where(i => i.Bank == 3 && i.ID == 1))
+        {
+            long span = Arg(ins, "Ending Target Event Flag ID", er) - Arg(ins, "Starting Target Event Flag ID", er);
+            Expect(span is 4 or 14 or 0, $"a converted range spans {span}");
+        }
+        var init = result.Events[0].Instructions[0];
+        Expect(BitConverter.ToUInt32(init.ArgData, 12) - BitConverter.ToUInt32(init.ArgData, 8) == 32, "the range passed in lost its length");
+        Expect(port.Stats.BrokenRanges == 0, $"{port.Stats.BrokenRanges} broken range lines");
+
+        // A flag table from an older build with the range already split: the line is cut to its length, never a block wide.
+        var split = new FlagMap();
+        split.Flag(1475);
+        split.Flag(1476);
+        split.Flag(1477);
+        for (int i = 0; i < FlagMap.PerTile; i++)
+            split.Flag(900_000 + i); // fills the rest of the first block
+        var old = new EventPort(Emedf.Parse(Ds3Defs), er, [], split);
+        var only = OneEvent(13505700, Ins(3, 1, (sbyte)0, (byte)1, (byte)0, 1475u, 1479u));
+        old.Learn(only);
+        var cut = old.Convert(only, EMEVD.Game.Sekiro, id => id).Events[0].Instructions[0];
+        long s0 = Arg(cut, "Starting Target Event Flag ID", er), e0 = Arg(cut, "Ending Target Event Flag ID", er);
+        Expect(split.Flags[1479] - split.Flags[1475] >= FlagMap.PerTile, "the test table should split the range across blocks");
+        Expect(e0 - s0 == 4 && old.Stats.BrokenRanges == 1, $"a split range became {s0}-{e0} ({old.Stats.BrokenRanges} broken)");
     }
 
     private static void EventActionButtons()

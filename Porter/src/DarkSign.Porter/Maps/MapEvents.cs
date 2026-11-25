@@ -26,7 +26,7 @@ public static class MapEvents
     public static Result Convert(Emedf ds3Defs, Emedf erDefs, FlagMap flags, IReadOnlyList<MapSlots.Slot> slots,
         IReadOnlyDictionary<MapId, EMEVD> ds3Scripts, EMEVD? ds3Common, Func<MapSlots.Slot, EMEVD> erTemplate, EMEVD erCommon,
         ActionButtons? buttons = null, Func<long, long?>? spEffects = null, Func<long, long?>? cutscenes = null, MapMusic.Plan? music = null,
-        MapText.Used? texts = null)
+        MapText.Used? texts = null, EMEVD? ds3Events = null)
     {
         var main = slots.Where(s => !s.Probe).Select(s => (s.Ds3, s.Er)).ToList();
         var summary = new List<string>();
@@ -40,6 +40,11 @@ public static class MapEvents
                 port.Learn(ds3Common, common: true);
             foreach (var script in ds3Scripts.Values)
                 port.Learn(script);
+            // DS3's common.emevd (its new-game events are ported later, Ds3Setup): only its flag ranges, so they are
+            // placed with the rest before any flag gets a number.
+            if (ds3Events is not null)
+                port.LearnRanges(ds3Events);
+            port.PlaceRanges();
             // A DS3 button row's "invalid" flag (a fog wall's: the boss's defeated flag) moves like the scripts' flags.
             if (buttons is not null)
                 buttons.FlagMover ??= v => port.Move(v, EventPort.Kind.Flag);
@@ -132,6 +137,7 @@ public static class MapEvents
         var flagPath = ctx.ModPath(FlagFile);
         var flags = FlagMap.Load(flagPath);
         var (ds3Scripts, ds3Common) = ReadDs3(ds3, slots);
+        var ds3Events = ds3.Contains(Ds3Setup.Ds3Common) ? EMEVD.Read(ds3.Read(Ds3Setup.Ds3Common)) : null;
 
         var templates = new Dictionary<MapId, (EMEVD Script, DCX.CompressionInfo Compression)>();
         (EMEVD Script, DCX.CompressionInfo Compression) Template(MapSlots.Slot slot)
@@ -185,7 +191,7 @@ public static class MapEvents
         }
         // The DS3 text the scripts name by number (MapText), written once the scripts are.
         var texts = new MapText.Used();
-        var result = Convert(ds3Defs, erDefs, flags, slots, ds3Scripts, ds3Common, s => Template(s).Script, erCommon, buttons, spEffects, playable, music, texts);
+        var result = Convert(ds3Defs, erDefs, flags, slots, ds3Scripts, ds3Common, s => Template(s).Script, erCommon, buttons, spEffects, playable, music, texts, ds3Events);
         // Boss kits go through the same buttons, so their action button rows are written with the maps'.
         (EMEVD Common, DCX.CompressionInfo Compression, string Note)? kits = null;
         string KitNote(Exception ex) => $"boss kits: not added ({ex.Message}); bosses outside their DS3 map run no map scripts";
@@ -209,7 +215,7 @@ public static class MapEvents
                 // Scripts that point at rows which were never written must not ship: fall back to leaving them out.
                 buttonNote = $"action buttons: FAILED to write rows ({ex.Message}); converting again without them";
                 flags = FlagMap.Load(flagPath);
-                result = Convert(ds3Defs, erDefs, flags, slots, ds3Scripts, ds3Common, s => Template(s).Script, erCommon, null, spEffects, playable, music, texts);
+                result = Convert(ds3Defs, erDefs, flags, slots, ds3Scripts, ds3Common, s => Template(s).Script, erCommon, null, spEffects, playable, music, texts, ds3Events);
                 try
                 {
                     kits = PortKits(ctx, ds3, er, ds3Defs, erDefs, flags, null, spEffects);

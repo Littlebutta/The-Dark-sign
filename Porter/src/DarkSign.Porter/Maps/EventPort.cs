@@ -94,6 +94,12 @@ public sealed class EventPort
         public int ActionButtonsMoved;
         /// <summary>Map events started in several slots whose run-once flags were placed together in the saved ranges.</summary>
         public int EventSlotRanges;
+        /// <summary>
+        /// Range lines whose Elden Ring flags aren't the DS3 range's flags one after another (<see cref="PlaceRanges"/>
+        /// couldn't place them together). One wider than a flag block is cut to the DS3 range's length, so a line never
+        /// sets or checks flags across blocks (1.0.630's million-flag line closed the game).
+        /// </summary>
+        public int BrokenRanges;
         /// <summary>Event message and area name numbers pointed at DS3's own text (<see cref="MapText"/>).</summary>
         public int TextsMoved;
         /// <summary>Item lots, AI rows and items pointed at their Elden Ring rows (<see cref="Ds3Ids"/>), and ones left as DS3's.</summary>
@@ -116,6 +122,7 @@ public sealed class EventPort
                 + (SpEffectsKeptIds.Count == 0 ? "" : $" ({string.Join(" ", SpEffectsKeptIds.Take(12))})"))
             + (CutscenesPlayed + CutscenesLeftOut == 0 ? "" : $", cutscenes: {CutscenesPlayed} lines play a ported cutscene, {CutscenesLeftOut} left out"
                 + (CutscenesLeftOutIds.Count == 0 ? "" : $" ({string.Join(" ", CutscenesLeftOutIds.Take(12))})"))
+            + (BrokenRanges == 0 ? "" : $", {BrokenRanges} flag range lines NOT consecutive")
             + (Unconverted.Count == 0 ? "" : "; not converted: " + string.Join(", ",
                 Unconverted.OrderByDescending(u => u.Value).Take(12).Select(u => $"{u.Key} x{u.Value}")));
     }
@@ -448,24 +455,134 @@ public sealed class EventPort
                     Stats.Notes.Add($"event {e.ID}: value {p.SourceStartByte} is a music region and a {kinds[p.SourceStartByte]}; its music lines are left out");
                 }
             }
-            // Flag ranges are placed first, so they stay consecutive.
-            foreach (var ins in e.Instructions)
-                if (_ds3.Get(ins.Bank, ins.ID) is { } def)
-                {
-                    var start = def.Args.FirstOrDefault(a => KindOf(a.Name) == Kind.FlagRangeStart);
-                    var end = def.Args.FirstOrDefault(a => KindOf(a.Name) == Kind.FlagRangeEnd);
-                    if (start is not null && end is not null)
-                    {
-                        long s = Emedf.Read(ins.ArgData, start), en = Emedf.Read(ins.ArgData, end);
-                        if (s > 0 && en >= s && !OwnedByPortedMap(s))
-                            _flags.Range(s, en);
-                        else if (s > 0 && en >= s && _maps.First(m => m.Ds3.OwnsDs3Id(s)) is var (rd, re) && !MapFlags.RangeKept(rd, re, s, en))
-                            _flags.LocalRange(s, en);
-                    }
-                }
+            CollectRanges(e);
         }
-        if (!common)
-            PlaceEventSlots(script);
+        _learned.Add((script, !common));
+        _rangesPlaced = false; // a script learned after a move: its ranges are placed on the next one
+    }
+
+    /// <summary>
+    /// Learns only the flag ranges of a script that is converted without being learned (DS3's common.emevd, whose
+    /// new-game events <see cref="Ds3Setup"/> ports), so they are placed with every other range.
+    /// </summary>
+    public void LearnRanges(EMEVD script)
+    {
+        foreach (var e in script.Events)
+            CollectRanges(e);
+        _learned.Add((script, false));
+        _rangesPlaced = false;
+    }
+
+    // Flag ranges (batch set/check of start..end) are only collected as scripts are learned, written in the line or
+    // passed in; PlaceRanges gives them their numbers once every script is learned (see there for why).
+    private void CollectRanges(EMEVD.Event e)
+    {
+        for (int i = 0; i < e.Instructions.Count; i++)
+        {
+            var ins = e.Instructions[i];
+            if (RangeArgs(_ds3.Get(ins.Bank, ins.ID)) is not { } range)
+                continue;
+            var (_, start, end) = range;
+            long? Passed(Emedf.Arg a) => e.Parameters.FirstOrDefault(p => p.InstructionIndex == i && p.TargetStartByte == a.Offset)?.SourceStartByte;
+            var (ps, pe) = (Passed(start), Passed(end));
+            if (ps is null && pe is null)
+                _literalRanges.Add((Emedf.Read(ins.ArgData, start), Emedf.Read(ins.ArgData, end)));
+            else if (ps is { } sb && pe is { } eb)
+            {
+                var list = _paramRanges.TryGetValue(e.ID, out var l) ? l : _paramRanges[e.ID] = [];
+                if (!list.Contains((sb, eb)))
+                    list.Add((sb, eb));
+            }
+        }
+    }
+
+    // Collected by Learn, placed by PlaceRanges.
+    private readonly List<(long Start, long End)> _literalRanges = [];
+    private readonly Dictionary<long, List<(long Start, long End)>> _paramRanges = new();
+    private readonly List<(EMEVD Script, bool EventSlots)> _learned = [];
+    private bool _rangesPlaced;
+
+    /// <summary>The range start and end arguments of an instruction that has both, or null.</summary>
+    private static (Emedf.Instr Def, Emedf.Arg Start, Emedf.Arg End)? RangeArgs(Emedf.Instr? def)
+    {
+        if (def is null)
+            return null;
+        var start = def.Args.FirstOrDefault(a => KindOf(a.Name) == Kind.FlagRangeStart);
+        var end = def.Args.FirstOrDefault(a => KindOf(a.Name) == Kind.FlagRangeEnd);
+        return start is not null && end is not null ? (def, start, end) : null;
+    }
+
+    /// <summary>
+    /// Every DS3 flag range the learned scripts use (written in a line, or passed to an event that uses two of its
+    /// values as a range's start and end), as the ranges <see cref="FlagMap.Range"/> must place.
+    /// </summary>
+    public IReadOnlyList<(long Start, long End)> LearnedRanges()
+    {
+        var all = new List<(long, long)>(_literalRanges);
+        foreach (var (script, _) in _learned)
+            foreach (var ins in script.Events.SelectMany(e => e.Instructions))
+            {
+                if (ins.Bank != 2000 || ins.ID is not (0 or 6))
+                    continue;
+                int head = ins.ID == 0 ? 8 : 4;
+                if (ins.ArgData.Length < head || !_paramRanges.TryGetValue(BitConverter.ToUInt32(ins.ArgData, head - 4), out var pairs))
+                    continue;
+                foreach (var (sb, eb) in pairs)
+                    if (head + Math.Max(sb, eb) + 4 <= ins.ArgData.Length)
+                        all.Add((BitConverter.ToUInt32(ins.ArgData, head + (int)sb), BitConverter.ToUInt32(ins.ArgData, head + (int)eb)));
+            }
+        return all;
+    }
+
+    /// <summary>
+    /// Gives every flag range of the learned scripts consecutive Elden Ring flags, before any single flag is moved.
+    /// A range only means "these flags" while its flags are numbered one after another; it was placed per script as it
+    /// was learned, so a smaller range seen first (DS3's NPC events check 1475-1477, then set 1475-1479) or a value
+    /// moved on its own took some of a bigger range's flags, the bigger range couldn't be placed, and its other flags
+    /// went wherever came next: a block away. 1.0.630's Cathedral of the Deep script then set 1475..1479 as
+    /// 1030290135..1031290275, a million flags in one line, and the game panicked ("Transaction failed") flushing
+    /// its flag-change queue the moment the map's NPC events ran. Here ranges that overlap are joined, each join is
+    /// placed as one range, and ranges passed in (Deacons' 13504810-13504842 crowd) are placed as well. Runs once,
+    /// by itself on the first move. Then the map events started in several slots get their slot flags (as before).
+    /// </summary>
+    public void PlaceRanges()
+    {
+        if (_rangesPlaced)
+            return;
+        _rangesPlaced = true;
+        var global = new List<(long, long)>();
+        var local = new Dictionary<(MapId, MapId), List<(long, long)>>();
+        foreach (var (s, en) in LearnedRanges())
+        {
+            if (s <= 0 || en < s || en - s >= FlagMap.PerTile)
+                continue;
+            if (!OwnedByPortedMap(s))
+                global.Add((s, en));
+            else if (_maps.First(m => m.Ds3.OwnsDs3Id(s)) is var owner)
+                (local.TryGetValue(owner, out var l) ? l : local[owner] = []).Add((s, en));
+        }
+        foreach (var (s, en) in Join(global))
+            if (_flags.Range(s, en) < 0)
+                Stats.Notes.Add($"flag range {s}-{en}: couldn't be placed together (some of its flags already have numbers)");
+        foreach (var ((ds3, er), ranges) in local.OrderBy(l => l.Key.Item1.ToString(), StringComparer.Ordinal))
+            foreach (var (s, en) in Join(ranges))
+                if (!MapFlags.RangeKept(ds3, er, s, en) && _flags.LocalRange(s, en) < 0)
+                    Stats.Notes.Add($"flag range {s}-{en}: couldn't be placed together (some of its flags already have numbers)");
+        foreach (var (script, eventSlots) in _learned)
+            if (eventSlots)
+                PlaceEventSlots(script);
+    }
+
+    /// <summary>Ranges joined where they overlap, in order (1475-1477 and 1475-1479 become 1475-1479).</summary>
+    public static List<(long Start, long End)> Join(IEnumerable<(long Start, long End)> ranges)
+    {
+        var joined = new List<(long Start, long End)>();
+        foreach (var (s, e) in ranges.Distinct().OrderBy(r => r.Start).ThenBy(r => r.End))
+            if (joined.Count > 0 && s <= joined[^1].End)
+                joined[^1] = (joined[^1].Start, Math.Max(joined[^1].End, e));
+            else
+                joined.Add((s, e));
+        return joined;
     }
 
     /// <summary>
@@ -504,6 +621,7 @@ public sealed class EventPort
     /// <summary>A DS3 ID moved into Elden Ring by what it is.</summary>
     public long Move(long value, Kind kind)
     {
+        PlaceRanges();
         if (kind == Kind.MusicRegion)
             return Music?.SwitchFor(value) ?? value;
         if (value <= 0)
@@ -818,6 +936,11 @@ public sealed class EventPort
                         continue;
                     BitConverter.TryWriteBytes(data.AsSpan(offset), (int)Move(BitConverter.ToInt32(data, offset), kind));
                 }
+                if (_paramRanges.TryGetValue(callee, out var pairs))
+                    foreach (var (sb, eb) in pairs)
+                        if (8 + Math.Max(sb, eb) + 4 <= data.Length)
+                            CheckPassedRange(data, 8 + (int)sb, 8 + (int)eb, BitConverter.ToUInt32(ins.ArgData, (ins.ID == 6 ? 4 : 8) + (int)sb),
+                                BitConverter.ToUInt32(ins.ArgData, (ins.ID == 6 ? 4 : 8) + (int)eb));
                 // A map passed in as area and block bytes moves as a pair.
                 var areaAt = kinds.FirstOrDefault(k => k.Value == Kind.Area).Key;
                 var blockAt = kinds.FirstOrDefault(k => k.Value == Kind.Block).Key;
@@ -898,8 +1021,40 @@ public sealed class EventPort
                 value = PlaybackMethod(value);
             Emedf.Write(output, arg, value);
         }
+        if (RangeArgs(from) is (_, var fs, var fe) && RangeArgs(to) is (_, var ts, var te)
+            && !paramBytes.Contains(fs.Offset) && !paramBytes.Contains(fe.Offset))
+            CheckRange(output, ts, te, Emedf.Read(ins.ArgData, fs), Emedf.Read(ins.ArgData, fe));
         MoveItem(ins, from, to, output, paramBytes);
         return (new EMEVD.Instruction(to.Bank, to.Id, output), map);
+    }
+
+    /// <summary>
+    /// The guard behind <see cref="PlaceRanges"/>: a converted range line whose Elden Ring flags aren't the DS3 range's
+    /// one after another is counted, and one that would reach past a flag block is cut to the DS3 range's length.
+    /// </summary>
+    private void CheckRange(byte[] output, Emedf.Arg start, Emedf.Arg end, long ds3Start, long ds3End)
+    {
+        long s = Emedf.Read(output, start), e = Emedf.Read(output, end);
+        if (FixRange(ds3Start, ds3End, s, e) is { } fixedEnd)
+            Emedf.Write(output, end, fixedEnd);
+    }
+
+    private void CheckPassedRange(byte[] data, int startAt, int endAt, long ds3Start, long ds3End)
+    {
+        long s = BitConverter.ToUInt32(data, startAt), e = BitConverter.ToUInt32(data, endAt);
+        if (FixRange(ds3Start, ds3End, s, e) is { } fixedEnd)
+            BitConverter.TryWriteBytes(data.AsSpan(endAt), (uint)fixedEnd);
+    }
+
+    /// <summary>The end to write instead (null: keep it) for a DS3 range ds3Start..ds3End moved to start..end.</summary>
+    private long? FixRange(long ds3Start, long ds3End, long start, long end)
+    {
+        if (ds3Start <= 0 || ds3End < ds3Start || end - start == ds3End - ds3Start)
+            return null;
+        Stats.BrokenRanges++;
+        bool tooWide = end < start || end - start >= FlagMap.PerTile;
+        Stats.Notes.Add($"flag range {ds3Start}-{ds3End} became {start}-{end}" + (tooWide ? $"; cut to {start}-{start + (ds3End - ds3Start)}" : ""));
+        return tooWide ? start + Math.Min(ds3End - ds3Start, FlagMap.PerTile - 1) : null;
     }
 
     /// <summary>

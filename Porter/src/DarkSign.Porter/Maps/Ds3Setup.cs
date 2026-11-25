@@ -81,6 +81,8 @@ public static class Ds3Setup
     /// </summary>
     public static string AddTo(EMEVD common, EMEVD ds3Common, EventPort port)
     {
+        // Its range lines keep their flags one after another (EventPort.PlaceRanges; the events step placed them too).
+        port.LearnRanges(ds3Common);
         common.Events.RemoveAll(e => IsOurs(e.ID));
         foreach (var c in common.Events.Where(e => e.ID == 0))
             c.Instructions.RemoveAll(i => i.Bank == 2000 && i.ID == 0 && i.ArgData.Length >= 8 && IsOurs(BitConverter.ToUInt32(i.ArgData, 4)));
