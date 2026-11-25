@@ -651,6 +651,17 @@ public static class EnemySelfTest
         Check($"NpcParam: a ported model plays its own anibnd: the template row's retarget/texture swaps to another character go to -1 ({string.Join(" ", swaps)})",
             swaps.SequenceEqual(["RetargetReferenceChrId=3060", "normalChangeTexChrId=3060"]) && ChrPort.ResourceSwapFields.All(f => swapRow[f]!.Value is (short)-1)
             && ChrPort.OwnResources(swapRow).Count == 0);
+        // The Soldier of Godrick's sheathed-weapon effect (13065) comes off a ported row; the shared effects stay, in order.
+        var fxDef = new PARAMDEF { ParamType = "NPC_PARAM_ST", Fields = [] };
+        for (int k = 0; k < TemplateEffects.Slots; k++)
+            fxDef.Fields.Add(new PARAMDEF.Field(fxDef, PARAMDEF.DefType.s32, $"spEffectID{k}"));
+        var fxRow = new PARAM.Row(70860000, "Abyss Watcher", fxDef);
+        int[] fxIds = [7000, 90400, 13065, 5815, 13064, 4301];
+        for (int k = 0; k < TemplateEffects.Slots; k++)
+            fxRow[$"spEffectID{k}"]!.Value = k < fxIds.Length ? fxIds[k] : 0;
+        var sheathed = ChrPort.StripEffects(fxRow, new HashSet<int> { 13065, 13064 });
+        Check("NpcParam: the template's weapon on/off effects come off a ported row, the others move up in order",
+            sheathed.SequenceEqual([13065, 13064]) && TemplateEffects.Effects(fxRow).SequenceEqual([7000, 90400, 5815, 4301]));
         Check("NpcParam: the template's appear condition, carried asset, footprint effect and Elden Ring weakness go back to the defaults",
             templateCleared == 4 && Npc("chrActivateConditionParamId") is 0u && Npc("loadAssetId") is -1 && Npc("isWeakC") is (byte)0 && Npc("autoFootEffectSfxId") is -1);
 
