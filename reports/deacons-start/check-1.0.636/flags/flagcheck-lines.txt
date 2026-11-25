@@ -1,0 +1,673 @@
+=== Work/scratch/deacons636-backup/ER/dksign_testmenu.5.log (08:36:36 session started 2026-11-24 (loc)
+08:36:51 flagcheck: block 45000 (m45_00_00_00 map flags): ok, the game keeps flags here
+08:36:51 flagcheck: block 45001 (m45_00_00_00 map flags): ok, the game keeps flags here
+08:36:51 flagcheck: block 45002 (m45_00_00_00 map flags): ok, the game keeps flags here
+08:36:51 flagcheck: block 45003 (m45_00_00_00 map flags): ok, the game keeps flags here
+08:36:51 flagcheck: block 45004 (m45_00_00_00 map flags): ok, the game keeps flags here
+08:36:51 flagcheck: block 45005 (m45_00_00_00 map flags): ok, the game keeps flags here
+08:36:51 flagcheck: block 45007 (m45_00_00_00 map flags): ok, the game keeps flags here
+08:36:51 flagcheck: block 45008 (m45_00_00_00 map flags): ok, the game keeps flags here
+08:36:51 flagcheck: block 45009 (m45_00_00_00 map flags): ok, the game keeps flags here
+08:36:51 flagcheck: block 45010 (m45_01_00_00 map flags): ok, the game keeps flags here
+08:36:51 flagcheck: block 45011 (m45_01_00_00 map flags): ok, the game keeps flags here
+08:36:51 flagcheck: block 45012 (m45_01_00_00 map flags): ok, the game keeps flags here
+08:36:51 flagcheck: block 45013 (m45_01_00_00 map flags): ok, the game keeps flags here
+08:36:51 flagcheck: block 45014 (m45_01_00_00 map flags): ok, the game keeps flags here
+08:36:51 flagcheck: block 45015 (m45_01_00_00 map flags): ok, the game keeps flags here
+08:36:51 flagcheck: block 45017 (m45_01_00_00 map flags): ok, the game keeps flags here
+08:36:51 flagcheck: block 45018 (m45_01_00_00 map flags): ok, the game keeps flags here
+08:36:51 flagcheck: block 45019 (m45_01_00_00 map flags): ok, the game keeps flags here
+08:36:51 flagcheck: block 45020 (m45_02_00_00 map flags): ok, the game keeps flags here
+08:36:51 flagcheck: block 45021 (m45_02_00_00 map flags): ok, the game keeps flags here
+08:36:51 flagcheck: block 45022 (m45_02_00_00 map flags): ok, the game keeps flags here
+08:36:51 flagcheck: block 45023 (m45_02_00_00 map flags): ok, the game keeps flags here
+08:36:51 flagcheck: block 45024 (m45_02_00_00 map flags): ok, the game keeps flags here
+08:36:51 flagcheck: block 45025 (m45_02_00_00 map flags): ok, the game keeps flags here
+08:36:51 flagcheck: block 45027 (m45_02_00_00 map flags): ok, the game keeps flags here
+08:36:51 flagcheck: block 45028 (m45_02_00_00 map flags): ok, the game keeps flags here
+08:36:51 flagcheck: block 45029 (m45_02_00_00 map flags): ok, the game keeps flags here
+08:36:51 flagcheck: block 1030290 (saved flags (JortPob layout)): ok, the game keeps flags here
+08:36:51 flagcheck: block 1030294 (saved flags (JortPob layout)): ok, the game keeps flags here
+08:36:51 flagcheck: block 1030297 (saved flags (JortPob layout)): ok, the game keeps flags here
+08:36:51 flagcheck: block 1030298 (saved flags (JortPob layout)): ok, the game keeps flags here
+08:36:51 flagcheck: block 1030299 (saved flags (JortPob layout)): ok, the game keeps flags here
+08:36:51 flagcheck: block 1031290 (saved flags (JortPob layout)): ok, the game keeps flags here
+08:36:51 flagcheck: block 1032290 (saved flags (JortPob layout)): ok, the game keeps flags here
+08:36:51 flagcheck: block 1039290 (DS3 run active flag, saved): ok, the game keeps flags here
+08:36:51 flagcheck: block 1039292 (F1 menu start/leave/warp requests): ok, the game keeps flags here
+08:36:51 flagcheck: block 1039295 (DS3 music flags, reset on load): ok, the game keeps flags here
+08:36:51 flagcheck: 37 blocks ok, 0 missing
+=== Saves/Default/ER/dksign_testmenu.log (23:35:07 session started 2026-11-24 (loc)
+23:35:22 flagcheck: block 45000 (m45_00_00_00 map flags): ok, the game keeps flags here
+23:35:22 flagcheck: block 45001 (m45_00_00_00 map flags): ok, the game keeps flags here
+23:35:22 flagcheck: block 45002 (m45_00_00_00 map flags): ok, the game keeps flags here
+23:35:22 flagcheck: block 45003 (m45_00_00_00 map flags): ok, the game keeps flags here
+23:35:22 flagcheck: block 45004 (m45_00_00_00 map flags): ok, the game keeps flags here
+23:35:22 flagcheck: block 45005 (m45_00_00_00 map flags): ok, the game keeps flags here
+23:35:22 flagcheck: block 45007 (m45_00_00_00 map flags): ok, the game keeps flags here
+23:35:22 flagcheck: block 45008 (m45_00_00_00 map flags): ok, the game keeps flags here
+23:35:22 flagcheck: block 45009 (m45_00_00_00 map flags): ok, the game keeps flags here
+23:35:22 flagcheck: block 45010 (m45_01_00_00 map flags): ok, the game keeps flags here
+23:35:22 flagcheck: block 45011 (m45_01_00_00 map flags): ok, the game keeps flags here
+23:35:22 flagcheck: block 45012 (m45_01_00_00 map flags): ok, the game keeps flags here
+23:35:22 flagcheck: block 45013 (m45_01_00_00 map flags): ok, the game keeps flags here
+23:35:22 flagcheck: block 45014 (m45_01_00_00 map flags): ok, the game keeps flags here
+23:35:22 flagcheck: block 45015 (m45_01_00_00 map flags): ok, the game keeps flags here
+23:35:22 flagcheck: block 45017 (m45_01_00_00 map flags): ok, the game keeps flags here
+23:35:22 flagcheck: block 45018 (m45_01_00_00 map flags): ok, the game keeps flags here
+23:35:22 flagcheck: block 45019 (m45_01_00_00 map flags): ok, the game keeps flags here
+23:35:22 flagcheck: block 45020 (m45_02_00_00 map flags): ok, the game keeps flags here
+23:35:22 flagcheck: block 45021 (m45_02_00_00 map flags): ok, the game keeps flags here
+23:35:22 flagcheck: block 45022 (m45_02_00_00 map flags): ok, the game keeps flags here
+23:35:22 flagcheck: block 45023 (m45_02_00_00 map flags): ok, the game keeps flags here
+23:35:22 flagcheck: block 45024 (m45_02_00_00 map flags): ok, the game keeps flags here
+23:35:22 flagcheck: block 45025 (m45_02_00_00 map flags): ok, the game keeps flags here
+23:35:22 flagcheck: block 45027 (m45_02_00_00 map flags): ok, the game keeps flags here
+23:35:22 flagcheck: block 45028 (m45_02_00_00 map flags): ok, the game keeps flags here
+23:35:22 flagcheck: block 45029 (m45_02_00_00 map flags): ok, the game keeps flags here
+23:35:22 flagcheck: block 1030290 (saved flags (JortPob layout)): ok, the game keeps flags here
+23:35:22 flagcheck: block 1030294 (saved flags (JortPob layout)): ok, the game keeps flags here
+23:35:22 flagcheck: block 1030297 (saved flags (JortPob layout)): ok, the game keeps flags here
+23:35:22 flagcheck: block 1030298 (saved flags (JortPob layout)): ok, the game keeps flags here
+23:35:22 flagcheck: block 1030299 (saved flags (JortPob layout)): ok, the game keeps flags here
+23:35:22 flagcheck: block 1031290 (saved flags (JortPob layout)): ok, the game keeps flags here
+23:35:22 flagcheck: block 1032290 (saved flags (JortPob layout)): ok, the game keeps flags here
+23:35:22 flagcheck: block 1039290 (DS3 run active flag, saved): ok, the game keeps flags here
+23:35:22 flagcheck: block 1039292 (F1 menu start/leave/warp requests): ok, the game keeps flags here
+23:35:22 flagcheck: block 1039295 (DS3 music flags, reset on load): ok, the game keeps flags here
+23:35:22 flagcheck: 37 blocks ok, 0 missing
+=== Work/src-ids/reports/boss-start/playtest-1124/dksign_testmenu.log (00:01:37 session started 2026-11-24 (loc)
+00:01:53 flagcheck: block 45000 (m45_00_00_00 map flags): ok, the game keeps flags here
+00:01:53 flagcheck: block 45001 (m45_00_00_00 map flags): ok, the game keeps flags here
+00:01:53 flagcheck: block 45002 (m45_00_00_00 map flags): ok, the game keeps flags here
+00:01:53 flagcheck: block 45003 (m45_00_00_00 map flags): ok, the game keeps flags here
+00:01:53 flagcheck: block 45004 (m45_00_00_00 map flags): ok, the game keeps flags here
+00:01:53 flagcheck: block 45005 (m45_00_00_00 map flags): ok, the game keeps flags here
+00:01:53 flagcheck: block 45007 (m45_00_00_00 map flags): ok, the game keeps flags here
+00:01:53 flagcheck: block 45008 (m45_00_00_00 map flags): ok, the game keeps flags here
+00:01:53 flagcheck: block 45009 (m45_00_00_00 map flags): ok, the game keeps flags here
+00:01:53 flagcheck: block 45010 (m45_01_00_00 map flags): ok, the game keeps flags here
+00:01:53 flagcheck: block 45011 (m45_01_00_00 map flags): ok, the game keeps flags here
+00:01:53 flagcheck: block 45012 (m45_01_00_00 map flags): ok, the game keeps flags here
+00:01:53 flagcheck: block 45013 (m45_01_00_00 map flags): ok, the game keeps flags here
+00:01:53 flagcheck: block 45014 (m45_01_00_00 map flags): ok, the game keeps flags here
+00:01:53 flagcheck: block 45015 (m45_01_00_00 map flags): ok, the game keeps flags here
+00:01:53 flagcheck: block 45017 (m45_01_00_00 map flags): ok, the game keeps flags here
+00:01:53 flagcheck: block 45018 (m45_01_00_00 map flags): ok, the game keeps flags here
+00:01:53 flagcheck: block 45019 (m45_01_00_00 map flags): ok, the game keeps flags here
+00:01:53 flagcheck: block 45020 (m45_02_00_00 map flags): ok, the game keeps flags here
+00:01:53 flagcheck: block 45021 (m45_02_00_00 map flags): ok, the game keeps flags here
+00:01:53 flagcheck: block 45022 (m45_02_00_00 map flags): ok, the game keeps flags here
+00:01:53 flagcheck: block 45023 (m45_02_00_00 map flags): ok, the game keeps flags here
+00:01:53 flagcheck: block 45024 (m45_02_00_00 map flags): ok, the game keeps flags here
+00:01:53 flagcheck: block 45025 (m45_02_00_00 map flags): ok, the game keeps flags here
+00:01:53 flagcheck: block 45027 (m45_02_00_00 map flags): ok, the game keeps flags here
+00:01:53 flagcheck: block 45028 (m45_02_00_00 map flags): ok, the game keeps flags here
+00:01:53 flagcheck: block 45029 (m45_02_00_00 map flags): ok, the game keeps flags here
+00:01:53 flagcheck: block 1030290 (saved flags (JortPob layout)): ok, the game keeps flags here
+00:01:53 flagcheck: block 1030294 (saved flags (JortPob layout)): ok, the game keeps flags here
+00:01:53 flagcheck: block 1030297 (saved flags (JortPob layout)): ok, the game keeps flags here
+00:01:53 flagcheck: block 1030298 (saved flags (JortPob layout)): ok, the game keeps flags here
+00:01:53 flagcheck: block 1030299 (saved flags (JortPob layout)): ok, the game keeps flags here
+00:01:53 flagcheck: block 1031290 (saved flags (JortPob layout)): ok, the game keeps flags here
+00:01:53 flagcheck: block 1032290 (saved flags (JortPob layout)): ok, the game keeps flags here
+00:01:53 flagcheck: block 1039290 (DS3 run active flag, saved): ok, the game keeps flags here
+00:01:53 flagcheck: block 1039292 (F1 menu start/leave/warp requests): ok, the game keeps flags here
+00:01:53 flagcheck: block 1039295 (DS3 music flags, reset on load): ok, the game keeps flags here
+00:01:53 flagcheck: 37 blocks ok, 0 missing
+=== Work/scratch/deacons636-backup/ER/dksign_testmenu.2.log (14:43:58 session started 2026-11-24 (loc)
+14:44:14 flagcheck: block 45000 (m45_00_00_00 map flags): ok, the game keeps flags here
+14:44:14 flagcheck: block 45001 (m45_00_00_00 map flags): ok, the game keeps flags here
+14:44:14 flagcheck: block 45002 (m45_00_00_00 map flags): ok, the game keeps flags here
+14:44:14 flagcheck: block 45003 (m45_00_00_00 map flags): ok, the game keeps flags here
+14:44:14 flagcheck: block 45004 (m45_00_00_00 map flags): ok, the game keeps flags here
+14:44:14 flagcheck: block 45005 (m45_00_00_00 map flags): ok, the game keeps flags here
+14:44:14 flagcheck: block 45007 (m45_00_00_00 map flags): ok, the game keeps flags here
+14:44:14 flagcheck: block 45008 (m45_00_00_00 map flags): ok, the game keeps flags here
+14:44:14 flagcheck: block 45009 (m45_00_00_00 map flags): ok, the game keeps flags here
+14:44:14 flagcheck: block 45010 (m45_01_00_00 map flags): ok, the game keeps flags here
+14:44:14 flagcheck: block 45011 (m45_01_00_00 map flags): ok, the game keeps flags here
+14:44:14 flagcheck: block 45012 (m45_01_00_00 map flags): ok, the game keeps flags here
+14:44:14 flagcheck: block 45013 (m45_01_00_00 map flags): ok, the game keeps flags here
+14:44:14 flagcheck: block 45014 (m45_01_00_00 map flags): ok, the game keeps flags here
+14:44:14 flagcheck: block 45015 (m45_01_00_00 map flags): ok, the game keeps flags here
+14:44:14 flagcheck: block 45017 (m45_01_00_00 map flags): ok, the game keeps flags here
+14:44:14 flagcheck: block 45018 (m45_01_00_00 map flags): ok, the game keeps flags here
+14:44:14 flagcheck: block 45019 (m45_01_00_00 map flags): ok, the game keeps flags here
+14:44:14 flagcheck: block 45020 (m45_02_00_00 map flags): ok, the game keeps flags here
+14:44:14 flagcheck: block 45021 (m45_02_00_00 map flags): ok, the game keeps flags here
+14:44:14 flagcheck: block 45022 (m45_02_00_00 map flags): ok, the game keeps flags here
+14:44:14 flagcheck: block 45023 (m45_02_00_00 map flags): ok, the game keeps flags here
+14:44:14 flagcheck: block 45024 (m45_02_00_00 map flags): ok, the game keeps flags here
+14:44:14 flagcheck: block 45025 (m45_02_00_00 map flags): ok, the game keeps flags here
+14:44:14 flagcheck: block 45027 (m45_02_00_00 map flags): ok, the game keeps flags here
+14:44:14 flagcheck: block 45028 (m45_02_00_00 map flags): ok, the game keeps flags here
+14:44:14 flagcheck: block 45029 (m45_02_00_00 map flags): ok, the game keeps flags here
+14:44:14 flagcheck: block 1030290 (saved flags (JortPob layout)): ok, the game keeps flags here
+14:44:14 flagcheck: block 1030294 (saved flags (JortPob layout)): ok, the game keeps flags here
+14:44:14 flagcheck: block 1030297 (saved flags (JortPob layout)): ok, the game keeps flags here
+14:44:14 flagcheck: block 1030298 (saved flags (JortPob layout)): ok, the game keeps flags here
+14:44:14 flagcheck: block 1030299 (saved flags (JortPob layout)): ok, the game keeps flags here
+14:44:14 flagcheck: block 1031290 (saved flags (JortPob layout)): ok, the game keeps flags here
+14:44:14 flagcheck: block 1032290 (saved flags (JortPob layout)): ok, the game keeps flags here
+14:44:14 flagcheck: block 1039290 (DS3 run active flag, saved): ok, the game keeps flags here
+14:44:14 flagcheck: block 1039292 (F1 menu start/leave/warp requests): ok, the game keeps flags here
+14:44:14 flagcheck: block 1039295 (DS3 music flags, reset on load): ok, the game keeps flags here
+14:44:14 flagcheck: 37 blocks ok, 0 missing
+=== Saves/Default/ER/dksign_testmenu.5.log (23:22:06 session started 2026-11-24 (loc)
+23:22:21 flagcheck: block 45000 (m45_00_00_00 map flags): ok, the game keeps flags here
+23:22:21 flagcheck: block 45001 (m45_00_00_00 map flags): ok, the game keeps flags here
+23:22:21 flagcheck: block 45002 (m45_00_00_00 map flags): ok, the game keeps flags here
+23:22:21 flagcheck: block 45003 (m45_00_00_00 map flags): ok, the game keeps flags here
+23:22:21 flagcheck: block 45004 (m45_00_00_00 map flags): ok, the game keeps flags here
+23:22:21 flagcheck: block 45005 (m45_00_00_00 map flags): ok, the game keeps flags here
+23:22:21 flagcheck: block 45007 (m45_00_00_00 map flags): ok, the game keeps flags here
+23:22:21 flagcheck: block 45008 (m45_00_00_00 map flags): ok, the game keeps flags here
+23:22:21 flagcheck: block 45009 (m45_00_00_00 map flags): ok, the game keeps flags here
+23:22:21 flagcheck: block 45010 (m45_01_00_00 map flags): ok, the game keeps flags here
+23:22:21 flagcheck: block 45011 (m45_01_00_00 map flags): ok, the game keeps flags here
+23:22:21 flagcheck: block 45012 (m45_01_00_00 map flags): ok, the game keeps flags here
+23:22:21 flagcheck: block 45013 (m45_01_00_00 map flags): ok, the game keeps flags here
+23:22:21 flagcheck: block 45014 (m45_01_00_00 map flags): ok, the game keeps flags here
+23:22:21 flagcheck: block 45015 (m45_01_00_00 map flags): ok, the game keeps flags here
+23:22:21 flagcheck: block 45017 (m45_01_00_00 map flags): ok, the game keeps flags here
+23:22:21 flagcheck: block 45018 (m45_01_00_00 map flags): ok, the game keeps flags here
+23:22:21 flagcheck: block 45019 (m45_01_00_00 map flags): ok, the game keeps flags here
+23:22:21 flagcheck: block 45020 (m45_02_00_00 map flags): ok, the game keeps flags here
+23:22:21 flagcheck: block 45021 (m45_02_00_00 map flags): ok, the game keeps flags here
+23:22:21 flagcheck: block 45022 (m45_02_00_00 map flags): ok, the game keeps flags here
+23:22:21 flagcheck: block 45023 (m45_02_00_00 map flags): ok, the game keeps flags here
+23:22:21 flagcheck: block 45024 (m45_02_00_00 map flags): ok, the game keeps flags here
+23:22:21 flagcheck: block 45025 (m45_02_00_00 map flags): ok, the game keeps flags here
+23:22:21 flagcheck: block 45027 (m45_02_00_00 map flags): ok, the game keeps flags here
+23:22:21 flagcheck: block 45028 (m45_02_00_00 map flags): ok, the game keeps flags here
+23:22:21 flagcheck: block 45029 (m45_02_00_00 map flags): ok, the game keeps flags here
+23:22:21 flagcheck: block 1030290 (saved flags (JortPob layout)): ok, the game keeps flags here
+23:22:21 flagcheck: block 1030294 (saved flags (JortPob layout)): ok, the game keeps flags here
+23:22:21 flagcheck: block 1030297 (saved flags (JortPob layout)): ok, the game keeps flags here
+23:22:21 flagcheck: block 1030298 (saved flags (JortPob layout)): ok, the game keeps flags here
+23:22:21 flagcheck: block 1030299 (saved flags (JortPob layout)): ok, the game keeps flags here
+23:22:21 flagcheck: block 1031290 (saved flags (JortPob layout)): ok, the game keeps flags here
+23:22:21 flagcheck: block 1032290 (saved flags (JortPob layout)): ok, the game keeps flags here
+23:22:21 flagcheck: block 1039290 (DS3 run active flag, saved): ok, the game keeps flags here
+23:22:21 flagcheck: block 1039292 (F1 menu start/leave/warp requests): ok, the game keeps flags here
+23:22:21 flagcheck: block 1039295 (DS3 music flags, reset on load): ok, the game keeps flags here
+23:22:21 flagcheck: 37 blocks ok, 0 missing
+=== Work/scratch/deacons636/report/dksign_testmenu.log (23:48:05 session started 2026-11-24 (loc)
+23:48:20 flagcheck: block 45000 (m45_00_00_00 map flags): ok, the game keeps flags here
+23:48:20 flagcheck: block 45001 (m45_00_00_00 map flags): ok, the game keeps flags here
+23:48:20 flagcheck: block 45002 (m45_00_00_00 map flags): ok, the game keeps flags here
+23:48:20 flagcheck: block 45003 (m45_00_00_00 map flags): ok, the game keeps flags here
+23:48:20 flagcheck: block 45004 (m45_00_00_00 map flags): ok, the game keeps flags here
+23:48:20 flagcheck: block 45005 (m45_00_00_00 map flags): ok, the game keeps flags here
+23:48:20 flagcheck: block 45007 (m45_00_00_00 map flags): ok, the game keeps flags here
+23:48:20 flagcheck: block 45008 (m45_00_00_00 map flags): ok, the game keeps flags here
+23:48:20 flagcheck: block 45009 (m45_00_00_00 map flags): ok, the game keeps flags here
+23:48:20 flagcheck: block 45010 (m45_01_00_00 map flags): ok, the game keeps flags here
+23:48:20 flagcheck: block 45011 (m45_01_00_00 map flags): ok, the game keeps flags here
+23:48:20 flagcheck: block 45012 (m45_01_00_00 map flags): ok, the game keeps flags here
+23:48:20 flagcheck: block 45013 (m45_01_00_00 map flags): ok, the game keeps flags here
+23:48:20 flagcheck: block 45014 (m45_01_00_00 map flags): ok, the game keeps flags here
+23:48:20 flagcheck: block 45015 (m45_01_00_00 map flags): ok, the game keeps flags here
+23:48:20 flagcheck: block 45017 (m45_01_00_00 map flags): ok, the game keeps flags here
+23:48:20 flagcheck: block 45018 (m45_01_00_00 map flags): ok, the game keeps flags here
+23:48:20 flagcheck: block 45019 (m45_01_00_00 map flags): ok, the game keeps flags here
+23:48:20 flagcheck: block 45020 (m45_02_00_00 map flags): ok, the game keeps flags here
+23:48:20 flagcheck: block 45021 (m45_02_00_00 map flags): ok, the game keeps flags here
+23:48:20 flagcheck: block 45022 (m45_02_00_00 map flags): ok, the game keeps flags here
+23:48:20 flagcheck: block 45023 (m45_02_00_00 map flags): ok, the game keeps flags here
+23:48:20 flagcheck: block 45024 (m45_02_00_00 map flags): ok, the game keeps flags here
+23:48:20 flagcheck: block 45025 (m45_02_00_00 map flags): ok, the game keeps flags here
+23:48:20 flagcheck: block 45027 (m45_02_00_00 map flags): ok, the game keeps flags here
+23:48:20 flagcheck: block 45028 (m45_02_00_00 map flags): ok, the game keeps flags here
+23:48:20 flagcheck: block 45029 (m45_02_00_00 map flags): ok, the game keeps flags here
+23:48:20 flagcheck: block 1030290 (saved flags (JortPob layout)): ok, the game keeps flags here
+23:48:20 flagcheck: block 1030294 (saved flags (JortPob layout)): ok, the game keeps flags here
+23:48:20 flagcheck: block 1030297 (saved flags (JortPob layout)): ok, the game keeps flags here
+23:48:20 flagcheck: block 1030298 (saved flags (JortPob layout)): ok, the game keeps flags here
+23:48:20 flagcheck: block 1030299 (saved flags (JortPob layout)): ok, the game keeps flags here
+23:48:20 flagcheck: block 1031290 (saved flags (JortPob layout)): ok, the game keeps flags here
+23:48:20 flagcheck: block 1032290 (saved flags (JortPob layout)): ok, the game keeps flags here
+23:48:20 flagcheck: block 1039290 (DS3 run active flag, saved): ok, the game keeps flags here
+23:48:20 flagcheck: block 1039292 (F1 menu start/leave/warp requests): ok, the game keeps flags here
+23:48:20 flagcheck: block 1039295 (DS3 music flags, reset on load): ok, the game keeps flags here
+23:48:20 flagcheck: 37 blocks ok, 0 missing
+=== Work/src-ids/reports/boss-start/playtest-1124/dksign_testmenu-round2.log (00:15:41 session started 2026-11-24 (loc)
+00:15:57 flagcheck: block 45000 (m45_00_00_00 map flags): ok, the game keeps flags here
+00:15:57 flagcheck: block 45001 (m45_00_00_00 map flags): ok, the game keeps flags here
+00:15:57 flagcheck: block 45002 (m45_00_00_00 map flags): ok, the game keeps flags here
+00:15:57 flagcheck: block 45003 (m45_00_00_00 map flags): ok, the game keeps flags here
+00:15:57 flagcheck: block 45004 (m45_00_00_00 map flags): ok, the game keeps flags here
+00:15:57 flagcheck: block 45005 (m45_00_00_00 map flags): ok, the game keeps flags here
+00:15:57 flagcheck: block 45007 (m45_00_00_00 map flags): ok, the game keeps flags here
+00:15:57 flagcheck: block 45008 (m45_00_00_00 map flags): ok, the game keeps flags here
+00:15:57 flagcheck: block 45009 (m45_00_00_00 map flags): ok, the game keeps flags here
+00:15:57 flagcheck: block 45010 (m45_01_00_00 map flags): ok, the game keeps flags here
+00:15:57 flagcheck: block 45011 (m45_01_00_00 map flags): ok, the game keeps flags here
+00:15:57 flagcheck: block 45012 (m45_01_00_00 map flags): ok, the game keeps flags here
+00:15:57 flagcheck: block 45013 (m45_01_00_00 map flags): ok, the game keeps flags here
+00:15:57 flagcheck: block 45014 (m45_01_00_00 map flags): ok, the game keeps flags here
+00:15:57 flagcheck: block 45015 (m45_01_00_00 map flags): ok, the game keeps flags here
+00:15:57 flagcheck: block 45017 (m45_01_00_00 map flags): ok, the game keeps flags here
+00:15:57 flagcheck: block 45018 (m45_01_00_00 map flags): ok, the game keeps flags here
+00:15:57 flagcheck: block 45019 (m45_01_00_00 map flags): ok, the game keeps flags here
+00:15:57 flagcheck: block 45020 (m45_02_00_00 map flags): ok, the game keeps flags here
+00:15:57 flagcheck: block 45021 (m45_02_00_00 map flags): ok, the game keeps flags here
+00:15:57 flagcheck: block 45022 (m45_02_00_00 map flags): ok, the game keeps flags here
+00:15:57 flagcheck: block 45023 (m45_02_00_00 map flags): ok, the game keeps flags here
+00:15:57 flagcheck: block 45024 (m45_02_00_00 map flags): ok, the game keeps flags here
+00:15:57 flagcheck: block 45025 (m45_02_00_00 map flags): ok, the game keeps flags here
+00:15:57 flagcheck: block 45027 (m45_02_00_00 map flags): ok, the game keeps flags here
+00:15:57 flagcheck: block 45028 (m45_02_00_00 map flags): ok, the game keeps flags here
+00:15:57 flagcheck: block 45029 (m45_02_00_00 map flags): ok, the game keeps flags here
+00:15:57 flagcheck: block 1030290 (saved flags (JortPob layout)): ok, the game keeps flags here
+00:15:57 flagcheck: block 1030294 (saved flags (JortPob layout)): ok, the game keeps flags here
+00:15:57 flagcheck: block 1030297 (saved flags (JortPob layout)): ok, the game keeps flags here
+00:15:57 flagcheck: block 1030298 (saved flags (JortPob layout)): ok, the game keeps flags here
+00:15:57 flagcheck: block 1030299 (saved flags (JortPob layout)): ok, the game keeps flags here
+00:15:57 flagcheck: block 1031290 (saved flags (JortPob layout)): ok, the game keeps flags here
+00:15:57 flagcheck: block 1032290 (saved flags (JortPob layout)): ok, the game keeps flags here
+00:15:57 flagcheck: block 1039290 (DS3 run active flag, saved): ok, the game keeps flags here
+00:15:57 flagcheck: block 1039292 (F1 menu start/leave/warp requests): ok, the game keeps flags here
+00:15:57 flagcheck: block 1039295 (DS3 music flags, reset on load): ok, the game keeps flags here
+00:15:57 flagcheck: 37 blocks ok, 0 missing
+=== Work/scratch/deacons636-backup/ER/dksign_testmenu.log (19:57:03 session started 2026-11-24 (loc)
+19:57:19 flagcheck: block 45000 (m45_00_00_00 map flags): ok, the game keeps flags here
+19:57:19 flagcheck: block 45001 (m45_00_00_00 map flags): ok, the game keeps flags here
+19:57:19 flagcheck: block 45002 (m45_00_00_00 map flags): ok, the game keeps flags here
+19:57:19 flagcheck: block 45003 (m45_00_00_00 map flags): ok, the game keeps flags here
+19:57:19 flagcheck: block 45004 (m45_00_00_00 map flags): ok, the game keeps flags here
+19:57:19 flagcheck: block 45005 (m45_00_00_00 map flags): ok, the game keeps flags here
+19:57:19 flagcheck: block 45007 (m45_00_00_00 map flags): ok, the game keeps flags here
+19:57:19 flagcheck: block 45008 (m45_00_00_00 map flags): ok, the game keeps flags here
+19:57:19 flagcheck: block 45009 (m45_00_00_00 map flags): ok, the game keeps flags here
+19:57:19 flagcheck: block 45010 (m45_01_00_00 map flags): ok, the game keeps flags here
+19:57:19 flagcheck: block 45011 (m45_01_00_00 map flags): ok, the game keeps flags here
+19:57:19 flagcheck: block 45012 (m45_01_00_00 map flags): ok, the game keeps flags here
+19:57:19 flagcheck: block 45013 (m45_01_00_00 map flags): ok, the game keeps flags here
+19:57:19 flagcheck: block 45014 (m45_01_00_00 map flags): ok, the game keeps flags here
+19:57:19 flagcheck: block 45015 (m45_01_00_00 map flags): ok, the game keeps flags here
+19:57:19 flagcheck: block 45017 (m45_01_00_00 map flags): ok, the game keeps flags here
+19:57:19 flagcheck: block 45018 (m45_01_00_00 map flags): ok, the game keeps flags here
+19:57:19 flagcheck: block 45019 (m45_01_00_00 map flags): ok, the game keeps flags here
+19:57:19 flagcheck: block 45020 (m45_02_00_00 map flags): ok, the game keeps flags here
+19:57:19 flagcheck: block 45021 (m45_02_00_00 map flags): ok, the game keeps flags here
+19:57:19 flagcheck: block 45022 (m45_02_00_00 map flags): ok, the game keeps flags here
+19:57:19 flagcheck: block 45023 (m45_02_00_00 map flags): ok, the game keeps flags here
+19:57:19 flagcheck: block 45024 (m45_02_00_00 map flags): ok, the game keeps flags here
+19:57:19 flagcheck: block 45025 (m45_02_00_00 map flags): ok, the game keeps flags here
+19:57:19 flagcheck: block 45027 (m45_02_00_00 map flags): ok, the game keeps flags here
+19:57:19 flagcheck: block 45028 (m45_02_00_00 map flags): ok, the game keeps flags here
+19:57:19 flagcheck: block 45029 (m45_02_00_00 map flags): ok, the game keeps flags here
+19:57:19 flagcheck: block 1030290 (saved flags (JortPob layout)): ok, the game keeps flags here
+19:57:19 flagcheck: block 1030294 (saved flags (JortPob layout)): ok, the game keeps flags here
+19:57:19 flagcheck: block 1030297 (saved flags (JortPob layout)): ok, the game keeps flags here
+19:57:19 flagcheck: block 1030298 (saved flags (JortPob layout)): ok, the game keeps flags here
+19:57:19 flagcheck: block 1030299 (saved flags (JortPob layout)): ok, the game keeps flags here
+19:57:19 flagcheck: block 1031290 (saved flags (JortPob layout)): ok, the game keeps flags here
+19:57:19 flagcheck: block 1032290 (saved flags (JortPob layout)): ok, the game keeps flags here
+19:57:19 flagcheck: block 1039290 (DS3 run active flag, saved): ok, the game keeps flags here
+19:57:19 flagcheck: block 1039292 (F1 menu start/leave/warp requests): ok, the game keeps flags here
+19:57:19 flagcheck: block 1039295 (DS3 music flags, reset on load): ok, the game keeps flags here
+19:57:19 flagcheck: 37 blocks ok, 0 missing
+=== Work/scratch/deacons636-backup/ER/dksign_testmenu.1.log (15:15:54 session started 2026-11-24 (loc)
+15:16:10 flagcheck: block 45000 (m45_00_00_00 map flags): ok, the game keeps flags here
+15:16:10 flagcheck: block 45001 (m45_00_00_00 map flags): ok, the game keeps flags here
+15:16:10 flagcheck: block 45002 (m45_00_00_00 map flags): ok, the game keeps flags here
+15:16:10 flagcheck: block 45003 (m45_00_00_00 map flags): ok, the game keeps flags here
+15:16:10 flagcheck: block 45004 (m45_00_00_00 map flags): ok, the game keeps flags here
+15:16:10 flagcheck: block 45005 (m45_00_00_00 map flags): ok, the game keeps flags here
+15:16:10 flagcheck: block 45007 (m45_00_00_00 map flags): ok, the game keeps flags here
+15:16:10 flagcheck: block 45008 (m45_00_00_00 map flags): ok, the game keeps flags here
+15:16:10 flagcheck: block 45009 (m45_00_00_00 map flags): ok, the game keeps flags here
+15:16:10 flagcheck: block 45010 (m45_01_00_00 map flags): ok, the game keeps flags here
+15:16:10 flagcheck: block 45011 (m45_01_00_00 map flags): ok, the game keeps flags here
+15:16:10 flagcheck: block 45012 (m45_01_00_00 map flags): ok, the game keeps flags here
+15:16:10 flagcheck: block 45013 (m45_01_00_00 map flags): ok, the game keeps flags here
+15:16:10 flagcheck: block 45014 (m45_01_00_00 map flags): ok, the game keeps flags here
+15:16:10 flagcheck: block 45015 (m45_01_00_00 map flags): ok, the game keeps flags here
+15:16:10 flagcheck: block 45017 (m45_01_00_00 map flags): ok, the game keeps flags here
+15:16:10 flagcheck: block 45018 (m45_01_00_00 map flags): ok, the game keeps flags here
+15:16:10 flagcheck: block 45019 (m45_01_00_00 map flags): ok, the game keeps flags here
+15:16:10 flagcheck: block 45020 (m45_02_00_00 map flags): ok, the game keeps flags here
+15:16:10 flagcheck: block 45021 (m45_02_00_00 map flags): ok, the game keeps flags here
+15:16:10 flagcheck: block 45022 (m45_02_00_00 map flags): ok, the game keeps flags here
+15:16:10 flagcheck: block 45023 (m45_02_00_00 map flags): ok, the game keeps flags here
+15:16:10 flagcheck: block 45024 (m45_02_00_00 map flags): ok, the game keeps flags here
+15:16:10 flagcheck: block 45025 (m45_02_00_00 map flags): ok, the game keeps flags here
+15:16:10 flagcheck: block 45027 (m45_02_00_00 map flags): ok, the game keeps flags here
+15:16:10 flagcheck: block 45028 (m45_02_00_00 map flags): ok, the game keeps flags here
+15:16:10 flagcheck: block 45029 (m45_02_00_00 map flags): ok, the game keeps flags here
+15:16:10 flagcheck: block 1030290 (saved flags (JortPob layout)): ok, the game keeps flags here
+15:16:10 flagcheck: block 1030294 (saved flags (JortPob layout)): ok, the game keeps flags here
+15:16:10 flagcheck: block 1030297 (saved flags (JortPob layout)): ok, the game keeps flags here
+15:16:10 flagcheck: block 1030298 (saved flags (JortPob layout)): ok, the game keeps flags here
+15:16:10 flagcheck: block 1030299 (saved flags (JortPob layout)): ok, the game keeps flags here
+15:16:10 flagcheck: block 1031290 (saved flags (JortPob layout)): ok, the game keeps flags here
+15:16:10 flagcheck: block 1032290 (saved flags (JortPob layout)): ok, the game keeps flags here
+15:16:10 flagcheck: block 1039290 (DS3 run active flag, saved): ok, the game keeps flags here
+15:16:10 flagcheck: block 1039292 (F1 menu start/leave/warp requests): ok, the game keeps flags here
+15:16:10 flagcheck: block 1039295 (DS3 music flags, reset on load): ok, the game keeps flags here
+15:16:10 flagcheck: 37 blocks ok, 0 missing
+=== Work/scratch/deacons636-backup/ER/dksign_testmenu.3.log (09:53:14 session started 2026-11-24 (loc)
+09:53:30 flagcheck: block 45000 (m45_00_00_00 map flags): ok, the game keeps flags here
+09:53:30 flagcheck: block 45001 (m45_00_00_00 map flags): ok, the game keeps flags here
+09:53:30 flagcheck: block 45002 (m45_00_00_00 map flags): ok, the game keeps flags here
+09:53:30 flagcheck: block 45003 (m45_00_00_00 map flags): ok, the game keeps flags here
+09:53:30 flagcheck: block 45004 (m45_00_00_00 map flags): ok, the game keeps flags here
+09:53:30 flagcheck: block 45005 (m45_00_00_00 map flags): ok, the game keeps flags here
+09:53:30 flagcheck: block 45007 (m45_00_00_00 map flags): ok, the game keeps flags here
+09:53:30 flagcheck: block 45008 (m45_00_00_00 map flags): ok, the game keeps flags here
+09:53:30 flagcheck: block 45009 (m45_00_00_00 map flags): ok, the game keeps flags here
+09:53:30 flagcheck: block 45010 (m45_01_00_00 map flags): ok, the game keeps flags here
+09:53:30 flagcheck: block 45011 (m45_01_00_00 map flags): ok, the game keeps flags here
+09:53:30 flagcheck: block 45012 (m45_01_00_00 map flags): ok, the game keeps flags here
+09:53:30 flagcheck: block 45013 (m45_01_00_00 map flags): ok, the game keeps flags here
+09:53:30 flagcheck: block 45014 (m45_01_00_00 map flags): ok, the game keeps flags here
+09:53:30 flagcheck: block 45015 (m45_01_00_00 map flags): ok, the game keeps flags here
+09:53:30 flagcheck: block 45017 (m45_01_00_00 map flags): ok, the game keeps flags here
+09:53:30 flagcheck: block 45018 (m45_01_00_00 map flags): ok, the game keeps flags here
+09:53:30 flagcheck: block 45019 (m45_01_00_00 map flags): ok, the game keeps flags here
+09:53:30 flagcheck: block 45020 (m45_02_00_00 map flags): ok, the game keeps flags here
+09:53:30 flagcheck: block 45021 (m45_02_00_00 map flags): ok, the game keeps flags here
+09:53:30 flagcheck: block 45022 (m45_02_00_00 map flags): ok, the game keeps flags here
+09:53:30 flagcheck: block 45023 (m45_02_00_00 map flags): ok, the game keeps flags here
+09:53:30 flagcheck: block 45024 (m45_02_00_00 map flags): ok, the game keeps flags here
+09:53:30 flagcheck: block 45025 (m45_02_00_00 map flags): ok, the game keeps flags here
+09:53:30 flagcheck: block 45027 (m45_02_00_00 map flags): ok, the game keeps flags here
+09:53:30 flagcheck: block 45028 (m45_02_00_00 map flags): ok, the game keeps flags here
+09:53:30 flagcheck: block 45029 (m45_02_00_00 map flags): ok, the game keeps flags here
+09:53:30 flagcheck: block 1030290 (saved flags (JortPob layout)): ok, the game keeps flags here
+09:53:30 flagcheck: block 1030294 (saved flags (JortPob layout)): ok, the game keeps flags here
+09:53:30 flagcheck: block 1030297 (saved flags (JortPob layout)): ok, the game keeps flags here
+09:53:30 flagcheck: block 1030298 (saved flags (JortPob layout)): ok, the game keeps flags here
+09:53:30 flagcheck: block 1030299 (saved flags (JortPob layout)): ok, the game keeps flags here
+09:53:30 flagcheck: block 1031290 (saved flags (JortPob layout)): ok, the game keeps flags here
+09:53:30 flagcheck: block 1032290 (saved flags (JortPob layout)): ok, the game keeps flags here
+09:53:30 flagcheck: block 1039290 (DS3 run active flag, saved): ok, the game keeps flags here
+09:53:30 flagcheck: block 1039292 (F1 menu start/leave/warp requests): ok, the game keeps flags here
+09:53:30 flagcheck: block 1039295 (DS3 music flags, reset on load): ok, the game keeps flags here
+09:53:30 flagcheck: 37 blocks ok, 0 missing
+=== Saves/Default/ER/dksign_testmenu.4.log (23:24:14 session started 2026-11-24 (loc)
+23:24:29 flagcheck: block 45000 (m45_00_00_00 map flags): ok, the game keeps flags here
+23:24:29 flagcheck: block 45001 (m45_00_00_00 map flags): ok, the game keeps flags here
+23:24:29 flagcheck: block 45002 (m45_00_00_00 map flags): ok, the game keeps flags here
+23:24:29 flagcheck: block 45003 (m45_00_00_00 map flags): ok, the game keeps flags here
+23:24:29 flagcheck: block 45004 (m45_00_00_00 map flags): ok, the game keeps flags here
+23:24:29 flagcheck: block 45005 (m45_00_00_00 map flags): ok, the game keeps flags here
+23:24:29 flagcheck: block 45007 (m45_00_00_00 map flags): ok, the game keeps flags here
+23:24:29 flagcheck: block 45008 (m45_00_00_00 map flags): ok, the game keeps flags here
+23:24:29 flagcheck: block 45009 (m45_00_00_00 map flags): ok, the game keeps flags here
+23:24:29 flagcheck: block 45010 (m45_01_00_00 map flags): ok, the game keeps flags here
+23:24:29 flagcheck: block 45011 (m45_01_00_00 map flags): ok, the game keeps flags here
+23:24:29 flagcheck: block 45012 (m45_01_00_00 map flags): ok, the game keeps flags here
+23:24:29 flagcheck: block 45013 (m45_01_00_00 map flags): ok, the game keeps flags here
+23:24:29 flagcheck: block 45014 (m45_01_00_00 map flags): ok, the game keeps flags here
+23:24:29 flagcheck: block 45015 (m45_01_00_00 map flags): ok, the game keeps flags here
+23:24:29 flagcheck: block 45017 (m45_01_00_00 map flags): ok, the game keeps flags here
+23:24:29 flagcheck: block 45018 (m45_01_00_00 map flags): ok, the game keeps flags here
+23:24:29 flagcheck: block 45019 (m45_01_00_00 map flags): ok, the game keeps flags here
+23:24:29 flagcheck: block 45020 (m45_02_00_00 map flags): ok, the game keeps flags here
+23:24:29 flagcheck: block 45021 (m45_02_00_00 map flags): ok, the game keeps flags here
+23:24:29 flagcheck: block 45022 (m45_02_00_00 map flags): ok, the game keeps flags here
+23:24:29 flagcheck: block 45023 (m45_02_00_00 map flags): ok, the game keeps flags here
+23:24:29 flagcheck: block 45024 (m45_02_00_00 map flags): ok, the game keeps flags here
+23:24:29 flagcheck: block 45025 (m45_02_00_00 map flags): ok, the game keeps flags here
+23:24:29 flagcheck: block 45027 (m45_02_00_00 map flags): ok, the game keeps flags here
+23:24:29 flagcheck: block 45028 (m45_02_00_00 map flags): ok, the game keeps flags here
+23:24:29 flagcheck: block 45029 (m45_02_00_00 map flags): ok, the game keeps flags here
+23:24:29 flagcheck: block 1030290 (saved flags (JortPob layout)): ok, the game keeps flags here
+23:24:29 flagcheck: block 1030294 (saved flags (JortPob layout)): ok, the game keeps flags here
+23:24:29 flagcheck: block 1030297 (saved flags (JortPob layout)): ok, the game keeps flags here
+23:24:29 flagcheck: block 1030298 (saved flags (JortPob layout)): ok, the game keeps flags here
+23:24:29 flagcheck: block 1030299 (saved flags (JortPob layout)): ok, the game keeps flags here
+23:24:29 flagcheck: block 1031290 (saved flags (JortPob layout)): ok, the game keeps flags here
+23:24:29 flagcheck: block 1032290 (saved flags (JortPob layout)): ok, the game keeps flags here
+23:24:29 flagcheck: block 1039290 (DS3 run active flag, saved): ok, the game keeps flags here
+23:24:29 flagcheck: block 1039292 (F1 menu start/leave/warp requests): ok, the game keeps flags here
+23:24:29 flagcheck: block 1039295 (DS3 music flags, reset on load): ok, the game keeps flags here
+23:24:29 flagcheck: 37 blocks ok, 0 missing
+=== Saves/Default/ER/dksign_testmenu.1.log (23:32:07 session started 2026-11-24 (loc)
+23:32:23 flagcheck: block 45000 (m45_00_00_00 map flags): ok, the game keeps flags here
+23:32:23 flagcheck: block 45001 (m45_00_00_00 map flags): ok, the game keeps flags here
+23:32:23 flagcheck: block 45002 (m45_00_00_00 map flags): ok, the game keeps flags here
+23:32:23 flagcheck: block 45003 (m45_00_00_00 map flags): ok, the game keeps flags here
+23:32:23 flagcheck: block 45004 (m45_00_00_00 map flags): ok, the game keeps flags here
+23:32:23 flagcheck: block 45005 (m45_00_00_00 map flags): ok, the game keeps flags here
+23:32:23 flagcheck: block 45007 (m45_00_00_00 map flags): ok, the game keeps flags here
+23:32:23 flagcheck: block 45008 (m45_00_00_00 map flags): ok, the game keeps flags here
+23:32:23 flagcheck: block 45009 (m45_00_00_00 map flags): ok, the game keeps flags here
+23:32:23 flagcheck: block 45010 (m45_01_00_00 map flags): ok, the game keeps flags here
+23:32:23 flagcheck: block 45011 (m45_01_00_00 map flags): ok, the game keeps flags here
+23:32:23 flagcheck: block 45012 (m45_01_00_00 map flags): ok, the game keeps flags here
+23:32:23 flagcheck: block 45013 (m45_01_00_00 map flags): ok, the game keeps flags here
+23:32:23 flagcheck: block 45014 (m45_01_00_00 map flags): ok, the game keeps flags here
+23:32:23 flagcheck: block 45015 (m45_01_00_00 map flags): ok, the game keeps flags here
+23:32:23 flagcheck: block 45017 (m45_01_00_00 map flags): ok, the game keeps flags here
+23:32:23 flagcheck: block 45018 (m45_01_00_00 map flags): ok, the game keeps flags here
+23:32:23 flagcheck: block 45019 (m45_01_00_00 map flags): ok, the game keeps flags here
+23:32:23 flagcheck: block 45020 (m45_02_00_00 map flags): ok, the game keeps flags here
+23:32:23 flagcheck: block 45021 (m45_02_00_00 map flags): ok, the game keeps flags here
+23:32:23 flagcheck: block 45022 (m45_02_00_00 map flags): ok, the game keeps flags here
+23:32:23 flagcheck: block 45023 (m45_02_00_00 map flags): ok, the game keeps flags here
+23:32:23 flagcheck: block 45024 (m45_02_00_00 map flags): ok, the game keeps flags here
+23:32:23 flagcheck: block 45025 (m45_02_00_00 map flags): ok, the game keeps flags here
+23:32:23 flagcheck: block 45027 (m45_02_00_00 map flags): ok, the game keeps flags here
+23:32:23 flagcheck: block 45028 (m45_02_00_00 map flags): ok, the game keeps flags here
+23:32:23 flagcheck: block 45029 (m45_02_00_00 map flags): ok, the game keeps flags here
+23:32:23 flagcheck: block 1030290 (saved flags (JortPob layout)): ok, the game keeps flags here
+23:32:23 flagcheck: block 1030294 (saved flags (JortPob layout)): ok, the game keeps flags here
+23:32:23 flagcheck: block 1030297 (saved flags (JortPob layout)): ok, the game keeps flags here
+23:32:23 flagcheck: block 1030298 (saved flags (JortPob layout)): ok, the game keeps flags here
+23:32:23 flagcheck: block 1030299 (saved flags (JortPob layout)): ok, the game keeps flags here
+23:32:23 flagcheck: block 1031290 (saved flags (JortPob layout)): ok, the game keeps flags here
+23:32:23 flagcheck: block 1032290 (saved flags (JortPob layout)): ok, the game keeps flags here
+23:32:23 flagcheck: block 1039290 (DS3 run active flag, saved): ok, the game keeps flags here
+23:32:23 flagcheck: block 1039292 (F1 menu start/leave/warp requests): ok, the game keeps flags here
+23:32:23 flagcheck: block 1039295 (DS3 music flags, reset on load): ok, the game keeps flags here
+23:32:23 flagcheck: 37 blocks ok, 0 missing
+=== Work/scratch/sky-after284/save-backup/ER/dksign_testmenu.5.log (07:45:23 session started 2026-11-24 (loc)
+07:45:38 flagcheck: block 45000 (m45_00_00_00 map flags): ok, the game keeps flags here
+07:45:38 flagcheck: block 45001 (m45_00_00_00 map flags): ok, the game keeps flags here
+07:45:38 flagcheck: block 45002 (m45_00_00_00 map flags): ok, the game keeps flags here
+07:45:38 flagcheck: block 45003 (m45_00_00_00 map flags): ok, the game keeps flags here
+07:45:38 flagcheck: block 45004 (m45_00_00_00 map flags): ok, the game keeps flags here
+07:45:38 flagcheck: block 45005 (m45_00_00_00 map flags): ok, the game keeps flags here
+07:45:38 flagcheck: block 45007 (m45_00_00_00 map flags): ok, the game keeps flags here
+07:45:38 flagcheck: block 45008 (m45_00_00_00 map flags): ok, the game keeps flags here
+07:45:38 flagcheck: block 45009 (m45_00_00_00 map flags): ok, the game keeps flags here
+07:45:38 flagcheck: block 45010 (m45_01_00_00 map flags): ok, the game keeps flags here
+07:45:38 flagcheck: block 45011 (m45_01_00_00 map flags): ok, the game keeps flags here
+07:45:38 flagcheck: block 45012 (m45_01_00_00 map flags): ok, the game keeps flags here
+07:45:38 flagcheck: block 45013 (m45_01_00_00 map flags): ok, the game keeps flags here
+07:45:38 flagcheck: block 45014 (m45_01_00_00 map flags): ok, the game keeps flags here
+07:45:38 flagcheck: block 45015 (m45_01_00_00 map flags): ok, the game keeps flags here
+07:45:38 flagcheck: block 45017 (m45_01_00_00 map flags): ok, the game keeps flags here
+07:45:38 flagcheck: block 45018 (m45_01_00_00 map flags): ok, the game keeps flags here
+07:45:38 flagcheck: block 45019 (m45_01_00_00 map flags): ok, the game keeps flags here
+07:45:38 flagcheck: block 45020 (m45_02_00_00 map flags): ok, the game keeps flags here
+07:45:38 flagcheck: block 45021 (m45_02_00_00 map flags): ok, the game keeps flags here
+07:45:38 flagcheck: block 45022 (m45_02_00_00 map flags): ok, the game keeps flags here
+07:45:38 flagcheck: block 45023 (m45_02_00_00 map flags): ok, the game keeps flags here
+07:45:38 flagcheck: block 45024 (m45_02_00_00 map flags): ok, the game keeps flags here
+07:45:38 flagcheck: block 45025 (m45_02_00_00 map flags): ok, the game keeps flags here
+07:45:38 flagcheck: block 45027 (m45_02_00_00 map flags): ok, the game keeps flags here
+07:45:38 flagcheck: block 45028 (m45_02_00_00 map flags): ok, the game keeps flags here
+07:45:38 flagcheck: block 45029 (m45_02_00_00 map flags): ok, the game keeps flags here
+07:45:38 flagcheck: block 1030290 (saved flags (JortPob layout)): ok, the game keeps flags here
+07:45:38 flagcheck: block 1030294 (saved flags (JortPob layout)): ok, the game keeps flags here
+07:45:38 flagcheck: block 1030297 (saved flags (JortPob layout)): ok, the game keeps flags here
+07:45:38 flagcheck: block 1030298 (saved flags (JortPob layout)): ok, the game keeps flags here
+07:45:38 flagcheck: block 1030299 (saved flags (JortPob layout)): ok, the game keeps flags here
+07:45:38 flagcheck: block 1031290 (saved flags (JortPob layout)): ok, the game keeps flags here
+07:45:38 flagcheck: block 1032290 (saved flags (JortPob layout)): ok, the game keeps flags here
+07:45:38 flagcheck: block 1039290 (DS3 run active flag, saved): ok, the game keeps flags here
+07:45:38 flagcheck: block 1039292 (F1 menu start/leave/warp requests): ok, the game keeps flags here
+07:45:38 flagcheck: block 1039295 (DS3 music flags, reset on load): ok, the game keeps flags here
+07:45:38 flagcheck: 37 blocks ok, 0 missing
+=== Saves/Default/ER/dksign_testmenu.2.log (23:29:33 session started 2026-11-24 (loc)
+23:29:48 flagcheck: block 45000 (m45_00_00_00 map flags): ok, the game keeps flags here
+23:29:48 flagcheck: block 45001 (m45_00_00_00 map flags): ok, the game keeps flags here
+23:29:48 flagcheck: block 45002 (m45_00_00_00 map flags): ok, the game keeps flags here
+23:29:48 flagcheck: block 45003 (m45_00_00_00 map flags): ok, the game keeps flags here
+23:29:48 flagcheck: block 45004 (m45_00_00_00 map flags): ok, the game keeps flags here
+23:29:48 flagcheck: block 45005 (m45_00_00_00 map flags): ok, the game keeps flags here
+23:29:48 flagcheck: block 45007 (m45_00_00_00 map flags): ok, the game keeps flags here
+23:29:48 flagcheck: block 45008 (m45_00_00_00 map flags): ok, the game keeps flags here
+23:29:48 flagcheck: block 45009 (m45_00_00_00 map flags): ok, the game keeps flags here
+23:29:48 flagcheck: block 45010 (m45_01_00_00 map flags): ok, the game keeps flags here
+23:29:48 flagcheck: block 45011 (m45_01_00_00 map flags): ok, the game keeps flags here
+23:29:48 flagcheck: block 45012 (m45_01_00_00 map flags): ok, the game keeps flags here
+23:29:48 flagcheck: block 45013 (m45_01_00_00 map flags): ok, the game keeps flags here
+23:29:48 flagcheck: block 45014 (m45_01_00_00 map flags): ok, the game keeps flags here
+23:29:48 flagcheck: block 45015 (m45_01_00_00 map flags): ok, the game keeps flags here
+23:29:48 flagcheck: block 45017 (m45_01_00_00 map flags): ok, the game keeps flags here
+23:29:48 flagcheck: block 45018 (m45_01_00_00 map flags): ok, the game keeps flags here
+23:29:48 flagcheck: block 45019 (m45_01_00_00 map flags): ok, the game keeps flags here
+23:29:48 flagcheck: block 45020 (m45_02_00_00 map flags): ok, the game keeps flags here
+23:29:48 flagcheck: block 45021 (m45_02_00_00 map flags): ok, the game keeps flags here
+23:29:48 flagcheck: block 45022 (m45_02_00_00 map flags): ok, the game keeps flags here
+23:29:48 flagcheck: block 45023 (m45_02_00_00 map flags): ok, the game keeps flags here
+23:29:48 flagcheck: block 45024 (m45_02_00_00 map flags): ok, the game keeps flags here
+23:29:48 flagcheck: block 45025 (m45_02_00_00 map flags): ok, the game keeps flags here
+23:29:48 flagcheck: block 45027 (m45_02_00_00 map flags): ok, the game keeps flags here
+23:29:48 flagcheck: block 45028 (m45_02_00_00 map flags): ok, the game keeps flags here
+23:29:48 flagcheck: block 45029 (m45_02_00_00 map flags): ok, the game keeps flags here
+23:29:48 flagcheck: block 1030290 (saved flags (JortPob layout)): ok, the game keeps flags here
+23:29:48 flagcheck: block 1030294 (saved flags (JortPob layout)): ok, the game keeps flags here
+23:29:48 flagcheck: block 1030297 (saved flags (JortPob layout)): ok, the game keeps flags here
+23:29:48 flagcheck: block 1030298 (saved flags (JortPob layout)): ok, the game keeps flags here
+23:29:48 flagcheck: block 1030299 (saved flags (JortPob layout)): ok, the game keeps flags here
+23:29:48 flagcheck: block 1031290 (saved flags (JortPob layout)): ok, the game keeps flags here
+23:29:48 flagcheck: block 1032290 (saved flags (JortPob layout)): ok, the game keeps flags here
+23:29:48 flagcheck: block 1039290 (DS3 run active flag, saved): ok, the game keeps flags here
+23:29:48 flagcheck: block 1039292 (F1 menu start/leave/warp requests): ok, the game keeps flags here
+23:29:48 flagcheck: block 1039295 (DS3 music flags, reset on load): ok, the game keeps flags here
+23:29:48 flagcheck: 37 blocks ok, 0 missing
+=== Saves/Default/ER/dksign_testmenu.3.log (23:26:43 session started 2026-11-24 (loc)
+23:26:58 flagcheck: block 45000 (m45_00_00_00 map flags): ok, the game keeps flags here
+23:26:58 flagcheck: block 45001 (m45_00_00_00 map flags): ok, the game keeps flags here
+23:26:58 flagcheck: block 45002 (m45_00_00_00 map flags): ok, the game keeps flags here
+23:26:58 flagcheck: block 45003 (m45_00_00_00 map flags): ok, the game keeps flags here
+23:26:58 flagcheck: block 45004 (m45_00_00_00 map flags): ok, the game keeps flags here
+23:26:58 flagcheck: block 45005 (m45_00_00_00 map flags): ok, the game keeps flags here
+23:26:58 flagcheck: block 45007 (m45_00_00_00 map flags): ok, the game keeps flags here
+23:26:58 flagcheck: block 45008 (m45_00_00_00 map flags): ok, the game keeps flags here
+23:26:58 flagcheck: block 45009 (m45_00_00_00 map flags): ok, the game keeps flags here
+23:26:58 flagcheck: block 45010 (m45_01_00_00 map flags): ok, the game keeps flags here
+23:26:58 flagcheck: block 45011 (m45_01_00_00 map flags): ok, the game keeps flags here
+23:26:58 flagcheck: block 45012 (m45_01_00_00 map flags): ok, the game keeps flags here
+23:26:58 flagcheck: block 45013 (m45_01_00_00 map flags): ok, the game keeps flags here
+23:26:58 flagcheck: block 45014 (m45_01_00_00 map flags): ok, the game keeps flags here
+23:26:58 flagcheck: block 45015 (m45_01_00_00 map flags): ok, the game keeps flags here
+23:26:58 flagcheck: block 45017 (m45_01_00_00 map flags): ok, the game keeps flags here
+23:26:58 flagcheck: block 45018 (m45_01_00_00 map flags): ok, the game keeps flags here
+23:26:58 flagcheck: block 45019 (m45_01_00_00 map flags): ok, the game keeps flags here
+23:26:58 flagcheck: block 45020 (m45_02_00_00 map flags): ok, the game keeps flags here
+23:26:58 flagcheck: block 45021 (m45_02_00_00 map flags): ok, the game keeps flags here
+23:26:58 flagcheck: block 45022 (m45_02_00_00 map flags): ok, the game keeps flags here
+23:26:58 flagcheck: block 45023 (m45_02_00_00 map flags): ok, the game keeps flags here
+23:26:58 flagcheck: block 45024 (m45_02_00_00 map flags): ok, the game keeps flags here
+23:26:58 flagcheck: block 45025 (m45_02_00_00 map flags): ok, the game keeps flags here
+23:26:58 flagcheck: block 45027 (m45_02_00_00 map flags): ok, the game keeps flags here
+23:26:58 flagcheck: block 45028 (m45_02_00_00 map flags): ok, the game keeps flags here
+23:26:58 flagcheck: block 45029 (m45_02_00_00 map flags): ok, the game keeps flags here
+23:26:58 flagcheck: block 1030290 (saved flags (JortPob layout)): ok, the game keeps flags here
+23:26:58 flagcheck: block 1030294 (saved flags (JortPob layout)): ok, the game keeps flags here
+23:26:58 flagcheck: block 1030297 (saved flags (JortPob layout)): ok, the game keeps flags here
+23:26:58 flagcheck: block 1030298 (saved flags (JortPob layout)): ok, the game keeps flags here
+23:26:58 flagcheck: block 1030299 (saved flags (JortPob layout)): ok, the game keeps flags here
+23:26:58 flagcheck: block 1031290 (saved flags (JortPob layout)): ok, the game keeps flags here
+23:26:58 flagcheck: block 1032290 (saved flags (JortPob layout)): ok, the game keeps flags here
+23:26:58 flagcheck: block 1039290 (DS3 run active flag, saved): ok, the game keeps flags here
+23:26:58 flagcheck: block 1039292 (F1 menu start/leave/warp requests): ok, the game keeps flags here
+23:26:58 flagcheck: block 1039295 (DS3 music flags, reset on load): ok, the game keeps flags here
+23:26:58 flagcheck: 37 blocks ok, 0 missing
+=== Work/scratch/deacons636-backup/ER/dksign_testmenu.4.log (08:41:30 session started 2026-11-24 (loc)
+08:41:45 flagcheck: block 45000 (m45_00_00_00 map flags): ok, the game keeps flags here
+08:41:45 flagcheck: block 45001 (m45_00_00_00 map flags): ok, the game keeps flags here
+08:41:45 flagcheck: block 45002 (m45_00_00_00 map flags): ok, the game keeps flags here
+08:41:45 flagcheck: block 45003 (m45_00_00_00 map flags): ok, the game keeps flags here
+08:41:45 flagcheck: block 45004 (m45_00_00_00 map flags): ok, the game keeps flags here
+08:41:45 flagcheck: block 45005 (m45_00_00_00 map flags): ok, the game keeps flags here
+08:41:45 flagcheck: block 45007 (m45_00_00_00 map flags): ok, the game keeps flags here
+08:41:45 flagcheck: block 45008 (m45_00_00_00 map flags): ok, the game keeps flags here
+08:41:45 flagcheck: block 45009 (m45_00_00_00 map flags): ok, the game keeps flags here
+08:41:45 flagcheck: block 45010 (m45_01_00_00 map flags): ok, the game keeps flags here
+08:41:45 flagcheck: block 45011 (m45_01_00_00 map flags): ok, the game keeps flags here
+08:41:45 flagcheck: block 45012 (m45_01_00_00 map flags): ok, the game keeps flags here
+08:41:45 flagcheck: block 45013 (m45_01_00_00 map flags): ok, the game keeps flags here
+08:41:45 flagcheck: block 45014 (m45_01_00_00 map flags): ok, the game keeps flags here
+08:41:45 flagcheck: block 45015 (m45_01_00_00 map flags): ok, the game keeps flags here
+08:41:45 flagcheck: block 45017 (m45_01_00_00 map flags): ok, the game keeps flags here
+08:41:45 flagcheck: block 45018 (m45_01_00_00 map flags): ok, the game keeps flags here
+08:41:45 flagcheck: block 45019 (m45_01_00_00 map flags): ok, the game keeps flags here
+08:41:45 flagcheck: block 45020 (m45_02_00_00 map flags): ok, the game keeps flags here
+08:41:45 flagcheck: block 45021 (m45_02_00_00 map flags): ok, the game keeps flags here
+08:41:45 flagcheck: block 45022 (m45_02_00_00 map flags): ok, the game keeps flags here
+08:41:45 flagcheck: block 45023 (m45_02_00_00 map flags): ok, the game keeps flags here
+08:41:45 flagcheck: block 45024 (m45_02_00_00 map flags): ok, the game keeps flags here
+08:41:45 flagcheck: block 45025 (m45_02_00_00 map flags): ok, the game keeps flags here
+08:41:45 flagcheck: block 45027 (m45_02_00_00 map flags): ok, the game keeps flags here
+08:41:45 flagcheck: block 45028 (m45_02_00_00 map flags): ok, the game keeps flags here
+08:41:45 flagcheck: block 45029 (m45_02_00_00 map flags): ok, the game keeps flags here
+08:41:45 flagcheck: block 1030290 (saved flags (JortPob layout)): ok, the game keeps flags here
+08:41:45 flagcheck: block 1030294 (saved flags (JortPob layout)): ok, the game keeps flags here
+08:41:45 flagcheck: block 1030297 (saved flags (JortPob layout)): ok, the game keeps flags here
+08:41:45 flagcheck: block 1030298 (saved flags (JortPob layout)): ok, the game keeps flags here
+08:41:45 flagcheck: block 1030299 (saved flags (JortPob layout)): ok, the game keeps flags here
+08:41:45 flagcheck: block 1031290 (saved flags (JortPob layout)): ok, the game keeps flags here
+08:41:45 flagcheck: block 1032290 (saved flags (JortPob layout)): ok, the game keeps flags here
+08:41:45 flagcheck: block 1039290 (DS3 run active flag, saved): ok, the game keeps flags here
+08:41:45 flagcheck: block 1039292 (F1 menu start/leave/warp requests): ok, the game keeps flags here
+08:41:45 flagcheck: block 1039295 (DS3 music flags, reset on load): ok, the game keeps flags here
+08:41:45 flagcheck: 37 blocks ok, 0 missing
+=== Work/scratch/deacons636/flags/run3-dksign_testmenu.log (23:55:55 session started 2026-11-24 (loc) [diagnostic run: darksign_flag_blocks.txt had 10 extra m45_05 probe lines, 45050999-45059999]
+23:56:10 flagcheck: block 45000 (m45_00_00_00 map flags): ok, the game keeps flags here
+23:56:10 flagcheck: block 45001 (m45_00_00_00 map flags): ok, the game keeps flags here
+23:56:10 flagcheck: block 45002 (m45_00_00_00 map flags): ok, the game keeps flags here
+23:56:10 flagcheck: block 45003 (m45_00_00_00 map flags): ok, the game keeps flags here
+23:56:10 flagcheck: block 45004 (m45_00_00_00 map flags): ok, the game keeps flags here
+23:56:10 flagcheck: block 45005 (m45_00_00_00 map flags): ok, the game keeps flags here
+23:56:10 flagcheck: block 45007 (m45_00_00_00 map flags): ok, the game keeps flags here
+23:56:10 flagcheck: block 45008 (m45_00_00_00 map flags): ok, the game keeps flags here
+23:56:10 flagcheck: block 45009 (m45_00_00_00 map flags): ok, the game keeps flags here
+23:56:10 flagcheck: block 45010 (m45_01_00_00 map flags): ok, the game keeps flags here
+23:56:10 flagcheck: block 45011 (m45_01_00_00 map flags): ok, the game keeps flags here
+23:56:10 flagcheck: block 45012 (m45_01_00_00 map flags): ok, the game keeps flags here
+23:56:10 flagcheck: block 45013 (m45_01_00_00 map flags): ok, the game keeps flags here
+23:56:10 flagcheck: block 45014 (m45_01_00_00 map flags): ok, the game keeps flags here
+23:56:10 flagcheck: block 45015 (m45_01_00_00 map flags): ok, the game keeps flags here
+23:56:10 flagcheck: block 45017 (m45_01_00_00 map flags): ok, the game keeps flags here
+23:56:10 flagcheck: block 45018 (m45_01_00_00 map flags): ok, the game keeps flags here
+23:56:10 flagcheck: block 45019 (m45_01_00_00 map flags): ok, the game keeps flags here
+23:56:10 flagcheck: block 45020 (m45_02_00_00 map flags): ok, the game keeps flags here
+23:56:10 flagcheck: block 45021 (m45_02_00_00 map flags): ok, the game keeps flags here
+23:56:10 flagcheck: block 45022 (m45_02_00_00 map flags): ok, the game keeps flags here
+23:56:10 flagcheck: block 45023 (m45_02_00_00 map flags): ok, the game keeps flags here
+23:56:10 flagcheck: block 45024 (m45_02_00_00 map flags): ok, the game keeps flags here
+23:56:10 flagcheck: block 45025 (m45_02_00_00 map flags): ok, the game keeps flags here
+23:56:10 flagcheck: block 45027 (m45_02_00_00 map flags): ok, the game keeps flags here
+23:56:10 flagcheck: block 45028 (m45_02_00_00 map flags): ok, the game keeps flags here
+23:56:10 flagcheck: block 45029 (m45_02_00_00 map flags): ok, the game keeps flags here
+23:56:10 flagcheck: block 1030290 (saved flags (JortPob layout)): ok, the game keeps flags here
+23:56:10 flagcheck: block 1030294 (saved flags (JortPob layout)): ok, the game keeps flags here
+23:56:10 flagcheck: block 1030297 (saved flags (JortPob layout)): ok, the game keeps flags here
+23:56:10 flagcheck: block 1030298 (saved flags (JortPob layout)): ok, the game keeps flags here
+23:56:10 flagcheck: block 1030299 (saved flags (JortPob layout)): ok, the game keeps flags here
+23:56:10 flagcheck: block 1031290 (saved flags (JortPob layout)): ok, the game keeps flags here
+23:56:10 flagcheck: block 1032290 (saved flags (JortPob layout)): ok, the game keeps flags here
+23:56:10 flagcheck: block 1039290 (DS3 run active flag, saved): ok, the game keeps flags here
+23:56:10 flagcheck: block 1039292 (F1 menu start/leave/warp requests): ok, the game keeps flags here
+23:56:10 flagcheck: block 1039295 (DS3 music flags, reset on load): ok, the game keeps flags here
+23:56:10 flagcheck: block 45050 (m45_05_00_00 map flags (diagnostic, Deacons check)): MISSING, the game has no such block
+23:56:10 flagcheck: block 45051 (m45_05_00_00 map flags (diagnostic, Deacons check)): MISSING, the game has no such block
+23:56:10 flagcheck: block 45052 (m45_05_00_00 map flags (diagnostic, Deacons check)): MISSING, the game has no such block
+23:56:10 flagcheck: block 45053 (m45_05_00_00 map flags (diagnostic, Deacons check)): MISSING, the game has no such block
+23:56:10 flagcheck: block 45054 (m45_05_00_00 map flags (diagnostic, Deacons check)): MISSING, the game has no such block
+23:56:10 flagcheck: block 45055 (m45_05_00_00 map flags (diagnostic, Deacons check)): MISSING, the game has no such block
+23:56:10 flagcheck: block 45056 (m45_05_00_00 map flags (diagnostic, Deacons check)): MISSING, the game has no such block
+23:56:10 flagcheck: block 45057 (m45_05_00_00 map flags (diagnostic, Deacons check)): MISSING, the game has no such block
+23:56:10 flagcheck: block 45058 (m45_05_00_00 map flags (diagnostic, Deacons check)): MISSING, the game has no such block
+23:56:10 flagcheck: block 45059 (m45_05_00_00 map flags (diagnostic, Deacons check)): MISSING, the game has no such block
+23:56:10 flagcheck: 37 blocks ok, 10 missing

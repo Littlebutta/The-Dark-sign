@@ -1,0 +1,48 @@
+# probe flag	what uses the block (written by port-maps; read by dksign_testmenu.dll, which logs flagcheck: lines)
+45000999	m45_00_00_00 map flags
+45001999	m45_00_00_00 map flags
+45002999	m45_00_00_00 map flags
+45003999	m45_00_00_00 map flags
+45004999	m45_00_00_00 map flags
+45005999	m45_00_00_00 map flags
+45007999	m45_00_00_00 map flags
+45008999	m45_00_00_00 map flags
+45009999	m45_00_00_00 map flags
+45010999	m45_01_00_00 map flags
+45011999	m45_01_00_00 map flags
+45012999	m45_01_00_00 map flags
+45013999	m45_01_00_00 map flags
+45014999	m45_01_00_00 map flags
+45015999	m45_01_00_00 map flags
+45017999	m45_01_00_00 map flags
+45018999	m45_01_00_00 map flags
+45019999	m45_01_00_00 map flags
+45020999	m45_02_00_00 map flags
+45021999	m45_02_00_00 map flags
+45022999	m45_02_00_00 map flags
+45023999	m45_02_00_00 map flags
+45024999	m45_02_00_00 map flags
+45025999	m45_02_00_00 map flags
+45027999	m45_02_00_00 map flags
+45028999	m45_02_00_00 map flags
+45029999	m45_02_00_00 map flags
+1030290999	saved flags (JortPob layout)
+1030294999	saved flags (JortPob layout)
+1030297999	saved flags (JortPob layout)
+1030298999	saved flags (JortPob layout)
+1030299999	saved flags (JortPob layout)
+1031290999	saved flags (JortPob layout)
+1032290999	saved flags (JortPob layout)
+1039290999	DS3 run active flag, saved
+1039292999	F1 menu start/leave/warp requests
+1039295999	DS3 music flags, reset on load
+45050999	m45_05_00_00 map flags (diagnostic, Deacons check)
+45051999	m45_05_00_00 map flags (diagnostic, Deacons check)
+45052999	m45_05_00_00 map flags (diagnostic, Deacons check)
+45053999	m45_05_00_00 map flags (diagnostic, Deacons check)
+45054999	m45_05_00_00 map flags (diagnostic, Deacons check)
+45055999	m45_05_00_00 map flags (diagnostic, Deacons check)
+45056999	m45_05_00_00 map flags (diagnostic, Deacons check)
+45057999	m45_05_00_00 map flags (diagnostic, Deacons check)
+45058999	m45_05_00_00 map flags (diagnostic, Deacons check)
+45059999	m45_05_00_00 map flags (diagnostic, Deacons check)
