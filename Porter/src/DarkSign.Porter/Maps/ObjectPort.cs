@@ -104,6 +104,11 @@ public sealed class ObjectPort
         public string SoundNote = "";
         public string Contents = "";
         public List<string> Textures = [];
+        /// <summary>A DS3 fog wall: placed as Elden Ring's own fog asset (<see cref="FogWalls"/>), nothing of ours written.</summary>
+        public FogWalls.Match? Fog;
+        /// <summary>The model its parts are placed with: ours, or Elden Ring's fog asset for a fog wall.</summary>
+        public string PlacedModel => Fog?.Fog.Model ?? Name;
+        public int PlacedRow => Fog?.Fog.Row ?? Row;
     }
 
     private readonly PorterContext _ctx;
@@ -370,13 +375,20 @@ public sealed class ObjectPort
             var part = NewPart();
             MsbPort.CopyCommon(src, part, ds3Id, erId);
             MsbPort.ApplyPieceGroups(part.Unk1);
-            var instance = nextInstance.GetValueOrDefault(asset.Name, 9000);
-            while (names.Contains($"{asset.Name}_{instance:D4}"))
+            var model = asset.PlacedModel;
+            var instance = nextInstance.GetValueOrDefault(model, 9000);
+            while (names.Contains($"{model}_{instance:D4}"))
                 instance++;
-            nextInstance[asset.Name] = instance + 1;
-            part.Name = $"{asset.Name}_{instance:D4}";
+            nextInstance[model] = instance + 1;
+            part.Name = $"{model}_{instance:D4}";
             part.InstanceID = instance;
-            part.ModelName = asset.Name;
+            part.ModelName = model;
+            if (asset.Fog is { } fog)
+            {
+                part.Scale *= fog.Scale;
+                // Elden Ring's own fog walls name no PartsDrawParam row (Stormveil's four), like its graces.
+                part.AssetUnk2.Unk04 = -1;
+            }
             // JortPob's asset names itself in these three slots.
             part.UnkT54PartName = part.Name;
             part.UnkPartNames[4] = part.Name;
@@ -385,11 +397,11 @@ public sealed class ObjectPort
             partNames[src.Name] = part.Name;
             placedAssets[part.Name] = asset;
             msb.Parts.Assets.Add(part);
-            if (msb.Models.Assets.All(m => m.Name != asset.Name))
+            if (msb.Models.Assets.All(m => m.Name != model))
                 msb.Models.Assets.Add(new MSBE.Model.Asset
                 {
-                    Name = asset.Name,
-                    SibPath = $@"N:\GR\data\Asset\Environment\geometry\{asset.Group}\{asset.Name}\sib\{asset.Name}.sib",
+                    Name = model,
+                    SibPath = $@"N:\GR\data\Asset\Environment\geometry\{model[..6]}\{model}\sib\{model}.sib",
                 });
             asset.Placed++;
             placed++;
@@ -563,6 +575,18 @@ public sealed class ObjectPort
         if (asset.Pose >= 0)
         {
             ConvertPosed(asset, bnd);
+            return true;
+        }
+        // A fog wall (no mesh, dummy 101, one thin collision wall): Elden Ring's own fog asset, scaled to DS3's.
+        if (FogWalls.Recognise(bnd, out _) is { } fog)
+        {
+            if (!_er.Contains(GeomBndPath(fog.Fog.Model)))
+                throw new FileNotFoundException($"a fog wall, but Elden Ring has no {GeomBndPath(fog.Fog.Model)}");
+            asset.Fog = fog;
+            asset.Collision = true;
+            asset.CollisionNote = fog.Note;
+            asset.Dummies = fog.Fog.Dummies.Length;
+            asset.Radius = fog.Ds3Width / 2;
             return true;
         }
         asset.Animated = bnd.Files.Any(f => ItemText.Leaf(f.Name).EndsWith(".anibnd", StringComparison.OrdinalIgnoreCase));
@@ -908,7 +932,8 @@ public sealed class ObjectPort
         var ours = _assets.Values.Select(a => a.Row).ToHashSet();
         assetParam.Rows.RemoveAll(r => ours.Contains(r.ID));
         int added = 0;
-        foreach (var asset in _assets.Values.Where(a => a.Converted).OrderBy(a => a.Row))
+        // Fog walls use Elden Ring's own fog assets, whose rows are vanilla.
+        foreach (var asset in _assets.Values.Where(a => a.Converted && a.Fog is null).OrderBy(a => a.Row))
         {
             var row = new PARAM.Row(template) { ID = asset.Row, Name = $"[DS3] {asset.Ds3Model}" };
             if (drawRows)
@@ -1192,11 +1217,11 @@ public sealed class ObjectPort
         var tried = _assets.Values.Where(a => a.Tried).OrderBy(a => a.Index).ToList();
         File.WriteAllLines(_ctx.ModPath(TableFile),
             ["# DS3 object\tElden Ring asset\tasset row\tcollision (written by DarkSignPorter port-maps)",
-             .. tried.Where(a => a.Converted && a.Pose < 0).Select(a => $"{a.Ds3Model}\t{a.Name}\t{a.Row}\t{(a.Collision ? 1 : 0)}")]);
+             .. tried.Where(a => a.Converted && a.Pose < 0).Select(a => $"{a.Ds3Model}\t{a.PlacedModel}\t{a.PlacedRow}\t{(a.Collision ? 1 : 0)}")]);
 
         var report = new StringBuilder("DS3 object\tasset\tparts placed\tresult\tmeshes\tdummy points\tradius\tcollision\tanimated\tmoves in Elden Ring\tlift\tbreaks\tladder\tObjAct target\ttextures\tobjbnd holds\n");
         foreach (var a in tried)
-            report.Append(string.Join('\t', a.Pose >= 0 ? $"{a.Ds3Model} pose {a.Pose}" : a.Ds3Model, a.Name, a.Placed, a.Converted ? "ok" : "FAILED: " + Clean(a.Failure), a.Meshes, a.Dummies,
+            report.Append(string.Join('\t', a.Pose >= 0 ? $"{a.Ds3Model} pose {a.Pose}" : a.Ds3Model, a.PlacedModel, a.Placed, a.Converted ? "ok" : "FAILED: " + Clean(a.Failure), a.Meshes, a.Dummies,
                 a.Radius.ToString("0.0", System.Globalization.CultureInfo.InvariantCulture), Clean(a.CollisionNote), a.Animated ? 1 : 0,
                 a.Moving ? "yes: " + Clean(a.MovingNote) : Clean(a.MovingNote), a.MoveObj ? 1 : 0, a.Breakable ? 1 : 0,
                 a.Ladder ? 1 : 0, a.ObjActTarget ? 1 : 0, a.Textures.Count, Clean(a.Contents))).Append('\n');
@@ -1208,7 +1233,9 @@ public sealed class ObjectPort
                       + $"{tried.Count(a => a.Converted && a.Breakable)} that break have none yet; "
                       + $"{tried.Count(a => a.Moving)} move: doors, levers, lifts ({tried.Count(a => a.Moving && a.MoveObj)} lifts, {tried.Count(a => a.Moving && a.MovingBodies > 0)} with moving collision), "
                       + $"{tried.Count(a => a.Converted && a.Animated && !a.Moving && a.Pose < 0)} animated ones stand still, "
-                      + $"{tried.Count(a => a.Converted && a.Pose >= 0)} posed copies of corpses); "
+                      + $"{tried.Count(a => a.Converted && a.Pose >= 0)} posed copies of corpses, "
+                      + $"{tried.Count(a => a.Fog is not null)} fog walls as Elden Ring's own fog assets: "
+                      + $"{string.Join(", ", tried.Where(a => a.Fog is not null).Select(a => $"{a.Ds3Model} -> {a.PlacedModel} x{a.Fog!.Scale.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture)}"))}); "
                       + $"report Work\\reports\\{ReportFile}";
         if (failed.Count > 0)
             summary += $"\n  FAIL {failed.Count} object models not converted: "

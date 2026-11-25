@@ -19,6 +19,7 @@ public static partial class MapPortChecks
         yield return ("objects: a DS3 object model becomes an asset binder with its vertices in model space and its textures", ObjectModel);
         yield return ("objects: every DS3 object part becomes an asset part with its entity ID, and can be taken out again", ObjectParts);
         yield return ("objects: asset rows are copies of the template row with a draw distance by size", ObjectRows);
+        yield return ("fog walls: DS3's mesh-less fog objects become Elden Ring's own fog assets of the same proportions, scaled to DS3's wall, with no rows or effects of ours", FogWallObjects);
         yield return ("objects: a corpse's DS3 pose (its part's first animation) is baked into a posed copy of its skinned model", ObjectPoseBake);
         yield return ("objects: a param def that differs from the game's only in its data version number still applies (1.0.326 lost every object to it)", DefVersionFit);
     }
@@ -367,6 +368,65 @@ public static partial class MapPortChecks
         tpf.Textures.Add(new TPF.Texture("o302590_a", 0, 0, ModelPort.FlatNormalDds(), TPF.TPFPlatform.PC));
         tpf.Textures.Add(new TPF.Texture("o302590_n", 0, 0, ModelPort.FlatNormalDds(), TPF.TPFPlatform.PC));
         return tpf;
+    }
+
+    private static void FogWallObjects()
+    {
+        // DS3's three fog models as read from the game (2026-11-25): no mesh, dummy 101 (and 110 on o000401), a wall
+        // 0.15 m deep of 2.5 x 4, 5 x 8 and 15 x 15 m.
+        FLVER2 Model(params int[] dummies)
+        {
+            var flver = new FLVER2();
+            foreach (var d in dummies)
+                flver.Dummies.Add(new FLVER.Dummy { ReferenceID = (short)d });
+            return flver;
+        }
+        var o400 = FogWalls.Recognise([Model(101)], new Vector3(2.5f, 4f, 0.15f), out _);
+        var o401 = FogWalls.Recognise([Model(101, 110)], new Vector3(5f, 8f, 0.15f), out _);
+        var o402 = FogWalls.Recognise([Model(101)], new Vector3(15f, 15f, 0.15f), out _);
+        Expect(o401 is { Fog.Model: "AEG099_001" } && MathF.Abs(o401.Scale - 1) < 1e-4, $"o000401 is AEG099_001 as it is ({o401?.Note})");
+        Expect(o400 is { Fog.Model: "AEG099_001" } && MathF.Abs(o400.Scale - 0.5f) < 1e-4, $"o000400 (Deacons) is AEG099_001 at half size ({o400?.Note})");
+        Expect(o402 is { Fog.Model: "AEG099_003" } && MathF.Abs(o402.Scale * 5.98f - 15f) < 0.01f, $"o000402 is the square AEG099_003 scaled to 15 m ({o402?.Note})");
+        Expect(FogWalls.Recognise([Model(101)], null, out var why) is null && why.Contains("not read"), "collision is only read once the model passes");
+        var withMesh = Model(101);
+        withMesh.Meshes.Add(new FLVER2.Mesh());
+        Expect(FogWalls.Recognise([withMesh], new Vector3(5, 8, 0.15f), out why) is null && why.Contains("meshes"), "a drawn model is no fog wall");
+        Expect(FogWalls.Recognise([Model(100)], new Vector3(5, 8, 0.15f), out why) is null && why.Contains("101"), "a model with no dummy 101 is no fog wall");
+        Expect(FogWalls.Recognise([Model(101)], new Vector3(5, 8, 3), out why) is null && why.Contains("thin wall"), "a block of collision is no fog wall");
+        Expect(FogWalls.Recognise([Model(101, 999)], new Vector3(5, 8, 0.15f), out why) is null, "no fog asset has a dummy poly the scripts may ask for");
+
+        // Placed: Elden Ring's model, DS3's entity moved, DS3's scale times the fog's, no draw row of ours.
+        var ds3 = Ds3WithRegions();
+        ds3.Models.Objects.Add(new MSB3.Model.Object { Name = "o000400" });
+        ds3.Parts.Objects.Add(new MSB3.Part.Object { Name = "o000400_9000", ModelName = "o000400", EntityID = 4001800, Position = new Vector3(3, 4, 5), Rotation = new Vector3(0, 239, 0), Scale = Vector3.One });
+        ds3.Parts.Objects[^1].ModelSfxParamRelativeIDs[0] = 0;
+        var layout = MsbPort.Convert(ds3, SyntheticHost(), Ds3Id, ErId);
+        var fogAsset = new ObjectPort.Asset { Ds3Model = "o000400", Index = 5, Name = "AEG920_005", Converted = true, Collision = true, Fog = o400 };
+        var placed = ObjectPort.PlaceParts(ds3, layout.Msb, Ds3Id, ErId, m => m.Equals("o000400", StringComparison.OrdinalIgnoreCase) ? fogAsset : null);
+        Expect(placed.Placed == 1 && placed.WithCollision == 1, placed.Summary);
+        var msb = MSBE.Read(layout.Msb.Write());
+        var part = msb.Parts.Assets.Single(a => a.EntityID == 45001800);
+        Expect(part.ModelName == "AEG099_001" && part.Name == "AEG099_001_9000" && part.Scale == new Vector3(0.5f), $"Elden Ring's fog asset at DS3's size ({part.Name}, {part.Scale})");
+        Expect(part.Position == new Vector3(3, 4, 5) && part.Rotation == new Vector3(0, 239, 0) && part.AssetUnk2.Unk04 == -1, "DS3's spot and turn; no draw row, like Elden Ring's own fog walls");
+        Expect(msb.Models.Assets.Single().SibPath == @"N:\GR\data\Asset\Environment\geometry\AEG099\AEG099_001\sib\AEG099_001.sib", "the model entry is Elden Ring's");
+        Expect(placed.PartNames["o000400_9000"] == part.Name, "scripts and regions naming DS3's part find the fog asset");
+
+        // No asset row of ours (Elden Ring's 99001 is vanilla), and no AssetModelSfxParam row over a vanilla one.
+        var assetDef = new PARAMDEF { ParamType = "ASSET_GEOMETORY_PARAM_ST", DataVersion = 1 };
+        assetDef.Fields.Add(new PARAMDEF.Field(assetDef, PARAMDEF.DefType.s8, "hitCreateType"));
+        var assetParam = new PARAM { ParamType = assetDef.ParamType, Rows = [new PARAM.Row(ObjectPort.TemplateRow, "stone ruin", assetDef)] };
+        Expect(ObjectPort.ForRows([fogAsset]).AddRows(assetParam, null) == 0 && assetParam.Rows.Count == 1, "no asset row for a fog wall");
+        var sfxDef = new PARAMDEF { ParamType = "ASSET_MODEL_SFX_PARAM_ST", DataVersion = 1 };
+        foreach (var f in new[] { "sfxId_0", "dmypolyId_0" })
+            sfxDef.Fields.Add(new PARAMDEF.Field(sfxDef, PARAMDEF.DefType.s32, f));
+        var ds3SfxDef = new PARAMDEF { ParamType = "MODEL_SFX_PARAM_ST", DataVersion = 1 };
+        foreach (var f in new[] { "sfxId_0", "dmypolyId_0" })
+            ds3SfxDef.Fields.Add(new PARAMDEF.Field(ds3SfxDef, PARAMDEF.DefType.s32, f));
+        var ds3Row = new PARAM.Row(400000, "fog", ds3SfxDef);
+        ds3Row["sfxId_0"].Value = 2; ds3Row["dmypolyId_0"].Value = 101;
+        var erSfx = new PARAM { ParamType = sfxDef.ParamType, Rows = [new PARAM.Row(1, "template", sfxDef)] };
+        ObjectSfx.Convert(ds3, layout.Msb, placed.PartNames, new PARAM { ParamType = ds3SfxDef.ParamType, Rows = [ds3Row] }, new Dictionary<int, int> { [2] = 900000002 }, erSfx);
+        Expect(erSfx.Rows.Count == 1 && layout.Msb.Parts.Assets.Single().AssetSfxParamRelativeID == -1, "no effect row: the script hangs the fog's look on dummy 101");
     }
 
     private static void ObjectParts()

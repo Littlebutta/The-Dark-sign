@@ -115,6 +115,10 @@ public static class ObjectSfx
             if (!partNames.TryGetValue(src.Name, out var erName) || !assets.TryGetValue(erName, out var part))
                 continue;
             part.AssetSfxParamRelativeID = -1;
+            // A fog wall placed as Elden Ring's own fog asset (FogWalls): its look is the script's effect on dummy
+            // 101, and a row here would replace a vanilla row of the asset.
+            if (FogWalls.IsErFogModel(part.ModelName))
+                continue;
             var ds3RowId = Ds3Row(src);
             if (ds3RowId < 0)
                 continue;
