@@ -33,7 +33,21 @@ public static class BossArenas
     public const int MaxArenas = 100;
     public static uint RequestFlag(int index) => RunEvents.FlagBlock + 2400 + (uint)index;
     public static uint EventId(int index) => RunEvents.FlagBlock + 1400 + (uint)index;
-    public static bool IsArenaEvent(long id) => id >= RunEvents.FlagBlock + 1400 && id < RunEvents.FlagBlock + 1400 + MaxArenas;
+    public static bool IsArenaEvent(long id) => id >= RunEvents.FlagBlock + 1400 && id < RunEvents.FlagBlock + 1400 + MaxArenas
+                                                || IsArriveEvent(id);
+
+    /// <summary>
+    /// On from the warp until the arrive event begins the fight: 400+i, in the block's saved range (0-999), so it
+    /// outlives the warp's map load. The request range (2000-2999) is reset by that load.
+    /// </summary>
+    public static uint PendingFlag(int index) => RunEvents.FlagBlock + 400 + (uint)index;
+
+    /// <summary>
+    /// The event that begins the fight after the warp's load: 3400+i in the run's block (outside the 1000-1999 events,
+    /// which the boss kits fill up to 1999).
+    /// </summary>
+    public static uint ArriveEventId(int index) => RunEvents.FlagBlock + 3400 + (uint)index;
+    private static bool IsArriveEvent(long id) => id >= RunEvents.FlagBlock + 3400 && id < RunEvents.FlagBlock + 3400 + MaxArenas;
 
     /// <summary>The arrival points' map-local entity numbers: 9970 + the fight's number in the map.</summary>
     public const int FirstPointNumber = 9970;
@@ -460,8 +474,14 @@ public static class BossArenas
     private const byte On = 1, Off = 0, EventFlagType = 0;
 
     /// <summary>
-    /// Adds (or replaces) one warp event per arena in common.emevd and starts each from the constructor. Each waits
-    /// for its request flag, resets the fight's flags, warps, waits for the map and then begins the fight.
+    /// Adds (or replaces) two events per arena in common.emevd and starts both from the constructor. The warp event
+    /// waits for its request flag, resets the fight's flags, marks the fight pending (a saved flag) and warps. The
+    /// arrive event waits for the pending flag, the map and the player in it, and then begins the fight.
+    /// <para>Two events because nothing after a Warp Player in the same event ever ran: the warp's map load starts the
+    /// events of common.emevd over (1.0.636, Deacons of the Deep: banners after the warp never showed and the entry flag
+    /// never turned on, while the map's own events did run). The F1 cutscene tab found the same in 1.0.442 and split its
+    /// events the same way (<see cref="CutsceneMenu"/>). The pending flag must be in the saved range: probe 25 tried a
+    /// pending flag in 2000-2999, which the load cleared before anything could read it.</para>
     /// </summary>
     /// <param name="moveFlag">Moves a DS3 flag the way the converted scripts did (for the talk flags); null: no talk events.</param>
     public static void AddWarps(EMEVD common, IReadOnlyList<Arena> arenas, Func<long, long>? moveFlag = null)
@@ -503,26 +523,36 @@ public static class BossArenas
                 e.Instructions.Add(SetFlag(a.FirstEncounter, Off));
             foreach (var id in a.Events)
                 e.Instructions.Add(SetFlag(id, Off));
-            e.Instructions.Add(RunEvents.Make(2003, 14, (byte)m.Area, (byte)m.Block, (byte)m.Region, (byte)m.Index, a.PointEntity, 0));
-            // After it: once the player stands in the map and its events have started, begin the fight.
-            e.Instructions.Add(RunEvents.Make(1001, 0, 3f));
-            e.Instructions.Add(RunEvents.Make(3, 8, (sbyte)0, On, (sbyte)m.Area, (sbyte)m.Block, (sbyte)m.Region, (sbyte)m.Index));
-            e.Instructions.Add(RunEvents.Make(1001, 0, 2f));
             // Landing in the boss's intro area, the map's own event shows the boss and turns the first encounter on
             // (after its intro cutscene); turning it on here would begin the fight before the boss appears.
             if (!a.LandsAtIntro)
-            {
-                // The fight's events and music need the player in the fight area when the entry flag turns on
-                // (ArrivesInArea): wait for that (at once when the player hasn't moved; else when they step back in).
-                if (a.ArrivesInArea && a.AreaEntity > 0)
-                    e.Instructions.Add(RunEvents.Make(3, 2, (sbyte)0, On, 10000u, a.AreaEntity, 1));
-                if (a.FirstEncounter > 0)
-                    e.Instructions.Add(SetFlag(a.FirstEncounter, On));
-                e.Instructions.Add(SetFlag(a.Entry, On));
-            }
+                e.Instructions.Add(SetFlag(PendingFlag(a.Index), On));
+            e.Instructions.Add(RunEvents.Make(2003, 14, (byte)m.Area, (byte)m.Block, (byte)m.Region, (byte)m.Index, a.PointEntity, 0));
             e.Instructions.Add(RunEvents.Make(1000, 4, (byte)1));
             common.Events.Add(e);
             constructor.Instructions.Add(RunEvents.Make(2000, 0, 0, EventId(a.Index), 0u));
+
+            // After the load: once the map is loaded, the player stands in it and its events have started, begin the fight.
+            if (!a.LandsAtIntro)
+            {
+                var arrive = new EMEVD.Event(ArriveEventId(a.Index), EMEVD.Event.RestBehaviorType.Default);
+                arrive.Instructions.Add(RunEvents.Make(1003, 0, On, EventFlagType, PendingFlag(a.Index)));
+                arrive.Instructions.Add(RunEvents.Make(3, 30, (sbyte)0, (byte)m.Area, (byte)m.Block, (byte)m.Region, (byte)m.Index));
+                arrive.Instructions.Add(RunEvents.Make(3, 8, (sbyte)0, On, (sbyte)m.Area, (sbyte)m.Block, (sbyte)m.Region, (sbyte)m.Index));
+                arrive.Instructions.Add(RunEvents.Make(1001, 0, 2f));
+                // Cleared first, so a fight left before it began doesn't start on a later, ordinary visit.
+                arrive.Instructions.Add(SetFlag(PendingFlag(a.Index), Off));
+                // The fight's events and music need the player in the fight area when the entry flag turns on
+                // (ArrivesInArea): wait for that (at once when the player hasn't moved; else when they step back in).
+                if (a.ArrivesInArea && a.AreaEntity > 0)
+                    arrive.Instructions.Add(RunEvents.Make(3, 2, (sbyte)0, On, 10000u, a.AreaEntity, 1));
+                if (a.FirstEncounter > 0)
+                    arrive.Instructions.Add(SetFlag(a.FirstEncounter, On));
+                arrive.Instructions.Add(SetFlag(a.Entry, On));
+                arrive.Instructions.Add(RunEvents.Make(1000, 4, (byte)1));
+                common.Events.Add(arrive);
+                constructor.Instructions.Add(RunEvents.Make(2000, 0, 0, ArriveEventId(a.Index), 0u));
+            }
 
             // The talk a fight's first encounter waits for: turned on when the player comes near (TalkGate).
             if (moveFlag is not null && a.TalkFlags.Count > 0 && a.TalkEntity > 0)
