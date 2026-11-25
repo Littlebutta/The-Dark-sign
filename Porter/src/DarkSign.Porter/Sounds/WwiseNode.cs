@@ -36,8 +36,9 @@ public sealed class WwiseNode
     /// voice options override the parent), u8 virtual queue behaviour, u16 maximum instances (0 = no limit), u8
     /// below-threshold behaviour, u8 HDR/loudness bits. wwiser leaves bit 2 unnamed; that it is the "global limit"
     /// (Wwise's "Limit sound instances to N globally" rather than per game object) is the order of the older
-    /// layouts (bKillNewest, bUseVirtualBehavior, u16MaxNumInstance, bIsGlobalLimit), checked on Elden Ring's own
-    /// banks by "sound-limits".</summary>
+    /// layouts (bKillNewest, bUseVirtualBehavior, u16MaxNumInstance, bIsGlobalLimit). Elden Ring's 602 banks
+    /// (sound-limits, 2026-11-25): 9,045 of 98,337 nodes set a limit; bits 0x04 is their commonest pattern (2,363)
+    /// and 0x0C, the one written here, is on 635.</summary>
     public int AdvancedAt { get; init; } = -1;
 
     public const byte LimitKillNewest = 0x01, LimitGlobal = 0x04, LimitOverridesParent = 0x08;

@@ -101,7 +101,9 @@ public sealed class Fev
         public int FadeOutMs { get; init; }
         /// <summary>How many of the event may play at once over the whole game (FMOD Designer's "Max playbacks":
         /// header +44, after the priority at +40, the order of FMOD's event properties); 0 when the header holds
-        /// no value from 1 to 64.</summary>
+        /// no value from 1 to 64. Measured on DS3's 12,668 events (sound-limits, 2026-11-25): 5 in 11,413, then 4, 1,
+        /// 6, 3, 2, 10...; Friede's scythe frost s000303151 has 2, so of the four copies its resident effect starts
+        /// (dummy polys 300-303) DS3 plays two.</summary>
         public int MaxPlaybacks { get; init; }
         /// <summary>The distance at which the event is no longer heard (0 when the header holds none).</summary>
         public float MaxDistance { get; init; }
