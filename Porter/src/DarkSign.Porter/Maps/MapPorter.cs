@@ -1852,7 +1852,7 @@ public static class MapPorter
             throw new InvalidDataException($"common.emevd events with steps after their Warp Player, which the warp's load never runs: {string.Join(", ", lost)}");
         flags.Save(ctx.ModPath(MapEvents.FlagFile));
         File.WriteAllBytes(modCommon, DCX.Compress(common.Write(), compression));
-        return $"run events: start warps to {host} entity {startEntity}; leave warps to {back.Map} entity {back.EntityId}; "
+        return $"run events: start warps to {host} entity {startEntity}; leave warps to {back.Map} entity {back.EntityId} and moves the respawn point there (flag {RunEvents.ReturnRespawnPending}); "
                + $"{warps.Count} per-map warps ({string.Join(", ", warps.Select(w => $"{w.Map} flag {RunEvents.WarpRequestFlag(w.Index)}"))}); "
                + $"{arenas.Count} boss arena warps ({string.Join(", ", arenas.Select(a => $"{a.Name} flag {BossArenas.RequestFlag(a.Index)}"))}); "
                + $"{cutscenes.Count} F1 cutscene events ({string.Join(", ", cutscenes.Select(c => $"{c.ErName} {c.Label} flag {CutsceneMenu.RequestFlag(c.Index)}"))})"
