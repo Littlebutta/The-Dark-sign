@@ -170,7 +170,7 @@ public static partial class MapPortChecks
         msbB.Parts.Collisions.Add(hitB);
         MapConnectDisplay.Apply(msbB, pb);
         MapConnectDisplay.Apply(msbB, pb);  // applying twice adds no second stand-in
-        Expect(hit.Unk2.Condition == 0 && hit.Unk2.DispGroups[0] == 1u && hitB.Unk2.Condition == 0, "collisions numbered from 0, Unk2 groups = own number");
+        Expect(hit.Unk2.Condition == 0 && (hit.Unk2.DispGroups[0] & 1u) == 1u && hitB.Unk2.Condition == 0 && MapDrawGroups.Display(hit.Unk1).ToArray().Select((g, w) => (hit.Unk2.DispGroups[w] & g) == g).All(x => x), "collisions numbered from 0, Unk2 groups = own number + own display groups");
         var standIn = msbB.Parts.Collisions.Where(c => c != hitB).ToList();
         Expect(standIn.Count == pb.DoorwayLists && pb.DoorwayLists == 1, $"one stand-in per doorway list into B ({standIn.Count})");
         Expect(connect.Unk2.Condition == standIn[0].Unk2.Condition && connect.Unk2.Condition == MapConnectDisplay.DoorwayNumberTop,
