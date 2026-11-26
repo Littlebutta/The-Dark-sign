@@ -10,12 +10,13 @@
    A return to the title screen and a new load log the states again. The watch only reads.
 
    2026-11-26, Devin's save on 1.0.667: the hostile flags of Eygon, Irina, Cornyx and Karla and the "angry" flags of
-   the Fire Keeper, Ludleth, Andre and Leonhard were all on in the save (left by the fights of the builds before
-   PR #288, when the people stood on hostile Elden Ring rows at one spot), so Eygon kept attacking and the Fire Keeper
-   refused to talk (no level-up window). DS3 only clears those at Velka's statue, which a test save can't reach, so
-   dks_peopleflags_reset (F1 menu, DS3 run tab: "Reset DS3 people") turns every state flag of the list off (third
-   column "state": the people's friendly/hostile/dead and quest-step ranges and the hostile/dead/talk flags passed to
-   DS3's shared people events); the scripts then set each person up as on a new game at the next load.
+   the Fire Keeper, Ludleth, Andre and Leonhard were all on in the save, and some one-of quest ranges had two flags
+   on. No DS3 or ported script sets several of those: the save's bits were from before the flag table was renumbered
+   (PR #285; see dks_ds3flags_reset_all). So Eygon kept attacking on DS3's friendly team. dks_peopleflags_reset (F1
+   menu, DS3 run tab: "Reset DS3 people") turns every state flag of the list off (third column "state": the people's
+   friendly/hostile/dead and quest-step ranges and the hostile/dead/talk flags passed to DS3's shared people events);
+   the scripts then set each person up as on a new game at the next load. It is also the stand-in for DS3's
+   absolution, which a test save can't reach.
    The save's flags arrive a few seconds after the character does (all of them in one read), so the first read says
    "0 on" and a burst follows; a burst is logged with a line saying so. */
 #include <windows.h>
@@ -131,6 +132,45 @@ int dks_peopleflags_reset(void)
     }
     dks_log("people: reset: %d of %d state flags were on and are off now; the scripts set the people up again at the next load", cleared, listed);
     return listed ? cleared : -1;
+}
+
+/* Every DS3 flag of the port's table (Mods\ER\darksign_flags.tsv, "flag\t<DS3>\t<Elden Ring>") off, and the
+   once-per-save flags of DS3's new-game setup events (Ds3Setup.FirstDoneFlag, 7 of them) so those run again.
+   Why: the table hands out Elden Ring numbers in order of first appearance, and PR #285 (24 Nov) put ranges first,
+   which renumbered it; a save from before kept its bits, which then meant other DS3 flags (Fire Keeper and Andre
+   "angry", Eygon hostile, two flags on in one-of quest ranges, Andre and the Handmaid switched off). Flags a map keeps
+   in its own slot block (boss defeated...) aren't in the table and stay. */
+int dks_ds3flags_reset_all(void)
+{
+    wchar_t path[MAX_PATH];
+    DWORD n = GetEnvironmentVariableW(L"DKSIGN_MOD_DIR", path, MAX_PATH);
+    if (!n || n + 32 >= MAX_PATH || dks_get_runes() < 0)
+        return -1;
+    wcscat(path, L"\\darksign_flags.tsv");
+    FILE *f = _wfopen(path, L"rb");
+    if (!f)
+        return -1;
+    int cleared = 0, listed = 0;
+    char line[256];
+    while (fgets(line, sizeof line, f)) {
+        if (strncmp(line, "flag\t", 5))
+            continue;
+        char *er = strchr(line + 5, '\t');
+        uint32_t flag = er ? (uint32_t)strtoul(er + 1, NULL, 10) : 0;
+        if (!flag)
+            continue;
+        listed++;
+        if (dks_get_event_flag(flag) == 1) {
+            dks_set_event_flag(flag, 0);
+            cleared++;
+        }
+    }
+    fclose(f);
+    for (uint32_t done = 1039290150u; done < 1039290157u; done++)
+        if (dks_get_event_flag(done) == 1)
+            dks_set_event_flag(done, 0);
+    dks_log("people: reset all: %d of the table's %d DS3 flags were on and are off now, and DS3's new-game setup runs again at the next load", cleared, listed);
+    return cleared;
 }
 
 void dks_peopleflags_start(void)
