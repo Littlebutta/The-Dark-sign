@@ -350,6 +350,46 @@ public static partial class MapPortChecks
         ConvertOne(two, twoBnd, OverlayFlver());
         Expect(two.Overlays.TwoLayerTriangles > 2, $"a two-layer triangle between the layers is cut ({two.Overlays.Summary})");
 
+        // ... unless Elden Ring's copy of DS3's own two-layer material is there: then the mesh stays whole, with both
+        // layers' textures, the mask, DS3's vertex colour and three UV sets (layer 1, layer 2, the mask's).
+        var (mask, maskBnd) = VisualPort(legacy: true);
+        Expect(mask.MaskBlend && mask.TemplateSummary.Contains("two-layer=M[ARSN]_m"), $"the two-layer template is found: {mask.TemplateSummary}");
+        var layered = OverlayFlver();
+        var layeredMaterial = layered.Materials.First(m => m.MTD.EndsWith("M[ARSN]_l_m.mtd", StringComparison.Ordinal));
+        layeredMaterial.Textures.Add(new FLVER2.Texture("g_BlendMaskTexture", @"N:\x\m40_00_mask_311.tif", Vector2.One, 0, 0, 0, 0, 0));
+        layeredMaterial.Textures.Add(new FLVER2.Texture("g_SpecularTexture", @"N:\x\m40_00_brick_001_r.tif", Vector2.One, 0, 0, 0, 0, 0));
+        int layeredIndex = layered.Materials.IndexOf(layeredMaterial);
+        var ds3Layered = layered.Meshes.Where(m => m.MaterialIndex == layeredIndex).ToList();
+        int ds3Triangles = ds3Layered.Sum(m => m.FaceSets[0].Triangulate(true).Count / 3);
+        var ds3Gx = new FLVER2.GXList();
+        ds3Gx.Add(new FLVER2.GXItem("GX00", 100, new byte[32]));
+        ds3Gx.Add(new FLVER2.GXItem("GX01", 101, [0, 0, 0x20, 0x41, .. new byte[28]]));
+        ds3Gx.Add(new FLVER2.GXItem("GX04", 100, new byte[52]));
+        layered.GXLists.Add(ds3Gx);
+        layeredMaterial.GXIndex = layered.GXLists.Count - 1;
+        var wholeModel = ConvertOne(mask, maskBnd, layered);
+        Expect(MapValidate.CheckFlverDraw(wholeModel, mask.TemplateLayouts()).ToList() is { Count: 0 },
+            "the validator accepts the whole two-layer model: " + string.Join("; ", MapValidate.CheckFlverDraw(wholeModel, mask.TemplateLayouts())));
+        var wholeMeshes = wholeModel.Meshes.Where(m => wholeModel.BufferLayouts[m.VertexBuffers[0].LayoutIndex].Count(l => l.Semantic == FLVER.LayoutSemantic.Tangent) == 2).ToList();
+        Expect(wholeMeshes.Count == ds3Layered.Count && wholeMeshes.Sum(m => m.FaceSets[0].Triangulate(true).Count / 3) == ds3Triangles
+               && mask.Overlays.MaskBlendMeshes == ds3Layered.Count && mask.Overlays.TwoLayerMeshes == 0,
+            $"two-layer meshes stay whole ({mask.Overlays.Summary})");
+        Expect(wholeMeshes.All(m => m.Vertices.All(v => v.UVs.Count == 3 && v.Tangents.Count == 2 && v.Colors.Single() is { R: 1, G: 0, B: 1 })),
+            "DS3's vertex colour, two tangents and three UV sets are kept");
+        Expect(wholeMeshes.Zip(ds3Layered).All(p => p.First.Vertices.Select(v => MathF.Round(v.Colors[0].A, 2)).Order().SequenceEqual(p.Second.Vertices.Select(v => MathF.Round(MapOverlays.Alpha(v), 2)).Order())),
+            "the vertex alpha (the mask's weight) is DS3's");
+        var wholeGx = wholeModel.GXLists[wholeModel.Materials[wholeMeshes[0].MaterialIndex].GXIndex];
+        Expect(wholeGx.Select(g => g.ID).SequenceEqual(["GX00", "GX01", "GX04"]) && wholeGx[0] is { Unk04: 102, Data.Length: 40 } && wholeGx[1].Data[3] == 0x41,
+            "the draw settings are DS3's own behind Elden Ring's GX00");
+        var maskMatbin = mask.MatbinFiles(0).Select(f => MATBIN.Read(f.Bytes)).Single(m => m.ShaderPath.Contains("MulMask", StringComparison.Ordinal));
+        string Sampler(string type) => maskMatbin.Samplers.Single(x => x.Type == type).Path;
+        Expect(Sampler("g_DiffuseTexture") == "m40_00_brick_001_a" && Sampler("g_DiffuseTexture2") == "m40_00_ash_332_a" && Sampler("g_BumpmapTexture2") == "m40_00_ash_332_n"
+               && Sampler("g_BlendMaskTexture") == "m40_00_mask_311" && Sampler("g_SpecularTexture") == "m40_00_brick_001_r" && Sampler("g_SpecularTexture2") == "",
+            "the matbin names both layers, the mask and the reflectance map under DS3's sampler names");
+        Expect(maskMatbin.Samplers.Single(x => x.Type == "g_DiffuseTexture2").Unk14 == new Vector2(0.5f) && maskMatbin.Samplers.Single(x => x.Type == "g_DiffuseTexture").Unk14 == Vector2.One,
+            "each sampler carries DS3's tiling");
+        Expect(new[] { "m40_00_ash_332_a", "m40_00_ash_332_n", "m40_00_mask_311", "m40_00_brick_001_r" }.All(mask.Textures.Contains), "every texture the shader reads is ported");
+
     }
 
     private static void HelperPieces()
@@ -618,6 +658,12 @@ public static partial class MapPortChecks
             bin.Params.Add(new MATBIN.Param { Name = "g_AlphaRef", Type = MATBIN.ParamType.Int2, Value = new[] { 0, 0 } });
             bin.Samplers.Add(new MATBIN.Sampler { Type = MapModelPort.LegacyAlbedoSampler, Path = "", Unk14 = Vector2.One });
             matbins["M[A]_al_NoLight"] = new(Binder.FileFlags.Flag1, matbins.Count, @"N:\GR\data\INTERROOT_win64\material\matbin\map\matxml\M[A]_al_NoLight.matbin", MATBIN.Read(bin.Write()).Write());
+            // Elden Ring's map\matxml\M[ARSN]_m as allmaterial has it (2026-11-26): DS3's two-layer mask shader and samplers.
+            var two = new MATBIN { ShaderPath = @"N:\GR\data\Material\spx\GXFlver_ColDifSpcBumpMulMaskIbl.spx", SourcePath = @"N:\GR\data\Material\mtd\map\matxml\M[ARSN]_m.matxml" };
+            two.Params.Add(new MATBIN.Param { Name = "g_BlendMode", Type = MATBIN.ParamType.Int, Value = 0 });
+            foreach (var sampler in new[] { "g_DiffuseTexture", "g_DiffuseTexture2", "g_SpecularTexture", "g_SpecularTexture2", "g_BumpmapTexture", "g_BumpmapTexture2", "g_BlendMaskTexture" })
+                two.Samplers.Add(new MATBIN.Sampler { Type = sampler, Path = "", Unk14 = Vector2.One });
+            matbins["M[ARSN]_m"] = new(Binder.FileFlags.Flag1, matbins.Count, @"N:\GR\data\INTERROOT_win64\material\matbin\map\matxml\M[ARSN]_m.matbin", MATBIN.Read(two.Write()).Write());
         }
         var hostBnd = new BND4();
         hostBnd.Files.Add(new BinderFile(Binder.FileFlags.Flag1, 200, @"N:\GR\data\Model\map\m45_00_00_00\m45_00_00_00_001000\sib\m45_00_00_00_001000.flver", flvers[0].Write()));

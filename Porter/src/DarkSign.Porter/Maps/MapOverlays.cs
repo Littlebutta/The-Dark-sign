@@ -67,6 +67,8 @@ public static class MapOverlays
     public sealed class Stats
     {
         public int TwoLayerMeshes, SecondLayerTriangles, TwoLayerTriangles;
+        /// <summary>Two-layer meshes kept whole, their layers mixed by DS3's mask texture.</summary>
+        public int MaskBlendMeshes;
         /// <summary>One-layer meshes with vertex alpha under 1 drawn solid.</summary>
         public int SolidOverlayMeshes;
 
@@ -74,12 +76,14 @@ public static class MapOverlays
         {
             Interlocked.Add(ref SolidOverlayMeshes, other.SolidOverlayMeshes);
             Interlocked.Add(ref TwoLayerMeshes, other.TwoLayerMeshes);
+            Interlocked.Add(ref MaskBlendMeshes, other.MaskBlendMeshes);
             Interlocked.Add(ref SecondLayerTriangles, other.SecondLayerTriangles);
             Interlocked.Add(ref TwoLayerTriangles, other.TwoLayerTriangles);
         }
 
         public string Summary =>
             $"vertex alpha: {SolidOverlayMeshes} one-layer meshes with vertex alpha under 1 drawn solid (DS3 draws them); "
+            + $"{MaskBlendMeshes} two-layer meshes drawn whole with DS3's blend mask; "
             + $"{TwoLayerMeshes} two-layer meshes split by layer ({SecondLayerTriangles:N0} of {TwoLayerTriangles:N0} triangles show the second layer)";
     }
 
@@ -89,7 +93,10 @@ public static class MapOverlays
     /// left as they are, drawn solid: their vertex alpha is not a fade (Firelink Shrine's tunnel walls, Undead
     /// Settlement's houses). Returns the meshes whose vertex alpha the converted vertices should keep (none here).
     /// </summary>
-    public static HashSet<FLVER2.Mesh> Apply(FLVER2 flver, Stats stats)
+    /// <param name="maskBlend">Two-layer materials Elden Ring's copy of DS3's own material draws
+    /// (<see cref="MapModelPort.TwoLayerMatbin"/>) stay whole: DS3 mixes their layers by a mask texture, not by
+    /// vertex alpha (alpha is one value over the whole mesh on most of them).</param>
+    public static HashSet<FLVER2.Mesh> Apply(FLVER2 flver, Stats stats, bool maskBlend = false)
     {
         var keepAlpha = new HashSet<FLVER2.Mesh>();
         var secondLayer = new Dictionary<int, int>();   // material index -> its second-layer copy
@@ -106,6 +113,11 @@ public static class MapOverlays
                     break;
 
                 case Kind.TwoLayer:
+                    if (maskBlend && MapModelPort.Ds3Kind(material) == MapModelPort.TwoLayerKind)
+                    {
+                        stats.MaskBlendMeshes++;
+                        break;
+                    }
                     if (!secondLayer.TryGetValue(mesh.MaterialIndex, out var second))
                     {
                         flver.Materials.Add(SecondLayer(material));
