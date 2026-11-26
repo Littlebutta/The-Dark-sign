@@ -229,15 +229,23 @@ public static partial class ObjectAnims
     }
 
     /// <param name="soundIds">Gives the object's DS3 sounds (in ID order) their new IDs; null: the sounds are left out.</param>
+    /// <param name="cutsceneBones">For a model DS3's cutscenes move by its bones but that doesn't move in play (it
+    /// breaks, it is a ladder, its binder holds no animation, or it has no binder at all): the DS3 model. The result
+    /// is then the skeleton alone, with no animation of its own for play to start: DS3's skeleton file when the
+    /// object has one, else the model's nodes (<see cref="NodeSkeleton"/>).</param>
     public static Result Build(BND4 objbnd, string assetName, Template t, IReadOnlyDictionary<string, string> rename,
-        IReadOnlyDictionary<int, int>? effects = null, Func<IReadOnlyList<int>, IReadOnlyDictionary<int, int>>? soundIds = null)
+        IReadOnlyDictionary<int, int>? effects = null, Func<IReadOnlyList<int>, IReadOnlyDictionary<int, int>>? soundIds = null,
+        FLVER2? cutsceneBones = null)
     {
-        var anibndFile = objbnd.Files.FirstOrDefault(f => ItemText.Leaf(f.Name).EndsWith(".anibnd", StringComparison.OrdinalIgnoreCase))
-                         ?? throw new InvalidDataException("the objbnd has no animation binder");
-        var ds3Bnd = BND4.Read(DCX.Is(anibndFile.Bytes) ? DCX.Decompress(anibndFile.Bytes) : anibndFile.Bytes);
-        var skeletonFile = ds3Bnd.Files.FirstOrDefault(f => ItemText.Leaf(f.Name).Equals("skeleton.hkx", StringComparison.OrdinalIgnoreCase))
-                           ?? throw new InvalidDataException("the animation binder has no skeleton.hkx");
-        var ds3Skeleton = AnimPort.ReadDs3Skeleton(skeletonFile.Bytes);
+        bool skeletonOnly = cutsceneBones is not null;
+        var anibndFile = objbnd.Files.FirstOrDefault(f => ItemText.Leaf(f.Name).EndsWith(".anibnd", StringComparison.OrdinalIgnoreCase));
+        if (anibndFile is null && !skeletonOnly)
+            throw new InvalidDataException("the objbnd has no animation binder");
+        var ds3Bnd = anibndFile is null ? new BND4() : BND4.Read(DCX.Is(anibndFile.Bytes) ? DCX.Decompress(anibndFile.Bytes) : anibndFile.Bytes);
+        var skeletonFile = ds3Bnd.Files.FirstOrDefault(f => ItemText.Leaf(f.Name).Equals("skeleton.hkx", StringComparison.OrdinalIgnoreCase));
+        if (skeletonFile is null && !skeletonOnly)
+            throw new InvalidDataException("the animation binder has no skeleton.hkx");
+        var ds3Skeleton = skeletonFile is not null ? AnimPort.ReadDs3Skeleton(skeletonFile.Bytes) : NodeSkeleton(cutsceneBones!, rename.Keys.FirstOrDefault() ?? assetName);
         if (ds3Skeleton.Names.Count == 0)
             throw new InvalidDataException("the DS3 skeleton has no bones");
         ds3Skeleton.Names = ds3Skeleton.Names.Select(n => rename.GetValueOrDefault(n, n)).ToList();
@@ -278,6 +286,14 @@ public static partial class ObjectAnims
             Unicode = t.Binder.Unicode, Extended = t.Binder.Extended, Unk04 = t.Binder.Unk04, Unk05 = t.Binder.Unk05,
         };
         var flags = t.Binder.Files.FirstOrDefault()?.Flags ?? Binder.FileFlags.Flag1;
+        if (skeletonOnly)
+        {
+            // Elden Ring's own cutscene-only assets (AEG090_101, 119 bones; AEG237_018) carry exactly this: a binder
+            // with one file, hkx\skeleton.hkx, and no TAE, compendium or animation.
+            bnd.Files.Add(new BinderFile(flags, 1000000, folder + @"hkx\skeleton.hkx", skeletonBytes));
+            return new Result(bnd.Write(), 0, 0, ds3Skeleton.Names,
+                $"skeleton of {count} bones for DS3's cutscenes ({(skeletonFile is not null ? "DS3's skeleton file" : "the model's nodes")})");
+        }
         bnd.Files.Add(new BinderFile(flags, 1000000, folder + @"hkx_compendium\skeleton.hkx", skeletonBytes));
 
         int converted = 0, failed = 0;
@@ -302,7 +318,7 @@ public static partial class ObjectAnims
                 errors.Add($"{ItemText.Leaf(file.Name)}: {ex.Message}");
             }
         }
-        if (converted == 0)
+        if (converted == 0 && !skeletonOnly)
             throw new InvalidDataException(failed == 0 ? "the animation binder has no animations" : $"no animation converted ({string.Join("; ", errors.Take(2))})");
 
         // One TAE entry per animation, in the template's format, with DS3's effect and sound events.
@@ -359,10 +375,52 @@ public static partial class ObjectAnims
             bnd.Files.Add(new BinderFile(flags, 7000000, folder + $@"hkx_compendium\{upper}.compendium", t.Compendium));
         bnd.Files.Sort((a, b) => a.ID.CompareTo(b.ID));
 
-        var summary = $"{converted} animations ({string.Join(" ", ids.Order())}), {count} bones" + (failed > 0 ? $", {failed} failed ({errors[0]})" : "")
+        var summary = ($"{converted} animations ({string.Join(" ", ids.Order())}), {count} bones") + (failed > 0 ? $", {failed} failed ({errors[0]})" : "")
                       + (effectEvents + effectsDropped > 0 ? $", {effectEvents} effect events" + (effectsDropped > 0 ? $" ({effectsDropped} more name effects that aren't converted)" : "") : "")
                       + (soundEvents + soundsDropped > 0 ? $", {soundEvents} sound events of {sounds.Count} sounds" + (soundsDropped > 0 ? $" ({soundsDropped} more past the bank's {ObjectSounds.MaxPerAsset})" : "") : "");
         return new Result(bnd.Write(), converted, failed, ds3Skeleton.Names, summary) { EffectEvents = effectEvents, SoundEvents = soundEvents, Sounds = sounds };
+    }
+
+    /// <summary>
+    /// A skeleton from a DS3 model's nodes, for an object that has no skeleton file (its objbnd holds only the model,
+    /// and DS3's cutscenes move it by its nodes): bone 0 is the root, named <paramref name="rootName"/> (the node of
+    /// that name when the model has one), then every other node in the model's order under its own parent; a node
+    /// without a parent hangs on the root. Rest pose = the nodes' own translation, rotation and scale.
+    /// </summary>
+    public static AnimPort.Ds3Skeleton NodeSkeleton(FLVER2 flver, string rootName)
+    {
+        int rootNode = flver.Nodes.FindIndex(n => rootName.Equals(n.Name, StringComparison.OrdinalIgnoreCase));
+        var names = new List<string> { rootName };
+        var pose = new List<SoulsAssetPipeline.Animation.NewBlendableTransform> { rootNode >= 0 ? Local(flver.Nodes[rootNode]) : new() };
+        var boneOf = new int[flver.Nodes.Count];
+        for (int i = 0; i < flver.Nodes.Count; i++)
+        {
+            if (i == rootNode)
+            {
+                boneOf[i] = 0;
+                continue;
+            }
+            boneOf[i] = names.Count;
+            names.Add(flver.Nodes[i].Name ?? $"node{i}");
+            pose.Add(Local(flver.Nodes[i]));
+        }
+        var parents = new short[names.Count];
+        parents[0] = -1;
+        for (int i = 0; i < flver.Nodes.Count; i++)
+            if (i != rootNode)
+            {
+                int parent = flver.Nodes[i].ParentIndex;
+                parents[boneOf[i]] = (short)(parent >= 0 && parent < flver.Nodes.Count && parent != i ? boneOf[parent] : 0);
+            }
+        return new AnimPort.Ds3Skeleton { Names = names, ReferencePose = pose, Parents = [.. parents] };
+    }
+
+    private static SoulsAssetPipeline.Animation.NewBlendableTransform Local(FLVER.Node node)
+    {
+        var m = node.ComputeLocalTransform();
+        return System.Numerics.Matrix4x4.Decompose(m, out var scale, out var rotation, out var translation)
+            ? new SoulsAssetPipeline.Animation.NewBlendableTransform(translation, scale, rotation)
+            : new SoulsAssetPipeline.Animation.NewBlendableTransform(node.Translation, System.Numerics.Vector3.One, System.Numerics.Quaternion.Identity);
     }
 
     /// <summary>The path the asset binder names its animation binder by (file ID 400).</summary>

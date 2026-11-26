@@ -23,6 +23,8 @@ public static partial class MapPortChecks
         yield return ("cutscenes: a cutscene warp to a player part gets an Elden Ring warp region (Other sphere at the part) and the script points at it", CutsceneWarpRegions);
         yield return ("cutscenes: DS3 light events keep the parameters Elden Ring has (ShadingModel dropped, a spot light's Width/Height become FovH/FovV); events mostly unknown are left out", CutsceneLightParams);
         yield return ("cutscenes: DS3 draw-setting events (199 light set, 215 post-process) become Elden Ring's 197 with both events' choices; light sets in the cutscene's file are listed", CutsceneDrawSettings);
+        yield return ("cutscenes: a DS3 light set hung on one part (183/187) becomes Elden Ring's one-part light set (199) and stays off the scene", CutscenePartLights);
+        yield return ("cutscenes: an object a DS3 cutscene animates by bones keeps a skeleton of its model nodes", CutsceneNodeSkeleton);
         yield return ("cutscenes: Clear played cutscenes lists each cutscene's seen flags (set and checked by its event, parameters followed) and its event's own flag", CutsceneReplayFlags);
     }
 
@@ -548,6 +550,112 @@ public static partial class MapPortChecks
             Expect(V(e, "beginToneMapBank") == 1 && V(e, "beginToneMapId") == 0, "a bank-1 choice is kept");
             Expect(V(e, "beginBloomBank") == 1 && V(e, "beginBloomId") == 0 && V(e, "endBloomBank") == -1, "fields neither sets take the default");
         }
+    }
+
+    /// <summary>
+    /// A light set DS3 gives one part (187 or 183 on a timeline that hangs on the part's) becomes Elden Ring's 199 on
+    /// that part and survives the cast; the scene-wide choice of the same cut stays the only 197.
+    /// </summary>
+    private static void CutscenePartLights()
+    {
+        const MQB.Parameter.DataType I = MQB.Parameter.DataType.Int;
+        var mqb = new MQB { Version = MQB.MQBVersion.DarkSouls3, Name = "s30_00_0000", Framerate = 30, ResourceDirectory = "", Resources = [], Cuts = [] };
+        foreach (var (name, kind) in new[] { ("offset.sib", 265), ("a0000.HKT", 266), ("o008965_0000", 1), ("sky light", 187), ("scene", 199), ("sky fog", 188), ("dancer", 183), ("c5270_0000", 1), ("loose", 187) })
+            mqb.Resources.Add(new MQB.Resource { Name = name, ParentIndex = -1, Unk48 = kind });
+        var cut = new MQB.Cut { Name = "cut0030", Duration = 105, Timelines = [] };
+        // timeline index -> the timeline it hangs on: the sky dome (2) and the Dancer (7) on the Havok file, their settings on them.
+        int[] hangsOn = [-1, 0, 1, 2, -1, 2, 7, 1, 1];
+        for (int i = 0; i < hangsOn.Length; i++)
+        {
+            var tl = new MQB.Timeline { Unk10 = hangsOn[i] };
+            var ev = new MQB.Event { ID = i, ResourceIndex = i, Duration = 105, Unk08 = i, Unk28 = hangsOn[i] };
+            if (i is 3 or 8)
+                ev.Parameters.AddRange([P("beginLightBank", I, i == 3 ? 0 : 1), P("beginLightId", I, i == 3 ? 90 : 0), P("endLightBank", I, -1), P("endLightId", I, -1)]);
+            if (i == 4)
+                ev.Parameters.AddRange([P("forMap", MQB.Parameter.DataType.Bool, true), P("beginLightBank", I, 0), P("beginLightId", I, 30), P("endLightBank", I, -1), P("endLightId", I, -1), P("beginFogBank", I, 1), P("beginFogId", I, 100)]);
+            if (i == 5)
+                ev.Parameters.AddRange([P("beginFogBank", I, 1), P("beginFogId", I, 10)]);
+            if (i == 6)
+                ev.Parameters.AddRange([P("beginLightBank", I, 0), P("beginLightId", I, 120), P("endLightBank", I, -1), P("endLightId", I, -1), P("beginFogBank", I, 0), P("beginFogId", I, 120)]);
+            tl.Events.Add(ev);
+            cut.Timelines.Add(tl);
+        }
+        mqb.Cuts.Add(cut);
+        var sky = mqb.Resources[3];
+        var dancer = mqb.Resources[6];
+        var loose = mqb.Resources[8];
+        var part = CutsceneDrawParams.PartLightResources(mqb);
+        Expect(part.Count == 2 && part.Contains(sky) && part.Contains(dancer) && !part.Contains(loose), $"187 and 183 on a part's timeline light that part; a 187 on the Havok file lights the scene ({part.Count})");
+
+        string[] sceneFields = ["beginLightSetAllBank", "beginLightSetAllId", "endLighSetAlltBank", "endLightSetAllId"];
+        string[] partFields = ["beginLightSetModelBank", "beginLightSetModelId", "endLightSetModelBank", "endLightSetModelId"];
+        const MQB.Parameter.DataType S = MQB.Parameter.DataType.Short;
+        var result = CutsceneDrawParams.ConvertEvents(mqb, sceneFields.Select(n => (n, S)).ToList(), partFields.Select(n => (n, S)).ToList());
+        var skyEvent = cut.Timelines[3].Events[0];
+        var dancerEvent = cut.Timelines[6].Events[0];
+        Expect(sky.Unk48 == CutsceneDrawParams.ErPartLightKind && dancer.Unk48 == CutsceneDrawParams.ErPartLightKind && result.PartEvents == 2,
+            $"both become Elden Ring's one-part light set ({sky.Unk48}, {dancer.Unk48}, {result.PartEvents} events)");
+        Expect(skyEvent.Parameters.Select(p => p.Name).SequenceEqual(partFields) && skyEvent.Parameters.All(p => p.Value is short)
+               && (short)skyEvent.Parameters[0].Value == 0 && (short)skyEvent.Parameters[1].Value == 90 && (short)skyEvent.Parameters[2].Value == -1,
+            "the part's event carries Elden Ring's four fields with DS3's bank and ID");
+        Expect((short)dancerEvent.Parameters[1].Value == 120 && dancerEvent.Parameters.Count == 4, "a 183's light set is kept, its fog choice has no Elden Ring field");
+        Expect(mqb.Resources[4].Unk48 == CutsceneDrawParams.ErKind && loose.Unk48 == CutsceneDrawParams.ErKind && result.Events == 2,
+            $"the scene-wide 199 and the loose 187 are the cut's 197 events ({result.Events})");
+        Expect((short)cut.Timelines[4].Events[0].Parameters.First(p => p.Name == "beginLightSetAllId").Value == 30, "the scene keeps its own light set, not a part's");
+        Expect(result.LightSets.SequenceEqual([30, 90, 120]), $"the cutscene file gets the sets the parts name too ({string.Join(" ", result.LightSets)})");
+
+        // The scene's fog: the row DS3's scene event names (the map's row 100 here) takes row 0's place in the
+        // cutscene's file, which the fog conversion reads; a part's own fog (188) doesn't count as the scene's.
+        Expect(result.SceneFog == (1, 100) && result.SceneFogs.Count == 1, $"the scene's fog is the one its 199 names ({result.SceneFog})");
+        var mapFile = new GPARAM { Game = GPARAM.GPGame.DarkSouls3 };
+        mapFile.Groups.Add(G("Fog", P("Fog-Dist", GPARAM.ParamType.Float, 0f, 120f), P("Fog-DistOffset", GPARAM.ParamType.Float, 0f, 20f)));
+        var cutFile = new GPARAM { Game = GPARAM.GPGame.DarkSouls3 };
+        cutFile.Groups.Add(G("Fog", P("Fog-Dist", GPARAM.ParamType.Float, 0f, 50f), P("Fog-DistOffset", GPARAM.ParamType.Float)));
+        Expect(CutsceneDrawParams.UseFogRow(cutFile, mapFile, 100), "the named row is found");
+        var fogParams = cutFile.Groups[0].Params;
+        Expect((float)fogParams[0].Values[0] == 120f && (float)fogParams[0].Values[1] == 50f && fogParams[1].ValueIDs.SequenceEqual([0]) && (float)fogParams[1].Values[0] == 20f,
+            "row 0 of the cutscene's fog carries the named row's values (added where there was no row 0), the other rows stay");
+        Expect(!CutsceneDrawParams.UseFogRow(cutFile, mapFile, 7), "a row the file doesn't have changes nothing");
+
+        // The cast keeps the converted 199s (DS3's own 199 is a draw kind it leaves out) and drops the per-part fog.
+        var stats = new CutsceneCast.CastStats();
+        var drop = CutsceneCast.Unplayable(mqb, name => name, stats, result.ErResources);
+        Expect(!drop.Contains(3) && !drop.Contains(6) && result.ErResources.Count == 2, "the cast keeps the one-part light sets");
+        var plain = CutsceneCast.Unplayable(mqb, name => name, new CutsceneCast.CastStats());
+        Expect(plain.Contains(3) && plain.Contains(6), "without that list a 199 is taken for DS3's and left out");
+
+        // Without Elden Ring's 199 fields the per-part sets are left as DS3's, never turned scene-wide.
+        var other = new MQB { Version = MQB.MQBVersion.DarkSouls3, Name = "s", Framerate = 30, ResourceDirectory = "", Resources = [], Cuts = [] };
+        other.Resources.AddRange([new MQB.Resource { Name = "o1_0000", ParentIndex = -1, Unk48 = 1 }, new MQB.Resource { Name = "l", ParentIndex = -1, Unk48 = 187 }]);
+        var c2 = new MQB.Cut { Name = "cut0010", Duration = 10, Timelines = [] };
+        c2.Timelines.Add(new MQB.Timeline { Unk10 = -1, Events = [new MQB.Event { ResourceIndex = 0, Duration = 10 }] });
+        c2.Timelines.Add(new MQB.Timeline { Unk10 = 0, Events = [new MQB.Event { ResourceIndex = 1, Duration = 10, Parameters = [P("beginLightBank", I, 1), P("beginLightId", I, 11)] }] });
+        other.Cuts.Add(c2);
+        var none = CutsceneDrawParams.ConvertEvents(other, sceneFields.Select(n => (n, S)).ToList());
+        Expect(other.Resources[1].Unk48 == 187 && none.Events == 0 && none.PartEvents == 0, "no Elden Ring 199 fields: the part's light set stays DS3's, for the cast to leave out");
+    }
+
+    /// <summary>A skeleton from a model's nodes, for an object DS3's cutscenes move that has no skeleton file.</summary>
+    private static void CutsceneNodeSkeleton()
+    {
+        var flver = new FLVER2();
+        flver.Nodes.Add(new FLVER.Node { Name = "body", ParentIndex = 1, Translation = new Vector3(0, 2, 0), Scale = Vector3.One });
+        flver.Nodes.Add(new FLVER.Node { Name = "o302569", ParentIndex = -1, Translation = new Vector3(1, 0, 0), Scale = Vector3.One });
+        flver.Nodes.Add(new FLVER.Node { Name = "wing", ParentIndex = 0, Translation = new Vector3(0, 0, 3), Rotation = new Vector3(0, MathF.PI / 2, 0), Scale = Vector3.One });
+        flver.Nodes.Add(new FLVER.Node { Name = "loose", ParentIndex = -1, Scale = Vector3.One });
+        var sk = ObjectAnims.NodeSkeleton(flver, "o302569");
+        Expect(sk.Names.SequenceEqual(["o302569", "body", "wing", "loose"]), $"the root first, then the nodes in the model's order ({string.Join(" ", sk.Names)})");
+        Expect(sk.Parents.SequenceEqual(new short[] { -1, 0, 1, 0 }), $"each bone under its node's parent, a loose node under the root ({string.Join(" ", sk.Parents)})");
+        Expect(Vector3.Distance(sk.ReferencePose[0].Translation, new Vector3(1, 0, 0)) < 1e-4f && Vector3.Distance(sk.ReferencePose[2].Translation, new Vector3(0, 0, 3)) < 1e-4f,
+            "the rest pose is the nodes' own");
+        var turned = Vector3.Transform(Vector3.UnitX, sk.ReferencePose[2].Rotation);
+        var expected = Vector3.TransformNormal(Vector3.UnitX, flver.Nodes[2].ComputeLocalTransform());
+        Expect(Vector3.Distance(turned, expected) < 1e-4f, "a node's rotation carried over");
+        var rootless = ObjectAnims.NodeSkeleton(flver, "m31_00_00_00_008322");
+        Expect(rootless.Names.Count == 5 && rootless.Names[0] == "m31_00_00_00_008322" && rootless.Parents.SequenceEqual(new short[] { -1, 2, 0, 1, 0 }),
+            $"no node of the model's name: a root is added above them ({string.Join(" ", rootless.Parents)})");
+        Expect(CutsceneCast.ModelOf("AEG920_943_9950") == "AEG920_943" && CutsceneCast.ModelOf("c7126_9000") == "c7126" && CutsceneCast.ModelOf("cam0010") is null,
+            "the model whose skeleton a cut animation is laid out on");
     }
 
     private static CutscenePort.Catalog CutsceneCatalog()

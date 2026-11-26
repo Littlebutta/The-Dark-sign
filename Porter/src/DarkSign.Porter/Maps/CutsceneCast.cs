@@ -26,7 +26,10 @@ namespace DarkSign.Porter.Maps;
 /// HKT resource follows, and files no cut plays are left out.</item>
 /// <item><b>Draw settings.</b> Kinds 199 (all-in-one draw settings), 187 (character light) and 239 (in-game draw
 /// setting) only name DS3 light banks and gparam IDs (DS3's 239 names gparam 1002, which the slot's gparam doesn't
-/// hold), so they are left out and the cutscene keeps the map's look.</item>
+/// hold), so they are left out and the cutscene keeps the map's look. The ones <see cref="CutsceneDrawParams"/>
+/// has already turned into Elden Ring's kinds (the scene's 197, one part's light set 199) stay. DS3's per-part fog
+/// (188: the flight to the Undead Settlement fades each part into the cutscene's fog 90/91) has no Elden Ring
+/// kind in the cutscenes read and is left out.</item>
 /// </list>
 /// </summary>
 public static partial class CutsceneCast
@@ -88,6 +91,37 @@ public static partial class CutsceneCast
                 {
                     notes?.Add($"cutscene models: {name} unreadable ({ex.Message})");
                 }
+        return models;
+    }
+
+    /// <summary>
+    /// The object and map-piece models DS3's cutscenes move by their bones: a cut file holds a skeleton of more than
+    /// one bone for a part of theirs (the three demons that carry the player off the High Wall, o007010: 141 to 144
+    /// bones each; Friede's chapel props; a bridge that falls). Such a model needs its nodes and a skeleton in Elden
+    /// Ring whether or not it moves in play (<see cref="ObjectPort"/>): built as a still model it has no bones, and
+    /// the cutscene shows it in its rest pose (the demons spread like a T, 1.0.66x).
+    /// </summary>
+    public static SortedSet<string> BonedModels(GameArchives ds3, IEnumerable<MapId> ds3Maps, List<string>? notes = null)
+    {
+        var models = new SortedSet<string>(StringComparer.Ordinal);
+        var names = ds3Maps.Distinct().SelectMany(map => CutscenePort.CutscenesOf(ds3, map)).Distinct().ToList();
+        Parallel.ForEach(names, Parallelism.Options, name =>
+        {
+            try
+            {
+                var bnd = BND4.Read(ds3.Read(CutscenePort.Ds3Path(name)));
+                foreach (var f in bnd.Files.Where(f => f.Name.EndsWith(".hkx", StringComparison.OrdinalIgnoreCase)))
+                    foreach (var (part, bones) in CutscenePort.SkeletonSizes(DCX.Is(f.Bytes) ? DCX.Decompress(f.Bytes) : f.Bytes))
+                        if (bones > 1 && CastModel(part) is { } model)
+                            lock (models)
+                                models.Add(model);
+            }
+            catch (Exception ex) when (ex is not OutOfMemoryException)
+            {
+                lock (models)
+                    notes?.Add($"cutscene bones: {name} unreadable ({ex.Message})");
+            }
+        });
         return models;
     }
 
@@ -254,13 +288,14 @@ public static partial class CutsceneCast
     /// The DS3 timeline's resources to leave out before conversion: parts with no Elden Ring model (and everything
     /// under them) and DS3-only draw settings. Returns their indices.
     /// </summary>
-    public static HashSet<int> Unplayable(MQB mqb, Func<string, string?> resolve, CastStats stats)
+    /// <param name="erDraw">Resources already converted to an Elden Ring draw kind (<see cref="CutsceneDrawParams.Result.ErResources"/>): kept.</param>
+    public static HashSet<int> Unplayable(MQB mqb, Func<string, string?> resolve, CastStats stats, IReadOnlySet<MQB.Resource>? erDraw = null)
     {
         var drop = new HashSet<int>();
         for (int i = 0; i < mqb.Resources.Count; i++)
         {
             var r = mqb.Resources[i];
-            if (Ds3DrawKinds.Contains(r.Unk48))
+            if (Ds3DrawKinds.Contains(r.Unk48) && erDraw?.Contains(r) != true)
             {
                 drop.Add(i);
                 stats.DrawLeftOut++;
