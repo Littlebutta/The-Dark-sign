@@ -410,6 +410,8 @@ public static class MapPorter
         // DS3's weapon hiding in the player animations the ported scripts play (PlayerSceneWeapons): after port-weapons
         // has written c0000.anibnd (WaitForWeapons above).
         if (ported.Count > 0)
+            Step(report, "player event animations", () => PlayerEventAnims.Run(ctx, ds3, er, ported.Select(p => p.Slot).ToList(), MapEvents.SpEffectRows(ctx)));
+        if (ported.Count > 0)
             Step(report, "player scene weapons", () => PlayerSceneWeapons.Run(ctx, ds3, ported.Select(p => p.Slot).ToList()));
         if (music is not null)
             Step(report, "music", () => MapMusic.WriteAudio(ctx, ds3, music));

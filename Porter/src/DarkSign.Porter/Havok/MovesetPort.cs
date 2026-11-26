@@ -1319,12 +1319,12 @@ public static partial class MovesetPort
         return null;
     }
 
-    private sealed record ErAnim(byte[] Bytes, byte[]? Compendium);
+    internal sealed record ErAnim(byte[] Bytes, byte[]? Compendium);
 
     private static readonly Dictionary<string, ErAnim?> ErAnimCache = new();
 
     /// <summary>An Elden Ring player animation file by name, searched across the c0000 anim binders.</summary>
-    private static ErAnim? ErAnimFile(GameArchives archives, string name)
+    internal static ErAnim? ErAnimFile(GameArchives archives, string name)
     {
         if (ErAnimCache.TryGetValue(name, out var cached))
             return cached;
@@ -1340,14 +1340,14 @@ public static partial class MovesetPort
 
     private static readonly Dictionary<string, BND4> ErBinders = new(StringComparer.OrdinalIgnoreCase);
 
-    private static BinderFile? BinderLeaf(BND4 bnd, string leaf) =>
+    internal static BinderFile? BinderLeaf(BND4 bnd, string leaf) =>
         bnd.Files.FirstOrDefault(f => ItemText.Leaf(f.Name).Equals(leaf, StringComparison.OrdinalIgnoreCase));
 
-    private static byte[]? Compendium(BND4 bnd) =>
+    internal static byte[]? Compendium(BND4 bnd) =>
         bnd.Files.FirstOrDefault(f => f.Name.EndsWith(".compendium", StringComparison.OrdinalIgnoreCase))?.Bytes;
 
     /// <summary>Adds or replaces a file, named and flagged like the binder's other files of that kind.</summary>
-    private static void AddFile(BND4 bnd, string leaf, byte[] bytes, BinderFile? like = null)
+    internal static void AddFile(BND4 bnd, string leaf, byte[] bytes, BinderFile? like = null)
     {
         var existing = BinderLeaf(bnd, leaf);
         if (existing is not null)
@@ -1375,7 +1375,7 @@ public static partial class MovesetPort
     }
 
     /// <summary>Reads DS3 player animation files by name from whichever c0000 anim binder holds them.</summary>
-    private sealed class Ds3AnimFiles(GameArchives archives)
+    internal sealed class Ds3AnimFiles(GameArchives archives)
     {
         private Dictionary<string, BinderFile>? _files;
 
