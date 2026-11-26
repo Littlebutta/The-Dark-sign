@@ -27,6 +27,15 @@ public static class RunEvents
     public const uint StartEventId = FlagBlock + 1100;
     public const uint LeaveEventId = FlagBlock + 1101;
 
+    /// <summary>
+    /// Saved: on from "Return to the Lands Between" (or the F1 leave) until the return map has loaded and the respawn
+    /// point has been moved there. The warp's load restarts common.emevd, so the leave event can't do it after its warp.
+    /// </summary>
+    public const uint ReturnRespawnPending = FlagBlock + 102;
+
+    /// <summary>Waits for <see cref="ReturnRespawnPending"/> and the return map, then sets the respawn point there.</summary>
+    public const uint ReturnRespawnEventId = FlagBlock + 3100;
+
     /// <summary>Older builds' auto-start event (a start request on every load); removed from common by every build.</summary>
     public const uint AutoStartEventId = FlagBlock + 1102;
 
@@ -61,7 +70,7 @@ public static class RunEvents
     /// </summary>
     public static void AddTo(EMEVD common, MapId host, uint startEntity, ReturnPoint back)
     {
-        common.Events.RemoveAll(e => e.ID is StartEventId or LeaveEventId or AutoStartEventId);
+        common.Events.RemoveAll(e => e.ID is StartEventId or LeaveEventId or AutoStartEventId or ReturnRespawnEventId);
         foreach (var e in common.Events.Where(e => e.ID == 0))
             e.Instructions.RemoveAll(IsOurInit);
 
@@ -77,12 +86,27 @@ public static class RunEvents
         leave.Instructions.Add(WaitForFlag(LeaveDs3Request));
         leave.Instructions.Add(SetFlag(LeaveDs3Request, Off));
         leave.Instructions.Add(SetFlag(Ds3RunActive, Off));
+        leave.Instructions.Add(SetFlag(ReturnRespawnPending, On));
         leave.Instructions.Add(WarpPlayer(back.Map, back.EntityId));
         leave.Instructions.Add(WaitSeconds(1));
         leave.Instructions.Add(EndAndRestart());
 
+        // Leaving DS3 moves the respawn point back into Elden Ring. Without it, the last DS3 bonfire rested at (or the
+        // one BonfireRespawn set on arrival) stayed the respawn point, so a death in the Lands Between sent the player
+        // back into DS3. Elden Ring keeps no "last grace" apart from the respawn point, so it becomes the return
+        // point itself (the Roundtable Hold, where the leave warp lands) until the player rests at a grace.
+        var returned = new EMEVD.Event(ReturnRespawnEventId, EMEVD.Event.RestBehaviorType.Default);
+        var m = back.Map;
+        returned.Instructions.Add(WaitForFlag(ReturnRespawnPending));
+        returned.Instructions.Add(Make(3, 30, (sbyte)0, (byte)m.Area, (byte)m.Block, (byte)m.Region, (byte)m.Index));          // the map is loaded
+        returned.Instructions.Add(Make(3, 8, (sbyte)0, On, (sbyte)m.Area, (sbyte)m.Block, (sbyte)m.Region, (sbyte)m.Index));   // the player is in it
+        returned.Instructions.Add(WaitSeconds(1));
+        returned.Instructions.Add(Make(2003, 23, back.EntityId));
+        returned.Instructions.Add(SetFlag(ReturnRespawnPending, Off));
+
         common.Events.Add(start);
         common.Events.Add(leave);
+        common.Events.Add(returned);
 
         var constructor = common.Events.FirstOrDefault(e => e.ID == 0);
         if (constructor is null)
@@ -92,6 +116,7 @@ public static class RunEvents
         }
         constructor.Instructions.Add(InitializeEvent(0, StartEventId));
         constructor.Instructions.Add(InitializeEvent(0, LeaveEventId));
+        constructor.Instructions.Add(InitializeEvent(0, ReturnRespawnEventId));
     }
 
     /// <summary>
@@ -108,7 +133,7 @@ public static class RunEvents
 
     private static bool IsOurInit(EMEVD.Instruction i) =>
         i.Bank == 2000 && i.ID == 0 && i.ArgData.Length >= 8
-        && (BitConverter.ToUInt32(i.ArgData, 4) is StartEventId or LeaveEventId or AutoStartEventId || IsWarpEvent(BitConverter.ToUInt32(i.ArgData, 4)));
+        && (BitConverter.ToUInt32(i.ArgData, 4) is StartEventId or LeaveEventId or AutoStartEventId or ReturnRespawnEventId || IsWarpEvent(BitConverter.ToUInt32(i.ArgData, 4)));
 
     /// <summary>
     /// Adds (or replaces) one warp event per ported map: it waits for the map's request flag, turns the run on and
