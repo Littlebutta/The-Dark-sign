@@ -17,6 +17,7 @@ public static partial class MapPortChecks
         yield return ("lifts: each sounding object gets a bank aegGGG_NNN in a sound group no Elden Ring bank uses, and sound IDs GGGNNNkkk", ObjectSoundBanksNamed);
         yield return ("doors: a DS3 convex hull (door leaf, lever) becomes an Elden Ring convex polytope with one plane per face", ConvexHull);
         yield return ("doors: a written convex hull lists its vertices, planes, faces and indices in the patch list (the game resolves only those; 1.0.410 crashed without)", ConvexHullPatches);
+        yield return ("doors: every hull's elements follow it closely however many hulls the file holds (a ragdoll's capsules; 1.0.667 crashed in Undead Settlement)", ConvexHullDistances);
         yield return ("lifts: solid blocks inside a DS3 mesh (a lift's platform, a gate's frame) are read and rebuilt as faces, not left out as a placeholder", MeshHulls);
         yield return ("lifts: a hull's faces point outwards, flat points give none, and a large mesh is split into sections whose boxes hold their faces", HullFacesAndSections);
         yield return ("doors: bodies named after a moving bone get the door leaf's motion settings; the frame stays put", MovingBodies);
@@ -220,6 +221,33 @@ public static partial class MapPortChecks
         Expect(counts.SequenceEqual([6, 6, 8, 24]), $"each patch names the item with that array's elements ({string.Join(", ", counts)})");
         // The other direction: a file whose patch list misses the hull's arrays is reported (what 1.0.410 wrote).
         Expect(Havok.HavokRelArrays.Check(bytes, 5).Count > 0, "a missing hkRelArray patch is reported");
+    }
+
+    /// <summary>
+    /// Many hulls in one file (a ragdoll's capsules, 1.0.667): each hull's elements are written right behind it, not
+    /// after every other hull, so none is further than the u16 the game stores (Undead Settlement and the Catacombs
+    /// crashed at +0x188434b with ported hit shapes whose elements were 40+ KB away).
+    /// </summary>
+    private static void ConvexHullDistances()
+    {
+        var system = new hknpPhysicsSystemData();
+        for (int i = 0; i < 600; i++)
+            system.m_bodyCinfos.Add(new hknpPhysicsSystemData.bodyCinfoWithAttachment
+            {
+                m_name = $"Body{i}", m_motionPropertiesId = 0xFFFF,
+                m_shape = CollisionPort.ConvertConvex(Ds3Box(new Vector3(0, 0, -0.05f - i * 0.001f), new Vector3(1.2f, 2.2f, 0.05f))),
+            });
+        var scene = new hknpPhysicsSceneData();
+        scene.m_systemDatas.Add(system);
+        var root = new hkRootLevelContainer();
+        root.m_namedVariants.Add(new hkRootLevelContainer.NamedVariant { m_name = "Physics Scene Data", m_className = "hknpPhysicsSceneData", m_variant = scene });
+        byte[] bytes;
+        lock (AnimPort.HavokLock)
+            bytes = CollisionPort.Write(root, xml: false);
+        var fields = Havok.HavokRelArrays.Fields(bytes);
+        var problems = Havok.HavokRelArrays.Check(bytes, CollisionPort.RelArrayFields(root));
+        long far = fields.Select(f => f.Distance).DefaultIfEmpty().Max();
+        Expect(problems.Count == 0 && fields.Count == 2400 && far < 1024, $"{fields.Count} patches, furthest {far} bytes; {string.Join("; ", problems.Take(2))}");
     }
 
     /// <summary>

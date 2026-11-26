@@ -202,6 +202,10 @@ public static class ChrHitShapes
 
         using var output = new MemoryStream();
         new HavokBinarySerializer().Write(root, output);
+        // The game resolves each capsule's points through PTCH and a u16 distance (Havok.HavokRelArrays): a file it
+        // can't resolve crashes the map load (+0x188434b), so such a file is never shipped; the template's is kept.
+        if (Havok.HavokRelArrays.Check(output.ToArray(), Maps.CollisionPort.RelArrayFields(root)) is { Count: > 0 } relProblems)
+            throw new InvalidDataException("hit shapes the game can't load: " + string.Join("; ", relProblems.Take(3)));
         var note = $"hit shapes: DS3's {bodies.Count} bodies and {constraints.Count} joints on {merged.m_bones.Count} bones ({mapped} bone links"
                    + (lost > 0 ? $", {lost} to bones the port has not" : "") + (dropped > 0 ? $", {dropped} joints of a kind left out" : "")
                    + (fixes.Count > 0 ? "; " + string.Join("; ", fixes) : "") + ")";
