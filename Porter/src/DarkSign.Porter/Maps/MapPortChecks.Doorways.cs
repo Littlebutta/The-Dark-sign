@@ -159,5 +159,26 @@ public static partial class MapPortChecks
         MapConnectDisplay.Apply(msb, pa);
         Expect(!MapDrawGroups.DrawnFrom(MapDrawGroups.Draw(piece.Unk1), MapDrawGroups.Display(hit.Unk1)), "written groups hide the stand-in on the doorway collision");
         Expect(MapDrawGroups.IsEmpty(MapDrawGroups.Draw(hit.Unk1)), "a collision keeps no draw groups of its own");
+
+        // Elden Ring finds collisions by number (Unk2.Condition): every collision is numbered, and A's connect into B
+        // names B's stand-in collision for that doorway, which shows exactly the doorway's list.
+        var connect = new MSBE.Part.ConnectCollision { Name = "h000100_0000", CollisionName = "h000100" };
+        msb.Parts.ConnectCollisions.Add(connect);
+        MapConnectDisplay.Apply(msb, pa);
+        var msbB = new MSBE();
+        var hitB = new MSBE.Part.Collision { Name = "h000300", ModelName = "h000300" };
+        msbB.Parts.Collisions.Add(hitB);
+        MapConnectDisplay.Apply(msbB, pb);
+        MapConnectDisplay.Apply(msbB, pb);  // applying twice adds no second stand-in
+        Expect(hit.Unk2.Condition == 0 && hit.Unk2.DispGroups[0] == 1u && hitB.Unk2.Condition == 0, "collisions numbered from 0, Unk2 groups = own number");
+        var standIn = msbB.Parts.Collisions.Where(c => c != hitB).ToList();
+        Expect(standIn.Count == pb.DoorwayLists && pb.DoorwayLists == 1, $"one stand-in per doorway list into B ({standIn.Count})");
+        Expect(connect.Unk2.Condition == standIn[0].Unk2.Condition && connect.Unk2.Condition == MapConnectDisplay.DoorwayNumberTop,
+            $"the connect names B's stand-in ({connect.Unk2.Condition} vs {standIn[0].Unk2.Condition})");
+        Expect(MapDrawGroups.Display(standIn[0].Unk1).ToArray().SequenceEqual(doorShows), "the stand-in shows the doorway's list");
+        Expect(standIn[0].Position.Y <= hitB.Position.Y - MapConnectDisplay.DoorwayStandInDrop + 1, "the stand-in is far below");
+        Expect(!MapConnectDisplay.Drawn(pb.PieceDraw["m900002_0000"], MapDrawGroups.Display(standIn[0].Unk1).ToArray())
+               && MapConnectDisplay.Drawn(pb.PieceDraw["m000003_0000"], MapDrawGroups.Display(standIn[0].Unk1).ToArray()),
+            "through the stand-in B shows its border piece and hides its stand-in of A");
     }
 }
