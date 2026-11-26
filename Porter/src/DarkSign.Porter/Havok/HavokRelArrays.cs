@@ -70,7 +70,15 @@ public static class HavokRelArrays
                 _original = (Action<HavokBinaryWriter, HavokType, object, BinarySerializeContext>)Delegate.CreateDelegate(
                     typeof(Action<HavokBinaryWriter, HavokType, object, BinarySerializeContext>), write.Target, write.Method);
                 var hook = Delegate.CreateDelegate(write.GetType(), typeof(HavokRelArrays).GetMethod(nameof(Write), BindingFlags.Static | BindingFlags.NonPublic)!);
+                // Pointers too: an object with hkRelArray fields gets its elements queued right behind it (WritePointer).
+                object pointerEntry = handlers[HavokType.TypeKind.Pointer] ?? throw new MissingFieldException("FormatHandlers[Pointer]");
+                var pointerRead = (Delegate)tuple.GetField("Item1")!.GetValue(pointerEntry)!;
+                var pointerWrite = (Delegate)tuple.GetField("Item2")!.GetValue(pointerEntry)!;
+                _originalPointer = (Action<HavokBinaryWriter, HavokType, object, BinarySerializeContext>)Delegate.CreateDelegate(
+                    typeof(Action<HavokBinaryWriter, HavokType, object, BinarySerializeContext>), pointerWrite.Target, pointerWrite.Method);
+                var pointerHook = Delegate.CreateDelegate(pointerWrite.GetType(), typeof(HavokRelArrays).GetMethod(nameof(WritePointer), BindingFlags.Static | BindingFlags.NonPublic)!);
                 handlers[HavokType.TypeKind.Array] = Activator.CreateInstance(tuple, read, hook);
+                handlers[HavokType.TypeKind.Pointer] = Activator.CreateInstance(tuple, pointerRead, pointerHook);
                 Installed = true;
                 Failure = null;
             }
@@ -89,6 +97,34 @@ public static class HavokRelArrays
         if (type.Name == "hkRelArray" && value is IList { Count: > 0 })
             context.RegisterPatch(type, writer.Position);
         _original!(writer, type, value, context);
+    }
+
+    private static Action<HavokBinaryWriter, HavokType, object, BinarySerializeContext>? _originalPointer;
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<HavokType, HavokType.Member[]> RelFields = new();
+
+    /// <summary>
+    /// HKLib's pointer write, then the hkRelArray elements of the object pointed at queued as the next items. The
+    /// game stores an hkRelArray's distance to its elements in a u16, so the elements must come within 64 KB of the
+    /// field. HKLib writes items in the order they are queued and queues an hkRelArray only when it writes the object
+    /// holding it, so with everything queued between (in a character's physics file: the other bodies' shapes, the
+    /// constraints, two skeletons and their mappers) the elements of a ragdoll's capsules landed 39-43 KB behind them
+    /// in Gundyr's file and further in larger files: build 1.0.667 crashed loading Undead Settlement and the Catacombs
+    /// at +0x188434b, the 1.0.410 site (2026-11-26). Queued here, each shape's elements follow it directly, as in the
+    /// game's own files (c3060: 30-1016 bytes). The array writer later finds them already queued (same list).
+    /// </summary>
+    private static void WritePointer(HavokBinaryWriter writer, HavokType type, object value, BinarySerializeContext context)
+    {
+        long position = writer.Position;
+        _originalPointer!(writer, type, value, context);
+        if (value is not HKLib.hk2018.IHavokObject obj)
+            return;
+        var actual = HKLib.Serialization.hk2018.Binary.FormatHandlers.FormatHandler.GetActualType(obj, context.TypeRegistry);
+        var fields = RelFields.GetOrAdd(actual, t => t.Fields.Where(f => f.Type.Name == "hkRelArray" && !f.NonSerializable).ToArray());
+        if (fields.Length == 0 || HKLib.Reflection.hk2018.HavokData.Of(obj, actual) is not { } data)
+            return;
+        foreach (var field in fields)
+            if (data.TryGetField(field.Name, out object? list) && list is IList { Count: > 0 } items && field.Type.SubType is { } element)
+                context.Enqueue(element, position, items.Cast<object>().ToArray(), list);
     }
 
     /// <summary>One hkRelArray field of a binary tagfile, as the game would resolve it.</summary>
