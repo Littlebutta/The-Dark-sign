@@ -882,6 +882,8 @@ public sealed class ObjectPort
         var lower = assetName.ToLowerInvariant();
         var binder = NewBinder(template);
         FlverMaterialNumbers.Apply(flver);
+        // One vertex buffer per mesh: DS3's two-buffer meshes made Elden Ring's ray tracing flicker (ChrModel.OneVertexBuffer).
+        Enemies.ChrModel.OneVertexBuffer(flver);
         binder.Files.Add(new BinderFile(flags, 200, $@"N:\GR\data\INTERROOT_win64\asset\aeg\{lower[..6]}\{lower}\sib\{lower}.flver", flver.Write()));
         return new Converted(binder, flver, textures);
     }

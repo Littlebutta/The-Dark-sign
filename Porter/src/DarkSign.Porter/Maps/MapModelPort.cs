@@ -651,6 +651,8 @@ public sealed class MapModelPort
             Lods.Add(lod.HasLod, lod);
             allLod &= lod.HasLod;
             // The template's file ID (200 in every vanilla map piece binder), not a count from 0.
+            // One vertex buffer per mesh: DS3's two-buffer meshes made Elden Ring's ray tracing flicker (ChrModel.OneVertexBuffer).
+            Enemies.ChrModel.OneVertexBuffer(flver);
             var written = flver.Write();
             Count(flver, written.Length);
             files.Add(new BinderFile(templateFile.Flags, templateFile.ID + files.Count, folder + leaf, written));

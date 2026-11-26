@@ -161,6 +161,8 @@ public static class ModelPort
                 ConvertFlver(flver, templateFlver, stem, oldTag, newTag, materials, Emissive(er), hold?.TurnFor(WeaponHiddenParts.PartOf(file.Name)), shape,
                     lod ? mainMatbins ?? [] : null);
                 FlverMaterialNumbers.Apply(flver);
+                // One vertex buffer per mesh: DS3's two-buffer meshes made Elden Ring's ray tracing flicker (ChrModel.OneVertexBuffer).
+                Enemies.ChrModel.OneVertexBuffer(flver);
                 files.Add(new BinderFile(file.Flags, file.ID, folder + leaf, flver.Write()));
             }
             else if (TPF.Is(file.Bytes))

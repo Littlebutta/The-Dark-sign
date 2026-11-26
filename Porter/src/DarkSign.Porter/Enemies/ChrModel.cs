@@ -251,7 +251,13 @@ public static class ChrModel
     /// 100 %; with every c7043 off the map, with another model's FLVER in c7043's binder, or with only those three
     /// meshes deleted it was steady at 60 fps and 52 %, each time between two flickering as-built loads. One such
     /// character anywhere on the map was enough, on screen or not. The map's light values, its sky, map pieces and
-    /// objects made no difference (rounds 6 to 10).
+    /// objects made no difference (rounds 6 to 10). With the three meshes kept and their buffers joined by this
+    /// method (flicker-ab12) it was steady at 60 fps with one hollow and with all 25, each time between flickering
+    /// as-built loads, and the hollow drew whole.
+    /// <para>How common: 107 of the 162 ported characters had such meshes (467 of 1,871), mostly as the hollow's pair
+    /// (position, normal, tangent / bitangent, skin, colour, UV); ported armour too; no map piece or object in the
+    /// samples. Elden Ring's own characters keep a mesh in one buffer or in three (the third holds a second position,
+    /// normal and tangent), never in two (60 vanilla characters read).</para>
     /// <para>The members of a mesh's buffers are joined in buffer order into one layout (shared by every mesh with the
     /// same pair), and the mesh names one buffer with it. SoulsFormats keeps a mesh's vertices once whatever the
     /// buffers, so the vertex data itself does not change. Returns how many meshes were joined.</para>
