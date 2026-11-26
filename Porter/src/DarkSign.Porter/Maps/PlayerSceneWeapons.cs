@@ -20,8 +20,20 @@ public static class PlayerSceneWeapons
 {
     public const int HideWeaponEvent = 710;
     public const int Player = 10000;
-    public const string ScriptInstruction = "Request Animation Playback";
+    /// <summary>
+    /// DS3's two "play this animation on that entity" instructions. Its map scripts use the second for nearly every
+    /// line (Gundyr's sword pull is 2003[18]); up to 1.0.669 only the first was read, so the step found no animation
+    /// and changed nothing.
+    /// </summary>
+    public static readonly string[] ScriptInstructions = ["Request Animation Playback", "Force Animation Playback"];
     public const string PlayerBinder = "/chr/c0000.anibnd.dcx";
+
+    /// <summary>
+    /// DS3 2003[72] (object entity, animation, on): the player plays the animation with the object (the coiled sword
+    /// thrust at Firelink Shrine; see <see cref="EventPort"/>'s PairedPlayerAnimation). Its animation counts as one
+    /// the scripts play on the player.
+    /// </summary>
+    public const int PairedAnimBank = 2003, PairedAnimId = 72;
 
     /// <summary>
     /// The animation numbers the scripts play on the player, read with DS3's instruction definitions. A line whose
@@ -31,26 +43,40 @@ public static class PlayerSceneWeapons
     {
         passedIn = 0;
         var found = new SortedSet<int>();
-        if (ds3Defs.Get(ScriptInstruction) is not { } def)
-            return found;
-        var entity = def.Args.FirstOrDefault(a => a.Name.Contains("Entity", StringComparison.OrdinalIgnoreCase));
-        var anim = def.Args.FirstOrDefault(a => a.Name.Contains("Animation", StringComparison.OrdinalIgnoreCase));
-        if (entity is null || anim is null)
-            return found;
+        foreach (var name in ScriptInstructions)
+        {
+            if (ds3Defs.Get(name) is not { } def)
+                continue;
+            var entity = def.Args.FirstOrDefault(a => a.Name.Contains("Entity", StringComparison.OrdinalIgnoreCase));
+            var anim = def.Args.FirstOrDefault(a => a.Name.Contains("Animation", StringComparison.OrdinalIgnoreCase));
+            if (entity is null || anim is null)
+                continue;
+            foreach (var ev in scripts.SelectMany(s => s.Events))
+                for (int i = 0; i < ev.Instructions.Count; i++)
+                {
+                    var ins = ev.Instructions[i];
+                    if (ins.Bank != def.Bank || ins.ID != def.Id || ins.ArgData.Length < def.Length)
+                        continue;
+                    bool Passed(Emedf.Arg a) => ev.Parameters.Any(p => p.InstructionIndex == i && p.TargetStartByte == a.Offset);
+                    if (Passed(entity) || Passed(anim))
+                    {
+                        passedIn++;
+                        continue;
+                    }
+                    if (Emedf.Read(ins.ArgData, entity) == Player && Emedf.Read(ins.ArgData, anim) > 0)
+                        found.Add((int)Emedf.Read(ins.ArgData, anim));
+                }
+        }
         foreach (var ev in scripts.SelectMany(s => s.Events))
             for (int i = 0; i < ev.Instructions.Count; i++)
             {
                 var ins = ev.Instructions[i];
-                if (ins.Bank != def.Bank || ins.ID != def.Id || ins.ArgData.Length < def.Length)
+                if (ins.Bank != PairedAnimBank || ins.ID != PairedAnimId || ins.ArgData.Length < 9 || ins.ArgData[8] == 0)
                     continue;
-                bool Passed(Emedf.Arg a) => ev.Parameters.Any(p => p.InstructionIndex == i && p.TargetStartByte == a.Offset);
-                if (Passed(entity) || Passed(anim))
-                {
+                if (ev.Parameters.Any(p => p.InstructionIndex == i))
                     passedIn++;
-                    continue;
-                }
-                if (Emedf.Read(ins.ArgData, entity) == Player)
-                    found.Add((int)Emedf.Read(ins.ArgData, anim));
+                else if (BitConverter.ToInt32(ins.ArgData, 4) > 0)
+                    found.Add(BitConverter.ToInt32(ins.ArgData, 4));
             }
         return found;
     }

@@ -20,6 +20,8 @@ public static class PeopleFlags
 {
     public const string ListFile = "darksign_people_flags.txt";
     private const int MaxRange = 64;
+    /// <summary>Third column of a state flag's line (see <see cref="Lines"/>): the F1 menu's reset turns these off.</summary>
+    public const string StateTag = "state";
 
     /// <summary>Lines "&lt;flag&gt;\t&lt;who, event, line, argument&gt;" for one built mod map, each flag once.</summary>
     public static List<string> Lines(MSBE msb, EMEVD script, EMEVD? common, Emedf defs, string map, Func<int, string>? rowName = null)
@@ -30,12 +32,19 @@ public static class PeopleFlags
             var row = rowName?.Invoke(e.NPCParamID);
             people.TryAdd(e.EntityID, string.IsNullOrWhiteSpace(row) ? $"{e.Name} ({e.EntityID})" : $"{e.Name} {row.Replace("[DS3 person] ", "")} ({e.EntityID})");
         }
-        var seen = new HashSet<long>();
-        var lines = new List<string>();
-        void Add(long flag, string what)
+        var order = new List<long>();
+        var found = new Dictionary<long, (string What, bool State)>();
+        void Add(long flag, string what, bool state)
         {
-            if (flag > 0 && seen.Add(flag))
-                lines.Add($"{flag}\t{what.Replace('\t', ' ')}");
+            if (flag <= 0)
+                return;
+            if (found.TryGetValue(flag, out var had))
+                found[flag] = (had.What, had.State || state);
+            else
+            {
+                found[flag] = (what.Replace('\t', ' '), state);
+                order.Add(flag);
+            }
         }
 
         foreach (var starter in script.Events)
@@ -56,14 +65,19 @@ public static class PeopleFlags
                 if (ev is null)
                     continue;
                 var param = data.AsSpan((idAt + 1) * 4).ToArray();
-                foreach (var (flag, what) in Flags(ev, param, defs))
-                    Add(flag, $"{people[who]}, {map} event {id} {what}");
+                // A person's state flags (what "Reset DS3 people" in the F1 menu turns off): the flag ranges their events
+                // set or test (DS3's 5-flag friendly/hostile/dead block and 15-flag quest step block), and the flags
+                // passed into the shared events (hostile, dead, talk). Dummies (c1000: bonfires, menu points) have none.
+                bool person = !people[who].StartsWith("c1000", StringComparison.OrdinalIgnoreCase);
+                bool shared = !script.Events.Contains(ev);
+                foreach (var (flag, what, range, passed) in Flags(ev, param, defs))
+                    Add(flag, $"{people[who]}, {map} event {id} {what}", person && (range || (shared && passed)));
             }
-        return lines;
+        return order.Select(f => $"{f}\t{found[f].What}{(found[f].State ? "\t" + StateTag : "")}").ToList();
     }
 
     /// <summary>Every flag argument of an event's lines, with passed-in values read from the start line's parameters.</summary>
-    private static IEnumerable<(long Flag, string What)> Flags(EMEVD.Event ev, byte[] param, Emedf defs)
+    private static IEnumerable<(long Flag, string What, bool Range, bool Passed)> Flags(EMEVD.Event ev, byte[] param, Emedf defs)
     {
         for (int i = 0; i < ev.Instructions.Count; i++)
         {
@@ -86,14 +100,14 @@ public static class PeopleFlags
                 else if (kind == EventPort.Kind.FlagRangeEnd && rangeStart > 0 && value >= rangeStart && value - rangeStart < MaxRange)
                 {
                     for (long f = rangeStart; f <= value; f++)
-                        yield return (f, $"line {i} {def.Name}: range {rangeStart}-{value}");
+                        yield return (f, $"line {i} {def.Name}: range {rangeStart}-{value}", true, false);
                     rangeStart = -1;
                 }
                 else
-                    yield return (value, what);
+                    yield return (value, what, false, passed is not null);
             }
             if (rangeStart > 0)
-                yield return (rangeStart, $"line {i} {def.Name}: range start");
+                yield return (rangeStart, $"line {i} {def.Name}: range start", false, false);
         }
     }
 
@@ -102,7 +116,7 @@ public static class PeopleFlags
     {
         var commonPath = ctx.ModPath("event", "common_func.emevd.dcx");
         var common = File.Exists(commonPath) ? EMEVD.Read(commonPath) : null;
-        var all = new List<string> { "# ER flag\twho, event, line, argument (written by DarkSignPorter port-maps; read by dksign_testmenu.dll, which logs people: lines)" };
+        var all = new List<string> { "# ER flag\twho, event, line, argument\t\"state\" if the F1 menu's people reset turns it off (written by DarkSignPorter port-maps; read by dksign_testmenu.dll, which logs people: lines)" };
         var seen = new HashSet<string>();
         foreach (var map in maps.Distinct())
         {
@@ -111,8 +125,13 @@ public static class PeopleFlags
             if (!File.Exists(msbPath) || !File.Exists(scriptPath))
                 continue;
             foreach (var line in Lines(MSBE.Read(msbPath), EMEVD.Read(scriptPath), common, erDefs, map.ToString(), rowName))
-                if (seen.Add(line[..line.IndexOf('\t')]))
+            {
+                var flag = line[..line.IndexOf('\t')];
+                if (seen.Add(flag))
                     all.Add(line);
+                else if (line.EndsWith("\t" + StateTag) && all.FindIndex(l => l.StartsWith(flag + "\t") && !l.EndsWith("\t" + StateTag)) is >= 0 and var at)
+                    all[at] += "\t" + StateTag; // a state flag in any map's scripts is one everywhere
+            }
         }
         File.WriteAllLines(ctx.ModPath(ListFile), all);
         return all.Count - 1;
