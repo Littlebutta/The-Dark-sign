@@ -1,0 +1,173 @@
+# Firelink people flag log — Devin's PLAY sessions 2026-11-25 (local), mod 1.0.667
+# Newest session: dksign_testmenu.log, session started 19:35:48, last write 19:42:39 (copy: Work\scratch\people-diag\testmenu-0247.log)
+# DLL: Tools\Dlls\dksign_testmenu.dll written 19:27:19 by the launcher, 1,136,640 bytes, contains 'people: watching'
+# Older sessions today with the same DLL: .3.log 19:27:21, .2.log 19:33:05, .1.log 19:35:16 (all 'at load, 0 of 1144 on')
+# darksign_people_flags.txt: 18:18:46, 140,708 bytes, 1145 lines (1144 flags + header)
+
+## flagcheck summary
+19:36:03 flagcheck: 37 blocks ok, 0 missing
+
+## every people: line of the newest session (88)
+19:35:48 people: watching 1144 quest/hostility flags of the placed people
+19:35:57 people: at load, 0 of 1144 people flags on (the rest off); changes follow
+19:36:07 people: 10.3 s, flag 1030290150 off -> ON (c7041_9000 (45000700), m45_00_00_00 event 1038291041 line 4 Batch Set Network-Connected Event Flags: range 1030290148-1)
+19:36:07 people: 10.3 s, flag 1031290188 off -> ON (c7041_9000 (45000700), m45_00_00_00 event 45005602 line 3 Set Event Flag: Target Event Flag ID)
+19:36:07 people: 10.3 s, flag 1030290142 off -> ON (c7041_9000 (45000700), m45_00_00_00 event 45005604 line 6 Batch Set Network-Connected Event Flags: range 1030290133-103)
+19:36:07 people: 10.3 s, flag 1030290170 off -> ON (c7049_9001 (45000705), m45_00_00_00 event 1038291041 line 4 Batch Set Network-Connected Event Flags: range 1030290168-1)
+19:36:07 people: 10.3 s, flag 1030290310 off -> ON (c7101_9000 (45000710), m45_00_00_00 event 1038291041 line 4 Batch Set Network-Connected Event Flags: range 1030290308-1)
+19:36:07 people: 10.3 s, flag 1030290332 off -> ON (c7102_9000 (45000715), m45_00_00_00 event 45005682 line 4 Batch Set Network-Connected Event Flags: range 1030290328-103)
+19:36:07 people: 10.3 s, flag 1030290429 off -> ON (c0000_9006 (45000725), m45_00_00_00 event 1038291041 line 4 Batch Set Network-Connected Event Flags: range 1030290428-1)
+19:36:07 people: 10.3 s, flag 1031290008 off -> ON (c0000_9006 (45000725), m45_00_00_00 event 1038291042 line 29 Set Event Flag: Target Event Flag ID (X8))
+19:36:07 people: 10.3 s, flag 1030290424 off -> ON (c0000_9006 (45000725), m45_00_00_00 event 45005723 line 8 Batch Set Network-Connected Event Flags: range 1030290413-103)
+19:36:07 people: 10.3 s, flag 1030290389 off -> ON (c0000_9004 (45000735), m45_00_00_00 event 1038291041 line 4 Batch Set Network-Connected Event Flags: range 1030290388-1)
+19:36:07 people: 10.3 s, flag 1030290409 off -> ON (c0000_9007 (45000740), m45_00_00_00 event 1038291041 line 4 Batch Set Network-Connected Event Flags: range 1030290408-1)
+19:36:07 people: 10.3 s, flag 1030290449 off -> ON (c0000_9010 (45000755), m45_00_00_00 event 1038291041 line 4 Batch Set Network-Connected Event Flags: range 1030290448-1)
+19:36:07 people: 10.3 s, flag 1030290444 off -> ON (c0000_9010 (45000755), m45_00_00_00 event 45005542 line 9 Batch Set Network-Connected Event Flags: range 1030290433-103)
+19:36:07 people: 10.3 s, flag 1030290589 off -> ON (c0000_9001 (45000765), m45_00_00_00 event 45005581 line 16 IF Batch Event Flags: range 1030290589-1030290590)
+19:36:07 people: 10.3 s, flag 1030290472 off -> ON (c0000_9001 (45000765), m45_00_00_00 event 45005581 line 29 Batch Set Network-Connected Event Flags: range 1030290468-10)
+19:36:07 people: 10.3 s, flag 1030290290 off -> ON (c0000_9011 (45000785), m45_00_00_00 event 1038291041 line 4 Batch Set Network-Connected Event Flags: range 1030290288-1)
+19:36:07 people: 10.3 s, flag 1030290487 off -> ON (c0000_9012 (45000790), m45_00_00_00 event 45000621 line 31 Batch Set Network-Connected Event Flags: range 1030290473-10)
+19:36:07 people: 10.3 s, flag 1031290184 off -> ON (c7041_9000 (45000700), m45_00_00_00 event 45005600 line 15 IF Event Flag: Target Event Flag ID)
+19:36:07 people: 10.3 s, flag 1030290165 off -> ON (c7049_9001 (45000705), m45_00_00_00 event 45005640 line 2 SKIP IF Batch Event Flags: range 1030290153-1030290167)
+19:36:07 people: 10.3 s, flag 1031290220 off -> ON (c7049_9001 (45000705), m45_00_00_00 event 45005640 line 27 Set Event Flag: Target Event Flag ID)
+19:36:07 people: 10.3 s, flag 1031290221 off -> ON (c7049_9001 (45000705), m45_00_00_00 event 45005640 line 28 Set Event Flag: Target Event Flag ID)
+19:36:07 people: 10.3 s, flag 1030290295 off -> ON (c7101_9000 (45000710), m45_00_00_00 event 45005660 line 15 SKIP IF Batch Event Flags: range 1030290293-1030290307)
+19:36:07 people: 10.3 s, flag 1030290315 off -> ON (c7102_9000 (45000715), m45_00_00_00 event 45005680 line 10 SKIP IF Batch Event Flags: range 1030290313-1030290327)
+19:36:07 people: 10.3 s, flag 1030290384 off -> ON (c0000_9004 (45000735), m45_00_00_00 event 45005760 line 10 SKIP IF Batch Event Flags: range 1030290373-1030290387)
+19:36:07 people: 10.3 s, flag 1030290404 off -> ON (c0000_9007 (45000740), m45_00_00_00 event 45005780 line 9 SKIP IF Batch Event Flags: range 1030290393-1030290407)
+19:36:07 people: 10.3 s, flag 1030290360 off -> ON (c0000_9008 (45000745), m45_00_00_00 event 45005500 line 9 SKIP IF Batch Event Flags: range 1030290353-1030290367)
+19:36:07 people: 10.3 s, flag 1030290365 off -> ON (c0000_9008 (45000745), m45_00_00_00 event 45005500 line 9 SKIP IF Batch Event Flags: range 1030290353-1030290367)
+19:36:07 people: 10.3 s, flag 1030290236 off -> ON (c0000_9013 (45000760), m45_00_00_00 event 45005560 line 11 SKIP IF Batch Event Flags: range 1030290233-1030290247)
+19:36:07 people: 10.3 s, flag 1030290241 off -> ON (c0000_9013 (45000760), m45_00_00_00 event 45005560 line 11 SKIP IF Batch Event Flags: range 1030290233-1030290247)
+19:36:07 people: 10.3 s, flag 1030290467 off -> ON (c0000_9001 (45000765), m45_00_00_00 event 45005580 line 9 SKIP IF Batch Event Flags: range 1030290453-1030290467)
+19:36:07 people: 10.3 s, flag 1031290178 off -> ON (c0000_9001 (45000765), m45_00_00_00 event 45005580 line 33 Set Event Flag: Target Event Flag ID)
+19:36:07 people: 10.3 s, flag 1031290181 off -> ON (c0000_9002 (45000775), m45_00_00_00 event 45005586 line 5 IF Event Flag: Target Event Flag ID)
+19:36:07 people: 10.3 s, flag 1030290584 off -> ON (c0000_9002 (45000775), m45_00_00_00 event 45005586 line 9 SKIP IF Batch Event Flags: range 1030290573-1030290587)
+19:36:07 people: 10.3 s, flag 1030290256 off -> ON (c0000_9000 (45000780), m45_00_00_00 event 45005570 line 10 SKIP IF Batch Event Flags: range 1030290253-1030290267)
+19:36:07 people: 10.3 s, flag 1030290261 off -> ON (c0000_9000 (45000780), m45_00_00_00 event 45005570 line 10 SKIP IF Batch Event Flags: range 1030290253-1030290267)
+19:36:07 people: 10.3 s, flag 1031290165 off -> ON (c0000_9000 (45000780), m45_00_00_00 event 45005570 line 47 IF Event Flag: Target Event Flag ID)
+19:36:07 people: 10.3 s, flag 1030290492 off -> ON (c0000_9012 (45000790), m45_00_00_00 event 45005620 line 3 SKIP IF Batch Event Flags: range 1030290488-1030290492)
+19:36:07 people: 10.3 s, flag 1030290345 off -> ON (c0000_9005 (45000720), m45_00_00_00 event 45005700 line 9 SKIP IF Batch Event Flags: range 1030290333-1030290347)
+19:36:07 people: 10.3 s, flag 1030290549 off -> ON (c7106_9000 (45010705), m45_01_00_00 event 1038291041 line 4 Batch Set Network-Connected Event Flags: range 1030290548-1)
+19:36:07 people: 10.3 s, flag 1030290544 off -> ON (c7106_9000 (45010705), m45_01_00_00 event 45015600 line 9 SKIP IF Batch Event Flags: range 1030290533-1030290547)
+19:36:07 people: 10.3 s, flag 45020800 off -> ON (c1000_9001 (45020951), m45_02_00_00 event 1038291000 line 0 GOTO IF Event Flag: Target Event Flag ID (X0))
+19:36:07 people: 10.3 s, flag 45020211 off -> ON (c0000_9000 (45020730), m45_02_00_00 event 45020210 line 0 GOTO IF Event Flag: Target Event Flag ID)
+19:36:07 people: 10.3 s, flag 45020250 off -> ON (c0000_9000 (45020730), m45_02_00_00 event 45020210 line 12 Set Event Flag: Target Event Flag ID)
+19:36:07 people: 10.3 s, flag 1030290196 off -> ON (c7069_9000 (45020705), m45_02_00_00 event 1038291081 line 10 Batch Set Network-Connected Event Flags: range 1030290193-)
+19:36:07 people: 10.3 s, flag 1030290201 off -> ON (c7069_9000 (45020705), m45_02_00_00 event 1038291081 line 10 Batch Set Network-Connected Event Flags: range 1030290193-)
+19:36:07 people: 10.3 s, flag 1030290569 off -> ON (c7084_9000 (45020715), m45_02_00_00 event 1038291041 line 4 Batch Set Network-Connected Event Flags: range 1030290568-1)
+19:36:07 people: 10.3 s, flag 1030290649 off -> ON (c0000_9001 (45020740), m45_02_00_00 event 1038291041 line 4 Batch Set Network-Connected Event Flags: range 1030290648-1)
+19:36:07 people: 10.3 s, flag 1030290497 off -> ON (c0000_9000 (45020730), m45_02_00_00 event 45025741 line 6 Batch Set Network-Connected Event Flags: range 1030290493-103)
+19:36:07 people: 10.3 s, flag 1030290502 off -> ON (c0000_9000 (45020730), m45_02_00_00 event 45025741 line 6 Batch Set Network-Connected Event Flags: range 1030290493-103)
+19:36:07 people: 10.3 s, flag 1030290564 off -> ON (c7084_9000 (45020715), m45_02_00_00 event 45025660 line 10 SKIP IF Batch Event Flags: range 1030290553-1030290567)
+19:36:07 people: 10.3 s, flag 1030290644 off -> ON (c0000_9001 (45020740), m45_02_00_00 event 45025700 line 14 SKIP IF Batch Event Flags: range 1030290633-1030290647)
+19:36:07 people: 10.3 s, flag 1030290694 off -> ON (c0000_9002 (19700700), m19_70_00_00 event 1030297168 line 16 Batch Set Network-Connected Event Flags: range 1030290693-)
+19:36:07 people: 10.3 s, flag 1030290707 off -> ON (c0000_9002 (19700700), m19_70_00_00 event 1030297168 line 16 Batch Set Network-Connected Event Flags: range 1030290693-)
+19:36:07 people: 10.3 s, flag 1030290717 off -> ON (c7145_9000 (19700705), m19_70_00_00 event 1030297171 line 0 END IF Batch Event Flags: range 1030290714-1030290727)
+19:36:07 people: 10.3 s, flag 1031290027 off -> ON (c7144_9000 (19700706), m19_70_00_00 event 1030297173 line 2 Batch Set Event Flags: range 1031290027-1031290031)
+19:36:07 people: 10.3 s, flag 1030290712 off -> ON (c0000_9002 (19700700), m19_70_00_00 event 1030297183 line 1 SKIP IF Batch Event Flags: range 1030290708-1030290712)
+19:36:07 people: 10.3 s, flag 1030290609 off -> ON (c7118_9000 (45050850), m45_05_00_00 event 1030297708 line 4 Batch Set Network-Connected Event Flags: range 1030290608-1)
+19:36:07 people: 10.3 s, flag 1030290604 off -> ON (c7118_9000 (45050850), m45_05_00_00 event 1030297708 line 6 Batch Set Network-Connected Event Flags: range 1030290593-1)
+19:36:07 people: 10.3 s, flag 1030290679 off -> ON (c0000_9006 (45050725), m45_05_00_00 event 1030297735 line 16 SKIP IF Batch Event Flags: range 1030290673-1030290687)
+19:36:07 people: 10.3 s, flag 1030290624 off -> ON (c0000_9001 (38100700), m38_10_00_00 event 1030297852 line 53 Batch Set Network-Connected Event Flags: range 1030290613-)
+19:36:07 people: 10.3 s, flag 1030290231 off -> ON (c7070_9000 (38110700), m38_11_00_00 event 1038291041 line 1 IF Event Flag: Target Event Flag ID (X4))
+19:36:07 people: 10.3 s, flag 1030290629 off -> ON (c0000_9001 (38110705), m38_11_00_00 event 1030298067 line 24 Batch Set Network-Connected Event Flags: range 1030290628-)
+19:36:07 people: 10.3 s, flag 1030290216 off -> ON (c7070_9000 (38110700), m38_11_00_00 event 1030298079 line 3 SKIP IF Batch Event Flags: range 1030290213-1030290232)
+19:36:07 people: 10.3 s, flag 1031290554 off -> ON (c0000_9002 (38120705), m38_12_00_00 event 1030298239 line 32 IF Event Flag: Target Event Flag ID)
+19:36:07 people: 10.3 s, flag 1030290870 off -> ON (c7069_9000 (11700705), m11_70_00_00 event 1030298826 line 9 SKIP IF Batch Event Flags: range 1030290868-1030290882)
+19:36:07 people: 10.3 s, flag 1030290871 off -> ON (c7069_9000 (11700705), m11_70_00_00 event 1030298826 line 9 SKIP IF Batch Event Flags: range 1030290868-1030290882)
+19:36:07 people: 10.3 s, flag 1030290842 off -> ON (c0000_9003 (11720710), m11_72_00_00 event 1030298954 line 0 END IF Batch Event Flags: range 1030290835-1030290847)
+19:36:07 people: 10.3 s, flag 1030290850 off -> ON (c0000_9003 (11720710), m11_72_00_00 event 1038291041 line 4 Batch Set Network-Connected Event Flags: range 1030290848-1)
+19:36:07 people: 10.3 s, flag 1030290853 off -> ON (c7164_9020 (11720720), m11_72_00_00 event 1038291041 line 4 Batch Set Network-Connected Event Flags: range 1030290853-1)
+19:36:07 people: 10.3 s, flag 1030290855 off -> ON (c7164_9020 (11720720), m11_72_00_00 event 1038291041 line 4 Batch Set Network-Connected Event Flags: range 1030290853-1)
+19:36:15 people: 18.1 s, flag 1030290348 off -> ON (c0000_9005 (45000720), m45_00_00_00 event 1038291041 line 4 Batch Set Network-Connected Event Flags: range 1030290348-1)
+19:36:15 people: 18.1 s, flag 1030290368 off -> ON (c0000_9008 (45000745), m45_00_00_00 event 1038291041 line 4 Batch Set Network-Connected Event Flags: range 1030290368-1)
+19:38:30 people: 153.2 s, flag 1031290008 ON -> off (c0000_9006 (45000725), m45_00_00_00 event 1038291042 line 29 Set Event Flag: Target Event Flag ID (X8))
+19:38:30 people: 153.2 s, flag 1030290589 ON -> off (c0000_9001 (45000765), m45_00_00_00 event 45005581 line 16 IF Batch Event Flags: range 1030290589-1030290590)
+19:38:30 people: 153.2 s, flag 1030290588 off -> ON (c0000_9001 (45000765), m45_00_00_00 event 45005581 line 31 Batch Set Network-Connected Event Flags: range 1030290588-10)
+19:38:30 people: 153.2 s, flag 1030290248 off -> ON (c0000_9013 (45000760), m45_00_00_00 event 1038291041 line 4 Batch Set Network-Connected Event Flags: range 1030290248-1)
+19:38:30 people: 153.2 s, flag 1030290268 off -> ON (c0000_9000 (45000780), m45_00_00_00 event 1038291041 line 4 Batch Set Network-Connected Event Flags: range 1030290268-1)
+19:38:30 people: 153.2 s, flag 1031290202 off -> ON (c0000_9012 (45000790), m45_00_00_00 event 45000621 line 2 Set Event Flag: Target Event Flag ID)
+19:38:30 people: 153.2 s, flag 45000623 off -> ON (c0000_9012 (45000790), m45_00_00_00 event 45000621 line 3 Set Event Flag: Target Event Flag ID)
+19:38:30 people: 153.2 s, flag 1031290220 ON -> off (c7049_9001 (45000705), m45_00_00_00 event 45005640 line 27 Set Event Flag: Target Event Flag ID)
+19:38:30 people: 153.2 s, flag 1031290221 ON -> off (c7049_9001 (45000705), m45_00_00_00 event 45005640 line 28 Set Event Flag: Target Event Flag ID)
+19:38:30 people: 153.2 s, flag 1031290181 ON -> off (c0000_9002 (45000775), m45_00_00_00 event 45005586 line 5 IF Event Flag: Target Event Flag ID)
+19:38:30 people: 153.2 s, flag 1030290273 off -> ON (c0000_9011 (45000785), m45_00_00_00 event 45005750 line 9 SKIP IF Batch Event Flags: range 1030290273-1030290287)
+19:38:30 people: 153.2 s, flag 1030290498 off -> ON (c0000_9005 (45000720), m45_00_00_00 event 45005700 line 33 IF Event Flag: Target Event Flag ID)
+19:38:30 people: 153.2 s, flag 1030290497 ON -> off (c0000_9000 (45020730), m45_02_00_00 event 45025741 line 6 Batch Set Network-Connected Event Flags: range 1030290493-103)
+19:38:30 people: 153.2 s, flag 1030290502 ON -> off (c0000_9000 (45020730), m45_02_00_00 event 45025741 line 6 Batch Set Network-Connected Event Flags: range 1030290493-103)
+
+## darksign_people_flags.txt lines for c0000_9000 / c0000_9010 in m45_00_00_00 (65)
+1030290451	c0000_9010 (45000755), m45_00_00_00 event 1038291041 line 1 IF Event Flag: Target Event Flag ID (X4)
+1030290448	c0000_9010 (45000755), m45_00_00_00 event 1038291041 line 4 Batch Set Network-Connected Event Flags: range 1030290448-1030290452
+1030290449	c0000_9010 (45000755), m45_00_00_00 event 1038291041 line 4 Batch Set Network-Connected Event Flags: range 1030290448-1030290452
+1030290450	c0000_9010 (45000755), m45_00_00_00 event 1038291041 line 4 Batch Set Network-Connected Event Flags: range 1030290448-1030290452
+1030290452	c0000_9010 (45000755), m45_00_00_00 event 1038291041 line 4 Batch Set Network-Connected Event Flags: range 1030290448-1030290452
+1031290070	c0000_9010 (45000755), m45_00_00_00 event 1038291046 line 3 Set Event Flag: Target Event Flag ID (X12)
+1030290435	c0000_9010 (45000755), m45_00_00_00 event 45005541 line 1 IF Event Flag: Target Event Flag ID (X32)
+1030290434	c0000_9010 (45000755), m45_00_00_00 event 45005542 line 1 IF Batch Event Flags: range 1030290434-1030290436
+1030290436	c0000_9010 (45000755), m45_00_00_00 event 45005542 line 1 IF Batch Event Flags: range 1030290434-1030290436
+1031290149	c0000_9010 (45000755), m45_00_00_00 event 45005542 line 5 IF Event Flag: Target Event Flag ID
+1030290433	c0000_9010 (45000755), m45_00_00_00 event 45005542 line 9 Batch Set Network-Connected Event Flags: range 1030290433-1030290447
+1030290437	c0000_9010 (45000755), m45_00_00_00 event 45005542 line 9 Batch Set Network-Connected Event Flags: range 1030290433-1030290447
+1030290438	c0000_9010 (45000755), m45_00_00_00 event 45005542 line 9 Batch Set Network-Connected Event Flags: range 1030290433-1030290447
+1030290439	c0000_9010 (45000755), m45_00_00_00 event 45005542 line 9 Batch Set Network-Connected Event Flags: range 1030290433-1030290447
+1030290440	c0000_9010 (45000755), m45_00_00_00 event 45005542 line 9 Batch Set Network-Connected Event Flags: range 1030290433-1030290447
+1030290441	c0000_9010 (45000755), m45_00_00_00 event 45005542 line 9 Batch Set Network-Connected Event Flags: range 1030290433-1030290447
+1030290442	c0000_9010 (45000755), m45_00_00_00 event 45005542 line 9 Batch Set Network-Connected Event Flags: range 1030290433-1030290447
+1030290443	c0000_9010 (45000755), m45_00_00_00 event 45005542 line 9 Batch Set Network-Connected Event Flags: range 1030290433-1030290447
+1030290444	c0000_9010 (45000755), m45_00_00_00 event 45005542 line 9 Batch Set Network-Connected Event Flags: range 1030290433-1030290447
+1030290445	c0000_9010 (45000755), m45_00_00_00 event 45005542 line 9 Batch Set Network-Connected Event Flags: range 1030290433-1030290447
+1030290446	c0000_9010 (45000755), m45_00_00_00 event 45005542 line 9 Batch Set Network-Connected Event Flags: range 1030290433-1030290447
+1030290447	c0000_9010 (45000755), m45_00_00_00 event 45005542 line 9 Batch Set Network-Connected Event Flags: range 1030290433-1030290447
+1030290271	c0000_9000 (45000780), m45_00_00_00 event 1038291041 line 1 IF Event Flag: Target Event Flag ID (X4)
+1030290268	c0000_9000 (45000780), m45_00_00_00 event 1038291041 line 4 Batch Set Network-Connected Event Flags: range 1030290268-1030290272
+1030290269	c0000_9000 (45000780), m45_00_00_00 event 1038291041 line 4 Batch Set Network-Connected Event Flags: range 1030290268-1030290272
+1030290270	c0000_9000 (45000780), m45_00_00_00 event 1038291041 line 4 Batch Set Network-Connected Event Flags: range 1030290268-1030290272
+1030290272	c0000_9000 (45000780), m45_00_00_00 event 1038291041 line 4 Batch Set Network-Connected Event Flags: range 1030290268-1030290272
+1031290140	c0000_9010 (45000755), m45_00_00_00 event 45005540 line 5 IF Event Flag: Target Event Flag ID
+1031290141	c0000_9010 (45000755), m45_00_00_00 event 45005540 line 14 IF Event Flag: Target Event Flag ID
+1030290941	c0000_9010 (45000755), m45_00_00_00 event 45005540 line 19 IF Event Flag: Target Event Flag ID
+1031290142	c0000_9010 (45000755), m45_00_00_00 event 45005540 line 24 IF Event Flag: Target Event Flag ID
+1030290942	c0000_9010 (45000755), m45_00_00_00 event 45005540 line 37 IF Event Flag: Target Event Flag ID
+1031290148	c0000_9010 (45000755), m45_00_00_00 event 45005540 line 51 Set Event Flag: Target Event Flag ID
+1031290157	c0000_9000 (45000780), m45_00_00_00 event 45005570 line 5 IF Event Flag: Target Event Flag ID
+1031290158	c0000_9000 (45000780), m45_00_00_00 event 45005570 line 9 Set Event Flag: Target Event Flag ID
+1030290253	c0000_9000 (45000780), m45_00_00_00 event 45005570 line 10 SKIP IF Batch Event Flags: range 1030290253-1030290267
+1030290254	c0000_9000 (45000780), m45_00_00_00 event 45005570 line 10 SKIP IF Batch Event Flags: range 1030290253-1030290267
+1030290255	c0000_9000 (45000780), m45_00_00_00 event 45005570 line 10 SKIP IF Batch Event Flags: range 1030290253-1030290267
+1030290256	c0000_9000 (45000780), m45_00_00_00 event 45005570 line 10 SKIP IF Batch Event Flags: range 1030290253-1030290267
+1030290257	c0000_9000 (45000780), m45_00_00_00 event 45005570 line 10 SKIP IF Batch Event Flags: range 1030290253-1030290267
+1030290258	c0000_9000 (45000780), m45_00_00_00 event 45005570 line 10 SKIP IF Batch Event Flags: range 1030290253-1030290267
+1030290259	c0000_9000 (45000780), m45_00_00_00 event 45005570 line 10 SKIP IF Batch Event Flags: range 1030290253-1030290267
+1030290260	c0000_9000 (45000780), m45_00_00_00 event 45005570 line 10 SKIP IF Batch Event Flags: range 1030290253-1030290267
+1030290261	c0000_9000 (45000780), m45_00_00_00 event 45005570 line 10 SKIP IF Batch Event Flags: range 1030290253-1030290267
+1030290262	c0000_9000 (45000780), m45_00_00_00 event 45005570 line 10 SKIP IF Batch Event Flags: range 1030290253-1030290267
+1030290263	c0000_9000 (45000780), m45_00_00_00 event 45005570 line 10 SKIP IF Batch Event Flags: range 1030290253-1030290267
+1030290264	c0000_9000 (45000780), m45_00_00_00 event 45005570 line 10 SKIP IF Batch Event Flags: range 1030290253-1030290267
+1030290265	c0000_9000 (45000780), m45_00_00_00 event 45005570 line 10 SKIP IF Batch Event Flags: range 1030290253-1030290267
+1030290266	c0000_9000 (45000780), m45_00_00_00 event 45005570 line 10 SKIP IF Batch Event Flags: range 1030290253-1030290267
+1030290267	c0000_9000 (45000780), m45_00_00_00 event 45005570 line 10 SKIP IF Batch Event Flags: range 1030290253-1030290267
+1031290159	c0000_9000 (45000780), m45_00_00_00 event 45005570 line 15 IF Event Flag: Target Event Flag ID
+1031290160	c0000_9000 (45000780), m45_00_00_00 event 45005570 line 20 IF Event Flag: Target Event Flag ID
+1031290161	c0000_9000 (45000780), m45_00_00_00 event 45005570 line 25 IF Event Flag: Target Event Flag ID
+1031290162	c0000_9000 (45000780), m45_00_00_00 event 45005570 line 30 IF Event Flag: Target Event Flag ID
+1031290163	c0000_9000 (45000780), m45_00_00_00 event 45005570 line 35 IF Event Flag: Target Event Flag ID
+1031290164	c0000_9000 (45000780), m45_00_00_00 event 45005570 line 40 IF Event Flag: Target Event Flag ID
+1031290165	c0000_9000 (45000780), m45_00_00_00 event 45005570 line 47 IF Event Flag: Target Event Flag ID
+1031290076	c0000_9000 (45000780), m45_00_00_00 event 45005570 line 51 Set Event Flag: Target Event Flag ID
+1031290166	c0000_9000 (45000780), m45_00_00_00 event 45005570 line 53 IF Event Flag: Target Event Flag ID
+1031290167	c0000_9000 (45000780), m45_00_00_00 event 45005570 line 58 IF Event Flag: Target Event Flag ID
+1031290168	c0000_9000 (45000780), m45_00_00_00 event 45005570 line 59 IF Event Flag: Target Event Flag ID
+1030290943	c0000_9000 (45000780), m45_00_00_00 event 45005570 line 65 IF Event Flag: Target Event Flag ID
+1031290169	c0000_9000 (45000780), m45_00_00_00 event 45005570 line 73 IF Event Flag: Target Event Flag ID
+1031290170	c0000_9000 (45000780), m45_00_00_00 event 45005570 line 83 IF Event Flag: Target Event Flag ID
+1031290171	c0000_9000 (45000780), m45_00_00_00 event 1038291046 line 3 Set Event Flag: Target Event Flag ID (X12)
+
+## hashes (SHA256) taken before the planned Claude test, 2026-11-25 ~15:55 local (that test was not run)
+﻿SHA256 0DF48A86D85E4434E7A39C4BD80C28D6E92575459D619516D2D57689F94E8801 D:\The Dark sign\TheDarkSign\Mods\ER\regulation.bin
+SHA256 1293A274B5A4759E5B77FE303B3BB27114C21799927810109D6176CA3225C6C6 D:\The Dark sign\TheDarkSign\Saves\Default\ER\GraphicsConfig.xml
+SHA256 CC84FF1088F86536627ACA9CE1BBDFD88367D36C0FAC5E8303DA9672AFEB4961 D:\The Dark sign\TheDarkSign\Saves\Default\ER\76561198069423426\ER0000.dksign
+SHA256 CC84FF1088F86536627ACA9CE1BBDFD88367D36C0FAC5E8303DA9672AFEB4961 D:\The Dark sign\TheDarkSign\Saves\Default\ER\76561198069423426\ER0000.dksign.bak
+SHA256 CC84FF1088F86536627ACA9CE1BBDFD88367D36C0FAC5E8303DA9672AFEB4961 D:\The Dark sign\TheDarkSign\Work\scratch\people-diag\flaglog-backup\ER0000.dksign
+SHA256 CC84FF1088F86536627ACA9CE1BBDFD88367D36C0FAC5E8303DA9672AFEB4961 D:\The Dark sign\TheDarkSign\Work\scratch\people-diag\flaglog-backup\ER0000.dksign.bak
