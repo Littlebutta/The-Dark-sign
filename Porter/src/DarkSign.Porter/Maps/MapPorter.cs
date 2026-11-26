@@ -868,7 +868,8 @@ public static class MapPorter
                 var seats = EnemyPort.Seats(ds3Msb, EnemyPort.EventWarps(scripts));
                 var placed = EnemyPort.Place(ds3Msb, layout.Msb, ds3Id, erId,
                     enemies.Chooser, e => enemies.Describe(e, bosses), EnemyPort.AnyEnemyPart(enemies.Catalog), _placedEnemies, partNames,
-                    enemies.People, seats, armour: _armour, talk: _talk, quiet: _quiet, ds3Team: id => EnemyPort.TeamOf(enemies.Ds3Npc, id));
+                    enemies.People, seats, armour: _armour, talk: _talk, quiet: _quiet, ds3Team: id => EnemyPort.TeamOf(enemies.Ds3Npc, id),
+                    scriptToggled: EnemyPort.ScriptToggled(scripts));
                 enemiesPlaced = placed;
                 report.AppendLine($"  enemies: {placed.Placed} placed ({placed.Ported} ported DS3 characters, {placed.StandIns} Elden Ring stand-ins, "
                                   + $"{placed.People} people{(_armour is null ? ", DS3's own people only" : ", DS3's own people and DS3 humans in their DS3 armour")}), {placed.Npcs} people left out, {placed.Skipped} with nothing to stand in; {bosses.Count} DS3 boss entities");

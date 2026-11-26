@@ -248,7 +248,8 @@ public static class EnemyPort
     public static Result Place(MSB3 ds3, MSBE msb, MapId ds3Id, MapId erId, Chooser chooser,
         Func<MSB3.Part.Enemy, Ds3Enemy> describe, MSBE.Part.Enemy? fallbackTemplate = null, List<string>? table = null,
         Dictionary<string, string>? partNames = null, People? people = null, IReadOnlyDictionary<string, Seat>? seats = null,
-        PeopleArmour? armour = null, TalkPort? talk = null, QuietStandIns? quiet = null, Func<int, int>? ds3Team = null)
+        PeopleArmour? armour = null, TalkPort? talk = null, QuietStandIns? quiet = null, Func<int, int>? ds3Team = null,
+        IReadOnlySet<int>? scriptToggled = null)
     {
         int talking = 0, quieted = 0, onDs3Team = 0;
         int dressed = 0, borrowedBefore = chooser.BorrowedThinks;
@@ -264,7 +265,14 @@ public static class EnemyPort
         var layerOk = MsbPort.BaseLayerMeans(ds3);
         int otherState = 0, phantoms = 0, logic = 0;
         var otherStateNames = new Dictionary<string, int>();
+        // A version DS3's scripts switch on and off stays: the scripts pick which version stands (quest state, or a dice
+        // roll: Hawkwood sits in one of two spots), and leaving one out makes the person vanish when the script picks
+        // it. Only versions no script touches, which would stand forever, are left out.
+        bool Scripted(MSB3.Part.Enemy e) => scriptToggled is not null && e.EntityID > 0 && scriptToggled.Contains(e.EntityID);
         var laterVersions = LaterVersions(ds3.Parts.Enemies.Where(e => !MsbPort.OtherState(e, layerOk)), describe);
+        int scriptedVersions = laterVersions.Count(n => ds3.Parts.Enemies.FirstOrDefault(e => e.Name == n) is { } e && Scripted(e));
+        laterVersions.RemoveWhere(n => ds3.Parts.Enemies.FirstOrDefault(e => e.Name == n) is { } e && Scripted(e));
+        int scriptedSeats = 0;
         var laterNames = new Dictionary<string, int>();
         foreach (var src in ds3.Parts.Enemies)
         {
@@ -318,8 +326,11 @@ public static class EnemyPort
             var seat = what.Npc ? seats?.GetValueOrDefault(src.Name) : null;
             if (seat is not null)
             {
-                // Two versions of one person (DS3 enables one by quest state) share a seat: only the first stands.
-                if (takenSeats.Any(t => Vector3.Distance(t, seat.Position) < 0.5f))
+                // Two versions of one person (DS3 enables one by quest state) share a seat: only the first stands, unless
+                // DS3's scripts switch this one on and off (then they decide which one stands).
+                if (takenSeats.Any(t => Vector3.Distance(t, seat.Position) < 0.5f) && Scripted(src))
+                    scriptedSeats++;
+                else if (takenSeats.Any(t => Vector3.Distance(t, seat.Position) < 0.5f))
                 {
                     sameSeat++;
                     continue;
@@ -428,8 +439,10 @@ public static class EnemyPort
             notes.Add($"{logic} DS3 logic characters left out (talk dummy c1000, platoon leader c0100, target dummies): DS3 shows nothing there");
         if (phantoms > 0)
             notes.Add($"people: {phantoms} DS3 summons and invaders (White/Mad Phantom, Dark Spirit) left out: they only appear when summoned or invading");
+        if (scriptedVersions > 0 || scriptedSeats > 0)
+            notes.Add($"people: {scriptedVersions} later quest versions and {scriptedSeats} versions sharing a seat placed because DS3's scripts switch them on and off (they pick the version that stands)");
         if (laterNames.Count > 0)
-            notes.Add($"people: {laterNames.Values.Sum()} later quest versions of a person left out (DS3 places every version and its scripts show one; the first, lowest talk script, stands): "
+            notes.Add($"people: {laterNames.Values.Sum()} later quest versions of a person left out (no DS3 script switches them, so they would stand forever; the first, lowest talk script, stands): "
                       + string.Join("; ", laterNames.OrderBy(n => n.Key, StringComparer.Ordinal).Select(n => $"{n.Key} x{n.Value}")));
         if (seated > 0)
             notes.Add($"people: {seated} moved from DS3's holding spot to the seat DS3's scripts warp them to"
@@ -533,6 +546,33 @@ public static class EnemyPort
     /// </summary>
     public static Dictionary<int, int> EventWarps(IEnumerable<EMEVD> scripts, bool ds3Layout = true)
     {
+        var warps = new Dictionary<int, int>();
+        foreach (var a in InstructionArgs(scripts, i => i.Bank == 2004 && CharacterWarps.Contains(i.ID), [0, 8], ds3Layout))
+            if (a[0] > 0 && a[1] > 0)
+                warps.TryAdd(a[0], a[1]);
+        return warps;
+    }
+
+    /// <summary>
+    /// The DS3 character entities whose scripts switch them on or off (Change Character Enable State, 2004[5], directly
+    /// or through a parameterised event's arguments). DS3 places every quest version of a person and these lines pick
+    /// the one that stands by quest state, and sometimes by a dice roll (Hawkwood sits in one of two spots at Firelink).
+    /// </summary>
+    public static HashSet<int> ScriptToggled(IEnumerable<EMEVD> scripts, bool ds3Layout = true)
+    {
+        var toggled = new HashSet<int>();
+        foreach (var a in InstructionArgs(scripts, i => i.Bank == 2004 && i.ID == 5, [0], ds3Layout))
+            if (a[0] > 0)
+                toggled.Add(a[0]);
+        return toggled;
+    }
+
+    /// <summary>
+    /// The 4-byte arguments at <paramref name="offsets"/> of every instruction that matches, once per line that starts
+    /// its event when the event is parameterised (the arguments it receives replace the instruction's own).
+    /// </summary>
+    private static IEnumerable<int[]> InstructionArgs(IEnumerable<EMEVD> scripts, Func<EMEVD.Instruction, bool> match, int[] offsets, bool ds3Layout)
+    {
         var list = scripts.ToList();
         var calls = new Dictionary<long, List<byte[]>>();
         foreach (var ins in list.SelectMany(s => s.Events).SelectMany(e => e.Instructions).Where(i => i.Bank == 2000 && i.ID is 0 or 6))
@@ -543,37 +583,33 @@ public static class EnemyPort
             var id = BitConverter.ToUInt32(ins.ArgData, at);
             (calls.TryGetValue(id, out var l) ? l : calls[id] = []).Add(ins.ArgData[(at + 4)..]);
         }
-        var warps = new Dictionary<int, int>();
+        int need = offsets.Max() + 4;
         foreach (var e in list.SelectMany(s => s.Events))
             for (int k = 0; k < e.Instructions.Count; k++)
             {
                 var ins = e.Instructions[k];
-                if (ins.Bank != 2004 || !CharacterWarps.Contains(ins.ID) || ins.ArgData.Length < 12)
+                if (!match(ins) || ins.ArgData.Length < need)
                     continue;
-                var who = BitConverter.ToInt32(ins.ArgData, 0);
-                var to = BitConverter.ToInt32(ins.ArgData, 8);
+                var own = offsets.Select(o => BitConverter.ToInt32(ins.ArgData, o)).ToArray();
                 var ps = e.Parameters.Where(p => p.InstructionIndex == k).ToList();
                 if (ps.Count == 0)
                 {
-                    if (who > 0 && to > 0)
-                        warps.TryAdd(who, to);
+                    yield return own;
                     continue;
                 }
                 foreach (var call in calls.GetValueOrDefault(e.ID) ?? [])
                 {
-                    int w = who, t = to;
+                    var values = (int[])own.Clone();
                     foreach (var p in ps)
                         if (p.SourceStartByte + 4 <= call.Length)
                         {
-                            var value = BitConverter.ToInt32(call, (int)p.SourceStartByte);
-                            if (p.TargetStartByte == 0) w = value;
-                            else if (p.TargetStartByte == 8) t = value;
+                            int slot = Array.IndexOf(offsets, (int)p.TargetStartByte);
+                            if (slot >= 0)
+                                values[slot] = BitConverter.ToInt32(call, (int)p.SourceStartByte);
                         }
-                    if (w > 0 && t > 0)
-                        warps.TryAdd(w, t);
+                    yield return values;
                 }
             }
-        return warps;
     }
 
     /// <summary>The parts that are a later quest version of a DS3 person: among the DS3

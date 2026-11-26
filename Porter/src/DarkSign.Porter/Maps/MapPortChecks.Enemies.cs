@@ -16,6 +16,7 @@ public static partial class MapPortChecks
         yield return ("enemies, objects, map effects: another state of the map (off DS3's layer bit 0, m40's Untended Graves, the High Wall's eclipse fog) is left out", OtherStateLeftOut);
         yield return ("people: those DS3 parks at a holding spot stand where its scripts warp them, parameterised events included", PeopleSeated);
         yield return ("people: one version of each DS3 person stands (the first quest state), as DS3's scripts show one", PeopleOneVersion);
+        yield return ("people: versions DS3's scripts switch on and off are all placed (the scripts pick one: Hawkwood's dice roll)", PeopleScriptedVersions);
         yield return ("people: DS3 humans with a DS3 look stand as an Elden Ring person wearing it; the rest stay out", PeopleArmourPlacement);
                 yield return ("enemies: placed at DS3's spot with the DS3 entity moved to the slot, on its collision, and read back", EnemyPlacement);
     }
@@ -273,6 +274,60 @@ public static partial class MapPortChecks
             $"Irina's 2nd/3rd, Eygon's enemy, Sirris's hostile and Hawkwood's 2nd are later versions ({string.Join(", ", later.Order())})");
     }
 
+    private static void PeopleScriptedVersions()
+    {
+        // DS3 m40_00_00_00 event 14005560 (measured 2026-11-26), started from event 50 for Hawkwood's two versions:
+        // a dice roll (74000810-74000813) switches one off and warps the other to its seat.
+        var script = new EMEVD { Format = EMEVD.Game.DarkSouls3 };
+        var hawkwood = new EMEVD.Event(14005560, EMEVD.Event.RestBehaviorType.Default);
+        hawkwood.Instructions.Add(new EMEVD.Instruction(2004, 5, new object[] { 0, (byte)0 }));
+        hawkwood.Instructions.Add(new EMEVD.Instruction(2004, 5, new object[] { 0, (byte)0 }));
+        hawkwood.Parameters.Add(new EMEVD.Parameter(0, 0, 0, 4));
+        hawkwood.Parameters.Add(new EMEVD.Parameter(1, 0, 4, 4));
+        var load = new EMEVD.Event(50, EMEVD.Event.RestBehaviorType.Default);
+        load.Instructions.Add(new EMEVD.Instruction(2000, 0, new object[] { 0, 14005560u, 4000760, 4000761, 4004760, 4004761 }));
+        // A direct line (no parameters) and a shared event started with the common-event layout.
+        load.Instructions.Add(new EMEVD.Instruction(2004, 5, new object[] { 4000727, (byte)0 }));
+        var shared = new EMEVD.Event(20006050, EMEVD.Event.RestBehaviorType.Default);
+        shared.Instructions.Add(new EMEVD.Instruction(2004, 5, new object[] { 0, (byte)1 }));
+        shared.Parameters.Add(new EMEVD.Parameter(0, 0, 0, 4));
+        load.Instructions.Add(new EMEVD.Instruction(2000, 6, new object[] { 20006050u, 4000770 }));
+        // A warp is not a switch.
+        load.Instructions.Add(new EMEVD.Instruction(2004, 42, new object[] { 4000790, (byte)1, (byte)0, (short)0, 4004790, -1, 4000790 }));
+        script.Events.AddRange([load, hawkwood, shared]);
+        var toggled = EnemyPort.ScriptToggled([EMEVD.Read(script.Write())]);
+        Expect(toggled.SetEquals([4000760, 4000761, 4000727, 4000770]), $"switched characters read: {string.Join(", ", toggled.Order())}");
+        var warps = EnemyPort.EventWarps([EMEVD.Read(script.Write())]);
+        Expect(warps.Count == 1 && warps[4000790] == 4004790, "EventWarps still reads warps only");
+
+        // Placing: Hawkwood's second version (a later version by talk script) stands when the scripts switch it.
+        var ds3 = SyntheticDs3();
+        ds3.Models.Enemies.Add(new MSB3.Model.Enemy { Name = "c0000" });
+        foreach (var (name, entity, talk) in new[] { ("c0000_0033", 4000760, 400170), ("c0000_0034", 4000761, 400171) })
+            ds3.Parts.Enemies.Add(new MSB3.Part.Enemy { Name = name, ModelName = "c0000", EntityID = entity, NPCParamID = 25100, CharaInitID = 25100, TalkID = talk, CollisionName = "h000100_0000" });
+        // A version no script touches is still left out (it would stand forever).
+        ds3.Parts.Enemies.Add(new MSB3.Part.Enemy { Name = "c0000_0035", ModelName = "c0000", EntityID = 4000762, NPCParamID = 25101, CharaInitID = 25101, TalkID = 400172, CollisionName = "h000100_0000" });
+        var people = new EnemyPort.People([new("c0000", 100, 101, "Merchant", false, "m10_00_00_00", new MSBE.Part.Enemy { ModelName = "c0000", CharaInitID = 23000 })], []);
+        var looks = PeopleArmour.WithModels();
+        foreach (var row in new[] { 25100, 25101 })
+            looks.AddLook(new PeopleArmour.Look(row, "person", 1, [null, null, null, null]));
+        EnemyPort.Result PlaceWith(IReadOnlySet<int>? switched, out MSBE msb)
+        {
+            var layout = MsbPort.Convert(ds3, SyntheticHost(), Ds3Id, ErId);
+            msb = layout.Msb;
+            return EnemyPort.Place(ds3, layout.Msb, Ds3Id, ErId, new EnemyPort.Chooser(SyntheticCatalog(), null),
+                e => new(e.ModelName, e.NPCParamID, e.Name, false, true), null, null, null, people, null, looks, scriptToggled: switched);
+        }
+        var before = PlaceWith(null, out var oldMsb);
+        Expect(oldMsb.Parts.Enemies.Count(e => e.EntityID is 45000760 or 45000761 or 45000762) == 1, "without the scripts read, one version stands (as before)");
+        var after = PlaceWith(toggled, out var newMsb);
+        Expect(newMsb.Parts.Enemies.Count(e => e.EntityID is 45000760 or 45000761) == 2, "both of Hawkwood's switched versions stand");
+        Expect(newMsb.Parts.Enemies.All(e => e.EntityID != 45000762), "a version no script switches is still left out");
+        Expect(after.Notes.Any(n => n.Contains("1 later quest versions and 0 versions sharing a seat placed because DS3's scripts switch them")),
+            $"the report counts the switched versions: {string.Join(" | ", after.Notes)}");
+        Expect(after.Notes.Any(n => n.Contains("1 later quest versions of a person left out (no DS3 script switches them")), "and the ones still left out");
+    }
+
     private static void PeopleSeated()
     {
         var ds3 = SyntheticDs3();
@@ -325,6 +380,11 @@ public static partial class MapPortChecks
         Expect(result.Notes.Any(n => n.Contains("2 moved from DS3's holding spot")), $"the report counts the seated people: {string.Join(" | ", result.Notes)}");
         Expect(result.Notes.Any(n => n.Contains("1 later quest versions")), $"the report counts the later versions: {string.Join(" | ", result.Notes)}");
         Expect(layout.Msb.Parts.Enemies.All(e => e.EntityID != 45000751), "the second version of a seated person is left out");
+        var layout2 = MsbPort.Convert(ds3, SyntheticHost(), Ds3Id, ErId);
+        var result2 = EnemyPort.Place(ds3, layout2.Msb, Ds3Id, ErId, new EnemyPort.Chooser(SyntheticCatalog(), null),
+            e => new(e.ModelName, e.NPCParamID, e.Name, false, true), null, null, null, people, seats, looks, scriptToggled: new HashSet<int> { 4000751 });
+        Expect(layout2.Msb.Parts.Enemies.Count(e => e.EntityID is 45000750 or 45000751) == 2, "a second version DS3's scripts switch stands on the shared seat too");
+        Expect(result2.Notes.Any(n => n.Contains("1 later quest versions and 1 versions sharing a seat placed")), $"counted: {string.Join(" | ", result2.Notes)}");
         Expect(MSBE.Read(layout.Msb.Write()).Parts.Enemies.Count == layout.Msb.Parts.Enemies.Count, "reads back");
     }
 
