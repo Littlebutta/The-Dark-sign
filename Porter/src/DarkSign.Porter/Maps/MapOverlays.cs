@@ -73,6 +73,8 @@ public static class MapOverlays
         public int TwoLayerMeshes, SecondLayerTriangles, TwoLayerTriangles;
         /// <summary>Two-layer meshes whose blend mask was not found: split by vertex alpha alone.</summary>
         public int NoMaskMeshes;
+        /// <summary>Triangles added to masked meshes so the cut can follow the mask (<see cref="Refine"/>).</summary>
+        public int RefinedTriangles;
         /// <summary>One-layer meshes with vertex alpha under 1 drawn solid.</summary>
         public int SolidOverlayMeshes;
 
@@ -83,12 +85,14 @@ public static class MapOverlays
             Interlocked.Add(ref SecondLayerTriangles, other.SecondLayerTriangles);
             Interlocked.Add(ref TwoLayerTriangles, other.TwoLayerTriangles);
             Interlocked.Add(ref NoMaskMeshes, other.NoMaskMeshes);
+            Interlocked.Add(ref RefinedTriangles, other.RefinedTriangles);
         }
 
         public string Summary =>
             $"vertex alpha: {SolidOverlayMeshes} one-layer meshes with vertex alpha under 1 drawn solid (DS3 draws them); "
             + $"{TwoLayerMeshes} two-layer meshes split by layer ({SecondLayerTriangles:N0} of {TwoLayerTriangles:N0} triangles show the second layer; "
-            + $"{TwoLayerMeshes - NoMaskMeshes} by DS3's blend mask, {NoMaskMeshes} by vertex alpha alone, their mask not found)";
+            + $"{TwoLayerMeshes - NoMaskMeshes} by DS3's blend mask, {NoMaskMeshes} by vertex alpha alone, their mask not found; "
+            + $"{RefinedTriangles:N0} triangles added so the cuts follow the masks)";
     }
 
     /// <summary>
@@ -124,6 +128,10 @@ public static class MapOverlays
                         ? masks?.Invoke(maskTexture.Path) : null;
                     if (mask is null)
                         stats.NoMaskMeshes++;
+                    // The mask can only be followed where the mesh has vertices: a slab top of two triangles would
+                    // be cut into one long wedge, so sides the mask could change along are halved first.
+                    if (mask is not null && mesh.Vertices.Any(v => Alpha(v) < FirstLayerFrom))
+                        stats.RefinedTriangles += Refine(mesh, MaskSide);
                     int level = mask?.LevelFor(MaskStep(mesh)) ?? 0;
                     var split = MapLayerContours.Split(mesh, 2, (v, _) => FirstLayerWeight(v, mask, level), _ => true, FirstLayerFrom, true, out _);
                     int toSecond = MapLayerContours.Triangles(mesh, split[0]);
@@ -200,6 +208,90 @@ public static class MapOverlays
             return 0;
         lengths.Sort();
         return lengths[lengths.Count / 2] / 2;
+    }
+
+    /// <summary>A masked two-layer triangle's sides are halved until none is longer than this (metres).</summary>
+    public const float MaskSide = 0.5f;
+
+    /// <summary>
+    /// Halves every triangle side longer than <paramref name="side"/>, in every face set, until none is left (at
+    /// most four times, and not past four times the triangles of a large mesh). Whether a side is halved depends on its length
+    /// alone, so the triangles on both sides of it agree and no gap opens. Returns the full-detail triangles added.
+    /// </summary>
+    public static int Refine(FLVER2.Mesh mesh, float side)
+    {
+        bool restarts = mesh.Vertices.Count < 0xFFFF;
+        var lists = mesh.FaceSets.Select(f => f.Triangulate(restarts).ToList()).ToList();
+        int valid = mesh.Vertices.Count;
+        for (int s = 0; s < lists.Count; s++)
+        {
+            var clean = new List<int>(lists[s].Count);
+            for (int i = 0; i + 2 < lists[s].Count; i += 3)
+                if (lists[s][i] >= 0 && lists[s][i + 1] >= 0 && lists[s][i + 2] >= 0 && lists[s][i] < valid && lists[s][i + 1] < valid && lists[s][i + 2] < valid)
+                    clean.AddRange([lists[s][i], lists[s][i + 1], lists[s][i + 2]]);
+            lists[s] = clean;
+        }
+        int Full() => mesh.FaceSets.Select((f, s) => f.Flags == FLVER2.FaceSet.FSFlags.None ? lists[s].Count / 3 : 0).Sum();
+        int before = Full(), limit = Math.Max(before * 4, 4096);
+        var mids = new Dictionary<(int, int), int>();
+        float sq = side * side;
+        int Mid(int a, int b)
+        {
+            if (Vector3.DistanceSquared(mesh.Vertices[a].Position, mesh.Vertices[b].Position) <= sq)
+                return -1;
+            var key = a < b ? (a, b) : (b, a);
+            if (!mids.TryGetValue(key, out int at))
+            {
+                mids[key] = at = mesh.Vertices.Count;
+                mesh.Vertices.Add(MapLayerContours.Lerp(mesh.Vertices[key.Item1], mesh.Vertices[key.Item2], 0.5f));
+            }
+            return at;
+        }
+        bool changed = false;
+        for (int pass = 0; pass < 4 && Full() < limit; pass++)
+        {
+            bool any = false;
+            for (int s = 0; s < lists.Count; s++)
+            {
+                var tris = lists[s];
+                var next = new List<int>(tris.Count * 2);
+                for (int i = 0; i + 2 < tris.Count; i += 3)
+                {
+                    int a = tris[i], b = tris[i + 1], c = tris[i + 2];
+                    int ab = Mid(a, b), bc = Mid(b, c), ca = Mid(c, a);
+                    int n = (ab >= 0 ? 1 : 0) + (bc >= 0 ? 1 : 0) + (ca >= 0 ? 1 : 0);
+                    if (n == 0)
+                    {
+                        next.AddRange([a, b, c]);
+                        continue;
+                    }
+                    any = true;
+                    // Turn the triangle so the halved sides come first.
+                    if (n == 1 && bc >= 0 || n == 2 && ab < 0)
+                        (a, b, c, ab, bc, ca) = (b, c, a, bc, ca, ab);
+                    else if (n == 1 && ca >= 0 || n == 2 && bc < 0)
+                        (a, b, c, ab, bc, ca) = (c, a, b, ca, ab, bc);
+                    if (n == 3)
+                        next.AddRange([a, ab, ca, ab, b, bc, ca, bc, c, ab, bc, ca]);
+                    else if (n == 2)
+                        next.AddRange([ab, b, bc, a, ab, bc, a, bc, c]);
+                    else
+                        next.AddRange([a, ab, c, ab, b, c]);
+                }
+                lists[s] = next;
+            }
+            if (!any)
+                break;
+            changed = true;
+        }
+        if (!changed)
+            return 0;
+        for (int s = 0; s < lists.Count; s++)
+        {
+            mesh.FaceSets[s].Indices = lists[s];
+            mesh.FaceSets[s].TriangleStrip = false;
+        }
+        return Full() - before;
     }
 
     public static float Alpha(FLVER.Vertex v) => v.Colors.Count > 0 ? v.Colors[0].A : 1f;

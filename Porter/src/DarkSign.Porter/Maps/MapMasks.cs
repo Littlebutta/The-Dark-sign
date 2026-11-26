@@ -44,6 +44,19 @@ public sealed class MapMasks
         return _masks.GetOrAdd(name, n => new Lazy<Mask?>(() => Load(n))).Value;
     }
 
+    /// <summary>
+    /// As <see cref="Find(string)"/>, for a piece of one DS3 map: a model may name a texture without its area
+    /// ("o331303_wall_mask_01" for m33's "m33_00_o331303_wall_mask_01"), which is then looked up in the map's own.
+    /// </summary>
+    public Mask? Find(string texturePath, MapId map)
+    {
+        if (Find(texturePath) is { } found)
+            return found;
+        var name = Path.GetFileNameWithoutExtension(ItemText.Leaf(texturePath));
+        var id = map.ToString();
+        return name.Length == 0 || id.Length < 6 ? null : Find(id[..6] + "_" + name);
+    }
+
     private Mask? Load(string name)
     {
         // DS3 map textures are named after the area they come from ("m33_00_...").

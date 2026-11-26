@@ -162,6 +162,25 @@ public static partial class MapPortChecks
             var second = floor.Meshes.Single(m => floor.Materials[m.MaterialIndex].Name.EndsWith(MapOverlays.SecondLayerSuffix));
             Expect(MathF.Abs(Area(first) - 50) < 1 && MathF.Abs(Area(second) - 50) < 1, $"each layer takes the half its mask shows ({Area(first)}, {Area(second)} of 100)");
             Expect(first.Vertices.All(v => v.Position.X <= 5.01f) && second.Vertices.All(v => v.Position.X >= 4.99f), "the first layer lies where the mask is dark");
+            // The quad's 10 m sides were halved until the cut could follow the mask, with no gap between neighbours.
+            Expect(floorStats.RefinedTriangles > 100 && first.FaceSets[0].Indices.Chunk(3).All(t =>
+                    Vector3.Distance(first.Vertices[t[0]].Position, first.Vertices[t[1]].Position) <= 1f),
+                $"long sides are halved before the cut ({floorStats.RefinedTriangles} triangles added)");
+            {
+                var refined = Floor(0).Meshes[0];
+                MapOverlays.Refine(refined, 3f);
+                var sides = new Dictionary<(Vector3, Vector3), int>();
+                var ix = refined.FaceSets[0].Indices;
+                for (int i = 0; i + 2 < ix.Count; i += 3)
+                    for (int e = 0; e < 3; e++)
+                    {
+                        var key = (refined.Vertices[ix[i + e]].Position, refined.Vertices[ix[i + (e + 1) % 3]].Position);
+                        sides[key] = sides.GetValueOrDefault(key) + 1;
+                    }
+                bool Rim((Vector3 A, Vector3 B) k) => k.A.X == k.B.X && k.A.X is 0 or 10 || k.A.Z == k.B.Z && k.A.Z is 0 or 10;
+                Expect(ix.Count / 3 > 2 && sides.All(k => k.Value == 1 && (Rim(k.Key) || sides.ContainsKey((k.Key.Item2, k.Key.Item1)))),
+                    $"a refined mesh has a triangle on each side of every inner side ({ix.Count / 3} triangles)");
+            }
             // Vertex alpha 1 holds the mask back: the first layer everywhere.
             var solid = Floor(1);
             MapOverlays.Apply(solid, new MapOverlays.Stats(), _ => mask);
