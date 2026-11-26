@@ -11,7 +11,7 @@ started, nothing under `TheDarkSign\Mods` or the saves was changed.
 | 1 | `BUILD.txt` | versions, logs, time stamps, the rebuild | file listings, launcher log |
 | 2 | `portlog-lines.txt` | matching lines (+3 after) of `porter-port-maps-20261125-172703.log` | text filter |
 | 2 | `hitshapes-lines.txt`, `enemy-port.tsv` | "hit shapes" / "cloth bones": these are not in the console log, they are in the notes column of `Work\reports\enemy-port.tsv` (one row per enemy) | text filter; whole file copied too |
-| 2 | `logs\` | the two complete porter logs of that build | copy |
+| 2 | (full logs) | not in the repo: `logs/` is git-ignored here; they stay on the PC as `TheDarkSign\Work\logs\porter-port-maps-20261125-172703.log` and `porter-port-weapons-20261125-172703.log` | - |
 | 3 | `ported-m45_00_00_00.txt`, `ported-common.txt`, `ported-common_func.txt` | the mod's event scripts as built by 1.0.667 | `tool\shprobe emevd <file> er-common.emedf.json` |
 | 4 | `ds3-2003-72.txt` | DS3 2003[72] with 6 lines either side and who starts the event | `shprobe scan` over `Work\extract\DS3\event` (31 files) |
 | 4 | `ds3-player-anims.txt` | DS3 2003[18] / 2003[01] on entity 10000 | same |
