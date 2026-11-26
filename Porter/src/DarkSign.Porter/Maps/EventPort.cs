@@ -968,6 +968,8 @@ public sealed class EventPort
             return ClientCheck(ins, parameterized);
         if (ins.Bank == 3 && SoloConditions.Contains(ins.ID))
             return SoloCondition(ins, parameterized);
+        if (ins.Bank == 4 && ins.ID == 5 && PlayerPose(ins, paramBytes) is { } held)
+            return (held, null);
         // "WAIT For Network Approval": nothing to wait for outside an online session.
         if (ins.Bank == 1000 && ins.ID == 9)
             return (NoOp(), null);
@@ -1265,6 +1267,44 @@ public sealed class EventPort
             _ => false,
         };
         return (Constant(group, holds), null);
+    }
+
+    /// <summary>
+    /// The SpEffects only DS3's people event animations cast (<see cref="TalkPort.PoseEffects"/>: 150 and its like, on
+    /// for as long as a kneel, a seat or a walk into place plays). Null: none known.
+    /// <para>
+    /// DS3's events ask whether the player still has one to tell that a scripted pose wasn't broken off: the level-up
+    /// kneel (common_func 20006005, started by the Fire Keeper's talk flag 74000135) cancels the request the moment
+    /// "player lacks 150" holds. Elden Ring's player has none of DS3's event animations, so never has the effect, and
+    /// the ported event turned the request flag off again the frame after the talk script turned it on (1.0.667,
+    /// "leveling up from the firekeeper did not work, a window did not appear"). A ported world's player counts as
+    /// holding the pose: "has" always holds and "lacks" never does (<see cref="Constant"/>).
+    /// </para>
+    /// </summary>
+    public IReadOnlySet<long>? PlayerPoses { get; init; }
+
+    /// <summary>The player's entity ID in both games' scripts.</summary>
+    public const long Player = 10000;
+
+    /// <summary>How many "IF Character Has SpEffect" lines about the player and a DS3 pose got a fixed answer.</summary>
+    public int PlayerPoseChecks { get; private set; }
+
+    /// <summary>
+    /// "IF Character Has SpEffect" (4[05]: group, entity, SpEffect, should have) asked of the player about one of
+    /// <see cref="PlayerPoses"/>, as a condition with the fixed answer; null for any other line (an entity, effect or
+    /// answer passed into the event isn't known here and stays as written).
+    /// </summary>
+    private EMEVD.Instruction? PlayerPose(EMEVD.Instruction ins, IReadOnlySet<long> paramBytes)
+    {
+        if (PlayerPoses is null || _ds3.Get(4, 5) is not { } from || from.Args.Count < 4
+            || from.Args.Take(4).Any(a => paramBytes.Contains(a.Offset)))
+            return null;
+        if (Emedf.Read(ins.ArgData, from.Args[1]) != Player || !PlayerPoses.Contains(Emedf.Read(ins.ArgData, from.Args[2])))
+            return null;
+        var line = Constant((sbyte)Emedf.Read(ins.ArgData, from.Args[0]), Emedf.Read(ins.ArgData, from.Args[3]) != 0);
+        if (line is not null)
+            PlayerPoseChecks++;
+        return line;
     }
 
     /// <summary>DS3/Elden Ring comparison types: 0 ==, 1 !=, 2 &gt;, 3 &lt;, 4 &gt;=, 5 &lt;=.</summary>

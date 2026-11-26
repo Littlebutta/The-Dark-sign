@@ -462,10 +462,20 @@ public sealed class TalkPort
             }
         }
 
+        bool EngineRead(Node n) => Core(n) is Call { Func: Lit { Value: 15 }, Args: [var a] } && Core(a) is Lit l && engineDone!(l.Value);
+
         Node Engine(Node n)
         {
             switch (n)
             {
+                // A handshake flag compared with a number passes whichever way it is asked: the Fire Keeper's level-up
+                // first waits for 74000137 and 74000138 to be off (t400120 group 0x7FFFFFF7 state 11, before it turns the
+                // request 74000135 on) and then for both to be on. Read as a plain 1, the first wait never ended and
+                // she just sat there (1.0.640-1.0.667, "a window did not appear").
+                case Op { Code: 0x95 or 0x96, Kids: [var x, var y] } when engineDone is not null
+                    && (EngineRead(x) && Core(y) is Lit || EngineRead(y) && Core(x) is Lit):
+                    stats.EngineFlags++;
+                    return new Lit(1);
                 case Call { Func: Lit { Value: 15 }, Args: [var a] } when engineDone is not null && Core(a) is Lit l && engineDone(l.Value):
                     stats.EngineFlags++;
                     return new Lit(1);
@@ -589,9 +599,11 @@ public sealed class TalkPort
     /// no talk script of the map turns them on or off, the map's events never turn them on but do reset them, and the
     /// state group that waits for one turns on a flag within 3 of it (the request it answers). DS3's Fire Keeper is the
     /// case found (1.0.479, "can't level up at the firekeeper"): her level-up entry sets 74000135/136 and waits for
-    /// 74000137 and 74000138, which her character's own behaviour sets when her bow is done (no script does; m40's
-    /// event 14005600 only resets 135-138), so the menu waited forever on a body whose behaviour is Elden Ring's.
-    /// Read as on, the menu opens once she is asked. Firelink has two more of the same handshake (74000391/392 and
+    /// 74000137 and 74000138. DS3's common events 20006005 and 20006006 turn those on (the flags are passed in, so
+    /// no line names them) once the player's kneel and her gesture play, and off again when either pose breaks.
+    /// Those poses are DS3 event animations, which the player and the bodies here don't have, so the answers never
+    /// came or didn't last. A check of such a flag against a number passes whichever way it asks (on or off), so the
+    /// menu opens once she is asked. Firelink has two more of the same handshake (74000391/392 and
     /// 74000432/433, read off m40's talk binder 2026-11-20).
     /// </summary>
     public static HashSet<long> EngineFlags(IEnumerable<ESD> scripts, IEnumerable<EMEVD> events)
