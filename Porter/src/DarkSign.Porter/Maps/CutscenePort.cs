@@ -367,6 +367,8 @@ public static partial class CutscenePort
         public int Files, Animations, Copied, Retargeted, Renamed, Failed, Uncompressed, LeftOut;
         /// <summary>Character animations laid out on their Elden Ring model's skeleton, and DS3 tracks of bones that model lacks.</summary>
         public int OnModel, TracksWithoutBone;
+        /// <summary>Animations of assets with bones (a DS3 object or map piece) laid out on the asset's own skeleton.</summary>
+        public int OnAsset;
         /// <summary>Elden Ring models that aren't the DS3 character's own (too few bones in common): placed, not animated.</summary>
         public SortedSet<string> StandIns { get; } = new(StringComparer.OrdinalIgnoreCase);
         public List<string> Notes { get; } = [];
@@ -374,7 +376,7 @@ public static partial class CutscenePort
         public void Add(HkxStats o)
         {
             Files += o.Files; Animations += o.Animations; Copied += o.Copied; Retargeted += o.Retargeted; Renamed += o.Renamed; Failed += o.Failed; Uncompressed += o.Uncompressed; LeftOut += o.LeftOut;
-            OnModel += o.OnModel; TracksWithoutBone += o.TracksWithoutBone;
+            OnModel += o.OnModel; TracksWithoutBone += o.TracksWithoutBone; OnAsset += o.OnAsset;
             StandIns.UnionWith(o.StandIns);
             Notes.AddRange(o.Notes.Take(Math.Max(0, 20 - Notes.Count)));
         }
@@ -429,6 +431,11 @@ public static partial class CutscenePort
         }
         return result;
     }
+
+    /// <summary>Each skeleton of a DS3 cut file: the part it is named after and how many bones it has.</summary>
+    public static List<(string Part, int Bones)> SkeletonSizes(byte[] ds3Hkx) =>
+        HKX.Read(ds3Hkx, HKX.HKXVariation.HKXDS3, false).DataSection.Objects.OfType<HKX.HKASkeleton>()
+            .Select(s => (s.Name.GetString(), (int)s.Bones.Size)).ToList();
 
     /// <summary>A DS3 spline animation in Havok 2018's form, its data copied as it is (float tracks included).</summary>
     public static hkaSplineCompressedAnimation CopySpline(HKX.HKASplineCompressedAnimation a) => new()
@@ -529,8 +536,14 @@ public static partial class CutscenePort
                 boneOf = bound.Select(b => (short)b).ToList();
                 stats.Retargeted++;
             }
-            else if (ChrPartRegex().IsMatch(name) && template.ModelSkeleton?.Invoke(name[..5]) is { Names.Count: > 0 } model)
+            else if ((ChrPartRegex().IsMatch(name) || bones > 1) && CutsceneCast.ModelOf(name) is { } modelName
+                     && template.ModelSkeleton?.Invoke(modelName) is { Names.Count: > 0 } model)
             {
+                // An asset with bones of its own (the demons that carry the player off the High Wall, a boss room's
+                // falling debris) goes the same way: Elden Ring's own cutscenes give an animated asset a cut skeleton
+                // with one bone per bone of the asset, named after the part (s13_00_0010's AEG090_101_0000: 119 bones,
+                // 119 tracks). DS3's cut skeleton holds only the bones the cut moves (o007010: 141 to 144 of them, by
+                // copy), in its own order.
                 // A character: its DS3 tracks on the Elden Ring model's own skeleton, bone by bone by name. The ported
                 // model's skeleton is its template's with DS3's bones added (ChrPort.MergeSkeleton), so it has every
                 // DS3 bone, at DS3's rest pose, but in another order and among bones DS3 doesn't have. Until 1.0.47x
@@ -563,7 +576,7 @@ public static partial class CutscenePort
                 {
                     for (int b = 1; b < trackOf.Length; b++)
                         trackOf[b] = -1;
-                    stats.StandIns.Add(name[..5]);
+                    stats.StandIns.Add(modelName);
                 }
                 var bound = Enumerable.Range(0, model.Names.Count).Where(b => trackOf[b] >= 0).ToList();
                 var spline = SplineTranscode.Build(t.Animation, bound.Select(b => trackOf[b]).ToArray(), new Vector3[bound.Count],
@@ -580,7 +593,10 @@ public static partial class CutscenePort
                 spline.m_annotationTracks = bound.Select(b => new hkaAnnotationTrack { m_trackName = skeleton.m_bones[b].m_name }).ToList();
                 animation = spline;
                 boneOf = bound.Select(b => (short)b).ToList();
-                stats.OnModel++;
+                if (ChrPartRegex().IsMatch(name))
+                    stats.OnModel++;
+                else
+                    stats.OnAsset++;
             }
             else
             {
@@ -916,11 +932,11 @@ public static partial class CutscenePort
                 MapEffects(mqb, effects, stats);
             sound?.Invoke(mqb);
             // Before the cast drops DS3's other draw kinds: 199 and 215 become Elden Ring's 197.
-            stats.Draw = CutsceneDrawParams.ConvertEvents(mqb, CutsceneDrawParams.ErFields(side.Catalog));
+            stats.Draw = CutsceneDrawParams.ConvertEvents(mqb, CutsceneDrawParams.ErFields(side.Catalog), CutsceneDrawParams.ErPartFields(side.Catalog));
             if (cast is not null)
             {
                 cutFiles = CutsceneCast.CutFiles(mqb);
-                CutsceneCast.Remove(mqb, CutsceneCast.Unplayable(mqb, cast, stats.Cast));
+                CutsceneCast.Remove(mqb, CutsceneCast.Unplayable(mqb, cast, stats.Cast, stats.Draw.ErResources));
             }
             stats.Mqb.Add(ConvertMqb(mqb, ds3Name, erName, names, ds3Map, erMap, side.Catalog, side.Shape));
             if (cast is not null)
@@ -1029,12 +1045,20 @@ public static partial class CutscenePort
             AnimPort.ErSkeleton? skeleton = null;
             try
             {
-                var archive = $"/chr/{model.ToLowerInvariant()}.anibnd.dcx";
+                bool asset = model.StartsWith("AEG", StringComparison.OrdinalIgnoreCase);
+                var archive = asset ? ObjectPort.GeomBndPath(model) : $"/chr/{model.ToLowerInvariant()}.anibnd.dcx";
                 var modFile = ctx.ModPath(MapPorter.ModParts(archive));
                 var bytes = File.Exists(modFile) ? File.ReadAllBytes(modFile) : er.Contains(archive) ? er.Read(archive) : null;
-                if (bytes is not null)
+                var bnd = bytes is null ? null : BND4.Read(bytes);
+                // An asset keeps its animation binder inside its asset binder (file 400); one without has no bones to move.
+                if (asset && bnd is not null)
                 {
-                    var bnd = BND4.Read(bytes);
+                    if (bnd.Files.FirstOrDefault(f => f.ID == 400) is not { } inner)
+                        return modelSkeletons[model] = null;
+                    bnd = BND4.Read(DCX.Is(inner.Bytes) ? DCX.Decompress(inner.Bytes) : inner.Bytes);
+                }
+                if (bnd is not null)
+                {
                     var file = bnd.Files.FirstOrDefault(f => ItemText.Leaf(f.Name).Equals("skeleton.hkx", StringComparison.OrdinalIgnoreCase));
                     var compendium = bnd.Files.FirstOrDefault(f => f.Name.EndsWith(".compendium", StringComparison.OrdinalIgnoreCase))?.Bytes;
                     if (file is not null)
@@ -1148,8 +1172,8 @@ public static partial class CutscenePort
                     {
                         if (!ds3Msbs.TryGetValue(map.Slot.Ds3, out var ds3Msb))
                             ds3Msbs[map.Slot.Ds3] = ds3Msb = MSB3.Read(ds3.Read(MapPorter.MsbPath(map.Slot.Ds3)));
-                        if (CutsceneDrawParams.Write(ctx, ds3, er, name, erName, map.Slot.Host, ds3Msb, stats.Draw.LightSets) is { } drawLine)
-                            lines.Add($"{drawLine}; {stats.Draw.Events} DS3 draw-setting events as Elden Ring's kind {CutsceneDrawParams.ErKind}");
+                        if (CutsceneDrawParams.Write(ctx, ds3, er, name, erName, map.Slot.Host, ds3Msb, stats.Draw.LightSets, stats.Draw.SceneFog, map.Slot.Ds3) is { } drawLine)
+                            lines.Add($"{drawLine}; {stats.Draw.Events} DS3 draw-setting events as Elden Ring's kind {CutsceneDrawParams.ErKind}, {stats.Draw.PartEvents} one-part light sets as its kind {CutsceneDrawParams.ErPartLightKind}");
                     }
                     catch (Exception ex)
                     {
@@ -1173,7 +1197,7 @@ public static partial class CutscenePort
                               + (stats.Hkx.Notes.Count > 0 ? $"; notes: {string.Join("; ", stats.Hkx.Notes.Distinct().Take(3))}" : ""));
                     if (cast is not null)
                         lines.Add($"{name} -> {erName}: {stats.Cast}; {stats.Hkx.LeftOut} Havok tracks of left-out parts dropped");
-                    lines.Add($"{name} -> {erName}: {stats.Hkx.OnModel} character animations on their Elden Ring model's skeleton"
+                    lines.Add($"{name} -> {erName}: {stats.Hkx.OnModel} character animations on their Elden Ring model's skeleton, {stats.Hkx.OnAsset} animations of assets with bones on the asset's"
                               + (stats.Hkx.TracksWithoutBone > 0 ? $" ({stats.Hkx.TracksWithoutBone} DS3 bone tracks the model has no bone for)" : "")
                               + (stats.Hkx.StandIns.Count > 0 ? $"; WARN not DS3's own model, placed but not animated: {string.Join(" ", stats.Hkx.StandIns)}" : "")
                               + $"; effects: {stats.EffectsMapped} events play a converted DS3 effect, {stats.EffectsLeftOut} left out"

@@ -84,6 +84,11 @@ public sealed class ObjectPort
         public bool Tried, Converted;
         /// <summary>Only DS3's cutscenes use it (an object no map places, or a map piece a cutscene animates).</summary>
         public bool CutsceneOnly { get; init; }
+        /// <summary>DS3's cutscenes move it by its bones (<see cref="CutsceneCast.BonedModels"/>): it keeps its nodes and
+        /// gets a skeleton even when it doesn't move in play.</summary>
+        public bool CutsceneBones;
+        /// <summary>It has nodes and a skeleton for the cutscenes only: no animation, collision and ObjActs of a still object.</summary>
+        public bool CutscenePosed;
         public string? Failure;
         public bool Collision;
         public string CollisionNote = "";
@@ -190,6 +195,11 @@ public sealed class ObjectPort
             int index = names.Count + poses.Count + i;
             _assets[cutsceneOnly[i]] = new Asset { Ds3Model = cutsceneOnly[i], Index = index, Name = AssetName(FirstGroup, index), CutsceneOnly = true };
         }
+
+        // Models DS3's cutscenes move by their bones keep their nodes and get a skeleton, moving in play or not.
+        foreach (var model in CutsceneCast.BonedModels(ds3, MapSlots.All.Where(s => !s.Probe).Select(s => s.Ds3), Notes))
+            if (_assets.TryGetValue(model, out var boned))
+                boned.CutsceneBones = true;
 
         // The binder settings and the FLVER entry's flags come from a vanilla asset when the game has it.
         _binderTemplate = new BND4 { Version = "07D7R6" };
@@ -604,7 +614,8 @@ public sealed class ObjectPort
         // lever-lowered ladder (o459150, isMoveObj and isLadder) has to come down before it can be climbed, and
         // standing still it never did (2026-11-20).
         bool moves = asset.Animated && !asset.Breakable && (!asset.Ladder || asset.MoveObj);
-        if (moves && !movingPass)
+        // Both write Havok files, which the moving pass does one at a time.
+        if ((moves || asset.CutsceneBones) && !movingPass)
             return false;
         if (moves)
         {
@@ -623,6 +634,22 @@ public sealed class ObjectPort
         }
         else if (asset.Animated)
             asset.MovingNote = asset.Breakable ? "stands still: it breaks" : "stands still: a ladder";
+
+        // A model DS3's cutscenes move by its bones that doesn't move in play (the demons that carry the player off
+        // the High Wall break; Friede's chapel props have a binder with no animation; others have no binder at all):
+        // nodes and a skeleton, so the cutscene's animation has bones to move. Up to 1.0.66x it was built as a still
+        // model, one rigid mesh on its root, and stood in its rest pose through the cutscene.
+        if (asset.CutsceneBones)
+            try
+            {
+                ConvertMoving(asset, bnd, cutscenePose: true);
+                return true;
+            }
+            catch (Exception ex) when (ex is not OutOfMemoryException)
+            {
+                asset.CutscenePosed = false;
+                asset.MovingNote = (asset.MovingNote.Length > 0 ? asset.MovingNote + "; " : "") + $"no bones for DS3's cutscenes: {ex.Message}";
+            }
 
         var result = ConvertBinder(bnd, asset.Ds3Model, asset.Name, _models, _binderTemplate, _fileFlags);
         asset.Meshes = result.Flver.Meshes.Count;
@@ -718,7 +745,9 @@ public sealed class ObjectPort
     /// root's name ("o300310") becomes the asset name in the model, the skeleton and the collision alike, so they keep
     /// matching each other. Throws when the animations can't be ported (the caller then makes it a still object).
     /// </summary>
-    private void ConvertMoving(Asset asset, BND4 bnd)
+    /// <param name="cutscenePose">The model only gets its nodes and a skeleton, for DS3's cutscenes to move
+    /// (<see cref="Asset.CutscenePosed"/>): no animation of its own, and the collision of a still object.</param>
+    private void ConvertMoving(Asset asset, BND4 bnd, bool cutscenePose = false)
     {
         if (!_animTemplateTried)
             lock (_assets)
@@ -746,7 +775,9 @@ public sealed class ObjectPort
                     _effectsTried = true;
                 }
         var bank = ObjectSounds.BankOf(FirstSoundGroup, asset.Index);
-        var anims = ObjectAnims.Build(bnd, asset.Name, template, rename, _effects, played => played.Take(ObjectSounds.MaxPerAsset).Select((id, n) => (id, n)).ToDictionary(x => x.id, x => ObjectSounds.SoundId(bank, x.n)));
+        var anims = cutscenePose
+            ? ObjectAnims.Build(bnd, asset.Name, template, rename, cutsceneBones: Ds3Model(bnd, asset.Ds3Model))
+            : ObjectAnims.Build(bnd, asset.Name, template, rename, _effects, played => played.Take(ObjectSounds.MaxPerAsset).Select((id, n) => (id, n)).ToDictionary(x => x.id, x => ObjectSounds.SoundId(bank, x.n)));
         if (anims.Sounds.Count > 0)
         {
             asset.SoundBank = bank;
@@ -756,9 +787,10 @@ public sealed class ObjectPort
         var nodeNames = result.Flver.Nodes.Select(n => n.Name).ToHashSet(StringComparer.OrdinalIgnoreCase);
         var unmatched = anims.Bones.Skip(1).Where(b => !nodeNames.Contains(b)).ToList();
         result.Binder.Files.Add(new BinderFile(_fileFlags, 400, ObjectAnims.AnibndName(asset.Name), anims.Anibnd));
-        asset.Moving = true;
+        asset.Moving = !cutscenePose;
+        asset.CutscenePosed = cutscenePose;
         asset.Animations = anims.Animations;
-        asset.MovingNote = anims.Summary + (nodeNote is null ? "" : "; " + nodeNote)
+        asset.MovingNote = (cutscenePose && asset.MovingNote.Length > 0 ? asset.MovingNote + "; " : "") + anims.Summary + (nodeNote is null ? "" : "; " + nodeNote)
                            + (unmatched.Count > 0 ? $"; bones with no model node: {string.Join(" ", unmatched.Take(4))}" : "");
         asset.Meshes = result.Flver.Meshes.Count;
         asset.Dummies = result.Flver.Dummies.Count;
@@ -773,6 +805,16 @@ public sealed class ObjectPort
             asset.CollisionNote = "off (DS3's ObjectParam unreadable)";
         else if (asset.CutsceneOnly)
             asset.CollisionNote = "none: only DS3's cutscenes use it";
+        else if (cutscenePose)
+        {
+            // As a still object's (Convert): the bodies stay where DS3 put them.
+            if (asset.Animated || asset.ObjActTarget)
+                asset.CollisionNote = "none: the object doesn't move here (see moves); it would block the way";
+            else if (asset.Breakable || asset.Ladder)
+                asset.CollisionNote = asset.Ladder ? "none: a ladder" : "none yet: the object breaks; it would block the way";
+            else
+                ConvertCollision(asset, bnd, null);
+        }
         else
         {
             var movingBones = anims.Bones.Skip(1).ToHashSet(StringComparer.OrdinalIgnoreCase);
@@ -783,6 +825,12 @@ public sealed class ObjectPort
                 asset.CollisionNote += $", {bodies} moving";
         }
     }
+
+    /// <summary>The DS3 model of a binder, as <see cref="ConvertBinder(BND4, string, string, MapModelPort, BND4, Binder.FileFlags)"/> picks it.</summary>
+    public static FLVER2 Ds3Model(BND4 objbnd, string ds3Model) =>
+        FLVER2.Read((objbnd.Files.FirstOrDefault(f => ItemText.Leaf(f.Name).Equals(ds3Model + ".flver", StringComparison.OrdinalIgnoreCase))
+                     ?? objbnd.Files.FirstOrDefault(f => FLVER2.Is(f.Bytes))
+                     ?? throw new InvalidDataException("the objbnd holds no model")).Bytes);
 
     public sealed record Converted(BND4 Binder, FLVER2 Flver, Dictionary<string, TPF.Texture> Textures);
 
@@ -1233,6 +1281,8 @@ public sealed class ObjectPort
                       + $"{tried.Count(a => a.Converted && a.Breakable)} that break have none yet; "
                       + $"{tried.Count(a => a.Moving)} move: doors, levers, lifts ({tried.Count(a => a.Moving && a.MoveObj)} lifts, {tried.Count(a => a.Moving && a.MovingBodies > 0)} with moving collision), "
                       + $"{tried.Count(a => a.Converted && a.Animated && !a.Moving && a.Pose < 0)} animated ones stand still, "
+                      + $"{tried.Count(a => a.CutscenePosed)} of {tried.Count(a => a.CutsceneBones)} that DS3's cutscenes move by their bones have bones for them without moving in play "
+                      + $"({tried.Count(a => a.CutsceneBones && a.Moving)} more move in play), "
                       + $"{tried.Count(a => a.Converted && a.Pose >= 0)} posed copies of corpses, "
                       + $"{tried.Count(a => a.Fog is not null)} fog walls as Elden Ring's own fog assets: "
                       + $"{string.Join(", ", tried.Where(a => a.Fog is not null).Select(a => $"{a.Ds3Model} -> {a.PlacedModel} x{a.Fog!.Scale.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture)}"))}); "
