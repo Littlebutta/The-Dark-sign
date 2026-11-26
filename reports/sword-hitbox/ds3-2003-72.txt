@@ -1,0 +1,18 @@
+# 1 instruction(s) found in 31 files: common_func.emevd common.emevd m20_00_00_00.emevd m20_01_00_00.emevd m20_10_00_00.emevd m20_20_00_00.emevd m21_00_00_00.emevd m29_00_00_00.emevd m29_01_00_00.emevd m29_02_00_00.emevd m30_00_00_00.emevd m30_01_00_00.emevd m31_00_00_00.emevd m32_00_00_00.emevd m33_00_00_00.emevd m34_01_00_00.emevd m35_00_00_00.emevd m36_00_00_00.emevd m37_00_00_00.emevd m38_00_00_00.emevd m39_00_00_00.emevd m40_00_00_00.emevd m41_00_00_00.emevd m45_00_00_00.emevd m46_00_00_00.emevd m47_00_00_00.emevd m50_00_00_00.emevd m51_00_00_00.emevd m51_01_00_00.emevd m53_00_00_00.emevd m54_00_00_00.emevd
+# DS3 bank 2003 id 72 in every event script under D:/The Dark sign/TheDarkSign/Work/extract/DS3/event, names from ds3-common.emedf.json
+# each hit: file, event ID, instruction index, then the event's lines from 6 before to 6 after (the hit is marked >>).
+# an argument that the event takes from its caller shows the placeholder stored in the file (usually 0); the event's 'params [...]' list says which bytes are filled in (iN = instruction index, tN = byte offset in its arguments).
+
+== m40_00_00_00.emevd event 14005101 line 12
+event 14005101 rest Default params []
+      6: 0[00] IF Condition Group: Result Condition Group=-1, Desired Condition Group State=1, Target Condition Group=1
+      7: 3[24] IF Action Button in Area: Result Condition Group=-1, Action Button Parameter ID=9351, Starting Point Area Entity ID=4001950
+      8: 0[00] IF Condition Group: Result Condition Group=0, Desired Condition Group State=1, Target Condition Group=-1
+      9: 1000[08] END IF Condition Group State (Compiled): Execution End Type=1, Desired Condition Group State=1, Target Condition Group=1
+     10: 2004[41] Issue Short Warp Request: Entity ID=10000, Warp Type=0, Warp Destination Entity ID=4001950, Dummypoly ID=1
+     11: 2003[18] Force Animation Playback: Entity ID=4001950, Animation ID=60430, Should Loop=0, Should Wait For Completion=0, Ignore Wait For Transition=0, Unknown=0, Unknown=1065353216(1f)
+>>   12: 2003[72] Set Bonfire Warping State: Bonfire Entity ID=4001950, Animation ID=60430, Disabled/Enabled=1
+     13: 2003[02] Set Event Flag: Event Flag ID=74000010, Flag State=0
+     14: 2003[02] Set Event Flag: Event Flag ID=14000101, Flag State=1
+     15: 2003[24] Remove Item From Player: Item Type=3, Item ID=2137, Number=1
+   started by m40_00_00_00.emevd event 0 line 7: 2000[00] Initialize Event: Event Slot ID=0, Event ID=14005101, Parameters=0

@@ -1,0 +1,70 @@
+# ActionButtonParam rows, all fields (DarkSignPorter dump-param; byte-array padding fields print as System.Byte[])
+
+## Elden Ring (the MOD's regulation.bin, built 2026-11-25T18:15:47 by porter 1.0.667; copied before the 19:56 rebuild replaced it) row 74000002
+  id = 74000002
+  name = DS3 action button row 9351
+  regionType = 0
+  category = 4
+  padding1 = System.Byte[]
+  dummyPoly1 = 190
+  dummyPoly2 = -1
+  radius = 2
+  angle = 60
+  depth = 0
+  width = 0
+  height = 5
+  baseHeightOffset = -1
+  angleCheckType = 0
+  padding2 = System.Byte[]
+  allowAngle = 42
+  spotDummyPoly = -1
+  textBoxType = 0
+  padding3 = System.Byte[]
+  padding5 = 0
+  isInvalidForRide = 0
+  isGrayoutForRide = 1
+  isInvalidForCrouching = 0
+  isGrayoutForCrouching = 0
+  padding4 = 0
+  textId = 74000001
+  invalidFlag = 0
+  grayoutFlag = 0
+  overrideActionButtonIdForRide = -1
+  execInvalidTime = 3
+  padding6 = System.Byte[]
+
+## vanilla Elden Ring regulation: row 74000002 does not exist (401 rows; the mod's has 472)
+
+## DS3 row 9351
+  id = 9351
+  name = 
+  regionType = 0
+  pad1 = System.Byte[]
+  dummyPoly1 = 190
+  dummyPoly2 = -1
+  Radius = 2
+  Angle = 60
+  depth = 0
+  width = 0
+  height = 5
+  baseHeightOffset = -1
+  angleCheckType = 0
+  pad2 = System.Byte[]
+  AllowAngle = 42
+  textBoxType = 0
+  pad3 = System.Byte[]
+  textId = 10010141
+  InvalidFlag = -1
+  grayoutFlag = -1
+  priority = 4
+  execInvalidTime = 3
+  execButtonCircle = 1
+  pad4 = System.Byte[]
+
+## raw TSV
+mod:
+id	name	regionType	category	padding1	dummyPoly1	dummyPoly2	radius	angle	depth	width	height	baseHeightOffset	angleCheckType	padding2	allowAngle	spotDummyPoly	textBoxType	padding3	padding5	isInvalidForRide	isGrayoutForRide	isInvalidForCrouching	isGrayoutForCrouching	padding4	textId	invalidFlag	grayoutFlag	overrideActionButtonIdForRide	execInvalidTime	padding6
+74000002	DS3 action button row 9351	0	4	System.Byte[]	190	-1	2	60	0	0	5	-1	0	System.Byte[]	42	-1	0	System.Byte[]	0	0	1	0	0	0	74000001	0	0	-1	3	System.Byte[]
+ds3:
+id	name	regionType	pad1	dummyPoly1	dummyPoly2	Radius	Angle	depth	width	height	baseHeightOffset	angleCheckType	pad2	AllowAngle	textBoxType	pad3	textId	InvalidFlag	grayoutFlag	priority	execInvalidTime	execButtonCircle	pad4
+9351		0	System.Byte[]	190	-1	2	60	0	0	5	-1	0	System.Byte[]	42	0	System.Byte[]	10010141	-1	-1	4	3	1	System.Byte[]

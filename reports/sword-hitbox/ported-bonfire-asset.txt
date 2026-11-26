@@ -1,0 +1,269 @@
+# The ported asset the map uses for entity 45001950 (build 1.0.667; read 2026-11-25 19:53-19:55, before the 19:56 rebuild cleared Mods\ER\map)
+# part in Mods\ER\map\mapstudio\m45_00_00_00.msb.dcx (176,784 bytes, written 2026-11-25T18:15:57):
+Asset	name AEG920_612_9000	model AEG920_612	entity 45001950	pos 271.146 -56.326 605.749	rot 0 76.5 0	groups 
+
+# darksign_objects.tsv lines (DS3 object, Elden Ring asset, asset row, collision):
+o000100	AEG920_000	920000	1
+o400100	AEG920_612	920612	1
+
+# files under Mods\ER\asset\aeg\aeg920 for the two bonfire assets (all written 2026-11-25T17:40:29):
+aeg920_000.geombnd.dcx	92864 bytes
+aeg920_000_l.geomhkxbnd.dcx	6144 bytes
+aeg920_612.geombnd.dcx	153440 bytes
+aeg920_612_l.geomhkxbnd.dcx	8096 bytes
+
+# no separate anibnd file exists for either asset; the animations and TAE sit inside the geombnd (file 400). Binders were decompressed to a scratch copy first (the porter's diag cannot open Oodle-compressed files on its own).
+
+# collision binders (aeg920_000_l.geomhkxbnd.dcx, 6,144 bytes, was removed by the rebuild before it could be listed):
+== aeg920_612_l.geomhkxbnd
+[300] N:\GR\data\INTERROOT_win64\asset\aeg\AEG920\AEG920_612\hkx_L\AEG920_612_L.hkx 18056
+
+# DarkSignPorter object-diag model (AEG920_612 = port of o400100, the part's model; AEG920_000 = port of o000100):
+== aeg920_612.geombnd
+   file 200: aeg920_612.flver (218,528 bytes)
+   file 400: AEG920_612.anibnd (632,432 bytes)
+   flver aeg920_612.flver: version 0x2001A, 6 nodes, 2 meshes, 5 dummies
+     nodes: 0:sfx_dummy<-1 1:dummy<-1 2:o400100_Ash<-1 3:o400100_Sword<-1 4:オブジェクト001<-1 5:AEG920_612<-1
+     mesh 0: 2075 vertices, mtd N:\GR\data\Material\mtd\Map_m10_00\DKS_00_00_00_00_8A128684.mtd, node 0, skinned False, bone list [], NormalW 3x2075, weighted bones , box <0.14508986, 0.7508231, 0.11530481> .. <0, 0, 0>, layout Position0:Float3,Normal0:UByte4,Tangent0:UByte4,VertexColor1:UByte4Norm,UV0:Short2
+     mesh 1: 3060 vertices, mtd N:\GR\data\Material\mtd\Map_m10_00\matxml\DKS_00_00_00_00_AAA68FD7.matxml, node 0, skinned False, bone list [], NormalW 2x3060, weighted bones , box <0.8951498, 0.19794008, 0.89517516> .. <0, 0, 0>, layout Position0:Float3,Normal0:UByte4,Tangent0:UByte4,VertexColor1:UByte4Norm,UV0:Short2
+   skeleton: not a DS3 one (InvalidDataException)
+   anibnd file 1000000: skeleton.hkx (10,040 bytes)
+   anibnd file 3000000: AEG920_612.tae (15,504 bytes)
+   anibnd file 7000000: AEG920_612.compendium (9,492 bytes)
+   anibnd file 1000000000: a000_000000.hkx (10,524 bytes)
+   anibnd file 1000000001: a000_000001.hkx (10,524 bytes)
+   anibnd file 1000000010: a000_000010.hkx (10,400 bytes)
+   anibnd file 1000000011: a000_000011.hkx (10,384 bytes)
+   anibnd file 1000000012: a000_000012.hkx (10,384 bytes)
+   anibnd file 1000000013: a000_000013.hkx (10,400 bytes)
+   anibnd file 1000000020: a000_000020.hkx (10,400 bytes)
+   anibnd file 1000000021: a000_000021.hkx (10,384 bytes)
+   anibnd file 1000000022: a000_000022.hkx (10,384 bytes)
+   anibnd file 1000000023: a000_000023.hkx (10,400 bytes)
+   anibnd file 1000000030: a000_000030.hkx (10,400 bytes)
+   anibnd file 1000000031: a000_000031.hkx (10,384 bytes)
+   anibnd file 1000000032: a000_000032.hkx (10,384 bytes)
+   anibnd file 1000000033: a000_000033.hkx (10,400 bytes)
+   anibnd file 1000000040: a000_000040.hkx (10,400 bytes)
+   anibnd file 1000000041: a000_000041.hkx (10,384 bytes)
+   anibnd file 1000000042: a000_000042.hkx (10,384 bytes)
+   anibnd file 1000000043: a000_000043.hkx (10,400 bytes)
+   anibnd file 1000000050: a000_000050.hkx (10,400 bytes)
+   anibnd file 1000000051: a000_000051.hkx (10,384 bytes)
+   anibnd file 1000000052: a000_000052.hkx (10,384 bytes)
+   anibnd file 1000000053: a000_000053.hkx (10,400 bytes)
+   anibnd file 1000000060: a000_000060.hkx (10,400 bytes)
+   anibnd file 1000000061: a000_000061.hkx (10,384 bytes)
+   anibnd file 1000000062: a000_000062.hkx (10,384 bytes)
+   anibnd file 1000000063: a000_000063.hkx (10,400 bytes)
+   anibnd file 1000000070: a000_000070.hkx (10,400 bytes)
+   anibnd file 1000000071: a000_000071.hkx (10,384 bytes)
+   anibnd file 1000000072: a000_000072.hkx (10,384 bytes)
+   anibnd file 1000000073: a000_000073.hkx (10,400 bytes)
+   anibnd file 1000000080: a000_000080.hkx (10,400 bytes)
+   anibnd file 1000000081: a000_000081.hkx (10,384 bytes)
+   anibnd file 1000000082: a000_000082.hkx (10,384 bytes)
+   anibnd file 1000000083: a000_000083.hkx (10,400 bytes)
+   anibnd file 1000000090: a000_000090.hkx (10,400 bytes)
+   anibnd file 1000000091: a000_000091.hkx (10,384 bytes)
+   anibnd file 1000000092: a000_000092.hkx (10,384 bytes)
+   anibnd file 1000000093: a000_000093.hkx (10,400 bytes)
+   anibnd file 1000000100: a000_000100.hkx (10,400 bytes)
+   anibnd file 1000000101: a000_000101.hkx (10,384 bytes)
+   anibnd file 1000000102: a000_000102.hkx (10,384 bytes)
+   anibnd file 1000000103: a000_000103.hkx (10,400 bytes)
+   anibnd file 1000009900: a000_009900.hkx (10,400 bytes)
+   anibnd file 1000009901: a000_009901.hkx (10,384 bytes)
+   anibnd file 1000009902: a000_009902.hkx (10,384 bytes)
+   anibnd file 1000009903: a000_009903.hkx (10,400 bytes)
+   anibnd file 1000010000: a000_010000.hkx (10,384 bytes)
+   anibnd file 1000010010: a000_010010.hkx (10,384 bytes)
+   anibnd file 1000010020: a000_010020.hkx (10,384 bytes)
+   anibnd file 1000010030: a000_010030.hkx (10,384 bytes)
+   anibnd file 1000010040: a000_010040.hkx (10,384 bytes)
+   anibnd file 1000010050: a000_010050.hkx (10,384 bytes)
+   anibnd file 1000010060: a000_010060.hkx (10,384 bytes)
+   anibnd file 1000060430: a000_060430.hkx (12,580 bytes)
+   anibnd file 1000100000: a000_100000.hkx (10,508 bytes)
+   anibnd file 1000999999: a000_999999.hkx (10,384 bytes)
+   tae AEG920_612.tae: 56 animations, format SDT, big endian False
+     anim 1: event 96 at 0-3: 900001010 201 1 256 0 0
+     anim 10: event 96 at 0.833-1.167: 900001000 200 -1 257 0 0
+     anim 10: event 96 at 0.833-1.167: 900001011 201 1 256 0 0
+     anim 11: event 96 at 0-3: 900001011 201 1 256 0 0
+     anim 13: event 96 at 0.833-1.167: 900001000 200 -1 257 0 0
+     anim 13: event 96 at 0.833-1.167: 900001011 201 1 256 0 0
+     anim 20: event 96 at 0-0.633: 900001001 201 -1 256 0 0
+     anim 20: event 96 at 0-0.633: 900001011 201 1 256 0 0
+     anim 21: event 96 at 0-3: 900001011 201 1 256 0 0
+     anim 23: event 96 at 0.833-1.167: 900001000 200 -1 257 0 0
+     anim 23: event 96 at 0.833-1.167: 900001011 201 1 256 0 0
+     anim 30: event 96 at 0-0.633: 900001002 201 -1 256 0 0
+     anim 30: event 96 at 0-0.633: 900001012 201 1 256 0 0
+     anim 31: event 96 at 0-3: 900001012 201 1 256 0 0
+     anim 33: event 96 at 0.833-1.167: 900001000 200 -1 257 0 0
+     anim 33: event 96 at 0.833-1.167: 900001012 201 1 256 0 0
+     anim 40: event 96 at 0-0.633: 900001002 201 -1 256 0 0
+     anim 40: event 96 at 0-0.633: 900001012 201 1 256 0 0
+     anim 41: event 96 at 0-3: 900001012 201 1 256 0 0
+     anim 43: event 96 at 0.833-1.167: 900001000 200 -1 257 0 0
+     anim 43: event 96 at 0.833-1.167: 900001012 201 1 256 0 0
+     anim 50: event 96 at 0-0.633: 900001002 201 -1 256 0 0
+     anim 50: event 96 at 0-0.633: 900001012 201 1 256 0 0
+     anim 51: event 96 at 0-3: 900001012 201 1 256 0 0
+     anim 53: event 96 at 0.833-1.167: 900001000 200 -1 257 0 0
+     anim 53: event 96 at 0.833-1.167: 900001012 201 1 256 0 0
+     anim 60: event 96 at 0-0.633: 900001003 201 -1 256 0 0
+     anim 60: event 96 at 0-0.633: 900001013 201 1 256 0 0
+     anim 61: event 96 at 0-3: 900001013 201 1 256 0 0
+     anim 63: event 96 at 0.833-1.167: 900001000 200 -1 257 0 0
+     anim 63: event 96 at 0.833-1.167: 900001013 201 1 256 0 0
+     anim 70: event 96 at 0-0.633: 900001003 201 -1 256 0 0
+     anim 70: event 96 at 0-0.633: 900001013 201 1 256 0 0
+     anim 71: event 96 at 0-3: 900001013 201 1 256 0 0
+     anim 73: event 96 at 0.833-1.167: 900001000 200 -1 257 0 0
+     anim 73: event 96 at 0.833-1.167: 900001013 201 1 256 0 0
+     anim 80: event 96 at 0-0.633: 900001003 201 -1 256 0 0
+     anim 80: event 96 at 0-0.633: 900001013 201 1 256 0 0
+     anim 81: event 96 at 0-3: 900001013 201 1 256 0 0
+     anim 83: event 96 at 0.833-1.167: 900001000 200 -1 257 0 0
+     anim 83: event 96 at 0.833-1.167: 900001013 201 1 256 0 0
+     anim 90: event 96 at 0-0.633: 900001004 201 -1 256 0 0
+     anim 90: event 96 at 0-0.633: 900001014 201 1 0 0 0
+     anim 91: event 96 at 0-3: 900001014 201 1 0 0 0
+     anim 93: event 96 at 0.833-1.167: 900001000 200 -1 257 0 0
+     anim 93: event 96 at 0.833-1.167: 900001014 201 1 256 0 0
+     anim 100: event 96 at 0-0.633: 900001004 201 -1 256 0 0
+     anim 100: event 96 at 0-0.633: 900001014 201 1 0 0 0
+     anim 101: event 96 at 0-3: 900001014 201 1 0 0 0
+     anim 103: event 96 at 0.833-1.167: 900001000 200 -1 257 0 0
+     anim 103: event 96 at 0.833-1.167: 900001014 201 1 256 0 0
+     anim 9900: event 96 at 0-0.633: 900001004 201 -1 256 0 0
+     anim 9900: event 96 at 0-0.633: 900001014 201 1 0 0 0
+     anim 9901: event 96 at 0-3: 900001014 201 1 0 0 0
+     anim 9903: event 96 at 0.833-1.167: 900001000 200 -1 257 0 0
+     anim 9903: event 96 at 0.833-1.167: 900001014 201 1 256 0 0
+     anim 999999: event 96 at 0-3: 900001040 201 1 256 0 0
+== aeg920_000.geombnd
+   file 200: aeg920_000.flver (137,568 bytes)
+   file 400: AEG920_000.anibnd (607,888 bytes)
+   flver aeg920_000.flver: version 0x2001A, 5 nodes, 2 meshes, 4 dummies
+     nodes: 0:AEG920_000<-1 1:sfx_dummy<-1 2:dummy<-1 3:o000100Sword<-1 4:o000100Ash<-1
+     mesh 0: 394 vertices, mtd N:\GR\data\Material\mtd\Map_m10_00\DKS_00_00_00_00_9D8DC787.mtd, node 0, skinned False, bone list [], NormalW 3x394, weighted bones , box <0.109756336, 0.6154409, 0.087136306> .. <0, 0, 0>, layout Position0:Float3,Normal0:UByte4,Tangent0:UByte4,VertexColor1:UByte4Norm,UV0:Short2
+     mesh 1: 3044 vertices, mtd N:\GR\data\Material\mtd\Map_m10_00\matxml\DKS_00_00_00_00_AAA68FD7.matxml, node 0, skinned False, bone list [], NormalW 4x3044, weighted bones , box <0.8951498, 0.19794008, 0.89517516> .. <0, 0, 0>, layout Position0:Float3,Normal0:UByte4,Tangent0:UByte4,VertexColor1:UByte4Norm,UV0:Short2
+   skeleton: not a DS3 one (InvalidDataException)
+   anibnd file 1000000: skeleton.hkx (9,920 bytes)
+   anibnd file 3000000: AEG920_000.tae (15,184 bytes)
+   anibnd file 7000000: AEG920_000.compendium (9,492 bytes)
+   anibnd file 1000000000: a000_000000.hkx (10,464 bytes)
+   anibnd file 1000000001: a000_000001.hkx (10,384 bytes)
+   anibnd file 1000000010: a000_000010.hkx (10,384 bytes)
+   anibnd file 1000000011: a000_000011.hkx (10,384 bytes)
+   anibnd file 1000000012: a000_000012.hkx (10,384 bytes)
+   anibnd file 1000000013: a000_000013.hkx (10,384 bytes)
+   anibnd file 1000000020: a000_000020.hkx (10,384 bytes)
+   anibnd file 1000000021: a000_000021.hkx (10,384 bytes)
+   anibnd file 1000000022: a000_000022.hkx (10,384 bytes)
+   anibnd file 1000000023: a000_000023.hkx (10,384 bytes)
+   anibnd file 1000000030: a000_000030.hkx (10,384 bytes)
+   anibnd file 1000000031: a000_000031.hkx (10,384 bytes)
+   anibnd file 1000000032: a000_000032.hkx (10,384 bytes)
+   anibnd file 1000000033: a000_000033.hkx (10,384 bytes)
+   anibnd file 1000000040: a000_000040.hkx (10,384 bytes)
+   anibnd file 1000000041: a000_000041.hkx (10,384 bytes)
+   anibnd file 1000000042: a000_000042.hkx (10,384 bytes)
+   anibnd file 1000000043: a000_000043.hkx (10,384 bytes)
+   anibnd file 1000000050: a000_000050.hkx (10,384 bytes)
+   anibnd file 1000000051: a000_000051.hkx (10,384 bytes)
+   anibnd file 1000000052: a000_000052.hkx (10,384 bytes)
+   anibnd file 1000000053: a000_000053.hkx (10,384 bytes)
+   anibnd file 1000000060: a000_000060.hkx (10,384 bytes)
+   anibnd file 1000000061: a000_000061.hkx (10,384 bytes)
+   anibnd file 1000000062: a000_000062.hkx (10,384 bytes)
+   anibnd file 1000000063: a000_000063.hkx (10,384 bytes)
+   anibnd file 1000000070: a000_000070.hkx (10,384 bytes)
+   anibnd file 1000000071: a000_000071.hkx (10,384 bytes)
+   anibnd file 1000000072: a000_000072.hkx (10,384 bytes)
+   anibnd file 1000000073: a000_000073.hkx (10,384 bytes)
+   anibnd file 1000000080: a000_000080.hkx (10,384 bytes)
+   anibnd file 1000000081: a000_000081.hkx (10,384 bytes)
+   anibnd file 1000000082: a000_000082.hkx (10,384 bytes)
+   anibnd file 1000000083: a000_000083.hkx (10,384 bytes)
+   anibnd file 1000000090: a000_000090.hkx (10,384 bytes)
+   anibnd file 1000000091: a000_000091.hkx (10,384 bytes)
+   anibnd file 1000000092: a000_000092.hkx (10,384 bytes)
+   anibnd file 1000000093: a000_000093.hkx (10,384 bytes)
+   anibnd file 1000000100: a000_000100.hkx (10,384 bytes)
+   anibnd file 1000000101: a000_000101.hkx (10,384 bytes)
+   anibnd file 1000000102: a000_000102.hkx (10,384 bytes)
+   anibnd file 1000000103: a000_000103.hkx (10,384 bytes)
+   anibnd file 1000009900: a000_009900.hkx (10,384 bytes)
+   anibnd file 1000009901: a000_009901.hkx (10,384 bytes)
+   anibnd file 1000009902: a000_009902.hkx (10,384 bytes)
+   anibnd file 1000009903: a000_009903.hkx (10,384 bytes)
+   anibnd file 1000010000: a000_010000.hkx (10,384 bytes)
+   anibnd file 1000010010: a000_010010.hkx (10,384 bytes)
+   anibnd file 1000010020: a000_010020.hkx (10,384 bytes)
+   anibnd file 1000010030: a000_010030.hkx (10,384 bytes)
+   anibnd file 1000010040: a000_010040.hkx (10,384 bytes)
+   anibnd file 1000010050: a000_010050.hkx (10,384 bytes)
+   anibnd file 1000010060: a000_010060.hkx (10,384 bytes)
+   anibnd file 1000999999: a000_999999.hkx (10,384 bytes)
+   tae AEG920_000.tae: 54 animations, format SDT, big endian False
+     anim 1: event 96 at 0-3: 900001010 201 1 256 0 0
+     anim 10: event 96 at 0.833-1.167: 900001000 200 -1 257 0 0
+     anim 10: event 96 at 0.833-1.167: 900001011 201 1 256 0 0
+     anim 11: event 96 at 0-3: 900001011 201 1 256 0 0
+     anim 13: event 96 at 0.833-1.167: 900001000 200 -1 257 0 0
+     anim 13: event 96 at 0.833-1.167: 900001011 201 1 256 0 0
+     anim 20: event 96 at 0-0.633: 900001002 201 -1 256 0 0
+     anim 20: event 96 at 0-0.633: 900001011 201 1 256 0 0
+     anim 21: event 96 at 0-3: 900001011 201 1 256 0 0
+     anim 23: event 96 at 0.833-1.167: 900001000 200 -1 257 0 0
+     anim 23: event 96 at 0.833-1.167: 900001011 201 1 256 0 0
+     anim 30: event 96 at 0-0.633: 900001001 201 -1 256 0 0
+     anim 30: event 96 at 0-0.633: 900001011 201 1 256 0 0
+     anim 31: event 96 at 0-3: 900001011 201 1 256 0 0
+     anim 33: event 96 at 0.833-1.167: 900001000 200 -1 257 0 0
+     anim 33: event 96 at 0.833-1.167: 900001011 201 1 256 0 0
+     anim 40: event 96 at 0-0.633: 900001001 201 -1 256 0 0
+     anim 40: event 96 at 0-0.633: 900001011 201 1 256 0 0
+     anim 41: event 96 at 0-3: 900001011 201 1 256 0 0
+     anim 43: event 96 at 0.833-1.167: 900001000 200 -1 257 0 0
+     anim 43: event 96 at 0.833-1.167: 900001011 201 1 256 0 0
+     anim 50: event 96 at 0-0.633: 900001001 201 -1 256 0 0
+     anim 50: event 96 at 0-0.633: 900001011 201 1 256 0 0
+     anim 51: event 96 at 0-3: 900001011 201 1 256 0 0
+     anim 53: event 96 at 0.833-1.167: 900001000 200 -1 257 0 0
+     anim 53: event 96 at 0.833-1.167: 900001011 201 1 256 0 0
+     anim 60: event 96 at 0-0.633: 900001001 201 -1 256 0 0
+     anim 60: event 96 at 0-0.633: 900001011 201 1 256 0 0
+     anim 61: event 96 at 0-3: 900001011 201 1 256 0 0
+     anim 63: event 96 at 0.833-1.167: 900001000 200 -1 257 0 0
+     anim 63: event 96 at 0.833-1.167: 900001011 201 1 256 0 0
+     anim 70: event 96 at 0-0.633: 900001001 201 -1 256 0 0
+     anim 70: event 96 at 0-0.633: 900001011 201 1 256 0 0
+     anim 71: event 96 at 0-3: 900001011 201 1 256 0 0
+     anim 73: event 96 at 0.833-1.167: 900001000 200 -1 257 0 0
+     anim 73: event 96 at 0.833-1.167: 900001011 201 1 256 0 0
+     anim 80: event 96 at 0-0.633: 900001001 201 -1 256 0 0
+     anim 80: event 96 at 0-0.633: 900001011 201 1 256 0 0
+     anim 81: event 96 at 0-3: 900001011 201 1 256 0 0
+     anim 83: event 96 at 0.833-1.167: 900001000 200 -1 257 0 0
+     anim 83: event 96 at 0.833-1.167: 900001011 201 1 256 0 0
+     anim 90: event 96 at 0-0.633: 900001001 201 -1 256 0 0
+     anim 90: event 96 at 0-0.633: 900001011 201 1 256 0 0
+     anim 91: event 96 at 0-3: 900001011 201 1 256 0 0
+     anim 93: event 96 at 0.833-1.167: 900001000 200 -1 257 0 0
+     anim 93: event 96 at 0.833-1.167: 900001011 201 1 256 0 0
+     anim 100: event 96 at 0-0.633: 900001001 201 -1 256 0 0
+     anim 100: event 96 at 0-0.633: 900001011 201 1 256 0 0
+     anim 101: event 96 at 0-3: 900001011 201 1 256 0 0
+     anim 103: event 96 at 0.833-1.167: 900001000 200 -1 257 0 0
+     anim 103: event 96 at 0.833-1.167: 900001011 201 1 256 0 0
+     anim 9900: event 96 at 0-0.633: 900001001 201 -1 256 0 0
+     anim 9900: event 96 at 0-0.633: 900001011 201 1 256 0 0
+     anim 9901: event 96 at 0-3: 900001011 201 1 256 0 0
+     anim 9903: event 96 at 0.833-1.167: 900001000 200 -1 257 0 0
+     anim 9903: event 96 at 0.833-1.167: 900001011 201 1 256 0 0
+     anim 999999: event 96 at 0-3: 900001040 201 1 256 0 0

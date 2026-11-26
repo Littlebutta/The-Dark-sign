@@ -1,0 +1,34 @@
+BUILD state on Devin's PC, collected 2026-11-25 19:50-20:10 MST (UTC-7) = 2026-11-26 02:50-03:10 UTC
+
+IMPORTANT: a rebuild started while this evidence was being collected.
+  19:56:00  launcher v1.0.667 started, updated itself to v1.0.669, downloaded porter 1.0.669
+  19:56:06  port-weapons (pid 34216) and port-maps --after-pid 34216 (pid 22704) started (not by this session)
+  19:56:07-08  Mods\ER\event, map\mapstudio, cutscene, sd, darksign_bonfires, darksign_music and most darksign_*.txt/tsv
+               (including darksign_flags.tsv, darksign_build.txt, darksign_objects.tsv) were removed by that build.
+  The build was still running when this file was written. Nothing of the new build's output was read.
+Everything in this folder describes the PREVIOUS build, 1.0.667, unless a file says otherwise.
+
+Mod build last built / played (before 19:56):
+  Mods\ER\darksign_build.txt     1.0.667   (written 2026-11-25 18:18:53)
+  Tools\Porter\version.txt       1.0.667   (written 2026-11-25 17:10:12); now 1.0.669 (19:56:05)
+  launcher                       v1.0.667 at the last game launches; exe is now 1.0.669+044fde4ccc2ecbd6693443a298e1d5447acd8af3
+  last game launches (launcher log): 2026-11-25 19:27:19, 19:33:03, 19:35:14, 19:35:46 (all on build 1.0.667); launcher closed 19:47:15
+  Elden Ring was not running during the collection (no eldenring.exe process at 19:50 or 19:56).
+
+Newest COMPLETED porter logs (TheDarkSign\Work\logs):
+  porter-port-maps-20261125-172703.log     created 17:27:03, last written 18:18:53, 957,394 bytes
+      ends: "port-maps: 15 map(s) ported in 3109 s", "validation: 0 FAIL, 54 WARN"
+  porter-port-weapons-20261125-172703.log  created 17:27:03, last written 17:38:32, 196,211 bytes
+  port-maps-20261125-181851.txt / map-validate-20261125-181851.txt  18:18:51
+Running now (not complete, 0 bytes at 19:56:21):
+  porter-port-maps-20261125-195606.log, porter-port-weapons-20261125-195606.log
+
+Mod file time stamps (build 1.0.667, read at 19:51, before the rebuild):
+  Mods\ER\chr\c0000.anibnd.dcx            2026-11-25 17:37:53   14,185,408 bytes
+  Mods\ER\event\m45_00_00_00.emevd.dcx    2026-11-25 18:14:34       14,112 bytes
+  Mods\ER\chr\c7112.chrbnd.dcx            2026-11-25 17:37:47    2,893,744 bytes
+  Mods\ER\event\common.emevd.dcx          2026-11-25 18:15:59       42,880 bytes
+  Mods\ER\event\common_func.emevd.dcx     2026-11-25 18:13:27       42,144 bytes
+  Mods\ER\map\mapstudio\m45_00_00_00.msb.dcx  2026-11-25 18:15:57  176,784 bytes
+  Mods\ER\regulation.bin                  2026-11-25 18:15:47    2,858,576 bytes
+  Mods\ER\darksign_flags.tsv              2026-11-25 18:15:47      135,726 bytes  (NOT copied: removed at 19:56 before it was reached)
