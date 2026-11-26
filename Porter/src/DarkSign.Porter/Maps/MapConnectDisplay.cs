@@ -73,6 +73,8 @@ public static class MapConnectDisplay
         /// <summary>Own pieces hidden on at least one border collision, with the maps whose floor they stand over.</summary>
         public Dictionary<string, List<MapId>> BorderHidden { get; } = new(StringComparer.Ordinal);
         public int DoorwayLists { get; set; }
+        /// <summary>What <see cref="LinkCollisionNumbers"/> wrote: collisions numbered, doorway stand-in collisions added, connects naming one.</summary>
+        public (int Numbered, int StandIns, int Connects) Numbers { get; set; }
         /// <summary>Collisions that show only what DS3 shows from them (a backdrop is drawn from them).</summary>
         public List<string> Rooms { get; } = [];
     }
@@ -386,7 +388,108 @@ public static class MapConnectDisplay
                     MapDrawGroups.Set(c.Unk1, g, ReadOnlySpan<uint>.Empty);
                 connects++;
             }
+        plan.Numbers = LinkCollisionNumbers(msb, plan);
         return (pieces, collisions, connects);
+    }
+
+    /// <summary>First collision number of the doorway stand-in collisions, counted down: list i gets 255 - i.</summary>
+    public const int DoorwayNumberTop = 255;
+
+    /// <summary>The doorway stand-in collisions sit this far below the collision they copy, out of every player's reach.</summary>
+    public const float DoorwayStandInDrop = 5000f;
+
+    /// <summary>Instance numbers (name suffix) of the doorway stand-in collisions: list i gets 9800 + i.</summary>
+    public const int DoorwayStandInInstance = 9800;
+
+    public static string DoorwayStandInName(string model, int list) => $"{model}_{DoorwayStandInInstance + list:D4}";
+
+    /// <summary>
+    /// Makes Elden Ring obey the groups (proven in game 2026-11-26, Control K: with collision numbers written the castle's
+    /// own pieces hid; with every collision numbered 10 and showing every group in its Unk2, nothing ever hid).
+    /// <para>
+    /// Elden Ring identifies collisions by a number in <c>Unk2.Condition</c>, and a connect collision names, by that number,
+    /// the collision of the NEXT map whose display groups the next map uses while the player stands on the connect
+    /// (vanilla: Stormveil's four connects into m10_01 carry 30 and m10_01 has collision number 30; m10_01's connects
+    /// back carry 116; Stormveil collision h000700 is number 7 with Unk2 groups {2, 7}). The port wrote number 10 and
+    /// every Unk2 group on every collision, and no number on connects, so neither the own map nor a neighbour was culled.
+    /// </para>
+    /// <para>
+    /// Written here: every collision of the map is numbered 0, 1, 2... (Unk2 groups = its own number's bit, as
+    /// Stormveil). For each DS3 doorway list into this map (<see cref="MapPlan.DoorwayLists"/>, numbered as
+    /// <see cref="Build"/> numbers them), a stand-in collision is added: a copy of the map's first collision,
+    /// <see cref="DoorwayStandInDrop"/> below it, numbered <see cref="DoorwayNumberTop"/> - list, showing only that
+    /// doorway's bit. Each connect into another map names the stand-in for its doorway list there by the same rule, so
+    /// the next map shows exactly what DS3 shows through that doorway. A connect with no list names no collision (-1,
+    /// as Elden Ring's open-world connects).
+    /// </para>
+    /// </summary>
+    public static (int Numbered, int StandIns, int Connects) LinkCollisionNumbers(MSBE msb, MapPlan plan)
+    {
+        msb.Parts.Collisions.RemoveAll(c => c.Name.Length > 5 && int.TryParse(c.Name[^4..], out var n)
+                                            && n >= DoorwayStandInInstance && n < DoorwayStandInInstance + DoorwayWords * 32
+                                            && c.Name[^5] == '_' && c.InstanceID == n);
+        var real = msb.Parts.Collisions.ToList();
+        int lists = Math.Min(plan.DoorwayLists, DoorwayWords * 32);
+        int numbered = 0;
+        for (int i = 0; i < real.Count; i++)
+        {
+            if (real[i].Unk2 is not { } u2)
+                continue;
+            int number = i <= DoorwayNumberTop - lists ? i : -1;  // more collisions than numbers: the rest keep none
+            WriteNumber(u2, number);
+            if (number >= 0)
+                numbered++;
+        }
+
+        int standIns = 0;
+        var template = real.FirstOrDefault(c => c.Unk2 is not null);
+        if (template is not null)
+            for (int list = 0; list < lists; list++)
+            {
+                var c = (MSBE.Part.Collision)template.DeepCopy();
+                c.Name = DoorwayStandInName(template.ModelName, list);
+                c.InstanceID = DoorwayStandInInstance + list;
+                c.Position = template.Position with { Y = template.Position.Y - DoorwayStandInDrop };
+                c.EntityID = 0;
+                Array.Fill(c.EntityGroupIDs, 0u);
+                c.LocationTextID = -1;
+                c.PlayRegionID = -1;
+                var g = new uint[8];
+                SetBit(g, DoorwayFirstWord * 32 + list);
+                MapDrawGroups.Set(c.Unk1, g, ReadOnlySpan<uint>.Empty);
+                WriteNumber(c.Unk2!, DoorwayNumberTop - list);
+                msb.Parts.Collisions.Add(c);
+                standIns++;
+            }
+
+        int connects = 0;
+        foreach (var c in msb.Parts.ConnectCollisions)
+        {
+            if (c.Unk2 is not { } u2)
+                continue;
+            int list = plan.ConnectDisplay.TryGetValue(c.Name, out var g) ? DoorwayList(g) : -1;
+            WriteNumber(u2, list >= 0 ? DoorwayNumberTop - list : -1);
+            if (list >= 0)
+                connects++;
+        }
+        return (numbered, standIns, connects);
+    }
+
+    /// <summary>The doorway list a connect's display names (its one bit in words 4-7), or -1.</summary>
+    public static int DoorwayList(uint[] display)
+    {
+        for (int bit = 0; bit < DoorwayWords * 32; bit++)
+            if ((display[DoorwayFirstWord + bit / 32] & (1u << (bit % 32))) != 0)
+                return bit;
+        return -1;
+    }
+
+    private static void WriteNumber(MSBE.Part.UnkStruct2 u2, int number)
+    {
+        Array.Clear(u2.DispGroups);
+        u2.Condition = number;
+        if (number >= 0)
+            SetBit(u2.DispGroups, number);
     }
 
     /// <summary>

@@ -1453,7 +1453,7 @@ public static class MapPorter
             var (pieces, collisions, connects) = MapConnectDisplay.Apply(msb, mp);
             File.WriteAllBytes(path, DCX.Compress(msb.Write(), compression));
             written++;
-            lines.Add($"  {d.Ds3} -> {d.Er}: {pieces} pieces, {collisions} collisions, {connects} doorways written; {mp.DoorwayLists} DS3 doorway lists into it; "
+            lines.Add($"  {d.Ds3} -> {d.Er}: {pieces} pieces, {collisions} collisions, {connects} doorways written; {mp.DoorwayLists} DS3 doorway lists into it; collision numbers {mp.Numbers.Numbered}, doorway stand-in collisions {mp.Numbers.StandIns}, connects naming one {mp.Numbers.Connects}; "
                       + $"{d.Floor.Count:N0} floor cells; {mp.BorderHidden.Count} own pieces over a neighbour hidden on its doorways"
                       + (mp.BorderHidden.Count > 0 ? $" ({string.Join(", ", mp.BorderHidden.Keys.Take(12))}{(mp.BorderHidden.Count > 12 ? ", ..." : "")})" : "")
                       + (mp.Rooms.Count > 0 ? $"; rooms showing only what DS3 shows there (around backdrops {string.Join(", ", d.Backdrops.Keys)}): {string.Join(", ", mp.Rooms)}" : ""));
