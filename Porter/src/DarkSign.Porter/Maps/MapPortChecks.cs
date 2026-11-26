@@ -398,10 +398,24 @@ public static partial class MapPortChecks
         Expect(end.Bank == 1000 && end.ID == 4 && end.ArgData[0] == 1, "EndUnconditionally(Restart)");
         Expect(start.Instructions.All(i => i.Layer is null), "no instruction may carry a layer mask");
         var leave = common.Events.Single(e => e.ID == RunEvents.LeaveEventId);
-        Expect(leave.Instructions[3].ArgData[0] == 11 && leave.Instructions[3].ArgData[1] == 10
-               && BitConverter.ToUInt32(leave.Instructions[3].ArgData, 4) == 11102020, "leave warps to the return point");
+        Expect(leave.Instructions[3] is { Bank: 2003, ID: 66 } && BitConverter.ToUInt32(leave.Instructions[3].ArgData, 4) == RunEvents.ReturnRespawnPending
+               && leave.Instructions[3].ArgData[8] == 1, "leave marks the respawn point to move before its warp");
+        Expect(leave.Instructions[4].ArgData[0] == 11 && leave.Instructions[4].ArgData[1] == 10
+               && BitConverter.ToUInt32(leave.Instructions[4].ArgData, 4) == 11102020, "leave warps to the return point");
+        // Return to the Lands Between: after the load into the return map, the respawn point moves to the return point,
+        // so a death in Elden Ring no longer sends the player back to the last DS3 bonfire.
+        var returned = common.Events.Single(e => e.ID == RunEvents.ReturnRespawnEventId);
+        Expect(returned.Instructions[0] is { Bank: 1003, ID: 0 } && BitConverter.ToUInt32(returned.Instructions[0].ArgData, 4) == RunEvents.ReturnRespawnPending,
+            "return respawn waits for the pending flag");
+        Expect(returned.Instructions[1] is { Bank: 3, ID: 30 } && returned.Instructions[1].ArgData[1] == 11 && returned.Instructions[1].ArgData[2] == 10
+               && returned.Instructions[2] is { Bank: 3, ID: 8 } && returned.Instructions[2].ArgData[2] == 11, "return respawn waits for the return map");
+        var setRespawn = returned.Instructions.FindIndex(i => i is { Bank: 2003, ID: 23 });
+        Expect(setRespawn > 2 && BitConverter.ToUInt32(returned.Instructions[setRespawn].ArgData, 0) == 11102020
+               && returned.Instructions.Skip(setRespawn + 1).Any(i => i is { Bank: 2003, ID: 66 } && BitConverter.ToUInt32(i.ArgData, 4) == RunEvents.ReturnRespawnPending && i.ArgData[8] == 0),
+            "return respawn sets the respawn point to the return point, then clears the flag");
+        Expect(!returned.Instructions.Any(i => i is { Bank: 2003, ID: 14 }), "return respawn doesn't warp");
         var inits = common.Events.Single(e => e.ID == 0).Instructions.Where(i => i.Bank == 2000 && i.ID == 0).ToList();
-        Expect(inits.Count == 3 && inits.Any(i => BitConverter.ToUInt32(i.ArgData, 4) == 1234), "constructor keeps its own events and starts ours");
+        Expect(inits.Count == 4 && inits.Any(i => BitConverter.ToUInt32(i.ArgData, 4) == 1234), "constructor keeps its own events and starts ours");
     }
 
     private static void RunEventsIdempotent()
@@ -410,7 +424,8 @@ public static partial class MapPortChecks
         RunEvents.AddTo(common, ErId, 45000990, Back);
         RunEvents.AddTo(common, ErId, 45000990, Back);
         Expect(common.Events.Count(e => e.ID == RunEvents.StartEventId) == 1, "start event duplicated");
-        Expect(common.Events.Single(e => e.ID == 0).Instructions.Count == 3, "constructor inits duplicated");
+        Expect(common.Events.Single(e => e.ID == 0).Instructions.Count == 4, "constructor inits duplicated");
+        Expect(common.Events.Count(e => e.ID == RunEvents.ReturnRespawnEventId) == 1, "return respawn event duplicated");
     }
 
     private static void ReturnPoint()
