@@ -1685,7 +1685,9 @@ public sealed class AttackParamPort(ParamStore er, ParamStore ds3, string behavi
         if (erBase is not null && StructurallyEqual(erBase, row))
             for (int i = 0; i < row.Cells.Count; i++)
                 row.Cells[i].Value = erBase.Cells[i].Value is byte[] b ? b.Clone() : erBase.Cells[i].Value;
+        var template = row.Cells.Select(c => c.Value is byte[] b ? b.Clone() : c.Value).ToArray();
         row = CopyByName(source, row);
+        KeepEldenRingMeaning(row, template);
         // DS3 names these spEffect0-4, Elden Ring spEffectId0-4: the effect a hit applies (an art's frost or poison).
         // The template's own hit effects (its status build-up) don't belong to the DS3 weapon.
         for (int i = 0; i < 5; i++)
@@ -1703,6 +1705,29 @@ public sealed class AttackParamPort(ParamStore er, ParamStore ds3, string behavi
     }
 
     private static bool StructurallyEqual(PARAM.Row a, PARAM.Row b) => a.Cells.Count == b.Cells.Count;
+
+    /// <summary>
+    /// Attack fields both games name alike but where DS3's values mean something else (or nothing) in Elden Ring.
+    /// Copied by name, every ported row (all ported enemies and weapons) carried decalId1 0 / decalId2 100 (DS3 decal
+    /// rows; vanilla Elden Ring uses -1 or 4366xx), regainableSlotId 0/1 (vanilla always -1), atkAttribute 4 (vanilla
+    /// 0-3, 254) and spAttribute 1-9 (DS3's element enum; Elden Ring's is 0, 10-26, 254). These rows keep the template
+    /// or default value instead. Suspected (unproven) cause of the player's chest armour vanishing under ported hits.
+    /// </summary>
+    internal static void KeepEldenRingMeaning(PARAM.Row row, object?[] template)
+    {
+        void Keep(string name, Func<int, bool> invalid)
+        {
+            int i = row.Cells.ToList().FindIndex(c => c.Def.InternalName == name);
+            if (i < 0 || row.Cells[i].Value is null || !invalid(Convert.ToInt32(row.Cells[i].Value)))
+                return;
+            row.Cells[i].Value = template[i];
+        }
+        Keep("decalId1", v => v >= 0 && v < 100_000);
+        Keep("decalId2", v => v >= 0 && v < 100_000);
+        Keep("regainableSlotId", v => v >= 0);
+        Keep("atkAttribute", v => v > 3 && v != 254);
+        Keep("spAttribute", v => v is > 0 and < 10);
+    }
 
     /// <summary>
     /// DS3 field names (Paramdex DS3 ATK_PARAM_ST) that Elden Ring's Paramdex def spells differently. Everything else
