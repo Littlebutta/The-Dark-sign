@@ -16,7 +16,7 @@ public static partial class MapPortChecks
         yield return ("music: ported enemies get the threat level most Elden Ring enemies have (no Elden Ring battle music)", MusicThreat);
         yield return ("music: stand-ins and plain fallback rows get the quiet threat level too, on copies of Elden Ring's rows", MusicQuietStandIns);
         yield return ("people: a DS3 person stands on a copy of its Elden Ring row with DS3's team, quiet, and DS3's senses", PeopleOnDs3Team);
-        yield return ("people: the in-game flag log lists each person's event flags, passed-in ones from the start line, ranges flag by flag", PeopleFlagList);
+        yield return ("people: the in-game flag log lists each person's event flags, passed-in ones from the start line, ranges flag by flag; state flags are marked for the reset", PeopleFlagList);
         yield return ("music: every templated map gets its template's field music and ambience area (no row-0 Limgrave music)", MusicSoundPlaces);
     }
 
@@ -559,5 +559,8 @@ public static partial class MapPortChecks
         Expect(lines.All(l => l.Contains("c0000_9000 Sirris (45000780), m45_00_00_00 event")), "each line names the person and event: " + lines[0]);
         Expect(lines.Last().Contains("event 1038291046") && lines.Last().Contains("(X4)"), "the passed-in hostile flag says where it came from: " + lines.Last());
         Expect(!flags.Contains(45000999), "an enemy's events aren't listed");
+        var state = lines.Where(l => l.EndsWith("\t" + PeopleFlags.StateTag)).Select(l => long.Parse(l[..l.IndexOf('\t')])).ToList();
+        Expect(state.SequenceEqual(new long[] { 1030290255, 1030290256, 1030290257, 1030290258, 1030290259, 1030290269 }),
+            "state flags (the F1 reset's): the range and the flag passed into the shared event, not a lone flag of a map event: " + string.Join(",", state));
     }
 }

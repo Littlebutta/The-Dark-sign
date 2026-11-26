@@ -7,7 +7,17 @@
    then every change after that, with the seconds since the load:
      people: at load, flag 1030290269 ON (c0000_9000 Sirris (45000780), m45_00_00_00 event ...)
      people: 13.2 s, flag 1030290269 off -> ON (...)
-   A return to the title screen and a new load log the states again. Reads only; never sets a flag. */
+   A return to the title screen and a new load log the states again. The watch only reads.
+
+   2026-11-26, Devin's save on 1.0.667: the hostile flags of Eygon, Irina, Cornyx and Karla and the "angry" flags of
+   the Fire Keeper, Ludleth, Andre and Leonhard were all on in the save (left by the fights of the builds before
+   PR #288, when the people stood on hostile Elden Ring rows at one spot), so Eygon kept attacking and the Fire Keeper
+   refused to talk (no level-up window). DS3 only clears those at Velka's statue, which a test save can't reach, so
+   dks_peopleflags_reset (F1 menu, DS3 run tab: "Reset DS3 people") turns every state flag of the list off (third
+   column "state": the people's friendly/hostile/dead and quest-step ranges and the hostile/dead/talk flags passed to
+   DS3's shared people events); the scripts then set each person up as on a new game at the next load.
+   The save's flags arrive a few seconds after the character does (all of them in one read), so the first read says
+   "0 on" and a burst follows; a burst is logged with a line saying so. */
 #include <windows.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -22,6 +32,8 @@
 static uint32_t flags[MAX_FLAGS];
 static char what[MAX_FLAGS][WHAT_LEN];
 static signed char state[MAX_FLAGS];
+static unsigned char is_state[MAX_FLAGS];
+static volatile LONG g_count;
 
 static DWORD WINAPI run(LPVOID unused)
 {
@@ -49,6 +61,12 @@ static DWORD WINAPI run(LPVOID unused)
         flags[count] = (uint32_t)strtoul(line, NULL, 10);
         snprintf(what[count], WHAT_LEN, "%s", tab ? tab + 1 : "");
         what[count][strcspn(what[count], "\r\n")] = 0;
+        /* A third column "state" marks a flag the reset turns off; it isn't part of the description. */
+        char *tag = tab ? strchr(tab + 1, '\t') : NULL;
+        is_state[count] = tag && !strncmp(tag + 1, "state", 5);
+        char *cut = strchr(what[count], '\t');
+        if (cut)
+            *cut = 0;
         if (flags[count])
             count++;
     }
@@ -56,6 +74,7 @@ static DWORD WINAPI run(LPVOID unused)
     dks_log("people: watching %d quest/hostility flags of the placed people%s", count, skipped ? " (list longer than the log holds; the rest aren't watched)" : "");
     if (!count)
         return 0;
+    InterlockedExchange(&g_count, count);
 
     for (;;) {
         /* Wait for a loaded character: the flag manager only holds a save's flags then. */
@@ -78,6 +97,7 @@ static DWORD WINAPI run(LPVOID unused)
         dks_log("people: at load, %d of %d people flags on (the rest off); changes follow", on, count);
         while (dks_get_runes() >= 0) {
             Sleep(250);
+            int changed = 0;
             for (int i = 0; i < count; i++) {
                 int now = dks_get_event_flag(flags[i]);
                 if (now < 0 || now == state[i])
@@ -85,10 +105,32 @@ static DWORD WINAPI run(LPVOID unused)
                 dks_log("people: %.1f s, flag %u %s (%s)", (GetTickCount() - loaded) / 1000.0, flags[i],
                         now ? "off -> ON" : "ON -> off", what[i]);
                 state[i] = (signed char)now;
+                changed++;
             }
+            if (changed >= 10)
+                dks_log("people: %d flags changed in one read: the save's flags arriving, a map load, or the F1 reset", changed);
         }
         dks_log("people: character unloaded; flags are logged again at the next load");
     }
+}
+
+int dks_peopleflags_reset(void)
+{
+    int count = (int)g_count, cleared = 0, listed = 0;
+    if (!count || dks_get_runes() < 0)
+        return -1;
+    for (int i = 0; i < count; i++) {
+        if (!is_state[i])
+            continue;
+        listed++;
+        if (dks_get_event_flag(flags[i]) != 1)
+            continue;
+        dks_set_event_flag(flags[i], 0);
+        dks_log("people: reset turned flag %u off (%s)", flags[i], what[i]);
+        cleared++;
+    }
+    dks_log("people: reset: %d of %d state flags were on and are off now; the scripts set the people up again at the next load", cleared, listed);
+    return listed ? cleared : -1;
 }
 
 void dks_peopleflags_start(void)

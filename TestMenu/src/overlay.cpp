@@ -332,6 +332,12 @@ void draw_ds3_run()
     if (ImGui::Button("Leave DS3 run (back to Elden Ring)", ImVec2(-1, 0)))
         request_flag(DKS_FLAG_DS3_LEAVE_REQUEST, "Warping back to Elden Ring...");
     ImGui::EndDisabled();
+    // DS3 keeps a person hostile for good once hit (only Velka's statue clears it); a test save collects such flags.
+    if (ImGui::Button("Reset DS3 people (hostile, dead, quest steps)", ImVec2(-1, 0))) {
+        int n = dks_peopleflags_reset();
+        g_run_status = n < 0 ? "Reset DS3 people: needs a loaded character and content built with launcher 1.0.668 or later."
+                             : "Reset DS3 people: " + std::to_string(n) + " flags turned off. Quit to the main menu and load again; everyone is as on a new game.";
+    }
     ImGui::Separator();
     ImGui::TextWrapped("%s", g_run_status.c_str());
     draw_pending();
