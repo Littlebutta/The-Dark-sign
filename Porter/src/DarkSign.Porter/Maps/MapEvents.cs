@@ -352,11 +352,38 @@ public static class MapEvents
     }
 
     /// <summary>
+    /// Where a DS3 SpEffect lives in the mod's regulation, as <see cref="Port"/> points the scripts: the weapon port's
+    /// row when a ported weapon carries it, else the enemy port's row (700,000,000 + the ID) when it has one. Null
+    /// when the regulation can't be read.
+    /// </summary>
+    internal static Func<long, long?>? SpEffectRows(PorterContext ctx)
+    {
+        try
+        {
+            var sp = ActionButtons.LoadRegulation(ctx).Get("SpEffectParam") ?? throw new InvalidDataException("no SpEffectParam");
+            var weapon = SpEffectPort.ReadWeaponTable(ctx);
+            return id => weapon.TryGetValue(id, out var w) && sp[(int)w] is not null ? w
+                : Enemies.ChrEffects.SpEffectId((int)Math.Min(id, int.MaxValue)) is > 0 and var n && sp[n] is not null ? n : null;
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            Console.WriteLine($"speffects: the regulation's rows were not read ({ex.Message})");
+            return null;
+        }
+    }
+
+    /// <summary>
     /// The DS3 SpEffect IDs the ported maps' scripts (and DS3's common events) set, clear or check, for the enemy
     /// port to give rows, so <see cref="Port"/> can point the scripts at them.
     /// </summary>
-    public static SortedSet<int> ScriptSpEffects(PorterContext ctx, GameArchives ds3, IReadOnlyList<MapSlots.Slot> slots) =>
-        ScriptIds(ctx, ds3, slots, EventPort.Kind.SpEffect);
+    public static SortedSet<int> ScriptSpEffects(PorterContext ctx, GameArchives ds3, IReadOnlyList<MapSlots.Slot> slots)
+    {
+        var ids = ScriptIds(ctx, ds3, slots, EventPort.Kind.SpEffect);
+        // And the ones DS3's scripted player animations cast (PlayerEventAnims): the level-up kneel's 150 and 155.
+        try { ids.UnionWith(PlayerEventAnims.ScriptedEffects(ctx, ds3, slots)); }
+        catch (Exception ex) when (ex is not OutOfMemoryException) { Console.WriteLine($"player event animations: their SpEffects were not read ({ex.Message})"); }
+        return ids;
+    }
 
     /// <summary>The DS3 values of one kind (SpEffects, item lots...) the ported maps' scripts, DS3's common events and the boss kits use.</summary>
     public static SortedSet<int> ScriptIds(PorterContext ctx, GameArchives ds3, IReadOnlyList<MapSlots.Slot> slots, EventPort.Kind kind)
