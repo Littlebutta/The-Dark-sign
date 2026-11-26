@@ -15,8 +15,7 @@ public sealed class MapModelPort
 {
     /// <summary>One new MATBIN: a copy of <see cref="Template"/> with its own textures.</summary>
     public sealed record NewMaterial(string Name, MaterialTemplate Template, string Albedo, string Normal, string? Albedo2,
-        string? Normal2, Vector2 Scale = default, bool TemplateTextures = false, string? Specular = null, string? Specular2 = null,
-        string? Mask = null, IReadOnlyDictionary<string, Vector2>? SamplerScales = null);
+        string? Normal2, Vector2 Scale = default, bool TemplateTextures = false);
 
     /// <summary>
     /// A vanilla Elden Ring map material used as a pattern, with an example of it in a FLVER: the material slot, its
@@ -29,7 +28,7 @@ public sealed class MapModelPort
         FLVER2.BufferLayout Layout, int Rank = 0, bool Legacy = false);
 
     /// <summary>The kinds of template, in the order their GX lists and layouts are written.</summary>
-    public static readonly string[] Kinds = ["opaque", "edge", "alpha", "nolight", "water", "nolight-blend", "nolight-edge", "nolight-add", "nolight-opacity", TwoLayerKind];
+    public static readonly string[] Kinds = ["opaque", "edge", "alpha", "nolight", "water", "nolight-blend", "nolight-edge", "nolight-add", "nolight-opacity"];
 
     /// <summary>The kinds the template search looks for in the template maps (water comes from <see cref="WaterBinders"/>).</summary>
     public static readonly string[] SearchedKinds = ["opaque", "edge", "alpha", "nolight"];
@@ -174,105 +173,6 @@ public sealed class MapModelPort
         return new MaterialTemplate("nolight-blend", LegacyBlendMatbin, file, material, gx, layout, 0, Legacy: true);
     }
 
-    /// <summary>The kind of DS3's two-layer mask-blend materials when <see cref="TwoLayerMatbin"/> draws them.</summary>
-    public const string TwoLayerKind = "two-layer";
-
-    /// <summary>
-    /// Elden Ring's copy of DS3's two-layer map material, the template for DS3's M[ARSN]_m family (_m, _l_m, _l_p_m).
-    /// <para>
-    /// <b>Why (measured 2026-11-26 on 1.0.681, DS3's m33/m40 pieces and Elden Ring's allmaterial):</b> DS3 mixes the
-    /// two layers of these materials per pixel with g_BlendMaskTexture (a grey noise picture, mean 0.35-0.40) on its
-    /// own UV set; the vertex colour alpha is one value over the whole mesh on 6 of 7 meshes read (0 on the Road of
-    /// Sacrifices' floor, all 55,178 vertices). The port split each mesh by that alpha, so the Road's brick floor was
-    /// drawn as moss alone (flat olive slabs) and a Dreg Heap wall as rubble alone. Elden Ring's own two-layer
-    /// shaders ([Mb2]) put every layer on the first UV set, and DS3's second layer and mask have UV sets of their own.
-    /// Elden Ring still ships DS3's material: map\matxml\M[ARSN]_m, shader GXFlver_ColDifSpcBumpMulMaskIbl, with
-    /// DS3's sampler names. Its one-layer sibling M[ARSN] (GXFlver_ColDifSpcBumpIbl) is drawn by vanilla models
-    /// (JortPob's MaterialInfo.xml); no vanilla model uses the two-layer one, so this is unproven in game.
-    /// </para>
-    /// <para>
-    /// <b>What it does:</b> a two-layer mesh stays whole and is written the way DS3 has it: both layers' albedo,
-    /// reflectance and normal textures and the mask, DS3's vertex colour, two tangents and three UV sets (layer 1,
-    /// layer 2, mask; the lightmap set of _l_m is left out, this shader has no lightmap), and DS3's own draw
-    /// settings list with Elden Ring's GX00. Without the matbin the meshes are split by vertex alpha as before.
-    /// </para>
-    /// </summary>
-    public const string TwoLayerMatbin = "M[ARSN]_m";
-
-    /// <summary>The samplers of <see cref="TwoLayerMatbin"/> the port fills, and the shader it must name.</summary>
-    public const string TwoLayerShader = "GXFlver_ColDifSpcBumpMulMaskIbl";
-    public static readonly string[] TwoLayerSamplers = ["g_DiffuseTexture", "g_DiffuseTexture2", "g_BumpmapTexture", "g_BumpmapTexture2", "g_BlendMaskTexture"];
-
-    /// <summary>Elden Ring's GX00 as vanilla map materials carry it (12 zero bytes, -1, 24 zero bytes).</summary>
-    public static FLVER2.GXItem ErGx00()
-    {
-        var data = new byte[40];
-        for (int i = 12; i < 16; i++)
-            data[i] = 0xFF;
-        return new FLVER2.GXItem("GX00", 102, data);
-    }
-
-    /// <summary>
-    /// The <see cref="TwoLayerMatbin"/> template, or null when the matbins don't have it on DS3's shader with DS3's
-    /// samplers. Its GX list is the default one; each material takes DS3's own (<see cref="TwoLayerGx"/>).
-    /// </summary>
-    public static MaterialTemplate? TwoLayerTemplate(IReadOnlyDictionary<string, BinderFile> matbins, FLVER2.GXList terminatorFrom)
-    {
-        if (!matbins.TryGetValue(TwoLayerMatbin, out var file))
-            return null;
-        MATBIN matbin;
-        try { matbin = MATBIN.Read(file.Bytes); }
-        catch (Exception ex) when (ex is not OutOfMemoryException) { return null; }
-        if (!Path.GetFileNameWithoutExtension(ItemText.Leaf(matbin.ShaderPath ?? "")).Equals(TwoLayerShader, StringComparison.OrdinalIgnoreCase)
-            || TwoLayerSamplers.Any(name => !matbin.Samplers.Any(x => x.Type == name)) || string.IsNullOrEmpty(matbin.SourcePath))
-            return null;
-        var material = new FLVER2.Material
-        {
-            Name = TwoLayerMatbin, MTD = matbin.SourcePath, GXIndex = 0, Index = 0,
-            Textures = matbin.Samplers.Select(x => new FLVER2.Texture { ParamName = x.Type, Path = "" }).ToList(),
-        };
-        // DS3's M[ARSN]_m layout (m40's m800000): the second UV member is the mask's set.
-        var layout = new FLVER2.BufferLayout
-        {
-            new FLVER.LayoutMember(FLVER.LayoutType.Float3, FLVER.LayoutSemantic.Position, 0),
-            new FLVER.LayoutMember(FLVER.LayoutType.UByte4, FLVER.LayoutSemantic.Normal, 0),
-            new FLVER.LayoutMember(FLVER.LayoutType.UByte4, FLVER.LayoutSemantic.Tangent, 0),
-            new FLVER.LayoutMember(FLVER.LayoutType.UByte4, FLVER.LayoutSemantic.Tangent, 1),
-            new FLVER.LayoutMember(FLVER.LayoutType.UByte4Norm, FLVER.LayoutSemantic.VertexColor, 1),
-            new FLVER.LayoutMember(FLVER.LayoutType.Short4, FLVER.LayoutSemantic.UV, 0),
-            new FLVER.LayoutMember(FLVER.LayoutType.Short2, FLVER.LayoutSemantic.UV, 1),
-        };
-        return new MaterialTemplate(TwoLayerKind, TwoLayerMatbin, file, material, TwoLayerGx(null, terminatorFrom), layout, 0, Legacy: true);
-    }
-
-    /// <summary>
-    /// The draw settings list of a two-layer material: DS3's own items (GX01 holds a per-material value, 1 on the
-    /// Road's floor and 10 on Firelink's far mountain; GX04 and the per-texture GX20 to GX30) behind Elden Ring's
-    /// GX00, the first item of every vanilla legacy lit material (M[ARSN]: GX00, GX04, GX20...). With no DS3 list,
-    /// DS3's usual values.
-    /// </summary>
-    public static FLVER2.GXList TwoLayerGx(FLVER2.GXList? ds3, FLVER2.GXList terminatorFrom)
-    {
-        var gx = new FLVER2.GXList { TerminatorID = terminatorFrom.TerminatorID, TerminatorLength = terminatorFrom.TerminatorLength };
-        gx.Add(ErGx00());
-        if (ds3 is not null && ds3.Any(g => g.ID == "GX04"))
-        {
-            foreach (var item in ds3.Where(g => g.ID != "GX00"))
-                gx.Add(new FLVER2.GXItem(item.ID, item.Unk04, [.. item.Data]));
-            return gx;
-        }
-        var one = new byte[32];
-        BitConverter.GetBytes(1f).CopyTo(one, 0);
-        gx.Add(new FLVER2.GXItem("GX01", 101, one));
-        gx.Add(new FLVER2.GXItem("GX04", 100, Convert.FromHexString("00000000000000000000A0400000803F0000003F000000000000A0400000003F0000803F00000000000000000000000000000000")));
-        foreach (var id in new[] { "GX20", "GX21", "GX22", "GX23", "GX24", "GX25", "GX26", "GX27", "GX30" })
-            gx.Add(new FLVER2.GXItem(id, 100, new byte[12]));
-        return gx;
-    }
-
-    /// <summary>True when DS3's two-layer materials are drawn whole by <see cref="TwoLayerMatbin"/>.</summary>
-    public bool MaskBlend => _templates.ContainsKey(TwoLayerKind);
-
     /// <summary>True when a kind keeps DS3's fade in the vertex colour alpha (drawn by <see cref="LegacyBlendMatbin"/>).</summary>
     public bool VertexFade(string kind) =>
         kind is "nolight-blend" or "nolight-add" && _templates.TryGetValue(kind, out var t) && t.Legacy;
@@ -302,7 +202,10 @@ public sealed class MapModelPort
 
     /// <summary>A new port with the same templates and none of this one's materials (one per map).</summary>
     public MapModelPort Fresh() => new(_templates, _templateFlver)
-        { VanillaMaterials = VanillaMaterials, TemplateTextures = TemplateTextures, TintMaterials = TintMaterials };
+        { VanillaMaterials = VanillaMaterials, TemplateTextures = TemplateTextures, TintMaterials = TintMaterials, Masks = Masks };
+
+    /// <summary>Finds a DS3 blend mask by its texture path (<see cref="MapMasks.Find"/>), for two-layer materials.</summary>
+    public Func<string, MapMasks.Mask?>? Masks { get; set; }
 
     /// <summary>
     /// Diagnostic "--tint-materials": the albedo of each DS3 material family that keeps something in vertex alpha is a
@@ -376,7 +279,7 @@ public sealed class MapModelPort
     public bool VanillaMaterials { get; private init; }
 
     /// <summary>This port's templates with <see cref="VanillaMaterials"/> on.</summary>
-    public MapModelPort WithVanillaMaterials() => new(_templates, _templateFlver) { VanillaMaterials = true };
+    public MapModelPort WithVanillaMaterials() => new(_templates, _templateFlver) { VanillaMaterials = true, Masks = Masks };
 
     /// <summary>
     /// Piece test "ported-material" (see MapPorter.PieceTest): every DS3 material still becomes a MATBIN of its own
@@ -386,7 +289,7 @@ public sealed class MapModelPort
     public bool TemplateTextures { get; private init; }
 
     /// <summary>This port's templates with <see cref="TemplateTextures"/> on.</summary>
-    public MapModelPort WithTemplateTextures() => new(_templates, _templateFlver) { TemplateTextures = true };
+    public MapModelPort WithTemplateTextures() => new(_templates, _templateFlver) { TemplateTextures = true, Masks = Masks };
 
     /// <summary>The MATBIN switch that keeps a material's meshes out of the shadow maps.</summary>
     public const string NoShadowParam = "g_GX_bDisableShadowCasting";
@@ -459,9 +362,6 @@ public sealed class MapModelPort
             templates["nolight-add"] = legacy with { Kind = "nolight-add" };
             templates["nolight-opacity"] = legacy with { Kind = "nolight-opacity" };
         }
-        // DS3's two-layer mask-blend materials take Elden Ring's copy of DS3's own material (TwoLayerMatbin).
-        if (!plain && TwoLayerTemplate(matbins, templates["opaque"].GxList) is { } twoLayer)
-            templates[TwoLayerKind] = twoLayer;
         return new MapModelPort(templates, headerFlver ?? flvers[0]);
     }
 
@@ -567,11 +467,6 @@ public sealed class MapModelPort
             return "nolight";
         if (Regex.IsMatch(mtd, @"_e(?![a-z])|_alp|edge", RegexOptions.IgnoreCase))
             return "edge";
-        // Two layers mixed by a mask texture (M[ARSN]_m, _l_m, _l_p_m): drawn whole where TwoLayerMatbin is there,
-        // else as "opaque" after MapOverlays split it (TemplateFor).
-        if (!material.Name.EndsWith(MapOverlays.SecondLayerSuffix, StringComparison.Ordinal) && MapOverlays.KindOf(material) == MapOverlays.Kind.TwoLayer
-            && !Regex.IsMatch(mtd, "snow", RegexOptions.IgnoreCase))
-            return TwoLayerKind;
         return "opaque";
     }
 
@@ -1106,7 +1001,7 @@ public sealed class MapModelPort
         HashSet<FLVER2.Mesh> keepAlpha;
         {
             var stats = new MapOverlays.Stats();
-            keepAlpha = MapOverlays.Apply(flver, stats, MaskBlend);
+            keepAlpha = MapOverlays.Apply(flver, stats, Masks);
             Overlays.Add(stats);
         }
         // Terrain blends: one mesh per layer it shows (the weights are still in DS3's vertex layout here).
@@ -1148,7 +1043,6 @@ public sealed class MapModelPort
                 mesh.MaterialIndex = index;
             }
         var ds3Layouts = flver.BufferLayouts.ToList();
-        var ds3GxLists = flver.GXLists.ToList();
         flver.Skeletons = new FLVER2.SkeletonSet { BaseSkeleton = Bones(flver), AllSkeletons = Bones(flver) };
 
         // One GX list and one vertex layout per template kind, in a fixed order.
@@ -1209,47 +1103,6 @@ public sealed class MapModelPort
             }
 
             static string? NameOf(FLVER2.Texture? t) => t is null ? null : Path.GetFileNameWithoutExtension(ItemText.Leaf(t.Path));
-            if (kind == TwoLayerKind)
-            {
-                // Every texture DS3's shader reads, under DS3's own sampler names; DS3's draw settings and tiling.
-                string? Slot(string param) => NameOf(m.Textures.FirstOrDefault(t => t.ParamName == param && t.Path.Length > 0));
-                string? a1 = Slot("g_DiffuseTexture"), a2 = Slot("g_DiffuseTexture2"), n1 = Slot("g_BumpmapTexture"), n2 = Slot("g_BumpmapTexture2"),
-                    r1 = Slot("g_SpecularTexture"), r2 = Slot("g_SpecularTexture2"), mask = Slot("g_BlendMaskTexture");
-                if (TintMaterials && TintFor(m) is { } layerTint)
-                    a1 = a2 = layerTint;
-                if (mask is null)
-                    Notes.Add($"{ItemText.Leaf(m.MTD)} ({m.Name}) names no blend mask; its layers mix by the shader's default");
-                if (!TemplateTextures)
-                    foreach (var t in new[] { a1, a2, n1, n2, r1, r2, mask })
-                        if (t is not null)
-                            Textures.Add(t);
-                // DS3 tiles each texture on its own (the far mountain's albedo 2 x 2 over a 1 x 1 normal map): Elden Ring's
-                // sampler carries the scale, as for the one-layer materials.
-                var scales = new Dictionary<string, Vector2>();
-                foreach (var t in m.Textures)
-                    if (t.Path.Length > 0 && t.TilingScale is { X: > 0, Y: > 0 } && t.TilingScale != Vector2.One)
-                        scales[t.ParamName] = t.TilingScale;
-                var inv = System.Globalization.CultureInfo.InvariantCulture;
-                var layerKey = string.Join("|", template.Matbin, a1, a2, n1, n2, r1, r2, mask,
-                    string.Join(",", scales.OrderBy(x => x.Key, StringComparer.Ordinal).Select(x => $"{x.Key}={x.Value.X.ToString("R", inv)}x{x.Value.Y.ToString("R", inv)}")));
-                if (!_materials.TryGetValue(layerKey, out var layered))
-                    _materials[layerKey] = layered = new NewMaterial($"DKS_{ds3Id.Digits}_{StableHash(layerKey)}", template, a1 ?? "", n1 ?? FlatNormal,
-                        a2 ?? a1, n2 ?? n1 ?? FlatNormal, Vector2.One, TemplateTextures, r1, r2, mask, scales);
-                var gx = TwoLayerGx(m.GXIndex >= 0 && m.GXIndex < ds3GxLists.Count ? ds3GxLists[m.GXIndex] : null, template.GxList);
-                int gxIndex = flver.GXLists.FindIndex(known => SameGx(known, gx));
-                if (gxIndex < 0)
-                {
-                    flver.GXLists.Add(gx);
-                    gxIndex = flver.GXLists.Count - 1;
-                }
-                m.Name = layered.Name;
-                m.MTD = ReplaceStem(template.Material.MTD, template.Matbin, layered.Name);
-                m.GXIndex = gxIndex;
-                m.Textures = template.Material.Textures
-                    .Select(t => new FLVER2.Texture(t.ParamName, "", t.TilingScale, t.TilingTypeU, t.TilingTypeV, t.Unk14, t.Unk18, t.Unk1C))
-                    .ToList();
-                continue;
-            }
             var albedoTexture = Ds3Texture(m, "albedo");
             var albedo = NameOf(albedoTexture);
             if (TintMaterials && TintFor(m) is { } tint)
@@ -1294,62 +1147,9 @@ public sealed class MapModelPort
             var template = meshTemplates[mesh];
             var sourceLayouts = mesh.VertexBuffers.Where(b => b.LayoutIndex >= 0 && b.LayoutIndex < ds3Layouts.Count)
                 .SelectMany(b => ds3Layouts[b.LayoutIndex]).ToList();
-            if (template.Kind == TwoLayerKind)
-                ConformTwoLayer(mesh, kinds.IndexOf(template.Kind));
-            else
-                Conform(mesh, template.Layout, kinds.IndexOf(template.Kind), sourceLayouts, keepAlpha.Contains(mesh), template.Legacy);
+            Conform(mesh, template.Layout, kinds.IndexOf(template.Kind), sourceLayouts, keepAlpha.Contains(mesh), template.Legacy);
             SetBoundingBox(mesh, flver.Header.Version);
         }
-    }
-
-    private static bool SameGx(FLVER2.GXList a, FLVER2.GXList b) =>
-        a.Count == b.Count && a.TerminatorID == b.TerminatorID && a.TerminatorLength == b.TerminatorLength
-        && a.Zip(b).All(p => p.First.ID == p.Second.ID && p.First.Unk04 == p.Second.Unk04 && p.First.Data.AsSpan().SequenceEqual(p.Second.Data));
-
-    /// <summary>
-    /// A two-layer mesh in <see cref="TwoLayerMatbin"/>'s layout, with what DS3's shader reads kept as DS3 has it:
-    /// the vertex colour (its alpha weighs the mask), both tangents, and three UV sets: layer 1, layer 2 and the
-    /// mask's. DS3 keeps the mask's set last (the fourth on _l_m meshes, after the lightmap's; the third on _m).
-    /// </summary>
-    public static void ConformTwoLayer(FLVER2.Mesh mesh, int layoutIndex)
-    {
-        static Vector3 InRange(Vector3 uv) =>
-            new(Math.Clamp(uv.X, -ShortUvLimit, ShortUvLimit), Math.Clamp(uv.Y, -ShortUvLimit, ShortUvLimit), 0);
-        foreach (var v in mesh.Vertices)
-        {
-            if (v.Positions.Count == 0)
-                v.Positions.Add(Vector3.Zero);
-            if (v.Positions.Count > 1)
-                v.Positions.RemoveRange(1, v.Positions.Count - 1);
-            if (v.Normals.Count == 0)
-                v.Normals.Add(Vector3.UnitY);
-            if (v.Normals.Count > 1)
-                v.Normals.RemoveRange(1, v.Normals.Count - 1);
-            v.NormalWs.Clear();
-            v.NormalWs.Add(0);
-            if (v.Tangents.Count == 0)
-            {
-                var n = v.Normals[0];
-                var t = Vector3.Cross(n, MathF.Abs(n.Y) < 0.9f ? Vector3.UnitY : Vector3.UnitX);
-                v.Tangents.Add(new Vector4(t.LengthSquared() > 1e-8f ? Vector3.Normalize(t) : Vector3.UnitX, 1));
-            }
-            while (v.Tangents.Count < 2)
-                v.Tangents.Add(v.Tangents[0]);
-            if (v.Tangents.Count > 2)
-                v.Tangents.RemoveRange(2, v.Tangents.Count - 2);
-            // DS3's map vertices: red 1, green 0, blue 1, alpha the mesh's blend weight (0 where the mask alone decides).
-            var colour = v.Colors.Count > 0 ? v.Colors[0] : new FLVER.VertexColor(0f, 1f, 0f, 1f);
-            v.Colors.Clear();
-            v.Colors.Add(colour);
-            var first = v.UVs.Count > 0 ? v.UVs[0] : Vector3.Zero;
-            var second = v.UVs.Count > 1 ? v.UVs[1] : first;
-            var mask = v.UVs.Count > 2 ? v.UVs[^1] : first;
-            v.UVs.Clear();
-            v.UVs.Add(InRange(first));
-            v.UVs.Add(InRange(second));
-            v.UVs.Add(InRange(mask));
-        }
-        mesh.VertexBuffers = [new FLVER2.VertexBuffer(layoutIndex)];
     }
 
     private static FLVER2.BufferLayout CopyLayout(IEnumerable<FLVER.LayoutMember> members)
@@ -1532,26 +1332,6 @@ public sealed class MapModelPort
             var matbin = MATBIN.Read(material.Template.File.Bytes);
             foreach (var sampler in material.TemplateTextures ? [] : matbin.Samplers)
             {
-                if (material.Template.Kind == TwoLayerKind)
-                {
-                    // DS3's own sampler names; a slot DS3 left empty stays empty (the shader's default).
-                    var layerTexture = sampler.Type switch
-                    {
-                        "g_DiffuseTexture" => material.Albedo,
-                        "g_DiffuseTexture2" => material.Albedo2,
-                        "g_BumpmapTexture" => material.Normal,
-                        "g_BumpmapTexture2" => material.Normal2,
-                        "g_SpecularTexture" => material.Specular,
-                        "g_SpecularTexture2" => material.Specular2,
-                        "g_BlendMaskTexture" => material.Mask,
-                        _ => null,
-                    };
-                    if (!string.IsNullOrEmpty(layerTexture))
-                        sampler.Path = layerTexture;
-                    if (material.SamplerScales is not null && material.SamplerScales.TryGetValue(sampler.Type, out var samplerScale))
-                        sampler.Unk14 = samplerScale;
-                    continue;
-                }
                 var role = material.Template.Legacy && sampler.Type == LegacyAlbedoSampler ? ("albedo", 0) : Role(sampler.Type);
                 var texture = role switch
                 {

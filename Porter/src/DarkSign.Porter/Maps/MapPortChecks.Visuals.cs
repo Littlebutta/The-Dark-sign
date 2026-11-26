@@ -123,6 +123,70 @@ public static partial class MapPortChecks
         var (wallPort, wallBnd) = VisualPort();
         Expect(Tris(ConvertOne(wallPort, wallBnd, wall).Meshes[0]) == 2, "a one-layer mesh at alpha 0 everywhere is drawn whole");
 
+        // DS3 mixes a two-layer material's layers by its blend mask, not by vertex alpha alone: a floor at alpha 0
+        // everywhere (Road of Sacrifices) is the first layer where the mask is dark and the second where it is light.
+        {
+            // A mask whose left half is dark and right half light, read on the vertex's last UV set.
+            var grey = new float[16 * 16];
+            for (int i = 0; i < grey.Length; i++)
+                grey[i] = i % 16 < 8 ? 0.1f : 0.9f;
+            var mask = new MapMasks.Mask(grey, 16, 16);
+            Expect(MathF.Abs(mask.Coverage - 0.5f) < 1e-3f && mask.Levels == 2, $"the mask keeps its coverage and levels ({mask.Coverage}, {mask.Levels})");
+            Expect(mask.Sample(new Vector2(0.25f, 0.5f), 0) < 0.2f && mask.Sample(new Vector2(0.75f, 0.5f), 1) >= 0.5f && mask.Sample(new Vector2(0.25f, 0.5f), 1) < 0.5f, "the mask is read at a UV, at any level");
+            FLVER2 Floor(float alpha)
+            {
+                var f = OverlayFlver();
+                f.Meshes.RemoveAll(m => m.MaterialIndex != 1);
+                f.Materials[1].Textures.Add(new FLVER2.Texture(MapOverlays.MaskParam, @"N:\x\m40_00_mask_m.tif", Vector2.One, 0, 0, 0, 0, 0));
+                foreach (var v in f.Meshes[0].Vertices)
+                {
+                    v.Colors[0] = new FLVER.VertexColor(alpha, 1f, 0f, 1f);
+                    // The mask's own UV set: x from 0.1 (dark) to 0.9 (light) across the quad.
+                    v.UVs.Add(new Vector3(0.1f + v.Position.X / 10 * 0.8f, 0.5f, 0));
+                }
+                return f;
+            }
+            float Area(FLVER2.Mesh m)
+            {
+                var t = m.FaceSets[0].Triangulate(true);
+                float a = 0;
+                for (int i = 0; i + 2 < t.Count; i += 3)
+                    a += Vector3.Cross(m.Vertices[t[i + 1]].Position - m.Vertices[t[i]].Position, m.Vertices[t[i + 2]].Position - m.Vertices[t[i]].Position).Length() / 2;
+                return a;
+            }
+            var floor = Floor(0);
+            var floorStats = new MapOverlays.Stats();
+            MapOverlays.Apply(floor, floorStats, _ => mask);
+            Expect(floor.Meshes.Count == 2 && floorStats.NoMaskMeshes == 0, $"a floor at alpha 0 is split by its mask ({floor.Meshes.Count} meshes, {floorStats.Summary})");
+            var first = floor.Meshes.Single(m => !floor.Materials[m.MaterialIndex].Name.EndsWith(MapOverlays.SecondLayerSuffix));
+            var second = floor.Meshes.Single(m => floor.Materials[m.MaterialIndex].Name.EndsWith(MapOverlays.SecondLayerSuffix));
+            Expect(MathF.Abs(Area(first) - 50) < 1 && MathF.Abs(Area(second) - 50) < 1, $"each layer takes the half its mask shows ({Area(first)}, {Area(second)} of 100)");
+            Expect(first.Vertices.All(v => v.Position.X <= 5.01f) && second.Vertices.All(v => v.Position.X >= 4.99f), "the first layer lies where the mask is dark");
+            // Vertex alpha 1 holds the mask back: the first layer everywhere.
+            var solid = Floor(1);
+            MapOverlays.Apply(solid, new MapOverlays.Stats(), _ => mask);
+            Expect(solid.Meshes.Count == 1 && solid.Meshes[0].MaterialIndex == 1, "at vertex alpha 1 the first layer shows whatever the mask says");
+            // No mask found: the vertex alpha alone, as before (alpha 0 = the second layer).
+            var bare = Floor(0);
+            var bareStats = new MapOverlays.Stats();
+            MapOverlays.Apply(bare, bareStats, _ => null);
+            Expect(bare.Meshes.Count == 1 && bare.Materials[bare.Meshes[0].MaterialIndex].Name.EndsWith(MapOverlays.SecondLayerSuffix) && bareStats.NoMaskMeshes == 1,
+                $"without its mask a mesh is split by vertex alpha ({bareStats.Summary})");
+            // A coarser level keeps the share of the mask over one half.
+            var noise = new float[64 * 64];
+            var rng = new Random(7);
+            for (int i = 0; i < noise.Length; i++)
+                noise[i] = MathF.Pow((float)rng.NextDouble(), 2f);
+            var noisy = new MapMasks.Mask(noise, 64, 64);
+            int over = 0, n = 0;
+            for (float y = 1 / 16f; y < 1; y += 1 / 8f)
+                for (float x = 1 / 16f; x < 1; x += 1 / 8f, n++)
+                    if (noisy.Sample(new Vector2(x, y), noisy.Levels - 1) >= 0.5f)
+                        over++;
+            Expect(MathF.Abs(over / (float)n - noisy.Coverage) < 0.1f && noisy.LevelFor(1 / 16f) == 2,
+                $"the coarsest level keeps the mask's coverage ({over}/{n} against {noisy.Coverage:F2}; level {noisy.LevelFor(1 / 16f)})");
+        }
+
         // The second layer of the two-layer mesh brings its own textures, tiling and UVs.
         var albedo = drawn.Meshes.Take(4).Select(m => plain.Materials.Single(x => x.Name == drawn.Materials[m.MaterialIndex].Name).Albedo).ToList();
         Expect(albedo.SequenceEqual(["m40_00_brick_001_a", "m40_00_brick_001_a", "m40_00_brick_001_a", "m40_00_ash_332_a"]), $"albedos {string.Join(", ", albedo)}");
@@ -349,46 +413,6 @@ public static partial class MapPortChecks
         var (two, twoBnd) = VisualPort();
         ConvertOne(two, twoBnd, OverlayFlver());
         Expect(two.Overlays.TwoLayerTriangles > 2, $"a two-layer triangle between the layers is cut ({two.Overlays.Summary})");
-
-        // ... unless Elden Ring's copy of DS3's own two-layer material is there: then the mesh stays whole, with both
-        // layers' textures, the mask, DS3's vertex colour and three UV sets (layer 1, layer 2, the mask's).
-        var (mask, maskBnd) = VisualPort(legacy: true);
-        Expect(mask.MaskBlend && mask.TemplateSummary.Contains("two-layer=M[ARSN]_m"), $"the two-layer template is found: {mask.TemplateSummary}");
-        var layered = OverlayFlver();
-        var layeredMaterial = layered.Materials.First(m => m.MTD.EndsWith("M[ARSN]_l_m.mtd", StringComparison.Ordinal));
-        layeredMaterial.Textures.Add(new FLVER2.Texture("g_BlendMaskTexture", @"N:\x\m40_00_mask_311.tif", Vector2.One, 0, 0, 0, 0, 0));
-        layeredMaterial.Textures.Add(new FLVER2.Texture("g_SpecularTexture", @"N:\x\m40_00_brick_001_r.tif", Vector2.One, 0, 0, 0, 0, 0));
-        int layeredIndex = layered.Materials.IndexOf(layeredMaterial);
-        var ds3Layered = layered.Meshes.Where(m => m.MaterialIndex == layeredIndex).ToList();
-        int ds3Triangles = ds3Layered.Sum(m => m.FaceSets[0].Triangulate(true).Count / 3);
-        var ds3Gx = new FLVER2.GXList();
-        ds3Gx.Add(new FLVER2.GXItem("GX00", 100, new byte[32]));
-        ds3Gx.Add(new FLVER2.GXItem("GX01", 101, [0, 0, 0x20, 0x41, .. new byte[28]]));
-        ds3Gx.Add(new FLVER2.GXItem("GX04", 100, new byte[52]));
-        layered.GXLists.Add(ds3Gx);
-        layeredMaterial.GXIndex = layered.GXLists.Count - 1;
-        var wholeModel = ConvertOne(mask, maskBnd, layered);
-        Expect(MapValidate.CheckFlverDraw(wholeModel, mask.TemplateLayouts()).ToList() is { Count: 0 },
-            "the validator accepts the whole two-layer model: " + string.Join("; ", MapValidate.CheckFlverDraw(wholeModel, mask.TemplateLayouts())));
-        var wholeMeshes = wholeModel.Meshes.Where(m => wholeModel.BufferLayouts[m.VertexBuffers[0].LayoutIndex].Count(l => l.Semantic == FLVER.LayoutSemantic.Tangent) == 2).ToList();
-        Expect(wholeMeshes.Count == ds3Layered.Count && wholeMeshes.Sum(m => m.FaceSets[0].Triangulate(true).Count / 3) == ds3Triangles
-               && mask.Overlays.MaskBlendMeshes == ds3Layered.Count && mask.Overlays.TwoLayerMeshes == 0,
-            $"two-layer meshes stay whole ({mask.Overlays.Summary})");
-        Expect(wholeMeshes.All(m => m.Vertices.All(v => v.UVs.Count == 3 && v.Tangents.Count == 2 && v.Colors.Single() is { R: 1, G: 0, B: 1 })),
-            "DS3's vertex colour, two tangents and three UV sets are kept");
-        Expect(wholeMeshes.Zip(ds3Layered).All(p => p.First.Vertices.Select(v => MathF.Round(v.Colors[0].A, 2)).Order().SequenceEqual(p.Second.Vertices.Select(v => MathF.Round(MapOverlays.Alpha(v), 2)).Order())),
-            "the vertex alpha (the mask's weight) is DS3's");
-        var wholeGx = wholeModel.GXLists[wholeModel.Materials[wholeMeshes[0].MaterialIndex].GXIndex];
-        Expect(wholeGx.Select(g => g.ID).SequenceEqual(["GX00", "GX01", "GX04"]) && wholeGx[0] is { Unk04: 102, Data.Length: 40 } && wholeGx[1].Data[3] == 0x41,
-            "the draw settings are DS3's own behind Elden Ring's GX00");
-        var maskMatbin = mask.MatbinFiles(0).Select(f => MATBIN.Read(f.Bytes)).Single(m => m.ShaderPath.Contains("MulMask", StringComparison.Ordinal));
-        string Sampler(string type) => maskMatbin.Samplers.Single(x => x.Type == type).Path;
-        Expect(Sampler("g_DiffuseTexture") == "m40_00_brick_001_a" && Sampler("g_DiffuseTexture2") == "m40_00_ash_332_a" && Sampler("g_BumpmapTexture2") == "m40_00_ash_332_n"
-               && Sampler("g_BlendMaskTexture") == "m40_00_mask_311" && Sampler("g_SpecularTexture") == "m40_00_brick_001_r" && Sampler("g_SpecularTexture2") == "",
-            "the matbin names both layers, the mask and the reflectance map under DS3's sampler names");
-        Expect(maskMatbin.Samplers.Single(x => x.Type == "g_DiffuseTexture2").Unk14 == new Vector2(0.5f) && maskMatbin.Samplers.Single(x => x.Type == "g_DiffuseTexture").Unk14 == Vector2.One,
-            "each sampler carries DS3's tiling");
-        Expect(new[] { "m40_00_ash_332_a", "m40_00_ash_332_n", "m40_00_mask_311", "m40_00_brick_001_r" }.All(mask.Textures.Contains), "every texture the shader reads is ported");
 
     }
 
@@ -658,12 +682,6 @@ public static partial class MapPortChecks
             bin.Params.Add(new MATBIN.Param { Name = "g_AlphaRef", Type = MATBIN.ParamType.Int2, Value = new[] { 0, 0 } });
             bin.Samplers.Add(new MATBIN.Sampler { Type = MapModelPort.LegacyAlbedoSampler, Path = "", Unk14 = Vector2.One });
             matbins["M[A]_al_NoLight"] = new(Binder.FileFlags.Flag1, matbins.Count, @"N:\GR\data\INTERROOT_win64\material\matbin\map\matxml\M[A]_al_NoLight.matbin", MATBIN.Read(bin.Write()).Write());
-            // Elden Ring's map\matxml\M[ARSN]_m as allmaterial has it (2026-11-26): DS3's two-layer mask shader and samplers.
-            var two = new MATBIN { ShaderPath = @"N:\GR\data\Material\spx\GXFlver_ColDifSpcBumpMulMaskIbl.spx", SourcePath = @"N:\GR\data\Material\mtd\map\matxml\M[ARSN]_m.matxml" };
-            two.Params.Add(new MATBIN.Param { Name = "g_BlendMode", Type = MATBIN.ParamType.Int, Value = 0 });
-            foreach (var sampler in new[] { "g_DiffuseTexture", "g_DiffuseTexture2", "g_SpecularTexture", "g_SpecularTexture2", "g_BumpmapTexture", "g_BumpmapTexture2", "g_BlendMaskTexture" })
-                two.Samplers.Add(new MATBIN.Sampler { Type = sampler, Path = "", Unk14 = Vector2.One });
-            matbins["M[ARSN]_m"] = new(Binder.FileFlags.Flag1, matbins.Count, @"N:\GR\data\INTERROOT_win64\material\matbin\map\matxml\M[ARSN]_m.matbin", MATBIN.Read(two.Write()).Write());
         }
         var hostBnd = new BND4();
         hostBnd.Files.Add(new BinderFile(Binder.FileFlags.Flag1, 200, @"N:\GR\data\Model\map\m45_00_00_00\m45_00_00_00_001000\sib\m45_00_00_00_001000.flver", flvers[0].Write()));
