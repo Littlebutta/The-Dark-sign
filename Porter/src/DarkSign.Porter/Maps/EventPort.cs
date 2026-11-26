@@ -968,6 +968,8 @@ public sealed class EventPort
             return ClientCheck(ins, parameterized);
         if (ins.Bank == 3 && SoloConditions.Contains(ins.ID))
             return SoloCondition(ins, parameterized);
+        if (ins.Bank == 2003 && ins.ID == PlayerSceneWeapons.PairedAnimId && PairedPlayerAnimation(ins, parameterized) is { } paired)
+            return (paired, null);
         // "WAIT For Network Approval": nothing to wait for outside an online session.
         if (ins.Bank == 1000 && ins.ID == 9)
             return (NoOp(), null);
@@ -1198,6 +1200,34 @@ public sealed class EventPort
     /// DS3 "SKIP/GOTO/END IF Number of Clients of Type" (first argument: lines, label or end type; then Client Type,
     /// Comparison Type, Target Number of Clients). See <see cref="ClientChecks"/>.
     /// </summary>
+    /// <summary>
+    /// DS3 2003[72] (object, animation, on): the player plays that animation with the object. DS3 uses it once, in
+    /// Firelink Shrine's coiled sword event (m40 14005101), right after it plays 60430 on the bonfire object (the
+    /// sword sliding into the ash): 60430 is also the player's thrust (DS3 c0000 a000_060430, which hides both
+    /// weapons). Elden Ring has no such instruction (its 2003[72] is another one), so the line was a no-op and the
+    /// sword floated into the bonfire with the player standing by (1.0.667 playtest, 2026-11-26). It becomes "Force
+    /// Animation Playback" on the player; Elden Ring has an entry of that number in its player's a000. A line that
+    /// takes a value from its event's parameters, or turns the state off, stays a no-op.
+    /// </summary>
+    private EMEVD.Instruction? PairedPlayerAnimation(EMEVD.Instruction ins, bool parameterized)
+    {
+        if (parameterized || ins.ArgData.Length < 9 || ins.ArgData[8] == 0 || _er.Get("Force Animation Playback") is not { } play)
+            return null;
+        int anim = BitConverter.ToInt32(ins.ArgData, 4);
+        if (anim <= 0)
+            return null;
+        PairedPlayerAnimations++;
+        var output = new byte[play.Length];
+        foreach (var arg in play.Args)
+            Emedf.Write(output, arg, arg.Name.Contains("Entity", StringComparison.OrdinalIgnoreCase) ? PlayerSceneWeapons.Player
+                : arg.Name.Contains("Animation", StringComparison.OrdinalIgnoreCase) ? anim
+                : arg.Type == 6 ? BitConverter.SingleToInt32Bits(1f) : 0);
+        return new EMEVD.Instruction(play.Bank, play.Id, output);
+    }
+
+    /// <summary>DS3 2003[72] lines turned into the player's animation (<see cref="PairedPlayerAnimation"/>).</summary>
+    public int PairedPlayerAnimations { get; private set; }
+
     private (EMEVD.Instruction?, Mapping?) ClientCheck(EMEVD.Instruction ins, bool parameterized)
     {
         var (coopId, alwaysId) = ClientChecks[ins.ID];
