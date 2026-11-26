@@ -437,6 +437,12 @@ public static class MapConnectDisplay
                 continue;
             int number = i <= DoorwayNumberTop - lists ? i : -1;  // more collisions than numbers: the rest keep none
             WriteNumber(u2, number);
+            // Unk2 groups also carry the collision's own display groups, as in the run proven on Devin's PC (Control K:
+            // Unk2 groups = display). With only its own bit (first #314 build) the player, people and enemies were not
+            // drawn and ground beside the player's own collision did not load (falls through the floor).
+            var display = MapDrawGroups.Display(real[i].Unk1);
+            for (int w = 0; w < Math.Min(display.Length, u2.DispGroups.Length); w++)
+                u2.DispGroups[w] |= display[w];
             if (number >= 0)
                 numbered++;
         }
