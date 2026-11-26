@@ -26,8 +26,9 @@ public static class MapEvents
     public static Result Convert(Emedf ds3Defs, Emedf erDefs, FlagMap flags, IReadOnlyList<MapSlots.Slot> slots,
         IReadOnlyDictionary<MapId, EMEVD> ds3Scripts, EMEVD? ds3Common, Func<MapSlots.Slot, EMEVD> erTemplate, EMEVD erCommon,
         ActionButtons? buttons = null, Func<long, long?>? spEffects = null, Func<long, long?>? cutscenes = null, MapMusic.Plan? music = null,
-        MapText.Used? texts = null, EMEVD? ds3Events = null)
+        MapText.Used? texts = null, EMEVD? ds3Events = null, IReadOnlySet<long>? playerPoses = null)
     {
+        var ports = new List<EventPort>();
         var main = slots.Where(s => !s.Probe).Select(s => (s.Ds3, s.Er)).ToList();
         var summary = new List<string>();
         var scripts = new Dictionary<MapId, EMEVD>();
@@ -35,7 +36,8 @@ public static class MapEvents
 
         EventPort NewPort(IReadOnlyList<(MapId, MapId)> maps)
         {
-            var port = new EventPort(ds3Defs, erDefs, maps, flags) { Buttons = buttons, SpEffects = spEffects, Cutscenes = cutscenes, Music = music, Texts = texts };
+            var port = new EventPort(ds3Defs, erDefs, maps, flags) { Buttons = buttons, SpEffects = spEffects, Cutscenes = cutscenes, Music = music, Texts = texts, PlayerPoses = playerPoses };
+            ports.Add(port);
             if (ds3Common is not null)
                 port.Learn(ds3Common, common: true);
             foreach (var script in ds3Scripts.Values)
@@ -116,6 +118,9 @@ public static class MapEvents
         summary.Add($"flags: {flags.Flags.Count} DS3 global flags and {flags.Events.Count} common events have Elden Ring numbers; "
                     + $"{flags.LocalUsed} map flags and map event IDs of slots whose blocks the game doesn't keep are in saved ranges"
                     + (flags.LocalOverflow > 0 ? $"; WARN {flags.LocalOverflow} found no room and stay in blocks the game doesn't keep" : ""));
+        if (playerPoses is not null)
+            summary.Add($"player poses: {ports.Sum(p => p.PlayerPoseChecks)} checks of the player holding a DS3 event pose (SpEffects {string.Join(" ", playerPoses.Order().Take(12))}) answered as held "
+                        + "(Elden Ring's player has no DS3 event animations)");
         return new Result(scripts, erCommon, string.Join("\n  ", summary));
     }
 
@@ -136,6 +141,7 @@ public static class MapEvents
         var erDefs = Emedf.Parse(File.ReadAllText(ctx.Data.Emedf("er-common")));
         var flagPath = ctx.ModPath(FlagFile);
         var flags = FlagMap.Load(flagPath);
+        int flagsBefore = flags.Flags.Count + flags.Events.Count;
         var (ds3Scripts, ds3Common) = ReadDs3(ds3, slots);
         var ds3Events = ds3.Contains(Ds3Setup.Ds3Common) ? EMEVD.Read(ds3.Read(Ds3Setup.Ds3Common)) : null;
 
@@ -191,7 +197,18 @@ public static class MapEvents
         }
         // The DS3 text the scripts name by number (MapText), written once the scripts are.
         var texts = new MapText.Used();
-        var result = Convert(ds3Defs, erDefs, flags, slots, ds3Scripts, ds3Common, s => Template(s).Script, erCommon, buttons, spEffects, playable, music, texts, ds3Events);
+        // The SpEffects DS3's people event animations cast: the player never has them here (EventPort.PlayerPoses).
+        IReadOnlySet<long>? playerPoses = null;
+        try
+        {
+            if (ds3.Contains(TalkPort.PeopleAnimations))
+                playerPoses = TalkPort.PoseEffects(BND4.Read(ds3.Read(TalkPort.PeopleAnimations)));
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            spNote += (spNote.Length > 0 ? "\n  " : "") + $"player poses: DS3's people animations not read ({ex.Message}); events that check the player's pose stay as DS3 wrote them";
+        }
+        var result = Convert(ds3Defs, erDefs, flags, slots, ds3Scripts, ds3Common, s => Template(s).Script, erCommon, buttons, spEffects, playable, music, texts, ds3Events, playerPoses);
         // Boss kits go through the same buttons, so their action button rows are written with the maps'.
         (EMEVD Common, DCX.CompressionInfo Compression, string Note)? kits = null;
         string KitNote(Exception ex) => $"boss kits: not added ({ex.Message}); bosses outside their DS3 map run no map scripts";
@@ -215,7 +232,7 @@ public static class MapEvents
                 // Scripts that point at rows which were never written must not ship: fall back to leaving them out.
                 buttonNote = $"action buttons: FAILED to write rows ({ex.Message}); converting again without them";
                 flags = FlagMap.Load(flagPath);
-                result = Convert(ds3Defs, erDefs, flags, slots, ds3Scripts, ds3Common, s => Template(s).Script, erCommon, null, spEffects, playable, music, texts, ds3Events);
+                result = Convert(ds3Defs, erDefs, flags, slots, ds3Scripts, ds3Common, s => Template(s).Script, erCommon, null, spEffects, playable, music, texts, ds3Events, playerPoses);
                 try
                 {
                     kits = PortKits(ctx, ds3, er, ds3Defs, erDefs, flags, null, spEffects);
@@ -273,7 +290,10 @@ public static class MapEvents
         }
         var textNote = MapText.Write(ctx, ds3, er, texts);
         flags.Save(flagPath);
-        return "events:\n  " + result.Summary + (buttonNote.Length > 0 ? "\n  " + buttonNote : "") + (spNote.Length > 0 ? "\n  " + spNote : "")
+        int flagsNew = flags.Flags.Count + flags.Events.Count - flagsBefore;
+        var seedNote = "\n  flag numbers: " + (flags.Seeded > 0 ? $"{flags.Seeded} kept from the seed table ({FlagMap.SeedFile})" : $"{flagsBefore} kept from the mod's table")
+            + $", {flagsNew} new" + (flagsBefore == 0 ? "; WARN no seed table found: these numbers can differ from other builds, and a save's DS3 progress won't match" : "");
+        return "events:\n  " + result.Summary + seedNote + (buttonNote.Length > 0 ? "\n  " + buttonNote : "") + (spNote.Length > 0 ? "\n  " + spNote : "")
                + (kitNote.Length > 0 ? "\n  " + kitNote : "")
                + (objActNote.Length > 0 ? "\n  " + objActNote : "")
                + (objActSpNote.Length > 0 ? "\n  " + objActSpNote : "")

@@ -21,6 +21,7 @@ public static partial class MapPortChecks
         yield return ("event port: DS3 action buttons become IF Action Button in Area with one ActionButtonParam row per prompt", EventActionButtons);
         yield return ("event port: DS3's online checks become Elden Ring's single-player forms (world type, co-op clients, the host check as Elden Ring's own)", EventOnlineChecks);
         yield return ("event port: phantom-count, DLC and network-penalty conditions become fixed single-player answers, not a dropped event (1.0.640 Demon Prince never died)", EventSoloConditions);
+        yield return ("event port: the player counts as holding DS3's event poses, so the level-up kneel isn't cancelled (1.0.667 no level-up window)", EventPlayerPoses);
     }
 
     private static void EventKeptFlagBlocks()
@@ -90,6 +91,9 @@ public static partial class MapPortChecks
           { "name": "Ending Target Event Flag ID", "type": 2 } ] },
       ] },
       { "index": 4, "instrs": [
+        { "name": "IF Character Has SpEffect", "index": 5, "args": [
+          { "name": "Result Condition Group", "type": 3 }, { "name": "Target Entity ID", "type": 5 }, { "name": "SpEffect ID", "type": 5 },
+          { "name": "Should Have", "type": 0 }, { "name": "Comparison Type", "type": 3 }, { "name": "Number of Target Characters", "type": 6, "default": 1.0 } ] },
         { "name": "IF Character Damaged By", "index": 1, "args": [
           { "name": "Result Condition Group", "type": 3 }, { "name": "Target Entity ID", "type": 5 }, { "name": "Attacker Entity ID", "type": 5 } ] },
       ] },
@@ -151,6 +155,11 @@ public static partial class MapPortChecks
         { "name": "IF Action Button in Area", "index": 24, "args": [
           { "name": "Result Condition Group", "type": 3 }, { "name": "Action Button Parameter ID", "type": 5, "default": -1 },
           { "name": "Target Entity ID", "type": 2 } ] },
+      ] },
+      { "index": 4, "instrs": [
+        { "name": "IF Character Has SpEffect", "index": 5, "args": [
+          { "name": "Result Condition Group", "type": 3 }, { "name": "Target Entity ID", "type": 5 }, { "name": "SpEffect ID", "type": 5 },
+          { "name": "Should Have", "type": 0 }, { "name": "Comparison Type", "type": 3 }, { "name": "Number of Target Characters", "type": 6, "default": 1.0 } ] },
       ] },
       { "index": 1000, "instrs": [
         { "name": "SKIP Unconditionally", "index": 3, "args": [ { "name": "Number Of Skipped Lines", "type": 0, "default": 1 } ] },
@@ -455,6 +464,27 @@ public static partial class MapPortChecks
             Expect(back.Events.GetValueOrDefault(20005000) == flags.Events[20005000], "events don't read back the same");
             Expect(back.Flag(80000) != back.Flags[70000] && back.Flags.Values.Distinct().Count() == back.Flags.Count, "a new flag reused a saved number");
             Expect(back.Event(20005001) != back.Events[20005000], "a new event reused a saved number");
+            // A build with no table of its own starts from the seed: asked in another order, with flags the seed
+            // doesn't know first, every seeded flag keeps its number (a save's bits keep their meaning).
+            var missing = path + ".none";
+            var seedWas = FlagMap.SeedPath;
+            try
+            {
+                FlagMap.SeedPath = path;
+                var seeded = FlagMap.Load(missing);
+                long fresh = seeded.Flag(90001);
+                Expect(seeded.Seeded == flags.Flags.Count + flags.Events.Count, "the seed table wasn't read");
+                Expect(seeded.Range(90010, 90019) > 0 && seeded.Flag(70000) == flags.Flags[70000]
+                       && Enumerable.Range(0, 10).All(i => seeded.Flag(60000 + i) == flags.Flags[60000 + i]), "a seeded flag changed its number");
+                Expect(!flags.Flags.Values.Contains(fresh) && seeded.Flags.Values.Distinct().Count() == seeded.Flags.Count, "a new flag took a seeded number");
+                Expect(seeded.Event(20005000) == flags.Events[20005000], "a seeded event changed its number");
+                FlagMap.SeedPath = missing;
+                Expect(FlagMap.Load(missing).Flags.Count == 0, "no seed and no table should start empty");
+            }
+            finally
+            {
+                FlagMap.SeedPath = seedWas;
+            }
         }
         finally
         {
@@ -615,6 +645,28 @@ public static partial class MapPortChecks
         Expect(ins[8].Bank == 1003 && ins[8].ID == 203 && ins[8].ArgData.Length == 8 && ins[8].ArgData[0] == 1 && ins[8].ArgData.Skip(1).All(b => b == 0),
             $"SKIP IF no host -> SKIP IF Map Has Permission To Update(1, 0), as Elden Ring's own lever lift (90005500): the owner runs the flag set behind it, joined players don't (got {ins[8].Bank}[{ins[8].ID}])");
         Expect(ins[9].Bank == 2003, "the flag set behind the host check stays");
+    }
+
+    private static void EventPlayerPoses()
+    {
+        var er = Emedf.Parse(ErDefs);
+        // DS3 common_func 20006005 (the level-up kneel), shortened: cancel when the player lacks 150, go on when the
+        // player has 155; and 20006006's check of the Fire Keeper herself, which stays a real check.
+        var script = OneEvent(14005610,
+            Ins(4, 5, (sbyte)2, 10000, 150, (byte)0, (sbyte)0, 1f),     // IF player lacks 150: never
+            Ins(4, 5, (sbyte)-4, 10000, 155, (byte)1, (sbyte)0, 1f),    // IF player has 155: always
+            Ins(4, 5, (sbyte)1, 4000700, 155, (byte)1, (sbyte)0, 1f),   // IF the Fire Keeper has 155: asked of her
+            Ins(4, 5, (sbyte)3, 10000, 4800, (byte)1, (sbyte)0, 1f));   // IF player has another effect: asked
+        var port = new EventPort(Emedf.Parse(Ds3Defs), er, [(Ds3Id, ErId)], new FlagMap()) { PlayerPoses = new HashSet<long> { 150, 155 } };
+        var ins = port.Convert(script, EMEVD.Game.Sekiro, MoveToSlot).Events[0].Instructions;
+        Expect(ins.Count == 4 && port.PlayerPoseChecks == 2, $"{ins.Count} lines, {port.PlayerPoseChecks} pose checks answered");
+        Expect(ins[0].Bank == 3 && ins[0].ID == 17 && Arg(ins[0], "Result Condition Group", er) == 2 && Arg(ins[0], "Comparison Type", er) == 3,
+            "player lacks a pose effect -> never (cycles < 0), same condition group");
+        Expect(ins[1].Bank == 3 && ins[1].ID == 17 && (sbyte)Arg(ins[1], "Result Condition Group", er) == -4 && Arg(ins[1], "Comparison Type", er) == 4,
+            "player has a pose effect -> always (cycles >= 0), same condition group");
+        Expect(ins[2].Bank == 4 && ins[2].ID == 5 && ins[3].Bank == 4 && ins[3].ID == 5, "a character's pose and the player's other effects are still asked");
+        var plain = new EventPort(Emedf.Parse(Ds3Defs), er, [(Ds3Id, ErId)], new FlagMap());
+        Expect(plain.Convert(script, EMEVD.Game.Sekiro, MoveToSlot).Events[0].Instructions.All(i => i.Bank == 4), "without the pose list nothing changes");
     }
 
     private static void EventSoloConditions()

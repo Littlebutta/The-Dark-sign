@@ -144,11 +144,43 @@ public sealed class FlagMap
         return _events[ds3] = EventSlot(_nextEvent++);
     }
 
+    /// <summary>
+    /// The table every build starts from (ds3-flags-seed.tsv beside the porter: build 1.0.667's numbers).
+    /// <para>
+    /// Numbers are handed out in the order the scripts first name a flag, so any change to what the porter reads, or
+    /// in what order, gave most flags another number, while a save kept its bits where they were. PR #285 (placing
+    /// ranges first) moved the whole table, and Devin's save then read as DS3 states no script can make: Andre and the
+    /// Shrine Handmaid's state ranges had a stray bit on, so their events (14005660, 14005680) found no "is at
+    /// Firelink" state and switched them off, eight people read as angry or hostile, and three one-of ranges had two
+    /// flags on (1.0.667). A flag in the seed keeps its number for good; only flags the seed doesn't know get new ones.
+    /// </para>
+    /// </summary>
+    public const string SeedFile = "ds3-flags-seed.tsv";
+
+    /// <summary>Where <see cref="SeedFile"/> is read from (tests point it elsewhere or at nothing).</summary>
+    public static string SeedPath { get; set; } = Path.Combine(AppContext.BaseDirectory, SeedFile);
+
+    /// <summary>How many flag and event numbers this table took from the seed (0: read from the mod's own file, or no seed).</summary>
+    public int Seeded { get; private set; }
+
+    /// <summary>The mod's table, or the seed when the mod has none yet (a full run starts without one).</summary>
     public static FlagMap Load(string path)
     {
         var map = new FlagMap();
+        bool seed = !File.Exists(path);
+        if (seed)
+            path = SeedPath;
         if (!File.Exists(path))
             return map;
+        map.Read(path);
+        if (seed)
+            map.Seeded = map._flags.Count + map._events.Count;
+        return map;
+    }
+
+    private void Read(string path)
+    {
+        var map = this;
         foreach (var line in File.ReadAllLines(path))
         {
             var p = line.Split('\t');
@@ -162,7 +194,6 @@ public sealed class FlagMap
             else if (p[0] == "event")
                 map._events[ds3] = er;
         }
-        return map;
     }
 
     public void Save(string path)

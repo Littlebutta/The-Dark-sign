@@ -47,6 +47,25 @@ public static partial class MapPortChecks
         var poseOut = TalkPort.Parse(esd.StateGroups[0x7FFFFFE6][0].Conditions[0].Evaluator).SelectMany(Walk).ToList();
         var bossOut = TalkPort.Parse(esd.StateGroups[0x7FFFFFE6][1].Conditions[0].Evaluator).SelectMany(Walk).ToList();
         Expect(stats.PoseEffects == 2 && !poseOut.OfType<TalkPort.Call>().Any(), "the talk poses 150/152 read as on (no SpEffect call left)");
+        // The handshake's answer flags: "both off" before the request, "both on" after it; each passes (state 11 and
+        // group 0x7FFFFFE6 state 2 of t400120). The request flag itself stays a real read.
+        static TalkPort.Node Flag(long flag, int value) =>
+            new TalkPort.Op(0x95, [new TalkPort.Op(0xA6, [new TalkPort.Call(new TalkPort.Lit(15), [new TalkPort.Lit(flag)])]), new TalkPort.Lit(value)]);
+        var shake = new ESD(false, 1) { StateGroups = new() { [0x7FFFFFF7] = new() { [11] = new ESD.State(), [2] = new ESD.State(), [3] = new ESD.State() } } };
+        shake.StateGroups[0x7FFFFFF7][11].Conditions.Add(new ESD.Condition(19, TalkPort.Emit([new TalkPort.Op(0xA1, [new TalkPort.Op(0x98, [Flag(74000137, 0), Flag(74000138, 0)])])])));
+        shake.StateGroups[0x7FFFFFF7][2].Conditions.Add(new ESD.Condition(1, TalkPort.Emit([new TalkPort.Op(0xA1, [new TalkPort.Op(0x98, [Flag(74000137, 1), Flag(74000138, 1)])])])));
+        shake.StateGroups[0x7FFFFFF7][3].Conditions.Add(new ESD.Condition(6, TalkPort.Emit([new TalkPort.Op(0xA1, [Flag(74000135, 0)])])));
+        var flagVocabulary = new TalkPort.Vocabulary();
+        var erFlags = new ESD(true, 3) { StateGroups = new() { [1] = new() { [0] = new ESD.State() } } };
+        erFlags.StateGroups[1][0].Conditions.Add(new ESD.Condition(0, TalkPort.Emit([new TalkPort.Op(0xA1, [Flag(4651, 0)])])));
+        flagVocabulary.Add(erFlags);
+        var shakeStats = TalkPort.Convert(shake, flagVocabulary, f => f + 1_000_000_000, _ => true, new TalkPort.Needs(), f => f is 74000137 or 74000138);
+        List<TalkPort.Node> Out(long state) => TalkPort.Parse(shake.StateGroups[0x7FFFFFF7][state].Conditions[0].Evaluator).SelectMany(Walk).ToList();
+        Expect(shakeStats.EngineFlags == 4 && !Out(11).OfType<TalkPort.Call>().Any() && !Out(2).OfType<TalkPort.Call>().Any(),
+            $"the handshake's answer flags pass asked off and asked on ({shakeStats.EngineFlags} checks)");
+        Expect(Out(11).OfType<TalkPort.Op>().Where(o => o.Code == 0x98).All(o => o.Kids.All(k => k is TalkPort.Lit { Value: 1 })) && Out(2).OfType<TalkPort.Op>().Where(o => o.Code == 0x98).All(o => o.Kids.All(k => k is TalkPort.Lit { Value: 1 })),
+            "both waits read 1 and 1");
+        Expect(Out(3).OfType<TalkPort.Call>().Any(c => c.Args is [TalkPort.Lit { Value: 1_074_000_135 }]), "the request flag is still read, at its moved number");
         Expect(stats.EffectsMoved == 1 && bossOut.OfType<TalkPort.Call>().Any(c => c.Args is [TalkPort.Lit { Value: 700_013_133 }]),
             "a DS3 character effect asked of the speaker is its ported number 700,013,133");
     }
