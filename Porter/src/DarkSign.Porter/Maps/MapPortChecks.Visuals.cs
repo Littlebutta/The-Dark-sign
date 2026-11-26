@@ -123,6 +123,89 @@ public static partial class MapPortChecks
         var (wallPort, wallBnd) = VisualPort();
         Expect(Tris(ConvertOne(wallPort, wallBnd, wall).Meshes[0]) == 2, "a one-layer mesh at alpha 0 everywhere is drawn whole");
 
+        // DS3 mixes a two-layer material's layers by its blend mask, not by vertex alpha alone: a floor at alpha 0
+        // everywhere (Road of Sacrifices) is the first layer where the mask is dark and the second where it is light.
+        {
+            // A mask whose left half is dark and right half light, read on the vertex's last UV set.
+            var grey = new float[16 * 16];
+            for (int i = 0; i < grey.Length; i++)
+                grey[i] = i % 16 < 8 ? 0.1f : 0.9f;
+            var mask = new MapMasks.Mask(grey, 16, 16);
+            Expect(MathF.Abs(mask.Coverage - 0.5f) < 1e-3f && mask.Levels == 2, $"the mask keeps its coverage and levels ({mask.Coverage}, {mask.Levels})");
+            Expect(mask.Sample(new Vector2(0.25f, 0.5f), 0) < 0.2f && mask.Sample(new Vector2(0.75f, 0.5f), 1) >= 0.5f && mask.Sample(new Vector2(0.25f, 0.5f), 1) < 0.5f, "the mask is read at a UV, at any level");
+            FLVER2 Floor(float alpha)
+            {
+                var f = OverlayFlver();
+                f.Meshes.RemoveAll(m => m.MaterialIndex != 1);
+                f.Materials[1].Textures.Add(new FLVER2.Texture(MapOverlays.MaskParam, @"N:\x\m40_00_mask_m.tif", Vector2.One, 0, 0, 0, 0, 0));
+                foreach (var v in f.Meshes[0].Vertices)
+                {
+                    v.Colors[0] = new FLVER.VertexColor(alpha, 1f, 0f, 1f);
+                    // The mask's own UV set: x from 0.1 (dark) to 0.9 (light) across the quad.
+                    v.UVs.Add(new Vector3(0.1f + v.Position.X / 10 * 0.8f, 0.5f, 0));
+                }
+                return f;
+            }
+            float Area(FLVER2.Mesh m)
+            {
+                var t = m.FaceSets[0].Triangulate(true);
+                float a = 0;
+                for (int i = 0; i + 2 < t.Count; i += 3)
+                    a += Vector3.Cross(m.Vertices[t[i + 1]].Position - m.Vertices[t[i]].Position, m.Vertices[t[i + 2]].Position - m.Vertices[t[i]].Position).Length() / 2;
+                return a;
+            }
+            var floor = Floor(0);
+            var floorStats = new MapOverlays.Stats();
+            MapOverlays.Apply(floor, floorStats, _ => mask);
+            Expect(floor.Meshes.Count == 2 && floorStats.NoMaskMeshes == 0, $"a floor at alpha 0 is split by its mask ({floor.Meshes.Count} meshes, {floorStats.Summary})");
+            var first = floor.Meshes.Single(m => !floor.Materials[m.MaterialIndex].Name.EndsWith(MapOverlays.SecondLayerSuffix));
+            var second = floor.Meshes.Single(m => floor.Materials[m.MaterialIndex].Name.EndsWith(MapOverlays.SecondLayerSuffix));
+            Expect(MathF.Abs(Area(first) - 50) < 1 && MathF.Abs(Area(second) - 50) < 1, $"each layer takes the half its mask shows ({Area(first)}, {Area(second)} of 100)");
+            Expect(first.Vertices.All(v => v.Position.X <= 5.01f) && second.Vertices.All(v => v.Position.X >= 4.99f), "the first layer lies where the mask is dark");
+            // The quad's 10 m sides were halved until the cut could follow the mask, with no gap between neighbours.
+            Expect(floorStats.RefinedTriangles > 100 && first.FaceSets[0].Indices.Chunk(3).All(t =>
+                    Vector3.Distance(first.Vertices[t[0]].Position, first.Vertices[t[1]].Position) <= 1f),
+                $"long sides are halved before the cut ({floorStats.RefinedTriangles} triangles added)");
+            {
+                var refined = Floor(0).Meshes[0];
+                MapOverlays.Refine(refined, 3f);
+                var sides = new Dictionary<(Vector3, Vector3), int>();
+                var ix = refined.FaceSets[0].Indices;
+                for (int i = 0; i + 2 < ix.Count; i += 3)
+                    for (int e = 0; e < 3; e++)
+                    {
+                        var key = (refined.Vertices[ix[i + e]].Position, refined.Vertices[ix[i + (e + 1) % 3]].Position);
+                        sides[key] = sides.GetValueOrDefault(key) + 1;
+                    }
+                bool Rim((Vector3 A, Vector3 B) k) => k.A.X == k.B.X && k.A.X is 0 or 10 || k.A.Z == k.B.Z && k.A.Z is 0 or 10;
+                Expect(ix.Count / 3 > 2 && sides.All(k => k.Value == 1 && (Rim(k.Key) || sides.ContainsKey((k.Key.Item2, k.Key.Item1)))),
+                    $"a refined mesh has a triangle on each side of every inner side ({ix.Count / 3} triangles)");
+            }
+            // Vertex alpha 1 holds the mask back: the first layer everywhere.
+            var solid = Floor(1);
+            MapOverlays.Apply(solid, new MapOverlays.Stats(), _ => mask);
+            Expect(solid.Meshes.Count == 1 && solid.Meshes[0].MaterialIndex == 1, "at vertex alpha 1 the first layer shows whatever the mask says");
+            // No mask found: the vertex alpha alone, as before (alpha 0 = the second layer).
+            var bare = Floor(0);
+            var bareStats = new MapOverlays.Stats();
+            MapOverlays.Apply(bare, bareStats, _ => null);
+            Expect(bare.Meshes.Count == 1 && bare.Materials[bare.Meshes[0].MaterialIndex].Name.EndsWith(MapOverlays.SecondLayerSuffix) && bareStats.NoMaskMeshes == 1,
+                $"without its mask a mesh is split by vertex alpha ({bareStats.Summary})");
+            // A coarser level keeps the share of the mask over one half.
+            var noise = new float[64 * 64];
+            var rng = new Random(7);
+            for (int i = 0; i < noise.Length; i++)
+                noise[i] = MathF.Pow((float)rng.NextDouble(), 2f);
+            var noisy = new MapMasks.Mask(noise, 64, 64);
+            int over = 0, n = 0;
+            for (float y = 1 / 16f; y < 1; y += 1 / 8f)
+                for (float x = 1 / 16f; x < 1; x += 1 / 8f, n++)
+                    if (noisy.Sample(new Vector2(x, y), noisy.Levels - 1) >= 0.5f)
+                        over++;
+            Expect(MathF.Abs(over / (float)n - noisy.Coverage) < 0.1f && noisy.LevelFor(1 / 16f) == 2,
+                $"the coarsest level keeps the mask's coverage ({over}/{n} against {noisy.Coverage:F2}; level {noisy.LevelFor(1 / 16f)})");
+        }
+
         // The second layer of the two-layer mesh brings its own textures, tiling and UVs.
         var albedo = drawn.Meshes.Take(4).Select(m => plain.Materials.Single(x => x.Name == drawn.Materials[m.MaterialIndex].Name).Albedo).ToList();
         Expect(albedo.SequenceEqual(["m40_00_brick_001_a", "m40_00_brick_001_a", "m40_00_brick_001_a", "m40_00_ash_332_a"]), $"albedos {string.Join(", ", albedo)}");

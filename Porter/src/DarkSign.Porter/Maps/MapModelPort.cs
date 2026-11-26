@@ -202,7 +202,10 @@ public sealed class MapModelPort
 
     /// <summary>A new port with the same templates and none of this one's materials (one per map).</summary>
     public MapModelPort Fresh() => new(_templates, _templateFlver)
-        { VanillaMaterials = VanillaMaterials, TemplateTextures = TemplateTextures, TintMaterials = TintMaterials };
+        { VanillaMaterials = VanillaMaterials, TemplateTextures = TemplateTextures, TintMaterials = TintMaterials, Masks = Masks };
+
+    /// <summary>Finds a DS3 blend mask by its texture path (<see cref="MapMasks.Find"/>), for two-layer materials.</summary>
+    public Func<string, MapMasks.Mask?>? Masks { get; set; }
 
     /// <summary>
     /// Diagnostic "--tint-materials": the albedo of each DS3 material family that keeps something in vertex alpha is a
@@ -276,7 +279,7 @@ public sealed class MapModelPort
     public bool VanillaMaterials { get; private init; }
 
     /// <summary>This port's templates with <see cref="VanillaMaterials"/> on.</summary>
-    public MapModelPort WithVanillaMaterials() => new(_templates, _templateFlver) { VanillaMaterials = true };
+    public MapModelPort WithVanillaMaterials() => new(_templates, _templateFlver) { VanillaMaterials = true, Masks = Masks };
 
     /// <summary>
     /// Piece test "ported-material" (see MapPorter.PieceTest): every DS3 material still becomes a MATBIN of its own
@@ -286,7 +289,7 @@ public sealed class MapModelPort
     public bool TemplateTextures { get; private init; }
 
     /// <summary>This port's templates with <see cref="TemplateTextures"/> on.</summary>
-    public MapModelPort WithTemplateTextures() => new(_templates, _templateFlver) { TemplateTextures = true };
+    public MapModelPort WithTemplateTextures() => new(_templates, _templateFlver) { TemplateTextures = true, Masks = Masks };
 
     /// <summary>The MATBIN switch that keeps a material's meshes out of the shadow maps.</summary>
     public const string NoShadowParam = "g_GX_bDisableShadowCasting";
@@ -998,7 +1001,7 @@ public sealed class MapModelPort
         HashSet<FLVER2.Mesh> keepAlpha;
         {
             var stats = new MapOverlays.Stats();
-            keepAlpha = MapOverlays.Apply(flver, stats);
+            keepAlpha = MapOverlays.Apply(flver, stats, Masks);
             Overlays.Add(stats);
         }
         // Terrain blends: one mesh per layer it shows (the weights are still in DS3's vertex layout here).

@@ -904,6 +904,10 @@ public static class MapPorter
         if (test == PieceTest.PortedMaterial)
             models = models.WithTemplateTextures();
         models.TintMaterials = options.TintMaterials;
+        {
+            var masks = MapMasks.For(ds3);
+            models.Masks = path => masks.Find(path, ds3Id);
+        }
         if (test != PieceTest.None)
             report.AppendLine(test switch
             {
