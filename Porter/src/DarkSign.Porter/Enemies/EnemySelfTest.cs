@@ -547,6 +547,44 @@ public static class EnemySelfTest
         var veilSolid = ChrModel.Convert(Model(@"N:\FDP\data\Material\mtd\character\c5270[Veil].mtd"), erTemplate, 5270, 7130, plainMaterials: true, erNodes: true, ds3Mtds: mtds);
         Check("without a see-through template it stays solid, and says so",
             veilSolid[0] is { BlendMode: 0, TemplateMatbin: ChrMaterial.PlainSource } && ChrModel.SeeThroughSolid == 2 && ChrModel.SeeThrough == 0);
+        // DS3 keeps some meshes' vertices in two buffers (c1430's cape, chestpiece and tunic); Elden Ring's ray tracing
+        // flickered over the whole scene with one such model on the map. Each mesh ends with one buffer.
+        var split = Model(@"N:\FDP\data\Material\mtd\character\C[ARSN]_e_Decal.mtd");
+        split.BufferLayouts.Add([new FLVER.LayoutMember(FLVER.LayoutType.Float3, FLVER.LayoutSemantic.Position),
+            new FLVER.LayoutMember(FLVER.LayoutType.UByte4Norm, FLVER.LayoutSemantic.Normal),
+            new FLVER.LayoutMember(FLVER.LayoutType.UByte4, FLVER.LayoutSemantic.BoneIndices),
+            new FLVER.LayoutMember(FLVER.LayoutType.UByte4Norm, FLVER.LayoutSemantic.BoneWeights)]);
+        split.BufferLayouts.Add([new FLVER.LayoutMember(FLVER.LayoutType.UByte4Norm, FLVER.LayoutSemantic.VertexColor),
+            new FLVER.LayoutMember(FLVER.LayoutType.Float2, FLVER.LayoutSemantic.UV)]);
+        split.BufferLayouts.Add([new FLVER.LayoutMember(FLVER.LayoutType.Float3, FLVER.LayoutSemantic.Position),
+            new FLVER.LayoutMember(FLVER.LayoutType.UByte4Norm, FLVER.LayoutSemantic.Normal),
+            new FLVER.LayoutMember(FLVER.LayoutType.UByte4, FLVER.LayoutSemantic.BoneIndices),
+            new FLVER.LayoutMember(FLVER.LayoutType.UByte4Norm, FLVER.LayoutSemantic.BoneWeights),
+            new FLVER.LayoutMember(FLVER.LayoutType.UByte4Norm, FLVER.LayoutSemantic.VertexColor),
+            new FLVER.LayoutMember(FLVER.LayoutType.Float2, FLVER.LayoutSemantic.UV)]);
+        foreach (var sv in split.Meshes.SelectMany(m => m.Vertices))
+        {
+            sv.Normals.Add(System.Numerics.Vector3.UnitY);
+            sv.NormalWs.Add(127);
+            sv.Colors.Add(new FLVER.VertexColor(1f, 1f, 0f, 1f));
+            sv.UVs.Add(new System.Numerics.Vector3(0.25f, 0.5f, 0));
+        }
+        split.Meshes[0].VertexBuffers = [new FLVER2.VertexBuffer(0), new FLVER2.VertexBuffer(1)];
+        split.Meshes[1].VertexBuffers = [new FLVER2.VertexBuffer(2)];
+        ChrModel.Convert(split, erTemplate, 1310, 7031, plainMaterials: true, erNodes: true);
+        var splitBack = FLVER2.Read(split.Write());
+        var joinedLayout = splitBack.BufferLayouts[splitBack.Meshes[0].VertexBuffers[0].LayoutIndex];
+        Check("a mesh DS3 keeps in two vertex buffers ends with one, holding both buffers' members in order; a one-buffer mesh is left alone; the vertices survive a write and read ("
+              + $"{ChrModel.BuffersJoined} joined, buffers {string.Join(",", splitBack.Meshes.Select(m => m.VertexBuffers.Count))}, layout {string.Join(" ", joinedLayout.Select(m => m.Semantic))})",
+            ChrModel.BuffersJoined == 1 && splitBack.Meshes.All(m => m.VertexBuffers.Count == 1)
+            && splitBack.Meshes[1].VertexBuffers[0].LayoutIndex == 2
+            && joinedLayout.Select(m => m.Semantic).SequenceEqual([FLVER.LayoutSemantic.Position, FLVER.LayoutSemantic.Normal, FLVER.LayoutSemantic.BoneIndices,
+                FLVER.LayoutSemantic.BoneWeights, FLVER.LayoutSemantic.VertexColor, FLVER.LayoutSemantic.UV])
+            && joinedLayout.All(m => m.Stream == 0)
+            && splitBack.Meshes[0].Vertices.Count == 3
+            && splitBack.Meshes[0].Vertices.Select(vx => vx.Position.X).SequenceEqual([-1f, 3f, 1f])
+            && splitBack.Meshes[0].Vertices.All(vx => vx.Colors.Count == 1 && vx.UVs.Count == 1 && MathF.Abs(vx.UVs[0].X - 0.25f) < 0.01f && vx.BoneWeights[0] > 0.99f)
+            && splitBack.Meshes[0].Vertices.Select(vx => vx.BoneIndices[0]).SequenceEqual([1, 2, 2]));
         Check("DS3 blend modes: modulate becomes alpha, additive stays additive, an alpha cut with blend 0 cuts out, MTD keys ignore spaces and folders",
             mtds[ChrBlend.Key("c2170[Veil].mtd")] is { Blended: true, ErBlendMode: 2 } && mtds[ChrBlend.Key("C[ARSN]_Add.mtd")] is { ErBlendMode: 4 }
             && mtds[ChrBlend.Key("C[ARSN]_e_Decal.mtd")] is { Blended: false, AlphaTested: true } && mtds[ChrBlend.Key("plain.MTD")] is { Blended: false, AlphaTested: false });

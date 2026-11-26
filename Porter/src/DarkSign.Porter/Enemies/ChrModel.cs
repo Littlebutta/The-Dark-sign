@@ -230,11 +230,60 @@ public static class ChrModel
                         VertexColoursSet++;
                     vertex.Colors[c] = new FLVER.VertexColor(1f, 1f, 0f, 0f);
                 }
+        BuffersJoined = OneVertexBuffer(flver);
         SecondLayers = secondLayers;
         Glowing = glowing;
         SeeThrough = blended;
         SeeThroughSolid = blendedSolid;
         return materials;
+    }
+
+    /// <summary>From the last Convert on this thread: meshes whose vertex buffers were joined into one (<see cref="OneVertexBuffer"/>).</summary>
+    [ThreadStatic] public static int BuffersJoined;
+
+    /// <summary>
+    /// Every mesh keeps its vertices in one vertex buffer (2026-11-26, Devin's 1.0.667 and 1.0.681: with Elden Ring's
+    /// ray tracing on, the sunlight on the whole scene outside Firelink Shrine switched on and off from frame to
+    /// frame and the frame rate halved). DS3 stores some meshes' vertices in two buffers (the Cemetery of Ash
+    /// hollow, c1430, ported as c7043: its cape, chestpiece and tunic, buffer layouts 3 and 5); the port kept that
+    /// split. Proven on Devin's PC from a save standing at a flickering spot, the same place and camera on every load
+    /// (Work\reports\flicker-ab11): as built it flickered on 10 of 10 loads at 34 to 55 fps with the GPU at 84 to
+    /// 100 %; with every c7043 off the map, with another model's FLVER in c7043's binder, or with only those three
+    /// meshes deleted it was steady at 60 fps and 52 %, each time between two flickering as-built loads. One such
+    /// character anywhere on the map was enough, on screen or not. The map's light values, its sky, map pieces and
+    /// objects made no difference (rounds 6 to 10). With the three meshes kept and their buffers joined by this
+    /// method (flicker-ab12) it was steady at 60 fps with one hollow and with all 25, each time between flickering
+    /// as-built loads, and the hollow drew whole.
+    /// <para>How common: 107 of the 162 ported characters had such meshes (467 of 1,871), mostly as the hollow's pair
+    /// (position, normal, tangent / bitangent, skin, colour, UV); ported armour too; no map piece or object in the
+    /// samples. Elden Ring's own characters keep a mesh in one buffer or in three (the third holds a second position,
+    /// normal and tangent), never in two (60 vanilla characters read).</para>
+    /// <para>The members of a mesh's buffers are joined in buffer order into one layout (shared by every mesh with the
+    /// same pair), and the mesh names one buffer with it. SoulsFormats keeps a mesh's vertices once whatever the
+    /// buffers, so the vertex data itself does not change. Returns how many meshes were joined.</para>
+    /// </summary>
+    public static int OneVertexBuffer(FLVER2 flver)
+    {
+        var joined = new Dictionary<string, int>(StringComparer.Ordinal);
+        int meshes = 0;
+        foreach (var mesh in flver.Meshes)
+        {
+            if (mesh.VertexBuffers.Count < 2)
+                continue;
+            var key = string.Join("+", mesh.VertexBuffers.Select(b => b.LayoutIndex));
+            if (!joined.TryGetValue(key, out int index))
+            {
+                var layout = new FLVER2.BufferLayout();
+                foreach (var member in mesh.VertexBuffers.SelectMany(b => flver.BufferLayouts[b.LayoutIndex]))
+                    layout.Add(new FLVER.LayoutMember(member.Type, member.Semantic, member.Index));
+                index = flver.BufferLayouts.Count;
+                flver.BufferLayouts.Add(layout);
+                joined[key] = index;
+            }
+            mesh.VertexBuffers = [new FLVER2.VertexBuffer(index)];
+            meshes++;
+        }
+        return meshes;
     }
 
     /// <summary>The texture names (no folder, no extension) a DS3 model's materials use.</summary>

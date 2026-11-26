@@ -1568,6 +1568,8 @@ public static partial class ChrPort
         if (ChrModel.SeeThrough > 0 || ChrModel.SeeThroughSolid > 0)
             notes.Add($"{ChrModel.SeeThrough} see-through DS3 materials blended as DS3 blends them"
                       + (ChrModel.SeeThroughSolid > 0 ? $", {ChrModel.SeeThroughSolid} drawn solid (no see-through Elden Ring material, or not convertible)" : ""));
+        if (ChrModel.BuffersJoined > 0)
+            notes.Add($"{ChrModel.BuffersJoined} meshes' vertex buffers joined into one (DS3 splits them in two; ray tracing flickered)");
         if (ChrModel.VertexColoursSet > 0 || ChrModel.SecondLayers > 0)
             notes.Add($"{ChrModel.VertexColoursSet} vertex colours set to Elden Ring's" + (ChrModel.SecondLayers > 0 ? $", {ChrModel.SecondLayers} two-layer materials show their larger layer" : ""));
         if (blank.Count > 0)

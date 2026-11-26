@@ -44,7 +44,9 @@ public static partial class EnemyDiag
             return EnemyBonesDiag.Run(ctx, args.Skip(1).ToList());
         if (args.Count >= 2 && args[0].Equals("hks", StringComparison.OrdinalIgnoreCase))
             return Hks(ctx, args.Skip(1).ToList());
-        Console.Error.WriteLine("enemy-diag hks <file>... | hks ds3 [cXXXX...] | hks port <clone> <DS3 script> | survey | plan [build <DS3 chr>...] | textures <DS3 chr>... | binder <file>... | matbin <binder> <name part>... | unpack <file>... | bones <DS3 chr> [template chr] [built chr] | bones all");
+        if (args.Count >= 2 && args[0].Equals("buffers", StringComparison.OrdinalIgnoreCase))
+            return Buffers(ctx, args.Skip(1).ToList());
+        Console.Error.WriteLine("enemy-diag buffers [join] <flver or binder>... | hks <file>... | hks ds3 [cXXXX...] | hks port <clone> <DS3 script> | survey | plan [build <DS3 chr>...] | textures <DS3 chr>... | binder <file>... | matbin <binder> <name part>... | unpack <file>... | bones <DS3 chr> [template chr] [built chr] | bones all");
         return 1;
     }
 
@@ -419,6 +421,91 @@ public static partial class EnemyDiag
         }
         Console.WriteLine($"   {bnd.Files.Count(f => parts.Any(p => f.Name.Contains(p, StringComparison.OrdinalIgnoreCase)))} match");
         return 0;
+    }
+
+    /// <summary>
+    /// "enemy-diag buffers [join] &lt;file&gt;...": the vertex buffers of every mesh of a model (a FLVER, or each FLVER in
+    /// a binder such as a chrbnd; .dcx read as it is): which buffer layouts a mesh names and what each layout holds,
+    /// and how many meshes keep their vertices in more than one buffer (<see cref="ChrModel.OneVertexBuffer"/>).
+    /// With "join" it also writes a copy beside the file ("name.joined.ext", same compression) whose meshes each have
+    /// one buffer, for swapping into the mod to test without a rebuild.
+    /// </summary>
+    private static int Buffers(PorterContext ctx, List<string> args)
+    {
+        bool join = args.Count > 0 && args[0].Equals("join", StringComparison.OrdinalIgnoreCase);
+        var paths = join ? args.Skip(1).ToList() : args;
+        using var er = ctx.OpenArchives(PorterGame.EldenRing); // makes Oodle available
+        int done = 0;
+        foreach (var path in paths)
+        {
+            if (!File.Exists(path))
+            {
+                Console.Error.WriteLine($"not found: {path}");
+                continue;
+            }
+            var raw = File.ReadAllBytes(path);
+            var compression = default(DCX.CompressionInfo);
+            bool dcx = DCX.Is(raw);
+            var bytes = dcx ? DCX.Decompress(raw, out compression) : raw;
+            int joinedMeshes = 0;
+            byte[]? rewritten = null;
+            if (FLVER2.Is(bytes))
+            {
+                var flver = FLVER2.Read(bytes);
+                joinedMeshes = BufferLines(Path.GetFileName(path), flver, join);
+                if (join)
+                    rewritten = flver.Write();
+            }
+            else if (BND4.Is(bytes))
+            {
+                var bnd = BND4.Read(bytes);
+                foreach (var file in bnd.Files.Where(f => FLVER2.Is(f.Bytes)))
+                {
+                    var flver = FLVER2.Read(file.Bytes);
+                    joinedMeshes += BufferLines(Path.GetFileName(path) + ": " + ItemText.Leaf(file.Name), flver, join);
+                    if (join)
+                        file.Bytes = flver.Write();
+                }
+                if (join)
+                    rewritten = bnd.Write();
+            }
+            else
+            {
+                Console.Error.WriteLine($"neither a FLVER nor a binder: {path}");
+                continue;
+            }
+            if (rewritten is not null)
+            {
+                var name = Path.GetFileName(path);
+                bool dcxName = name.EndsWith(".dcx", StringComparison.OrdinalIgnoreCase);
+                var inner = dcxName ? name[..^4] : name;
+                var outPath = Path.Combine(Path.GetDirectoryName(Path.GetFullPath(path))!,
+                    Path.GetFileNameWithoutExtension(inner) + ".joined" + Path.GetExtension(inner) + (dcxName ? ".dcx" : ""));
+                File.WriteAllBytes(outPath, dcx ? DCX.Compress(rewritten, compression) : rewritten);
+                Console.WriteLine($"  {joinedMeshes} meshes joined -> {outPath}");
+            }
+            done++;
+        }
+        return done > 0 ? 0 : 1;
+    }
+
+    /// <summary>Prints a model's buffer layouts and meshes; with <paramref name="join"/> joins each mesh's buffers. Returns the meshes with more than one buffer.</summary>
+    private static int BufferLines(string title, FLVER2 flver, bool join)
+    {
+        int split = flver.Meshes.Count(m => m.VertexBuffers.Count > 1);
+        Console.WriteLine($"{title}: {flver.Meshes.Count} meshes, {flver.BufferLayouts.Count} buffer layouts, {split} meshes with more than one vertex buffer");
+        for (int i = 0; i < flver.BufferLayouts.Count; i++)
+            Console.WriteLine($"  layout {i} ({flver.BufferLayouts[i].Size} bytes): "
+                + string.Join(", ", flver.BufferLayouts[i].Select(m => $"{m.Semantic}{(m.Index > 0 ? m.Index.ToString() : "")}:{m.Type}{(m.Stream != 0 ? $"@stream{m.Stream}" : "")}{(m.SpecialModifier != 0 ? $"!{m.SpecialModifier}" : "")}")));
+        for (int i = 0; i < flver.Meshes.Count; i++)
+        {
+            var mesh = flver.Meshes[i];
+            var material = mesh.MaterialIndex >= 0 && mesh.MaterialIndex < flver.Materials.Count ? flver.Materials[mesh.MaterialIndex].Name : "?";
+            Console.WriteLine($"  mesh {i} \"{material}\": {mesh.Vertices.Count} vertices, buffers "
+                + string.Join(" + ", mesh.VertexBuffers.Select(b => $"layout {b.LayoutIndex} (buffer index {b.BufferIndex}{(b.EdgeCompressed ? ", edge" : "")})"))
+                + $", dynamic {mesh.Dynamic}, bone weights {mesh.UseBoneWeights}");
+        }
+        return join ? ChrModel.OneVertexBuffer(flver) : split;
     }
 
     private static int Unpack(PorterContext ctx, List<string> paths)

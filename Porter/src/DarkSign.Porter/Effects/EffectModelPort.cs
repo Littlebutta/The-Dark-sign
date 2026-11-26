@@ -234,6 +234,8 @@ public sealed partial class EffectModelPort
             }
         }
         FlverMaterialNumbers.Apply(flver);
+        // One vertex buffer per mesh: DS3's two-buffer meshes made Elden Ring's ray tracing flicker (ChrModel.OneVertexBuffer).
+        Enemies.ChrModel.OneVertexBuffer(flver);
         return flver.Write();
     }
 }
