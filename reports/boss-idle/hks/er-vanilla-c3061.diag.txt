@@ -1,0 +1,34 @@
+﻿== D:\The Dark sign\TheDarkSign\Work\reports-boss-idle\reports\boss-idle\hks\er-vanilla-c3061.hks: 35007 bytes, 92 functions, 89 Event states, writes back byte for byte
+   Event20002_onUpdate: W_Event30006
+   Event20015_onUpdate: W_Event30015
+   Event20018_onUpdate: W_Event30003
+   Event20019_onUpdate: W_Event30003
+   Event30000_onUpdate: W_Event20000
+   Event30001_onUpdate: (no hand-over)
+   Event30002_onUpdate: (no hand-over)
+   Event30003_onUpdate: (no hand-over)
+   Event30004_onUpdate: (no hand-over)
+   Event30005_onUpdate: (no hand-over)
+   Event30006_onUpdate: (no hand-over)
+   Event30007_onUpdate: (no hand-over)
+   Event30008_onUpdate: W_Event20010
+   Event30009_onUpdate: (no hand-over)
+   Event30010_onUpdate: (no hand-over)
+   Event30011_onUpdate: (no hand-over)
+   Event30012_onUpdate: (no hand-over)
+   Event30013_onUpdate: (no hand-over)
+   Event30014_onUpdate: (no hand-over)
+   Event30016_onUpdate: (no hand-over)
+   Event30017_onUpdate: (no hand-over)
+   Event30018_onUpdate: (no hand-over)
+   Event30019_onUpdate: (no hand-over)
+   Event30020_onUpdate: (no hand-over)
+   Event30021_onUpdate: (no hand-over)
+   Event30022_onUpdate: (no hand-over)
+   Event30023_onUpdate: (no hand-over)
+   Event30024_onUpdate: (no hand-over)
+   Event30025_onUpdate: (no hand-over)
+   Event30026_onUpdate: (no hand-over)
+   Event30027_onUpdate: (no hand-over)
+   Event30028_onUpdate: (no hand-over)
+   Event30029_onUpdate: (no hand-over)
