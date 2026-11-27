@@ -228,23 +228,6 @@ public static class MapBakedLight
     public static float SkyAlpha(float ds3Sky, float sunScale) =>
         Math.Clamp(ds3Sky * sunScale * AlphaPerDs3Sky, MinSkyAlpha, MaxSkyAlpha);
 
-    /// <summary>The host's sun strength over DS3's from the two maps' draw params (1 when either is missing).</summary>
-    public static float SunScale(GameArchives ds3, GameArchives er, MapId ds3Id, MapId hostId)
-    {
-        try
-        {
-            var hostPath = MapAtmosphere.GparamPath(hostId);
-            var source = MapAtmosphere.Ds3GparamPaths(ds3Id).FirstOrDefault(ds3.Contains);
-            if (source is null || !er.Contains(hostPath))
-                return 1;
-            return MapLampStrength.SunScale(MapAtmosphere.ReadLightParams(er, hostId), GPARAM.Read(ds3.Read(source)));
-        }
-        catch (Exception ex) when (ex is not OutOfMemoryException)
-        {
-            return 1;
-        }
-    }
-
     /// <summary>A texel count per axis that is a multiple of 4 (BC7 blocks) for width and height.</summary>
     private static int Round4(float v) => Math.Max(4, (int)MathF.Round(v / 4) * 4);
 
@@ -427,9 +410,10 @@ public static class MapBakedLight
             return ([], $"baked light: {ItemText.Leaf(path)} has {probes.Count} probes; the map keeps one even light volume");
         // DS3's sky against DS3's sun, on the scale the port's sun has (SkyAlpha).
         float colosseumAlpha = HostAlpha(er, hostId);
-        float sunScale = SunScale(ds3, er, ds3Id, hostId);
+        // One DS3 light scale for every map, with DS3's own share of its probes (MapLightScale).
+        float sunScale = MapLightScale.For(ds3, er, ds3Id).Sky;
         float hostAlpha = SkyAlpha(OpenSky(probes), sunScale);
-        notes.Insert(0, FormattableString.Invariant($"open sky at DS3's share of the sun: DS3's {OpenSky(probes):0} x sun scale {sunScale:0.##} x {AlphaPerDs3Sky} = alpha {hostAlpha:0.#} (the colosseum's own is {colosseumAlpha:0}; the even light past the probes and the reflections are dimmed to {hostAlpha / colosseumAlpha:0.00} of the colosseum's)"));
+        notes.Insert(0, FormattableString.Invariant($"open sky on DS3's one light scale: DS3's {OpenSky(probes):0} x sky scale {sunScale:0.###} x {AlphaPerDs3Sky} = alpha {hostAlpha:0.#} (the colosseum's own is {colosseumAlpha:0}; the even light past the probes and the reflections are dimmed to {hostAlpha / colosseumAlpha:0.00} of the colosseum's)"));
         var volume = Bake(probes, hostAlpha, hostAlpha / colosseumAlpha);
         var templatePoint = (MSBE.Region.EnvironmentMapPoint)hostPoint.DeepCopy();
         var templateBox = (MSBE.Region.EnvironmentMapEffectBox)hostBox.DeepCopy();

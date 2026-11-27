@@ -369,6 +369,41 @@ public static partial class MapPortChecks
         Expect(lit.Count > 0 && lit[0].StartsWith("light and exposure from m45_01_00_00"), string.Join(" | ", lit));
         Expect(MapAtmosphere.UseReferenceLight(leyndell, caelid) == 0, "applying the reference twice changes nothing");
 
+        // One DS3 light scale for every map (MapLightScale), set by the High Wall (DS3's values from its files).
+        GPARAM Ds3Light(float sun, float exposure, float sh)
+        {
+            var g = new GPARAM { Game = GPARAM.GPGame.DarkSouls3 };
+            g.Groups.Add(G("LightSet", P("Directional Light DiffColor0", GPARAM.ParamType.Float4, new Vector4(1, 0.9f, 0.8f, sun))));
+            g.Groups.Add(G("Tone Map", P("Yebis-ToneMapExposure", GPARAM.ParamType.Float, exposure)));
+            g.Groups.Add(G("Dominant Light", P("Dominant Param  SH Color Scale", GPARAM.ParamType.Float, sh)));
+            return g;
+        }
+        var erRef = new GPARAM();
+        erRef.Groups.Add(G("LightSet",
+            P("Directional Light DiffColor0", GPARAM.ParamType.Float4, new Vector4(0.9f, 0.95f, 0.9f, 0.5f), new Vector4(0.9f, 0.95f, 0.9f, 0.5f)),
+            P("Directional Light SpecColor0", GPARAM.ParamType.Float4, new Vector4(0.9f, 0.95f, 0.9f, 0.5f), new Vector4(0.9f, 0.95f, 0.9f, 0.5f)),
+            P("Directional Light DiffColor1", GPARAM.ParamType.Float4, new Vector4(1, 1, 1, 0.25f), new Vector4(1, 1, 1, 0.25f))));
+        var highWall = Ds3Light(1.23f, 2.3f, 0.5f);
+        var hw = MapLightScale.For(erRef, highWall, highWall);
+        Expect(MathF.Abs(hw.Light - 0.5f / 1.23f) < 1e-4f && hw.Sky == hw.Light && MathF.Abs(hw.Sun - 1) < 1e-4f,
+            $"the High Wall keeps its own-sun scale and the reference sun ({hw.Text})");
+        var cathedral = MapLightScale.For(erRef, highWall, Ds3Light(3.8f, 2.0f, 1));
+        Expect(MathF.Abs(cathedral.Light - 0.5f / 1.23f * 2 / 2.3f) < 1e-4f && MathF.Abs(cathedral.Sky - 2 * cathedral.Light) < 1e-4f
+               && MathF.Abs(cathedral.Sun - 3.8f / 1.23f * 2 / 2.3f) < 1e-3f,
+            $"the Cathedral: lamps on the High Wall's scale times exposure 2.0/2.3, sky light twice that (SH 1 vs 0.5), DS3's strong sun ({cathedral.Text})");
+        var none = MapLightScale.For(null, null, null);
+        Expect(MathF.Abs(none.Light - MapLightScale.ErReferenceSun / MapLightScale.Ds3ReferenceSun) < 1e-4f && none.Sky == none.Light && none.Sun == 1,
+            "without files the High Wall's measured values are used");
+        Expect(MapLightScale.For(erRef, highWall, Ds3Light(50, 2.3f, 0.5f)).Sun == MapLightScale.MaxSun, "the sun is kept inside its range");
+        var sunLit = new GPARAM();
+        sunLit.Groups.Add(G("LightSet", erRef.Groups[0].Params.Select(p => P(p.Name1, p.Type, p.Values.ToArray())).ToArray()));
+        Expect(MapLightScale.ScaleSun(sunLit, 2) == 4, "both sun strengths of every light set are scaled");
+        var sunSet = MapAtmosphere.Group(sunLit, "LightSet")!;
+        Expect(sunSet.Params.Where(p => p.Name1.Contains("Color0")).SelectMany(p => p.Values).All(v => ((Vector4)v).W == 1f)
+               && MapAtmosphere.Value<Vector4>(sunSet, "Directional Light DiffColor1")!.Value.W == 0.25f
+               && MapAtmosphere.Value<Vector4>(sunSet, "Directional Light DiffColor0")!.Value.X == 0.9f,
+            "only the sun's strength changes, not its colour or the fill light");
+
         // Writing is not checked here: a hand-built GPARAM lacks the sections a real one has. Checked on the real files
         // (2026-11-11): m45_00, m45_01 and m45_02_0000.gparam read and write back byte for byte, and read back changed.
 
