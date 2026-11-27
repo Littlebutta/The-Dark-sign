@@ -229,6 +229,11 @@ public static class EnemySelfTest
             byNpc is { Model: "c7000", NpcParam: 70000002, ThinkParam: 43000000 });
         Check("the chr map round-trips: an unlisted row of the same model falls back to the model line, boss kept",
             byModel is { Model: "c7000", NpcParam: 70000000, Boss: true } && map.Count == 3);
+        // DS3 places an invisible HP dummy on the Demon Prince's model (502000) beside the demons (502001, 502002).
+        var demon = plan with { Ds3 = new ChrPort.Ds3Chr(5020, "Demon in Pain", true, [502000, 502001, 502002], [], 502001) };
+        var demonChr = ChrPort.MapLines(demon, new Dictionary<int, int> { [502000] = 71080000, [502001] = 71080001, [502002] = 71080002 }, 1)
+            .Single(l => l.StartsWith("chr\t")).Split('\t');
+        Check("the chr map's model line uses the character's default row (a demon), not the lowest (an HP dummy)", demonChr[3] == "71080001");
         var stats = ChrPort.MapLines(plan with { Method = ChrPort.Method.Stats }, rows, 43000000).First().Split('\t');
         Check("method C (stats) points the map at the template's model", stats[2] == "c4300");
 
