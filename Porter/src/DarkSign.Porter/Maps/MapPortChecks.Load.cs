@@ -160,6 +160,8 @@ public static partial class MapPortChecks
         var def = new PARAMDEF { ParamType = "PARTS_DRAW_PARAM_ST", DataVersion = 1 };
         foreach (var name in new[] { "tex_lv01_BorderDist", "tex_lv01_PlayDist", "drawDist" })
             def.Fields.Add(new PARAMDEF.Field(def, PARAMDEF.DefType.f32, name));
+        foreach (var name in new[] { "isPointLightShadowSrc", "isDirLightShadowSrc" })
+            def.Fields.Add(new PARAMDEF.Field(def, PARAMDEF.DefType.s8, name) { Default = 1 });
         PARAM.Row Row()
         {
             var param = new PARAM { ParamType = def.ParamType, Rows = [] };
@@ -182,6 +184,13 @@ public static partial class MapPortChecks
         MapDrawParams.AddRow(param);
         var dists = Enumerable.Range(0, MapDrawParams.TextureBySize.Length).Select(i => Cell(param[MapDrawParams.FirstRow + i]!, "tex_lv01_BorderDist")).ToList();
         Expect(dists[0] == MapDrawParams.TextureDistance && dists.Zip(dists.Skip(1)).All(d => d.Second > d.First), "one row per size, further out as pieces grow: " + string.Join(", ", dists));
+        sbyte Flag(PARAM.Row r, string name) => (sbyte)r.Cells.Single(c => c.Def.InternalName == name).Value;
+        var last = MapDrawParams.FirstRow + MapDrawParams.TextureBySize.Length - 1;
+        Expect(Enumerable.Range(MapDrawParams.FirstRow, MapDrawParams.TextureBySize.Length - 1).All(id => Flag(param[id]!, "isDirLightShadowSrc") == 1)
+               && Flag(param[last]!, "isDirLightShadowSrc") == 0 && Flag(param[last]!, "isPointLightShadowSrc") == 0
+               && Flag(param[last + MapDrawParams.LodOffset]!, "isDirLightShadowSrc") == 0,
+            "pieces over NoSunShadowRadius (sky domes, mountain rings, far shells) and their LOD twin cast no sun shadow; smaller pieces still do");
+        Expect(MapDrawParams.RowFor(MapDrawParams.NoSunShadowRadius) < last && MapDrawParams.RowFor(MapDrawParams.NoSunShadowRadius + 1) == last, "the no-shadow row starts past NoSunShadowRadius");
         Expect(param[ObjectPort.FirstDrawRow] is not null && MapDrawParams.FirstRow + MapDrawParams.TextureBySize.Length <= ObjectPort.FirstDrawRow, "the objects' rows are left alone");
         Expect(MapDrawParams.RowFor(3) == MapDrawParams.FirstRow && MapDrawParams.RowFor(100) == MapDrawParams.FirstRow + 3
                && MapDrawParams.RowFor(13000) == MapDrawParams.FirstRow + MapDrawParams.TextureBySize.Length - 1, "rows by radius");
