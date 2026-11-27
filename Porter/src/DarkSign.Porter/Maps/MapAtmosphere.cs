@@ -10,8 +10,9 @@ namespace DarkSign.Porter.Maps;
 /// thick fog out to 2 km (map 1's mountains hidden). This writes the slot's own gparam from the host's, so every
 /// format detail and every setting not named here stays Elden Ring's, with:
 /// <list type="bullet">
-/// <item>LightSet: only the sun's direction, from DS3's light set 0 (the one nearly every DS3 map piece names),
-/// turned by DS3's map offset (<see cref="SunTurn"/>). Every other value stays the host's (<see cref="Lights"/>).</item>
+/// <item>LightSet and Tone Map: the light reference's (<see cref="LightReference"/>, m45_01, the same for every slot),
+/// with the sun's direction from DS3's light set 0 (the one nearly every DS3 map piece names), turned by DS3's map
+/// offset (<see cref="SunTurn"/>).</item>
 /// <item>VolumetricFog: the colours from DS3's fog 0 (Fog-Color for the sunward glow, heightColor for the rest), each
 /// scaled by its own DS3 strength (<see cref="FogColours"/>); how
 /// far the fog reaches and how strongly it is lit come from Stormveil Castle (m10_00, an outdoor castle like DS3's
@@ -19,7 +20,7 @@ namespace DarkSign.Porter.Maps;
 /// (<see cref="DepthFog"/>).</item>
 /// <item>ColorGrading off, so no colosseum's tint is laid over DS3's colours.</item>
 /// </list>
-/// Exposure, bloom and every other group stay the host's.
+/// Bloom and every other group stay the host's.
 /// </summary>
 public static class MapAtmosphere
 {
@@ -79,9 +80,10 @@ public static class MapAtmosphere
         var (hostBytes, compression) = er.ReadWithCompression(hostPath);
         var gparam = GPARAM.Read(hostBytes);
         var ds3Draw = GPARAM.Read(ds3.Read(source));
+        var reference = ReadLightReference(er);
         var wanted = layout is null ? null : MapLightSets.Wanted(layout);
         var characters = wanted is null ? null : MapLightSets.CharacterOnly(layout!);
-        var changes = Apply(gparam, ds3Draw, GroundHeight(ds3Msb), MapLighting.OffsetDegrees(ds3Msb), wanted, Layer(ds3Msb), characters);
+        var changes = Apply(gparam, ds3Draw, GroundHeight(ds3Msb), MapLighting.OffsetDegrees(ds3Msb), wanted, Layer(ds3Msb), characters, reference);
         var target = ctx.ModPath(MapPorter.ModParts(GparamPath(erId)));
         Directory.CreateDirectory(Path.GetDirectoryName(target)!);
         File.WriteAllBytes(target, DCX.Compress(gparam.Write(), compression));
@@ -89,7 +91,7 @@ public static class MapAtmosphere
             lightSets.UnionWith(MapLightSets.Ids(written));
         if (layout is not null)
             changes.Add(WriteScenes(ctx, ds3, ds3Id, erId, ds3Msb, layout, hostBytes, compression,
-                (host, draw) => Apply(host, draw, GroundHeight(ds3Msb), MapLighting.OffsetDegrees(ds3Msb), wanted, Layer(ds3Msb), characters)));
+                (host, draw) => Apply(host, draw, GroundHeight(ds3Msb), MapLighting.OffsetDegrees(ds3Msb), wanted, Layer(ds3Msb), characters, reference)));
         return "atmosphere: " + string.Join("; ", changes);
     }
 
@@ -224,18 +226,108 @@ public static class MapAtmosphere
     /// tracer reacts to is not known, so none of them is changed. The sun's direction is kept, because the shadows
     /// must fall the way DS3's baked light expects.
     /// </summary>
-    public const string Lights = "the host's light-set values, DS3's sun direction";
+    public const string Lights = "the light reference's (m45_01) light-set values and exposure, DS3's sun direction";
+
+    /// <summary>
+    /// The Elden Ring draw params every slot takes its light and exposure from (2026-11-27, Devin: "Map 2 looks better
+    /// lighting and effect wise than other maps. Find out why."). Each slot used to keep its own host's light-set values
+    /// and tone map (<see cref="Lights"/>, PR #295), and the hosts differ (vanilla gparams read 2026-11-27):
+    /// <list type="bullet">
+    /// <item>m45_01 (Caelid colosseum, High Wall only): fixed exposure 3.15 (no auto exposure); sun 0.5; the
+    /// straight-down sky fill light 0.25 with no specular (SpecColor1 W 0); both local lights off; no light from below
+    /// (Hemi Down 0); saturation (ColorV) 1.2.</item>
+    /// <item>m45_00 (Leyndell colosseum, Firelink and the 12 world maps built from its formats): auto exposure on with a
+    /// -0.6..+0.5 window around 3.9; sun 0.6; the straight-down fill only 0.1 but with a specular of 0.2, a second
+    /// light (LocalLight1) with specular 0.23 and a grey light from below: an even sheen from above on every surface (wet
+    /// looking ground, shiny trees) and a flat, auto-metered frame.</item>
+    /// <item>m45_02 (Limgrave colosseum, Undead Settlement): fill 0.4 with specular 0.3, LocalLight1 on, light from
+    /// below 0.05, exposure 3.5.</item>
+    /// </list>
+    /// So the one map Devin finds right is the only one lit by m45_01's values. PR #295 kept each host's values to stop the
+    /// ray-traced flicker, which was later proven to come from two-vertex-buffer character meshes (PR #310), not light
+    /// sets, so nothing ties a slot to its host's light. Every slot now takes m45_01's LightSet values (DS3's sun
+    /// direction still set by <see cref="Apply"/>) and its Tone Map group; the baked light and lamps are scaled against the
+    /// same sun (<see cref="ReadLightParams"/>).
+    /// </summary>
+    public static readonly MapId LightReference = MapId.Parse("m45_01_00_00");
+
+    /// <summary>The light reference's draw params (<see cref="LightReference"/>), or null when the game lacks them.</summary>
+    public static GPARAM? ReadLightReference(GameArchives er)
+    {
+        var path = GparamPath(LightReference);
+        if (!er.Contains(path))
+            return null;
+        try { return GPARAM.Read(er.Read(path)); }
+        catch (Exception e) when (e is not OutOfMemoryException) { return null; }
+    }
+
+    /// <summary>A host's draw params as a ported slot is lit: the host's file with the reference's light and exposure
+    /// (<see cref="UseReferenceLight"/>), for the sun scale of the baked light and lamps. Null when the host has none.</summary>
+    public static GPARAM? ReadLightParams(GameArchives er, MapId host)
+    {
+        var path = GparamPath(host);
+        if (!er.Contains(path))
+            return null;
+        try
+        {
+            var gparam = GPARAM.Read(er.Read(path));
+            if (ReadLightReference(er) is { } reference)
+                UseReferenceLight(gparam, reference);
+            return gparam;
+        }
+        catch (Exception e) when (e is not OutOfMemoryException) { return null; }
+    }
+
+    /// <summary>The groups the light reference gives every slot.</summary>
+    public static readonly string[] ReferenceGroups = ["LightSet", "Tone Map"];
+
+    /// <summary>
+    /// Copies the reference's LightSet and Tone Map values into <paramref name="gparam"/>, param by param (same name),
+    /// each value ID taking the reference's value of the same ID, else of its first. Params or groups the reference
+    /// lacks are kept, and so is the sun's direction (DS3's, set by <see cref="Apply"/>). Returns how many values changed.
+    /// </summary>
+    public static int UseReferenceLight(GPARAM gparam, GPARAM reference)
+    {
+        int changed = 0;
+        foreach (var name in ReferenceGroups)
+        {
+            if (Group(gparam, name) is not { } target || Group(reference, name) is not { } from)
+                continue;
+            foreach (var p in target.Params)
+            {
+                // The sun's direction is DS3's (Apply), never the reference arena's.
+                if (p.Name1 == "Directional Light Angle0")
+                    continue;
+                var src = from.Params.FirstOrDefault(x => x.Name1 == p.Name1);
+                if (src is null || src.Values.Count == 0 || src.Type != p.Type)
+                    continue;
+                for (int i = 0; i < p.Values.Count; i++)
+                {
+                    int at = src.ValueIDs.IndexOf(p.ValueIDs[i]);
+                    var value = src.Values[at >= 0 ? at : 0];
+                    if (!Equals(p.Values[i], value))
+                    {
+                        p.Values[i] = value;
+                        changed++;
+                    }
+                }
+            }
+        }
+        return changed;
+    }
 
     /// <summary>Changes the host's draw params in place. Returns what changed, for the log.</summary>
     /// <param name="lightSets">The light sets the layout's parts name: DS3's sets among them that the host lacks are
     /// added (<see cref="MapLightSets.Add"/>).</param>
     /// <param name="characterSets">The sets only characters name (<see cref="MapLightSets.CharacterOnly"/>).</param>
     public static List<string> Apply(GPARAM gparam, GPARAM ds3, float ground, float sunTurnDegrees = 0,
-        IEnumerable<int>? lightSets = null, FogLayer? layer = null, IReadOnlySet<int>? characterSets = null)
+        IEnumerable<int>? lightSets = null, FogLayer? layer = null, IReadOnlySet<int>? characterSets = null, GPARAM? lightReference = null)
     {
         var inv = CultureInfo.InvariantCulture;
         string C(Vector4 v) => string.Create(inv, $"{v.X:F2} {v.Y:F2} {v.Z:F2}");
         var changes = new List<string>();
+        if (lightReference is not null && UseReferenceLight(gparam, lightReference) is var copied && copied > 0)
+            changes.Add($"light and exposure from {LightReference} (the High Wall slot's, the map that looks right): {copied} values");
 
         var ds3Light = Group(ds3, "LightSet");
         var sunAngle = Value<Vector2>(ds3Light, "Directional Light Angle0");
@@ -249,7 +341,7 @@ public static class MapAtmosphere
             changes.Add(sunAngle is { } sa && turned is { } ta
                 ? string.Create(inv, $"sun direction {sa.X:F2},{sa.Y:F2} from DS3 light set 0")
                   + (sunTurnDegrees != 0 ? string.Create(inv, $", turned {sunTurnDegrees:0.#} degrees with the map to {ta.X:F2},{ta.Y:F2} (sun yaw {ta.Y * 180 / MathF.PI:0} degrees, {SunHeight(ta):0} above the horizon)") : "")
-                  + "; the light colours, strengths and occlusion weights stay the host's"
+                  + "; the light colours, strengths and occlusion weights are the light reference's"
                 : "light set: DS3 has no sun direction; the host's kept");
             // After set 0 is done: the other sets start from it.
             if (lightSets is not null && MapLightSets.Add(gparam, ds3, lightSets, sunTurnDegrees, characterSets).Note is { } sets)

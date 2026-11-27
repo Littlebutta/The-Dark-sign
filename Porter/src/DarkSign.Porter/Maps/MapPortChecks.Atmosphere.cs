@@ -233,7 +233,7 @@ public static partial class MapPortChecks
         Expect((Vector2)angle.Values[angle.ValueIDs.IndexOf(0)] == new Vector2(-0.79f, -1.22f) && (Vector2)angle.Values[angle.ValueIDs.IndexOf(1)] == new Vector2(-0.51f, 0.66f)
                && (Vector2)angle.Values[angle.ValueIDs.IndexOf(111)] == new Vector2(-0.79f, -1.57f), "each set keeps its own DS3 sun direction");
         Expect(changes.Any(c => c.Contains("DS3 light sets 1 (暗闇用), 4, 111 (ボス_娘　戦闘) added") && c.Contains("character sets 4, 111 of set 100")), string.Join(" | ", changes));
-        Expect(changes.Any(c => c.Contains("stay the host's")), string.Join(" | ", changes));
+        Expect(changes.Any(c => c.Contains("are the light reference's")), string.Join(" | ", changes));
         var back = GPARAM.Read(host.Write());
         Expect(MapAtmosphere.Group(back, "LightSet")!.Params.All(p => p.Values.Count == 5), "the file reads back");
 
@@ -341,6 +341,34 @@ public static partial class MapPortChecks
             "the fog's depth and end depth take DS3's reach");
         Expect(MapAtmosphere.Value<int>(MapAtmosphere.Group(host, "ColorGrading"), "Yebis-ColorGrading-Enable") == 0, "colour grading off");
         Expect(changes.Count == 3 && changes[2] == "colour grading off", string.Join(" | ", changes));
+        // The light reference (m45_01, the High Wall slot's) replaces a Leyndell host's (m45_00) light and exposure,
+        // value ID by value ID; DS3's sun direction is still set after it; a param the reference lacks is kept.
+        var leyndell = new GPARAM();
+        leyndell.Groups.Add(G("LightSet",
+            P("Directional Light Angle0", GPARAM.ParamType.Float2, new Vector2(-0.524f, 1.571f), new Vector2(-0.524f, 1.571f)),
+            P("Directional Light SpecColor1", GPARAM.ParamType.Float4, new Vector4(0.667f, 0.741f, 0.843f, 0.2f), new Vector4(0.667f, 0.741f, 0.843f, 0.2f)),
+            P("Directional Enable LocalLight1", GPARAM.ParamType.BoolA, true, true),
+            P("Directional Light giOcclusionRate", GPARAM.ParamType.Float, 0.3f, 0.3f)));
+        leyndell.Groups.Add(G("Tone Map", P("GS Presents - ToneMap-Exposure", GPARAM.ParamType.Float, 3.9f), P("GS Presents - ToneMap-Enable AutoExposure", GPARAM.ParamType.Byte, (byte)1)));
+        var caelid = new GPARAM();
+        caelid.Groups.Add(G("LightSet",
+            P("Directional Light Angle0", GPARAM.ParamType.Float2, new Vector2(-0.873f, 0.873f), new Vector2(-0.873f, 0.873f)),
+            P("Directional Light SpecColor1", GPARAM.ParamType.Float4, new Vector4(0.702f, 0.785f, 0.843f, 0), new Vector4(0.702f, 0.741f, 0.843f, 0)),
+            P("Directional Enable LocalLight1", GPARAM.ParamType.BoolA, false, false)));
+        caelid.Groups.Add(G("Tone Map", P("GS Presents - ToneMap-Exposure", GPARAM.ParamType.Float, 3.15f), P("GS Presents - ToneMap-Enable AutoExposure", GPARAM.ParamType.Byte, (byte)0)));
+        var lit = MapAtmosphere.Apply(leyndell, ds3, -44, lightReference: caelid);
+        var leyLight = MapAtmosphere.Group(leyndell, "LightSet")!;
+        Expect(leyLight.Params.Single(p => p.Name1 == "Directional Light SpecColor1").Values.All(v => ((Vector4)v).W == 0)
+               && leyLight.Params.Single(p => p.Name1 == "Directional Enable LocalLight1").Values.All(v => !(bool)v),
+            "the reference's fill light (no specular) and local light switches replace the host's");
+        Expect(leyLight.Params.Single(p => p.Name1 == "Directional Light Angle0").Values.All(v => (Vector2)v == new Vector2(-0.768f, -0.96f)), "DS3's sun direction still wins over the reference's");
+        Expect(MapAtmosphere.Value<float>(leyLight, "Directional Light giOcclusionRate") == 0.3f, "a param the reference lacks is kept");
+        var tone = MapAtmosphere.Group(leyndell, "Tone Map");
+        Expect(MapAtmosphere.Value<float>(tone, "GS Presents - ToneMap-Exposure") == 3.15f && tone!.Params.Single(p => p.Name1 == "GS Presents - ToneMap-Enable AutoExposure").Values[0] is (byte)0,
+            "fixed exposure 3.15 from the reference, auto exposure off");
+        Expect(lit.Count > 0 && lit[0].StartsWith("light and exposure from m45_01_00_00"), string.Join(" | ", lit));
+        Expect(MapAtmosphere.UseReferenceLight(leyndell, caelid) == 0, "applying the reference twice changes nothing");
+
         // Writing is not checked here: a hand-built GPARAM lacks the sections a real one has. Checked on the real files
         // (2026-11-11): m45_00, m45_01 and m45_02_0000.gparam read and write back byte for byte, and read back changed.
 
