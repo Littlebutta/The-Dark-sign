@@ -147,7 +147,7 @@ public static class MapLighting
         var ds3Lights = BTL.Read(ds3.Read(source)).Lights;
         var offset = MapNavmesh.MapOffset(ds3Msb);
         var ported = Convert(ds3Lights, hostLights?.Version ?? ErLightVersion, hostLights?.LongOffsets ?? true, out var skipped, offset, OffsetDegrees(ds3Msb));
-        float sunScale = MapLampStrength.SunScale(ReadDrawParams(er, MapAtmosphere.GparamPath(hostId)),
+        float sunScale = MapLampStrength.SunScale(MapAtmosphere.ReadLightParams(er, hostId),
             ReadDrawParams(ds3, MapAtmosphere.Ds3GparamPaths(ds3Id).FirstOrDefault(ds3.Contains)));
         var changes = ported.Lights.Select(l => MapLampStrength.Fit(l, sunScale)).OfType<MapLampStrength.Change>().ToList();
         var strengths = MapLampStrength.Describe(sunScale, changes, ported.Lights.Count);

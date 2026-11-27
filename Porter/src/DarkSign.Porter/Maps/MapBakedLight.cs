@@ -237,7 +237,7 @@ public static class MapBakedLight
             var source = MapAtmosphere.Ds3GparamPaths(ds3Id).FirstOrDefault(ds3.Contains);
             if (source is null || !er.Contains(hostPath))
                 return 1;
-            return MapLampStrength.SunScale(GPARAM.Read(er.Read(hostPath)), GPARAM.Read(ds3.Read(source)));
+            return MapLampStrength.SunScale(MapAtmosphere.ReadLightParams(er, hostId), GPARAM.Read(ds3.Read(source)));
         }
         catch (Exception ex) when (ex is not OutOfMemoryException)
         {
