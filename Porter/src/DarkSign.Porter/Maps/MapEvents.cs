@@ -179,17 +179,27 @@ public static class MapEvents
             buttonNote = $"action buttons: not converted ({ex.Message}); events that wait for them are left out";
         }
 
-        // SpEffects: a DS3 effect a ported weapon carries is pointed at the weapon port's row (the player has that one:
-        // the Storm Ruler's charge in the Yhorm fight, SpEffectPort.ReadWeaponTable); any other DS3 ID the enemy port
-        // gave a row (700,000,000 + the ID) at that row.
+        // SpEffects: a DS3 effect a ported door checks stays at its DS3 ID (SpEffectMap); one a ported weapon carries
+        // is pointed at the weapon port's row (the player has that one: the Storm Ruler's charge in the Yhorm fight,
+        // SpEffectPort.ReadWeaponTable); any other DS3 ID the enemy port gave a row (700,000,000 + the ID) at that row.
         Func<long, long?>? spEffects = null;
         string spNote = "";
+        string objActSpNote = "";
         try
         {
-            var sp = (regulation ?? ActionButtons.LoadRegulation(ctx)).Get("SpEffectParam") ?? throw new InvalidDataException("no SpEffectParam");
-            var weapon = SpEffectPort.ReadWeaponTable(ctx);
-            spEffects = id => weapon.TryGetValue(id, out var w) && sp[(int)w] is not null ? w
-                : Enemies.ChrEffects.SpEffectId((int)Math.Min(id, int.MaxValue)) is > 0 and var n && sp[n] is not null ? n : null;
+            var reg = regulation ?? ActionButtons.LoadRegulation(ctx);
+            var sp = reg.Get("SpEffectParam") ?? throw new InvalidDataException("no SpEffectParam");
+            if (reg.Get("ObjActParam") is { } objActParam && ObjectPort.ObjActSpEffects(objActParam) is { Count: > 0 } doorEffects)
+            {
+                var homed = ObjectPort.HomeObjActSpEffects(objActParam, sp, Enemies.ChrEffects.SpEffectId);
+                if (homed.Count > 0)
+                    reg.Save(ctx.ModPath("regulation.bin"));
+                var missing = doorEffects.Where(id => sp[id] is null).ToList();
+                objActSpNote = $"ObjAct SpEffect checks: the scripts keep {string.Join(" ", doorEffects.Except(missing))} at the ID the doors ask for (one-way doors)"
+                    + (homed.Count > 0 ? $"; {string.Join(" ", homed)} copied there from DS3's row" : "")
+                    + (missing.Count > 0 ? $"; {string.Join(" ", missing)} has no SpEffect row in either game (DS3's own check could never pass either)" : "");
+            }
+            spEffects = SpEffectMap(ctx, reg);
         }
         catch (Exception ex) when (ex is not OutOfMemoryException)
         {
@@ -244,22 +254,6 @@ public static class MapEvents
                 }
             }
         }
-        // The ported doors' SpEffect requirements (one-way doors' 4150) follow the scripts' SpEffects.
-        string objActSpNote = "";
-        if (spEffects is not null)
-            try
-            {
-                var reg = ActionButtons.LoadRegulation(ctx);
-                if (reg.Get("ObjActParam") is { } objActParam && ObjectPort.RepointObjActSpEffects(objActParam, spEffects) is var moved and > 0)
-                {
-                    reg.Save(ctx.ModPath("regulation.bin"));
-                    objActSpNote = $"ObjAct SpEffect checks: {moved} pointed at the scripts' SpEffects (one-way doors)";
-                }
-            }
-            catch (Exception ex) when (ex is not OutOfMemoryException)
-            {
-                objActSpNote = $"ObjAct SpEffect checks: NOT moved ({ex.Message}); one-way doors keep DS3's SpEffect and won't open";
-            }
         if (kits is { } k)
         {
             File.WriteAllBytes(ctx.ModPath(MapPorter.ModParts("/event/common.emevd.dcx")), DCX.Compress(k.Common.Write(), k.Compression));
@@ -360,10 +354,7 @@ public static class MapEvents
     {
         try
         {
-            var sp = ActionButtons.LoadRegulation(ctx).Get("SpEffectParam") ?? throw new InvalidDataException("no SpEffectParam");
-            var weapon = SpEffectPort.ReadWeaponTable(ctx);
-            return id => weapon.TryGetValue(id, out var w) && sp[(int)w] is not null ? w
-                : Enemies.ChrEffects.SpEffectId((int)Math.Min(id, int.MaxValue)) is > 0 and var n && sp[n] is not null ? n : null;
+            return SpEffectMap(ctx, ActionButtons.LoadRegulation(ctx));
         }
         catch (Exception ex) when (ex is not OutOfMemoryException)
         {
@@ -371,6 +362,25 @@ public static class MapEvents
             return null;
         }
     }
+
+    /// <summary>
+    /// <see cref="SpEffectRows"/> on a loaded regulation. A SpEffect a ported ObjAct row asks the player to have
+    /// (<see cref="ObjectPort.ObjActSpEffects"/>) comes first and keeps its DS3 ID: the row's field is 16 bits wide
+    /// and can't name the enemy port's row, so the script that gives the player the effect must use the ID the door
+    /// checks.
+    /// </summary>
+    internal static Func<long, long?> SpEffectMap(PorterContext ctx, ParamStore regulation)
+    {
+        var sp = regulation.Get("SpEffectParam") ?? throw new InvalidDataException("no SpEffectParam");
+        var doors = regulation.Get("ObjActParam") is { } objAct ? ObjectPort.ObjActSpEffects(objAct) : [];
+        var weapon = SpEffectPort.ReadWeaponTable(ctx);
+        return SpEffectMap(sp, doors, weapon);
+    }
+
+    internal static Func<long, long?> SpEffectMap(PARAM sp, IReadOnlySet<int> doors, IReadOnlyDictionary<long, long> weapon) =>
+        id => id is > 0 and <= ushort.MaxValue && doors.Contains((int)id) && sp[(int)id] is not null ? id
+            : weapon.TryGetValue(id, out var w) && sp[(int)w] is not null ? w
+            : Enemies.ChrEffects.SpEffectId((int)Math.Min(id, int.MaxValue)) is > 0 and var n && sp[n] is not null ? n : null;
 
     /// <summary>
     /// The DS3 SpEffect IDs the ported maps' scripts (and DS3's common events) set, clear or check, for the enemy

@@ -450,10 +450,10 @@ public static partial class MapPortChecks
             return def;
         }
         var ds3Def = Def("OBJ_ACT_PARAM_ST", (PARAMDEF.DefType.s32, "actionEnableMsgId"), (PARAMDEF.DefType.s32, "spQualifiedPassEventFlag"), (PARAMDEF.DefType.u32, "playerAnimId"),
-            (PARAMDEF.DefType.s32, "spQualifiedId"), (PARAMDEF.DefType.u16, "ObjDummyId"), (PARAMDEF.DefType.s32, "ObjAnimId"), (PARAMDEF.DefType.u8, "spQualifiedType"),
+            (PARAMDEF.DefType.s16, "spQualifiedId"), (PARAMDEF.DefType.u16, "ObjDummyId"), (PARAMDEF.DefType.s32, "ObjAnimId"), (PARAMDEF.DefType.u8, "spQualifiedType"),
             (PARAMDEF.DefType.s32, "actionButtonParamId"));
         var erDef = Def("OBJ_ACT_PARAM_ST", (PARAMDEF.DefType.s32, "actionEnableMsgId"), (PARAMDEF.DefType.u32, "spQualifiedPassEventFlag"), (PARAMDEF.DefType.u32, "playerAnimId"),
-            (PARAMDEF.DefType.s32, "spQualifiedId"), (PARAMDEF.DefType.u16, "objDummyId"), (PARAMDEF.DefType.u8, "isEventKickSync"), (PARAMDEF.DefType.s32, "objAnimId"),
+            (PARAMDEF.DefType.u16, "spQualifiedId"), (PARAMDEF.DefType.u16, "objDummyId"), (PARAMDEF.DefType.u8, "isEventKickSync"), (PARAMDEF.DefType.s32, "objAnimId"),
             (PARAMDEF.DefType.u8, "spQualifiedType"), (PARAMDEF.DefType.s32, "actionButtonParamId"));
         var ds3 = new PARAM { ParamType = ds3Def.ParamType, Rows = [] };
         PARAM.Row Ds3Row(int id, int dummy, int anim, byte type, int qualified, int button)
@@ -462,7 +462,7 @@ public static partial class MapPortChecks
             row["actionEnableMsgId"].Value = 10010400;
             row["spQualifiedPassEventFlag"].Value = -1;
             row["playerAnimId"].Value = 60000u;
-            row["spQualifiedId"].Value = qualified;
+            row["spQualifiedId"].Value = (short)qualified;
             row["ObjDummyId"].Value = (ushort)dummy;
             row["ObjAnimId"].Value = anim;
             row["spQualifiedType"].Value = type;
@@ -488,20 +488,38 @@ public static partial class MapPortChecks
         Expect(er.Rows.Select(r => r.ID).SequenceEqual([ObjectPort.ObjActTemplateRow, 70300310, 70300320, 70300510]), "at 70,000,000 + the DS3 ID, in order, the stale row replaced");
         var door = er[70300310];
         Expect((ushort)door["objDummyId"].Value == 121 && (int)door["objAnimId"].Value == 0 && (uint)door["playerAnimId"].Value == 60000u, "fields copied by name, whatever their case");
-        Expect((byte)door["spQualifiedType"].Value == 2 && (int)door["spQualifiedId"].Value == 4150 && (int)door["actionButtonParamId"].Value == 7200, "the side check and a prompt Elden Ring has stay");
+        Expect((byte)door["spQualifiedType"].Value == 2 && (ushort)door["spQualifiedId"].Value == 4150 && (int)door["actionButtonParamId"].Value == 7200, "the side check and a prompt Elden Ring has stay");
         Expect((uint)door["spQualifiedPassEventFlag"].Value == 0, "DS3's 'no flag' (-1) is Elden Ring's 0");
         var key = er[70300320];
-        Expect((byte)key["spQualifiedType"].Value == 0 && (int)key["spQualifiedId"].Value == 0, "a key requirement is dropped (keys aren't ported)");
+        Expect((byte)key["spQualifiedType"].Value == 0 && (ushort)key["spQualifiedId"].Value == 0, "a key requirement is dropped (keys aren't ported)");
         Expect((int)key["actionButtonParamId"].Value == 7200 && (int)er[70300510]["actionButtonParamId"].Value == 8301, "missing prompts become the door or lever prompt");
         Expect(notes.Single().Contains("1 key requirements dropped") && notes[0].Contains("2 prompts"), notes[0]);
         ObjectPort.AddObjActRows(er, ds3, buttons);
         Expect(er.Rows.Count == 4, "a second pass replaces its rows");
-        // The one-way door's SpEffect check follows the scripts: DS3's door event sets 4150, which they move to 700004150.
-        Func<long, long?> scriptSpEffects = id => Enemies.ChrEffects.SpEffectId((int)id) is > 0 and var n ? n : null;
-        Expect(ObjectPort.RepointObjActSpEffects(er, scriptSpEffects) == 1, "one SpEffect check (the one-way door's) moved");
-        Expect((int)er[70300310]["spQualifiedId"].Value == Enemies.ChrEffects.SpEffectId(4150) && (byte)er[70300310]["spQualifiedType"].Value == 2,
-            "the door asks for the SpEffect the converted door event gives the player");
-        Expect((int)template["spQualifiedId"].Value == 0 && ObjectPort.RepointObjActSpEffects(er, scriptSpEffects) == 0, "Elden Ring's own rows stay; a second pass changes nothing");
+        // The one-way door's SpEffect check can't follow the scripts to 700,000,000 + the ID (the field is 16 bits
+        // wide, as in the games' own layouts above), so the scripts keep the ID the door asks for.
+        Expect(ObjectPort.ObjActSpEffects(er).SequenceEqual([4150]), "the SpEffects the ported doors ask for (Elden Ring's own rows and dropped key checks aside)");
+        var spDef = Def("SP_EFFECT_PARAM_ST", (PARAMDEF.DefType.f32, "effectEndurance"));
+        PARAM.Row SpRow(int id, float seconds)
+        {
+            var row = new PARAM.Row(id, $"effect {id}", spDef);
+            row["effectEndurance"].Value = seconds;
+            return row;
+        }
+        // Elden Ring has no row at the ID: DS3's (as the enemy port copied it) is put there.
+        var sp = new PARAM { ParamType = spDef.ParamType, Rows = [SpRow(0, 0), SpRow(Enemies.ChrEffects.SpEffectId(4150), 3), SpRow(Enemies.ChrEffects.SpEffectId(4800), 1)] };
+        Expect(ObjectPort.HomeObjActSpEffects(er, sp, Enemies.ChrEffects.SpEffectId).SequenceEqual([4150]) && sp[4150] is { } homed && (float)homed["effectEndurance"].Value == 3
+            && sp.Rows.Select(r => r.ID).SequenceEqual([0, 4150, Enemies.ChrEffects.SpEffectId(4150), Enemies.ChrEffects.SpEffectId(4800)]),
+            "a door's SpEffect Elden Ring lacks gets DS3's row at the ID the door asks for, rows in order");
+        Expect(ObjectPort.HomeObjActSpEffects(er, sp, Enemies.ChrEffects.SpEffectId).Count == 0, "a second pass adds nothing");
+        // Elden Ring's own row at the ID stays as it is (its 4150 is the same door marker).
+        var spOwn = new PARAM { ParamType = spDef.ParamType, Rows = [SpRow(4150, 5), SpRow(Enemies.ChrEffects.SpEffectId(4150), 3)] };
+        Expect(ObjectPort.HomeObjActSpEffects(er, spOwn, Enemies.ChrEffects.SpEffectId).Count == 0 && (float)spOwn[4150]!["effectEndurance"].Value == 5, "Elden Ring's own row is never replaced");
+        var map = MapEvents.SpEffectMap(sp, ObjectPort.ObjActSpEffects(er), new Dictionary<long, long> { [4150] = Enemies.ChrEffects.SpEffectId(4800) });
+        Expect(map(4150) == 4150, "the scripts give the player the SpEffect the door checks, before any other home of that ID");
+        Expect(map(4800) == Enemies.ChrEffects.SpEffectId(4800) && map(4801) is null, "every other DS3 SpEffect still goes to the enemy port's row, or stays when it has none");
+        Expect((ushort)er[70300310]["spQualifiedId"].Value == 4150 && (byte)er[70300310]["spQualifiedType"].Value == 2 && (ushort)template["spQualifiedId"].Value == 0,
+            "the door's row is left as DS3 wrote it");
         Expect(ObjectPort.ObjActRow(300310) == 70300310 && ObjectPort.ObjActRow(-1) == -1 && ObjectPort.ObjActRow(0) == 0, "row IDs move, 'none' stays");
         Expect(EventPort.KindOf("ObjAct Param ID") == EventPort.Kind.ObjAct && EventPort.KindOf("Object Parameter ID") == EventPort.Kind.ObjAct,
             "the scripts' ObjActParam arguments (Set ObjAct State) are moved the same way");

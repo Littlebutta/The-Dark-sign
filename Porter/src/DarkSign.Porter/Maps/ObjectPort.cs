@@ -1125,31 +1125,46 @@ public sealed class ObjectPort
     }
 
     /// <summary>
-    /// Points the ported ObjAct rows' SpEffect requirements (spQualifiedType 2: "the player must have this SpEffect",
-    /// DS3's one-way doors' 4150 "inside of the door") at the SpEffect the converted scripts give the player. The
-    /// scripts move every DS3 SpEffect the enemy port gave a row to 700,000,000 + the ID (EventPort Kind.SpEffect),
-    /// so DS3's door event (20005610) now sets 700004150 while the row still asked for 4150: no one-way door opened,
-    /// from either side (High Wall's door at the top of the lift, 2026-11-21). The same function the events step
-    /// moves the scripts' SpEffects with is used here, so the two always agree. Returns how many fields changed.
+    /// The SpEffects the ported ObjAct rows ask the player to have (spQualifiedType 2: DS3's one-way doors' 4150
+    /// "inside of the door"). The field is 16 bits wide in both games (DS3 s16, Elden Ring u16), so a row can only
+    /// name a SpEffect under 65,536: it cannot follow the scripts to the enemy port's rows at 700,000,000 + the ID.
+    /// PR #260 tried that; the write threw ("too large for a UInt16"), the rows kept 4150 while DS3's door event
+    /// (20005610) gave the player 700004150, and no one-way door opened from either side on any map (build log of
+    /// 1.0.729: "ObjAct SpEffect checks: NOT moved"). So the scripts stay with the row instead
+    /// (<see cref="MapEvents.SpEffectMap"/>): Elden Ring's own doors work the same way, 26 of its ObjAct rows ask
+    /// for 4150 and its SpEffect 4150 is the same 3-second marker as DS3's.
     /// </summary>
-    public static int RepointObjActSpEffects(PARAM objAct, Func<long, long?> spEffects)
+    public static SortedSet<int> ObjActSpEffects(PARAM objAct)
     {
-        int changed = 0;
+        var ids = new SortedSet<int>();
         foreach (var row in objAct.Rows.Where(r => r.ID >= ObjActBase && r.ID < ObjActBase + 5_000_000))
             foreach (var (type, id) in new[] { ("spQualifiedType", "spQualifiedId"), ("spQualifiedType2", "spQualifiedId2") })
-            {
-                if (Number(row, type) != SpEffectQualified)
-                    continue;
-                var current = (long)Number(row, id);
-                if (current <= 0)
-                    continue; // a row already moved (a second run) gives null below and stays
-                if (spEffects(current) is { } moved && moved != current)
-                {
-                    Set(row, id, (int)moved);
-                    changed++;
-                }
-            }
-        return changed;
+                if (Number(row, type) == SpEffectQualified && Number(row, id) is > 0 and <= ushort.MaxValue and var n)
+                    ids.Add((int)n);
+        return ids;
+    }
+
+    /// <summary>
+    /// Gives every SpEffect a ported ObjAct row asks for (<see cref="ObjActSpEffects"/>) a row at that very ID: where
+    /// Elden Ring has none, the enemy port's copy of DS3's row (<paramref name="ported"/>: 700,000,000 + the ID) is
+    /// copied there. Elden Ring's own rows are never changed. Returns the IDs added.
+    /// </summary>
+    public static List<int> HomeObjActSpEffects(PARAM objAct, PARAM spEffects, Func<int, int> ported)
+    {
+        var added = new List<int>();
+        foreach (var id in ObjActSpEffects(objAct))
+        {
+            if (spEffects[id] is not null || spEffects[ported(id)] is not { } source)
+                continue;
+            var row = new PARAM.Row(id, $"[DS3] {source.Name}", source.Def);
+            for (int i = 0; i < row.Cells.Count; i++)
+                row.Cells[i].Value = source.Cells[i].Value is byte[] b ? b.Clone() : source.Cells[i].Value;
+            spEffects.Rows.Add(row);
+            added.Add(id);
+        }
+        if (added.Count > 0)
+            spEffects.Rows.Sort((x, y) => x.ID.CompareTo(y.ID));
+        return added;
     }
 
     /// <summary>ObjActParam spQualifiedType 2: the action needs the player to have the SpEffect in spQualifiedId.</summary>
