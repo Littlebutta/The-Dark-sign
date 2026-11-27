@@ -65,7 +65,7 @@ public static class MapSkyFades
     /// <summary>What <see cref="Apply"/> did, for the port log.</summary>
     public sealed class Stats
     {
-        public int Meshes, Baked, Empty, TooWide, VertexFaded;
+        public int Meshes, Baked, Empty, TooWide, VertexFaded, Cards;
         public readonly SortedDictionary<string, int> Kinds = new(StringComparer.Ordinal);
         public readonly List<string> Textures = [];
 
@@ -78,6 +78,7 @@ public static class MapSkyFades
                 Empty += other.Empty;
                 TooWide += other.TooWide;
                 VertexFaded += other.VertexFaded;
+                Cards += other.Cards;
                 foreach (var (k, n) in other.Kinds)
                     Kinds[k] = Kinds.GetValueOrDefault(k) + n;
                 Textures.AddRange(other.Textures);
@@ -88,6 +89,7 @@ public static class MapSkyFades
             $"sky fades: {Meshes} see-through sky meshes ({string.Join(", ", Kinds.Select(k => $"{k.Key} {k.Value}"))}); "
             + (VertexFaded > 0 ? $"{VertexFaded} drawn by Elden Ring's legacy sky material ({MapModelPort.LegacyBlendMatbin}) with DS3's own vertex fade, " : "")
             + $"{Baked} drawn with DS3's fade baked into a texture of their own, {Empty} wholly faded out in DS3 and left out"
+            + (Cards > 0 ? $", {Cards} soft cloud cards (M[A]_al_m_NoLight_Opacity) left out" : "")
             + (TooWide > 0 ? $", {TooWide} with UVs over {MaxSpan:0} tiles (al_NoLight keeps the half-visible cut, others left out)" : "")
             + (Textures.Count > 0 ? " (" + string.Join(", ", Textures.Distinct().OrderBy(t => t, StringComparer.Ordinal).Take(16)) + ")" : "");
     }
@@ -138,6 +140,18 @@ public static class MapSkyFades
                 continue;
             stats.Meshes++;
             stats.Kinds[kind] = stats.Kinds.GetValueOrDefault(kind) + 1;
+            // DS3's soft cloud cards (M[A]_al_m_NoLight_Opacity: Painted World m091020-22 are 500-1300 m wide and up to
+            // 416 m tall; kumo_50 cards on High Wall, Lothric Castle, Cathedral, Irithyll, Dungeon) are drawn by DS3's
+            // Fujir_Nolight_OpacityBlend shader, which Elden Ring doesn't have. Baked (#284) and drawn by the legacy
+            // sky material they showed as solid cloud walls with hard outlines (Devin, 1.0.69x Painted World, "cloud
+            // tower"). Left out on every map, as before #284.
+            if (kind == "nolight-opacity")
+            {
+                flver.Meshes.Remove(mesh);
+                stats.Cards++;
+                stats.Textures.Add(MapModelPort.Ds3Texture(material, "albedo") is { } cardTex ? Path.GetFileNameWithoutExtension(ItemText.Leaf(cardTex.Path)) : "?");
+                continue;
+            }
             var albedoTexture = MapModelPort.Ds3Texture(material, "albedo");
             int fadeUv = FadeUvIndex(flver, mesh);
             var fades = mesh.Vertices.Select(v => Fade(v, kind, fadeUv)).ToArray();
