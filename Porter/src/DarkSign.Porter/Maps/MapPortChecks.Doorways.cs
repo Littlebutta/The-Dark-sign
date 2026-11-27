@@ -162,8 +162,10 @@ public static partial class MapPortChecks
 
         // Elden Ring finds collisions by number (Unk2.Condition): every collision is numbered, and A's connect into B
         // names B's stand-in collision for that doorway, which shows exactly the doorway's list.
-        var connect = new MSBE.Part.ConnectCollision { Name = "h000100_0000", CollisionName = "h000100" };
+        var connect = new MSBE.Part.ConnectCollision { Name = "h000100_0000", CollisionName = "h000100", MapID = [45, 3, 0, 0] };
         msb.Parts.ConnectCollisions.Add(connect);
+        var away = new MSBE.Part.Collision { Name = "h000200", ModelName = "h000200" };
+        msb.Parts.Collisions.Add(away);
         MapConnectDisplay.Apply(msb, pa);
         var msbB = new MSBE();
         var hitB = new MSBE.Part.Collision { Name = "h000300", ModelName = "h000300" };
@@ -189,7 +191,17 @@ public static partial class MapPortChecks
         Expect(many.Parts.Collisions.All(c => c.Unk2.Condition == 3 && c.Unk2.DispGroups.AsSpan(0, 8).SequenceEqual(ownOnly)),
             "41 collisions showing only the own bit carry only the own bit (no High Wall bit 10, no border bits 32-40)");
         var standIn = msbB.Parts.Collisions.Where(c => c != hitB).ToList();
-        Expect(standIn.Count == pb.DoorwayLists && pb.DoorwayLists == 1, $"one stand-in per doorway list into B ({standIn.Count})");
+        Expect(standIn.Count == pb.DoorwayLists && pb.DoorwayLists == 2 && pb.NothingList == 1, $"one stand-in per doorway list into B, plus B's show-nothing list ({standIn.Count})");
+        Expect(pa.NothingInto.SequenceEqual([(MapId.Parse("m45_03_00_00"), 1)]) && pb.NothingInto.Count == 0 && pa.NothingList == -1,
+            "A (with a DS3 connect into B) fills its other collisions with show-nothing connects into B; B has none into A");
+        Expect(pb.PieceDraw.Values.All(d => !MapConnectDisplay.Drawn(d, MapDrawGroups.Display(standIn[1].Unk1).ToArray())) && !MapConnectDisplay.Drawn(pb.Fallback, MapDrawGroups.Display(standIn[1].Unk1).ToArray()),
+            "no piece of B is drawn through the show-nothing stand-in");
+        var nothingConnects = msb.Parts.ConnectCollisions.Where(c => c != connect).ToList();
+        Expect(nothingConnects.Count == 1 && nothingConnects[0].CollisionName == "h000200" && nothingConnects[0].MapID.SequenceEqual(connect.MapID)
+               && nothingConnects[0].Unk2.Condition == standIn[1].Unk2.Condition && nothingConnects[0].Name == "h000200_9700",
+            $"A's collision with no doorway into B gets one show-nothing connect naming B's stand-in ({string.Join(", ", nothingConnects.Select(c => $"{c.Name}->{c.CollisionName} {c.Unk2.Condition}"))})");
+        MapConnectDisplay.Apply(msb, pa);
+        Expect(msb.Parts.ConnectCollisions.Count == 2, "applying twice adds no second show-nothing connect");
         Expect(connect.Unk2.Condition == standIn[0].Unk2.Condition && connect.Unk2.Condition == MapConnectDisplay.DoorwayNumber(0),
             $"the connect names B's stand-in ({connect.Unk2.Condition} vs {standIn[0].Unk2.Condition})");
         Expect(MapDrawGroups.Display(standIn[0].Unk1).ToArray().SequenceEqual(doorShows), "the stand-in shows the doorway's list");

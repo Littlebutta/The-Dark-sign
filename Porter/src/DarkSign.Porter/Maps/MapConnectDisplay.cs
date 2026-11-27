@@ -73,6 +73,18 @@ public static class MapConnectDisplay
         /// <summary>Own pieces hidden on at least one border collision, with the maps whose floor they stand over.</summary>
         public Dictionary<string, List<MapId>> BorderHidden { get; } = new(StringComparer.Ordinal);
         public int DoorwayLists { get; set; }
+        /// <summary>
+        /// The doorway list into this map that no piece carries ("show nothing"), or -1. Counted in
+        /// <see cref="DoorwayLists"/>, so it gets a stand-in collision like the others.
+        /// </summary>
+        public int NothingList { get; set; } = -1;
+        /// <summary>
+        /// Neighbours this map's DS3 connects lead into, with the target's <see cref="NothingList"/>: every collision of
+        /// this map without a connect into one gets a connect showing nothing of it (<see cref="AddNothingConnects"/>).
+        /// </summary>
+        public List<(MapId Er, int NothingList)> NothingInto { get; } = [];
+        /// <summary>What <see cref="AddNothingConnects"/> added.</summary>
+        public int NothingConnects { get; set; }
         /// <summary>What <see cref="LinkCollisionNumbers"/> wrote: collisions numbered, doorway stand-in collisions added, connects naming one.</summary>
         public (int Numbered, int StandIns, int Connects) Numbers { get; set; }
         /// <summary>Collisions that show only what DS3 shows from them (a backdrop is drawn from them).</summary>
@@ -288,7 +300,11 @@ public static class MapConnectDisplay
                         listIndex[c.DispGroups] = lists.Count;
                         lists.Add(c.DispGroups);
                     }
-            var plan = new MapPlan { DoorwayLists = lists.Count };
+            // One more list that no piece carries: a collision with no DS3 doorway into this map shows it, so the game
+            // draws nothing of this map there, as DS3 (which shows a neighbour only through connects).
+            bool joinedFromOther = maps.Any(o => byId[o.Ds3].Er != m.Er && o.Msb.Parts.ConnectCollisions.Any(c => Target(c, o.Ds3, ids) == m.Ds3));
+            int nothing = joinedFromOther && lists.Count < DoorwayWords * 32 ? lists.Count : -1;
+            var plan = new MapPlan { DoorwayLists = lists.Count + (nothing >= 0 ? 1 : 0), NothingList = nothing };
             plans[m.Er] = plan;
             var myBorders = borderBits.Where(b => b.Key.Item1 == m.Ds3).Select(b => (b.Value, Hidden: classes[b.Key])).DistinctBy(b => b.Value).ToList();
             // A piece the port adds that DS3 doesn't have is drawn from everywhere this map's groups reach.
@@ -335,6 +351,9 @@ public static class MapConnectDisplay
         {
             if (!plans.TryGetValue(m.Er, out var plan))
                 continue;
+            foreach (var t in m.Msb.Parts.ConnectCollisions.Select(c => Target(c, m.Ds3, ids)).OfType<MapId>().Distinct())
+                if (byId[t].Er != m.Er && plans.TryGetValue(byId[t].Er, out var tp) && tp.NothingList >= 0 && plan.NothingInto.All(n => n.Er != byId[t].Er))
+                    plan.NothingInto.Add((byId[t].Er, tp.NothingList));
             foreach (var c in m.Msb.Parts.ConnectCollisions)
             {
                 if (!plan.ConnectDisplay.ContainsKey(c.Name) || Target(c, m.Ds3, ids) is not { } t)
@@ -388,8 +407,71 @@ public static class MapConnectDisplay
                     MapDrawGroups.Set(c.Unk1, g, ReadOnlySpan<uint>.Empty);
                 connects++;
             }
+        plan.NothingConnects = AddNothingConnects(msb, plan);
         plan.Numbers = LinkCollisionNumbers(msb, plan);
         return (pieces, collisions, connects);
+    }
+
+    /// <summary>Instance numbers (name suffix) of the "show nothing" connects: 9700 + n per collision model.</summary>
+    public const int NothingConnectInstance = 9700;
+
+    private static bool IsNothingConnect(MSBE.Part.ConnectCollision c) =>
+        c.Name.Length > 5 && c.Name[^5] == '_' && int.TryParse(c.Name[^4..], out var n)
+        && n >= NothingConnectInstance && n < DoorwayStandInInstance && c.InstanceID == n;
+
+    private static bool IsDoorwayStandIn(MSBE.Part.Collision c) =>
+        c.Name.Length > 5 && c.Name[^5] == '_' && int.TryParse(c.Name[^4..], out var n)
+        && n >= DoorwayStandInInstance && n < DoorwayStandInInstance + DoorwayWords * 32 && c.InstanceID == n;
+
+    /// <summary>
+    /// Gives every collision of the map a connect into each neighbour it has none into (<see cref="MapPlan.NothingInto"/>),
+    /// naming the neighbour's "show nothing" stand-in. Why (1.0.706, Lothric Castle): the High Wall's far shells of the
+    /// castle (m45_01 m980010/12/14) were still drawn from castle collisions with no connect into the High Wall. DS3 shows
+    /// a neighbour only through a connect, but Elden Ring keeps drawing a loaded neighbour in full from a collision that
+    /// names nothing of it (open-world connects are -1, and V1, #314, #315 and #316 all changed only what the existing
+    /// connects show; the shells stayed in all four). Map loading is unchanged in kind: these neighbours already load
+    /// from this map's own DS3 connects. Returns the connects added.
+    /// </summary>
+    public static int AddNothingConnects(MSBE msb, MapPlan plan)
+    {
+        msb.Parts.ConnectCollisions.RemoveAll(IsNothingConnect);
+        int added = 0;
+        var nextInstance = new Dictionary<string, int>(StringComparer.Ordinal);
+        foreach (var (er, nothing) in plan.NothingInto)
+        {
+            var mapId = new[] { (byte)er.Area, (byte)er.Block, (byte)er.Region, (byte)er.Index };
+            var into = msb.Parts.ConnectCollisions.Where(c => c.MapID.AsSpan().SequenceEqual(mapId)).ToList();
+            if (into.Count == 0)
+                continue;
+            var template = into[0];
+            var has = into.Select(c => c.CollisionName).ToHashSet(StringComparer.Ordinal);
+            var g = new uint[8];
+            SetBit(g, DoorwayFirstWord * 32 + nothing);
+            foreach (var hit in msb.Parts.Collisions.ToList())
+            {
+                if (IsDoorwayStandIn(hit) || has.Contains(hit.Name))
+                    continue;
+                int instance = nextInstance.GetValueOrDefault(hit.ModelName, NothingConnectInstance);
+                if (instance >= DoorwayStandInInstance)
+                    continue;
+                nextInstance[hit.ModelName] = instance + 1;
+                var c = (MSBE.Part.ConnectCollision)template.DeepCopy();
+                c.Name = $"{hit.ModelName}_{instance:D4}";
+                c.InstanceID = instance;
+                c.ModelName = hit.ModelName;
+                c.Position = hit.Position;
+                c.Rotation = hit.Rotation;
+                c.Scale = hit.Scale;
+                c.CollisionName = hit.Name;
+                c.EntityID = 0;
+                Array.Fill(c.EntityGroupIDs, 0u);
+                MapDrawGroups.Set(c.Unk1, g, ReadOnlySpan<uint>.Empty);
+                plan.ConnectDisplay[c.Name] = g;
+                msb.Parts.ConnectCollisions.Add(c);
+                added++;
+            }
+        }
+        return added;
     }
 
     /// <summary>
@@ -433,9 +515,7 @@ public static class MapConnectDisplay
     /// </summary>
     public static (int Numbered, int StandIns, int Connects) LinkCollisionNumbers(MSBE msb, MapPlan plan)
     {
-        msb.Parts.Collisions.RemoveAll(c => c.Name.Length > 5 && int.TryParse(c.Name[^4..], out var n)
-                                            && n >= DoorwayStandInInstance && n < DoorwayStandInInstance + DoorwayWords * 32
-                                            && c.Name[^5] == '_' && c.InstanceID == n);
+        msb.Parts.Collisions.RemoveAll(IsDoorwayStandIn);
         var real = msb.Parts.Collisions.ToList();
         int lists = Math.Min(plan.DoorwayLists, DoorwayWords * 32);
         int numbered = 0;

@@ -1455,7 +1455,7 @@ public static class MapPorter
             var clashes = MapConnectDisplay.NumberClashes(msb);
             File.WriteAllBytes(path, DCX.Compress(msb.Write(), compression));
             written++;
-            lines.Add($"  {d.Ds3} -> {d.Er}: {pieces} pieces, {collisions} collisions, {connects} doorways written; {mp.DoorwayLists} DS3 doorway lists into it; collision numbers {mp.Numbers.Numbered}, doorway stand-in collisions {mp.Numbers.StandIns}, connects naming one {mp.Numbers.Connects}; number clashes {clashes.Count}"
+            lines.Add($"  {d.Ds3} -> {d.Er}: {pieces} pieces, {collisions} collisions, {connects} doorways written; {mp.DoorwayLists} DS3 doorway lists into it; collision numbers {mp.Numbers.Numbered}, doorway stand-in collisions {mp.Numbers.StandIns}, connects naming one {mp.Numbers.Connects} (of them {mp.NothingConnects} show-nothing connects added for collisions with no DS3 doorway into a neighbour); number clashes {clashes.Count}"
                       + (clashes.Count > 0 ? $" ({string.Join(", ", clashes.Take(6))})" : "") + "; "
                       + $"{d.Floor.Count:N0} floor cells; {mp.BorderHidden.Count} own pieces over a neighbour hidden on its doorways"
                       + (mp.BorderHidden.Count > 0 ? $" ({string.Join(", ", mp.BorderHidden.Keys.Take(12))}{(mp.BorderHidden.Count > 12 ? ", ..." : "")})" : "")
