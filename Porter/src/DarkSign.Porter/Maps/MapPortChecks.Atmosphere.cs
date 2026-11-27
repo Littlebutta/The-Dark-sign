@@ -356,6 +356,8 @@ public static partial class MapPortChecks
             P("Directional Light SpecColor1", GPARAM.ParamType.Float4, new Vector4(0.702f, 0.785f, 0.843f, 0), new Vector4(0.702f, 0.741f, 0.843f, 0)),
             P("Directional Enable LocalLight1", GPARAM.ParamType.BoolA, false, false)));
         caelid.Groups.Add(G("Tone Map", P("GS Presents - ToneMap-Exposure", GPARAM.ParamType.Float, 3.15f), P("GS Presents - ToneMap-Enable AutoExposure", GPARAM.ParamType.Byte, (byte)0)));
+        Expect(MapAtmosphere.UseReferenceLight(leyndell, caelid) > 0 && MapAtmosphere.UseReferenceLight(leyndell, caelid) == 0,
+            "applying the reference twice changes nothing");
         var lit = MapAtmosphere.Apply(leyndell, ds3, -44, lightReference: caelid);
         var leyLight = MapAtmosphere.Group(leyndell, "LightSet")!;
         Expect(leyLight.Params.Single(p => p.Name1 == "Directional Light SpecColor1").Values.All(v => ((Vector4)v).W == 0)
@@ -364,10 +366,20 @@ public static partial class MapPortChecks
         Expect(leyLight.Params.Single(p => p.Name1 == "Directional Light Angle0").Values.All(v => (Vector2)v == new Vector2(-0.768f, -0.96f)), "DS3's sun direction still wins over the reference's");
         Expect(MapAtmosphere.Value<float>(leyLight, "Directional Light giOcclusionRate") == 0.3f, "a param the reference lacks is kept");
         var tone = MapAtmosphere.Group(leyndell, "Tone Map");
-        Expect(MapAtmosphere.Value<float>(tone, "GS Presents - ToneMap-Exposure") == 3.15f && tone!.Params.Single(p => p.Name1 == "GS Presents - ToneMap-Enable AutoExposure").Values[0] is (byte)0,
-            "fixed exposure 3.15 from the reference, auto exposure off");
-        Expect(lit.Count > 0 && lit[0].StartsWith("light and exposure from m45_01_00_00"), string.Join(" | ", lit));
-        Expect(MapAtmosphere.UseReferenceLight(leyndell, caelid) == 0, "applying the reference twice changes nothing");
+        Expect(MapAtmosphere.Value<float>(tone, "GS Presents - ToneMap-Exposure") == 3.15f && tone!.Params.Single(p => p.Name1 == "GS Presents - ToneMap-Enable AutoExposure").Values[0] is (byte)1,
+            "exposure 3.15 from the reference, auto exposure on to lift dark scenes");
+        Expect(lit.Any(c => c.StartsWith("exposure lifts in dark scenes")), string.Join(" | ", lit));
+        var ae = new GPARAM();
+        ae.Groups.Add(G("Tone Map", P("GS Presents - ToneMap-Enable AutoExposure", GPARAM.ParamType.Byte, (byte)0),
+            P("GS Presents - ToneMap-AutoExposure Adaption Min", GPARAM.ParamType.Float, -8f),
+            P("GS Presents - ToneMap-AutoExposure Adaption Max", GPARAM.ParamType.Float, 8f),
+            P("GS Presents - ToneMap-AutoExposure Middle Gray", GPARAM.ParamType.Float, -6.4f)));
+        var aeTone = MapAtmosphere.Group(ae, "Tone Map");
+        Expect(MapAtmosphere.LiftDarkScenes(ae) == 4 && MapAtmosphere.Value<float>(aeTone, "GS Presents - ToneMap-AutoExposure Adaption Min") == 0f
+               && MapAtmosphere.Value<float>(aeTone, "GS Presents - ToneMap-AutoExposure Adaption Max") == MapAtmosphere.DarkSceneLift
+               && MapAtmosphere.Value<float>(aeTone, "GS Presents - ToneMap-AutoExposure Middle Gray") == MapAtmosphere.DarkSceneMiddleGray,
+            "dark scenes: never below the reference's exposure, at most 1.25 steps up, metered like m45_00");
+
 
         // One DS3 light scale for every map (MapLightScale), set by the High Wall (DS3's values from its files).
         GPARAM Ds3Light(float sun, float exposure, float sh)
