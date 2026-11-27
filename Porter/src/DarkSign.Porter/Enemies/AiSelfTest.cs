@@ -51,6 +51,44 @@ public static class AiSelfTest
         return new HksChunk { Header = Header, Main = main }.Write();
     }
 
+    /// <summary>A function that reads the given globals and upvalue 0 (Fixed byte 4 = 1 upvalue).</summary>
+    private static HksChunk.Function ReadsUpvalue(params string[] globals)
+    {
+        var f = Reads(globals);
+        f.Fixed[4] = 1;
+        f.Instructions.Insert(0, 4u);   // GETUPVAL R0, U0
+        return f;
+    }
+
+    /// <summary>
+    /// A script like DS3's common_battle_func.lua: "local MAX = 99" (LOADK R0), then each function made with CLOSURE R1
+    /// and, for one with an upvalue, the MOVE pseudo-instruction binding R0. <paramref name="changed"/> sets R0 again
+    /// after the functions are made (the local is no constant then).
+    /// </summary>
+    private static byte[] UpvalueScript(double local, bool changed, params (string Name, HksChunk.Function Body)[] functions)
+    {
+        var main = new HksChunk.Function { Name = "=(none)" };
+        main.Fixed[7] = 2;
+        main.Constants.Add(HksChunk.Constant.Number(local));
+        main.Instructions.Add(HksChunk.LoadK(0));
+        for (int i = 0; i < functions.Length; i++)
+        {
+            main.Functions.Add(functions[i].Body);
+            main.Instructions.Add(Closure(i, 1));
+            for (int u = 0; u < HksChunk.Upvalues(functions[i].Body); u++)
+                main.Instructions.Add(0u);   // MOVE pseudo-instruction: upvalue = R0
+            main.Instructions.Add(HksChunk.SetGlobal(main.Constants.Count) | (1u << 24));
+            main.Constants.Add(HksChunk.Constant.Text(functions[i].Name));
+        }
+        if (changed)
+        {
+            main.Instructions.Add(HksChunk.LoadK(main.Constants.Count));
+            main.Constants.Add(HksChunk.Constant.Number(local + 1));
+        }
+        main.Instructions.Add(HksChunk.Return);
+        return new HksChunk { Header = Header, Main = main }.Write();
+    }
+
     private static BND4 Binder(params (int Id, string Leaf, byte[] Bytes)[] files)
     {
         var bnd = new BND4 { Version = "07D7R6", Format = SoulsFormats.Binder.Format.IDs | SoulsFormats.Binder.Format.Names1 | SoulsFormats.Binder.Format.Names2 | SoulsFormats.Binder.Format.Compression, Unicode = true, Extended = 4 };
@@ -75,6 +113,22 @@ public static class AiSelfTest
         Check("HKS: a function lifted out of its file is defined alone and is the same code",
             functions.Count == 2 && lifted.GlobalFunctions() is { Count: 1 } l && HksChunk.SameCode(l["F2"], functions["F2"])
             && lifted.AssignedGlobals().SequenceEqual(["F2"]) && HksChunk.ReadGlobals(l["F2"]).Order().SequenceEqual(["Y", "Z"]));
+        // DS3's common_battle_func.lua: "local MAX = 99" read as an upvalue by Common_Battle_Activate (acts 1-99).
+        var withLocal = HksChunk.Read(UpvalueScript(99, false, ("Plain", Reads("X")), ("Common_Battle_Activate", ReadsUpvalue("REGIST_FUNC"))));
+        var cba = withLocal.GlobalFunctions()["Common_Battle_Activate"];
+        var liftedCba = HksChunk.Read(HksChunk.Lifted(withLocal, [("Ds3_Common_Battle_Activate", cba)]).Write());
+        var lm = liftedCba.Main;
+        Check("HKS: a function whose upvalue is a file constant is lifted with that constant bound again",
+            HksChunk.UpvalueConstants(withLocal, cba) is [{ AsNumber: 99 }]
+            && liftedCba.GlobalFunctions() is { Count: 1 } lc && HksChunk.SameCode(lc["Ds3_Common_Battle_Activate"], cba)
+            && lm.Instructions.Count == 5 && HksChunk.Op(lm.Instructions[0]) == 1 && HksChunk.A(lm.Instructions[0]) == 1
+            && lm.Constants[HksChunk.Bx(lm.Instructions[0])].AsNumber == 99
+            && HksChunk.Op(lm.Instructions[1]) == HksChunk.ClosureOp && lm.Instructions[2] == (1u << 15)
+            && HksChunk.Op(lm.Instructions[3]) == 7 && lm.Instructions[4] == HksChunk.Return && lm.Fixed[7] >= 2
+            && HksChunk.Liftable(withLocal, withLocal.GlobalFunctions()["Plain"]));
+        var changedLocal = HksChunk.Read(UpvalueScript(99, true, ("Common_Battle_Activate", ReadsUpvalue())));
+        Check("HKS: a function whose upvalue changes after it is made is not liftable",
+            !HksChunk.Liftable(changedLocal, changedLocal.GlobalFunctions()["Common_Battle_Activate"]));
         Check("HKS: registrations are a Register call's GOAL_ argument",
             AiPort.Registered(HksChunk.Read(Script(["RegisterTableGoal", "GOAL_A", "GOAL_B"]))).SequenceEqual(["GOAL_A"]));
 
@@ -162,7 +216,8 @@ public static class AiSelfTest
         var ds3Common = Binder(
             (1000, "goal_list.lua", List(("GOAL_Jailer_223000_Battle", 223000), ("GOAL_EnemyStep", 2603))),
             (1001, "logic_list.lua", List(("LOGIC_ID_Common10000", 10000))),
-            (1002, "common_func.lua", Script([], ("Common_Func", Reads("B")), ("DS3Only_Helper", Reads("C_Unknown")))),
+            // DS3's Common_Func reads a file-level local as an upvalue, like DS3's Common_Battle_Activate (MAX = 99).
+            (1002, "common_func.lua", UpvalueScript(99, false, ("Common_Func", ReadsUpvalue("B")), ("DS3Only_Helper", Reads("C_Unknown")))),
             (1003, "enemy_step.lua", Script([], ("EnemyStep_Activate", Reads("Common_Func")))),
             (1000000, "aiCommon.luagnl", new LUAGNL(false, true) { Globals = ["GOAL_Jailer_223000_Battle"] }.Write()));
         var ds3Map = Binder((1100, "223000_battle.lua", Script(["RegisterTableGoal", "GOAL_Jailer_223000_Battle"],
@@ -201,7 +256,7 @@ public static class AiSelfTest
             && jailerChunk is not null && jailerChunk.ReadGlobals().Contains("Ds3_Common_Func") && !jailerChunk.ReadGlobals().Contains("Common_Func")
             && step is not null && step.ReadGlobals().Contains("Ds3_Common_Func") && !step.ReadGlobals().Contains("Common_Func")
             && liftedFile is not null && liftedFile.GlobalFunctions() is var liftedFns && liftedFns.ContainsKey("Ds3_Common_Func") && liftedFns.ContainsKey("DS3Only_Helper")
-            && HksChunk.ReadGlobals(liftedFns["Ds3_Common_Func"]).Contains("B")
+            && HksChunk.ReadGlobals(liftedFns["Ds3_Common_Func"]).Contains("B") && HksChunk.UpvalueConstants(liftedFile, liftedFns["Ds3_Common_Func"]) is [{ AsNumber: 99 }]
             && erFunc is not null && erFunc.GlobalFunctions().ContainsKey("Common_Func") && HksChunk.ReadGlobals(erFunc.GlobalFunctions()["Common_Func"]).Contains("A"));
         var renameChunk = HksChunk.Read(Script([], ("F", Reads("Common_Func", "Other"))));
         Check("HKS: renaming a global read changes only reads of that name",

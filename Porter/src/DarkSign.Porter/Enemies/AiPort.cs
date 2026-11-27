@@ -535,7 +535,7 @@ public sealed class AiPort
             _liftedNames.Add(name);
             return true;
         }
-        if (!_ds3Functions.TryGetValue(name, out var found) || HksChunk.Upvalues(found.Function) != 0)
+        if (!_ds3Functions.TryGetValue(name, out var found) || !HksChunk.Liftable(found.Script.Chunk, found.Function))
             return false;
         if (!_lifted.TryGetValue(found.Script, out var list))
             _lifted[found.Script] = list = [];
@@ -566,15 +566,23 @@ public sealed class AiPort
 
     /// <summary>
     /// DS3's function <paramref name="name"/>, lifted out under <see cref="Ds3Prefix"/> + name; ported scripts read that
-    /// name instead (<see cref="Renumbered"/>). False when it can't be lifted (it uses upvalues): Elden Ring's stays.
+    /// name instead (<see cref="Renumbered"/>). False when it can't be lifted (an upvalue that isn't a file constant):
+    /// Elden Ring's stays, and the report's missing list says so.
+    /// The two that mattered most have an upvalue: DS3's common_battle_func.lua starts with "local MAX = 99", and its
+    /// Common_Battle_Activate and Common_Clear_Param read acts 1-99 through it. Until 2026-11-27 they couldn't be lifted,
+    /// so ported scripts kept Elden Ring's, which only looks at acts 1-50: Friede's opening act is 70 (her side steps
+    /// 76-89), so her chance total was 0, no act ran and she stood still (#322 renamed nothing for that reason).
     /// </summary>
     private bool LiftRenamed(string name)
     {
         if (_ds3Renamed.ContainsKey(name))
             return true;
         var found = _ds3Functions[name];
-        if (HksChunk.Upvalues(found.Function) != 0)
+        if (!HksChunk.Liftable(found.Script.Chunk, found.Function))
+        {
+            Note(Missing, $"{name} (DS3's differs from Elden Ring's but uses upvalues that can't be lifted; Elden Ring's stays)", found.Script.Leaf);
             return false;
+        }
         var renamed = Ds3Prefix + name;
         _ds3Renamed[name] = renamed;
         if (!_lifted.TryGetValue(found.Script, out var list))

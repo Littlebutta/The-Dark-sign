@@ -250,26 +250,116 @@ public sealed class HksChunk
     public static int Upvalues(Function f) => f.Fixed[4];
 
     /// <summary>
+    /// The values a top-level function's upvalues hold when <paramref name="source"/>'s main chunk makes it, when each is
+    /// a file-level local that the main chunk sets once with LOADK and never changes: DS3's common_battle_func.lua starts
+    /// with "local MAX_ACT = 99" and its Common_Battle_Activate and Common_Clear_Param read it as an upvalue. Null when
+    /// the function isn't made by the main chunk or an upvalue is anything else (a table, a changing local).
+    /// In Lua 5.0 a CLOSURE is followed by one pseudo-instruction per upvalue: MOVE with B = the enclosing register.
+    /// </summary>
+    public static List<Constant>? UpvalueConstants(HksChunk source, Function f)
+    {
+        int nups = Upvalues(f);
+        if (nups == 0)
+            return [];
+        var code = source.Main.Instructions;
+        int fi = source.Main.Functions.IndexOf(f);
+        int at = code.FindIndex(i => Op(i) == ClosureOp && Bx(i) == fi);
+        if (fi < 0 || at < 0 || at + nups >= code.Count)
+            return null;
+        var pseudo = PseudoInstructions(source.Main);
+        var values = new List<Constant>();
+        for (int u = 0; u < nups; u++)
+        {
+            uint bind = code[at + 1 + u];
+            if (Op(bind) != 0)
+                return null;
+            int reg = B(bind);
+            int setAt = -1;
+            for (int i = 0; i < code.Count; i++)
+            {
+                if (pseudo.Contains(i) || !Writes(code[i], reg))
+                    continue;
+                if (setAt >= 0 || i > at || Op(code[i]) != 1)
+                    return null;
+                setAt = i;
+            }
+            if (setAt < 0 || Bx(code[setAt]) >= source.Main.Constants.Count)
+                return null;
+            values.Add(source.Main.Constants[Bx(code[setAt])]);
+        }
+        return values;
+    }
+
+    /// <summary>B operand (bits 15-23).</summary>
+    public static int B(uint instruction) => (int)((instruction >> 15) & 0x1FF);
+
+    /// <summary>C operand (bits 6-14).</summary>
+    public static int C(uint instruction) => (int)((instruction >> 6) & 0x1FF);
+
+    /// <summary>Indices of the upvalue pseudo-instructions after each CLOSURE (never run themselves).</summary>
+    private static HashSet<int> PseudoInstructions(Function main)
+    {
+        var result = new HashSet<int>();
+        var code = main.Instructions;
+        for (int i = 0; i < code.Count; i++)
+            if (Op(code[i]) == ClosureOp && Bx(code[i]) < main.Functions.Count)
+                for (int u = 1; u <= Upvalues(main.Functions[Bx(code[i])]); u++)
+                    result.Add(i + u);
+        return result;
+    }
+
+    /// <summary>
+    /// Whether a Lua 5.0 instruction may write register <paramref name="reg"/> (conservative: calls and loops count as
+    /// writing every register from A up).
+    /// </summary>
+    private static bool Writes(uint ins, int reg)
+    {
+        int a = A(ins);
+        return Op(ins) switch
+        {
+            0 or 1 or 2 or 4 or 5 or 6 or 10 or 12 or 13 or 14 or 15 or 16 or 17 or 18 or 19 or 24 or 28 or ClosureOp => reg == a,
+            3 => reg >= a && reg <= B(ins),          // LOADNIL A..B
+            11 or 30 => reg == a || reg == a + 1,   // SELF, TFORPREP
+            25 or 26 or 29 => reg >= a,             // CALL, TAILCALL, TFORLOOP
+            _ => false,                             // SETGLOBAL, SETUPVAL, SETTABLE, JMP, EQ/LT/LE, RETURN, SETLIST(O), CLOSE
+        };
+    }
+
+    /// <summary>
     /// A chunk that only defines the given top-level functions, in the layout both games' common files use for their
-    /// main chunk: CLOSURE R0, F(n); SETGLOBAL R0, K(n) for each, then RETURN. The header and the main function's fixed
-    /// block are the source file's. Functions with upvalues can't be lifted out and throw.
+    /// main chunk: CLOSURE R0, F(n); SETGLOBAL R0, K(name) for each, then RETURN. The header and the main function's
+    /// fixed block are the source file's. A function with upvalues gets them back as they were in its file
+    /// (<see cref="UpvalueConstants"/>): LOADK R1.., then the CLOSURE binds those registers. Any other upvalue throws.
     /// </summary>
     public static HksChunk Lifted(HksChunk source, IReadOnlyList<(string Name, Function Function)> functions)
     {
         var main = new Function { Name = source.Main.Name, Fixed = (byte[])source.Main.Fixed.Clone() };
+        int stack = 2;
         for (int n = 0; n < functions.Count; n++)
         {
             var (name, f) = functions[n];
-            if (Upvalues(f) != 0)
-                throw new InvalidDataException($"{name} uses upvalues and can't be lifted out of its file");
+            var ups = UpvalueConstants(source, f)
+                ?? throw new InvalidDataException($"{name} uses upvalues that aren't constants of its file and can't be lifted out of it");
+            for (int u = 0; u < ups.Count; u++)
+            {
+                main.Instructions.Add(LoadK(main.Constants.Count) | ((uint)(u + 1) << 24));
+                main.Constants.Add(ups[u]);
+            }
+            main.Instructions.Add((uint)ClosureOp | ((uint)n << 6));
+            for (int u = 0; u < ups.Count; u++)
+                main.Instructions.Add((uint)(u + 1) << 15);   // MOVE pseudo-instruction: upvalue u = R(u + 1)
+            stack = Math.Max(stack, ups.Count + 1);
+            main.Instructions.Add(SetGlobal(main.Constants.Count));
             main.Constants.Add(Constant.Text(name));
             main.Functions.Add(f);
-            main.Instructions.Add((uint)ClosureOp | ((uint)n << 6));
-            main.Instructions.Add(SetGlobal(n));
         }
         main.Instructions.Add(Return);
+        main.Fixed[7] = (byte)Math.Max(main.Fixed[7], stack);   // maxstacksize
         return new HksChunk { Header = (byte[])source.Header.Clone(), Main = main };
     }
+
+    /// <summary>Whether <paramref name="f"/>, a top-level function of <paramref name="source"/>, can be lifted out of it.</summary>
+    public static bool Liftable(HksChunk source, Function f) => UpvalueConstants(source, f) is not null;
 
     /// <summary>Every string constant in every function.</summary>
     public IEnumerable<string> Strings() => Main.All().SelectMany(f => f.Constants).Select(c => c.AsString).OfType<string>();
