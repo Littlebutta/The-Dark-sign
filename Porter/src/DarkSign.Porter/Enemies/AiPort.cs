@@ -111,6 +111,7 @@ public sealed class AiPort
     private readonly Dictionary<int, int> _libraryGoals = [];
     private readonly Dictionary<string, (Script Script, HksChunk.Function Function)> _ds3Functions = new(StringComparer.Ordinal);
     private readonly Dictionary<Script, List<(string Name, HksChunk.Function Function)>> _lifted = [];
+    private readonly SortedDictionary<string, int> _renameRewrites = new(StringComparer.OrdinalIgnoreCase);
     private readonly HashSet<string> _liftedNames = new(StringComparer.Ordinal);
     private readonly Dictionary<string, double> _ds3Constants = new(StringComparer.Ordinal), _liftedConstants = new(StringComparer.Ordinal);
     /// <summary>The per-goal binders, made in <see cref="Finish"/> once every character's think rows are known.</summary>
@@ -485,6 +486,8 @@ public sealed class AiPort
     {
         foreach (var g in reads.Order(StringComparer.Ordinal))
         {
+            if (!own.Contains(g) && Differs(g) && LiftRenamed(g))
+                continue;
             if (own.Contains(g) || Defined(g))
                 continue;
             if (_ds3Library.TryGetValue(g, out var lib) && lib != self && AddLibrary(lib))
@@ -540,6 +543,46 @@ public sealed class AiPort
         _liftedNames.Add(name);
         Needs(HksChunk.ReadGlobals(found.Function), new HashSet<string>(StringComparer.Ordinal) { name },
             found.Function.All().SelectMany(f => f.Constants).Select(c => c.AsString).OfType<string>(), $"{found.Script.Leaf} ({name})", null);
+        return true;
+    }
+
+    /// <summary>The prefix a DS3 common function gets when it comes along beside Elden Ring's different one.</summary>
+    public const string Ds3Prefix = "Ds3_";
+
+    /// <summary>DS3 common functions ported scripts use under a name of their own (DS3 name -> new name).</summary>
+    private readonly SortedDictionary<string, string> _ds3Renamed = new(StringComparer.Ordinal);
+    public IReadOnlyDictionary<string, string> Ds3Renamed => _ds3Renamed;
+
+    /// <summary>
+    /// Whether both games' common files define <paramref name="g"/> as a function, with different code. Ported DS3
+    /// scripts then called Elden Ring's, written for Elden Ring's scripts. DS3's Common_Battle_Activate takes the act
+    /// functions its scripts wrapped with DS3's REGIST_FUNC; Elden Ring's wraps them itself (REGIST_FUNC, errorAct), so a
+    /// DS3 boss script picked no act and the boss stood still in plain view: Sister Friede (602000 -> 990057) fought at
+    /// once with only her battle goal swapped for Gundyr's (2026-11-27, 1.0.706), whose script doesn't call it.
+    /// </summary>
+    private bool Differs(string g) =>
+        !_erScratch.Contains(g) && _erFunctions.TryGetValue(g, out var er) && _ds3Functions.TryGetValue(g, out var ds3)
+        && !HksChunk.SameCode(ds3.Function, er);
+
+    /// <summary>
+    /// DS3's function <paramref name="name"/>, lifted out under <see cref="Ds3Prefix"/> + name; ported scripts read that
+    /// name instead (<see cref="Renumbered"/>). False when it can't be lifted (it uses upvalues): Elden Ring's stays.
+    /// </summary>
+    private bool LiftRenamed(string name)
+    {
+        if (_ds3Renamed.ContainsKey(name))
+            return true;
+        var found = _ds3Functions[name];
+        if (HksChunk.Upvalues(found.Function) != 0)
+            return false;
+        var renamed = Ds3Prefix + name;
+        _ds3Renamed[name] = renamed;
+        if (!_lifted.TryGetValue(found.Script, out var list))
+            _lifted[found.Script] = list = [];
+        list.Add((renamed, found.Function));
+        _liftedNames.Add(renamed);
+        Needs(HksChunk.ReadGlobals(found.Function), new HashSet<string>(StringComparer.Ordinal) { name },
+            found.Function.All().SelectMany(f => f.Constants).Select(c => c.AsString).OfType<string>(), $"{found.Script.Leaf} ({renamed})", null);
         return true;
     }
 
@@ -606,9 +649,12 @@ public sealed class AiPort
     private byte[] Renumbered(byte[] bytes, string leaf)
     {
         bool thinks = _thinkIds.Count > 0, effects = SpEffectPorted is not null;
-        if (!(thinks || effects) || !HksChunk.Is(bytes))
+        if (!(thinks || effects || _ds3Renamed.Count > 0) || !HksChunk.Is(bytes))
             return bytes;
         var chunk = HksChunk.Read(bytes);
+        int r = chunk.RenameGlobalReads(_ds3Renamed);
+        if (r > 0)
+            _renameRewrites[leaf] = r;
         int n = thinks ? RenumberThinkIds(chunk, _thinkIds) : 0;
         if (n > 0)
             _thinkRewrites[leaf] = n;
@@ -624,7 +670,7 @@ public sealed class AiPort
                 _spEffectIds.UnionWith(found);
             }
         }
-        return n + m == 0 ? bytes : chunk.Write();
+        return r + n + m == 0 ? bytes : chunk.Write();
     }
 
     // Lua 5.0 instructions (the AI files' "\x1bLua" 0x50 header): opcode bits 0-5, C bits 6-14, B bits 15-23, A bits
@@ -937,6 +983,7 @@ public sealed class AiPort
             yield return l;
         yield return $"# {_libraries.Count} DS3 common files added to aicommon: {string.Join(", ", _libraries.Select(l => l.Leaf))}";
         yield return $"# {_liftedNames.Count} DS3 functions lifted out of files that can't come along: {string.Join(", ", _lifted.SelectMany(l => l.Value.Select(f => $"{f.Name} ({l.Key.Leaf})")).Concat(_liftedConstants.Keys))}";
+        yield return $"# {_ds3Renamed.Count} DS3 common functions used under their own code beside Elden Ring's different ones: {string.Join(", ", _ds3Renamed.Select(r => $"{r.Key} -> {r.Value}"))}; reads renamed in {_renameRewrites.Count} scripts";
         yield return $"# {_newGoals.Count} goal numbers added to goal_list: {string.Join(", ", _newGoals.OrderBy(g => g.Value).Select(g => $"{g.Key}={g.Value}"))}";
         yield return $"# {_newLogics.Count} logic numbers added to logic_list: {string.Join(", ", _newLogics.OrderBy(g => g.Value).Select(g => $"{g.Key}={g.Value}"))}";
         yield return $"# DS3 think rows the scripts check for ({ThinkCall}), renumbered to the ported rows in {_thinkRewrites.Count} scripts: {string.Join(", ", _thinkRewrites.Select(r => $"{r.Key} ({r.Value})"))}";

@@ -178,6 +178,37 @@ public sealed class HksChunk
     public IEnumerable<string> DefinedGlobals() => Main.Instructions.Where(i => Op(i) == 7)
         .Select(i => Bx(i) < Main.Constants.Count ? Main.Constants[Bx(i)].AsString : null).OfType<string>().Distinct(StringComparer.Ordinal);
 
+    /// <summary>
+    /// Points every GETGLOBAL (opcode 5) of a name in <paramref name="renames"/> at the new name, in every function: the
+    /// name's constant is changed where only those reads use it, else the new name gets a constant of its own. Other
+    /// uses of the string (SETGLOBAL, table keys, arguments) keep it. Returns how many reads changed.
+    /// </summary>
+    public int RenameGlobalReads(IReadOnlyDictionary<string, string> renames)
+    {
+        if (renames.Count == 0)
+            return 0;
+        int changed = 0;
+        foreach (var f in Main.All())
+        {
+            for (int i = 0; i < f.Instructions.Count; i++)
+            {
+                uint ins = f.Instructions[i];
+                if (Op(ins) != 5 || Bx(ins) >= f.Constants.Count || f.Constants[Bx(ins)].AsString is not { } name
+                    || !renames.TryGetValue(name, out var to))
+                    continue;
+                int k = f.Constants.FindIndex(c => c.AsString == to);
+                if (k < 0)
+                {
+                    k = f.Constants.Count;
+                    f.Constants.Add(Constant.Text(to));
+                }
+                f.Instructions[i] = (ins & ~(0x3FFFFu << 6)) | ((uint)k << 6);
+                changed++;
+            }
+        }
+        return changed;
+    }
+
     /// <summary>CLOSURE (opcode 34): A = register, Bx = index of the nested function.</summary>
     public const int ClosureOp = 34;
 

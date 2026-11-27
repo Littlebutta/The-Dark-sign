@@ -190,6 +190,24 @@ public static class AiSelfTest
             && goals["GOAL_ErOwn_223000_Battle"] == 223000 && goals["GOAL_Jailer_223000_Battle"] == AiPort.FirstRemapped && goals["GOAL_EnemyStep"] == 2603
             && LUAGNL.Read(commonBnd.Files.First(f => f.ID == 1000000).Bytes).Globals is var gnl && gnl.Contains("DS3Only_Helper") && gnl.Contains("EnemyStep_Activate"));
 
+        // Common_Func is in both games with other code (DS3 reads B, Elden Ring A): ported scripts and DS3's files that
+        // came along read DS3's under a name of its own; Elden Ring's own scripts keep theirs (Friede, 2026-11-27).
+        var jailerChunk = goalBinder.Bytes is null ? null : HksChunk.Read(BND4.Read(goalBinder.Bytes).Files[0].Bytes);
+        var step = commonBnd?.Files.FirstOrDefault(f => ItemText.Leaf(f.Name) == "enemy_step.lua") is { } sf ? HksChunk.Read(sf.Bytes) : null;
+        var liftedFile = commonBnd?.Files.FirstOrDefault(f => ItemText.Leaf(f.Name) == "common_func_ds3.lua") is { } lf ? HksChunk.Read(lf.Bytes) : null;
+        var erFunc = commonBnd?.Files.FirstOrDefault(f => ItemText.Leaf(f.Name) == "common_func.lua") is { } ef ? HksChunk.Read(ef.Bytes) : null;
+        Check("AI: a common function both games define with other code is DS3's under Ds3_ for ported scripts and DS3 files, Elden Ring's stays for its own",
+            ai.Ds3Renamed.GetValueOrDefault("Common_Func") == "Ds3_Common_Func"
+            && jailerChunk is not null && jailerChunk.ReadGlobals().Contains("Ds3_Common_Func") && !jailerChunk.ReadGlobals().Contains("Common_Func")
+            && step is not null && step.ReadGlobals().Contains("Ds3_Common_Func") && !step.ReadGlobals().Contains("Common_Func")
+            && liftedFile is not null && liftedFile.GlobalFunctions() is var liftedFns && liftedFns.ContainsKey("Ds3_Common_Func") && liftedFns.ContainsKey("DS3Only_Helper")
+            && HksChunk.ReadGlobals(liftedFns["Ds3_Common_Func"]).Contains("B")
+            && erFunc is not null && erFunc.GlobalFunctions().ContainsKey("Common_Func") && HksChunk.ReadGlobals(erFunc.GlobalFunctions()["Common_Func"]).Contains("A"));
+        var renameChunk = HksChunk.Read(Script([], ("F", Reads("Common_Func", "Other"))));
+        Check("HKS: renaming a global read changes only reads of that name",
+            renameChunk.RenameGlobalReads(new Dictionary<string, string> { ["Common_Func"] = "Ds3_Common_Func" }) == 1
+            && renameChunk.ReadGlobals().OrderBy(x => x, StringComparer.Ordinal).SequenceEqual(["Ds3_Common_Func", "Other"]) && renameChunk.AssignedGlobals().Contains("F"));
+
         // Think rows: DS3's senses (same name and kind), the ported goal; a decimal field doesn't take a whole number.
         var erDef = new PARAMDEF { ParamType = "NPC_THINK_PARAM_ST", Fields = [] };
         foreach (var (name, type) in new[] { ("battleGoalID", PARAMDEF.DefType.s32), ("logicId", PARAMDEF.DefType.s32), ("eye_dist", PARAMDEF.DefType.u16), ("ear_dist", PARAMDEF.DefType.f32),
