@@ -147,8 +147,8 @@ public static class MapLighting
         var ds3Lights = BTL.Read(ds3.Read(source)).Lights;
         var offset = MapNavmesh.MapOffset(ds3Msb);
         var ported = Convert(ds3Lights, hostLights?.Version ?? ErLightVersion, hostLights?.LongOffsets ?? true, out var skipped, offset, OffsetDegrees(ds3Msb));
-        float sunScale = MapLampStrength.SunScale(MapAtmosphere.ReadLightParams(er, hostId),
-            ReadDrawParams(ds3, MapAtmosphere.Ds3GparamPaths(ds3Id).FirstOrDefault(ds3.Contains)));
+        // One DS3 light scale for every map (MapLightScale), not the map's own sun.
+        float sunScale = MapLightScale.For(ds3, er, ds3Id).Light;
         var changes = ported.Lights.Select(l => MapLampStrength.Fit(l, sunScale)).OfType<MapLampStrength.Change>().ToList();
         var strengths = MapLampStrength.Describe(sunScale, changes, ported.Lights.Count);
         var target = ctx.ModPath(MapPorter.ModParts(ErLightPath(erId)));
@@ -166,15 +166,6 @@ public static class MapLighting
                    ? "; the map has no map offset"
                    : string.Create(inv, $"; moved by DS3's map offset ({offset.Value.M41:0.#}, {offset.Value.M42:0.#}, {offset.Value.M43:0.#}, turned {OffsetDegrees(ds3Msb):0.#} degrees)")) +
                "; " + strengths;
-    }
-
-    /// <summary>A game's draw param file, or null when it isn't there or can't be read.</summary>
-    private static GPARAM? ReadDrawParams(GameArchives archives, string? path)
-    {
-        if (path is null || !archives.Contains(path))
-            return null;
-        try { return GPARAM.Read(archives.Read(path)); }
-        catch (Exception e) when (e is not OutOfMemoryException) { return null; }
     }
 
     /// <summary>The turn of DS3's map offset in degrees, 0 without one.</summary>

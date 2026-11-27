@@ -81,9 +81,10 @@ public static class MapAtmosphere
         var gparam = GPARAM.Read(hostBytes);
         var ds3Draw = GPARAM.Read(ds3.Read(source));
         var reference = ReadLightReference(er);
+        var ds3Reference = MapLightScale.ReadDs3(ds3, MapLightScale.Ds3Reference);
         var wanted = layout is null ? null : MapLightSets.Wanted(layout);
         var characters = wanted is null ? null : MapLightSets.CharacterOnly(layout!);
-        var changes = Apply(gparam, ds3Draw, GroundHeight(ds3Msb), MapLighting.OffsetDegrees(ds3Msb), wanted, Layer(ds3Msb), characters, reference);
+        var changes = Apply(gparam, ds3Draw, GroundHeight(ds3Msb), MapLighting.OffsetDegrees(ds3Msb), wanted, Layer(ds3Msb), characters, reference, ds3Reference);
         var target = ctx.ModPath(MapPorter.ModParts(GparamPath(erId)));
         Directory.CreateDirectory(Path.GetDirectoryName(target)!);
         File.WriteAllBytes(target, DCX.Compress(gparam.Write(), compression));
@@ -91,7 +92,7 @@ public static class MapAtmosphere
             lightSets.UnionWith(MapLightSets.Ids(written));
         if (layout is not null)
             changes.Add(WriteScenes(ctx, ds3, ds3Id, erId, ds3Msb, layout, hostBytes, compression,
-                (host, draw) => Apply(host, draw, GroundHeight(ds3Msb), MapLighting.OffsetDegrees(ds3Msb), wanted, Layer(ds3Msb), characters, reference)));
+                (host, draw) => Apply(host, draw, GroundHeight(ds3Msb), MapLighting.OffsetDegrees(ds3Msb), wanted, Layer(ds3Msb), characters, reference, ds3Reference)));
         return "atmosphere: " + string.Join("; ", changes);
     }
 
@@ -247,7 +248,7 @@ public static class MapAtmosphere
     /// ray-traced flicker, which was later proven to come from two-vertex-buffer character meshes (PR #310), not light
     /// sets, so nothing ties a slot to its host's light. Every slot now takes m45_01's LightSet values (DS3's sun
     /// direction still set by <see cref="Apply"/>) and its Tone Map group; the baked light and lamps are scaled against the
-    /// same sun (<see cref="ReadLightParams"/>).
+    /// one DS3 light scale for every map (<see cref="MapLightScale"/>).
     /// </summary>
     public static readonly MapId LightReference = MapId.Parse("m45_01_00_00");
 
@@ -258,23 +259,6 @@ public static class MapAtmosphere
         if (!er.Contains(path))
             return null;
         try { return GPARAM.Read(er.Read(path)); }
-        catch (Exception e) when (e is not OutOfMemoryException) { return null; }
-    }
-
-    /// <summary>A host's draw params as a ported slot is lit: the host's file with the reference's light and exposure
-    /// (<see cref="UseReferenceLight"/>), for the sun scale of the baked light and lamps. Null when the host has none.</summary>
-    public static GPARAM? ReadLightParams(GameArchives er, MapId host)
-    {
-        var path = GparamPath(host);
-        if (!er.Contains(path))
-            return null;
-        try
-        {
-            var gparam = GPARAM.Read(er.Read(path));
-            if (ReadLightReference(er) is { } reference)
-                UseReferenceLight(gparam, reference);
-            return gparam;
-        }
         catch (Exception e) when (e is not OutOfMemoryException) { return null; }
     }
 
@@ -321,13 +305,22 @@ public static class MapAtmosphere
     /// added (<see cref="MapLightSets.Add"/>).</param>
     /// <param name="characterSets">The sets only characters name (<see cref="MapLightSets.CharacterOnly"/>).</param>
     public static List<string> Apply(GPARAM gparam, GPARAM ds3, float ground, float sunTurnDegrees = 0,
-        IEnumerable<int>? lightSets = null, FogLayer? layer = null, IReadOnlySet<int>? characterSets = null, GPARAM? lightReference = null)
+        IEnumerable<int>? lightSets = null, FogLayer? layer = null, IReadOnlySet<int>? characterSets = null, GPARAM? lightReference = null,
+        GPARAM? ds3Reference = null)
     {
         var inv = CultureInfo.InvariantCulture;
         string C(Vector4 v) => string.Create(inv, $"{v.X:F2} {v.Y:F2} {v.Z:F2}");
         var changes = new List<string>();
         if (lightReference is not null && UseReferenceLight(gparam, lightReference) is var copied && copied > 0)
             changes.Add($"light and exposure from {LightReference} (the High Wall slot's, the map that looks right): {copied} values");
+        if (lightReference is not null)
+        {
+            // DS3's light values are on one scale across maps (MapLightScale): the sun is DS3's on that scale, before
+            // the other light sets start from set 0 (MapLightSets.Add below).
+            var scale = MapLightScale.For(lightReference, ds3Reference, ds3);
+            MapLightScale.ScaleSun(gparam, scale.Sun);
+            changes.Add(scale.Text);
+        }
 
         var ds3Light = Group(ds3, "LightSet");
         var sunAngle = Value<Vector2>(ds3Light, "Directional Light Angle0");

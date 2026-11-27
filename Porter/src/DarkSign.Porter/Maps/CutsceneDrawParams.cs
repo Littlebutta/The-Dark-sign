@@ -256,7 +256,8 @@ public static class CutsceneDrawParams
             fogNote = $"; fog from {(fog.Bank == 0 ? "the cutscene's" : "the map's")} row {fog.Id}, the one DS3's scene names" + (used ? "" : " (not found: the cutscene's row 0 kept)");
         }
         var changes = MapAtmosphere.Apply(gparam, ds3Gparam, MapAtmosphere.GroundHeight(ds3Msb),
-            MapLighting.OffsetDegrees(ds3Msb), lightSets, MapAtmosphere.Layer(ds3Msb), lightReference: MapAtmosphere.ReadLightReference(er));
+            MapLighting.OffsetDegrees(ds3Msb), lightSets, MapAtmosphere.Layer(ds3Msb), lightReference: MapAtmosphere.ReadLightReference(er),
+            ds3Reference: MapLightScale.ReadDs3(ds3, MapLightScale.Ds3Reference));
         var target = ctx.ModPath(MapPorter.ModParts(ErPath(erName)));
         Directory.CreateDirectory(Path.GetDirectoryName(target)!);
         File.WriteAllBytes(target, DCX.Compress(gparam.Write(), compression));

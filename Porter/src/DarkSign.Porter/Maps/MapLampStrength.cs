@@ -111,7 +111,7 @@ public static class MapLampStrength
     public static string Describe(float sunScale, IReadOnlyList<Change> changes, int lamps)
     {
         var inv = CultureInfo.InvariantCulture;
-        var text = string.Create(inv, $"strengths times {sunScale:0.##} (the host's sun over DS3's)");
+        var text = string.Create(inv, $"strengths times {sunScale:0.###} (one DS3 light scale for every map, set by the High Wall)");
         if (changes.Count == 0)
             return text + "; every lamp is inside what Elden Ring's own lamps do";
         return text + string.Create(inv, $"; {changes.Count} of {lamps} turned down to what Elden Ring's own lamps do (on a surface {ErMaxSurface}, along its reach {ErMaxAir}): ")
