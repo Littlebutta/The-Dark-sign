@@ -204,6 +204,18 @@ public static partial class MapPortChecks
         var result6 = EnemyPort.Place(ds3, layout6.Msb, Ds3Id, ErId, chooser, Describe);
         Expect(layout6.Msb.Parts.Enemies.All(e => e.EntityID != 45000730) && result6.Notes.Any(n => n.Contains("logic characters left out")),
             "the invisible platoon leader must not become a visible enemy");
+
+        // A model the enemy port found with nothing to draw (the Demon Cleric's orb): no stand-in. A boss's keeps its own.
+        var unseenMap = EnemyPort.ChrMap.Parse(["unseen\tc1240\t\t\t\tLothric Knight", "unseen\tc5110\t\t\t\tIudex Gundyr"]);
+        Expect(unseenMap.Unseen("c1240") && unseenMap.Unseen("c1240_0000") && !unseenMap.Unseen("c0100"), "the list of unseen models is read");
+        var layout7 = MsbPort.Convert(ds3, SyntheticHost(), Ds3Id, ErId);
+        EnemyPort.Place(ds3, layout7.Msb, Ds3Id, ErId, new EnemyPort.Chooser(SyntheticCatalog(), unseenMap),
+            e => new EnemyPort.Ds3Enemy(e.ModelName, e.NPCParamID, e.ModelName, e.EntityID == 4000800, e.ModelName == "c0000" || e.TalkID > 0));
+        Expect(layout7.Msb.Parts.Enemies.All(e => e.EntityID != 45000100), "a character DS3 never draws must not become a visible Elden Ring enemy");
+        var layout8 = MsbPort.Convert(ds3, SyntheticHost(), Ds3Id, ErId);
+        EnemyPort.Place(ds3, layout8.Msb, Ds3Id, ErId, new EnemyPort.Chooser(SyntheticCatalog(), unseenMap),
+            e => new EnemyPort.Ds3Enemy(e.ModelName, e.NPCParamID, e.ModelName, e.ModelName == "c1240", e.ModelName == "c0000" || e.TalkID > 0));
+        Expect(layout8.Msb.Parts.Enemies.Any(e => e.EntityID == 45000100), "a boss's unseen helper keeps its stand-in (the fight ends on it)");
     }
 
     private static void OtherStateLeftOut()
