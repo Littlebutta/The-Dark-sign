@@ -788,10 +788,10 @@ public static partial class MapPortChecks
     private static void MeshLayoutAndBox()
     {
         var (port, hostBnd) = VisualPort();
-        Expect(port.TemplateSummary == "opaque=m10_00_004, edge=m10_00_207, alpha=m10_00_218, nolight=m10_00_003, nolight-blend=m10_00_003, nolight-edge=m10_00_003, nolight-add=m10_00_003, nolight-opacity=m10_00_003"
+        Expect(string.Join(", ", port.TemplateSummary.Split(", ").Where(x => !x.StartsWith("plain=") && !x.StartsWith("edge-plain="))) == ("opaque=m10_00_004, edge=m10_00_207, alpha=m10_00_218, nolight=m10_00_003, nolight-blend=m10_00_003, nolight-edge=m10_00_003, nolight-add=m10_00_003, nolight-opacity=m10_00_003")
                || MapModelPort.Kinds.All(k => port.TemplateSummary.Contains(k + "=")), $"templates {port.TemplateSummary}");
         Expect(port.TemplateSummary.Contains("opaque=m10_00_004"), $"the normal-mapped shader wins over albedo-only and overlay ones: {port.TemplateSummary}");
-        Expect(port.Complete(false), "every kind found");
+        Expect(MapModelPort.SearchedKinds.All(k => port.TemplateSummary.Contains(k + "=")), "every searched kind found (the albedo-only leaf template is looked for further when missing)");
 
         // A multi-layer DS3 ground: textures under blend names, vertex colour 0, the mesh on a node the file lacks.
         var ds3 = SyntheticFlver(0x20014, @"N:\FDP\data\Material\mtd\map\MultiBlend\M[ARSN]_4m_l.mtd",
@@ -940,23 +940,15 @@ public static partial class MapPortChecks
             }
             cards.Meshes.Add(glow);
             var cardsOut = ConvertOne(cardsPort, cardsBnd, FLVER2.Read(cards.Write()));
-            Expect(cardsOut.Meshes.Count == 2 && cardsPort.LeftOut.Count == 0, $"the cloud card and the sun glow are drawn: {cardsOut.Meshes.Count}, left out {string.Join(",", cardsPort.LeftOut.Keys)}");
-            var cardMat = cardsPort.Materials.FirstOrDefault(m => m.Template.Kind == "nolight-opacity");
+            Expect(cardsOut.Meshes.Count == 1 && cardsPort.SkyFades.Cards == 1,
+                $"the cloud card is left out (drew as a solid wall), the sun glow is drawn: {cardsOut.Meshes.Count} / {cardsPort.SkyFades.Summary}");
             var glowMat = cardsPort.Materials.FirstOrDefault(m => m.Template.Kind == "nolight-add");
-            Expect(cardMat is not null && glowMat is not null && cardMat.Albedo.StartsWith("m45_00_kumo_30_a" + MapSkyFades.Suffix) && glowMat.Albedo.StartsWith("m30_00_sky_06_a" + MapSkyFades.Suffix),
+            Expect(glowMat is not null && glowMat.Albedo.StartsWith("m30_00_sky_06_a" + MapSkyFades.Suffix),
                 $"kinds and baked textures: {string.Join(", ", cardsPort.Materials.Select(m => m.Template.Kind + " " + m.Albedo))}");
-            if (cardMat is not null)
-            {
-                var r = MapSkyFades.Recipes[cardMat.Albedo];
-                Expect(r.Mask1 == "m45_00_kumo_33_m" && r.Mask2 == "m45_00_kumo_60_m" && Math.Abs(r.UvSpan.X - 2046f / 2048) < 1e-3f && r.Fade.Max() >= 250 && r.Fade.Min() <= 5,
-                    $"both masks named, UVs read in short units, fade from UV 3 (1 .. 0): span {r.UvSpan} fade {r.Fade.Min()}..{r.Fade.Max()} masks {r.Mask1} {r.Mask2}");
-                Expect(cardsOut.Meshes.SelectMany(m => m.Vertices).All(v => v.UVs[0].X is >= -0.01f and <= 1.01f && v.UVs[0].Y is >= -0.01f and <= 1.01f),
-                    "the baked meshes' UVs run 0..1 over their own texture");
-            }
             var bins = cardsPort.MatbinFiles(0).Select(f => (f.Name, Bin: MATBIN.Read(f.Bytes))).ToList();
             int Mode(string albedo) => bins.Where(b => b.Bin.Samplers.Any(x => x.Path == albedo)).Select(b => b.Bin.Params.FirstOrDefault(p => p.Name == "g_BlendMode")?.Value is int i ? i : -1).FirstOrDefault(-1);
-            if (cardMat is not null && glowMat is not null && bins.Any(b => b.Bin.Params.Any(p => p.Name == "g_BlendMode")))
-                Expect(Mode(cardMat.Albedo) == 2 && Mode(glowMat.Albedo) == 4, $"the card blends (2) and the glow adds (4): {Mode(cardMat.Albedo)} {Mode(glowMat.Albedo)}");
+            if (glowMat is not null && bins.Any(b => b.Bin.Params.Any(p => p.Name == "g_BlendMode")))
+                Expect(Mode(glowMat.Albedo) == 4, $"the glow adds (4): {Mode(glowMat.Albedo)}");
         }
         // With Elden Ring's own DS3-style sky material (M[A]_al_NoLight on GXFlver_Col, see MapModelPort.LegacyBlendMatbin):
         // cloud bands and glows keep DS3's texture, tiling (moved into the UVs) and vertex fade, in a white vertex

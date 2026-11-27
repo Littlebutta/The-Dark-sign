@@ -41,7 +41,7 @@ public static partial class MapPortChecks
             .ToDictionary(x => x.First.Template.Kind, x => NoShadow(x.Second));
         Expect(byKind.Count == 2, $"a wall and a sky material ({string.Join(", ", byKind.Keys)})");
         Expect(byKind["nolight"], "the sky dome's material casts no shadow");
-        Expect(!byKind["opaque"], "the wall's material still casts shadows");
+        Expect(!byKind.Single(k => k.Key is "opaque" or "plain").Value, "the wall's material (no normal map: the albedo-only template) still casts shadows");
 
     }
 

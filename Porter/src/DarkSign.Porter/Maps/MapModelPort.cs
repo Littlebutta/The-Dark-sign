@@ -28,7 +28,7 @@ public sealed class MapModelPort
         FLVER2.BufferLayout Layout, int Rank = 0, bool Legacy = false);
 
     /// <summary>The kinds of template, in the order their GX lists and layouts are written.</summary>
-    public static readonly string[] Kinds = ["opaque", "edge", "alpha", "nolight", "water", "nolight-blend", "nolight-edge", "nolight-add", "nolight-opacity"];
+    public static readonly string[] Kinds = ["opaque", "edge", "alpha", "nolight", "water", "nolight-blend", "nolight-edge", "nolight-add", "nolight-opacity", "edge-plain", "plain"];
 
     /// <summary>The kinds the template search looks for in the template maps (water comes from <see cref="WaterBinders"/>).</summary>
     public static readonly string[] SearchedKinds = ["opaque", "edge", "alpha", "nolight"];
@@ -338,6 +338,14 @@ public sealed class MapModelPort
                     rejected.Add(name);
                     continue;
                 }
+                // Elden Ring's albedo-only shaders (M[A]_Edge: m10_00_275; M[A]) for DS3 materials that have no normal map
+                // either (M[A]_e: most tree and bush leaf cards). On the normal-mapped template with a flat stand-in normal
+                // map they shone like wet glass in the sun (Devin, 2026-11-26: "trees too shiny" on every map).
+                if (!plain && c.Rank == PlainRank && c.Kind is "opaque" or "edge" && PlainKind(c.Kind) is var plainKind
+                    && !templates.ContainsKey(plainKind))
+                {
+                    templates[plainKind] = new MaterialTemplate(plainKind, name, file, material, flver.GXLists[material.GXIndex], CopyLayout(layout), c.Rank);
+                }
                 if (templates.TryGetValue(c.Kind, out var known) && known.Rank <= c.Rank)
                     continue;
                 templates[c.Kind] = new MaterialTemplate(c.Kind, name, file, material, flver.GXLists[material.GXIndex],
@@ -367,7 +375,8 @@ public sealed class MapModelPort
 
     /// <summary>True when every kind has its best template (nothing more to look for in further maps).</summary>
     public bool Complete(bool plain) =>
-        plain ? _templates["opaque"].Rank == PlainRank : SearchedKinds.All(_templates.ContainsKey) && _templates["opaque"].Rank == 0;
+        plain ? _templates["opaque"].Rank == PlainRank
+              : SearchedKinds.All(_templates.ContainsKey) && _templates["opaque"].Rank == 0 && _templates.ContainsKey("edge-plain");
 
     private const int PlainRank = 2;
 
@@ -503,6 +512,20 @@ public sealed class MapModelPort
             return false;
         var size = max - min;
         return MathF.Min(size.X, MathF.Min(size.Y, size.Z)) >= 0.1f && sum.Length() / n < 0.35f;
+    }
+
+    /// <summary>The albedo-only counterpart of a lit kind: "edge" -> "edge-plain", "opaque" -> "plain".</summary>
+    public static string PlainKind(string kind) => kind == "edge" ? "edge-plain" : "plain";
+
+    /// <summary>
+    /// <see cref="Ds3Kind"/>, but a lit DS3 material with no normal map takes Elden Ring's albedo-only template of
+    /// its kind when one was found (see <see cref="Create"/>).
+    /// </summary>
+    public string KindFor(FLVER2.Material material)
+    {
+        var kind = Ds3Kind(material);
+        return kind is "opaque" or "edge" && Ds3Texture(material, "normal") is null && _templates.ContainsKey(PlainKind(kind))
+            ? PlainKind(kind) : kind;
     }
 
     /// <summary>The template a DS3 kind is drawn with: its own, else opaque; a blended one with no template is left out.</summary>
@@ -1058,7 +1081,7 @@ public sealed class MapModelPort
         foreach (var mesh in flver.Meshes.ToList())
         {
             var m = mesh.MaterialIndex >= 0 && mesh.MaterialIndex < flver.Materials.Count ? flver.Materials[mesh.MaterialIndex] : null;
-            if (m is not null && TemplateFor(Ds3Kind(m)) is { } t)
+            if (m is not null && TemplateFor(KindFor(m)) is { } t)
                 meshTemplates[mesh] = t;
             else if (m is not null && IsDecalMaterial(m) && IsSolid(mesh) && Ds3Texture(m, "albedo") is not null)
             {
@@ -1089,7 +1112,7 @@ public sealed class MapModelPort
             LeftOut[d] = LeftOut.GetValueOrDefault(d) + 1;
         foreach (var m in flver.Materials)
         {
-            var template = TemplateFor(Ds3Kind(m)) ?? _templates["opaque"];
+            var template = TemplateFor(KindFor(m)) ?? _templates["opaque"];
             var kind = template.Kind;
             // Water is Elden Ring's own material as it is: its look (normal maps, colour) lives in its MATBIN.
             if (VanillaMaterials || kind == "water")
