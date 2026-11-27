@@ -493,7 +493,8 @@ public static partial class ChrPort
     /// <summary>The choice for every DS3 character: its template, how it is ported, its new ID.</summary>
     public static List<Plan> MakePlans(GameArchives erArchives, GameArchives ds3Archives, IReadOnlyList<Ds3Chr> characters,
         IReadOnlyList<EnemyPort.ErEnemy> catalog, Method method, List<string> notes, Action<Ds3Chr>? skipped = null,
-        Action<Ds3Chr, List<(EnemyPort.ErEnemy Template, double Match, double Size, double Score)>>? ranked = null)
+        Action<Ds3Chr, List<(EnemyPort.ErEnemy Template, double Match, double Size, double Score)>>? ranked = null,
+        Action<Ds3Chr>? unseen = null)
     {
         var erShapes = new ConcurrentDictionary<int, Shape?>();
         Shape? ErShape(EnemyPort.ErEnemy e) => erShapes.GetOrAdd(ChrId(e.Model), c => ErShapeOf(erArchives, c));
@@ -521,6 +522,9 @@ public static partial class ChrPort
                 ranked?.Invoke(ds3Chr, RankTemplates(ds3Chr, known, catalog, ErShape));
             if (ds3Shapes.GetValueOrDefault(ds3Chr.Chr) is not { } shape || PickTemplate(ds3Chr, shape, catalog, ErShape) is not { } pick || !ids.TryGetValue(ds3Chr.Chr, out var newChr))
             {
+                // A model with nothing to draw: DS3 never shows this character (a boss's helper, a spell's source).
+                if (ds3Shapes.GetValueOrDefault(ds3Chr.Chr) is null && ds3Archives.Contains($"/chr/c{ds3Chr.Chr:D4}.chrbnd.dcx"))
+                    unseen?.Invoke(ds3Chr);
                 skipped?.Invoke(ds3Chr);
                 continue;
             }
@@ -581,8 +585,11 @@ public static partial class ChrPort
         result.ItemNames = DropPort.Names.Load(erArchives, ds3Archives, notes);
         Console.WriteLine($"enemies: {characters.Count} DS3 characters in DS3's maps, {catalog.Count} Elden Ring templates");
 
+        var unseen = new List<Ds3Chr>();
         var plans = MakePlans(erArchives, ds3Archives, characters, catalog, method, notes,
-            skipped => result.Lines.Add(Line(skipped, null, "skipped", "no Elden Ring template or no free character ID")));
+            skipped => result.Lines.Add(Line(skipped, null, "skipped", unseen.Contains(skipped)
+                ? "DS3 never draws it (its model has no meshes): the maps place no Elden Ring enemy for it"
+                : "no Elden Ring template or no free character ID")), unseen: unseen.Add);
 
         // DS3's effects, sounds and abilities for every fully ported character (ChrEffects); null leaves the templates'.
         var fx = method == Method.Full ? ChrEffects.Create(ctx, erArchives, ds3Archives, plans, notes) : null;
@@ -751,6 +758,8 @@ public static partial class ChrPort
                 mapLines.RemoveAll(l => l.StartsWith("think\t", StringComparison.Ordinal));
                 mapLines = mapLines.Select(l => RestoreThink(l, plans)).ToList();
             }
+        // Characters DS3 never draws: the maps must not put a visible Elden Ring enemy there (EnemyPort.ChrMap.Unseen).
+        mapLines.AddRange(unseen.Select(u => string.Join('\t', "unseen", $"c{u.Chr:D4}", "", "", "", u.Name.Replace('\t', ' '))));
         File.WriteAllLines(ctx.ModPath(EnemyPort.ChrMap.FileName), mapLines);
         WriteSpawnList(ctx, mapLines, catalog, plans.Where(p => p.Ds3.Boss).Select(p => $"c{p.Ds3.Chr:D4}").ToHashSet(), portedModels, testLines);
         if (fx is not null)

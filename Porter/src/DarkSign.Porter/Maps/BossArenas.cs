@@ -149,6 +149,18 @@ public static class BossArenas
             var region = msb.Regions.GetEntries().FirstOrDefault(r => r.EntityID == area && area > 0);
             if (region is null)
                 continue;
+            var events = FightEvents(mapScript, ds3, defeated, defeatedLocals);
+            // A call that names no boss (Dragonslayer Armour's and the Twin Princes' pass 0; DS3 only uses the value
+            // to wake the boss) or one the layout doesn't hold: the boss is the first placed character the fight's
+            // own events show a health bar for. Without it the fight had no members and got no warp (1.0.729).
+            if (!msb.Parts.Enemies.Any(e => e.EntityID > 0 && (e.EntityID == boss || e.EntityGroups.Contains(boss))) || boss <= 0)
+            {
+                var wanted = events.Select(e => (long)e).ToHashSet();
+                var shown = mapScript.Events.Where(e => wanted.Contains(e.ID)).SelectMany(HealthBars).OrderBy(h => h.Slot)
+                    .Select(h => h.Entity).FirstOrDefault(id => id > 0 && msb.Parts.Enemies.Any(e => e.EntityID == id));
+                if (shown > 0)
+                    boss = shown;
+            }
             var members = Members(msb, boss);
             var (point, from) = ArrivalPoint(msb, region, warpPoints, members);
             // A boss that only appears once the player walks through its intro area (Vordt's gate box): land there.
@@ -171,7 +183,6 @@ public static class BossArenas
             if (named is not null && named.IndexOf(" - ", StringComparison.Ordinal) is > 0 and var dash)
                 named = named[..dash];
             var (talkFlags, talkEntity) = first > 0 ? TalkGate(mapScript, allScripts, first) : ([], 0);
-            var events = FightEvents(mapScript, ds3, defeated, defeatedLocals);
             fights.Add(new Fight(named?.Trim() ?? $"Boss {defeated}", (uint)defeated, (uint)entry, first > 0 ? (uint)first : 0, area, boss,
                 events, point, from)
             {
@@ -368,9 +379,10 @@ public static class BossArenas
     }
 
     // DS3's Display Boss Health Bar (2003[11]): state, entity, slot, name. Only bars given an entity directly.
-    internal static IEnumerable<(int Entity, int Slot)> HealthBars(EMEVD script)
+    internal static IEnumerable<(int Entity, int Slot)> HealthBars(EMEVD script) => script.Events.SelectMany(HealthBars);
+
+    internal static IEnumerable<(int Entity, int Slot)> HealthBars(EMEVD.Event e)
     {
-        foreach (var e in script.Events)
             for (int i = 0; i < e.Instructions.Count; i++)
             {
                 var ins = e.Instructions[i];

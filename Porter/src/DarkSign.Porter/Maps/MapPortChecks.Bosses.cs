@@ -104,6 +104,13 @@ public static partial class MapPortChecks
         Expect(BossArenas.Find(ds3, FriedeLikeScript(), Ds3Id)[0].ArrivesInArea, "an arrival at a player point inside the area is in the area");
         var unnamed = BossArenas.Find(ds3, FriedeLikeScript(), Ds3Id);
         Expect(unnamed[0].Name == "Boss 14000800", $"without names: '{unnamed[0].Name}'");
+        // A call that names no boss (Dragonslayer Armour, the Twin Princes): the fight's first main health bar is the boss.
+        var noBoss = FriedeLikeScript();
+        var call = noBoss.Events.First(e => e.ID == 14005829).Instructions[0];
+        BitConverter.GetBytes(0).CopyTo(call.ArgData, 24);
+        var found = BossArenas.Find(ds3, noBoss, Ds3Id)[0];
+        Expect(found.Boss == 4000801, $"a fight called without a boss takes its main health bar's character: {found.Boss}");
+        Expect(BossArenas.Members(ds3, found.Boss).Contains(4000801), "and that character is its member");
         // A second fight starting at 830 cuts the first fight's events there.
         var cut = BossArenas.FightEvents(FriedeLikeScript(), Ds3Id, 14000800, [800, 830]);
         Expect(!cut.Contains(14000830) && cut.Contains(14005829), "the next fight's numbers belong to the next fight");

@@ -53,6 +53,9 @@ public static class EnemyPort
             _commonBoss = catalog.FirstOrDefault(e => e.Boss);
         }
 
+        /// <summary>DS3 never draws this enemy's model (<see cref="ChrMap.Unseen"/>).</summary>
+        public bool Unseen(Ds3Enemy ds3) => _ported?.Unseen(ds3.Model) == true;
+
         public ErEnemy? Choose(Ds3Enemy ds3)
         {
             if (ds3.Npc)
@@ -196,12 +199,25 @@ public static class EnemyPort
         /// <summary>A ported DS3 model's Elden Ring model (c6020 -> c7xxx), or null.</summary>
         public string? ModelOf(string ds3Model) => _byModel.TryGetValue(ds3Model, out var e) ? e.Model : null;
 
+        /// <summary>
+        /// A DS3 model the enemy port found with nothing to draw (the Demon Cleric's orb c3071, the Twin Princes' helper
+        /// c5251): DS3 never shows it. With no ported character an Elden Ring stand-in stood there, seen and hostile
+        /// (1.0.729: 18 Juvenile Scholars for the orbs in the Catacombs slot).
+        /// </summary>
+        public bool Unseen(string ds3Model) => _unseen.Contains(ds3Model.Length >= 5 ? ds3Model[..5] : ds3Model);
+        private readonly HashSet<string> _unseen = new(StringComparer.OrdinalIgnoreCase);
+
         public static ChrMap Parse(IEnumerable<string> lines)
         {
             var map = new ChrMap();
             foreach (var line in lines)
             {
                 var p = line.Split('\t');
+                if (!line.StartsWith('#') && p.Length >= 2 && p[0] == "unseen")
+                {
+                    map._unseen.Add(p[1]);
+                    continue;
+                }
                 if (!line.StartsWith('#') && p.Length >= 4 && p[0] == "think" && int.TryParse(p[1], out var ds3Think) && int.TryParse(p[3], out var erThink))
                 {
                     map._think[(ds3Think, p[2].ToLowerInvariant())] = erThink;
@@ -310,7 +326,9 @@ public static class EnemyPort
                     continue;
                 }
             }
-            else if (People.IsLogic(what.Model, what.Name))
+            // A character DS3 never draws gets no Elden Ring stand-in either. A boss's own (the Twin Princes' helper
+            // holds Lothric's health, and the fight ends on it) keeps its stand-in until unseen characters are ported.
+            else if (People.IsLogic(what.Model, what.Name) || chooser.Unseen(what) && !what.Boss)
             {
                 logic++;
                 skipped++;
@@ -436,7 +454,7 @@ public static class EnemyPort
             notes.Add($"{otherState} left out that belong to another state of the map (off DS3's layer bit 0, e.g. the Untended Graves): "
                       + string.Join("; ", otherStateNames.OrderByDescending(n => n.Value).Take(12).Select(n => $"{n.Key} x{n.Value}")));
         if (logic > 0)
-            notes.Add($"{logic} DS3 logic characters left out (talk dummy c1000, platoon leader c0100, target dummies): DS3 shows nothing there");
+            notes.Add($"{logic} DS3 logic characters left out (talk dummy c1000, platoon leader c0100, target dummies, models with nothing to draw): DS3 shows nothing there");
         if (phantoms > 0)
             notes.Add($"people: {phantoms} DS3 summons and invaders (White/Mad Phantom, Dark Spirit) left out: they only appear when summoned or invading");
         if (scriptedVersions > 0 || scriptedSeats > 0)
