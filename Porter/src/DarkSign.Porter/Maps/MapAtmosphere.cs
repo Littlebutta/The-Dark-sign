@@ -262,6 +262,40 @@ public static class MapAtmosphere
         catch (Exception e) when (e is not OutOfMemoryException) { return null; }
     }
 
+    /// <summary>How far, in exposure steps, a dark view may lift the reference's fixed exposure (<see cref="LiftDarkScenes"/>).</summary>
+    public const float DarkSceneLift = 1.25f;
+
+    /// <summary>The metered brightness below which the lift starts (m45_00's auto exposure, the one Firelink and the
+    /// Cathedral matched DS3 under).</summary>
+    public const float DarkSceneMiddleGray = -6.2f;
+
+    /// <summary>
+    /// Firelink and the Cathedral of the Deep dim since 1.0.715 (1.0.725 shots unchanged after #326). #318 gave every
+    /// slot m45_01's fixed exposure 3.15. Before it, Firelink and the Cathedral sat on m45_00's 3.9 with auto exposure
+    /// free to go 0.5 up in a dark view (up to 4.4), and the 1.0.681 audit measured the Cathedral with ray tracing off at
+    /// luma 35-45 against DS3's 42, and found Firelink right. ER's exposure is in steps (3.15 -> 5.6 more than doubled
+    /// the High Wall's luma), so 3.15 fixed is 0.75-1.25 steps (1.7-2.4 times) less light in those rooms. DS3 lights
+    /// its interiors with lightmaps the port can't draw (its exposure is fixed because those make rooms bright enough),
+    /// so the port's interiors need the lift ER's own dark places get from auto exposure.
+    /// Every slot keeps the reference's 3.15 as its floor (auto exposure may not go down: a bright, sunlit view like the
+    /// High Wall's looks as it does now) and may lift up to <see cref="DarkSceneLift"/> steps (4.4, the value the
+    /// Cathedral matched DS3 at) when the view meters darker than <see cref="DarkSceneMiddleGray"/>.
+    /// Returns how many values changed.
+    /// </summary>
+    public static int LiftDarkScenes(GPARAM gparam)
+    {
+        if (Group(gparam, "Tone Map") is not { } tone)
+            return 0;
+        int n = SetAll(tone, "GS Presents - ToneMap-Enable AutoExposure", v => v switch
+        {
+            byte => (byte)1, sbyte => (sbyte)1, int => 1, uint => 1u, bool => true, _ => v,
+        });
+        n += SetAll(tone, "GS Presents - ToneMap-AutoExposure Adaption Min", v => v is float ? 0f : v);
+        n += SetAll(tone, "GS Presents - ToneMap-AutoExposure Adaption Max", v => v is float ? DarkSceneLift : v);
+        n += SetAll(tone, "GS Presents - ToneMap-AutoExposure Middle Gray", v => v is float ? DarkSceneMiddleGray : v);
+        return n;
+    }
+
     /// <summary>The groups the light reference gives every slot.</summary>
     public static readonly string[] ReferenceGroups = ["LightSet", "Tone Map"];
 
@@ -313,6 +347,8 @@ public static class MapAtmosphere
         var changes = new List<string>();
         if (lightReference is not null && UseReferenceLight(gparam, lightReference) is var copied && copied > 0)
             changes.Add($"light and exposure from {LightReference} (the High Wall slot's, the map that looks right): {copied} values");
+        if (lightReference is not null && LiftDarkScenes(gparam) is var lifted && lifted > 0)
+            changes.Add(string.Create(inv, $"exposure lifts in dark scenes: auto exposure on, {DarkSceneLift:0.##} up at most and never down (the reference's {Value<float>(Group(gparam, "Tone Map"), "GS Presents - ToneMap-Exposure") ?? 0:0.##} in a bright view)"));
         if (lightReference is not null)
         {
             // DS3's light values are on one scale across maps (MapLightScale): the sun is DS3's on that scale, before
