@@ -170,12 +170,30 @@ public static partial class MapPortChecks
         msbB.Parts.Collisions.Add(hitB);
         MapConnectDisplay.Apply(msbB, pb);
         MapConnectDisplay.Apply(msbB, pb);  // applying twice adds no second stand-in
-        Expect(hit.Unk2.Condition == 0 && (hit.Unk2.DispGroups[0] & 1u) == 1u && hitB.Unk2.Condition == 0 && MapDrawGroups.Display(hit.Unk1).ToArray().Select((g, w) => (hit.Unk2.DispGroups[w] & g) == g).All(x => x), "collisions numbered from 0, Unk2 groups = own number + own display groups");
+        Expect(hit.Unk2.DispGroups.AsSpan(0, 8).SequenceEqual(MapDrawGroups.Display(hit.Unk1)) && hitB.Unk2.DispGroups.AsSpan(0, 8).SequenceEqual(MapDrawGroups.Display(hitB.Unk1)),
+            "a collision's Unk2 groups are exactly its display groups (proven config V1; no collision-number bit beside them)");
+        Expect(hit.Unk2.Condition >= 0 && (MapDrawGroups.Display(hit.Unk1)[hit.Unk2.Condition / 32] & (1u << (hit.Unk2.Condition % 32))) != 0,
+            $"a collision's number is one of its own display bits ({hit.Unk2.Condition})");
+        Expect(MapConnectDisplay.NumberClashes(msb).Count == 0 && MapConnectDisplay.NumberClashes(msbB).Count == 0,
+            $"no collision number switches on a group of the bit layout: {string.Join(", ", MapConnectDisplay.NumberClashes(msb).Concat(MapConnectDisplay.NumberClashes(msbB)))}");
+        // The #315 clash: a map with 41 collisions all showing the own bit; number 10 or 32-40 must not reach another map's bits.
+        var many = new MSBE();
+        for (int i = 0; i < 41; i++)
+            many.Parts.Collisions.Add(new MSBE.Part.Collision { Name = $"h{i:D4}00", ModelName = $"h{i:D4}00" });
+        var manyPlan = new MapConnectDisplay.MapPlan();
+        var ownOnly = new uint[8];
+        ownOnly[0] = 1u << 3;
+        foreach (var c in many.Parts.Collisions)
+            manyPlan.CollisionDisplay[c.Name] = ownOnly;
+        MapConnectDisplay.Apply(many, manyPlan);
+        Expect(many.Parts.Collisions.All(c => c.Unk2.Condition == 3 && c.Unk2.DispGroups.AsSpan(0, 8).SequenceEqual(ownOnly)),
+            "41 collisions showing only the own bit carry only the own bit (no High Wall bit 10, no border bits 32-40)");
         var standIn = msbB.Parts.Collisions.Where(c => c != hitB).ToList();
         Expect(standIn.Count == pb.DoorwayLists && pb.DoorwayLists == 1, $"one stand-in per doorway list into B ({standIn.Count})");
-        Expect(connect.Unk2.Condition == standIn[0].Unk2.Condition && connect.Unk2.Condition == MapConnectDisplay.DoorwayNumberTop,
+        Expect(connect.Unk2.Condition == standIn[0].Unk2.Condition && connect.Unk2.Condition == MapConnectDisplay.DoorwayNumber(0),
             $"the connect names B's stand-in ({connect.Unk2.Condition} vs {standIn[0].Unk2.Condition})");
         Expect(MapDrawGroups.Display(standIn[0].Unk1).ToArray().SequenceEqual(doorShows), "the stand-in shows the doorway's list");
+        Expect((doorShows[connect.Unk2.Condition / 32] & (1u << (connect.Unk2.Condition % 32))) != 0, "the connect's number is the doorway bit it shows");
         Expect(standIn[0].Position.Y <= hitB.Position.Y - MapConnectDisplay.DoorwayStandInDrop + 1, "the stand-in is far below");
         Expect(!MapConnectDisplay.Drawn(pb.PieceDraw["m900002_0000"], MapDrawGroups.Display(standIn[0].Unk1).ToArray())
                && MapConnectDisplay.Drawn(pb.PieceDraw["m000003_0000"], MapDrawGroups.Display(standIn[0].Unk1).ToArray()),
