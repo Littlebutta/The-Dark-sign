@@ -392,8 +392,12 @@ public static class MapConnectDisplay
         return (pieces, collisions, connects);
     }
 
-    /// <summary>First collision number of the doorway stand-in collisions, counted down: list i gets 255 - i.</summary>
-    public const int DoorwayNumberTop = 255;
+    /// <summary>
+    /// Collision number of the doorway stand-in collision for list i: the doorway bit itself (words 4-7), so the number is
+    /// a group the stand-in shows. Real collisions are numbered by their lowest display bit (own or border bit, words 0-3),
+    /// so the two ranges never meet.
+    /// </summary>
+    public static int DoorwayNumber(int list) => DoorwayFirstWord * 32 + list;
 
     /// <summary>The doorway stand-in collisions sit this far below the collision they copy, out of every player's reach.</summary>
     public const float DoorwayStandInDrop = 5000f;
@@ -404,23 +408,27 @@ public static class MapConnectDisplay
     public static string DoorwayStandInName(string model, int list) => $"{model}_{DoorwayStandInInstance + list:D4}";
 
     /// <summary>
-    /// Makes Elden Ring obey the groups (proven in game 2026-11-26, Control K: with collision numbers written the castle's
-    /// own pieces hid; with every collision numbered 10 and showing every group in its Unk2, nothing ever hid).
+    /// Makes Elden Ring obey the groups. Every collision's <c>Unk2</c> holds exactly its display groups, and its number
+    /// (<c>Unk2.Condition</c>) is one of those groups' bits: the config proven in game on 2026-11-26 (Control K, "V1":
+    /// with it the castle's own pieces hid, and the player, people and enemies stayed visible).
     /// <para>
-    /// Elden Ring identifies collisions by a number in <c>Unk2.Condition</c>, and a connect collision names, by that number,
-    /// the collision of the NEXT map whose display groups the next map uses while the player stands on the connect
-    /// (vanilla: Stormveil's four connects into m10_01 carry 30 and m10_01 has collision number 30; m10_01's connects
-    /// back carry 116; Stormveil collision h000700 is number 7 with Unk2 groups {2, 7}). The port wrote number 10 and
-    /// every Unk2 group on every collision, and no number on connects, so neither the own map nor a neighbour was culled.
+    /// Why not number collisions 0, 1, 2... (#314/#315): vanilla Stormveil's display bits ARE its collision numbers, so
+    /// there putting a collision's own number bit into its Unk2 groups shows nothing extra. The port's bit layout is
+    /// different (word 0 = each ported map's own bit, words 1-3 = border/room bits numbered across all maps, words 4-7 =
+    /// doorway bits), so collision number n switched on layout bit n: number 10 = High Wall's own bit, numbers 32-40 =
+    /// the border bits that High Wall's far shells of Lothric Castle (m45_01 m980010/12/14) are drawn by. Every castle
+    /// collision with such a number showed those shells (Devin's playtest after #315: "lots of LOD models" in the
+    /// castle). Now no collision or connect carries a bit that is not one of its own display groups, on every map.
     /// </para>
     /// <para>
-    /// Written here: every collision of the map is numbered 0, 1, 2... (Unk2 groups = its own number's bit, as
-    /// Stormveil). For each DS3 doorway list into this map (<see cref="MapPlan.DoorwayLists"/>, numbered as
-    /// <see cref="Build"/> numbers them), a stand-in collision is added: a copy of the map's first collision,
-    /// <see cref="DoorwayStandInDrop"/> below it, numbered <see cref="DoorwayNumberTop"/> - list, showing only that
-    /// doorway's bit. Each connect into another map names the stand-in for its doorway list there by the same rule, so
-    /// the next map shows exactly what DS3 shows through that doorway. A connect with no list names no collision (-1,
-    /// as Elden Ring's open-world connects).
+    /// A connect collision names, by number, the collision of the NEXT map whose groups the next map uses while the
+    /// player stands on the connect (vanilla: Stormveil's connects into m10_01 carry 30, m10_01 has collision number
+    /// 30). For each DS3 doorway list into this map (<see cref="MapPlan.DoorwayLists"/>, numbered as <see cref="Build"/>
+    /// numbers them) a stand-in collision is added: a copy of the map's first collision, <see cref="DoorwayStandInDrop"/>
+    /// below it, showing only that doorway's bit and numbered with that bit (<see cref="DoorwayNumber"/>). Each connect
+    /// into another map carries the same number, so whether the game reads a connect's number as "that collision" or as
+    /// "that group", the next map shows exactly what DS3 shows through that doorway. A connect with no list names no
+    /// collision (-1, as Elden Ring's open-world connects).
     /// </para>
     /// </summary>
     public static (int Numbered, int StandIns, int Connects) LinkCollisionNumbers(MSBE msb, MapPlan plan)
@@ -431,19 +439,11 @@ public static class MapConnectDisplay
         var real = msb.Parts.Collisions.ToList();
         int lists = Math.Min(plan.DoorwayLists, DoorwayWords * 32);
         int numbered = 0;
-        for (int i = 0; i < real.Count; i++)
+        foreach (var c in real)
         {
-            if (real[i].Unk2 is not { } u2)
+            if (c.Unk2 is not { } u2)
                 continue;
-            int number = i <= DoorwayNumberTop - lists ? i : -1;  // more collisions than numbers: the rest keep none
-            WriteNumber(u2, number);
-            // Unk2 groups also carry the collision's own display groups, as in the run proven on Devin's PC (Control K:
-            // Unk2 groups = display). With only its own bit (first #314 build) the player, people and enemies were not
-            // drawn and ground beside the player's own collision did not load (falls through the floor).
-            var display = MapDrawGroups.Display(real[i].Unk1);
-            for (int w = 0; w < Math.Min(display.Length, u2.DispGroups.Length); w++)
-                u2.DispGroups[w] |= display[w];
-            if (number >= 0)
+            if (WriteGroups(u2, MapDrawGroups.Display(c.Unk1)) >= 0)
                 numbered++;
         }
 
@@ -461,9 +461,9 @@ public static class MapConnectDisplay
                 c.LocationTextID = -1;
                 c.PlayRegionID = -1;
                 var g = new uint[8];
-                SetBit(g, DoorwayFirstWord * 32 + list);
+                SetBit(g, DoorwayNumber(list));
                 MapDrawGroups.Set(c.Unk1, g, ReadOnlySpan<uint>.Empty);
-                WriteNumber(c.Unk2!, DoorwayNumberTop - list);
+                WriteGroups(c.Unk2!, g);
                 msb.Parts.Collisions.Add(c);
                 standIns++;
             }
@@ -474,11 +474,60 @@ public static class MapConnectDisplay
             if (c.Unk2 is not { } u2)
                 continue;
             int list = plan.ConnectDisplay.TryGetValue(c.Name, out var g) ? DoorwayList(g) : -1;
-            WriteNumber(u2, list >= 0 ? DoorwayNumberTop - list : -1);
+            Array.Clear(u2.DispGroups);
             if (list >= 0)
+            {
+                u2.Condition = DoorwayNumber(list);
+                SetBit(u2.DispGroups, DoorwayNumber(list));
                 connects++;
+            }
+            else
+                u2.Condition = -1;
         }
         return (numbered, standIns, connects);
+    }
+
+    /// <summary>
+    /// Collisions and connects of a written layout whose Unk2 shows a group that is not one of their own display groups,
+    /// or whose number is not one of their Unk2 groups (RULE 4: the port log's "number clashes", 0 on every map).
+    /// </summary>
+    public static List<string> NumberClashes(MSBE msb)
+    {
+        var bad = new List<string>();
+        void Look(string name, MSBE.Part.UnkStruct1? u1, MSBE.Part.UnkStruct2? u2)
+        {
+            if (u2 is null || u1 is null)
+                return;
+            var display = MapDrawGroups.Display(u1);
+            for (int w = 0; w < Math.Min(display.Length, u2.DispGroups.Length); w++)
+                if ((u2.DispGroups[w] & ~display[w]) != 0)
+                {
+                    bad.Add($"{name}: Unk2 word {w} shows {u2.DispGroups[w] & ~display[w]:X8} beyond its display");
+                    return;
+                }
+            if (u2.Condition >= 0 && (u2.Condition >= 32 * u2.DispGroups.Length || (u2.DispGroups[u2.Condition / 32] & (1u << (u2.Condition % 32))) == 0))
+                bad.Add($"{name}: number {u2.Condition} is not one of its Unk2 groups");
+        }
+        foreach (var c in msb.Parts.Collisions)
+            Look(c.Name, c.Unk1, c.Unk2);
+        foreach (var c in msb.Parts.ConnectCollisions)
+            Look(c.Name, c.Unk1, c.Unk2);
+        return bad;
+    }
+
+    /// <summary>Unk2 groups = <paramref name="display"/>; number = its lowest bit (-1 with none). Returns the number.</summary>
+    private static int WriteGroups(MSBE.Part.UnkStruct2 u2, ReadOnlySpan<uint> display)
+    {
+        Array.Clear(u2.DispGroups);
+        int number = -1;
+        for (int w = 0; w < Math.Min(display.Length, u2.DispGroups.Length); w++)
+        {
+            u2.DispGroups[w] = display[w];
+            if (number < 0 && display[w] != 0)
+                number = w * 32 + System.Numerics.BitOperations.TrailingZeroCount(display[w]);
+        }
+        u2.Condition = number;
+        return number;
     }
 
     /// <summary>The doorway list a connect's display names (its one bit in words 4-7), or -1.</summary>
@@ -488,14 +537,6 @@ public static class MapConnectDisplay
             if ((display[DoorwayFirstWord + bit / 32] & (1u << (bit % 32))) != 0)
                 return bit;
         return -1;
-    }
-
-    private static void WriteNumber(MSBE.Part.UnkStruct2 u2, int number)
-    {
-        Array.Clear(u2.DispGroups);
-        u2.Condition = number;
-        if (number >= 0)
-            SetBit(u2.DispGroups, number);
     }
 
     /// <summary>

@@ -1452,9 +1452,11 @@ public static class MapPorter
                 continue;
             var msb = MSBE.Read(DCX.Decompress(File.ReadAllBytes(path), out var compression));
             var (pieces, collisions, connects) = MapConnectDisplay.Apply(msb, mp);
+            var clashes = MapConnectDisplay.NumberClashes(msb);
             File.WriteAllBytes(path, DCX.Compress(msb.Write(), compression));
             written++;
-            lines.Add($"  {d.Ds3} -> {d.Er}: {pieces} pieces, {collisions} collisions, {connects} doorways written; {mp.DoorwayLists} DS3 doorway lists into it; collision numbers {mp.Numbers.Numbered}, doorway stand-in collisions {mp.Numbers.StandIns}, connects naming one {mp.Numbers.Connects}; "
+            lines.Add($"  {d.Ds3} -> {d.Er}: {pieces} pieces, {collisions} collisions, {connects} doorways written; {mp.DoorwayLists} DS3 doorway lists into it; collision numbers {mp.Numbers.Numbered}, doorway stand-in collisions {mp.Numbers.StandIns}, connects naming one {mp.Numbers.Connects}; number clashes {clashes.Count}"
+                      + (clashes.Count > 0 ? $" ({string.Join(", ", clashes.Take(6))})" : "") + "; "
                       + $"{d.Floor.Count:N0} floor cells; {mp.BorderHidden.Count} own pieces over a neighbour hidden on its doorways"
                       + (mp.BorderHidden.Count > 0 ? $" ({string.Join(", ", mp.BorderHidden.Keys.Take(12))}{(mp.BorderHidden.Count > 12 ? ", ..." : "")})" : "")
                       + (mp.Rooms.Count > 0 ? $"; rooms showing only what DS3 shows there (around backdrops {string.Join(", ", d.Backdrops.Keys)}): {string.Join(", ", mp.Rooms)}" : ""));
