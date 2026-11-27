@@ -236,9 +236,14 @@ public sealed class HksChunk
         return result;
     }
 
-    /// <summary>Whether two functions are the same code: instructions, constants and nested functions (names aside).</summary>
+    /// <summary>
+    /// Whether two functions are the same code: instructions, constants and nested functions (names aside). The line the
+    /// function starts on (fixed bytes 0-3) doesn't count: DS3's and Elden Ring's table_ai_common.lua have the very same
+    /// RegisterTableGoal on other lines, and up to 2026-11-27 that made it "different", so ported scripts called a lifted
+    /// Ds3_RegisterTableGoal while their file loaded, before the lifted file had (Gundyr's goal was never registered).
+    /// </summary>
     public static bool SameCode(Function a, Function b) =>
-        a.Fixed.AsSpan().SequenceEqual(b.Fixed) && a.Instructions.SequenceEqual(b.Instructions) && a.Constants.SequenceEqual(b.Constants)
+        a.Fixed.AsSpan(4).SequenceEqual(b.Fixed.AsSpan(4)) && a.Instructions.SequenceEqual(b.Instructions) && a.Constants.SequenceEqual(b.Constants)
         && a.Functions.Count == b.Functions.Count && a.Functions.Zip(b.Functions).All(p => SameCode(p.First, p.Second));
 
     /// <summary>The globals a function and the functions nested in it read.</summary>

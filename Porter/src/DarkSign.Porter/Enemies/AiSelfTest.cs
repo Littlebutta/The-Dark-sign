@@ -129,6 +129,10 @@ public static class AiSelfTest
         var changedLocal = HksChunk.Read(UpvalueScript(99, true, ("Common_Battle_Activate", ReadsUpvalue())));
         Check("HKS: a function whose upvalue changes after it is made is not liftable",
             !HksChunk.Liftable(changedLocal, changedLocal.GlobalFunctions()["Common_Battle_Activate"]));
+        var onLine9 = Reads("REGISTER_GOAL"); onLine9.Fixed[0] = 9;
+        var onLine40 = Reads("REGISTER_GOAL"); onLine40.Fixed[0] = 40;
+        Check("HKS: the same function on another line is the same code (DS3's and Elden Ring's RegisterTableGoal)",
+            HksChunk.SameCode(onLine9, onLine40) && !HksChunk.SameCode(onLine9, Reads("REGISTER_GOAL", "X")));
         Check("HKS: registrations are a Register call's GOAL_ argument",
             AiPort.Registered(HksChunk.Read(Script(["RegisterTableGoal", "GOAL_A", "GOAL_B"]))).SequenceEqual(["GOAL_A"]));
 
@@ -240,6 +244,11 @@ public static class AiSelfTest
         var leaves = commonBnd?.Files.Select(f => ItemText.Leaf(f.Name)).ToList() ?? [];
         Check($"AI: aicommon gets DS3's common file and the lifted helper, never DS3's common_func.lua whole ({string.Join(",", leaves)})",
             leaves.Contains("enemy_step.lua") && leaves.Contains("common_func_ds3.lua") && leaves.Count(l => l == "common_func.lua") == 1);
+        // DS3 files that come along whole call lifted functions as they load (Gunda_battle.lua: RegisterTableGoal):
+        // the binder loads in ID order, so lifted files must come first (Gundyr stood still on 1.0.718).
+        var byLeaf = commonBnd?.Files.ToDictionary(f => ItemText.Leaf(f.Name), f => f.ID) ?? [];
+        Check("AI: lifted DS3 functions load before the DS3 files that came along whole",
+            byLeaf.TryGetValue("common_func_ds3.lua", out var liftedId) && byLeaf.TryGetValue("enemy_step.lua", out var libId) && liftedId < libId);
         Check("AI: aicommon's goal list and global list carry the new names, Elden Ring's numbers untouched",
             commonBnd is not null && HksChunk.Read(commonBnd.Files.First(f => f.ID == 1000).Bytes).NumericGlobals() is var goals
             && goals["GOAL_ErOwn_223000_Battle"] == 223000 && goals["GOAL_Jailer_223000_Battle"] == AiPort.FirstRemapped && goals["GOAL_EnemyStep"] == 2603
