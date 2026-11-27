@@ -951,16 +951,20 @@ public sealed class AiPort
             bnd.Files.Add(new BinderFile(goalFile.Flags, id++, dir + "ai_define_ds3.lua", list.Write()));
             added.AddRange(_liftedConstants.Keys);
         }
-        foreach (var lib in _libraries.OrderBy(l => l.File.ID))
-        {
-            bnd.Files.Add(new BinderFile(goalFile.Flags, id++, dir + lib.Leaf, Renumbered(lib.File.Bytes, lib.Leaf)));
-            added.AddRange(lib.AssignOrder);
-        }
+        // Lifted functions before the DS3 files that came along whole: those files' main chunks call some of them as they
+        // load (Gunda_battle.lua registers Gundyr's goal with RegisterTableGoal), and the binder loads in ID order. Up to
+        // 2026-11-27 the lifted files came last, a nil call stopped Gunda_battle.lua loading, and Gundyr stood still.
+        // A lifted file only defines functions, so loading it first needs nothing.
         foreach (var (source, functions) in _lifted.OrderBy(l => l.Key.Common ? 0 : 1).ThenBy(l => l.Key.Leaf, StringComparer.OrdinalIgnoreCase))
         {
             var leaf = Path.GetFileNameWithoutExtension(source.Leaf) + "_ds3.lua";
             bnd.Files.Add(new BinderFile(goalFile.Flags, id++, dir + leaf, Renumbered(HksChunk.Lifted(source.Chunk, functions).Write(), leaf)));
             added.AddRange(functions.Select(f => f.Name));
+        }
+        foreach (var lib in _libraries.OrderBy(l => l.File.ID))
+        {
+            bnd.Files.Add(new BinderFile(goalFile.Flags, id++, dir + lib.Leaf, Renumbered(lib.File.Bytes, lib.Leaf)));
+            added.AddRange(lib.AssignOrder);
         }
         bnd.Files.Sort((a, b) => a.ID.CompareTo(b.ID));
         if (bnd.Files.FirstOrDefault(f => f.Name.EndsWith(".luagnl", StringComparison.OrdinalIgnoreCase)) is { } gnlFile)
