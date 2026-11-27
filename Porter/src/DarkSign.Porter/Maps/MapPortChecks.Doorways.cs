@@ -8,6 +8,7 @@ public static partial class MapPortChecks
     private static IEnumerable<(string Name, Action Test)> DoorwayChecks()
     {
         yield return ("world: a neighbour shows from each doorway only what DS3's doorway list shows; own stand-ins over the neighbour hide on that doorway only", Doorways);
+        yield return ("neighbour copies: a map's low-detail copy of a joined neighbour becomes an asset hidden while that neighbour is loaded (Lothric Castle black slab)", NeighbourCopies);
         yield return ("rooms: a far view standing around every collision that shows it (Midir's arena walls) is kept and drawn only there, and the room shows only what DS3 shows from it", Backdrops);
     }
 
@@ -210,5 +211,67 @@ public static partial class MapPortChecks
         Expect(!MapConnectDisplay.Drawn(pb.PieceDraw["m900002_0000"], MapDrawGroups.Display(standIn[0].Unk1).ToArray())
                && MapConnectDisplay.Drawn(pb.PieceDraw["m000003_0000"], MapDrawGroups.Display(standIn[0].Unk1).ToArray()),
             "through the stand-in B shows its border piece and hides its stand-in of A");
+    }
+
+    /// <summary>
+    /// High Wall (A, m30_00 -> m45_01) holds a low-detail shell of Lothric Castle (B, m30_01 -> m45_03), joined by a
+    /// doorway; the castle's detail fills the shell's box. A second low piece of A stands over A's own detail, and a third
+    /// over the detail of Painted World (C), which is not joined. Only the first is a copy; placed, it becomes an asset
+    /// of its model, disabled while m45_03 is loaded, and the map piece is gone.
+    /// </summary>
+    private static void NeighbourCopies()
+    {
+        static MSB3.Part.MapPiece Piece(string name)
+        {
+            var p = new MSB3.Part.MapPiece { Name = name, ModelName = name[..7] };
+            Array.Clear(p.DrawGroups);
+            return p;
+        }
+        var a = new MSB3();
+        var door = new MSB3.Part.ConnectCollision { Name = "h000100_0000", CollisionName = "h000100" };
+        door.MapID[0] = 30; door.MapID[1] = 1;
+        a.Parts.ConnectCollisions.Add(door);
+        foreach (var n in new[] { "m980010_9500", "m980020_9500", "m980030_9500" })
+            a.Parts.MapPieces.Add(Piece(n));
+        var b = new MSB3();
+        var c = new MSB3();
+        static MapStandIns.PieceBox Box(string name, Vector3 at, float half, int vertices, bool low) =>
+            new(name, at - new Vector3(half), at + new Vector3(half), vertices, low);
+        var aBoxes = new List<MapStandIns.PieceBox>
+        {
+            Box("m980010_9500", new(500, 0, 0), 50, 80_000, true),
+            Box("m980020_9500", new(0, 0, 0), 50, 80_000, true),
+            Box("m980030_9500", new(-900, 0, 0), 50, 80_000, true),
+        };
+        for (int i = 0; i < 5; i++)
+            aBoxes.Add(Box($"m00010{i}_0000", new(i * 10, 0, 0), 5, 30_000, false));
+        var bBoxes = Enumerable.Range(0, 6).Select(i => Box($"m00020{i}_0000", new(480 + i * 8, 0, 0), 5, 40_000, false)).ToList();
+        bBoxes.Add(Box("m900000_0000", new(500, 0, 0), 20, 99_000, true));   // B's own low piece does not count as detail
+        var cBoxes = Enumerable.Range(0, 6).Select(i => Box($"m00030{i}_0000", new(-900 + i * 8, 0, 0), 5, 40_000, false)).ToList();
+        var maps = new List<MapConnectDisplay.MapData>
+        {
+            new(MapId.Parse("m30_00_00_00"), MapId.Parse("m45_01_00_00"), a, aBoxes, []),
+            new(MapId.Parse("m30_01_00_00"), MapId.Parse("m45_03_00_00"), b, bBoxes, []),
+            new(MapId.Parse("m45_00_00_00"), MapId.Parse("m45_00_00_00"), c, cBoxes, []),
+        };
+        var copies = MapNeighbourCopies.Find(maps);
+        Expect(copies.Count == 1 && copies[0] is { Piece: "m980010_9500", Covered: 6, CoveredVertices: 240_000 } && copies[0].NeighbourEr == MapId.Parse("m45_03_00_00"),
+            "only the shell over the joined castle's detail is a copy: " + string.Join(" | ", copies.Select(x => x.Line)));
+        Expect(MapNeighbourCopies.ModelKey(copies[0].Ds3, "m980010") == "m30_00_00_00_980010", "the model key reads like a cutscene map piece's");
+
+        var er = new MSBE();
+        er.Models.MapPieces.Add(new MSBE.Model.MapPiece { Name = "m980010" });
+        er.Parts.MapPieces.Add(new MSBE.Part.MapPiece { Name = "m980010_9500", ModelName = "m980010", Position = new Vector3(1, 2, 3) });
+        var asset = new ObjectPort.Asset { Ds3Model = "m30_00_00_00_980010", Index = 0, Name = "AEG920_000", Converted = true };
+        var notes = new List<string>();
+        int replaced = MapNeighbourCopies.Place(er, copies, _ => asset, notes);
+        var part = er.Parts.Assets.SingleOrDefault();
+        Expect(replaced == 1 && er.Parts.MapPieces.Count == 0 && er.Models.MapPieces.Count == 0 && part is not null
+               && part.ModelName == "AEG920_000" && part.Name == "AEG920_000_9000" && part.Position == new Vector3(1, 2, 3)
+               && part.AssetUnk3.DisableWhenMapLoadedMapID.SequenceEqual(new sbyte[] { 45, 3, 0, 0 })
+               && er.Models.Assets.Any(m => m.Name == "AEG920_000") && asset.Placed == 1,
+            "the shell is an asset in its place, disabled while m45_03 is loaded, and the map piece is gone");
+        var written = MSBE.Read(er.Write());
+        Expect(written.Parts.Assets.Single().AssetUnk3.DisableWhenMapLoadedMapID.SequenceEqual(new sbyte[] { 45, 3, 0, 0 }), "the field survives writing the layout");
     }
 }
