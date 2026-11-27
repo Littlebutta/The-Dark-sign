@@ -84,6 +84,22 @@ public static class MapDrawParams
         (16f, 0f), (32f, 32f), (64f, 64f), (128f, 128f), (256f, 256f), (float.MaxValue, 512f),
     ];
 
+    /// <summary>
+    /// Map pieces over this radius (metres) cast no sun or lamp shadow (2026-11-27, 1.0.706 overnight test: High Wall
+    /// with ray tracing off, nothing casts a sun shadow, the player included, and Firelink and the Cathedral look flat
+    /// blue-grey: the whole map sits in shade). The pieces past it are DS3's far scenery, written on the largest row:
+    /// on High Wall (map-pieces report of the 1.0.706 build) all 22 are DS3's distant view (LOD 61): the 18 km sky
+    /// dome m009000 with its 3 km cloud and mountain bands, mountain rings up to 9.6 km across and 1.2 km tall, 4.5 km
+    /// fog sheets and the low-detail far shells of Lothric Castle (m9036xx, 570 m). They came from the copies of row 1001
+    /// with isDirLightShadowSrc 1 and shadowDrawDist 9999, so every one of them drew into the sun's shadow map and a ring
+    /// or dome round the map shades all of it. DS3 drew none of them into shadows (its far view had no shadow pass;
+    /// its maps' shade came from lightmaps), and Elden Ring keeps its own far LOD pieces out of shadows (vanilla LOD
+    /// rows draw shadows only within 25-64 m). Every map: Painted World 20 such pieces (sky dome, 2.9 km cliffs
+    /// m800000), Undead Settlement 7 (8 km terrain shells); a few very large near pieces (Irithyll m004520, 1.1 km) lose
+    /// their sun shadow too.
+    /// </summary>
+    public const float NoSunShadowRadius = 256f;
+
     /// <summary>The row for a map piece of this radius (metres).</summary>
     public static short RowFor(float radius)
     {
@@ -138,6 +154,12 @@ public static class MapDrawParams
             // Whatever the template says, the row must not turn a piece into a shadow or reflection proxy.
             Set(row, "isShadowOnly", (sbyte)0);
             Set(row, "drawOnlyReflectCam", (sbyte)0);
+            if (TextureBySize[i].Radius > NoSunShadowRadius)
+            {
+                row.Name += ": far scenery, casts no sun shadow";
+                Set(row, "isDirLightShadowSrc", (sbyte)0);
+                Set(row, "isPointLightShadowSrc", (sbyte)0);
+            }
             param.Rows.Add(row);
         }
         AddLodTwins(param, Lod.Vanilla);

@@ -51,7 +51,14 @@ public static partial class ChrPort
 
     /// <summary>A DS3 character as the maps use it: its model, the NpcParam rows placed with it, its name.</summary>
     /// <param name="People">The NpcParam rows DS3 places as people (someone to talk to who is not a boss): friendly in Elden Ring too.</param>
-    public sealed record Ds3Chr(int Chr, string Name, bool Boss, SortedSet<int> NpcParams, SortedSet<int>? People = null);
+    /// <param name="Default">The NpcParam row the chr map's model line (and so the F1 spawn list) uses: the
+    /// lowest placed row whose DS3 name doesn't call it a dummy (the name is that row's); 0 = the lowest row. DS3 places invisible HP holders on a fighter's
+    /// model (c5020 row 502000 "Demon Prince - HP Dummy", 399942 HP, beside the two demons on 502001/502002), and the
+    /// lowest row picked that one: the menu spawned an invisible enemy under the dummy's name (2026-11-27 playtest).</param>
+    public sealed record Ds3Chr(int Chr, string Name, bool Boss, SortedSet<int> NpcParams, SortedSet<int>? People = null, int Default = 0)
+    {
+        public static bool IsDummyName(string name) => name.Contains("Dummy", StringComparison.OrdinalIgnoreCase);
+    }
 
     /// <summary>
     /// The team Elden Ring's own people are on: the commonest teamType of its human NPC rows (523xxxxxx: 26 on 130 of
@@ -383,7 +390,8 @@ public static partial class ChrPort
         foreach (var (ds3Npc, erNpc) in npcRows.OrderBy(r => r.Key))
             yield return string.Join('\t', "npc", ds3Npc, model, erNpc, thinkParam, name);
         if (npcRows.Count > 0)
-            yield return string.Join('\t', "chr", $"c{plan.Ds3.Chr:D4}", model, npcRows.OrderBy(r => r.Key).First().Value, thinkParam, name);
+            yield return string.Join('\t', "chr", $"c{plan.Ds3.Chr:D4}", model,
+                npcRows.TryGetValue(plan.Ds3.Default, out var main) ? main : npcRows.OrderBy(r => r.Key).First().Value, thinkParam, name);
     }
 
     // ---- The run ----
@@ -1049,7 +1057,9 @@ public static partial class ChrPort
                 if (person && EnemyPort.People.IsLogic(e.ModelName, name))
                     continue;
                 if (!byChr.TryGetValue(chr, out var known))
-                    byChr[chr] = known = new Ds3Chr(chr, name, false, [], []);
+                    byChr[chr] = known = new Ds3Chr(chr, name, false, [], [], Ds3Chr.IsDummyName(name) ? 0 : e.NPCParamID);
+                else if (!Ds3Chr.IsDummyName(name) && (known.Default == 0 || e.NPCParamID < known.Default))
+                    byChr[chr] = known = known with { Name = name, Default = e.NPCParamID };
                 known.NpcParams.Add(e.NPCParamID);
                 // A row DS3 also places as an enemy somewhere stays an enemy's (hostile wins: nothing friendly should hit).
                 if (person && !hostile.Contains((chr, e.NPCParamID)))
