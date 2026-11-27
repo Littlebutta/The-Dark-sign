@@ -92,12 +92,16 @@ public static class MsbPort
                 remapped.Add(src.Name);
             // Online/region IDs from the colosseum would only confuse the game; Elden Ring treats 0/-1 as unset.
             part.PlayRegionID = -1;
-            // DS3's area name for this ground ("High Wall of Lothric"), shown as a banner on stepping onto it: the
-            // copy of DS3's name the map text step writes (MapText). Up to 1.0.50x no DS3 area showed its name.
+            // DS3's area name for this ground ("High Wall of Lothric"), shown as a banner when the area changes and on
+            // every load: the copy of DS3's name the map text step writes (MapText). Unnamed ground is filled below.
             part.LocationTextID = MapText.CollisionPlace(src.MapNameID);
             msb.Parts.Collisions.Add(part);
             AddModel(msb.Models.Collisions, src.ModelName, collisionModel, erId);
         }
+
+        int placesFilled = MapText.FillCollisionPlaces(msb.Parts.Collisions);
+        if (placesFilled > 0)
+            notes.Add($"area names: {placesFilled} collisions with no DS3 name take the map's main one");
 
         if (unknownFilter.Count > 0)
             notes.Add($"hit filters: {unknownFilter.Count} DS3 collisions left out, their filter is one Elden Ring never uses and the layout "

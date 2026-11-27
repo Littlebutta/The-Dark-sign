@@ -61,17 +61,38 @@ public static class MapText
         : ds3Id < -1 && Movable(-ds3Id) ? -(Base + -ds3Id)
         : ds3Id;
 
-    /// <summary>A DS3 collision's area name as the Elden Ring collision's.</summary>
+    /// <summary>A DS3 collision's area name as the Elden Ring collision's (-1 = none; see <see cref="FillCollisionPlaces"/>).</summary>
     /// <remarks>
-    /// Only DS3's positive names are kept. DS3 gives a few collisions at an area's edge the name (m31: 3100 Undead
-    /// Settlement x2), the rest of the area the negative of it (-3100 x48) and some none (-1 x43). Up to 1.0.52x the
-    /// negative names were carried over: Elden Ring has no text under a negative number, shows "?PlaceName?" for it,
-    /// and shows a banner each time the player steps from one name onto another, so walking around the Undead
-    /// Settlement cycled "Undead Settlement" / "?PlaceName?". A negative name (and 0) is now Elden Ring's "none" (-1),
-    /// so the banner shows where DS3 shows it: on the collisions that carry the positive name.
+    /// DS3 gives a few collisions at an area's edge the name (m31: 3100 Undead Settlement x2), the rest of the area
+    /// the negative of it (-3100 x48: "this area, no banner") and some none (-1 x43). Elden Ring has no negative
+    /// form: it shows the banner whenever the name under the player changes, and on every load (respawn, warp) it
+    /// shows the name under the player. Up to 1.0.52x the negative names were carried over (no text: "?PlaceName?"
+    /// at every step); from #232 to 1.0.721 they were -1, and a respawn on such ground showed "?PlaceName?" (Cemetery
+    /// of Ash bonfire, 1.0.721). Both signs now name the area, so the banner shows when the area changes, as in DS3.
     /// </remarks>
     public static int CollisionPlace(short ds3MapNameId) =>
-        ds3MapNameId > 0 ? (int)Place(ds3MapNameId) : -1;
+        ds3MapNameId > 0 ? (int)Place(ds3MapNameId)
+        : ds3MapNameId < -1 ? (int)Place(-ds3MapNameId)
+        : -1;
+
+    /// <summary>
+    /// Gives each collision that names no area (DS3 -1 or 0) the area most of the map's collisions name, so no
+    /// ground the player can stand, die or load on names none. Returns how many were filled.
+    /// </summary>
+    public static int FillCollisionPlaces(IList<MSBE.Part.Collision> collisions)
+    {
+        var common = collisions.Where(c => c.LocationTextID > 0).GroupBy(c => c.LocationTextID)
+            .OrderByDescending(g => g.Count()).ThenBy(g => g.Key).Select(g => g.Key).FirstOrDefault(-1);
+        if (common <= 0)
+            return 0;
+        int filled = 0;
+        foreach (var c in collisions.Where(c => c.LocationTextID <= 0))
+        {
+            c.LocationTextID = common;
+            filled++;
+        }
+        return filled;
+    }
 
     public static bool IsOurs(int id) => id >= Base || id <= -Base;
 

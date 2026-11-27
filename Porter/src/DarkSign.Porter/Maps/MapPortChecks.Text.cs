@@ -8,7 +8,7 @@ public static partial class MapPortChecks
     private static IEnumerable<(string Name, Action Test)> TextChecks()
     {
         yield return ("map text: a script's dialog, status and message lines name DS3's event text at 1,000,000,000 + the DS3 number, written in the line or passed in", TextInScripts);
-        yield return ("map text: an area welcome line and a collision's positive area name point at DS3's place name, a negative one names none", TextPlaces);
+        yield return ("map text: an area welcome line and a collision's positive area name point at DS3's place name, a negative one names its area, unnamed ground takes the map's main area", TextPlaces);
         yield return ("map text: a door's 'can't do that' message names DS3's event text and the prompt message is Elden Ring's", TextObjAct);
         yield return ("map text: DS3's text is merged into an Elden Ring text file, replacing an earlier run's and keeping Elden Ring's", TextMerge);
     }
@@ -120,9 +120,14 @@ public static partial class MapPortChecks
         Expect(used.Places.SetEquals([3000]) && used.Messages.Count == 0, "an area name is a place name, not an event message");
 
         Expect(MapText.CollisionPlace(3000) == MapText.Base + 3000, "a collision's area name moves");
-        Expect(MapText.CollisionPlace(-1) == -1 && MapText.CollisionPlace(0) == -1, "a collision with no area name (or 0) names none");
-        Expect(MapText.CollisionPlace(-3000) == -1,
-            "a negative area name (DS3: the rest of the area, no banner) names none: Elden Ring showed ?PlaceName? for it and a banner at every step onto it");
+        Expect(MapText.CollisionPlace(-1) == -1 && MapText.CollisionPlace(0) == -1, "a collision with no area name (or 0) names none before filling");
+        Expect(MapText.CollisionPlace(-3000) == MapText.Base + 3000,
+            "a negative area name (DS3: the rest of the area, no banner) names the area: Elden Ring shows the name on every load, and -1 showed ?PlaceName? on respawn (1.0.721)");
+        var ground = new List<MSBE.Part.Collision>();
+        foreach (var n in new short[] { 3000, -3000, -3000, -3100, -1, 0 })
+            ground.Add(new MSBE.Part.Collision { LocationTextID = MapText.CollisionPlace(n) });
+        Expect(MapText.FillCollisionPlaces(ground) == 2 && ground.All(c => c.LocationTextID > 0) && ground[4].LocationTextID == MapText.Base + 3000
+               && ground[3].LocationTextID == MapText.Base + 3100, "unnamed collisions take the map's main area name; named ones keep theirs");
         Expect(MapText.Message(10010160) == MapText.Base + 10010160 && MapText.Message(MapText.Base + 5) == MapText.Base + 5,
             "messages move, and a moved number doesn't move twice");
     }
