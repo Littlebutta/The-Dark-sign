@@ -84,6 +84,8 @@ public sealed class ObjectPort
         public bool Tried, Converted;
         /// <summary>Only DS3's cutscenes use it (an object no map places, or a map piece a cutscene animates).</summary>
         public bool CutsceneOnly { get; init; }
+        /// <summary>A map piece that copies a neighbour map, placed as an asset that hides while the neighbour is loaded (<see cref="MapNeighbourCopies"/>).</summary>
+        public bool NeighbourCopy { get; set; }
         /// <summary>DS3's cutscenes move it by its bones (<see cref="CutsceneCast.BonedModels"/>): it keeps its nodes and
         /// gets a skeleton even when it doesn't move in play.</summary>
         public bool CutsceneBones;
@@ -666,6 +668,8 @@ public sealed class ObjectPort
             asset.CollisionNote = "off (DS3's ObjectParam unreadable)";
         else if (asset.CutsceneOnly)
             asset.CollisionNote = "none: only DS3's cutscenes use it";
+        else if (asset.NeighbourCopy)
+            asset.CollisionNote = "none: a low-detail copy of a neighbour map (its map's collision stays)";
         else if (asset.Animated || asset.ObjActTarget)
             asset.CollisionNote = "none: the object doesn't move here (see moves); it would block the way";
         else if (asset.Breakable || asset.Ladder)
@@ -674,6 +678,49 @@ public sealed class ObjectPort
             ConvertCollision(asset, bnd, null);
         return true;
     }
+
+    /// <summary>
+    /// Builds the assets of map pieces that copy a neighbour map (<see cref="MapNeighbourCopies"/>), keyed by
+    /// <see cref="MapNeighbourCopies.ModelKey"/>: numbered after every other asset, converted like the map pieces DS3's
+    /// cutscenes cast. Run in the "world stand-ins" step, before <see cref="ConvertCutsceneModels"/>,
+    /// <see cref="WriteReports"/> and <see cref="WriteParams"/>. Returns a line for the port log.
+    /// </summary>
+    public string ConvertNeighbourCopies(IEnumerable<string> keys)
+    {
+        var wanted = new List<Asset>();
+        int next = _assets.Count == 0 ? 0 : _assets.Values.Max(a => a.Index) + 1;
+        var usedGroups = _er.Entries.Select(e => e.Path).Where(p => p is not null && p.StartsWith("/asset/aeg/aeg", StringComparison.OrdinalIgnoreCase) && p.Length >= 17)
+            .Select(p => int.TryParse(p!.AsSpan(14, 3), out var g) ? g : -1).ToHashSet();
+        int skipped = 0;
+        foreach (var key in keys.Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(k => k, StringComparer.Ordinal))
+        {
+            if (!_assets.TryGetValue(key, out var asset))
+            {
+                // A group our other assets already fill is ours; a new one must be free in Elden Ring.
+                int group = FirstGroup + next / 1000;
+                bool ours = _assets.Values.Any(a => FirstGroup + a.Index / 1000 == group);
+                if (group > 999 || !ours && usedGroups.Contains(group))
+                {
+                    skipped++;
+                    continue;
+                }
+                _assets[key] = asset = new Asset { Ds3Model = key, Index = next, Name = AssetName(FirstGroup, next) };
+                next++;
+            }
+            asset.NeighbourCopy = true;
+            if (!asset.Tried)
+                wanted.Add(asset);
+        }
+        ConvertAll(wanted);
+        var failed = wanted.Where(a => !a.Converted).ToList();
+        return $"neighbour copies: {wanted.Count - failed.Count} of {wanted.Count} models built as assets"
+               + (skipped > 0 ? $"; {skipped} not numbered (asset group taken by Elden Ring)" : "")
+               + (failed.Count == 0 ? "" : $"; FAILED {failed.Count}: "
+                   + string.Join("; ", failed.GroupBy(a => a.Failure ?? "?").Take(4).Select(g => $"{g.Count()} x {g.Key} (e.g. {g.First().Ds3Model})")));
+    }
+
+    /// <summary>An asset by its key (a DS3 object model, or a map piece's <see cref="MapNeighbourCopies.ModelKey"/>).</summary>
+    public Asset? Find(string key) => _assets.GetValueOrDefault(key);
 
     /// <summary>
     /// A posed copy of a skinned object (a corpse): the DS3 pose baked into a still model (<see cref="ObjectPoses"/>),

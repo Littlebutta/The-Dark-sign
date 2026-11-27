@@ -1443,6 +1443,26 @@ public static class MapPorter
         };
         var tsv = new StringBuilder("DS3 map\tElden Ring slot\tpiece\tstands over the floor of\thidden on the doorways into them\n");
         int written = 0;
+        // Low-detail copies of a joined neighbour (High Wall's shells of Lothric Castle): assets that hide while the
+        // neighbour is loaded, since Elden Ring draws every loaded piece whatever its groups (MapNeighbourCopies).
+        var copies = MapNeighbourCopies.Find(data);
+        string ModelOf(MapNeighbourCopies.Copy c) =>
+            Ds3Msb(c.Ds3).Parts.MapPieces.FirstOrDefault(p => p.Name == c.Piece)?.ModelName ?? "";
+        MSB3 Ds3Msb(MapId id) => data.First(d => d.Ds3 == id).Msb;
+        if (_objects is not null && copies.Count > 0)
+        {
+            try
+            {
+                lines.Add("  " + _objects.ConvertNeighbourCopies(copies.Select(c => MapNeighbourCopies.ModelKey(c.Ds3, ModelOf(c)))));
+            }
+            catch (Exception ex) when (ex is not OutOfMemoryException)
+            {
+                // The copies stay map pieces (Place keeps a piece whose asset didn't convert); the groups are still written.
+                lines.Add($"  neighbour copies: FAILED to build the assets ({ex.Message}); they stay map pieces");
+            }
+        }
+        else if (copies.Count > 0)
+            lines.Add($"  neighbour copies: {copies.Count} found but objects are not ported in this run, so they stay map pieces");
         foreach (var d in data)
         {
             if (!plan.Maps.TryGetValue(d.Er, out var mp))
@@ -1453,6 +1473,17 @@ public static class MapPorter
             var msb = MSBE.Read(DCX.Decompress(File.ReadAllBytes(path), out var compression));
             var (pieces, collisions, connects) = MapConnectDisplay.Apply(msb, mp);
             var clashes = MapConnectDisplay.NumberClashes(msb);
+            var mine = copies.Where(c => c.Ds3 == d.Ds3).ToList();
+            if (_objects is not null && mine.Count > 0)
+            {
+                var copyNotes = new List<string>();
+                int replaced = MapNeighbourCopies.Place(msb, mine, c => _objects.Find(MapNeighbourCopies.ModelKey(c.Ds3, ModelOf(c))), copyNotes);
+                lines.Add($"  {d.Ds3} -> {d.Er}: {replaced} low-detail copies of a neighbour placed as assets hidden while it is loaded: "
+                          + string.Join("; ", mine.Take(12).Select(c => c.Line)) + (mine.Count > 12 ? "; ..." : "")
+                          + (copyNotes.Count > 0 ? "; " + string.Join("; ", copyNotes) : ""));
+                foreach (var c in mine)
+                    tsv.Append($"{d.Ds3}\t{d.Er}\t{c.Piece}\tcopy of {c.Neighbour}\tasset hidden while {c.NeighbourEr} is loaded\n");
+            }
             File.WriteAllBytes(path, DCX.Compress(msb.Write(), compression));
             written++;
             lines.Add($"  {d.Ds3} -> {d.Er}: {pieces} pieces, {collisions} collisions, {connects} doorways written; {mp.DoorwayLists} DS3 doorway lists into it; collision numbers {mp.Numbers.Numbered}, doorway stand-in collisions {mp.Numbers.StandIns}, connects naming one {mp.Numbers.Connects} (of them {mp.NothingConnects} show-nothing connects added for collisions with no DS3 doorway into a neighbour); number clashes {clashes.Count}"
