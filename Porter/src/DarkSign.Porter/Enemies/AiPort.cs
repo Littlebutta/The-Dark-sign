@@ -69,6 +69,12 @@ public sealed class AiPort
         public HashSet<string> Reads = new(StringComparer.Ordinal);
         /// <summary>The GOAL_ names the main chunk registers (RegisterTableGoal / REGISTER_GOAL*(GOAL_X, ...)).</summary>
         public List<string> Registers = [];
+        /// <summary>
+        /// The GOAL_ names this script gives a goal to: RegisterTableGoal(GOAL_X, ...), or goal functions / a .luainfo
+        /// entry of its own. A REGISTER_GOAL_NO_SUB_GOAL(GOAL_X, true) alone only sets an option on a goal another
+        /// script defines (DS3's SkeletonKingDefault_Battle.lua still names the Nameless King's goal that way).
+        /// </summary>
+        public HashSet<string> Defines = new(StringComparer.Ordinal);
         public List<LUAINFO.Goal> Info = [];
         public bool Common;
     }
@@ -195,6 +201,7 @@ public sealed class AiPort
                         s.AssignOrder.Add(g);
                 s.Reads.UnionWith(s.Chunk.ReadGlobals());
                 s.Registers.AddRange(Registered(s.Chunk));
+                s.Defines.UnionWith(Registered(s.Chunk, tablesOnly: true));
                 s.Info.AddRange(goals.Where(g => Owns(s, g.Name)));
                 _ds3.Add(s);
                 _ds3Assigned.UnionWith(s.Assigns);
@@ -225,14 +232,24 @@ public sealed class AiPort
         var byActivate = _ds3Goals.Keys.GroupBy(n => GoalStem(n) + "_Activate", StringComparer.Ordinal).ToDictionary(g => g.Key, g => g.ToList(), StringComparer.Ordinal);
         foreach (var s in _ds3)
             foreach (var name in s.Assigns.SelectMany(a => byActivate.GetValueOrDefault(a, [])))
+            {
+                s.Defines.Add(name);
                 if (!s.Registers.Contains(name))
                     s.Registers.Add(name);
+            }
         // Failing that, the entry's number (an entry's name can be shorter than the goal's: 2014 "ApproachTarget").
         var registered = _ds3.SelectMany(s => s.Registers).ToHashSet(StringComparer.Ordinal);
         foreach (var s in _ds3)
             foreach (var name in s.Info.Where(g => !g.LogicInterrupt).SelectMany(g => byValue.GetValueOrDefault(g.ID, [])))
                 if (!registered.Contains(name) && !s.Registers.Contains(name))
+                {
                     s.Registers.Add(name);
+                    s.Defines.Add(name);
+                }
+        // The script that defines a goal is its library, before one that only names it in a REGISTER_GOAL_ option call.
+        foreach (var s in _ds3.Where(s => s.Common))
+            foreach (var name in s.Defines)
+                _ds3Library.TryAdd(name, s);
         foreach (var s in _ds3.Where(s => s.Common))
             foreach (var name in s.Registers)
                 _ds3Library.TryAdd(name, s);
@@ -272,7 +289,7 @@ public sealed class AiPort
     }
 
     /// <summary>The GOAL_ globals a main chunk registers: a GETGLOBAL of a Register function followed by one of GOAL_X.</summary>
-    public static IEnumerable<string> Registered(HksChunk chunk)
+    public static IEnumerable<string> Registered(HksChunk chunk, bool tablesOnly = false)
     {
         var f = chunk.Main;
         string? last = null;
@@ -281,7 +298,7 @@ public sealed class AiPort
             if (HksChunk.Op(i) != 5 || HksChunk.Bx(i) >= f.Constants.Count || f.Constants[HksChunk.Bx(i)].AsString is not { } name)
                 continue;
             if (last is not null && name.StartsWith("GOAL_", StringComparison.Ordinal) &&
-                (last.Equals("RegisterTableGoal", StringComparison.Ordinal) || last.StartsWith("REGISTER_GOAL", StringComparison.Ordinal)))
+                (last.Equals("RegisterTableGoal", StringComparison.Ordinal) || (!tablesOnly && last.StartsWith("REGISTER_GOAL", StringComparison.Ordinal))))
                 yield return name;
             last = name;
         }
@@ -370,7 +387,11 @@ public sealed class AiPort
     private (int? Er, string Note) PortBattleUncached(int ds3Goal)
     {
         var names = _ds3Goals.Where(g => (int)g.Value == ds3Goal).Select(g => g.Key).ToHashSet(StringComparer.Ordinal);
-        var script = _ds3.FirstOrDefault(s => s.Registers.Any(names.Contains))
+        // The script that defines the goal, not the first that names it: DS3's aicommon SkeletonKingDefault_Battle.lua
+        // (High Lord Wolnir) calls REGISTER_GOAL_NO_SUB_GOAL on the Nameless King's goal 501000 and was taken for its
+        // script, so the Nameless King had no goal and stood still (1.0.735 playtest, 2026-11-28).
+        var script = _ds3.FirstOrDefault(s => s.Defines.Any(names.Contains))
+                     ?? _ds3.FirstOrDefault(s => s.Registers.Any(names.Contains))
                      ?? _ds3.FirstOrDefault(s => s.Leaf.Equals($"{ds3Goal:D6}_battle.lua", StringComparison.OrdinalIgnoreCase));
         if (script is null)
             return (null, $"{NoScriptNote} {ds3Goal}");
