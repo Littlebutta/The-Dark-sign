@@ -366,19 +366,19 @@ public static partial class MapPortChecks
         Expect(leyLight.Params.Single(p => p.Name1 == "Directional Light Angle0").Values.All(v => (Vector2)v == new Vector2(-0.768f, -0.96f)), "DS3's sun direction still wins over the reference's");
         Expect(MapAtmosphere.Value<float>(leyLight, "Directional Light giOcclusionRate") == 0.3f, "a param the reference lacks is kept");
         var tone = MapAtmosphere.Group(leyndell, "Tone Map");
-        Expect(MapAtmosphere.Value<float>(tone, "GS Presents - ToneMap-Exposure") == 3.15f && tone!.Params.Single(p => p.Name1 == "GS Presents - ToneMap-Enable AutoExposure").Values[0] is (byte)1,
-            "exposure 3.15 from the reference, auto exposure on to lift dark scenes");
-        Expect(lit.Any(c => c.StartsWith("exposure lifts in dark scenes")), string.Join(" | ", lit));
+        Expect(MapAtmosphere.Value<float>(tone, "GS Presents - ToneMap-Exposure") == 3.9f && tone!.Params.Single(p => p.Name1 == "GS Presents - ToneMap-Enable AutoExposure").Values[0] is (byte)1,
+            "m45_00's exposure 3.9 with auto exposure on");
+        Expect(lit.Any(c => c.StartsWith("exposure: m45_00's own values")), string.Join(" | ", lit));
         var ae = new GPARAM();
         ae.Groups.Add(G("Tone Map", P("GS Presents - ToneMap-Enable AutoExposure", GPARAM.ParamType.Byte, (byte)0),
             P("GS Presents - ToneMap-AutoExposure Adaption Min", GPARAM.ParamType.Float, -8f),
             P("GS Presents - ToneMap-AutoExposure Adaption Max", GPARAM.ParamType.Float, 8f),
             P("GS Presents - ToneMap-AutoExposure Middle Gray", GPARAM.ParamType.Float, -6.4f)));
         var aeTone = MapAtmosphere.Group(ae, "Tone Map");
-        Expect(MapAtmosphere.LiftDarkScenes(ae) == 4 && MapAtmosphere.Value<float>(aeTone, "GS Presents - ToneMap-AutoExposure Adaption Min") == 0f
+        Expect(MapAtmosphere.LiftDarkScenes(ae) == 4 && MapAtmosphere.Value<float>(aeTone, "GS Presents - ToneMap-AutoExposure Adaption Min") == -0.6f
                && MapAtmosphere.Value<float>(aeTone, "GS Presents - ToneMap-AutoExposure Adaption Max") == MapAtmosphere.DarkSceneLift
                && MapAtmosphere.Value<float>(aeTone, "GS Presents - ToneMap-AutoExposure Middle Gray") == MapAtmosphere.DarkSceneMiddleGray,
-            "dark scenes: never below the reference's exposure, at most 1.25 steps up, metered like m45_00");
+            "auto exposure window is m45_00's own (-0.6 to +0.5 around 3.9)");
 
 
         // One DS3 light scale for every map (MapLightScale), set by the High Wall (DS3's values from its files).
