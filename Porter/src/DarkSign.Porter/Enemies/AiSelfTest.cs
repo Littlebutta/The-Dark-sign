@@ -234,6 +234,24 @@ public static class AiSelfTest
             ai.Libraries.Select(s => s.Leaf).SequenceEqual(["enemy_step.lua"]) && ai.NewGoals.GetValueOrDefault("GOAL_EnemyStep") == 2603);
         Check("AI: the goal list learns the moved goal", ai.NewGoals.GetValueOrDefault("GOAL_Jailer_223000_Battle") == AiPort.FirstRemapped);
         Check("AI: nothing is missing (the helper is lifted out of the file that can't come)", ai.Missing.Count == 0);
+
+        // DS3's aicommon SkeletonKingDefault_Battle.lua (High Lord Wolnir) still calls REGISTER_GOAL_NO_SUB_GOAL on the
+        // Nameless King's goal; the goal's script is the one that gives it a table (m32's 501000_battle.lua).
+        string[] strayCall = ["REGISTER_GOAL_NO_SUB_GOAL", "GOAL_King_501000_Battle", "RegisterTableGoal", "GOAL_Wolnir_516001_Battle"];
+        Check("HKS: a REGISTER_GOAL_ option call names a goal, only RegisterTableGoal defines one",
+            AiPort.Registered(HksChunk.Read(Script(strayCall))).SequenceEqual(["GOAL_King_501000_Battle", "GOAL_Wolnir_516001_Battle"])
+            && AiPort.Registered(HksChunk.Read(Script(strayCall)), tablesOnly: true).SequenceEqual(["GOAL_Wolnir_516001_Battle"]));
+        var strayCommon = Binder(
+            (1000, "goal_list.lua", List(("GOAL_King_501000_Battle", 501000), ("GOAL_Wolnir_516001_Battle", 516001))),
+            (1001, "logic_list.lua", List(("LOGIC_ID_Common10000", 10000))),
+            (1002, "WolnirDefault_Battle.lua", Script(strayCall, ("Wolnir_Act01", Reads()))));
+        var strayMap = Binder((1100, "501000_battle.lua", Script(["RegisterTableGoal", "GOAL_King_501000_Battle"], ("King_Act01", Reads()))));
+        var strayAi = new AiPort(erCommon, new DCX.NoCompressionInfo(), _ => false, [("/script/aicommon.luabnd.dcx", strayCommon), ("/script/m32_00_00_00.luabnd.dcx", strayMap)]);
+        var (kingGoal, kingNote) = strayAi.PortBattle(501000);
+        var kingBinder = kingGoal is { } kg ? strayAi.Finish().FirstOrDefault(o => o.Path.Equals(AiPort.BattlePath(kg), StringComparison.OrdinalIgnoreCase)).Bytes : null;
+        var kingScript = kingBinder is null ? null : BND4.Read(kingBinder).Files.FirstOrDefault(f => f.Name.EndsWith(".lua", StringComparison.OrdinalIgnoreCase));
+        Check($"AI: a goal's script is the one that defines it, not one that only sets an option on it ({kingGoal}, {kingNote})",
+            kingScript is not null && HksChunk.Read(kingScript.Bytes).DefinedGlobals().SequenceEqual(["King_Act01"]));
         var outputs = ai.Finish();
         var goalBinder = outputs.FirstOrDefault(o => o.Path == AiPort.BattlePath(AiPort.FirstRemapped));
         Check("AI: the goal gets a binder of its own with the script and its global list",
