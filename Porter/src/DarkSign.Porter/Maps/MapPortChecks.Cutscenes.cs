@@ -25,9 +25,52 @@ public static partial class MapPortChecks
         yield return ("cutscenes: DS3 draw-setting events (199 light set, 215 post-process) become Elden Ring's 197 with both events' choices; light sets in the cutscene's file are listed", CutsceneDrawSettings);
         yield return ("cutscenes: a DS3 light set hung on one part (183/187) becomes Elden Ring's one-part light set (199) and stays off the scene", CutscenePartLights);
         yield return ("cutscenes: an object a DS3 cutscene animates by bones keeps a skeleton of its model nodes", CutsceneNodeSkeleton);
+        yield return ("cutscenes: a cut's offset moves by where DS3's map places the collision it is measured from (Twin Princes' intro outside the hall, 1.0.735)", CutsceneAnchors);
         yield return ("cutscenes: Clear played cutscenes lists each cutscene's seen flags (set and checked by its event, parameters followed) and its event's own flag", CutsceneReplayFlags);
     }
 
+    private static void CutsceneAnchors()
+    {
+        // The Twin Princes' intro: DS3 measures each cut's offset from h995000, which the map places off the origin.
+        var mqb = new MQB { Version = MQB.MQBVersion.DarkSouls3, Name = "s34_01_0000", Framerate = 30, ResourceDirectory = "", Resources = [], Cuts = [] };
+        mqb.Resources.Add(new MQB.Resource { Name = "offset.sib", ParentIndex = -1, Unk48 = CutsceneAnchor.OffsetKind });
+        mqb.Resources.Add(new MQB.Resource { Name = "a0000.HKT", ParentIndex = -1, Unk48 = 266 });
+        MQB.Cut Cut(string name)
+        {
+            var tl = new MQB.Timeline();
+            tl.Events.Add(new MQB.Event { ResourceIndex = 0, Duration = 100, Transforms = [new MQB.Transform { Frame = 0, Translation = new(59.12f, 149.27f, 346.34f) }, new MQB.Transform { Frame = 100, Translation = new(59.12f, 149.27f, 346.34f) }] });
+            tl.Events.Add(new MQB.Event { ResourceIndex = 1, Duration = 100, Transforms = [new MQB.Transform { Frame = 0, Translation = new(1, 2, 3) }] });
+            return new MQB.Cut { Name = name, Duration = 100, Timelines = [tl] };
+        }
+        mqb.Cuts.AddRange([Cut("cut0010"), Cut("cut0020"), Cut("cut0030"), Cut("cut0040")]);
+        var map = new MapId(34, 1, 0, 0);
+        Expect(CutsceneAnchor.CollisionPart("h34_01_00_00_995000", map) == "h995000" && CutsceneAnchor.CollisionPart("h30_00_00_00_995000", map) is null
+               && CutsceneAnchor.CollisionPart("c5250_0000", map) is null, "a cast collision of this map is its part hNNNNNN; another map's and other parts are not");
+        var parts = new Dictionary<string, List<string>>
+        {
+            ["cut0010"] = ["c5250_0000", "cam0010", "h34_01_00_00_995000"],   // placed off the origin
+            ["cut0020"] = ["c5250_0000", "h34_01_00_00_008100"],              // placed at the origin: stays
+            ["cut0030"] = ["c5250_0000", "cam0030"],                          // no collision: stays
+            ["cut0040"] = ["h34_01_00_00_001210"],                            // turned a quarter about the vertical
+        };
+        (System.Numerics.Vector3, System.Numerics.Vector3)? Placed(string cast) => cast switch
+        {
+            "h34_01_00_00_995000" => (new(-17.5f, -3.6f, -6.3f), default),
+            "h34_01_00_00_008100" => (default, default),
+            "h34_01_00_00_001210" => (new(10, 0, 0), new(0, 90, 0)),
+            _ => null,
+        };
+        var moved = new SortedSet<string>();
+        int cuts = CutsceneAnchor.Apply(mqb, parts, Placed, moved);
+        System.Numerics.Vector3 At(int cut, int ev = 0, int t = 0) => mqb.Cuts[cut].Timelines[0].Events[ev].Transforms[t].Translation;
+        bool Near(System.Numerics.Vector3 a, float x, float y, float z) => System.Numerics.Vector3.Distance(a, new(x, y, z)) < 0.01f;
+        Expect(cuts == 2 && moved.Count == 2, $"two cuts moved ({cuts}: {string.Join("; ", moved)})");
+        Expect(Near(At(0), 41.62f, 145.67f, 340.04f) && Near(At(0, 0, 1), 41.62f, 145.67f, 340.04f), $"the offset moves by the collision's place, every key ({At(0)})");
+        Expect(Near(At(0, 1), 1, 2, 3), "only the offset event moves");
+        Expect(Near(At(1), 59.12f, 149.27f, 346.34f) && Near(At(2), 59.12f, 149.27f, 346.34f), "a collision at the origin, or none, leaves the offset");
+        Expect(Near(At(3), 10 + 346.34f, 149.27f, -59.12f) && MathF.Abs(mqb.Cuts[3].Timelines[0].Events[0].Transforms[0].Rotation.Y - MathF.PI / 2) < 0.001f,
+            $"a turned collision turns the cut about it ({At(3)})");
+    }
     private static (MQB Mqb, MQB.Timeline Main, MQB.Timeline Fx, MQB.Timeline Talk, MQB.Timeline Armour) SoundSample()
     {
         var mqb = new MQB { Version = MQB.MQBVersion.DarkSouls3, Name = "s45_00_0000", Framerate = 30, ResourceDirectory = "", Resources = [], Cuts = [] };
