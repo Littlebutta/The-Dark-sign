@@ -831,6 +831,9 @@ public static partial class CutscenePort
         /// <summary>DS3 draw-setting events turned into Elden Ring's (<see cref="CutsceneDrawParams"/>).</summary>
         public CutsceneDrawParams.Result Draw { get; set; } = new();
         public int OtherFiles;
+        /// <summary>Cuts whose offset moved by the place of the DS3 collision it is measured from, and those collisions (<see cref="CutsceneAnchor"/>).</summary>
+        public int AnchoredCuts;
+        public SortedSet<string> Anchors { get; } = new(StringComparer.Ordinal);
         /// <summary>Effect events pointed at a converted DS3 effect, and ones left out because theirs didn't convert.</summary>
         public int EffectsMapped, EffectsLeftOut;
         public SortedSet<int> EffectsMissing { get; } = [];
@@ -910,7 +913,8 @@ public static partial class CutscenePort
     /// Elden Ring model). Given, it renames parts, leaves out what Elden Ring can't load and lays the cut files out as
     /// Elden Ring's (<see cref="CutsceneCast"/>); null converts without it.</param>
     public static (BND4 Binder, BinderStats Stats) ConvertBinder(BND4 ds3, string ds3Name, string erName, Func<string, string?> rename,
-        MapId ds3Map, MapId erMap, ErSide side, Action<MQB>? sound = null, Func<string, string?>? cast = null, Func<int, int?>? effects = null)
+        MapId ds3Map, MapId erMap, ErSide side, Action<MQB>? sound = null, Func<string, string?>? cast = null, Func<int, int?>? effects = null,
+        Func<string, (Vector3 Position, Vector3 Rotation)?>? placed = null)
     {
         var stats = new BinderStats();
         var bnd = new BND4
@@ -933,6 +937,10 @@ public static partial class CutscenePort
             sound?.Invoke(mqb);
             // Before the cast drops DS3's other draw kinds: 199 and 215 become Elden Ring's 197.
             stats.Draw = CutsceneDrawParams.ConvertEvents(mqb, CutsceneDrawParams.ErFields(side.Catalog), CutsceneDrawParams.ErPartFields(side.Catalog));
+            // Before the cast leaves DS3's collisions out: each cut's offset moves by where the map places the one it
+            // is measured from (CutsceneAnchor).
+            if (placed is not null)
+                stats.AnchoredCuts += CutsceneAnchor.Apply(mqb, CutsceneAnchor.PartsOfCuts(ds3, CutsceneCast.CutFiles(mqb)), placed, stats.Anchors);
             if (cast is not null)
             {
                 cutFiles = CutsceneCast.CutFiles(mqb);
@@ -1154,7 +1162,12 @@ public static partial class CutscenePort
                         if (subtitleText is not null)
                             said = CutsceneSubtitles.Prepare(m, thisIndex, subtitleText, plan?.VoiceOfTalk, out saidDropped);
                     };
-                    var (bnd, stats) = ConvertBinder(source, name, erName, rename, map.Slot.Ds3, map.Slot.Er, side, prepare, cast, effects);
+                    if (!ds3Msbs.TryGetValue(map.Slot.Ds3, out var placedMsb))
+                        ds3Msbs[map.Slot.Ds3] = placedMsb = MSB3.Read(ds3.Read(MapPorter.MsbPath(map.Slot.Ds3)));
+                    var (bnd, stats) = ConvertBinder(source, name, erName, rename, map.Slot.Ds3, map.Slot.Er, side, prepare, cast, effects,
+                        CutsceneAnchor.Placed(placedMsb, map.Slot.Ds3));
+                    if (stats.AnchoredCuts > 0)
+                        lines.Add($"{name} -> {erName}: {stats.AnchoredCuts} cut offsets moved by where DS3's map places the collision they are measured from ({string.Join(", ", stats.Anchors)})");
                     // The bank first: the timeline keeps only the sounds it holds.
                     if (sounds is not null && plan is not null)
                         lines.Add($"{name} sound: {plan}; {BuildSound(sounds, plan, bnd, null, silentVoices)}");
