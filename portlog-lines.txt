@@ -1,0 +1,84 @@
+﻿port report: port-maps-20261128-013034.txt (2026-11-28T01:30:34)
+porter log: porter-port-maps-20261128-003711.log (2026-11-28T01:30:37)
+matching lines: 698 (first 80 shown, 200 chars each)
+
+enemies: note: catalog: 45 wildlife and helper placements left out (deer, eagles, dummies, bonfires)
+WARN  m45_00_00_00: the nearest collision part is 745 m from the run start
+WARN  m45_00_00_00: 3 enemies have no collision to stand on (they may fall)
+WARN  m45_01_00_00: 5 enemies have no collision to stand on (they may fall)
+WARN  m45_02_00_00: the nearest collision part is 201 m from the run start
+WARN  m45_02_00_00: 5 enemies have no collision to stand on (they may fall)
+WARN  m19_70_00_00: the nearest collision part is 332 m from the run start
+WARN  m19_70_00_00: 8 enemies have no collision to stand on (they may fall)
+WARN  m45_03_00_00: the nearest collision part is 244 m from the run start
+WARN  m45_03_00_00: 3 enemies have no collision to stand on (they may fall)
+WARN  no vanilla map piece binder under /map/m45/m45_03_00_00/ to compare with
+WARN  m45_04_00_00: the nearest collision part is 227 m from the run start
+WARN  m45_04_00_00: 9 enemies have no collision to stand on (they may fall)
+WARN  no vanilla map piece binder under /map/m45/m45_04_00_00/ to compare with
+WARN  m45_05_00_00: 4 enemies have no collision to stand on (they may fall)
+WARN  no vanilla map piece binder under /map/m45/m45_05_00_00/ to compare with
+WARN  m38_10_00_00: 7 enemies have no collision to stand on (they may fall)
+WARN  no vanilla map piece binder under /map/m38/m38_10_00_00/ to compare with
+WARN  m38_11_00_00: 9 enemies have no collision to stand on (they may fall)
+WARN  no vanilla map piece binder under /map/m38/m38_11_00_00/ to compare with
+WARN  m38_11_00_00: 1 textures used by ported materials aren't in the area's texture binders (the game may wait for them while the map loads): AET210_040_a
+WARN  m38_12_00_00: 3 enemies have no collision to stand on (they may fall)
+WARN  no vanilla map piece binder under /map/m38/m38_12_00_00/ to compare with
+WARN  m38_13_00_00: the nearest collision part is 349 m from the run start
+WARN  m38_13_00_00: 2 enemies have no collision to stand on (they may fall)
+WARN  no vanilla map piece binder under /map/m38/m38_13_00_00/ to compare with
+WARN  m38_14_00_00: the nearest collision part is 377 m from the run start
+WARN  m38_14_00_00: 4 enemies have no collision to stand on (they may fall)
+WARN  no vanilla map piece binder under /map/m38/m38_14_00_00/ to compare with
+WARN  m38_15_00_00: 3 enemies have no collision to stand on (they may fall)
+WARN  no vanilla map piece binder under /map/m38/m38_15_00_00/ to compare with
+WARN  m11_70_00_00: 4 enemies have no collision to stand on (they may fall)
+WARN  m11_72_00_00: 6 enemies have no collision to stand on (they may fall)
+WARN  flag block 1030290xxx (ported DS3 global flags / common events (darksign_flags.tsv)): tile m60_30_29_00 is in no flag allocation list (the in-game flagcheck decides; JortPob's sea-tile flags kep
+WARN  flag block 1030294xxx (ported DS3 global flags / common events (darksign_flags.tsv)): tile m60_30_29_00 is in no flag allocation list (the in-game flagcheck decides; JortPob's sea-tile flags kep
+WARN  flag block 1030297xxx (ported DS3 global flags / common events (darksign_flags.tsv)): tile m60_30_29_00 is in no flag allocation list (the in-game flagcheck decides; JortPob's sea-tile flags kep
+WARN  flag block 1030298xxx (ported DS3 global flags / common events (darksign_flags.tsv)): tile m60_30_29_00 is in no flag allocation list (the in-game flagcheck decides; JortPob's sea-tile flags kep
+WARN  flag block 1030299xxx (ported DS3 global flags / common events (darksign_flags.tsv)): tile m60_30_29_00 is in no flag allocation list (the in-game flagcheck decides; JortPob's sea-tile flags kep
+WARN  flag block 1031290xxx (ported DS3 global flags / common events (darksign_flags.tsv)): tile m60_31_29_00 is in no flag allocation list (the in-game flagcheck decides; JortPob's sea-tile flags kep
+WARN  flag block 1032290xxx (ported DS3 global flags / common events (darksign_flags.tsv)): tile m60_32_29_00 is in no flag allocation list (the in-game flagcheck decides; JortPob's sea-tile flags kep
+WARN  flag block 1038291xxx (ported DS3 global flags / common events (darksign_flags.tsv)): tile m60_38_29_00 is in no flag allocation list (the in-game flagcheck decides; JortPob's sea-tile flags kep
+WARN  flag block 1039290xxx (DS3 run active flag (saved)): tile m60_39_29_00 is in no flag allocation list (the in-game flagcheck decides; JortPob's sea-tile flags kept in the 2026-11-08 test)
+WARN  flag block 1039291xxx (run event IDs): tile m60_39_29_00 is in no flag allocation list (the in-game flagcheck decides; JortPob's sea-tile flags kept in the 2026-11-08 test)
+WARN  flag block 1039292xxx (F1 menu start/leave/warp request flags): tile m60_39_29_00 is in no flag allocation list (the in-game flagcheck decides; JortPob's sea-tile flags kept in the 2026-11-08 te
+WARN  flag block 1039295xxx (DS3 music switch and playing flags (MapMusic)): tile m60_39_29_00 is in no flag allocation list (the in-game flagcheck decides; JortPob's sea-tile flags kept in the 2026-1
+WARN  texture names: c7051_h.texbnd.dcx: 12 textures without the file's own name (c3060_Armor_a, c3060_Armor_m, c3060_Armor_n, c3060_Skeleton_a); a name Elden Ring also uses would be shared
+WARN  texture names: c7051_l.texbnd.dcx: 12 textures without the file's own name (c3060_Armor_a_l, c3060_Armor_m_l, c3060_Armor_n_l, c3060_Skeleton_a_l); a name Elden Ring also uses would be shared
+WARN  texture names: c7052_h.texbnd.dcx: 46 textures without the file's own name (c2500_AM_a, c2500_AM_m, c2500_AM_n, c2500_arm_claw_a); a name Elden Ring also uses would be shared
+WARN  texture names: c7052_l.texbnd.dcx: 46 textures without the file's own name (c2500_AM_a_l, c2500_AM_m_l, c2500_AM_n_l, c2500_arm_claw_a_l); a name Elden Ring also uses would be shared
+WARN  texture names: c7096_h.texbnd.dcx: 4 textures without the file's own name (c2270_barnacleoverlay_a, c2270_barnacleoverlay_n, c2270_crab_a, c2270_crab_n); a name Elden Ring also uses would be sha
+WARN  texture names: c7096_l.texbnd.dcx: 4 textures without the file's own name (c2270_barnacleoverlay_a_l, c2270_barnacleoverlay_n_l, c2270_crab_a_l, c2270_crab_n_l); a name Elden Ring also uses woul
+WARN  texture names: c7999_h.texbnd.dcx: 23 textures without the file's own name (c3900_AM_a, c3900_AM_m, c3900_AM_n, c3900_BD_a); a name Elden Ring also uses would be shared
+WARN  texture names: c7999_l.texbnd.dcx: 23 textures without the file's own name (c3900_AM_a_l, c3900_AM_m_l, c3900_AM_n_l, c3900_BD_a_l); a name Elden Ring also uses would be shared
+WARN  coverage: enemies with nothing to stand in: m45_01_00_00 (High Wall of Lothric) 1, m45_02_00_00 (Undead Settlement) 6, m19_70_00_00 (Painted World of Ariandel) 9, m45_04_00_00 (Road of Sacrifice
+map-validate: 0 FAIL, 53 WARN
+  note: helper pieces left out: 2 drawn only in water reflections (m200000_1000, m200010_1000)
+  note: connect collisions: 3 ported, 0 left out (map not ported)
+  note: catalog: 45 wildlife and helper placements left out (deer, eagles, dummies, bonfires)
+  note: people: left out of the pools: no body armour x7 (Boc the Seamster (523420024/23420), Silver Tear (523680062/23682), Silver Tear (523680062/23683), Silver Tear (523680065/23680), Silver Tear (
+  enemies: 56 placed (29 ported DS3 characters, 0 Elden Ring stand-ins, 27 people, DS3's own people and DS3 humans in their DS3 armour), 4 people left out, 0 with nothing to stand in; 2 DS3 boss entit
+  enemies: 40 left out that belong to another state of the map (off DS3's layer bit 0, e.g. the Untended Graves): Undead Dog x6; Undead Cleric 7 - Untended Graves x5; Undead Cleric 4 - Untended Graves
+  model m900280: left out (only effect, decal, water or shadow meshes, which have no Elden Ring material yet)
+  model m900301: left out (only effect, decal, water or shadow meshes, which have no Elden Ring material yet)
+  model m900302: left out (only effect, decal, water or shadow meshes, which have no Elden Ring material yet)
+  model m900311: left out (only effect, decal, water or shadow meshes, which have no Elden Ring material yet)
+  low-detail stand-ins: 0 left out, 9 kept; far views: 0 left out
+  piece report: Work\reports\map-pieces-m45_00_00_00.tsv (every DS3 map piece: where it is, how big, its materials, and why it was left out)
+  sky fades: 6 see-through sky meshes (nolight-blend 6); 6 drawn by Elden Ring's legacy sky material (M[A]_al_NoLight) with DS3's own vertex fade, 0 drawn with DS3's fade baked into a texture of their
+  see-through sky layers: 0 unlit blended meshes (M[A]_al_NoLight: cloud bands, haze, far mountain rings) drawn with their DS3 fade, 0 of 0 triangles left out where DS3 has them under half visible
+  navmesh: 42 connections name a navmesh that isn't in the list or has no faces; left out
+  navmesh: 2 DS3 node banks (32 faces that events close and open) left out
+  navmesh: 2 DS3 joins to other maps left out
+  navmesh: 1 DS3 navmesh files aren't in DS3's list; left out
+  navmesh: 18 DS3 jump and drop links left out (enemies won't jump or drop between ledges)
+  objects: 467 placed as assets (40 models, 19 parts with collision), 72 left out
+  objects: 27 object parts left out: only effect, decal, water or shadow meshes, which have no Elden Ring material yet
+  objects: ObjActs: 7 placed, 3 left out (their object wasn't placed)
+  objects: 45 object parts left out: they belong to another state of the map (off DS3's layer bit 0, e.g. the Untended Graves)
+  regions: 258 carried (113 with an entity ID the scripts can name, 144 patrol points); left out: EnvironmentMapEffectBox x31, Message x21, Sound x19, SFX x18, EnvironmentMapPoint x14, InvasionPoint x
+  boss arenas: Champion Gundyr (14000830) left out: its boss isn't in the layout
